@@ -866,11 +866,10 @@ pub(crate) fn raw_usage(
                 usage.is_object(),
                 "the Gemini record keeps its usage: {raw}"
             );
-            (
-                count(&usage["promptTokenCount"]),
-                count(&usage["cachedContentTokenCount"]),
-                None,
-            )
+            // Input counts the tool-use prompt too, as rig's usage does.
+            let input = count(&usage["promptTokenCount"])
+                .map(|prompt| prompt + count(&usage["toolUsePromptTokenCount"]).unwrap_or(0));
+            (input, count(&usage["cachedContentTokenCount"]), None)
         }
         other => panic!("no long-loop column on the {other:?} wire"),
     }

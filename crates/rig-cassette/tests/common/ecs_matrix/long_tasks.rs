@@ -341,7 +341,7 @@ pub(crate) fn assert_requests(provider: &str, scenario: &str) {
         if provider == "gemini" {
             assert_eq!(
                 body.pointer("/generationConfig/thinkingConfig/thinkingLevel"),
-                Some(&json!("low")),
+                Some(&json!("LOW")),
                 "model-supported thinking level survives every request"
             );
             assert!(

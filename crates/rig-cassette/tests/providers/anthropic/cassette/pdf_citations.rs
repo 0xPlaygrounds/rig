@@ -22,6 +22,7 @@ const PDF_URL: &str = "https://bitcoin.org/bitcoin.pdf";
 
 fn cited_pdf() -> Document {
     Document {
+        detail: None,
         data: DocumentSourceKind::Url(PDF_URL.to_string()),
         media_type: None,
         additional_params: rig::message::AdditionalParams::try_from_value(json!({

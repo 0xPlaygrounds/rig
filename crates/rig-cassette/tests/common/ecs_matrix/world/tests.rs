@@ -73,7 +73,13 @@ fn model_level_options_require_intact_host_bindings() {
     let mut gemini = GeminiConfig::new("local-test-key")
         .connect(http)
         .completion("model");
-    gemini.wire = gemini.wire.with_cached_content("cachedContents/test");
+    gemini.wire.cached_content = Some(rig::providers::gemini::CachedPrefix {
+        resource: rig::providers::gemini::api::CachedContent {
+            name: Some("cachedContents/test".to_owned()),
+            ..Default::default()
+        },
+        request: Default::default(),
+    });
     check(gemini, ThinkingWire::Gemini);
 }
 

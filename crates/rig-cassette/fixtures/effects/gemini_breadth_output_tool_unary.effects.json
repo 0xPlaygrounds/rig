@@ -97,22 +97,25 @@
                 "name": "final_result",
                 "arguments": {
                   "category": "Technology",
-                  "summary": "A local meetup for Rust enthusiasts in Seattle to connect, share knowledge, and collaborate.",
+                  "summary": "A local meetup for Rustaceans in Seattle to discuss Rust programming, share projects, and network.",
                   "title": "Seattle Rust Meetup"
                 }
               },
-              "signature": "CrcFAWkUfRMBium4+YlKs3Km5GoGsgT7XpaV9JCzX3+myKYYc57Vc9muKbtwOgVPcl4y4bFl/u36v3jc7TsyvLUHe+aPs6TFwL1zzc9gcJKAQlObX7KODN0LkDMOTvgCTv0q4IdpX3Zxinim8c5w43hGG+2MUtcCwNYMR8M/dOlJZ+pABnYbxaBmjmOS0XECIjyLLOnBty1xJT/5sGhqTkGCPCw5KstzQP07g7srgjbj0YpSf3BuDHN8djHMW2ajZOw1WUKbRIlejIdcTd78NYIV62RO7vfgfYoYX3rrBeZszKbnKVFY8PubiGnaN06zQ2iaI6xx9ko2NBhYlUU7YMVmMrrBx1XhyPII+61R60PD4fUbRL6rbglBOohaRGZNxoDYFWuYEIxWppKZbnXtS5slAS63T36yo/PikKnfPoYjLN1cDwCIzppK/Gi9GcdWlK8oEzFDB63/ULP3+iCxc1+QKshZ393dEylgd+xrMPmFawhB7cMbI+Wq8oIXH6eH0orTWvehigEi45NXz4Gm43mNp+4Cl97TXExymQyBMfgb0SK6PaUSF/iD6ETpv3BJ+qXvmCpXyP9oeyzyofCOlmX5sb96e3nTeikQgalR9Juk3a0OHRNFrMH7CLy9HZ2mrUMeI+wQSlmf0M1vRXz0oVIVtpm4btLI1rBh/6ILxT/PSlHNuGtH54ilKC5DTE+yrFSQNBPa1+h+zFkzvfsEu3VSzCxMHxCbZFuKEXQGvCbJ6s7KSUXKab+UjBFGQ040vSbDuyl1fmjkapNNesVYQ/62eUEqJt19ui5hnOwrnr6A0FFLruRMu7xG3KCqxBmqRK0ltJnveCPYCEJyW7yjuWo0Uw8pLPNs3CP0yLsoTMWfIw/449nFJDhkZGLU9wvYDbYaTZihVnnxl34R56fxzvc17vIMKJLHR4k=",
+              "signature": {
+                "issuer": "gcp.gemini",
+                "signature": "CpUFAWkUfRNrSZ5+jwMxUaUwrheJRYsFXfuapRW7mNZ1YUXnYHwD9pqQyBiVBwWWwi4U1vMFnjf7oCyQfpISqF9HV+u9ck6aprrrUA1Wau2aG/6j/oJZAR8SncOjajl3w19v81lt46oDrPFXltvIgTdU4yy3IJtuvbX6nCRgQBK4ovx9p81c+Gk3GwtXScPnp2dev7dk48LtqULr7mejSR2roMeWjGJNBeKyq4MQZP29t+92dZ7cCSIvAbSI4slWR22THrxy4nNqNce1YIahDCSLuRXszdkO59V7+VShMu2gdx8dGbWLG6jVvIgxe6O910cUzARhgJRu9DlIA2oODET7gYFQou8xnd1P43oMyPqMFATePtmm8wKAVUZPVn/T3u3qhD8l6C/RIXO+EJNiQxHddJRsYUZVaG695UXDVv+rt24xkdQYaguSSYoAuPBIx6X+EPx0jos0axkv3UBTHJn5n88EAb44ttY8bvzkliiR2ug7fb0tltpizRrRW58jy1ddGBXA/KaED27K1SVikO22v0EBx8AYJWbdA6vu5dS2zlBWVroRxenSgmtBqstInvvZTk4tQBM6BRCwzS/5mthmhayfYjlxiunAx4lCTQgSdQxw915aBm6VHS3nvb6w0QvNO5aS8PSos7BUl2tr2r6gg+Pyjb6ZpV6fqV7uObFXFwV7ILMooYvlmLN3/3JSBpJYQE5KSouyDsK/dhyVnum5clbYJG5dHdXg+tv35CIBxCWMzUYXZOD2s6bDhs6IuDLVzdF9UFbqW8//MweRq3MdLux3W2LDQDrWiEyqCjmGbiwUc8QRKOACAuHA1Uapndz3F9KzJzFbI8MzmvGh9YYUB5+WqqSAfxtNMMt8Dq6zzpEbEZSWkA=="
+              },
               "additional_params": null
             }
           ],
           "usage": {
-            "input_tokens": 153,
-            "output_tokens": 43,
-            "total_tokens": 345,
-            "reasoning_tokens": 149
+            "input_tokens": 152,
+            "output_tokens": 190,
+            "total_tokens": 342,
+            "reasoning_tokens": 145
           },
           "message_id": null,
-          "response_id": "KayyauH_OsPpqtsP-9yWwAE",
+          "response_id": "f-a6auOwH_uez7IPkOOYiQQ",
           "finish_reason": "tool_calls",
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash",
@@ -125,12 +128,12 @@
                       "functionCall": {
                         "args": {
                           "category": "Technology",
-                          "summary": "A local meetup for Rust enthusiasts in Seattle to connect, share knowledge, and collaborate.",
+                          "summary": "A local meetup for Rustaceans in Seattle to discuss Rust programming, share projects, and network.",
                           "title": "Seattle Rust Meetup"
                         },
                         "name": "final_result"
                       },
-                      "thoughtSignature": "CrcFAWkUfRMBium4+YlKs3Km5GoGsgT7XpaV9JCzX3+myKYYc57Vc9muKbtwOgVPcl4y4bFl/u36v3jc7TsyvLUHe+aPs6TFwL1zzc9gcJKAQlObX7KODN0LkDMOTvgCTv0q4IdpX3Zxinim8c5w43hGG+2MUtcCwNYMR8M/dOlJZ+pABnYbxaBmjmOS0XECIjyLLOnBty1xJT/5sGhqTkGCPCw5KstzQP07g7srgjbj0YpSf3BuDHN8djHMW2ajZOw1WUKbRIlejIdcTd78NYIV62RO7vfgfYoYX3rrBeZszKbnKVFY8PubiGnaN06zQ2iaI6xx9ko2NBhYlUU7YMVmMrrBx1XhyPII+61R60PD4fUbRL6rbglBOohaRGZNxoDYFWuYEIxWppKZbnXtS5slAS63T36yo/PikKnfPoYjLN1cDwCIzppK/Gi9GcdWlK8oEzFDB63/ULP3+iCxc1+QKshZ393dEylgd+xrMPmFawhB7cMbI+Wq8oIXH6eH0orTWvehigEi45NXz4Gm43mNp+4Cl97TXExymQyBMfgb0SK6PaUSF/iD6ETpv3BJ+qXvmCpXyP9oeyzyofCOlmX5sb96e3nTeikQgalR9Juk3a0OHRNFrMH7CLy9HZ2mrUMeI+wQSlmf0M1vRXz0oVIVtpm4btLI1rBh/6ILxT/PSlHNuGtH54ilKC5DTE+yrFSQNBPa1+h+zFkzvfsEu3VSzCxMHxCbZFuKEXQGvCbJ6s7KSUXKab+UjBFGQ040vSbDuyl1fmjkapNNesVYQ/62eUEqJt19ui5hnOwrnr6A0FFLruRMu7xG3KCqxBmqRK0ltJnveCPYCEJyW7yjuWo0Uw8pLPNs3CP0yLsoTMWfIw/449nFJDhkZGLU9wvYDbYaTZihVnnxl34R56fxzvc17vIMKJLHR4k="
+                      "thoughtSignature": "CpUFAWkUfRNrSZ5+jwMxUaUwrheJRYsFXfuapRW7mNZ1YUXnYHwD9pqQyBiVBwWWwi4U1vMFnjf7oCyQfpISqF9HV+u9ck6aprrrUA1Wau2aG/6j/oJZAR8SncOjajl3w19v81lt46oDrPFXltvIgTdU4yy3IJtuvbX6nCRgQBK4ovx9p81c+Gk3GwtXScPnp2dev7dk48LtqULr7mejSR2roMeWjGJNBeKyq4MQZP29t+92dZ7cCSIvAbSI4slWR22THrxy4nNqNce1YIahDCSLuRXszdkO59V7+VShMu2gdx8dGbWLG6jVvIgxe6O910cUzARhgJRu9DlIA2oODET7gYFQou8xnd1P43oMyPqMFATePtmm8wKAVUZPVn/T3u3qhD8l6C/RIXO+EJNiQxHddJRsYUZVaG695UXDVv+rt24xkdQYaguSSYoAuPBIx6X+EPx0jos0axkv3UBTHJn5n88EAb44ttY8bvzkliiR2ug7fb0tltpizRrRW58jy1ddGBXA/KaED27K1SVikO22v0EBx8AYJWbdA6vu5dS2zlBWVroRxenSgmtBqstInvvZTk4tQBM6BRCwzS/5mthmhayfYjlxiunAx4lCTQgSdQxw915aBm6VHS3nvb6w0QvNO5aS8PSos7BUl2tr2r6gg+Pyjb6ZpV6fqV7uObFXFwV7ILMooYvlmLN3/3JSBpJYQE5KSouyDsK/dhyVnum5clbYJG5dHdXg+tv35CIBxCWMzUYXZOD2s6bDhs6IuDLVzdF9UFbqW8//MweRq3MdLux3W2LDQDrWiEyqCjmGbiwUc8QRKOACAuHA1Uapndz3F9KzJzFbI8MzmvGh9YYUB5+WqqSAfxtNMMt8Dq6zzpEbEZSWkA=="
                     }
                   ],
                   "role": "model"
@@ -141,19 +144,19 @@
               }
             ],
             "modelVersion": "gemini-2.5-flash",
-            "responseId": "KayyauH_OsPpqtsP-9yWwAE",
+            "responseId": "f-a6auOwH_uez7IPkOOYiQQ",
             "usageMetadata": {
-              "candidatesTokenCount": 43,
-              "promptTokenCount": 153,
+              "candidatesTokenCount": 45,
+              "promptTokenCount": 152,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
-                  "tokenCount": 153
+                  "tokenCount": 152
                 }
               ],
               "serviceTier": "standard",
-              "thoughtsTokenCount": 149,
-              "totalTokenCount": 345
+              "thoughtsTokenCount": 145,
+              "totalTokenCount": 342
             }
           }
         }

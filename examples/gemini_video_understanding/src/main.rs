@@ -1,57 +1,49 @@
-//! Demonstrates Gemini video understanding with provider-specific request parameters.
+//! Demonstrates Gemini video understanding with typed request settings.
 //! Requires `GEMINI_API_KEY`.
 //! Run it to see a single prompt combine text instructions with a video URL input.
 
 use anyhow::Result;
-use rig::message::{Message, UserContent, Video};
+use rig::message::{MediaDetail, Message, UserContent, Video};
 use rig::prelude::*;
-use rig::providers::gemini::completion::gemini_api_types::AdditionalParameters;
-use rig::providers::gemini::{self, Gemini, completion::gemini_api_types::GenerationConfig};
-use serde_json::json;
+use rig::providers::gemini::{self, Gemini, api};
 
-const MODEL: &str = gemini::completion::GEMINI_2_5_PRO_EXP_03_25;
 const VIDEO_URL: &str = "https://www.youtube.com/watch?v=emtHJIxLwEc";
 
-fn build_video_prompt() -> Result<Message> {
-    Ok(Message::User {
+fn build_video_prompt() -> Message {
+    Message::User {
         content: rig::NonEmpty::with_rest(
             UserContent::text("Summarize the video."),
             [UserContent::Video(Video {
                 data: rig::message::DocumentSourceKind::Url(VIDEO_URL.to_string()),
-                media_type: None,
-                additional_params: rig::message::AdditionalParams::from_entries([(
-                    "video_metadata",
-                    json!({ "fps": 0.2 }),
-                )]),
+                // Low resolution is enough to follow the action.
+                detail: Some(MediaDetail::Low),
+                ..Default::default()
             })],
         ),
-    })
-}
-
-fn build_additional_params() -> Result<serde_json::Value> {
-    let generation_config = GenerationConfig {
-        top_k: Some(1),
-        top_p: Some(0.95),
-        candidate_count: Some(1),
-        ..Default::default()
-    };
-    Ok(serde_json::to_value(
-        AdditionalParameters::default().with_config(generation_config),
-    )?)
+    }
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
     let client = Gemini::from_env()?;
-    let additional_params = build_additional_params()?;
-    let agent = AgentBuilder::new(client.completion(MODEL))
-        .preamble("Be creative and concise. Answer directly and clearly.")
-        .temperature(0.5)
-        .additional_params(additional_params)
+    let model = client
+        .completion(gemini::GEMINI_3_8_FLASH)
+        .settings(api::RequestSettings {
+            generation_config: api::GenerationSettings {
+                thinking_config: Some(api::ThinkingConfig {
+                    thinking_level: Some(api::ThinkingLevel::Low),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+            ..Default::default()
+        });
+    let agent = AgentBuilder::new(model)
+        .preamble("Be concise. Answer directly and clearly.")
         .build();
 
     println!("Sending a video-understanding request to Gemini...");
-    let response = agent.prompt(build_video_prompt()?).await?.output;
+    let response = agent.prompt(build_video_prompt()).await?.output;
     println!("Summary:\n{response}");
 
     Ok(())

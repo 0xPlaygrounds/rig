@@ -1,6 +1,6 @@
 {
   "header": {
-    "run_spec": 11434362773640407271,
+    "run_spec": 3937128390722542348,
     "handlers": [
       {
         "key": "golden/model:default",
@@ -57,14 +57,7 @@
           "temperature": 0.0,
           "max_tokens": 16,
           "tool_choice": null,
-          "additional_params": {
-            "generationConfig": {
-              "thinkingConfig": {
-                "includeThoughts": true,
-                "thinkingBudget": 128
-              }
-            }
-          },
+          "additional_params": null,
           "output_schema": null
         },
         "stream": true
@@ -81,7 +74,7 @@
                 {
                   "type": "text",
                   "content": {
-                    "text": "**Exploring Rust's Memory Model**\n\nOkay, I'm currently diving into Rust's memory model. I'm focusing on how its ownership and borrowing system enforces memory safety at compile time. It seems incredibly effective in preventing common memory errors like dangling pointers and data races, which is quite impressive. I'm now looking at the trade-offs in terms of development time and complexity.\n\n\n"
+                    "text": "**Exploring Rust's Memory Safety**\n\nI'm delving into Rust and its approach to memory safety. Specifically, I'm examining how its ownership, borrowing, and lifetime concepts work. This is to understand the trade-offs involved in achieving compile-time memory safety without a garbage collector. I'm focusing on scenarios where these rules are enforced and what the implications are for performance and developer experience.\n\n\n"
                   }
                 }
               ]
@@ -89,38 +82,39 @@
             {
               "type": "text",
               "text": "",
-              "additional_params": {
-                "gemini": {
-                  "thoughtSignature": "ErMBCrABAWkUfRMynI70ZZnysfIfMorx06xbClI9Upjx1MJefLInOBtSyeHdJUPiKszUcAC1OHuitaWFzA2F8DUbYfQYHbU6Gpo3xvxUkApnzdYymmVwns7IJ9jSmpmel7jU5SWuMIleor7b8qhp+Un6s7AV6eQVD7VaUZOmfcUpqPzphlCXPAeCSdSAl3g5X3/hOyjYd/y3gQOoGDJJIEM1wEAVIEG+TMEZUjl1VxGRKeDy52Y="
-                }
+              "signature": {
+                "issuer": "gcp.gemini",
+                "signature": "ErMBCrABAWkUfRPslufiZ0Z3w8bMng4FCkKIqeP+JjzGDN1oeSwAow0J21MZRLWQ7HKfJ02jFNaqtbc1B0mP9x+AB9MXV+ffoZbZE93YEPqYAIrHTUzOR4ZLoznNAIEwMFcSK0Rit//7q67gkXBtkJgsnRXFXzaOksnsVei6MV+dtnjEp6SUVIEUnbUcZ0nIVR33KoZGpqUy1jYWsv9MDpGEgoBuZNDMYslMopM0Ttijb5eQaOY="
               }
             }
           ],
           "usage": {
-            "input_tokens": 29,
-            "total_tokens": 42,
+            "input_tokens": 28,
+            "output_tokens": 13,
+            "total_tokens": 41,
             "reasoning_tokens": 13
           },
           "message_id": null,
-          "response_id": "0q-yaua_B6Cdz7IPi4_soQw",
+          "response_id": "bum6atGGA9u-qtsPlf_K6Q0",
           "finish_reason": "length",
           "provider": "gcp.gemini",
           "model": "gemini-3-flash-preview",
           "raw": {
-            "usage_metadata": {
-              "promptTokenCount": 29,
-              "totalTokenCount": 42,
-              "thoughtsTokenCount": 13,
+            "usageMetadata": {
+              "promptTokenCount": 28,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
-                  "tokenCount": 29
+                  "tokenCount": 28
                 }
-              ]
+              ],
+              "serviceTier": "standard",
+              "thoughtsTokenCount": 13,
+              "totalTokenCount": 41
             },
-            "finish_reason": "MAX_TOKENS",
-            "model_version": "gemini-3-flash-preview",
-            "response_id": "0q-yaua_B6Cdz7IPi4_soQw"
+            "finishReason": "MAX_TOKENS",
+            "modelVersion": "gemini-3-flash-preview",
+            "responseId": "bum6atGGA9u-qtsPlf_K6Q0"
           }
         }
       },
@@ -138,7 +132,7 @@
           "value": {
             "event": "reasoning",
             "part": 0,
-            "text": "**Exploring Rust's Memory Model**\n\nOkay, I'm currently diving into Rust's memory model. I'm focusing on how its ownership and borrowing system enforces memory safety at compile time. It seems incredibly effective in preventing common memory errors like dangling pointers and data races, which is quite impressive. I'm now looking at the trade-offs in terms of development time and complexity.\n\n\n"
+            "text": "**Exploring Rust's Memory Safety**\n\nI'm delving into Rust and its approach to memory safety. Specifically, I'm examining how its ownership, borrowing, and lifetime concepts work. This is to understand the trade-offs involved in achieving compile-time memory safety without a garbage collector. I'm focusing on scenarios where these rules are enforced and what the implications are for performance and developer experience.\n\n\n"
           }
         },
         {
@@ -157,10 +151,9 @@
             "content": {
               "type": "text",
               "text": "",
-              "additional_params": {
-                "gemini": {
-                  "thoughtSignature": "ErMBCrABAWkUfRMynI70ZZnysfIfMorx06xbClI9Upjx1MJefLInOBtSyeHdJUPiKszUcAC1OHuitaWFzA2F8DUbYfQYHbU6Gpo3xvxUkApnzdYymmVwns7IJ9jSmpmel7jU5SWuMIleor7b8qhp+Un6s7AV6eQVD7VaUZOmfcUpqPzphlCXPAeCSdSAl3g5X3/hOyjYd/y3gQOoGDJJIEM1wEAVIEG+TMEZUjl1VxGRKeDy52Y="
-                }
+              "signature": {
+                "issuer": "gcp.gemini",
+                "signature": "ErMBCrABAWkUfRPslufiZ0Z3w8bMng4FCkKIqeP+JjzGDN1oeSwAow0J21MZRLWQ7HKfJ02jFNaqtbc1B0mP9x+AB9MXV+ffoZbZE93YEPqYAIrHTUzOR4ZLoznNAIEwMFcSK0Rit//7q67gkXBtkJgsnRXFXzaOksnsVei6MV+dtnjEp6SUVIEUnbUcZ0nIVR33KoZGpqUy1jYWsv9MDpGEgoBuZNDMYslMopM0Ttijb5eQaOY="
               }
             }
           }
@@ -178,7 +171,7 @@
                 {
                   "type": "text",
                   "content": {
-                    "text": "**Exploring Rust's Memory Model**\n\nOkay, I'm currently diving into Rust's memory model. I'm focusing on how its ownership and borrowing system enforces memory safety at compile time. It seems incredibly effective in preventing common memory errors like dangling pointers and data races, which is quite impressive. I'm now looking at the trade-offs in terms of development time and complexity.\n\n\n"
+                    "text": "**Exploring Rust's Memory Safety**\n\nI'm delving into Rust and its approach to memory safety. Specifically, I'm examining how its ownership, borrowing, and lifetime concepts work. This is to understand the trade-offs involved in achieving compile-time memory safety without a garbage collector. I'm focusing on scenarios where these rules are enforced and what the implications are for performance and developer experience.\n\n\n"
                   }
                 }
               ]

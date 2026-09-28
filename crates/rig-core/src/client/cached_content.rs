@@ -4,9 +4,11 @@
 
 use crate::driver::{Model, Transport};
 use crate::error::ProviderError;
+use crate::providers::gemini::api::CachedContent;
 use crate::providers::gemini::cached_content::{
-    CacheExpiry, CachedContent, CachedContentRequest, CachedContents, NewCachedContent, on_handle,
+    CacheExpiry, CachedContentRequest, CachedContents, on_handle,
 };
+use crate::providers::gemini::{CachedPrefix, NewCachedContent};
 
 /// Explicit context-cache operations. Requests targeting an existing handle
 /// map HTTP 403 and 404 to [`ProviderError::CacheExpired`].
@@ -14,11 +16,37 @@ impl<T> Model<CachedContents, T>
 where
     T: Transport<CachedContents>,
 {
-    /// Creates cached content and returns its handle and storage usage metadata.
-    pub async fn create(&self, request: NewCachedContent) -> Result<CachedContent, ProviderError> {
-        self.call(CachedContentRequest::Create(request))
+    /// Create a cache. The prefix it returns names the cache and keeps the
+    /// body that created it.
+    pub async fn create(&self, new: NewCachedContent) -> Result<CachedPrefix, ProviderError> {
+        let request = new.render()?;
+        self.recreate(request).await
+    }
+
+    /// `prefix` when its cache is alive, else a cache recreated from the body
+    /// that created it. An absolute expiry is dropped on recreation, since it
+    /// may have passed.
+    pub async fn ensure(&self, prefix: &CachedPrefix) -> Result<CachedPrefix, ProviderError> {
+        match self.get(prefix.name()).await {
+            Ok(resource) => Ok(CachedPrefix {
+                resource,
+                request: prefix.request.clone(),
+            }),
+            Err(ProviderError::CacheExpired { .. }) => {
+                let mut request = prefix.request.clone();
+                request.expire_time = None;
+                self.recreate(request).await
+            }
+            Err(error) => Err(error),
+        }
+    }
+
+    async fn recreate(&self, request: CachedContent) -> Result<CachedPrefix, ProviderError> {
+        let resource = self
+            .call(CachedContentRequest::Create(Box::new(request.clone())))
             .await?
-            .resource()
+            .resource()?;
+        Ok(CachedPrefix { resource, request })
     }
 
     /// Fetch one cached content by handle.

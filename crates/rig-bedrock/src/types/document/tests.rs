@@ -14,6 +14,7 @@ fn mirrored(block: aws_bedrock::DocumentBlock) -> DocumentBlock {
 #[test]
 fn test_document_to_aws_document() {
     let rig_document = RigDocument(Document {
+        detail: None,
         data: DocumentSourceKind::Base64("data".into()),
         media_type: Some(DocumentMediaType::PDF),
         additional_params: None,
@@ -51,6 +52,7 @@ fn test_document_to_aws_document() {
 #[test]
 fn test_base64_document_to_aws_document() {
     let rig_document = RigDocument(Document {
+        detail: None,
         data: DocumentSourceKind::Base64("data".into()),
         media_type: Some(DocumentMediaType::PDF),
         additional_params: None,
@@ -73,6 +75,7 @@ fn test_base64_document_to_aws_document() {
 #[test]
 fn test_unsupported_document_to_aws_document() {
     let rig_document = RigDocument(Document {
+        detail: None,
         data: DocumentSourceKind::Base64("data".into()),
         media_type: Some(DocumentMediaType::Javascript),
         additional_params: None,

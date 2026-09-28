@@ -71,7 +71,7 @@ fn pdf_document() -> UserContent {
     UserContent::Document(Document {
         data: DocumentSourceKind::Base64(PDF_BASE64.to_string()),
         media_type: Some(DocumentMediaType::PDF),
-        additional_params: None,
+        ..Default::default()
     })
 }
 

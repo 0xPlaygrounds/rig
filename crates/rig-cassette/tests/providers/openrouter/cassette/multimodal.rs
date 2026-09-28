@@ -28,6 +28,7 @@ fn image_message() -> Image {
 fn pdf_document() -> Document {
     let bytes = std::fs::read(PDF_FIXTURE_PATH).expect("fixture pdf should be readable");
     Document {
+        detail: None,
         data: DocumentSourceKind::base64(&BASE64_STANDARD.encode(bytes)),
         media_type: Some(DocumentMediaType::PDF),
         additional_params: None,

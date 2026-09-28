@@ -94,7 +94,9 @@ impl Serve for Scripted {
                                     return;
                                 }
                             }
-                            AssistantContent::Reasoning(_) | AssistantContent::Image(_) => {}
+                            AssistantContent::Reasoning(_)
+                            | AssistantContent::Image(_)
+                            | AssistantContent::Native(_) => {}
                         }
                     }
                     writer.raw(serde_json::json!({ "provider": "scripted" }));

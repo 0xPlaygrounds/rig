@@ -1,5 +1,6 @@
 use super::*;
 use crate::completion::tests::{complete, stream_from_events};
+use base64::Engine as _;
 use futures::StreamExt;
 use rig_core::completion::CompletionResponse;
 use rig_core::message::{AssistantContent, Reasoning, ReasoningContent};
@@ -494,10 +495,9 @@ async fn a_trailing_signed_part_keeps_its_signature_on_its_own_text() {
     let texts: Vec<(String, bool)> = choice
         .iter()
         .map(|part| match part {
-            rig_core::message::AssistantContent::Text(text) => (
-                text.text.clone(),
-                rig_core::providers::gemini::text_thought_signature(text).is_some(),
-            ),
+            rig_core::message::AssistantContent::Text(text) => {
+                (text.text.clone(), text.signature.is_some())
+            }
             other => panic!("answer text only: {other:?}"),
         })
         .collect();

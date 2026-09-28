@@ -170,3 +170,21 @@ fn a_wrapper_declares_through_its_session() {
         ]
     );
 }
+
+#[test]
+fn direct_sessions_register_literal_and_const_scenarios_but_not_parameters() {
+    let source = r#"
+        async fn literal() { ProviderCassette::start(root, "x", "direct/literal", url).await; }
+        async fn named() {
+            const SCENARIO: &str = "direct/const";
+            ProviderCassette::start(root, "x", CassetteSpec::new(SCENARIO), url).await;
+        }
+        async fn wrapper(scenario: &'static str) {
+            ProviderCassette::start(root, "x", scenario, url).await;
+        }
+    "#;
+    assert_eq!(
+        cassette_scenarios(source, WRAPPERS).expect("registrations"),
+        ["direct/literal", "direct/const"]
+    );
+}

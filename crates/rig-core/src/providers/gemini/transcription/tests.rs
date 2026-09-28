@@ -12,14 +12,10 @@ fn transcription_request() -> transcription::TranscriptionRequest {
     }
 }
 
-/// The bytes one transcription puts on the wire, pinned by
-/// `crates/rig-cassette/fixtures/cassettes/gemini/transcription/transcription_smoke.yaml`: the path,
-/// the `key` query parameter and the whole JSON document, down to the `null`
-/// fields Gemini's request shape keeps. The cassette's `inlineData.data` is a
-/// 32 KB mp3; this request's audio is [`transcription_request`]'s, so only
-/// that one string differs.
+/// The bytes one transcription puts on the wire: the path, the `key` query
+/// parameter and the whole JSON document, only what is set.
 #[test]
-fn the_wire_encodes_the_recorded_generate_content_request() {
+fn the_wire_encodes_a_generate_content_request() {
     let wire = Transcriptions::new(
         crate::providers::gemini::GeminiConfig::new("test-key"),
         GEMINI_3_FLASH_PREVIEW,
@@ -56,18 +52,13 @@ fn the_wire_encodes_the_recorded_generate_content_request() {
                     "inlineData": {
                         "data": "YXVkaW8gYnl0ZXM=",
                         "mimeType": "audio/mpeg"
-                    },
-                    "thought": false
+                    }
                 }],
                 "role": "user"
             }],
-            "generationConfig": {},
-            "safetySettings": null,
             "systemInstruction": {
-                "parts": [{ "text": TRANSCRIPTION_PREAMBLE, "thought": false }],
-                "role": "model"
-            },
-            "toolConfig": null
+                "parts": [{ "text": TRANSCRIPTION_PREAMBLE }]
+            }
         })
     );
 }

@@ -54,13 +54,10 @@ use rig::completion::Usage;
 use rig::error::ErrorReport;
 use rig::error::ProviderError;
 use rig::message::{AssistantContent, Reasoning};
-use rig::providers::gemini::Gemini;
-use rig::providers::gemini::completion::gemini_api_types::{
-    AdditionalParameters, GenerationConfig, ThinkingConfig,
-};
+use rig::providers::gemini::{self, Gemini, api};
 use rig::streaming::{Item, Relayed, StreamEvent, StreamEvents};
 
-const MODEL: &str = "gemini-2.5-flash";
+const MODEL: &str = gemini::GEMINI_3_8_FLASH;
 /// Inject the disruption once this many output chars have streamed, so there is
 /// real partial output but the cut lands well before completion.
 const DISRUPT_AFTER_CHARS: usize = 150;
@@ -323,23 +320,21 @@ async fn count_tokens(http: &reqwest::Client, api_key: &str, text: &str) -> anyh
     Ok(total)
 }
 
-/// Disable Gemini's "thinking" so visible text streams immediately. Otherwise
-/// 2.5-flash spends seconds generating hidden thoughts (no chunks sent), which
-/// is indistinguishable from a stall and would trip the read timeout before any
-/// real partial output — masking the injected disruptions.
-fn no_thinking_params() -> anyhow::Result<serde_json::Value> {
-    let params = AdditionalParameters {
-        generation_config: Some(GenerationConfig {
-            thinking_config: Some(ThinkingConfig {
+/// Keep Gemini's thinking low so visible text streams soon. Long hidden
+/// thinking sends no chunks, which is indistinguishable from a stall and would
+/// trip the read timeout before any real partial output.
+fn low_thinking_settings() -> api::RequestSettings {
+    api::RequestSettings {
+        generation_config: api::GenerationSettings {
+            thinking_config: Some(api::ThinkingConfig {
                 include_thoughts: Some(false),
-                thinking_budget: Some(0),
-                thinking_level: None,
+                thinking_level: Some(api::ThinkingLevel::Low),
+                ..Default::default()
             }),
             ..Default::default()
-        }),
-        additional_params: None,
-    };
-    Ok(serde_json::to_value(&params)?)
+        },
+        ..Default::default()
+    }
 }
 
 async fn run_scenario(
@@ -349,14 +344,11 @@ async fn run_scenario(
     http: &reqwest::Client,
     api_key: &str,
 ) -> anyhow::Result<Report> {
-    let model = Gemini::from_env()?.completion(MODEL);
+    let model = Gemini::from_env()?
+        .completion(MODEL)
+        .settings(low_thinking_settings());
 
-    let stream = model.stream(
-        CompletionRequest::new(prompt)
-            .temperature(0.7)
-            .max_tokens(2000)
-            .additional_params(no_thinking_params()?),
-    )?;
+    let stream = model.stream(CompletionRequest::new(prompt).max_tokens(2000))?;
 
     let disrupted = Disrupt::new(stream.into_relay(), mode, DISRUPT_AFTER_CHARS);
     drain_with_accounting(label, disrupted, http, api_key, prompt).await

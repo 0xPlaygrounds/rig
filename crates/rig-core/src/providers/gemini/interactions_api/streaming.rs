@@ -1,21 +1,24 @@
-use serde::{Deserialize, Serialize};
+//! The Interactions decoder: a whole interaction resource, or its stream of
+//! step events, written through the [`edge`].
 
-use super::interactions_api_types::{
-    Content, ContentDelta, FunctionCallContent, Interaction, InteractionSseEvent, InteractionUsage,
-    Step, TextContent, TextDelta, ThoughtContent, ThoughtSignatureDelta, ThoughtSummaryContent,
-    ThoughtSummaryDelta, map_interaction_status,
-};
-use crate::error::ProviderError;
-use crate::operation::{CallFragment, Completion, Finish, IfMalformed, TextPart};
-use crate::providers::gemini::streaming::shared_parts;
-use crate::providers::internal::thoughts::Thoughts;
-use crate::providers::internal::wire;
-use crate::wire::{Decoder, Flow, Out, WireEvent, WireFrame};
+use std::collections::BTreeMap;
+
+use serde::Deserialize;
+use serde_json::value::RawValue;
 use serde_json::{Map, Value};
 
-/// Recognized Interactions SSE tags. Listed events must decode fully;
-/// unlisted tags classify as unknown.
-const KNOWN_EVENT_TYPES: &[&str] = &[
+use super::api::{self, InteractionStatus};
+use super::{InteractionsDialect, annotations};
+use crate::completion::FinishReason;
+use crate::error::ProviderError;
+use crate::message::NativePart;
+use crate::operation::{CallFragment, Completion, Finish, IfMalformed};
+use crate::providers::gemini::edge::{self, Dialect, Unit};
+use crate::providers::internal::wire;
+use crate::wire::{Decoder, Flow, Out, WireEvent, WireFrame};
+
+/// The stream events this decoder reads; others are unknown.
+const EVENT_TYPES: &[&str] = &[
     "interaction.created",
     "interaction.completed",
     "interaction.status_update",
@@ -25,155 +28,76 @@ const KNOWN_EVENT_TYPES: &[&str] = &[
     "error",
 ];
 
-/// Classify an Interactions SSE frame by its `event_type` tag.
-fn classify_interaction_frame(data: &str) -> WireEvent<InteractionSseEvent> {
-    wire::classify_tagged_frame(data, "event_type", |event_type| {
-        KNOWN_EVENT_TYPES.contains(&event_type)
-    })
-}
+/// What marks a whole interaction resource.
+const RESOURCE_KEYS: &[&str] = &["steps", "status", "usage", "object", "id"];
 
-/// Whole-resource markers that prevent malformed SSE frames from decoding
-/// as default interactions.
-const INTERACTION_MARKER_KEYS: &[&str] = &["steps", "status", "usage", "object", "id"];
-
-/// A decoded SSE event or whole unary interaction resource.
+/// A stream event, or the whole resource a unary reply carries.
 pub enum InteractionsEvent {
-    /// One `event_type`-tagged streaming event.
-    Sse(InteractionSseEvent),
-    /// The whole interaction resource, as the unary reply delivers it.
-    Whole(Interaction),
+    /// One `event_type`-tagged event.
+    Event(Box<api::Event>),
+    /// The whole interaction, and each step's JSON as it arrived.
+    Whole(Box<Whole>),
 }
 
-/// Classify a tagged SSE event, falling back to whole-resource classification
-/// through [`wire::classify_or`].
-fn classify_interactions_frame(data: &str) -> WireEvent<InteractionsEvent> {
+/// A whole interaction and its raw steps.
+pub struct Whole {
+    interaction: api::Interaction,
+    steps: Vec<Box<RawValue>>,
+}
+
+impl<'de> Deserialize<'de> for Whole {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        struct Steps {
+            #[serde(default)]
+            steps: Vec<Box<RawValue>>,
+        }
+        use serde::de::Error;
+        let text = Box::<RawValue>::deserialize(deserializer)?;
+        let steps: Steps = serde_json::from_str(text.get()).map_err(D::Error::custom)?;
+        let interaction = serde_json::from_str(text.get()).map_err(D::Error::custom)?;
+        Ok(Self {
+            interaction,
+            steps: steps.steps,
+        })
+    }
+}
+
+fn classify(data: &str) -> WireEvent<InteractionsEvent> {
     wire::classify_or(
         data,
-        |data| classify_interaction_frame(data).map(InteractionsEvent::Sse),
         |data| {
-            wire::classify_marker_keyed_frame::<Interaction>(data, INTERACTION_MARKER_KEYS)
-                .map(InteractionsEvent::Whole)
+            wire::classify_tagged_frame::<api::Event>(data, "event_type", |event_type| {
+                EVENT_TYPES.contains(&event_type)
+            })
+            .map(|event| InteractionsEvent::Event(Box::new(event)))
+        },
+        |data| {
+            wire::classify_marker_keyed_frame::<Whole>(data, RESOURCE_KEYS)
+                .map(|whole| InteractionsEvent::Whole(Box::new(whole)))
         },
     )
 }
 
-/// Final metadata yielded by an Interactions streaming response.
-#[derive(Debug, Serialize, Deserialize, Default, Clone)]
-pub struct StreamingCompletionResponse {
-    pub usage: Option<InteractionUsage>,
-    pub interaction: Option<Interaction>,
-    /// Resolved model identifier (e.g. `gemini-2.5-pro-preview-05-06`), extracted from
-    /// `Interaction.model`. The Interactions API has no `FinishReason` field; use
-    /// `interaction.status` for lifecycle state.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub model_version: Option<String>,
+/// A streamed step, as its events have described it so far.
+struct Open {
+    kind: String,
+    /// A hosted or unknown step: its start, with each delta laid over it.
+    merged: Map<String, Value>,
 }
 
-impl From<&StreamingCompletionResponse> for crate::completion::Usage {
-    fn from(value: &StreamingCompletionResponse) -> crate::completion::Usage {
-        value
-            .usage
-            .as_ref()
-            .map(crate::completion::Usage::from)
-            .unwrap_or_default()
-    }
-}
-
-impl From<StreamingCompletionResponse> for crate::completion::Usage {
-    fn from(value: StreamingCompletionResponse) -> crate::completion::Usage {
-        (&value).into()
-    }
-}
-
-/// The Gemini Interactions wire's decoder: one state machine for the whole
-/// interaction and its stream of steps.
+/// Decodes one interaction, whole or streamed.
 #[derive(Default)]
 pub struct InteractionsDecoder<'id> {
-    /// Thought boundaries inferred from content transitions and signatures.
-    thoughts: Thoughts<'id>,
-    /// The answer text part text extends.
-    text: Option<TextPart<'id>>,
+    writer: edge::Writer<'id>,
+    steps: BTreeMap<usize, Open>,
 }
 
-/// One content item as the decoder writes it.
-enum Chunk {
-    Thought {
-        text: String,
-        signature: Option<String>,
-    },
-    Text(String),
-    Call {
-        name: String,
-        arguments: Option<Value>,
-        id: Option<String>,
-    },
-    /// A content item the choice has no part for, kept verbatim on a text
-    /// part's metadata.
-    Raw(crate::message::AdditionalParams),
-}
-
-impl<'id> InteractionsDecoder<'id> {
-    fn close_text(&mut self, out: &mut Out<'id, Completion>) {
-        if let Some(part) = self.text.take() {
-            out.close_text(part);
-        }
-    }
-
-    /// Write one content item: thoughts, the boundary text or a call
-    /// makes, text, then the call.
-    fn write(&mut self, chunk: Chunk, out: &mut Out<'id, Completion>) -> Result<(), ProviderError> {
-        match chunk {
-            Chunk::Thought { text, signature } => {
-                if !text.is_empty() {
-                    self.close_text(out);
-                }
-                self.thoughts.fragment(out, &text);
-                if let Some(signature) = signature {
-                    self.thoughts.signature(out, signature);
-                }
-            }
-            Chunk::Text(text) => {
-                if text.is_empty() {
-                    return Ok(());
-                }
-                self.thoughts.boundary();
-                let part = self.text.get_or_insert_with(|| out.text());
-                out.push_text(part, &text);
-            }
-            Chunk::Call {
-                name,
-                arguments,
-                id,
-            } => {
-                self.thoughts.boundary();
-                self.close_text(out);
-                shared_parts::function_call(
-                    out,
-                    name,
-                    arguments.unwrap_or(Value::Object(Map::new())),
-                    id,
-                    None,
-                )?;
-            }
-            Chunk::Raw(params) => {
-                self.thoughts.boundary();
-                self.close_text(out);
-                let part = out.text();
-                out.text_params(&part, params);
-                out.close_text(part);
-            }
-        }
-        Ok(())
-    }
-}
-
-/// EOF without `interaction.completed` is truncation, not successful
-/// completion, so the decoder has nothing to add at the end of the reply.
 impl<'id> Decoder<'id, Completion> for InteractionsDecoder<'id> {
     type Event = InteractionsEvent;
 
     fn classify(&self, frame: WireFrame) -> WireEvent<InteractionsEvent> {
-        classify_interactions_frame(&frame.as_str())
+        classify(&frame.as_str())
     }
 
     fn decode(
@@ -181,226 +105,328 @@ impl<'id> Decoder<'id, Completion> for InteractionsDecoder<'id> {
         event: InteractionsEvent,
         mut out: Out<'id, Completion>,
     ) -> Result<Flow, ProviderError> {
-        let event = match event {
-            InteractionsEvent::Sse(event) => event,
-            // The whole interaction states its content at once, in the
-            // order a stream would write it.
-            InteractionsEvent::Whole(interaction) => {
-                for content in interaction.output_contents() {
-                    if let Some(chunk) = content_chunk(content) {
-                        self.write(chunk, &mut out)?;
-                    }
-                }
-                InteractionSseEvent::InteractionCompleted {
-                    interaction,
-                    event_id: None,
-                }
-            }
-        };
-
         match event {
-            InteractionSseEvent::StepDelta { index, delta, .. } => match delta {
-                ContentDelta::ArgumentsDelta(arguments_delta) => {
-                    let index = index as usize;
-                    if let Some(fragment) = arguments_delta.arguments
-                        && !out.pending_name(index).is_empty()
-                    {
-                        out.call_fragment(
-                            index,
-                            CallFragment {
-                                arguments: Some(fragment.as_str()),
-                                ..CallFragment::default()
-                            },
-                        )?;
-                    } else {
-                        tracing::warn!(
-                            step_index = index,
-                            "arguments_delta with no open function-call step; dropping fragment"
-                        );
+            InteractionsEvent::Whole(whole) => {
+                let Whole { interaction, steps } = *whole;
+                for raw in &steps {
+                    for unit in InteractionsDialect::units(raw)? {
+                        let answers = !hosted(&unit);
+                        self.writer.unit(unit, answers, &mut out)?;
                     }
                 }
-                ContentDelta::ThoughtSummary(ThoughtSummaryDelta { content }) => {
-                    if let ThoughtSummaryContent::Text(text) = content {
-                        self.write(
-                            Chunk::Thought {
-                                text: text.text,
-                                signature: None,
-                            },
-                            &mut out,
-                        )?;
-                    }
-                }
-                ContentDelta::ThoughtSignature(ThoughtSignatureDelta { signature }) => {
-                    // Signatures must survive even when no reasoning text streamed.
-                    self.thoughts.signature(&mut out, signature);
-                }
-                delta => {
-                    if let Some(chunk) = delta_content(delta).and_then(content_chunk) {
-                        self.write(chunk, &mut out)?;
-                    }
-                }
-            },
-            InteractionSseEvent::StepStart { index, step, .. } => {
-                if let Step::FunctionCall(FunctionCallContent {
-                    name: Some(name),
-                    arguments,
-                    id,
-                }) = step
-                {
-                    // The call stays open: its arguments may arrive in later
-                    // deltas.
-                    self.thoughts.boundary();
-                    self.close_text(&mut out);
-                    let index = index as usize;
-                    out.call_fragment(
-                        index,
-                        CallFragment {
-                            id: id.as_deref(),
-                            name: Some(name.as_str()),
-                            ..CallFragment::default()
-                        },
-                    )?;
-                    // Announced arguments are a fallback, not an appendable
-                    // fragment: combining them with later deltas could
-                    // concatenate JSON objects.
-                    if let Some(arguments) = arguments.filter(|arguments| {
-                        arguments
-                            .as_object()
-                            .is_none_or(|object| !object.is_empty())
-                    }) {
-                        out.announce_pending(index, arguments);
-                    }
-                } else {
-                    for chunk in step_start_chunks(step) {
-                        self.write(chunk, &mut out)?;
-                    }
-                }
+                self.complete(interaction, out)
             }
-            InteractionSseEvent::StepStop { index, .. } => {
-                // A completed call with malformed arguments fails the reply.
-                out.close_pending(index as usize, IfMalformed::Fail)?;
-            }
-            InteractionSseEvent::InteractionCompleted { interaction, .. } => {
-                let span = tracing::Span::current();
-                span.record("gen_ai.response.id", &interaction.id);
-                if let Some(model) = interaction.model.clone() {
-                    span.record("gen_ai.response.model", model);
-                }
-                // Provider completion finalizes calls even without step.stop.
-                for index in out.pending_calls() {
-                    tracing::debug!(
-                        index,
-                        "closing a function-call step left open at interaction.completed"
-                    );
-                    out.close_pending(index, IfMalformed::Fail)?;
-                }
-                self.close_text(&mut out);
-                self.thoughts.close(&mut out, None);
+            InteractionsEvent::Event(event) => self.event(*event, out),
+        }
+    }
+}
 
-                // Lifecycle status supplies the finish reason; absent status stays unknown.
-                let model_version = interaction.model.clone();
-                let native = StreamingCompletionResponse {
-                    usage: interaction.usage,
-                    interaction: Some(interaction),
-                    model_version,
-                };
-                out.raw(serde_json::to_value(&native)?);
-                let usage = (&native).into();
-                let interaction = native.interaction.as_ref();
-                let finish_reason = interaction
-                    .and_then(|interaction| interaction.status.as_ref())
-                    .map(map_interaction_status);
-                let response_id = interaction
-                    .map(|interaction| interaction.id.clone())
-                    .filter(|id| !id.is_empty());
-                return Ok(out.end(
-                    Finish::new(usage)
-                        .with_optional_reason(finish_reason)
-                        .with_optional_response_id(response_id)
-                        .with_optional_model(native.model_version),
-                ));
+/// Whether `unit` is a hosted tool's step, which alone is no answer.
+fn hosted(unit: &Unit) -> bool {
+    match unit {
+        Unit::Native(native) => {
+            native.schema == api::STEP_SCHEMA
+                && serde_json::from_str::<Map<String, Value>>(native.json())
+                    .ok()
+                    .and_then(|step| step.get("type").and_then(Value::as_str).map(api::is_hosted))
+                    .unwrap_or(false)
+        }
+        _ => false,
+    }
+}
+
+impl<'id> InteractionsDecoder<'id> {
+    fn event(
+        &mut self,
+        event: api::Event,
+        mut out: Out<'id, Completion>,
+    ) -> Result<Flow, ProviderError> {
+        let index = event.index.unwrap_or_default();
+        match event.event_type.as_str() {
+            "step.start" => {
+                if let Some(step) = event.step {
+                    self.start(index, &step, &mut out)?;
+                }
             }
-            event @ InteractionSseEvent::Error { .. } => {
-                // Preserve modeled error fields without inventing an HTTP
-                // status for an in-band failure.
-                let body = serde_json::to_string(&event).unwrap_or_default();
-                return Err(crate::error::ProviderError::from_provider_body(body));
+            "step.delta" => {
+                if let Some(delta) = event.delta {
+                    self.delta(index, &delta, &mut out)?;
+                }
             }
-            InteractionSseEvent::InteractionCreated { .. }
-            | InteractionSseEvent::InteractionStatusUpdate { .. } => {}
+            "step.stop" => self.stop(index, &mut out)?,
+            "interaction.completed" => {
+                return self.complete(event.interaction.unwrap_or_default(), out);
+            }
+            "error" => {
+                let body = serde_json::json!({ "error": event.error }).to_string();
+                return Err(ProviderError::from_provider_body(body));
+            }
+            _ => {}
         }
         Ok(Flow::More)
     }
-}
 
-/// The content item a `step.delta` restates: a text or whole-call delta is
-/// the item itself, so it takes the one content → block mapping. Every
-/// other delta kind carries nothing the stream vocabulary models.
-fn delta_content(delta: ContentDelta) -> Option<Content> {
-    match delta {
-        ContentDelta::Text(TextDelta { text, annotations }) => {
-            text.map(|text| Content::Text(TextContent { text, annotations }))
-        }
-        ContentDelta::FunctionCall(call) => Some(Content::FunctionCall(call)),
-        _ => None,
-    }
-}
-
-fn step_start_chunks(step: Step) -> Vec<Chunk> {
-    match step {
-        // Model output can interleave multiple text and function-call items.
-        Step::ModelOutput { content } => content.into_iter().filter_map(content_chunk).collect(),
-        Step::FunctionCall(call) => content_chunk(Content::FunctionCall(call))
-            .into_iter()
-            .collect(),
-        _ => Vec::new(),
-    }
-}
-
-/// A supported output content item as the chunk it writes; other content is
-/// skipped.
-fn content_chunk(content: Content) -> Option<Chunk> {
-    match content {
-        Content::Text(text) if !text.text.is_empty() => Some(Chunk::Text(text.text)),
-        Content::FunctionCall(FunctionCallContent {
-            name,
-            arguments,
-            id,
-        }) => Some(Chunk::Call {
-            name: name?,
-            arguments,
-            id,
-        }),
-        // A thought the reply states whole: the summary's text is the
-        // part's content and the signature closes it, the same pair the
-        // streamed `thought_summary`/`thought_signature` deltas deliver
-        // piecewise.
-        Content::Thought(ThoughtContent {
-            summary, signature, ..
-        }) => {
-            let text: String = summary
-                .unwrap_or_default()
-                .into_iter()
-                .filter_map(|content| match content {
-                    ThoughtSummaryContent::Text(text) => Some(text.text),
-                    _ => None,
-                })
-                .collect();
-            if text.is_empty() && signature.is_none() {
-                return None;
+    fn start(
+        &mut self,
+        index: usize,
+        step: &RawValue,
+        out: &mut Out<'id, Completion>,
+    ) -> Result<(), ProviderError> {
+        let merged: Map<String, Value> = serde_json::from_str(step.get())?;
+        let kind = merged
+            .get("type")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_owned();
+        match kind.as_str() {
+            "function_call" => {
+                let api::Step::FunctionCall(call) = serde_json::from_str(step.get())? else {
+                    return Ok(());
+                };
+                self.writer.interrupt(out);
+                out.call_fragment(
+                    index,
+                    CallFragment {
+                        id: call.id.as_deref(),
+                        name: call.name.as_deref(),
+                        ..CallFragment::default()
+                    },
+                )?;
+                // Announced arguments are a fallback, not a fragment to
+                // append to.
+                if let Some(arguments) = call.arguments.filter(|arguments| !arguments.is_empty()) {
+                    out.announce_pending(index, Value::Object(arguments));
+                }
+                if call.signature.is_some() {
+                    out.decorate_pending_at(index, call.signature, None);
+                }
             }
-            Some(Chunk::Thought { text, signature })
+            "model_output" | "thought" => {
+                // A start that already states content writes it now.
+                for unit in InteractionsDialect::units(step)? {
+                    let empty = matches!(
+                        &unit,
+                        Unit::Thought { text, signature: None } if text.is_empty()
+                    );
+                    if !empty {
+                        self.writer.unit(unit, true, out)?;
+                    }
+                }
+            }
+            _ => {}
         }
-        // Images ride on a text part's metadata: the choice has no part for
-        // them.
-        image @ Content::Image(_) => crate::message::AdditionalParams::from_entries([(
-            crate::providers::gemini::GEMINI_RAW_CONTENT_KEY,
-            serde_json::json!(image),
-        )])
-        .map(Chunk::Raw),
-        _ => None,
+        self.steps.insert(index, Open { kind, merged });
+        Ok(())
+    }
+
+    fn delta(
+        &mut self,
+        index: usize,
+        delta: &RawValue,
+        out: &mut Out<'id, Completion>,
+    ) -> Result<(), ProviderError> {
+        let fields: Map<String, Value> = serde_json::from_str(delta.get())?;
+        let kind = fields
+            .get("type")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_owned();
+        let step_kind = self.steps.get(&index).map(|open| open.kind.clone());
+        match kind.as_str() {
+            "text" => {
+                let text = fields
+                    .get("text")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_owned();
+                self.writer.unit(
+                    Unit::Text {
+                        text,
+                        signature: None,
+                    },
+                    true,
+                    out,
+                )?;
+                if let Some(Value::Array(items)) = fields.get("annotations") {
+                    self.writer.unit(annotations(items.clone())?, false, out)?;
+                }
+            }
+            "thought_summary" => {
+                let text = fields
+                    .get("content")
+                    .and_then(|content| content.get("text"))
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_owned();
+                self.writer.unit(
+                    Unit::Thought {
+                        text,
+                        signature: None,
+                    },
+                    true,
+                    out,
+                )?;
+            }
+            "thought_signature" => {
+                let signature = fields
+                    .get("signature")
+                    .and_then(Value::as_str)
+                    .map(str::to_owned);
+                self.writer.unit(
+                    Unit::Thought {
+                        text: String::new(),
+                        signature,
+                    },
+                    true,
+                    out,
+                )?;
+            }
+            "arguments_delta" => {
+                if let Some(fragment) = fields.get("arguments").and_then(Value::as_str) {
+                    out.call_fragment(
+                        index,
+                        CallFragment {
+                            arguments: Some(fragment),
+                            ..CallFragment::default()
+                        },
+                    )?;
+                }
+            }
+            "function_call" => {
+                let api::Step::FunctionCall(call) = serde_json::from_str(delta.get())? else {
+                    return Ok(());
+                };
+                // A delta that carries its arguments is the whole call.
+                if let (Some(name), Some(args)) = (call.name.clone(), call.arguments.clone()) {
+                    return self.writer.unit(
+                        Unit::Call {
+                            id: call.id,
+                            name,
+                            args,
+                            signature: call.signature,
+                        },
+                        true,
+                        out,
+                    );
+                }
+                self.writer.interrupt(out);
+                out.call_fragment(
+                    index,
+                    CallFragment {
+                        id: call.id.as_deref(),
+                        name: call.name.as_deref(),
+                        ..CallFragment::default()
+                    },
+                )?;
+                if let Some(arguments) = call.arguments.filter(|arguments| !arguments.is_empty()) {
+                    out.announce_pending(index, Value::Object(arguments));
+                }
+                if call.signature.is_some() {
+                    out.decorate_pending_at(index, call.signature, None);
+                }
+            }
+            _ if step_kind.as_deref().is_some_and(|step| step == kind) => {
+                // A hosted or unknown step restates itself in its delta.
+                if let Some(open) = self.steps.get_mut(&index) {
+                    for (key, value) in fields {
+                        let blank = value.as_str().is_some_and(str::is_empty);
+                        if !blank || !open.merged.contains_key(&key) {
+                            open.merged.insert(key, value);
+                        }
+                    }
+                }
+            }
+            _ => {
+                // Content a model output carries that rig has no type for.
+                self.writer
+                    .unit(edge::native(delta, api::CONTENT_SCHEMA), true, out)?;
+            }
+        }
+        Ok(())
+    }
+
+    fn stop(&mut self, index: usize, out: &mut Out<'id, Completion>) -> Result<(), ProviderError> {
+        let Some(open) = self.steps.remove(&index) else {
+            return Ok(());
+        };
+        match open.kind.as_str() {
+            "function_call" => out.close_pending(index, IfMalformed::Fail)?,
+            "model_output" | "thought" => {}
+            kind => {
+                let json = if api::is_hosted(kind) {
+                    let mut step: api::HostedStep =
+                        serde_json::from_value(Value::Object(open.merged))?;
+                    step.restore();
+                    serde_json::value::to_raw_value(&step)?
+                } else {
+                    serde_json::value::to_raw_value(&open.merged)?
+                };
+                let answers = !api::is_hosted(kind);
+                self.writer.unit(
+                    Unit::Native(NativePart::new(api::STEP_SCHEMA, json)),
+                    answers,
+                    out,
+                )?;
+            }
+        }
+        Ok(())
+    }
+
+    fn complete(
+        &mut self,
+        interaction: api::Interaction,
+        mut out: Out<'id, Completion>,
+    ) -> Result<Flow, ProviderError> {
+        let span = tracing::Span::current();
+        if let Some(id) = &interaction.id {
+            span.record("gen_ai.response.id", id.as_str());
+        }
+        if let Some(model) = &interaction.model {
+            span.record("gen_ai.response.model", model.as_str());
+        }
+        // Completion finalizes calls even without their step.stop.
+        for index in out.pending_calls() {
+            out.close_pending(index, IfMalformed::Fail)?;
+        }
+        self.writer.close(&mut out);
+        let usage = interaction
+            .usage
+            .as_ref()
+            .map(counts)
+            .map(edge::usage)
+            .unwrap_or_default();
+        let reason = interaction.status.as_ref().map(finish_reason);
+        let response_id = interaction.id.clone().filter(|id| !id.is_empty());
+        let model = interaction.model.clone();
+        if let Ok(raw) = serde_json::to_value(&interaction) {
+            out.raw(raw);
+        }
+        Ok(out.end(
+            Finish::new(usage)
+                .with_optional_reason(reason)
+                .with_optional_response_id(response_id)
+                .with_optional_model(model),
+        ))
     }
 }
 
-#[cfg(test)]
-mod tests;
+/// Interactions' counts under the edge's names.
+pub(crate) fn counts(usage: &api::Usage) -> edge::Counts {
+    edge::Counts {
+        prompt: usage.total_input_tokens,
+        tool_use_prompt: usage.total_tool_use_tokens,
+        cached: usage.total_cached_tokens,
+        candidates: usage.total_output_tokens,
+        thoughts: usage.total_thought_tokens,
+    }
+}
+
+/// Rig's finish reason for an interaction's status.
+pub(crate) fn finish_reason(status: &InteractionStatus) -> FinishReason {
+    match status {
+        InteractionStatus::Completed => FinishReason::Stop,
+        InteractionStatus::RequiresAction => FinishReason::ToolCalls,
+        InteractionStatus::BudgetExceeded => FinishReason::Length,
+        other => FinishReason::Other(other.as_str().to_owned()),
+    }
+}

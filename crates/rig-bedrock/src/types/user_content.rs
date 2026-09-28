@@ -1,7 +1,7 @@
 use aws_sdk_bedrockruntime::types as aws_bedrock;
 
 use rig_core::error::ProviderError;
-use rig_core::message::{Text, UserContent};
+use rig_core::message::{MediaDetail, Text, UserContent};
 
 use super::{
     converse_output::ContentBlock, document::RigDocument, image::RigImage,
@@ -57,10 +57,12 @@ impl TryFrom<RigUserContent> for Vec<aws_bedrock::ContentBlock> {
                 Ok(vec![aws_bedrock::ContentBlock::ToolResult(builder)])
             }
             UserContent::Image(image) => {
+                MediaDetail::require(image.detail, &[], "aws.bedrock")?;
                 let image = RigImage(image).try_into()?;
                 Ok(vec![aws_bedrock::ContentBlock::Image(image)])
             }
             UserContent::Document(document) => {
+                MediaDetail::require(document.detail, &[], "aws.bedrock")?;
                 let doc = RigDocument(document).try_into()?;
                 // Converse requires accompanying prompt text for document blocks.
                 Ok(vec![

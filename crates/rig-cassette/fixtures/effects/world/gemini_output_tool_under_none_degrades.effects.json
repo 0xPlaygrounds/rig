@@ -94,21 +94,20 @@
             {
               "type": "text",
               "text": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Technology\",\"summary\":\"A monthly gathering for Rust developers in Seattle to network and discuss systems programming.\"}",
-              "additional_params": {
-                "gemini": {
-                  "thoughtSignature": "EqkHCqYHAWkUfRNBH8z4K6ySlqD9goGYnLBojVsAdVPtyzYaK6xHvlCwJmiV057I7ZEBetzuRWgIwQMv6xhrIARVIwp0iJfgQZ3PB17ajWA1uRW6wKmtw40WMrxR/3UGJLxXu/pFLmvS0j5K8abzrY91YLTHMRlw+x6y16Px71AA9VeVkShNtziKsQ8gsRN5opdvABR8sZM1N2zDq9SOeLAO1eKpIS7cMD59bSs0SfDHv0+lees6nUuhmKn2OoT2oHqaZ1jKlQYLRHTLvHxOO2uODgYoTt1A+/dvba/UVmlGkPfAONTSWS1jLsBmB/5DWLelW6QVxVtA4Y+lrDUII2De9UX/xCFPR9nuZpzgktC1+SFNMz7PPnc73SlkdlHAQyAp95cSRcWX+jwwqcYc3gHRS4Mi/4EM0SdR5iGw3fGAFM779QN9to5xtQtMWNs0CAMZlvkrM3NNNU1XVTocoU1733AxNT3VU2LPSLmZ0QwKlHoTlwEm+rYBSeoLEYwvrMwYzgEXYfLu1gffb8OjrEc99lzHhTr98z5aYMCnOo2j+3tQVxtJO+3vGV6HJK+tzuNaY8yfvZHOe5900y98bk9tE+O77hXR3ixV2xYdprURci+pZooWYfpd87KjdUufgyiz5GYCeMYXGuS5zGJ+77a1QajtXAAGb+LGDqaBlYRS2XNEdpkYET2rZcjb3VuaXoUC55a6xcvt9sBdMgmRhkIKQF/C/MmlQTi0px/LKDvu5rZ1G2IQHapjjgs+WjliYpFM5Eg/pQLfmDDWyOENtHTcT2xNwt1q/q+odFaE30rSP6N3uX8fIA1kgN5QjiYpfl4hSLi5oD+tAhtCn9/OyAMu6CSv9XPVCezVqKUnWvEXQdWXb/9xCwlLAERq0YJOuOmH6KErhTys8z+PSgMtLoCn4yuaFEz5qjgu4orEaE/kczHTwt91KfobyPW4PxOn65eapCyu9jDqeD53uK4JVpo0YJVA9e9FGRnMAjEMpZst7EDdTAQFq3XDRp/Cj0lvHRrHvDR+dt+Je7H+YbGhO+R4dMCOxRHZlPIdjxXaeBQ7OIn8eZk1RIeclYqBfplCeWHQeNKKf3qEtrPgNEIZn4bKIBwDC9TSellxfLLOFzuOlNaH3fR2Y+OiCkPw1hlxV/1hhNC5lvwGX5BRaY2m2mlwCZaqcRtqWF26IRfDtH8iL5WtOYX4uwStAnWup/97pwCqyKLv2NI0xONGdGY5+K5Rf34I4P3NSLCxjw=="
-                }
+              "signature": {
+                "issuer": "gcp.gemini",
+                "signature": "EqkHCqYHAWkUfROPRuY928aZK3sqaUjUoN8AExitJE4mfYNTSP36RSONmK0X3bgoXd5YqWf2JiWvZwHRFjWbUmGooE1L8b3aF2XvfO4uvcVHr6dhZwG16IKD7YkG2tj84LTfXm+QsLRHEG4njwPtYttczzUMkxt9IS1B9vfpTzLDqttWwHhd1NegrnXqe6BUOXUWt+239UrD265IfQHYDHXfb3yJqQhIpZcZBGmN8GVTtO4kyBKXr7MvifDfSLCdNJt2xhRD8mvVWNWmW2AyZ2k2tpoBSbL4qDgK7KMlr5Rj1i7DBVkWtQH5DQcSiOJnRNm1CudBWu1OZbuv28IttdeVUevpVYbQUXEKW/IKnsDBkKdq/4NsM/OQykB3yciqpIsmB00DNYTKqetO1P4tqXCrdS+GrtlaFOoT2p5gkxdmoeRwPGZABHc1/8D1/xJX1AgIvdlt2LGNu8CcNSBwxcB6Mti7psvb1fLO+w9P/YvX3ONMbCIYlK3xDkiIK6Z0/CzshljC/R9WZOezZV1LpvmXVQUX8/RqwCtS70lAqXiaGQCwHhm1qATy2C30uxRxH/6jBdegG0Ux7oFso8Ie97oHbyCm1qSIph++2408sUMg01kic+ciL2C2fwvEOPRKcdzn3M6lacxQgufok3Sx6UY7JiivW066Ks939iQvl8SERqZ8FDHe97A7cI1lt4KLC/WhtQ8mbW67GUC0DrXg4+OEhruSwHKJxBlY2B5pO5slA1K2LnV03dXPnVEf+bA9A3b29sHIuurwT83x6+9I/QOViMKSsB25PywCDzVsP5bpOJ99ObrHyAAO17i3v3bWTUtsvW8YolcvnnW6mIj0l6xYU70v01crpIUWsNJXQ8XyaolXjCwCRnEMWmGSNXBaHRHa334GWy9vq8v86r1vySuACSxlqC7SH82nYRwu40YTOU1/eD3x+UG1FkdOHtkROXZihGkFZYnNy3H+DXJBCqGm4Cc0szdvTZ7Q7JX88BBIFDJNQcf8PlU+5Yx6n8l0loKq+hsX/PsGVd5TeJomSIWa6OUxTv+avFYQOpEVvDdlrYRXyBvt5Ju352DyIN+L4s1bAGQrJV9Tifr1Amt01oOkFnwFGrWo7MF81ZBza8f9Ssm1Ynm7trtqugTIm7a0ZuyPB6iWJX6uuANiDk1zT0wkCUnbi+VeCZ5IPLRKsHt26w/rMY9aMQJ50IpbWWnAp//hqtWkFBeDvqlDxx9nfhFkCsbgI9QnfpxFnw=="
               }
             }
           ],
           "usage": {
-            "input_tokens": 24,
-            "output_tokens": 30,
-            "total_tokens": 269,
+            "input_tokens": 23,
+            "output_tokens": 245,
+            "total_tokens": 268,
             "reasoning_tokens": 215
           },
           "message_id": null,
-          "response_id": "oK2yavuTBvz9qtsP65650AE",
+          "response_id": "I-i6au68DLi8qtsP3ICa-Ak",
           "finish_reason": "stop",
           "provider": "gcp.gemini",
           "model": "gemini-3-flash-preview",
@@ -119,7 +118,7 @@
                   "parts": [
                     {
                       "text": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Technology\",\"summary\":\"A monthly gathering for Rust developers in Seattle to network and discuss systems programming.\"}",
-                      "thoughtSignature": "EqkHCqYHAWkUfRNBH8z4K6ySlqD9goGYnLBojVsAdVPtyzYaK6xHvlCwJmiV057I7ZEBetzuRWgIwQMv6xhrIARVIwp0iJfgQZ3PB17ajWA1uRW6wKmtw40WMrxR/3UGJLxXu/pFLmvS0j5K8abzrY91YLTHMRlw+x6y16Px71AA9VeVkShNtziKsQ8gsRN5opdvABR8sZM1N2zDq9SOeLAO1eKpIS7cMD59bSs0SfDHv0+lees6nUuhmKn2OoT2oHqaZ1jKlQYLRHTLvHxOO2uODgYoTt1A+/dvba/UVmlGkPfAONTSWS1jLsBmB/5DWLelW6QVxVtA4Y+lrDUII2De9UX/xCFPR9nuZpzgktC1+SFNMz7PPnc73SlkdlHAQyAp95cSRcWX+jwwqcYc3gHRS4Mi/4EM0SdR5iGw3fGAFM779QN9to5xtQtMWNs0CAMZlvkrM3NNNU1XVTocoU1733AxNT3VU2LPSLmZ0QwKlHoTlwEm+rYBSeoLEYwvrMwYzgEXYfLu1gffb8OjrEc99lzHhTr98z5aYMCnOo2j+3tQVxtJO+3vGV6HJK+tzuNaY8yfvZHOe5900y98bk9tE+O77hXR3ixV2xYdprURci+pZooWYfpd87KjdUufgyiz5GYCeMYXGuS5zGJ+77a1QajtXAAGb+LGDqaBlYRS2XNEdpkYET2rZcjb3VuaXoUC55a6xcvt9sBdMgmRhkIKQF/C/MmlQTi0px/LKDvu5rZ1G2IQHapjjgs+WjliYpFM5Eg/pQLfmDDWyOENtHTcT2xNwt1q/q+odFaE30rSP6N3uX8fIA1kgN5QjiYpfl4hSLi5oD+tAhtCn9/OyAMu6CSv9XPVCezVqKUnWvEXQdWXb/9xCwlLAERq0YJOuOmH6KErhTys8z+PSgMtLoCn4yuaFEz5qjgu4orEaE/kczHTwt91KfobyPW4PxOn65eapCyu9jDqeD53uK4JVpo0YJVA9e9FGRnMAjEMpZst7EDdTAQFq3XDRp/Cj0lvHRrHvDR+dt+Je7H+YbGhO+R4dMCOxRHZlPIdjxXaeBQ7OIn8eZk1RIeclYqBfplCeWHQeNKKf3qEtrPgNEIZn4bKIBwDC9TSellxfLLOFzuOlNaH3fR2Y+OiCkPw1hlxV/1hhNC5lvwGX5BRaY2m2mlwCZaqcRtqWF26IRfDtH8iL5WtOYX4uwStAnWup/97pwCqyKLv2NI0xONGdGY5+K5Rf34I4P3NSLCxjw=="
+                      "thoughtSignature": "EqkHCqYHAWkUfROPRuY928aZK3sqaUjUoN8AExitJE4mfYNTSP36RSONmK0X3bgoXd5YqWf2JiWvZwHRFjWbUmGooE1L8b3aF2XvfO4uvcVHr6dhZwG16IKD7YkG2tj84LTfXm+QsLRHEG4njwPtYttczzUMkxt9IS1B9vfpTzLDqttWwHhd1NegrnXqe6BUOXUWt+239UrD265IfQHYDHXfb3yJqQhIpZcZBGmN8GVTtO4kyBKXr7MvifDfSLCdNJt2xhRD8mvVWNWmW2AyZ2k2tpoBSbL4qDgK7KMlr5Rj1i7DBVkWtQH5DQcSiOJnRNm1CudBWu1OZbuv28IttdeVUevpVYbQUXEKW/IKnsDBkKdq/4NsM/OQykB3yciqpIsmB00DNYTKqetO1P4tqXCrdS+GrtlaFOoT2p5gkxdmoeRwPGZABHc1/8D1/xJX1AgIvdlt2LGNu8CcNSBwxcB6Mti7psvb1fLO+w9P/YvX3ONMbCIYlK3xDkiIK6Z0/CzshljC/R9WZOezZV1LpvmXVQUX8/RqwCtS70lAqXiaGQCwHhm1qATy2C30uxRxH/6jBdegG0Ux7oFso8Ie97oHbyCm1qSIph++2408sUMg01kic+ciL2C2fwvEOPRKcdzn3M6lacxQgufok3Sx6UY7JiivW066Ks939iQvl8SERqZ8FDHe97A7cI1lt4KLC/WhtQ8mbW67GUC0DrXg4+OEhruSwHKJxBlY2B5pO5slA1K2LnV03dXPnVEf+bA9A3b29sHIuurwT83x6+9I/QOViMKSsB25PywCDzVsP5bpOJ99ObrHyAAO17i3v3bWTUtsvW8YolcvnnW6mIj0l6xYU70v01crpIUWsNJXQ8XyaolXjCwCRnEMWmGSNXBaHRHa334GWy9vq8v86r1vySuACSxlqC7SH82nYRwu40YTOU1/eD3x+UG1FkdOHtkROXZihGkFZYnNy3H+DXJBCqGm4Cc0szdvTZ7Q7JX88BBIFDJNQcf8PlU+5Yx6n8l0loKq+hsX/PsGVd5TeJomSIWa6OUxTv+avFYQOpEVvDdlrYRXyBvt5Ju352DyIN+L4s1bAGQrJV9Tifr1Amt01oOkFnwFGrWo7MF81ZBza8f9Ssm1Ynm7trtqugTIm7a0ZuyPB6iWJX6uuANiDk1zT0wkCUnbi+VeCZ5IPLRKsHt26w/rMY9aMQJ50IpbWWnAp//hqtWkFBeDvqlDxx9nfhFkCsbgI9QnfpxFnw=="
                     }
                   ],
                   "role": "model"
@@ -129,19 +128,19 @@
               }
             ],
             "modelVersion": "gemini-3-flash-preview",
-            "responseId": "oK2yavuTBvz9qtsP65650AE",
+            "responseId": "I-i6au68DLi8qtsP3ICa-Ak",
             "usageMetadata": {
               "candidatesTokenCount": 30,
-              "promptTokenCount": 24,
+              "promptTokenCount": 23,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
-                  "tokenCount": 24
+                  "tokenCount": 23
                 }
               ],
               "serviceTier": "standard",
               "thoughtsTokenCount": 215,
-              "totalTokenCount": 269
+              "totalTokenCount": 268
             }
           }
         }

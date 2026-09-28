@@ -103,12 +103,12 @@
             }
           ],
           "usage": {
-            "input_tokens": 106,
+            "input_tokens": 105,
             "output_tokens": 10,
-            "total_tokens": 116
+            "total_tokens": 115
           },
           "message_id": null,
-          "response_id": "nHizav_8MpusqtsPsf3xkAY",
+          "response_id": "fei6auakDqutmtkP2pWQ4Aw",
           "finish_reason": "tool_calls",
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash-lite",
@@ -132,18 +132,18 @@
               }
             ],
             "modelVersion": "gemini-2.5-flash-lite",
-            "responseId": "nHizav_8MpusqtsPsf3xkAY",
+            "responseId": "fei6auakDqutmtkP2pWQ4Aw",
             "usageMetadata": {
               "candidatesTokenCount": 10,
-              "promptTokenCount": 106,
+              "promptTokenCount": 105,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
-                  "tokenCount": 106
+                  "tokenCount": 105
                 }
               ],
               "serviceTier": "standard",
-              "totalTokenCount": 116
+              "totalTokenCount": 115
             }
           }
         }
@@ -262,12 +262,12 @@
             }
           ],
           "usage": {
-            "input_tokens": 33922,
+            "input_tokens": 33921,
             "output_tokens": 3,
-            "total_tokens": 33925
+            "total_tokens": 33924
           },
           "message_id": null,
-          "response_id": "nXizavT6B9SDmtkP097woAk",
+          "response_id": "fei6ar3FJLikqtsPlsyD2As",
           "finish_reason": "stop",
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash-lite",
@@ -287,18 +287,18 @@
               }
             ],
             "modelVersion": "gemini-2.5-flash-lite",
-            "responseId": "nXizavT6B9SDmtkP097woAk",
+            "responseId": "fei6ar3FJLikqtsPlsyD2As",
             "usageMetadata": {
               "candidatesTokenCount": 3,
-              "promptTokenCount": 33922,
+              "promptTokenCount": 33921,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
-                  "tokenCount": 33922
+                  "tokenCount": 33921
                 }
               ],
               "serviceTier": "standard",
-              "totalTokenCount": 33925
+              "totalTokenCount": 33924
             }
           }
         }

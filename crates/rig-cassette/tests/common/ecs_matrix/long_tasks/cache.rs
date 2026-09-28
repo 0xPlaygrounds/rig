@@ -33,16 +33,15 @@ pub(crate) fn assert_usage(thinking: ThinkingWire, log: &EffectLog) -> Value {
                 .expect("Gemini usage"),
             _ => response.raw.get("usage").expect("wire usage"),
         };
-        let output_field = match thinking {
-            ThinkingWire::OpenAiChat | ThinkingWire::DeepSeek => "completion_tokens",
-            ThinkingWire::Gemini => "candidatesTokenCount",
-            _ => "output_tokens",
+        let field = |name: &str| raw_usage.get(name).and_then(Value::as_u64);
+        let output = match thinking {
+            ThinkingWire::OpenAiChat | ThinkingWire::DeepSeek => field("completion_tokens"),
+            // Thoughts are billed as output.
+            ThinkingWire::Gemini => field("candidatesTokenCount")
+                .map(|candidates| candidates + field("thoughtsTokenCount").unwrap_or(0)),
+            _ => field("output_tokens"),
         };
-        assert_eq!(
-            usage.output_tokens,
-            raw_usage.get(output_field).and_then(Value::as_u64),
-            "output usage decoded once"
-        );
+        assert_eq!(usage.output_tokens, output, "output usage decoded once");
         let total = match thinking {
             ThinkingWire::Anthropic => raw
                 .0

@@ -8,14 +8,14 @@
 //! # let _ = decoder;
 //! ```
 
-use base64::Engine as _;
 use serde_json::{Map, Value};
 
 use rig_core::driver::warn_unmodeled;
 use rig_core::error::ProviderError;
-use rig_core::message::{self, CallId, MimeType, ToolCall, ToolFunction, ToolName};
-use rig_core::operation::{Completion, Finish, TextPart};
-use rig_core::providers::internal::thoughts::Thoughts;
+use rig_core::message::NativePart;
+use rig_core::operation::{Completion, Finish};
+use rig_core::providers::gemini::api;
+use rig_core::providers::gemini::edge::{self, Unit};
 use rig_core::wire::{Flow, Out, WireEvent};
 
 use super::completion::{encode_optional_base64 as encode_signature, prost_struct_to_json};
@@ -26,24 +26,18 @@ use super::proto;
 /// reply ends at EOF once a finish reason arrived, since a hosted-tool round
 /// can report one before more content.
 pub struct GrpcAdapter<'id> {
-    /// Thought boundaries inferred from content transitions and signatures.
-    thoughts: Thoughts<'id>,
-    /// The answer text part text chunks extend.
-    text: Option<TextPart<'id>>,
+    /// The edge's writer: thoughts, text and calls in wire order.
+    writer: edge::Writer<'id>,
     /// The latest response carrying a finish reason: the reply's end and
     /// its raw record.
     last: Option<proto::GenerateContentResponse>,
-    /// At least one part mapped to assistant content.
-    delivered: bool,
 }
 
 impl Default for GrpcAdapter<'_> {
     fn default() -> Self {
         Self {
-            thoughts: Thoughts::new(),
-            text: None,
+            writer: edge::Writer::new(),
             last: None,
-            delivered: false,
         }
     }
 }
@@ -80,12 +74,24 @@ impl<'id> rig_core::wire::Decoder<'id, Completion, proto::GenerateContentRespons
             // across stream responses continue one part.
             let mut previous_text = false;
             for part in &content.parts {
-                let text = !part.thought && matches!(part.data, Some(proto::part::Data::Text(_)));
+                let Some(unit) = unit(part)? else {
+                    // Missing or unknown oneof data uses the shared redacted warning policy.
+                    warn_unmodeled("gemini_grpc_part", part);
+                    continue;
+                };
+                let text = matches!(unit, Unit::Text { .. });
                 if text && previous_text {
-                    self.close_text(&mut out);
+                    self.writer.split_text(&mut out);
                 }
                 previous_text = text;
-                self.interpret_part(part, &mut out)?;
+                let answers = !matches!(
+                    part.data,
+                    Some(
+                        proto::part::Data::ExecutableCode(_)
+                            | proto::part::Data::CodeExecutionResult(_)
+                    )
+                );
+                self.writer.unit(unit, answers, &mut out)?;
             }
         }
         // Enum default is 0 = FINISH_REASON_UNSPECIFIED. The last one wins.
@@ -108,13 +114,12 @@ impl<'id> rig_core::wire::Decoder<'id, Completion, proto::GenerateContentRespons
         let cut_short = finish_reason
             .as_ref()
             .is_some_and(rig_core::completion::FinishReason::truncated_output);
-        if !self.delivered && !cut_short {
+        if !self.writer.delivered() && !cut_short {
             return Err(ProviderError::Response(
                 rig_core::message::EMPTY_RESPONSE_ERROR.to_owned(),
             ));
         }
-        self.close_text(&mut out);
-        self.thoughts.close(&mut out, None);
+        self.writer.close(&mut out);
         out.raw(serde_json::to_value(&last)?);
         Ok(out.end(
             Finish::new(super::completion::map_usage(last.usage_metadata.as_ref()))
@@ -125,104 +130,85 @@ impl<'id> rig_core::wire::Decoder<'id, Completion, proto::GenerateContentRespons
     }
 }
 
-impl<'id> GrpcAdapter<'id> {
-    fn close_text(&mut self, out: &mut Out<'id, Completion>) {
-        if let Some(part) = self.text.take() {
-            out.close_text(part);
+/// The edge unit of one protobuf part, or `None` for a part with no data.
+fn unit(part: &proto::Part) -> Result<Option<Unit>, ProviderError> {
+    let signature = encode_signature(&part.thought_signature);
+    Ok(Some(match &part.data {
+        Some(proto::part::Data::Text(text)) if part.thought => Unit::Thought {
+            text: text.clone(),
+            signature,
+        },
+        Some(proto::part::Data::Text(text)) => Unit::Text {
+            text: text.clone(),
+            signature,
+        },
+        Some(proto::part::Data::FunctionCall(call)) => Unit::Call {
+            id: Some(call.id.clone()).filter(|id| !id.is_empty()),
+            name: call.name.clone(),
+            args: match call.args.as_ref().map(prost_struct_to_json) {
+                Some(Value::Object(args)) => args,
+                _ => Map::new(),
+            },
+            signature,
+        },
+        Some(data) => {
+            // A part rig has no type for keeps Google's own JSON shape.
+            let mut native = api::Part {
+                thought: part.thought.then_some(true),
+                thought_signature: signature,
+                ..Default::default()
+            };
+            match data {
+                proto::part::Data::InlineData(blob) => {
+                    native.inline_data = Some(api::Blob {
+                        mime_type: Some(blob.mime_type.clone()),
+                        data: encode_signature(&blob.data),
+                        ..Default::default()
+                    });
+                }
+                proto::part::Data::FileData(file) => {
+                    native.file_data = Some(api::FileData {
+                        mime_type: Some(file.mime_type.clone()),
+                        file_uri: Some(file.file_uri.clone()),
+                        ..Default::default()
+                    });
+                }
+                proto::part::Data::ExecutableCode(code) => {
+                    native.executable_code = Some(api::ExecutableCode {
+                        language: Some(code.language.clone().into()),
+                        code: Some(code.code.clone()),
+                        ..Default::default()
+                    });
+                }
+                proto::part::Data::CodeExecutionResult(result) => {
+                    native.code_execution_result = Some(api::CodeExecutionResult {
+                        outcome: Some(result.outcome.clone().into()),
+                        output: Some(result.output.clone()),
+                        ..Default::default()
+                    });
+                }
+                proto::part::Data::FunctionResponse(response) => {
+                    native.function_response = Some(api::FunctionResponse {
+                        name: Some(response.name.clone()),
+                        id: Some(response.id.clone()).filter(|id| !id.is_empty()),
+                        response: match response.response.as_ref().map(prost_struct_to_json) {
+                            Some(Value::Object(map)) => Some(map),
+                            _ => None,
+                        },
+                        ..Default::default()
+                    });
+                }
+                proto::part::Data::Text(_) | proto::part::Data::FunctionCall(_) => {
+                    return Ok(None);
+                }
+            }
+            Unit::Native(NativePart::new(
+                api::PART_SCHEMA,
+                serde_json::value::to_raw_value(&native)?,
+            ))
         }
-    }
-
-    /// Write one protobuf part.
-    fn interpret_part(
-        &mut self,
-        part: &proto::Part,
-        out: &mut Out<'id, Completion>,
-    ) -> Result<(), ProviderError> {
-        match &part.data {
-            // A thought part's signature closes the thinking block, using the
-            // same base64 encoding the request side decodes.
-            Some(proto::part::Data::Text(text)) if part.thought => {
-                self.delivered = true;
-                if !text.is_empty() {
-                    self.close_text(out);
-                }
-                self.thoughts.fragment(out, text);
-                if let Some(signature) = encode_signature(&part.thought_signature) {
-                    self.thoughts.signature(out, signature);
-                }
-            }
-            // A signature on answer text returns on that text part; a signed
-            // part ends there.
-            Some(proto::part::Data::Text(text)) => {
-                self.delivered = true;
-                let signature = encode_signature(&part.thought_signature);
-                let signed = signature.is_some();
-                if signed && text.is_empty() {
-                    self.close_text(out);
-                }
-                let params = signature.and_then(|signature| {
-                    rig_core::providers::gemini::text_signature_extras(
-                        rig_core::providers::gemini::GEMINI_TEXT_EXTRAS_KEY,
-                        signature,
-                    )
-                });
-                if !text.is_empty() || params.is_some() {
-                    self.thoughts.boundary();
-                    let part = self.text.get_or_insert_with(|| out.text());
-                    out.push_text(part, text);
-                    if let Some(params) = params {
-                        out.text_params(part, params);
-                    }
-                }
-                if signed {
-                    self.close_text(out);
-                }
-            }
-            Some(proto::part::Data::FunctionCall(function_call)) => {
-                self.delivered = true;
-                self.thoughts.boundary();
-                self.close_text(out);
-                let name = ToolName::new(function_call.name.clone()).map_err(|error| {
-                    ProviderError::Response(format!("Gemini returned a function call: {error}"))
-                })?;
-                let arguments = function_call
-                    .args
-                    .as_ref()
-                    .map_or_else(|| Value::Object(Map::new()), prost_struct_to_json);
-                // Rig issues an id for a call the provider sent without one.
-                out.tool_call(
-                    ToolCall::new(
-                        CallId::from_wire(function_call.id.clone()),
-                        ToolFunction::new(name, arguments),
-                    )
-                    // A signature on a function-call part belongs to the call.
-                    .with_signature(encode_signature(&part.thought_signature)),
-                )?;
-            }
-            Some(proto::part::Data::InlineData(inline_data)) => {
-                self.delivered = true;
-                self.thoughts.boundary();
-                self.close_text(out);
-                let media_type = message::MediaType::from_mime_type(&inline_data.mime_type);
-                let Some(message::MediaType::Image(media_type)) = media_type else {
-                    return Err(ProviderError::Response(format!(
-                        "Unsupported media type {media_type:?}"
-                    )));
-                };
-                out.content(message::AssistantContent::image_base64(
-                    base64::engine::general_purpose::STANDARD.encode(&inline_data.data),
-                    Some(media_type),
-                    Some(message::ImageDetail::default()),
-                ))?;
-            }
-            None => {
-                // Missing or unknown oneof data uses the shared redacted warning policy.
-                warn_unmodeled("gemini_grpc_part", part);
-            }
-            Some(_) => {}
-        }
-        Ok(())
-    }
+        None => return Ok(None),
+    }))
 }
 
 #[cfg(test)]

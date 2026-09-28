@@ -8,7 +8,7 @@
 
 use super::super::support::with_gemini_cassette;
 use crate::ecs_matrix::{Wire, cells, long_loop, long_loop_world};
-use rig::providers::gemini::GeminiConfig;
+use rig::providers::gemini::{GeminiConfig, api};
 use rig::test_utils::{MockHttpResponse, SequencedHttpClient};
 use rig_test_support::cassette_models::GeminiModels;
 
@@ -43,13 +43,22 @@ fn task_wire(
     >,
 > {
     Wire {
-        model: client.completion("gemini-3.8-flash"),
+        model: client
+            .completion("gemini-3.8-flash")
+            .settings(api::RequestSettings {
+                generation_config: api::GenerationSettings {
+                    thinking_config: Some(api::ThinkingConfig {
+                        thinking_level: Some(api::ThinkingLevel::Low),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+                ..Default::default()
+            }),
         thinking: THINKING,
         route: None,
         temperature: Some(0.0),
-        additional_params: Some(
-            || serde_json::json!({"generationConfig":{"thinkingConfig":{"thinkingLevel":"low"}}}),
-        ),
+        additional_params: None,
     }
 }
 

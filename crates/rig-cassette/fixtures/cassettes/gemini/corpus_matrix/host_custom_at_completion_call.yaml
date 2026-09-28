@@ -9,10 +9,10 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"contents":[{"parts":[{"text":"Reply with the single word: ready.","thought":false}],"role":"user"}],"generationConfig":{"temperature":0.0},"safetySettings":null,"systemInstruction":{"parts":[{"text":"You are a concise assistant. Answer directly.","thought":false}],"role":"model"},"toolConfig":null}'
+  body: '{"contents":[{"parts":[{"text":"Reply with the single word: ready."}],"role":"user"}],"generationConfig":{"temperature":0.0},"systemInstruction":{"parts":[{"text":"You are a concise assistant. Answer directly."}]}}'
 then:
   status: 200
   header:
   - name: content-type
     value: application/json; charset=UTF-8
-  body: '{"candidates":[{"content":{"parts":[{"text":"ready.","thoughtSignature":"ErECCq4CAWkUfRNP+xJ1R2POHL4Ixk2azTDl9Y4DmNKNoMsvISDmRKB+GZaEu4I8h3CJprvGeXYZKBEPkKtLW1iwmgLKISSuVaLZ193+LVy9D/bpqyRAX8X2GoGTVOk5dNIEE6Rm17T905f7HS9vdYp0wCj/FVxyZlQieAYD8hxEYC/An2tm01F2ClErSdMKn54SWHVXw7rjxVvdFWLvAZrKyTU7rPoi0vxmLhWFVWIIeBO+GQr3/FLOrtt3h3A/pzxvLBU9SyytoOlKRbG555wzNGeuvuK2KXdclBYogBUzej5btmydS1Kp6xBs+aNEGpxnea2iKtms8BOu0wmK4l59DSE9X+AiZmpDwM7pMLXXqlseBFLAQNTHmcDpxQyRpakEjB33cRRGpZFfCSdEd8Eg84I="}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-3-flash-preview","responseId":"Ta2yatH4LfqcqtsPsvfd4Ag","usageMetadata":{"candidatesTokenCount":2,"promptTokenCount":19,"promptTokensDetails":[{"modality":"TEXT","tokenCount":19}],"serviceTier":"standard","thoughtsTokenCount":55,"totalTokenCount":76}}'
+  body: '{"candidates":[{"content":{"parts":[{"text":"ready.","thoughtSignature":"EoACCv0BAWkUfRPdFfB/J9ycNpKmTgdMnbTlIrEmM80dQPhmIBG73wVmskdfL7S2SxjPdppHRyv+Ptfxm2l9nMOv8O/OEvF2n3KIzRhHFh5Uy5dOt3aHqdePPTmLwgytlASB6dwg6KzAVwZ7FOETyp30QvRuLfpIBWtIZXpPFdEzE7BE/2Ku8zh2OZ+vjlWadmA1SxT+2CPk+TXy9MkpzMkLE0BkOvVDSouLsfzNviSKs6eS//mNtm9P36ysp3Q5XB8t0zeExncwPcgSpqaDzV4J0FuPwMzCFDa/EcN/fXWatEkKUJTxAsCTFsiUuJICzXXHXvkF/pcvmtr2tgT32oQMIg=="}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-3-flash-preview","responseId":"vee6asiMFabmqtsP9s-byQ4","usageMetadata":{"candidatesTokenCount":2,"promptTokenCount":18,"promptTokensDetails":[{"modality":"TEXT","tokenCount":18}],"serviceTier":"standard","thoughtsTokenCount":37,"totalTokenCount":57}}'

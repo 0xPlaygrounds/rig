@@ -1,6 +1,6 @@
 {
   "header": {
-    "run_spec": 10205229598120978059,
+    "run_spec": 3919772627778775136,
     "handlers": [
       {
         "key": "golden/model:default",
@@ -55,14 +55,7 @@
           "temperature": 0.0,
           "max_tokens": 4096,
           "tool_choice": null,
-          "additional_params": {
-            "generationConfig": {
-              "thinkingConfig": {
-                "includeThoughts": true,
-                "thinkingBudget": 128
-              }
-            }
-          },
+          "additional_params": null,
           "output_schema": null
         },
         "stream": false
@@ -79,7 +72,7 @@
                 {
                   "type": "text",
                   "content": {
-                    "text": "**My Thoughts on Rust and Memory Safety**\n\nOkay, so I'm thinking about Rust. It's a systems language, aiming for top performance, but the real standout is how it handles memory safety. The key is its ownership system; a completely different approach to memory management compared to languages with garbage collectors. That's why it's so important to focus on how Rust prevents errors like buffer overflows and null pointer dereferences. These are the classic security flaws and crash culprits. I need to make sure to clearly convey that this focus on safety is what sets Rust apart, and that these memory errors are the major sources of vulnerabilities.\n\n\n"
+                    "text": "**My Thoughts on Rust and Memory Safety**\n\nOkay, here's the gist: Rust. It's a systems language, aiming for speed and, critically, safety. Why? Because those damn memory bugs, like buffer overflows and null pointer dereferences, are still the bane of our existence. They're the leading cause of security headaches and system meltdowns.\n\nI'm aiming for something concise, something that gets to the point. The ownership system? That's the key. Forget the garbage collector; Rust's approach is different. It's about preventing those vulnerabilities at compile time, eliminating a whole class of nasty surprises.\n\n\n"
                   }
                 }
               ]
@@ -87,21 +80,20 @@
             {
               "type": "text",
               "text": "Rust is a systems programming language designed for performance and safety, using a unique ownership model to manage memory without a garbage collector. Memory safety is critical because it prevents common bugs like buffer overflows and null pointer dereferences, which are leading causes of security vulnerabilities and system crashes.",
-              "additional_params": {
-                "gemini": {
-                  "thoughtSignature": "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"
-                }
+              "signature": {
+                "issuer": "gcp.gemini",
+                "signature": "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"
               }
             }
           ],
           "usage": {
-            "input_tokens": 29,
-            "output_tokens": 53,
-            "total_tokens": 380,
+            "input_tokens": 28,
+            "output_tokens": 351,
+            "total_tokens": 379,
             "reasoning_tokens": 298
           },
           "message_id": null,
-          "response_id": "16-yasemCJ6UmtkPtvmfmAk",
+          "response_id": "dOm6apT2KIXtz7IPuseDiA0",
           "finish_reason": "stop",
           "provider": "gcp.gemini",
           "model": "gemini-3-flash-preview",
@@ -111,12 +103,12 @@
                 "content": {
                   "parts": [
                     {
-                      "text": "**My Thoughts on Rust and Memory Safety**\n\nOkay, so I'm thinking about Rust. It's a systems language, aiming for top performance, but the real standout is how it handles memory safety. The key is its ownership system; a completely different approach to memory management compared to languages with garbage collectors. That's why it's so important to focus on how Rust prevents errors like buffer overflows and null pointer dereferences. These are the classic security flaws and crash culprits. I need to make sure to clearly convey that this focus on safety is what sets Rust apart, and that these memory errors are the major sources of vulnerabilities.\n\n\n",
+                      "text": "**My Thoughts on Rust and Memory Safety**\n\nOkay, here's the gist: Rust. It's a systems language, aiming for speed and, critically, safety. Why? Because those damn memory bugs, like buffer overflows and null pointer dereferences, are still the bane of our existence. They're the leading cause of security headaches and system meltdowns.\n\nI'm aiming for something concise, something that gets to the point. The ownership system? That's the key. Forget the garbage collector; Rust's approach is different. It's about preventing those vulnerabilities at compile time, eliminating a whole class of nasty surprises.\n\n\n",
                       "thought": true
                     },
                     {
                       "text": "Rust is a systems programming language designed for performance and safety, using a unique ownership model to manage memory without a garbage collector. Memory safety is critical because it prevents common bugs like buffer overflows and null pointer dereferences, which are leading causes of security vulnerabilities and system crashes.",
-                      "thoughtSignature": "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"
+                      "thoughtSignature": "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"
                     }
                   ],
                   "role": "model"
@@ -126,19 +118,19 @@
               }
             ],
             "modelVersion": "gemini-3-flash-preview",
-            "responseId": "16-yasemCJ6UmtkPtvmfmAk",
+            "responseId": "dOm6apT2KIXtz7IPuseDiA0",
             "usageMetadata": {
               "candidatesTokenCount": 53,
-              "promptTokenCount": 29,
+              "promptTokenCount": 28,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
-                  "tokenCount": 29
+                  "tokenCount": 28
                 }
               ],
               "serviceTier": "standard",
               "thoughtsTokenCount": 298,
-              "totalTokenCount": 380
+              "totalTokenCount": 379
             }
           }
         }

@@ -929,7 +929,11 @@ pub async fn collect_stream_observation(stream: &mut StreamingResult) -> StreamO
                     .push(tool_call.function.name.clone().into());
                 observation.tool_call_records.push(ToolCallRecord {
                     name: tool_call.function.name.into(),
-                    signature: tool_call.signature,
+                    signature: tool_call.signature.as_ref().and_then(|signature| {
+                        signature
+                            .open(signature.issuer())
+                            .map(|signature| signature.signature.clone())
+                    }),
                     additional_params: tool_call.additional_params,
                 });
                 observation.events.push("tool_call");
@@ -1269,7 +1273,11 @@ where
                 observation.tool_calls.push(tool_call.clone());
                 observation.tool_call_records.push(ToolCallRecord {
                     name: tool_call.function.name.into(),
-                    signature: tool_call.signature,
+                    signature: tool_call.signature.as_ref().and_then(|signature| {
+                        signature
+                            .open(signature.issuer())
+                            .map(|signature| signature.signature.clone())
+                    }),
                     additional_params: tool_call.additional_params,
                 });
                 observation.events.push("tool_call");

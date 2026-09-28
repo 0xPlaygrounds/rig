@@ -208,7 +208,7 @@
         "Err": {
           "kind": "response",
           "retryable": false,
-          "message": "ResponseError: Gemini stopped with finish_reason=MalformedFunctionCall: Malformed function call: tool",
+          "message": "ResponseError: Gemini stopped with finish_reason=MALFORMED_FUNCTION_CALL: Malformed function call: tool",
           "code": null,
           "http_status": null,
           "refusal": false,

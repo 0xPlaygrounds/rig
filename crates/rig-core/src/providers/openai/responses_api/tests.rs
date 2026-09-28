@@ -105,6 +105,7 @@ fn output_text_extras_survive_generic_conversion_and_replay() {
     let foreign = message::Message::Assistant {
         id: None,
         content: crate::NonEmpty::new(completion::AssistantContent::Text(message::Text {
+            signature: None,
             text: String::new(),
             additional_params: message::AdditionalParams::try_from_value(json!({
                 "anthropic_content": {"type": "server_tool_use", "id": "srv_1"}
@@ -121,6 +122,7 @@ fn output_text_extras_survive_generic_conversion_and_replay() {
     let own_annotated_empty = |id: Option<String>| message::Message::Assistant {
         id,
         content: crate::NonEmpty::new(completion::AssistantContent::Text(message::Text {
+            signature: None,
             text: String::new(),
             additional_params: message::AdditionalParams::try_from_value(json!({
                 OPENAI_RESPONSES_EXTRAS_KEY: {"annotations": ["kept"]}
@@ -2263,6 +2265,7 @@ fn responses_usage_add_preserves_rhs_details_when_lhs_details_are_absent() {
 fn file_id_document_serializes_as_input_item_content() {
     let message = completion::Message::User {
         content: crate::NonEmpty::new(message::UserContent::Document(message::Document {
+            detail: None,
             data: DocumentSourceKind::FileId("file_abc".to_string()),
             media_type: None,
             additional_params: None,
@@ -2684,6 +2687,7 @@ fn url_pdf_in_full_completion_request_omits_filename() {
 fn base64_pdf_via_input_item_path_keeps_filename() {
     let input = message::Message::User {
         content: crate::NonEmpty::new(message::UserContent::Document(message::Document {
+            detail: None,
             data: DocumentSourceKind::base64("dGVzdA=="),
             media_type: Some(message::DocumentMediaType::PDF),
             additional_params: None,

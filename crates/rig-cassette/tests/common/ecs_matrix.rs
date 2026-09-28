@@ -113,14 +113,24 @@ where
         }
         match cell.thinking {
             cells::Thinking::On => {
-                program.additional_params = Some(self.thinking.params(true));
+                program.additional_params =
+                    self.thinking.params(true).or(program.additional_params);
             }
             cells::Thinking::SecondTurnOnly => {
-                program.additional_params = Some(self.thinking.params(false));
-                program.thinking_params = Some(self.thinking.params(true));
+                let (Some(off), Some(on)) =
+                    (self.thinking.params(false), self.thinking.params(true))
+                else {
+                    panic!(
+                        "{}: {:?} sets thinking on its model, not per turn",
+                        cell.name, self.thinking
+                    );
+                };
+                program.additional_params = Some(off);
+                program.thinking_params = Some(on);
             }
             cells::Thinking::Off if cell.explicit_thinking_off => {
-                program.additional_params = Some(self.thinking.params(false));
+                program.additional_params =
+                    self.thinking.params(false).or(program.additional_params);
             }
             cells::Thinking::Off => {}
         }

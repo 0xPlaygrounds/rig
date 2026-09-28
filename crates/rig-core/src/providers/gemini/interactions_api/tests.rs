@@ -1,1460 +1,263 @@
+use serde_json::{Value, json};
+
 use super::*;
-use crate::completion::{self, CompletionRequest, Message};
-use crate::message::{self, ToolChoice as MessageToolChoice};
-use serde_json::json;
+use crate::NonEmpty;
+use crate::completion::ToolDefinition;
+use crate::message::AssistantContent;
+use crate::providers::gemini::GeminiConfig;
+use crate::providers::gemini::api::Unmodeled;
+use crate::wire::{Mode, Wire, WireFrame};
 
-#[test]
-fn test_create_request_body_simple() {
-    let prompt = Message::User {
-        content: crate::NonEmpty::new(message::UserContent::text("Hello")),
-    };
-
-    let request = CompletionRequest {
-        record_telemetry_content: false,
-        model: None,
-        chat_history: crate::NonEmpty::with_rest(Message::system("Be precise."), [prompt]),
-        documents: vec![],
-        tools: vec![],
-        temperature: Some(0.7),
-        max_tokens: Some(128),
-        tool_choice: Some(MessageToolChoice::Required),
-        additional_params: None,
-        output_schema: None,
-    };
-
-    let result = create_request_body("gemini-2.5-flash".to_string(), request, Some(false))
-        .expect("request should build");
-
-    assert_eq!(result.model.as_deref(), Some("gemini-2.5-flash"));
-    assert!(result.agent.is_none());
-    assert_eq!(result.stream, Some(false));
-    assert_eq!(result.system_instruction.as_deref(), Some("Be precise."));
-
-    let config = result.generation_config.expect("generation config missing");
-    assert_eq!(config.temperature, Some(0.7));
-    assert_eq!(config.max_output_tokens, Some(128));
-    assert!(matches!(
-        config.tool_choice,
-        Some(ToolChoice::Type(ToolChoiceType::Any))
-    ));
-
-    let InteractionInput::Steps(steps) = result.input else {
-        panic!("expected steps input");
-    };
-    assert_eq!(steps.len(), 1);
-    let Step::UserInput { content: contents } = &steps[0] else {
-        panic!("expected user input step");
-    };
-    assert_eq!(contents.len(), 1);
-    match &contents[0] {
-        Content::Text(TextContent { text, .. }) => assert_eq!(text, "Hello"),
-        other => panic!("unexpected content: {other:?}"),
-    }
+fn wire() -> Interactions {
+    Interactions::new(GeminiConfig::new("test-key"), "gemini-3.8-flash")
 }
 
-/// `functionResponse.name` is the executed function's name: read from
-/// the required `ToolResult::name` — never an identifier.
+fn body(wire: &Interactions, request: CompletionRequest, mode: Mode) -> Value {
+    let encoded = wire.encode(request, mode).expect("encodes");
+    let crate::wire::Body::Bytes(bytes) = encoded.request.body() else {
+        panic!("a JSON body");
+    };
+    serde_json::from_slice(bytes).expect("JSON")
+}
+
 #[test]
-fn tool_result_serializes_the_executed_name_not_an_identifier() {
-    use message::{AssistantContent, ToolCall, ToolFunction, ToolResultContent};
-
-    let call = |item_id: Option<&str>, call_id: &str, name: &str| {
-        let function = ToolFunction {
-            name: crate::message::ToolName::new(name.to_owned()).expect("tool name"),
-            arguments: json!({}),
-        };
-        let tool_call = match item_id {
-            Some(item_id) => ToolCall::from_dual_wire(item_id, call_id, function),
-            None => ToolCall::from_wire(call_id, function),
-        };
-        Message::Assistant {
-            id: None,
-            content: crate::NonEmpty::new(AssistantContent::ToolCall(tool_call)),
-        }
+fn a_request_is_a_list_of_steps_with_rigs_fields() {
+    let tool = ToolDefinition {
+        name: "holdings".into(),
+        description: "Positions in an account.".into(),
+        parameters: json!({"type": "object", "properties": {"account": {"type": "string"}}}),
     };
-    let result = |item_id: Option<&str>, call_id: &str, name: &str| Message::User {
-        content: crate::NonEmpty::new(match item_id {
-            Some(item_id) => message::UserContent::tool_result(
-                crate::message::CallId::from_dual_wire(item_id, call_id),
-                crate::message::ToolName::new(name).expect("tool name"),
-                crate::NonEmpty::new(ToolResultContent::text("out")),
-            ),
-            None => message::UserContent::tool_result(
-                crate::message::CallId::from_wire(call_id),
-                crate::message::ToolName::new(name).expect("tool name"),
-                crate::NonEmpty::new(ToolResultContent::text("out")),
-            ),
-        }),
-    };
-
-    let request = CompletionRequest {
-        record_telemetry_content: false,
-        model: None,
-        chat_history: crate::NonEmpty::with_rest(
-            // A driver-built result carries the executed name (a repair
-            // hook renamed the call: `sum` ran, not `add`).
-            call(None, "call_1", "sum"),
-            [
-                result(None, "call_1", "sum"), // An OpenAI-shaped correlator travels as the call id while
-                // the required `name` field carries the executed name —
-                // `call_abc` must never reach the wire as a name.
-                call(None, "call_abc", "get_weather"),
-                result(None, "call_abc", "get_weather"), // A dual-identifier result (OpenAI Responses: item id `fc_…`
-                // + `call_id` `call_…`) keeps the correlator on the wire and
-                // the executed name in `name` — `fc_1` must never reach the
-                // wire as a name.
-                call(Some("fc_1"), "call_9", "get_time"),
-                result(Some("fc_1"), "call_9", "get_time"),
-            ],
-        ),
-        documents: vec![],
-        tools: vec![],
-        temperature: None,
-        max_tokens: None,
-        tool_choice: None,
-        additional_params: None,
-        output_schema: None,
-    };
-
-    let body = create_request_body("gemini-2.5-flash".to_string(), request, None)
-        .expect("request should build");
-    let input = serde_json::to_value(&body.input).expect("input should serialize");
-    let mut names = Vec::new();
-    let mut call_ids = Vec::new();
-    fn collect(value: &serde_json::Value, names: &mut Vec<String>, call_ids: &mut Vec<String>) {
-        match value {
-            serde_json::Value::Object(map) => {
-                if map.get("type").and_then(|t| t.as_str()) == Some("function_result") {
-                    if let Some(name) = map.get("name").and_then(|n| n.as_str()) {
-                        names.push(name.to_owned());
-                    }
-                    if let Some(call_id) = map.get("call_id").and_then(|c| c.as_str()) {
-                        call_ids.push(call_id.to_owned());
-                    }
-                }
-                for nested in map.values() {
-                    collect(nested, names, call_ids);
-                }
-            }
-            serde_json::Value::Array(items) => {
-                for nested in items {
-                    collect(nested, names, call_ids);
-                }
-            }
-            _ => {}
-        }
-    }
-    collect(&input, &mut names, &mut call_ids);
-
-    assert_eq!(
-        names,
-        vec![
-            "sum".to_owned(),
-            "get_weather".to_owned(),
-            "get_time".to_owned()
-        ]
+    let body = body(
+        &wire(),
+        CompletionRequest::new("What is ACC-7 worth?")
+            .preamble("You are a portfolio analyst.")
+            .temperature(0.2)
+            .max_tokens(512)
+            .tool(tool)
+            .tool_choice(ToolChoice::Required),
+        Mode::Unary,
     );
     assert_eq!(
-        call_ids,
-        vec![
-            "call_1".to_owned(),
-            "call_abc".to_owned(),
-            "call_9".to_owned()
-        ]
-    );
-}
-
-#[test]
-fn test_tool_result_without_provider_id_sends_minted_call_id() {
-    // A call id is always available: the wire gets the provider-issued id
-    // when one exists, else the id rig issued.
-    let call = message::CallId::from_wire("");
-    let content = message::UserContent::ToolResult(message::ToolResult {
-        call: call.clone(),
-        name: crate::message::ToolName::new("get_weather".to_string()).expect("tool name"),
-        content: crate::NonEmpty::new(message::ToolResultContent::text("ok")),
-    });
-
-    let converted = Content::try_from(content).expect("tool result should convert");
-    let Content::FunctionResult(result) = converted else {
-        panic!("expected function result");
-    };
-    assert_eq!(result.call_id.as_deref(), Some(call.wire().as_ref()));
-    assert_eq!(result.name.as_deref(), Some("get_weather"));
-}
-
-#[test]
-fn test_tool_result_preserves_text_and_json_types() {
-    let content = message::UserContent::ToolResult(message::ToolResult {
-        call: crate::message::CallId::from_wire("call-123"),
-        name: crate::message::ToolName::new("get_weather".to_string()).expect("tool name"),
-        content: crate::NonEmpty::with_rest(
-            message::ToolResultContent::text(r#"{"status":"literal"}"#),
-            [message::ToolResultContent::json(
-                json!({ "status": "structured" }),
-            )],
-        ),
-    });
-
-    let converted = Content::try_from(content).expect("tool result should convert");
-    let Content::FunctionResult(result) = converted else {
-        panic!("expected function result");
-    };
-    let expected_result = json!([
-        {
-            "type": "text",
-            "text": "{\"status\":\"literal\"}"
-        },
-        {
-            "type": "text",
-            "text": "{\"status\":\"structured\"}"
-        }
-    ]);
-    assert_eq!(result.result, Some(expected_result.clone()));
-    assert_eq!(
-        serde_json::to_value(Content::FunctionResult(result))
-            .expect("function result should serialize"),
+        body,
         json!({
-            "type": "function_result",
-            "name": "get_weather",
-            "result": expected_result,
-            "call_id": "call-123"
+            "model": "gemini-3.8-flash",
+            "input": [{"type": "user_input", "content": [{"type": "text", "text": "What is ACC-7 worth?"}]}],
+            "system_instruction": "You are a portfolio analyst.",
+            "tools": [{
+                "type": "function",
+                "name": "holdings",
+                "description": "Positions in an account.",
+                "parameters": {"type": "object", "properties": {"account": {"type": "string"}}}
+            }],
+            "generation_config": {"temperature": 0.2, "max_output_tokens": 512, "tool_choice": "any"},
+            "stream": false
         })
     );
 }
 
 #[test]
-fn test_tool_result_text_and_json_singletons_remain_scalar() {
-    let cases = [
-        (
-            message::ToolResultContent::text(r#"{"status":"literal"}"#),
-            json!("{\"status\":\"literal\"}"),
-        ),
-        (
-            message::ToolResultContent::json(json!({ "status": "structured" })),
-            json!({ "status": "structured" }),
-        ),
-        (
-            message::ToolResultContent::json(json!("structured string")),
-            json!("structured string"),
-        ),
-        // A scalar is wrapped as the generate wire wraps it: as a text
-        // block it would be a multimodal response, which the models refuse.
-        (
-            message::ToolResultContent::json(json!(42)),
-            json!({ "result": 42 }),
-        ),
-        (
-            message::ToolResultContent::json(json!([1, 2])),
-            json!({ "result": [1, 2] }),
-        ),
-    ];
-
-    for (tool_content, expected) in cases {
-        let content = message::UserContent::ToolResult(message::ToolResult {
-            call: crate::message::CallId::from_wire("call-123"),
-            name: crate::message::ToolName::new("get_weather".to_string()).expect("tool name"),
-            content: crate::NonEmpty::new(tool_content),
-        });
-
-        let Content::FunctionResult(result) =
-            Content::try_from(content).expect("tool result should convert")
-        else {
-            panic!("expected function result");
-        };
-        assert_eq!(result.result, Some(expected));
-    }
-}
-
-#[test]
-fn test_tool_result_rich_singletons_use_tagged_content() {
-    let cases = [(
-        message::ToolResultContent::image_base64(
-            "image-data",
-            Some(message::ImageMediaType::PNG),
-            None,
-        ),
-        json!([{
-            "type": "image",
-            "data": "image-data",
-            "mime_type": "image/png"
-        }]),
-    )];
-
-    for (tool_content, expected) in cases {
-        let content = message::UserContent::ToolResult(message::ToolResult {
-            call: crate::message::CallId::from_wire("call-123"),
-            name: crate::message::ToolName::new("get_weather".to_string()).expect("tool name"),
-            content: crate::NonEmpty::new(tool_content),
-        });
-
-        let Content::FunctionResult(result) =
-            Content::try_from(content).expect("tool result should convert")
-        else {
-            panic!("expected function result");
-        };
-        assert_eq!(result.result, Some(expected));
-    }
-}
-
-#[test]
-fn test_tool_result_images_and_text_serialize_as_ordered_tagged_content() {
-    let tool_result = message::UserContent::ToolResult(message::ToolResult {
-        call: crate::message::CallId::from_wire("call-image"),
-        name: crate::message::ToolName::new("render".to_string()).expect("tool name"),
-        content: crate::NonEmpty::with_rest(
-            message::ToolResultContent::image_base64(
-                "first-image",
-                Some(message::ImageMediaType::PNG),
-                None,
-            ),
-            [
-                message::ToolResultContent::text("between-images"),
-                message::ToolResultContent::Image(message::Image {
-                    data: message::DocumentSourceKind::Url(
-                        "https://example.com/second.jpg".to_string(),
-                    ),
-                    media_type: Some(message::ImageMediaType::JPEG),
-                    detail: None,
-                    additional_params: None,
-                }),
-            ],
-        ),
-    });
-    let request = CompletionRequest {
-        record_telemetry_content: false,
-        model: None,
-        chat_history: crate::NonEmpty::new(Message::User {
-            content: crate::NonEmpty::new(tool_result),
-        }),
-        documents: vec![],
-        tools: vec![],
-        temperature: None,
-        max_tokens: None,
-        tool_choice: None,
-        additional_params: None,
-        output_schema: None,
-    };
-
-    let request = create_request_body("gemini-2.5-flash".to_string(), request, None)
-        .expect("request should build");
-    let serialized = serde_json::to_value(request).expect("request should serialize");
-
-    // The result is a step of its own on the wire (not nested in a
-    // `user_input` step, which the API refuses on a round trip).
-    assert_eq!(
-        serialized.pointer("/input/0"),
-        Some(&json!({
-            "type": "function_result",
-            "name": "render",
-            "result": [
-                {
-                    "type": "image",
-                    "data": "first-image",
-                    "mime_type": "image/png"
-                },
-                {
-                    "type": "text",
-                    "text": "between-images"
-                },
-                {
-                    "type": "image",
-                    "uri": "https://example.com/second.jpg",
-                    "mime_type": "image/jpeg"
-                }
-            ],
-            "call_id": "call-image"
-        }))
-    );
-}
-
-#[tokio::test]
-async fn test_response_function_call_mapping() {
-    let interaction = Interaction {
-        id: "interaction-1".to_string(),
-        steps: vec![Step::FunctionCall(FunctionCallContent {
-            name: Some("get_weather".to_string()),
-            arguments: Some(json!({"location": "Paris"})),
-            id: Some("call-123".to_string()),
-        })],
-        usage: Some(InteractionUsage {
-            total_input_tokens: Some(5),
-            total_output_tokens: Some(7),
-            total_tokens: Some(12),
+fn settings_carry_interactions_own_options() {
+    let wire = wire().with_settings(api::RequestSettings {
+        agent: Some("deep-research-preview-04-2026".into()),
+        background: Some(true),
+        service_tier: Some(api::ServiceTier::Deferred),
+        tools: vec![api::HostedTool::new("google_search")],
+        generation_config: api::GenerationSettings {
+            thinking_level: Some(api::ThinkingLevel::Low),
             ..Default::default()
-        }),
+        },
         ..Default::default()
-    };
-
-    let response = fold_resource(&interaction).await;
-
-    let choice = response.choice.first();
-    match choice {
-        Some(completion::AssistantContent::ToolCall(tool_call)) => {
-            assert_eq!(tool_call.function.name, "get_weather");
-            assert_eq!(
-                tool_call
-                    .id
-                    .provider()
-                    .map(|provider| provider.call_id.as_str()),
-                Some("call-123")
-            );
-            assert_eq!(
-                tool_call.id.provider().expect("wire id").call_id,
-                "call-123"
-            );
-        }
-        other => panic!("unexpected content: {other:?}"),
-    }
-
-    assert_eq!(response.usage.input_tokens, Some(5));
-    assert_eq!(response.usage.output_tokens, Some(7));
-    assert_eq!(response.usage.total_tokens, Some(12));
+    });
+    let body = body(&wire, CompletionRequest::new("hi"), Mode::Streaming);
+    assert!(body.get("model").is_none(), "an agent replaces the model");
+    assert_eq!(body["agent"], "deep-research-preview-04-2026");
+    assert_eq!(body["service_tier"], "deferred");
+    assert_eq!(body["tools"], json!([{"type": "google_search"}]));
+    assert_eq!(body["generation_config"], json!({"thinking_level": "low"}));
+    assert_eq!(body["stream"], true);
 }
 
 #[test]
-fn test_google_search_tool_serialization() {
-    let tool = Tool::GoogleSearch;
-    let value = serde_json::to_value(tool).expect("tool should serialize");
-    assert_eq!(value, json!({ "type": "google_search" }));
-}
-
-#[test]
-fn test_url_context_tool_serialization() {
-    let tool = Tool::UrlContext;
-    let value = serde_json::to_value(tool).expect("tool should serialize");
-    assert_eq!(value, json!({ "type": "url_context" }));
-}
-
-#[test]
-fn test_code_execution_tool_serialization() {
-    let tool = Tool::CodeExecution;
-    let value = serde_json::to_value(tool).expect("tool should serialize");
-    assert_eq!(value, json!({ "type": "code_execution" }));
-}
-
-#[test]
-fn test_google_search_helpers() {
-    let interaction = Interaction {
-        steps: vec![
-            Step::GoogleSearchCall(GoogleSearchCallContent {
-                arguments: Some(GoogleSearchCallArguments {
-                    queries: Some(vec!["query-one".to_string(), "query-two".to_string()]),
-                }),
-                id: Some("call-1".to_string()),
-            }),
-            Step::GoogleSearchResult(GoogleSearchResultContent {
-                result: Some(vec![GoogleSearchResult {
-                    url: Some("https://example.com".to_string()),
-                    title: Some("Example One".to_string()),
-                    rendered_content: None,
-                }]),
-                signature: None,
-                is_error: None,
-                call_id: Some("call-1".to_string()),
-            }),
-            Step::GoogleSearchCall(GoogleSearchCallContent {
-                arguments: Some(GoogleSearchCallArguments {
-                    queries: Some(vec!["query-three".to_string()]),
-                }),
-                id: Some("call-2".to_string()),
-            }),
-            Step::GoogleSearchResult(GoogleSearchResultContent {
-                result: Some(vec![GoogleSearchResult {
-                    url: Some("https://example.org".to_string()),
-                    title: Some("Example Two".to_string()),
-                    rendered_content: None,
-                }]),
-                signature: None,
-                is_error: None,
-                call_id: Some("call-2".to_string()),
-            }),
-        ],
-        ..Default::default()
-    };
-
-    let exchanges = interaction.google_search_exchanges();
-    assert_eq!(exchanges.len(), 2);
-    assert_eq!(exchanges[0].call_id.as_deref(), Some("call-1"));
-    assert_eq!(
-        exchanges[0].queries(),
-        vec!["query-one".to_string(), "query-two".to_string()]
-    );
-    let exchange_results = exchanges[0].result_items();
-    assert_eq!(exchange_results.len(), 1);
-    assert_eq!(exchange_results[0].title.as_deref(), Some("Example One"));
-
-    assert_eq!(exchanges[1].call_id.as_deref(), Some("call-2"));
-    assert_eq!(exchanges[1].queries(), vec!["query-three".to_string()]);
-    let exchange_results = exchanges[1].result_items();
-    assert_eq!(exchange_results.len(), 1);
-    assert_eq!(exchange_results[0].title.as_deref(), Some("Example Two"));
-
-    let queries = interaction.google_search_queries();
-    assert_eq!(queries, vec!["query-one", "query-two", "query-three"]);
-
-    let results = interaction.google_search_results();
-    assert_eq!(results.len(), 2);
-    assert_eq!(results[0].title.as_deref(), Some("Example One"));
-    assert_eq!(results[1].title.as_deref(), Some("Example Two"));
-
-    let call_contents = interaction.google_search_call_contents();
-    assert_eq!(call_contents.len(), 2);
-    assert_eq!(call_contents[0].id.as_deref(), Some("call-1"));
-    assert_eq!(call_contents[1].id.as_deref(), Some("call-2"));
-
-    let result_contents = interaction.google_search_result_contents();
-    assert_eq!(result_contents.len(), 2);
-    assert_eq!(result_contents[0].call_id.as_deref(), Some("call-1"));
-    assert_eq!(result_contents[1].call_id.as_deref(), Some("call-2"));
-}
-
-#[test]
-fn test_google_search_helpers_without_call_id() {
-    let interaction = Interaction {
-        steps: vec![
-            Step::GoogleSearchCall(GoogleSearchCallContent {
-                arguments: Some(GoogleSearchCallArguments {
-                    queries: Some(vec!["query-one".to_string()]),
-                }),
-                id: None,
-            }),
-            Step::GoogleSearchResult(GoogleSearchResultContent {
-                result: Some(vec![GoogleSearchResult {
-                    url: Some("https://example.com".to_string()),
-                    title: Some("Example One".to_string()),
-                    rendered_content: None,
-                }]),
-                signature: None,
-                is_error: None,
-                call_id: None,
-            }),
-            Step::GoogleSearchCall(GoogleSearchCallContent {
-                arguments: Some(GoogleSearchCallArguments {
-                    queries: Some(vec!["query-two".to_string()]),
-                }),
-                id: Some("call-2".to_string()),
-            }),
-            Step::GoogleSearchResult(GoogleSearchResultContent {
-                result: Some(vec![GoogleSearchResult {
-                    url: Some("https://example.org".to_string()),
-                    title: Some("Example Two".to_string()),
-                    rendered_content: None,
-                }]),
-                signature: None,
-                is_error: None,
-                call_id: None,
-            }),
-        ],
-        ..Default::default()
-    };
-
-    let exchanges = interaction.google_search_exchanges();
-    assert_eq!(exchanges.len(), 2);
-
-    let no_id = exchanges
-        .iter()
-        .find(|exchange| exchange.call_id.is_none())
-        .expect("expected no-id exchange");
-    assert_eq!(no_id.calls.len(), 1);
-    assert_eq!(no_id.results.len(), 1);
-
-    let with_id = exchanges
-        .iter()
-        .find(|exchange| exchange.call_id.as_deref() == Some("call-2"))
-        .expect("expected call-2 exchange");
-    assert_eq!(with_id.calls.len(), 1);
-    assert_eq!(with_id.results.len(), 1);
-}
-
-#[test]
-fn test_url_context_helpers() {
-    let interaction = Interaction {
-        steps: vec![
-            Step::UrlContextCall(UrlContextCallContent {
-                arguments: Some(UrlContextCallArguments {
-                    urls: Some(vec![
-                        "https://example.com".to_string(),
-                        "https://example.org".to_string(),
-                    ]),
-                }),
-                id: Some("call-1".to_string()),
-            }),
-            Step::UrlContextResult(UrlContextResultContent {
-                result: Some(vec![UrlContextResult {
-                    url: Some("https://example.com".to_string()),
-                    status: Some("success".to_string()),
-                }]),
-                signature: None,
-                is_error: None,
-                call_id: Some("call-1".to_string()),
-            }),
-        ],
-        ..Default::default()
-    };
-
-    let exchanges = interaction.url_context_exchanges();
-    assert_eq!(exchanges.len(), 1);
-    assert_eq!(exchanges[0].call_id.as_deref(), Some("call-1"));
-    assert_eq!(
-        exchanges[0].urls(),
-        vec!["https://example.com", "https://example.org"]
-    );
-    let results = exchanges[0].result_items();
-    assert_eq!(results.len(), 1);
-    assert_eq!(results[0].status.as_deref(), Some("success"));
-
-    let urls = interaction.url_context_urls();
-    assert_eq!(urls, vec!["https://example.com", "https://example.org"]);
-
-    let results = interaction.url_context_results();
-    assert_eq!(results.len(), 1);
-    assert_eq!(results[0].url.as_deref(), Some("https://example.com"));
-
-    let call_contents = interaction.url_context_call_contents();
-    assert_eq!(call_contents.len(), 1);
-    assert_eq!(call_contents[0].id.as_deref(), Some("call-1"));
-
-    let result_contents = interaction.url_context_result_contents();
-    assert_eq!(result_contents.len(), 1);
-    assert_eq!(result_contents[0].call_id.as_deref(), Some("call-1"));
-}
-
-#[test]
-fn test_url_context_helpers_without_call_id() {
-    let interaction = Interaction {
-        steps: vec![
-            Step::UrlContextCall(UrlContextCallContent {
-                arguments: Some(UrlContextCallArguments {
-                    urls: Some(vec!["https://example.com".to_string()]),
-                }),
-                id: None,
-            }),
-            Step::UrlContextResult(UrlContextResultContent {
-                result: Some(vec![UrlContextResult {
-                    url: Some("https://example.com".to_string()),
-                    status: Some("success".to_string()),
-                }]),
-                signature: None,
-                is_error: None,
-                call_id: None,
-            }),
-            Step::UrlContextCall(UrlContextCallContent {
-                arguments: Some(UrlContextCallArguments {
-                    urls: Some(vec!["https://example.org".to_string()]),
-                }),
-                id: Some("call-2".to_string()),
-            }),
-            Step::UrlContextResult(UrlContextResultContent {
-                result: Some(vec![UrlContextResult {
-                    url: Some("https://example.org".to_string()),
-                    status: Some("success".to_string()),
-                }]),
-                signature: None,
-                is_error: None,
-                call_id: None,
-            }),
-        ],
-        ..Default::default()
-    };
-
-    let exchanges = interaction.url_context_exchanges();
-    assert_eq!(exchanges.len(), 2);
-
-    let no_id = exchanges
-        .iter()
-        .find(|exchange| exchange.call_id.is_none())
-        .expect("expected no-id exchange");
-    assert_eq!(no_id.calls.len(), 1);
-    assert_eq!(no_id.results.len(), 1);
-
-    let with_id = exchanges
-        .iter()
-        .find(|exchange| exchange.call_id.as_deref() == Some("call-2"))
-        .expect("expected call-2 exchange");
-    assert_eq!(with_id.calls.len(), 1);
-    assert_eq!(with_id.results.len(), 1);
-}
-
-#[test]
-fn test_code_execution_helpers() {
-    let interaction = Interaction {
-        steps: vec![
-            Step::CodeExecutionCall(CodeExecutionCallContent {
-                arguments: Some(CodeExecutionCallArguments {
-                    language: Some("python".to_string()),
-                    code: Some("print(2 + 2)".to_string()),
-                }),
-                id: Some("call-1".to_string()),
-            }),
-            Step::CodeExecutionResult(CodeExecutionResultContent {
-                result: Some("4\n".to_string()),
-                signature: None,
-                is_error: None,
-                call_id: Some("call-1".to_string()),
-            }),
-        ],
-        ..Default::default()
-    };
-
-    let exchanges = interaction.code_execution_exchanges();
-    assert_eq!(exchanges.len(), 1);
-    assert_eq!(exchanges[0].call_id.as_deref(), Some("call-1"));
-    assert_eq!(exchanges[0].code_snippets(), vec!["print(2 + 2)"]);
-    assert_eq!(exchanges[0].outputs(), vec!["4\n"]);
-
-    let calls = interaction.code_execution_call_contents();
-    assert_eq!(calls.len(), 1);
-    assert_eq!(calls[0].id.as_deref(), Some("call-1"));
-
-    let results = interaction.code_execution_result_contents();
-    assert_eq!(results.len(), 1);
-    assert_eq!(results[0].call_id.as_deref(), Some("call-1"));
-
-    let snippets = interaction.code_execution_snippets();
-    assert_eq!(snippets, vec!["print(2 + 2)"]);
-
-    let outputs = interaction.code_execution_outputs();
-    assert_eq!(outputs, vec!["4\n"]);
-}
-
-#[test]
-fn test_code_execution_helpers_without_call_id() {
-    let interaction = Interaction {
-        steps: vec![
-            Step::CodeExecutionCall(CodeExecutionCallContent {
-                arguments: Some(CodeExecutionCallArguments {
-                    language: Some("python".to_string()),
-                    code: Some("print(1 + 1)".to_string()),
-                }),
-                id: None,
-            }),
-            Step::CodeExecutionResult(CodeExecutionResultContent {
-                result: Some("2\n".to_string()),
-                signature: None,
-                is_error: None,
-                call_id: None,
-            }),
-            Step::CodeExecutionCall(CodeExecutionCallContent {
-                arguments: Some(CodeExecutionCallArguments {
-                    language: Some("python".to_string()),
-                    code: Some("print(2 + 2)".to_string()),
-                }),
-                id: Some("call-2".to_string()),
-            }),
-            Step::CodeExecutionResult(CodeExecutionResultContent {
-                result: Some("4\n".to_string()),
-                signature: None,
-                is_error: None,
-                call_id: None,
-            }),
-        ],
-        ..Default::default()
-    };
-
-    let exchanges = interaction.code_execution_exchanges();
-    assert_eq!(exchanges.len(), 2);
-
-    let no_id = exchanges
-        .iter()
-        .find(|exchange| exchange.call_id.is_none())
-        .expect("expected no-id exchange");
-    assert_eq!(no_id.calls.len(), 1);
-    assert_eq!(no_id.results.len(), 1);
-
-    let with_id = exchanges
-        .iter()
-        .find(|exchange| exchange.call_id.as_deref() == Some("call-2"))
-        .expect("expected call-2 exchange");
-    assert_eq!(with_id.calls.len(), 1);
-    assert_eq!(with_id.results.len(), 1);
-}
-
-#[test]
-fn test_interaction_status_helpers() {
-    let mut interaction = Interaction {
-        status: Some(InteractionStatus::InProgress),
-        ..Default::default()
-    };
-    assert!(!interaction.is_terminal());
-    assert!(!interaction.is_completed());
-
-    // RequiresAction is terminal for the poll (it never advances without
-    // the caller submitting tool results) but is not a completion.
-    interaction.status = Some(InteractionStatus::RequiresAction);
-    assert!(interaction.is_terminal());
-    assert!(!interaction.is_completed());
-
-    interaction.status = Some(InteractionStatus::Completed);
-    assert!(interaction.is_terminal());
-    assert!(interaction.is_completed());
-
-    interaction.status = Some(InteractionStatus::Failed);
-    assert!(interaction.is_terminal());
-    assert!(!interaction.is_completed());
-
-    interaction.status = Some(InteractionStatus::BudgetExceeded);
-    assert!(interaction.is_terminal());
-    assert!(!interaction.is_completed());
-}
-
-#[test]
-fn test_interaction_status_maps_every_wire_variant() {
-    use crate::completion::FinishReason as Normalized;
-
-    for (status, expected) in [
-        (InteractionStatus::Completed, Normalized::Stop),
-        (InteractionStatus::RequiresAction, Normalized::ToolCalls),
-        (InteractionStatus::BudgetExceeded, Normalized::Length),
-        // Statuses rig does not model survive in the provider's own
-        // spelling rather than being guessed at.
-        (
-            InteractionStatus::InProgress,
-            Normalized::Other("in_progress".to_string()),
-        ),
-        (
-            InteractionStatus::Incomplete,
-            Normalized::Other("incomplete".to_string()),
-        ),
-        (
-            InteractionStatus::Failed,
-            Normalized::Other("failed".to_string()),
-        ),
-        (
-            InteractionStatus::Cancelled,
-            Normalized::Other("cancelled".to_string()),
-        ),
+fn settings_refuse_what_interactions_rejects_or_rig_owns() {
+    for key in [
+        "safety_settings",
+        "safetySettings",
+        "system_instruction",
+        "input",
     ] {
-        assert_eq!(
-            map_interaction_status(&status),
-            expected,
-            "status {status:?}"
+        assert!(
+            Unmodeled::<api::RequestSettings>::new()
+                .with(key, json!([]))
+                .is_err(),
+            "{key}"
+        );
+    }
+    for key in [
+        "media_resolution",
+        "mediaResolution",
+        "temperature",
+        "tool_choice",
+    ] {
+        assert!(
+            Unmodeled::<api::GenerationSettings>::new()
+                .with(key, json!("high"))
+                .is_err(),
+            "{key}"
         );
     }
 }
 
 #[test]
-fn test_interaction_status_wire_spelling_matches_serde() {
-    // `as_wire_str` is hand-written; keep it honest against the serde
-    // representation the same enum deserializes from.
-    for status in [
-        InteractionStatus::InProgress,
-        InteractionStatus::RequiresAction,
-        InteractionStatus::Incomplete,
-        InteractionStatus::BudgetExceeded,
-        InteractionStatus::Completed,
-        InteractionStatus::Failed,
-        InteractionStatus::Cancelled,
-    ] {
-        let serialized = serde_json::to_value(&status).expect("status should serialize");
-        assert_eq!(serialized, json!(status.as_wire_str()));
-    }
-}
-
-#[test]
-fn test_unknown_interaction_status_round_trips_verbatim() {
-    // A status this crate does not know must land in `Unknown` with the
-    // provider's spelling intact — and serialize back to the same string —
-    // rather than failing the whole payload.
-    let status: InteractionStatus =
-        serde_json::from_value(json!("status_future")).expect("unknown status should deserialize");
-    assert!(matches!(&status, InteractionStatus::Unknown(s) if s == "status_future"));
-    assert_eq!(status.as_wire_str(), "status_future");
-    assert_eq!(
-        serde_json::to_value(&status).expect("status should serialize"),
-        json!("status_future")
-    );
-    assert_eq!(
-        map_interaction_status(&status),
-        crate::completion::FinishReason::Other("status_future".to_string())
+fn additional_params_are_refused() {
+    assert!(
+        wire()
+            .encode(
+                CompletionRequest::new("hi").additional_params(json!({"store": false})),
+                Mode::Unary
+            )
+            .is_err()
     );
 }
 
-#[test]
-fn test_interaction_with_unknown_status_stays_parseable() {
-    // A status Google ships tomorrow must not fail the interaction
-    // payload; the unknown status is conservatively *terminal* — only the
-    // known in-flight statuses keep a poll loop waiting, so a future
-    // status surfaces to the caller instead of hanging it.
-    let interaction: Interaction = serde_json::from_value(json!({
-        "id": "int-future",
-        "status": "status_future",
-        "usage": {"total_tokens": 5}
-    }))
-    .expect("unknown status should not fail the payload");
+const STEPS: &str = r#"{"id":"v1_1","status":"requires_action","model":"gemini-3.8-flash","object":"interaction","usage":{"total_tokens":157227,"total_input_tokens":4163,"total_cached_tokens":90503,"total_output_tokens":1124,"total_tool_use_tokens":147650,"total_thought_tokens":4290},"steps":[
+{"id":"call_1","signature":"c2VhcmNo","type":"google_search_call","arguments":{"queries":["NVDA close"]},"search_type":"web_search"},
+{"call_id":"call_1","signature":"cmVzdWx0","type":"google_search_result","result":[{"search_suggestions":"<b>x</b>"}]},
+{"signature":"dGhvdWdodA==","type":"thought"},
+{"id":"call_2","type":"function_call","name":"holdings","arguments":{"account":"ACC-7"}},
+{"type":"model_output","content":[{"type":"text","text":"Checking.","annotations":[{"type":"url_citation","url":"https://example.com","start_index":0,"end_index":4}]}]}
+]}"#;
 
-    assert_eq!(interaction.id, "int-future");
-    assert!(matches!(
-        interaction.status,
-        Some(InteractionStatus::Unknown(ref s)) if s == "status_future"
-    ));
-    assert!(interaction.is_terminal());
-    assert!(!interaction.is_completed());
-    assert_eq!(
-        interaction.usage.as_ref().and_then(|u| u.total_tokens),
-        Some(5)
-    );
-}
-
-#[tokio::test]
-async fn test_completion_response_carries_normalized_metadata() {
-    let interaction = Interaction {
-        id: "interaction-meta".to_string(),
-        model: Some("gemini-2.5-pro".to_string()),
-        status: Some(InteractionStatus::BudgetExceeded),
-        steps: vec![Step::ModelOutput {
-            content: vec![Content::Text(TextContent {
-                text: "partial answer".to_string(),
-                annotations: None,
-            })],
-        }],
-        ..Default::default()
-    };
-
-    let response = fold_resource(&interaction).await;
-
-    assert_eq!(response.provider, PROVIDER_NAME);
-    assert_eq!(response.model.as_deref(), Some("gemini-2.5-pro"));
-    assert_eq!(response.response_id.as_deref(), Some("interaction-meta"));
-    assert_eq!(response.message_id, None);
-    assert_eq!(
-        response.finish_reason(),
-        Some(crate::completion::FinishReason::Length)
-    );
-}
-
-#[tokio::test]
-async fn test_completion_response_upgrades_completed_to_tool_calls() {
-    // A `completed` interaction whose outputs are function calls is a tool
-    // turn; the normalized response must say so.
-    let interaction = Interaction {
-        id: "interaction-tool".to_string(),
-        status: Some(InteractionStatus::Completed),
-        steps: vec![Step::FunctionCall(FunctionCallContent {
-            name: Some("get_weather".to_string()),
-            arguments: Some(json!({"location": "Paris"})),
-            id: Some("call-123".to_string()),
-        })],
-        ..Default::default()
-    };
-
-    let response = fold_resource(&interaction).await;
-
-    assert_eq!(
-        response.finish_reason(),
-        Some(crate::completion::FinishReason::ToolCalls)
-    );
-    assert_eq!(response.model, None);
-}
-
-#[test]
-fn test_budget_exceeded_status_deserializes() {
-    let status: InteractionStatus = serde_json::from_value(json!("budget_exceeded"))
-        .expect("budget_exceeded should deserialize");
-
-    assert!(matches!(status, InteractionStatus::BudgetExceeded));
-    assert!(status.is_terminal());
-}
-
-#[test]
-fn test_budget_exceeded_status_update_deserializes() {
-    let event: InteractionSseEvent = serde_json::from_value(json!({
-        "event_type": "interaction.status_update",
-        "interaction_id": "interaction-123",
-        "status": "budget_exceeded",
-        "event_id": "event-456"
-    }))
-    .expect("budget_exceeded status update should deserialize");
-
-    match event {
-        InteractionSseEvent::InteractionStatusUpdate {
-            interaction_id,
-            status,
-            event_id,
-        } => {
-            assert_eq!(interaction_id, "interaction-123");
-            assert!(matches!(status, InteractionStatus::BudgetExceeded));
-            assert!(status.is_terminal());
-            assert_eq!(event_id.as_deref(), Some("event-456"));
-        }
-        other => panic!("expected status update event, got {other:?}"),
-    }
-}
-
-#[test]
-fn test_build_interaction_stream_path() {
-    let path = build_interaction_stream_path("interaction-123", None);
-    assert_eq!(path, "/v1beta/interactions/interaction-123?stream=true");
-
-    let path = build_interaction_stream_path("interaction-123", Some("event-456"));
-    assert_eq!(
-        path,
-        "/v1beta/interactions/interaction-123?stream=true&last_event_id=event-456"
-    );
-}
-
-#[test]
-fn test_inline_citations_from_annotations() {
-    let text_content = TextContent {
-        text: "Hello world".to_string(),
-        annotations: Some(vec![
-            Annotation {
-                start_index: Some(6),
-                end_index: Some(11),
-                source: Some("https://example.com".to_string()),
-            },
-            Annotation {
-                start_index: Some(0),
-                end_index: Some(5),
-                source: Some("https://hello.example".to_string()),
-            },
-        ]),
-    };
-
-    let cited = text_content.with_inline_citations();
-    assert_eq!(
-        cited,
-        "Hello[1](https://hello.example) world[2](https://example.com)"
-    );
-
-    let interaction = Interaction {
-        steps: vec![Step::ModelOutput {
-            content: vec![Content::Text(text_content)],
-        }],
-        ..Default::default()
-    };
-
-    let cited_text = interaction.text_with_inline_citations();
-    assert_eq!(
-        cited_text.as_deref(),
-        Some("Hello[1](https://hello.example) world[2](https://example.com)")
-    );
-}
-
-/// A thought sent back to the wire carries its summary items tagged by
-/// `type`, as every content item on this wire is; untagged items are
-/// refused by the API on the round trip of a model's own reasoning.
-#[test]
-fn a_thought_summary_round_trips_with_its_type() {
-    let reasoning = message::AssistantContent::Reasoning(
-        message::Reasoning::new_with_signature("add them", Some("sig".to_owned()))
-            .sealed("gcp.gemini"),
-    );
-    let content = Content::try_from(reasoning).expect("reasoning converts");
-    let wire = serde_json::to_value(&content).expect("serializes");
-    assert_eq!(
-        wire,
-        json!({
-            "type": "thought",
-            "signature": "sig",
-            "summary": [{ "type": "text", "text": "add them" }]
-        })
-    );
-    let back: Content = serde_json::from_value(wire).expect("decodes");
-    assert!(matches!(back, Content::Thought(_)));
-}
-
-/// A signature-only thought — the wire's `thought_signature` with no
-/// summary text, which is what a streamed function-call turn carries —
-/// goes back as signature-only; an empty summary item is refused by the
-/// API ("Request contains an invalid argument").
-#[test]
-fn a_signature_only_thought_round_trips_without_a_summary() {
-    let reasoning = message::AssistantContent::Reasoning(
-        message::Reasoning::new_with_signature("", Some("sig".to_owned())).sealed("gcp.gemini"),
-    );
-    let content = Content::try_from(reasoning).expect("reasoning converts");
-    let wire = serde_json::to_value(&content).expect("serializes");
-    assert_eq!(wire, json!({ "type": "thought", "signature": "sig" }));
-}
-
-/// A tool round trip in client-managed history: the thought, the call and
-/// the result are steps of their own, in the message's order, as the API
-/// emits them and as it accepts them back; text stays in a grouped step.
-#[test]
-fn a_tool_round_trip_is_top_level_steps() {
-    let call = message::ToolCall::from_wire(
-        "fc_1",
-        message::ToolFunction::new(
-            crate::message::ToolName::new("add".to_owned()).expect("tool name"),
-            json!({"x": 17, "y": 25}),
-        ),
-    );
-    let assistant = Message::Assistant {
-        id: None,
-        content: crate::NonEmpty::with_rest(
-            message::AssistantContent::Reasoning(
-                message::Reasoning::new_with_signature("", Some("sig".to_owned()))
-                    .sealed("gcp.gemini"),
-            ),
-            [
-                message::AssistantContent::text("Adding."),
-                message::AssistantContent::ToolCall(call.clone()),
-            ],
-        ),
-    };
-    let result = Message::from(message::UserContent::tool_result(
-        call.id.clone(),
-        crate::message::ToolName::new("add").expect("tool name"),
-        crate::NonEmpty::new(message::ToolResultContent::json(json!({"sum": 42}))),
-    ));
-    let body = create_request_body(
-        "gemini-2.5-flash".to_owned(),
-        CompletionRequest {
-            record_telemetry_content: false,
-            model: None,
-            chat_history: crate::NonEmpty::with_rest(
-                Message::user("Add 17 and 25."),
-                [assistant, result],
-            ),
-            documents: vec![],
-            tools: vec![],
-            temperature: None,
-            max_tokens: None,
-            tool_choice: None,
-            additional_params: None,
-            output_schema: None,
-        },
-        None,
+fn decode(frames: &[&str], mode: Mode) -> crate::completion::CompletionResponse {
+    crate::test_utils::decode_reply(
+        &wire(),
+        &CompletionRequest::new("hi"),
+        mode,
+        frames
+            .iter()
+            .map(|frame| WireFrame::Text((*frame).to_owned())),
+        Value::Null,
     )
-    .expect("the request builds");
-    let InteractionInput::Steps(steps) = body.input else {
-        panic!("steps");
-    };
-    let kinds: Vec<&str> = steps
+    .expect("decodes")
+}
+
+#[test]
+fn a_whole_interaction_keeps_hosted_steps_and_replays_them() {
+    let response = decode(&[STEPS], Mode::Unary);
+    let kinds: Vec<&str> = response
+        .choice
         .iter()
-        .map(|step| match step {
-            Step::UserInput { .. } => "user_input",
-            Step::ModelOutput { .. } => "model_output",
-            Step::Thought(_) => "thought",
-            Step::FunctionCall(_) => "function_call",
-            Step::FunctionResult(_) => "function_result",
-            Step::CodeExecutionCall(_)
-            | Step::CodeExecutionResult(_)
-            | Step::UrlContextCall(_)
-            | Step::UrlContextResult(_)
-            | Step::GoogleSearchCall(_)
-            | Step::GoogleSearchResult(_)
-            | Step::McpServerToolCall(_)
-            | Step::McpServerToolResult(_)
-            | Step::FileSearchResult(_) => "other",
+        .map(|part| match part {
+            AssistantContent::Native(_) => "native",
+            AssistantContent::Reasoning(_) => "thought",
+            AssistantContent::ToolCall(_) => "call",
+            AssistantContent::Text(_) => "text",
+            AssistantContent::Image(_) => "image",
         })
         .collect();
     assert_eq!(
         kinds,
-        [
-            "user_input",
-            "thought",
-            "model_output",
-            "function_call",
-            "function_result"
-        ]
+        ["native", "native", "thought", "call", "text", "native"]
+    );
+    let usage = response.usage;
+    assert_eq!(usage.input_tokens, Some(4163 + 147650));
+    assert_eq!(usage.output_tokens, Some(1124 + 4290));
+    assert_eq!(usage.total_tokens, Some(157227));
+    assert!(usage.cached_input_tokens <= usage.input_tokens);
+
+    let content = NonEmpty::from_vec(response.choice).expect("parts");
+    let replay = body(
+        &wire(),
+        CompletionRequest::new("go on").message(Message::Assistant { id: None, content }),
+        Mode::Unary,
+    );
+    let input = replay["input"].as_array().expect("steps");
+    assert_eq!(input[0]["type"], "google_search_call");
+    assert_eq!(input[0]["signature"], "c2VhcmNo");
+    assert_eq!(input[0]["search_type"], "web_search");
+    assert_eq!(input[1]["signature"], "cmVzdWx0");
+    assert_eq!(
+        input[2],
+        json!({"type": "thought", "signature": "dGhvdWdodA=="})
+    );
+    assert_eq!(input[3]["id"], "call_2");
+    assert_eq!(
+        input[4],
+        json!({"type": "model_output", "content": [{
+            "type": "text",
+            "text": "Checking.",
+            "annotations": [{"type": "url_citation", "url": "https://example.com", "start_index": 0, "end_index": 4}]
+        }]})
     );
 }
 
-/// Synthetic transcript tests required-ID request correlation without a paid call.
 #[test]
-fn full_request_preserves_typed_tool_pairs_across_turns() {
-    use crate::providers::internal::wire_ids::tests::{adapter_requests, assert_adapter_pairs};
-    for request in adapter_requests() {
-        for stream in [false, true] {
-            let wire =
-                create_request_body("test".to_owned(), request.clone(), Some(stream)).unwrap();
-            assert_adapter_pairs(serde_json::to_value(wire).unwrap());
-        }
-    }
-}
-
-// ── the Interactions wire ───────────────────────────────────────────────
-//
-// Bodies pasted verbatim from committed cassettes, named at each constant.
-// This family's unary reply is a different *document* from its stream
-// events — a whole interaction resource — so the decoder names it as one
-// more event of the wire and replays the resource's steps through the
-// streamed content mapping. These tests pin that the two transports agree
-// on the SHAPE of a turn (block kinds and signature placement), which is
-// what the recorded traffic allows: no two committed cassettes record the
-// same interaction both ways.
-
-use crate::test_utils::{MockStreamingClient, RecordingHttpClient};
-use crate::wire::{Mode, Wire};
-use futures::StreamExt;
-
-/// `crates/rig-cassette/fixtures/cassettes/gemini/interactions_api/basic_interaction_returns_id.yaml`
-const UNARY_INTERACTION: &str = r#"{"created":"1970-01-01T00:00:00Z","id":"v1_REDACTED_1","model":"gemini-3-flash-preview","object":"interaction","service_tier":"standard","status":"completed","steps":[{"signature":"signature_REDACTED_1","type":"thought"},{"content":[{"text":"1. Hummingbirds are the only birds capable of flying **backwards**.\n2. Their hearts can beat up to **1,260 times per minute**.","type":"text"}],"type":"model_output"}],"updated":"1970-01-01T00:00:00Z","usage":{"input_tokens_by_modality":[{"modality":"text","tokens":14}],"raw_prompt_token":39,"total_cached_tokens":0,"total_input_tokens":14,"total_output_tokens":34,"total_thought_tokens":222,"total_tokens":270,"total_tool_use_tokens":0}}"#;
-
-/// `crates/rig-cassette/fixtures/cassettes/gemini/interactions_api/streaming_interaction.yaml` —
-/// a different turn, streamed: the same two steps (a signature-only
-/// thought, then text) delivered as events.
-const STREAMED_INTERACTION: &str = concat!(
-    "event: interaction.created\ndata: {\"event_type\":\"interaction.created\",\"interaction\":{\"id\":\"v1_REDACTED_1\",\"model\":\"gemini-3-flash-preview\",\"object\":\"interaction\",\"status\":\"in_progress\"}}\n\n",
-    "event: interaction.status_update\ndata: {\"event_type\":\"interaction.status_update\",\"interaction_id\":\"v1_REDACTED_1\",\"status\":\"in_progress\"}\n\n",
-    "event: step.start\ndata: {\"event_type\":\"step.start\",\"index\":0,\"step\":{\"type\":\"thought\"}}\n\n",
-    "event: step.delta\ndata: {\"delta\":{\"signature\":\"signature_REDACTED_1\",\"type\":\"thought_signature\"},\"event_type\":\"step.delta\",\"index\":0}\n\n",
-    "event: step.stop\ndata: {\"event_type\":\"step.stop\",\"index\":0}\n\n",
-    "event: step.start\ndata: {\"event_type\":\"step.start\",\"index\":1,\"step\":{\"type\":\"model_output\"}}\n\n",
-    "event: step.delta\ndata: {\"delta\":{\"text\":\"Red flakes drift from the bridge\u{2019}s spine,\\nTo bleed within the river\u{2019}s silver line,\\nWhere\",\"type\":\"text\"},\"event_type\":\"step.delta\",\"index\":1}\n\n",
-    "event: step.delta\ndata: {\"delta\":{\"text\":\" metal yields to water\u{2019}s slow design.\",\"type\":\"text\"},\"event_type\":\"step.delta\",\"index\":1}\n\n",
-    "event: step.stop\ndata: {\"event_type\":\"step.stop\",\"index\":1}\n\n",
-    "event: interaction.completed\ndata: {\"event_type\":\"interaction.completed\",\"interaction\":{\"created\":\"1970-01-01T00:00:00Z\",\"id\":\"v1_REDACTED_1\",\"model\":\"gemini-3-flash-preview\",\"object\":\"interaction\",\"service_tier\":\"standard\",\"status\":\"completed\",\"updated\":\"1970-01-01T00:00:00Z\",\"usage\":{\"input_tokens_by_modality\":[{\"modality\":\"text\",\"tokens\":13}],\"raw_prompt_token\":34,\"total_cached_tokens\":0,\"total_input_tokens\":13,\"total_output_tokens\":32,\"total_thought_tokens\":806,\"total_tokens\":851,\"total_tool_use_tokens\":0}}}\n\n",
-);
-
-fn interactions_wire() -> Interactions {
-    crate::providers::gemini::GeminiConfig::new("test-key").interactions("gemini-3-flash-preview")
-}
-
-fn probe() -> CompletionRequest {
-    CompletionRequest {
-        record_telemetry_content: false,
-        model: None,
-        chat_history: crate::NonEmpty::new(Message::user("probe")),
-        documents: vec![],
-        tools: vec![],
-        temperature: None,
-        max_tokens: None,
-        tool_choice: None,
-        additional_params: None,
-        output_schema: None,
-    }
-}
-
-/// Fold an interaction resource, as the unary reply's body, through the
-/// bound wire the way a caller's `completion()` does.
-async fn fold_resource(interaction: &Interaction) -> crate::completion::CompletionResponse {
-    let body = serde_json::to_string(interaction).expect("the resource serializes");
-    crate::driver::Model::new(interactions_wire(), RecordingHttpClient::new(body))
-        .call(probe())
-        .await
-        .expect("the interaction resource decodes")
-}
-
-/// The block kinds a folded turn carries, and the signature on its
-/// reasoning block: the shape two transports must agree on.
-fn shape(response: &crate::completion::CompletionResponse) -> (Vec<&'static str>, Option<String>) {
-    let kinds = response
+fn a_streamed_search_call_gets_its_search_type_back() {
+    let frames = [
+        r#"{"interaction":{"id":"","status":"in_progress","object":"interaction","model":"gemini-3.8-flash"},"event_type":"interaction.created"}"#,
+        r#"{"index":0,"step":{"id":"call_9","signature":"","type":"google_search_call"},"event_type":"step.start"}"#,
+        r#"{"index":0,"delta":{"signature":"c2VhcmNo","type":"google_search_call","arguments":{"queries":["q"]}},"event_type":"step.delta"}"#,
+        r#"{"index":0,"event_type":"step.stop"}"#,
+        r#"{"index":1,"step":{"type":"thought"},"event_type":"step.start"}"#,
+        r#"{"index":1,"delta":{"signature":"dGg=","type":"thought_signature"},"event_type":"step.delta"}"#,
+        r#"{"index":1,"event_type":"step.stop"}"#,
+        r#"{"index":2,"step":{"type":"model_output"},"event_type":"step.start"}"#,
+        r#"{"index":2,"delta":{"text":"The close ","type":"text"},"event_type":"step.delta"}"#,
+        r#"{"index":2,"delta":{"text":"was 225.","type":"text"},"event_type":"step.delta"}"#,
+        r#"{"index":2,"event_type":"step.stop"}"#,
+        r#"{"interaction":{"id":"v1_2","status":"completed","usage":{"total_tokens":30,"total_input_tokens":20,"total_output_tokens":6,"total_thought_tokens":4}},"event_type":"interaction.completed"}"#,
+    ];
+    let response = decode(&frames, Mode::Streaming);
+    assert_eq!(response.text(), "The close was 225.");
+    let native = response
         .choice
         .iter()
-        .map(|item| match item {
-            message::AssistantContent::Text(_) => "text",
-            message::AssistantContent::Reasoning(_) => "reasoning",
-            message::AssistantContent::ToolCall(_) => "tool_call",
-            message::AssistantContent::Image(_) => "image",
+        .find_map(|part| match part {
+            AssistantContent::Native(native) => Some(native),
+            _ => None,
         })
-        .collect();
-    let signature = response.choice.iter().find_map(|item| match item {
-        message::AssistantContent::Reasoning(reasoning) => {
-            match reasoning.value().content.first() {
-                Some(message::ReasoningContent::Text { signature, .. }) => signature.clone(),
-                _ => None,
-            }
-        }
-        _ => None,
-    });
-    (kinds, signature)
-}
-
-#[tokio::test]
-async fn the_unary_resource_and_a_streamed_turn_fold_to_the_same_shape() {
-    let buffered = crate::driver::Model::new(
-        interactions_wire(),
-        RecordingHttpClient::new(UNARY_INTERACTION),
-    )
-    .call(probe())
-    .await
-    .expect("the recorded interaction resource decodes");
-
-    let mut stream = crate::driver::Model::new(
-        interactions_wire(),
-        MockStreamingClient {
-            sse_bytes: bytes::Bytes::from_static(STREAMED_INTERACTION.as_bytes()),
-        },
-    )
-    .stream(probe())
-    .expect("the stream opens");
-    while let Some(item) = stream.next().await {
-        item.expect("the recorded stream carries no in-band error");
-    }
-    let streamed = stream
-        .finish()
-        .await
-        .expect("the stream produced a terminal record");
-
-    assert_eq!(shape(&buffered), shape(&streamed));
-    assert_eq!(
-        shape(&buffered),
-        (
-            vec!["reasoning", "text"],
-            Some("signature_REDACTED_1".to_owned())
-        )
-    );
-    // The turn's own facts, from the resource the reply carried.
-    assert_eq!(buffered.response_id.as_deref(), Some("v1_REDACTED_1"));
-    assert_eq!(buffered.model.as_deref(), Some("gemini-3-flash-preview"));
-    assert_eq!(buffered.usage.output_tokens, Some(34));
-    assert_eq!(streamed.usage.output_tokens, Some(32));
-    assert_eq!(buffered.finish_reason(), streamed.finish_reason());
-    assert_eq!(
-        buffered.choice.last(),
-        Some(&message::AssistantContent::text(
-            "1. Hummingbirds are the only birds capable of flying **backwards**.\n2. Their hearts can beat up to **1,260 times per minute**."
-        ))
-    );
-
-    // Both paths keep the interaction resource reachable, in the shape each
-    // reply actually has: a unary reply's bytes ARE the resource, so `raw`
-    // is it; a streamed reply's terminal record is the envelope the wire
-    // reassembled, so the resource is under `/interaction`. A caller that
-    // wants the provider's own vocabulary gets it either way, which is what
-    // the escape hatch promises.
-    let buffered_interaction: Interaction = serde_json::from_value(buffered.raw.clone())
-        .expect("a unary reply's `raw` is the interaction document");
-    assert_eq!(buffered_interaction.id, "v1_REDACTED_1");
-    assert!(buffered_interaction.is_terminal());
-
-    let streamed_interaction: Interaction =
-        serde_json::from_value(streamed.raw["interaction"].clone())
-            .expect("a streamed reply's terminal record carries the interaction");
-    assert_eq!(streamed_interaction.id, "v1_REDACTED_1");
-    assert!(streamed_interaction.is_terminal());
-}
-
-/// The one request an `Encoded` carries: this wire sends one per call.
-fn sole(encoded: &crate::wire::Encoded) -> &http::Request<crate::wire::Body> {
-    &encoded.request
-}
-
-#[test]
-fn the_mode_chooses_the_query_and_the_framing_and_the_key_is_a_header() {
-    let wire = interactions_wire();
-
-    let unary = wire
-        .encode(probe(), Mode::Unary)
-        .expect("the unary request encodes");
-    assert_eq!(sole(&unary).uri().path(), "/v1beta/interactions");
-    assert_eq!(sole(&unary).uri().query(), None);
-    assert_eq!(unary.framing, crate::http_client::framing::Framing::Whole);
-    // This family authenticates by header, so no credential is in the URI.
-    assert_eq!(
-        sole(&unary)
-            .headers()
-            .get("x-goog-api-key")
-            .and_then(|value| value.to_str().ok()),
-        Some("test-key")
-    );
-
-    let streaming = wire
-        .encode(probe(), Mode::Streaming)
-        .expect("the streaming request encodes");
-    assert_eq!(sole(&streaming).uri().query(), Some("alt=sse"));
-    assert_eq!(streaming.framing, crate::http_client::framing::Framing::Sse);
-    assert_eq!(streaming.request_id_header, None);
-
-    // `stream` rides the body on this wire as well as the query.
-    let body = match sole(&streaming).body() {
-        crate::wire::Body::Bytes(bytes) => bytes.clone(),
-        crate::wire::Body::Multipart(_) => panic!("interactions posts JSON"),
+        .expect("the search step");
+    let Ok(api::Step::Hosted(step)) = api::Step::try_from(native) else {
+        panic!("a hosted step");
     };
-    let body: serde_json::Value = serde_json::from_slice(&body).expect("the request body is JSON");
-    assert_eq!(body.get("stream"), Some(&json!(true)));
+    assert_eq!(step.search_type.as_deref(), Some("web_search"));
+    assert_eq!(step.signature.as_deref(), Some("c2VhcmNo"));
+    assert_eq!(step.id.as_deref(), Some("call_9"));
+    assert_eq!(response.usage.total_tokens, Some(30));
 }
 
-/// The span names this wire has always recorded, per mode.
 #[test]
-fn the_interactions_wire_keeps_its_span_names() {
-    let wire = interactions_wire();
-    assert_eq!(
-        wire.describe()
-            .telemetry
-            .map(|telemetry| telemetry(crate::wire::Mode::Unary)),
-        Some(GenAiOperation::Interactions)
-    );
-    assert_eq!(
-        wire.describe()
-            .telemetry
-            .map(|telemetry| telemetry(crate::wire::Mode::Streaming)),
-        Some(GenAiOperation::InteractionsStreaming)
-    );
+fn a_streamed_call_assembles_its_arguments() {
+    let frames = [
+        r#"{"index":0,"step":{"id":"call_3","type":"function_call","name":"holdings"},"event_type":"step.start"}"#,
+        r#"{"index":0,"delta":{"type":"arguments_delta","arguments":"{\"account\":"},"event_type":"step.delta"}"#,
+        r#"{"index":0,"delta":{"type":"arguments_delta","arguments":"\"ACC-7\"}"},"event_type":"step.delta"}"#,
+        r#"{"index":0,"event_type":"step.stop"}"#,
+        r#"{"interaction":{"id":"v1_3","status":"requires_action"},"event_type":"interaction.completed"}"#,
+    ];
+    let response = decode(&frames, Mode::Streaming);
+    let call = response.tool_calls().next().expect("a call");
+    assert_eq!(call.function.arguments, json!({"account": "ACC-7"}));
+    assert_eq!(call.id.to_string(), "call_3");
 }
 
-/// A `background: true` interaction outlives its create request and a
-/// dropped stream resumes from the last event seen. Both are the same
-/// interaction read again, so both are requests on one wire: the poll GETs
-/// the resource, the resume GETs the event stream from `last_event_id`
-/// onward \u2014 byte-for-byte the two requests the client layer sent.
 #[test]
-fn one_interaction_is_polled_unary_and_resumed_streamed() {
-    let gemini = crate::providers::gemini::GeminiConfig::new("test-key");
-
-    let poll = gemini
-        .interaction("v1_REDACTED_1")
-        .encode(probe(), Mode::Unary)
-        .expect("the poll request encodes");
-    assert_eq!(sole(&poll).method(), http::Method::GET);
-    assert_eq!(
-        sole(&poll).uri().path(),
-        "/v1beta/interactions/v1_REDACTED_1"
+fn a_tool_result_names_its_call_even_when_rig_issued_the_id() {
+    let call = crate::message::ToolCall::from_wire(
+        "",
+        crate::message::ToolFunction::new(
+            crate::message::ToolName::new("holdings").expect("name"),
+            json!({}),
+        ),
     );
-    assert_eq!(sole(&poll).uri().query(), None);
-    assert_eq!(poll.framing, crate::http_client::framing::Framing::Whole);
-    assert_eq!(
-        sole(&poll)
-            .headers()
-            .get("x-goog-api-key")
-            .and_then(|value| value.to_str().ok()),
-        Some("test-key")
-    );
-
-    let resumed = gemini
-        .interaction_resumed("v1_REDACTED_1", Some("42"))
-        .encode(probe(), Mode::Streaming)
-        .expect("the resume request encodes");
-    assert_eq!(sole(&resumed).method(), http::Method::GET);
-    assert_eq!(
-        sole(&resumed).uri().path(),
-        "/v1beta/interactions/v1_REDACTED_1"
-    );
-    assert_eq!(
-        sole(&resumed).uri().query(),
-        Some("stream=true&last_event_id=42&alt=sse")
-    );
-    assert_eq!(resumed.framing, crate::http_client::framing::Framing::Sse);
-
-    // Resuming without a cursor asks for the stream from its beginning,
-    // which is the API's own default and what the client layer sent.
-    let from_start = gemini
-        .interaction_resumed("v1_REDACTED_1", None)
-        .encode(probe(), Mode::Streaming)
-        .expect("the resume request encodes");
-    assert_eq!(sole(&from_start).uri().query(), Some("stream=true&alt=sse"));
-}
-
-/// The poll's reply is the whole interaction resource, so it decodes
-/// through the same decoder as the stream and the document survives on the
-/// response's `raw` for a caller that wants the provider's own vocabulary.
-#[tokio::test]
-async fn a_polled_interaction_folds_its_steps_and_keeps_the_document() {
-    let response = crate::driver::Model::new(
-        crate::providers::gemini::GeminiConfig::new("test-key").interaction("v1_REDACTED_1"),
-        RecordingHttpClient::new(UNARY_INTERACTION),
-    )
-    .call(probe())
-    .await
-    .expect("the recorded interaction resource decodes");
-
-    assert_eq!(
-        shape(&response),
-        (
-            vec!["reasoning", "text"],
-            Some("signature_REDACTED_1".to_owned())
-        )
-    );
-    assert_eq!(response.response_id.as_deref(), Some("v1_REDACTED_1"));
-    let interaction: Interaction =
-        serde_json::from_value(response.raw.clone()).expect("`raw` is the interaction document");
-    assert_eq!(interaction.id, "v1_REDACTED_1");
-    assert!(
-        interaction.is_terminal(),
-        "status: {:?}",
-        interaction.status
-    );
+    let request = CompletionRequest::new(Message::tool_results(NonEmpty::new(
+        call.result(crate::message::ToolResultContent::text("12 GOOGL")),
+    )))
+    .message(Message::Assistant {
+        id: None,
+        content: NonEmpty::new(AssistantContent::ToolCall(call)),
+    });
+    let body = body(&wire(), request, Mode::Unary);
+    let input = body["input"].as_array().expect("steps");
+    assert_eq!(input[0]["id"], input[1]["call_id"]);
+    assert_eq!(input[1]["result"], "12 GOOGL");
 }

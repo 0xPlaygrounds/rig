@@ -8,18 +8,14 @@ use serde_json::{Map, Value};
 use crate::error::EncodeError;
 use crate::error::ProviderError;
 use crate::{
-    completion::Usage,
     operation::Transcription,
-    providers::gemini::completion::gemini_api_types::{
-        Blob, Content, GenerateContentRequest, GenerationConfig, Part, PartKind, Role,
-        visible_text_parts,
-    },
     providers::internal::wire::classify_marker_keyed_frame,
     transcription::{self, NormalizeTranscriptionResponse},
     wire::{Body, Decoder, Descriptor, Encoded, Framing, Mode, Out, Wire, WireEvent, WireFrame},
 };
 
-use super::completion::gemini_api_types::GenerateContentResponse;
+use super::api;
+use super::api::GenerateContentResponse;
 
 const TRANSCRIPTION_PREAMBLE: &str =
     "Translate the provided audio exactly. Do not add additional information.";
@@ -32,7 +28,7 @@ fn transcription_body(
     let additional_params = request
         .additional_params
         .unwrap_or_else(|| Value::Object(Map::new()));
-    let mut generation_config = serde_json::from_value::<GenerationConfig>(additional_params)?;
+    let mut generation_config = serde_json::from_value::<api::GenerationConfig>(additional_params)?;
 
     // A temperature named on the request outranks one carried inside
     // `additional_params`.
@@ -40,9 +36,12 @@ fn transcription_body(
         generation_config.temperature = Some(temp);
     }
 
-    let system_instruction = Some(Content {
-        parts: vec![TRANSCRIPTION_PREAMBLE.into()],
-        role: Some(Role::Model),
+    let system_instruction = Some(api::Content {
+        parts: vec![api::Part {
+            text: Some(TRANSCRIPTION_PREAMBLE.to_owned()),
+            ..Default::default()
+        }],
+        ..Default::default()
     });
 
     // The request supplies no explicit MIME type, so infer it from the filename.
@@ -50,26 +49,23 @@ fn transcription_body(
         .first()
         .map_or_else(|| "audio/mpeg".to_string(), |mime| mime.to_string());
 
-    let body = GenerateContentRequest {
-        contents: vec![Content {
-            parts: vec![Part {
-                thought: Some(false),
-                thought_signature: None,
-                part: PartKind::InlineData(Blob {
-                    mime_type,
-                    data: BASE64_STANDARD.encode(request.data),
+    let body = api::GenerateContentRequest {
+        contents: vec![api::Content {
+            parts: vec![api::Part {
+                inline_data: Some(api::Blob {
+                    mime_type: Some(mime_type),
+                    data: Some(BASE64_STANDARD.encode(request.data)),
+                    ..Default::default()
                 }),
-                additional_params: None,
+                ..Default::default()
             }],
-            role: Some(Role::User),
+            role: Some("user".to_owned()),
+            ..Default::default()
         }],
-        generation_config: Some(generation_config),
-        safety_settings: None,
-        tools: None,
-        tool_config: None,
+        generation_config: (generation_config != api::GenerationConfig::default())
+            .then_some(generation_config),
         system_instruction,
-        cached_content: None,
-        additional_params: None,
+        ..Default::default()
     };
 
     tracing::trace!(
@@ -89,7 +85,7 @@ pub struct Transcriptions {
     /// The provider this wire speaks to.
     pub provider: super::GeminiConfig,
     /// The model transcribing, for example
-    /// [`GEMINI_2_0_FLASH`](super::completion::GEMINI_2_0_FLASH).
+    /// [`GEMINI_3_8_FLASH`](super::completion::GEMINI_3_8_FLASH).
     pub model: String,
 }
 
@@ -172,10 +168,10 @@ impl NormalizeTranscriptionResponse for GenerateContentResponse {
 
         let mut parts = candidate
             .content
-            .as_ref()
-            .map(visible_text_parts)
-            .into_iter()
-            .flatten()
+            .iter()
+            .flat_map(|content| &content.parts)
+            .filter(|part| part.thought != Some(true))
+            .filter_map(|part| part.text.as_deref())
             .peekable();
         if parts.peek().is_none() {
             return Err(ProviderError::Response(
@@ -187,12 +183,13 @@ impl NormalizeTranscriptionResponse for GenerateContentResponse {
         let usage = self
             .usage_metadata
             .as_ref()
-            .map(Usage::from)
+            .map(super::generate_content::counts)
+            .map(super::edge::usage)
             .unwrap_or_default();
 
         Ok(transcription::TranscriptionResponse::new(text, provider)
             .with_optional_model(self.model_version)
-            .with_response_id(self.response_id)
+            .with_optional_response_id(self.response_id)
             .with_usage(usage))
     }
 }

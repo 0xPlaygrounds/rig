@@ -11,7 +11,7 @@ when:
     value: text/event-stream
   - name: content-type
     value: application/json
-  body: '{"contents":[{"parts":[{"text":"Say hi.","thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":16},"safetySettings":null,"systemInstruction":null,"toolConfig":null}'
+  body: '{"contents":[{"parts":[{"text":"Say hi."}],"role":"user"}],"generationConfig":{"maxOutputTokens":16}}'
 then:
   status: 404
   header:

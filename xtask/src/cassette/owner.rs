@@ -2,8 +2,9 @@
 //!
 //! A fixture's owner is the test whose body passes the scenario literal to a
 //! cassette wrapper (`with_*cassette*(`), directly or through a
-//! `CassetteSpec::new(…)` chain, or the matrix row (`name: ("scenario", …)`)
-//! that names it. A nested helper function (a tool's `call`) is never the
+//! `CassetteSpec::new(…)` chain, the test that opens `ProviderCassette::start`
+//! with a spec naming it (a literal or a string `const` of the file), or the
+//! matrix row (`name: ("scenario", …)`) that names it. A nested helper function (a tool's `call`) is never the
 //! owner: the nearest `#[test]`/`#[tokio::test]` function is. A test that
 //! guards itself with `skip_when_recording` is hand-derived and cannot
 //! record, and a file that only reads the literal back is a consumer.
@@ -165,8 +166,14 @@ pub(crate) fn owners_in_source(
     module: &str,
 ) -> Result<Vec<Owner>, String> {
     let file = syn::parse_file(source).map_err(|error| error.to_string())?;
+    let mut consts = Consts {
+        scenario,
+        names: Vec::new(),
+    };
+    consts.visit_file(&file);
     let mut finder = Finder {
         scenario,
+        consts: consts.names,
         modules: vec![module.to_owned()],
         tests: Vec::new(),
         found: Vec::new(),
@@ -175,8 +182,30 @@ pub(crate) fn owners_in_source(
     Ok(finder.found)
 }
 
+/// The string `const` items of a file whose value is the scenario.
+struct Consts<'a> {
+    scenario: &'a str,
+    names: Vec<String>,
+}
+
+impl<'ast> Visit<'ast> for Consts<'_> {
+    fn visit_item_const(&mut self, node: &'ast syn::ItemConst) {
+        if let Expr::Lit(ExprLit {
+            lit: Lit::Str(value),
+            ..
+        }) = node.expr.as_ref()
+            && value.value() == self.scenario
+        {
+            self.names.push(node.ident.to_string());
+        }
+        visit::visit_item_const(self, node);
+    }
+}
+
 struct Finder<'a> {
     scenario: &'a str,
+    /// Constants of the file that hold the scenario.
+    consts: Vec<String>,
     modules: Vec<String>,
     /// Enclosing test functions: name and whether it skips recording.
     tests: Vec<(String, bool)>,
@@ -202,20 +231,37 @@ fn mentions(tokens: &TokenStream, ident: &str) -> bool {
     })
 }
 
-fn names_scenario(expr: &Expr, scenario: &str) -> bool {
+fn names_scenario(expr: &Expr, scenario: &str, consts: &[String]) -> bool {
     match expr {
         Expr::Lit(ExprLit {
             lit: Lit::Str(literal),
             ..
         }) => literal.value() == scenario,
+        Expr::Path(path) => path
+            .path
+            .get_ident()
+            .is_some_and(|ident| consts.iter().any(|name| ident == name)),
         Expr::Call(call) => call
             .args
             .first()
-            .is_some_and(|arg| names_scenario(arg, scenario)),
-        Expr::MethodCall(call) => names_scenario(&call.receiver, scenario),
-        Expr::Paren(paren) => names_scenario(&paren.expr, scenario),
+            .is_some_and(|arg| names_scenario(arg, scenario, consts)),
+        Expr::MethodCall(call) => names_scenario(&call.receiver, scenario, consts),
+        Expr::Paren(paren) => names_scenario(&paren.expr, scenario, consts),
         _ => false,
     }
+}
+
+/// `ProviderCassette::start(root, provider, spec, base_url)`.
+fn is_direct_session(call: &ExprCall) -> bool {
+    let Expr::Path(path) = call.func.as_ref() else {
+        return false;
+    };
+    let mut segments = path.path.segments.iter().rev();
+    matches!(
+        (segments.next(), segments.next()),
+        (Some(method), Some(receiver))
+            if method.ident == "start" && receiver.ident == "ProviderCassette"
+    )
 }
 
 impl Finder<'_> {
@@ -274,12 +320,19 @@ impl<'ast> Visit<'ast> for Finder<'_> {
                 .map(|segment| segment.ident.to_string()),
             _ => None,
         };
-        if wrapper.is_some_and(|name| name.starts_with("with_") && name.contains("cassette"))
+        let wrapped = wrapper
+            .is_some_and(|name| name.starts_with("with_") && name.contains("cassette"))
             && node
                 .args
                 .first()
-                .is_some_and(|arg| names_scenario(arg, self.scenario))
-        {
+                .is_some_and(|arg| names_scenario(arg, self.scenario, &[]));
+        let direct = is_direct_session(node)
+            && node
+                .args
+                .iter()
+                .nth(2)
+                .is_some_and(|spec| names_scenario(spec, self.scenario, &self.consts));
+        if wrapped || direct {
             self.record();
         }
         visit::visit_expr_call(self, node);

@@ -1,7 +1,4 @@
 use super::*;
-use crate::providers::gemini::completion::gemini_api_types::{
-    Blob, ContentCandidate, FinishReason, UsageMetadata,
-};
 use serde_json::json;
 
 fn image_generation_request(prompt: &str) -> ImageGenerationRequest {
@@ -64,64 +61,23 @@ fn request_body_allows_additional_params_to_override_image_config() {
 
 #[test]
 fn response_parsing_returns_first_non_thought_inline_image() {
-    let response = GenerateContentResponse {
-        candidates: vec![ContentCandidate {
-            content: Some(Content {
-                role: Some(Role::Model),
-                parts: vec![
-                    Part {
-                        thought: Some(false),
-                        thought_signature: None,
-                        part: PartKind::Text("Here you go".to_string()),
-                        additional_params: None,
-                    },
-                    Part {
-                        thought: Some(true),
-                        thought_signature: None,
-                        part: PartKind::InlineData(Blob {
-                            mime_type: "image/png".to_string(),
-                            data: BASE64_STANDARD.encode("thought image"),
-                        }),
-                        additional_params: None,
-                    },
-                    Part {
-                        thought: Some(false),
-                        thought_signature: None,
-                        part: PartKind::InlineData(Blob {
-                            mime_type: "image/png".to_string(),
-                            data: BASE64_STANDARD.encode("final image"),
-                        }),
-                        additional_params: None,
-                    },
-                ],
-            }),
-            finish_reason: Some(FinishReason::Stop),
-            safety_ratings: None,
-            citation_metadata: None,
-            token_count: None,
-            avg_logprobs: None,
-            logprobs_result: None,
-            index: None,
-            finish_message: None,
+    let response: GenerateContentResponse = serde_json::from_value(json!({
+        "candidates": [{
+            "content": {
+                "role": "model",
+                "parts": [
+                    {"text": "Here you go"},
+                    {"thought": true, "inlineData": {"mimeType": "image/png", "data": BASE64_STANDARD.encode("thought image")}},
+                    {"inlineData": {"mimeType": "image/png", "data": BASE64_STANDARD.encode("final image")}}
+                ]
+            },
+            "finishReason": "STOP"
         }],
-        prompt_feedback: None,
-        usage_metadata: Some(UsageMetadata {
-            prompt_token_count: 1,
-            cached_content_token_count: None,
-            candidates_token_count: Some(1),
-            total_token_count: 2,
-            thoughts_token_count: None,
-            prompt_tokens_details: None,
-            cache_tokens_details: None,
-            candidates_tokens_details: None,
-            tool_use_prompt_token_count: None,
-            tool_use_prompt_tokens_details: None,
-            traffic_type: None,
-        }),
-        model_version: Some(GEMINI_2_5_FLASH_IMAGE.to_string()),
-        response_id: "response-id".to_string(),
-        error: None,
-    };
+        "usageMetadata": {"promptTokenCount": 1, "candidatesTokenCount": 1, "totalTokenCount": 2},
+        "modelVersion": GEMINI_2_5_FLASH_IMAGE,
+        "responseId": "response-id"
+    }))
+    .expect("a response");
 
     let parsed = response
         .normalize(super::super::completion::PROVIDER_NAME)
@@ -132,32 +88,15 @@ fn response_parsing_returns_first_non_thought_inline_image() {
 
 #[test]
 fn response_parsing_rejects_text_only_response() {
-    let response = GenerateContentResponse {
-        candidates: vec![ContentCandidate {
-            content: Some(Content {
-                role: Some(Role::Model),
-                parts: vec![Part {
-                    thought: Some(false),
-                    thought_signature: None,
-                    part: PartKind::Text("No image".to_string()),
-                    additional_params: None,
-                }],
-            }),
-            finish_reason: Some(FinishReason::Stop),
-            safety_ratings: None,
-            citation_metadata: None,
-            token_count: None,
-            avg_logprobs: None,
-            logprobs_result: None,
-            index: None,
-            finish_message: None,
+    let response: GenerateContentResponse = serde_json::from_value(json!({
+        "candidates": [{
+            "content": {"role": "model", "parts": [{"text": "No image"}]},
+            "finishReason": "STOP"
         }],
-        prompt_feedback: None,
-        usage_metadata: None,
-        model_version: Some(GEMINI_2_5_FLASH_IMAGE.to_string()),
-        response_id: "response-id".to_string(),
-        error: None,
-    };
+        "modelVersion": GEMINI_2_5_FLASH_IMAGE,
+        "responseId": "response-id"
+    }))
+    .expect("a response");
 
     let err = response
         .normalize(super::super::completion::PROVIDER_NAME)

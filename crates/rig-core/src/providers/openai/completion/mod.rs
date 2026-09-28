@@ -8,7 +8,7 @@
 use crate::completion::CompletionRequest as CoreCompletionRequest;
 use crate::error::EncodeError;
 use crate::json_utils::string_or_vec;
-use crate::message::{AudioMediaType, DocumentSourceKind, ImageDetail, MimeType};
+use crate::message::{AudioMediaType, DocumentSourceKind, MediaDetail, MimeType};
 use crate::{completion, json_utils, message};
 use serde::{Deserialize, Serialize, Serializer};
 use std::convert::Infallible;
@@ -303,7 +303,7 @@ pub struct ImageUrl {
     /// Image detail level. Optional so that providers whose wire format omits
     /// it (e.g. OpenRouter) can leave the key out entirely.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub detail: Option<ImageDetail>,
+    pub detail: Option<MediaDetail>,
 }
 
 /// Video payload for [`UserContent::Video`].
@@ -592,6 +592,7 @@ impl TryFrom<message::ToolResult> for Message {
                     detail,
                     ..
                 }) => {
+                    MediaDetail::require(detail, IMAGE_DETAIL, "openai")?;
                     let url = match data {
                         DocumentSourceKind::Url(url) => url,
                         DocumentSourceKind::Base64(data) => {
@@ -647,10 +648,25 @@ impl TryFrom<message::ToolResult> for Message {
     }
 }
 
+/// The image detail levels the chat wire can express.
+const IMAGE_DETAIL: &[MediaDetail] = &[MediaDetail::Low, MediaDetail::High];
+
 impl TryFrom<message::UserContent> for UserContent {
     type Error = message::MessageError;
 
     fn try_from(value: message::UserContent) -> Result<Self, Self::Error> {
+        match &value {
+            message::UserContent::Image(image) => {
+                MediaDetail::require(image.detail, IMAGE_DETAIL, "openai")?;
+            }
+            message::UserContent::Document(document) => {
+                MediaDetail::require(document.detail, &[], "openai")?;
+            }
+            message::UserContent::Video(video) => {
+                MediaDetail::require(video.detail, &[], "openai")?;
+            }
+            _ => {}
+        }
         match value {
             message::UserContent::Text(message::Text { text, .. }) => Ok(UserContent::Text { text }),
             message::UserContent::Image(message::Image {
@@ -928,6 +944,9 @@ pub fn assistant_content_to_messages(
                     "OpenAI assistant messages do not support image content in chat completions"
                         .into(),
                 ));
+            }
+            message::AssistantContent::Native(native) => {
+                return Err(message::AssistantContent::foreign_native(&native, "openai"));
             }
         }
     }

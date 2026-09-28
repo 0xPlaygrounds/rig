@@ -12,6 +12,7 @@ use rig::providers::gemini::completion::{
 use rig_test_support::cassette_models::GeminiModels;
 
 use super::super::support::with_gemini_cassette;
+use super::corpus_matrix::reasoning_wire;
 use crate::ecs_matrix::{Wire, cells, world::run_world};
 
 fn wire(
@@ -303,24 +304,6 @@ crate::matrix::case_matrix! {
     #[tokio::test]
     #[ignore = "gemini-3-flash-preview accepted thinkingBudget 0 but returned a signature-only reasoning part despite zero reasoning usage in all three attempts; record-gemini-off-attempt-{1,2,3}.log; three attempts exhausted"]
     reasoning_off: ("reasoning_matrix/off", reasoning_off_21, "gemini_matrix_reasoning_off");
-}
-
-// Reasoning matrix: the named thinking model, with the shared knob.
-fn reasoning_wire(
-    client: &GeminiModels,
-) -> Wire<
-    rig::Model<
-        rig::providers::gemini::completion::GenerateContent,
-        rig::http_client::DynHttpClient,
-    >,
-> {
-    Wire {
-        thinking: cells::ThinkingWire::Gemini,
-        model: client.completion("gemini-3-flash-preview"),
-        route: None,
-        temperature: Some(0.0),
-        additional_params: None,
-    }
 }
 
 crate::matrix::native_matrix! {

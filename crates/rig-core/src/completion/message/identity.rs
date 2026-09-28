@@ -392,4 +392,9 @@ impl<T> Sealed<T> {
     pub(crate) fn value(&self) -> &T {
         &self.value
     }
+
+    /// The value, taken out for the completion writer that re-seals it.
+    pub(crate) fn into_value(self) -> T {
+        self.value
+    }
 }

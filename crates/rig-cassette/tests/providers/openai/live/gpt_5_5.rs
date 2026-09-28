@@ -3,7 +3,7 @@
 use base64::{Engine, prelude::BASE64_STANDARD};
 use rig::completion::Message;
 use rig::completion::message::Image;
-use rig::message::{DocumentSourceKind, ImageDetail, ImageMediaType};
+use rig::message::{DocumentSourceKind, ImageMediaType, MediaDetail};
 use rig::providers::openai;
 use rig::providers::openai::wire::Route;
 use rig_test_support::cassette_models::OpenAiModels;
@@ -178,7 +178,7 @@ async fn responses_image_input_smoke() {
     let image = Image {
         data: DocumentSourceKind::base64(&BASE64_STANDARD.encode(image_bytes)),
         media_type: Some(ImageMediaType::JPEG),
-        detail: Some(ImageDetail::Auto),
+        detail: Some(MediaDetail::Auto),
         ..Default::default()
     };
 
@@ -404,7 +404,7 @@ async fn chat_completions_image_input_smoke() {
     let image = Image {
         data: DocumentSourceKind::base64(&BASE64_STANDARD.encode(image_bytes)),
         media_type: Some(ImageMediaType::JPEG),
-        detail: Some(ImageDetail::Auto),
+        detail: Some(MediaDetail::Auto),
         ..Default::default()
     };
 

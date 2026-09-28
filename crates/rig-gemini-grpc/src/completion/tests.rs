@@ -100,183 +100,6 @@ fn test_decode_base64_bytes_accepts_data_uri_prefix() {
 // ============================================================
 
 #[test]
-fn tool_params_empty_object_maps_to_none() {
-    let v = serde_json::json!({"type": "object", "properties": {}});
-    assert!(tool_parameters_to_proto_schema(&v).unwrap().is_none());
-}
-
-#[test]
-fn tool_params_null_maps_to_none() {
-    assert!(
-        tool_parameters_to_proto_schema(&serde_json::Value::Null)
-            .unwrap()
-            .is_none()
-    );
-}
-
-#[test]
-fn tool_params_object_with_scalar_properties_round_trips() {
-    let v = serde_json::json!({
-        "type": "object",
-        "properties": {
-            "city":      { "type": "string",  "description": "City name" },
-            "max_price": { "type": "integer", "description": "Cap, USD"  }
-        },
-        "required": ["city"]
-    });
-
-    let schema = tool_parameters_to_proto_schema(&v)
-        .expect("schema conversion")
-        .expect("schema");
-    assert_eq!(schema.r#type, proto::Type::Object as i32);
-    assert_eq!(schema.required, vec!["city".to_string()]);
-    assert_eq!(schema.properties.len(), 2);
-
-    let city = schema.properties.get("city").expect("city prop");
-    assert_eq!(city.r#type, proto::Type::String as i32);
-    assert_eq!(city.description, "City name");
-
-    let max_price = schema.properties.get("max_price").expect("max_price prop");
-    assert_eq!(max_price.r#type, proto::Type::Integer as i32);
-}
-
-#[test]
-fn tool_params_array_with_typed_items() {
-    let v = serde_json::json!({
-        "type": "array",
-        "items": { "type": "string" }
-    });
-
-    let schema = tool_parameters_to_proto_schema(&v)
-        .expect("schema conversion")
-        .expect("schema");
-    assert_eq!(schema.r#type, proto::Type::Array as i32);
-    let items = schema.items.expect("items");
-    assert_eq!(items.r#type, proto::Type::String as i32);
-}
-
-#[test]
-fn tool_params_enum_strings_preserved() {
-    let v = serde_json::json!({
-        "type": "string",
-        "enum": ["celsius", "fahrenheit"]
-    });
-
-    let schema = tool_parameters_to_proto_schema(&v)
-        .expect("schema conversion")
-        .expect("schema");
-    assert_eq!(schema.r#type, proto::Type::String as i32);
-    assert_eq!(
-        schema.r#enum,
-        vec!["celsius".to_string(), "fahrenheit".to_string()]
-    );
-}
-
-#[test]
-fn tool_params_resolves_defs_ref_properties() {
-    let v = serde_json::json!({
-        "type": "object",
-        "properties": {
-            "destination": { "$ref": "#/$defs/Destination" }
-        },
-        "required": ["destination"],
-        "$defs": {
-            "Destination": {
-                "type": "object",
-                "properties": {
-                    "city": { "type": "string" },
-                    "country_code": { "type": "string" }
-                },
-                "required": ["city"]
-            }
-        }
-    });
-
-    let schema = tool_parameters_to_proto_schema(&v)
-        .expect("schema conversion")
-        .expect("schema");
-    let destination = schema
-        .properties
-        .get("destination")
-        .expect("destination prop");
-
-    assert_eq!(destination.r#type, proto::Type::Object as i32);
-    assert_eq!(destination.required, vec!["city".to_string()]);
-    assert_eq!(
-        destination
-            .properties
-            .get("city")
-            .expect("city prop")
-            .r#type,
-        proto::Type::String as i32
-    );
-}
-
-#[test]
-fn tool_params_nullable_type_array_preserves_non_null_type() {
-    let v = serde_json::json!({
-        "type": "object",
-        "properties": {
-            "nickname": { "type": ["null", "string"] }
-        }
-    });
-
-    let schema = tool_parameters_to_proto_schema(&v)
-        .expect("schema conversion")
-        .expect("schema");
-    let nickname = schema.properties.get("nickname").expect("nickname prop");
-
-    assert_eq!(nickname.r#type, proto::Type::String as i32);
-    assert!(nickname.nullable);
-}
-
-#[test]
-fn tool_params_any_of_uses_non_null_schema() {
-    let v = serde_json::json!({
-        "anyOf": [
-            { "type": "null" },
-            {
-                "type": "object",
-                "properties": {
-                    "query": { "type": "string" }
-                },
-                "required": ["query"]
-            }
-        ]
-    });
-
-    let schema = tool_parameters_to_proto_schema(&v)
-        .expect("schema conversion")
-        .expect("schema");
-
-    assert_eq!(schema.r#type, proto::Type::Object as i32);
-    assert!(schema.nullable);
-    assert_eq!(schema.required, vec!["query".to_string()]);
-    assert_eq!(
-        schema.properties.get("query").expect("query prop").r#type,
-        proto::Type::String as i32
-    );
-}
-
-#[test]
-fn tool_params_array_without_items_defaults_to_string_items() {
-    let v = serde_json::json!({ "type": "array" });
-
-    let schema = tool_parameters_to_proto_schema(&v)
-        .expect("schema conversion")
-        .expect("schema");
-
-    assert_eq!(schema.r#type, proto::Type::Array as i32);
-    assert_eq!(
-        schema.items.expect("items").r#type,
-        proto::Type::String as i32
-    );
-}
-
-/// `FunctionResponse.name` is the executed function's name: read from
-/// the required `ToolResult::name` — never an identifier, no matter how
-/// identifier-shaped the correlation handles are.
-#[test]
 fn create_grpc_request_sends_the_executed_name_not_an_identifier() {
     use rig_core::message::{
         AssistantContent, ToolCall, ToolFunction, ToolResult, ToolResultContent,
@@ -387,11 +210,19 @@ fn create_grpc_request_populates_tool_parameters() {
         .expect("function declaration");
     assert_eq!(decl.name, "get_weather");
 
-    // The regression in #1710 was `parameters: None` here.
-    let params = decl.parameters.as_ref().expect("parameters populated");
-    assert_eq!(params.r#type, proto::Type::Object as i32);
-    assert_eq!(params.required, vec!["city".to_string()]);
-    assert!(params.properties.contains_key("city"));
+    // The schema goes as written, in `parameters_json_schema`.
+    assert!(decl.parameters.is_none());
+    let params = decl
+        .parameters_json_schema
+        .as_ref()
+        .expect("parameters populated");
+    let schema = match params.kind.as_ref() {
+        Some(proto::value::Kind::StructValue(schema)) => Some(schema),
+        _ => None,
+    }
+    .expect("an object schema");
+    assert!(schema.fields.contains_key("required"));
+    assert!(schema.fields.contains_key("properties"));
 }
 
 /// The gRPC wire carries the model's chain-of-thought in the same `parts`
@@ -439,9 +270,11 @@ fn a_signature_on_answer_text_stays_on_that_text() {
         normalized.choice
     );
     let signature = match normalized.choice.get(1) {
-        Some(completion::AssistantContent::Text(text)) => {
-            rig_core::providers::gemini::text_thought_signature(text)
-        }
+        Some(completion::AssistantContent::Text(text)) => text
+            .signature
+            .as_ref()
+            .and_then(|signature| signature.open(&ISSUER))
+            .map(|signature| signature.signature.as_str()),
         _ => None,
     }
     .expect("the answer text carries its signature");
@@ -798,19 +631,4 @@ fn the_driver_replays_gemini_reasoning_to_the_grpc_wire() {
         .map(|part| part.thought_signature.as_slice())
         .collect();
     assert_eq!(signatures, vec![b"gemini".as_slice()]);
-}
-
-/// A tool schema the shared Gemini conversion cannot flatten is a request that
-/// could not be built, as it is on the HTTP wire.
-#[test]
-fn an_unflattenable_tool_schema_is_a_request_failure() {
-    let parameters = serde_json::json!({
-        "type": "object",
-        "$defs": 5,
-        "properties": {"a": {"$ref": "#/$defs/x"}},
-    });
-    let error = tool_parameters_to_proto_schema(&parameters).expect_err("schema must not convert");
-    let error = ProviderError::from(error);
-    assert!(matches!(error, ProviderError::Request(_)), "{error:?}");
-    assert_eq!(error.to_string(), "RequestError: $defs must be an object");
 }

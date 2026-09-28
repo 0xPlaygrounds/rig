@@ -117,21 +117,24 @@
               "type": "toolcall",
               "id": {
                 "provider": {
-                  "call_id": "call_303690"
+                  "call_id": "call_341836"
                 }
               },
               "function": {
                 "name": "lookup_harbor_label",
                 "arguments": {}
               },
-              "signature": "EqYECqMEAWkUfRN8hYijj6Ysytj8PIv+u1KYOcG73zop22hcGaAVqXmR+CBncgFflH7q7/avrjx0uS+YFeiXzgvKQNdnG8enmg+leCGgeY+w2SZBBg6snLyFwA2o/hapXZyQDIPtA0Ll1lyRptPL6oQb8niSg9UEQa4YIvM50nV9DLjtE0GPCz4YPeweoNbIFJMlVrGpfo277Ab93zJmRjp+pf2nh/S8kgVwa1EAg4ZV6RtuLxdnLa+fv6jL0/X4I9JUWTL4w1S9Mbqy2131L51KDOK8xe+yEdyANTQp68u0l1MSHwuBKjBIQVLIRL1qjo91Z9ZyaKiAzsAUpsJkAnr5kSvfhFRT2ZleQaIfEPp+4cN6MYUdnUf2z+w0yuhsigKExUKkPA3rWNdzNgmPs9L+0Ptuj3zR/N1MAIVyQ7Ifwu00lgUOVWPTijxbYV8gc0dGvq7KD4S10rPOdKW3e7EMRR9N0sSXcm6nDn6KSsJMECwFhZSd4twfR7y5MprYcOhdo3ExeOqYkUbBqySwss5KOW7lF2Dok+FwXJ7EvClmlX8XYPSg3p0deNUBof+etW4V6i6mUTWrVWl0tBDx9Zbi30gI52M0kZ7IJPjN+gmFMmNXdqgAhrumNbn98VuZ/96gcaiDcZE6xPlw3aMYC9egx4Fo+ShVeNpgfKrQ4OC0ksJz7bTDeil4mvgbSeq8pKTBtQ8Dp6L5anPC9J+gYVrRcYrxzKTz5g==",
+              "signature": {
+                "issuer": "gcp.gemini",
+                "signature": "EuUDCuIDAWkUfRMdf8vaRpy66273JaW/cF5JzfP+C175ptuCtZFewuPTu1SE++HV2wzRD0D2uqcytAphxQgFnKpw6lvhPCmNqJQTjKiVoQgy7IyGC1pO7r1hcyR/MT6oFYwQQaDYBQUF2fX0suYt5zemjKtWLWXXad6UxzgMpbThWLw8RyjIHhhbrt5AAM++V1LEaSuxpIio90zfxQ8X8XRSKIiu1gZQAWVH5vY4/mjmDGp8naT5mPzPiFNI7LgMCs2ksc1yAqmPA5dHcA/Es5hPCA1wZlKNDutzBrlqcJkYKEh3bFyoNvB4EjV2Vi+KV33Agqy5HbAJZUNBAa4KbEIzb0rmtEptVp78X/BttmzNarg6CBxBFFh6wBJIi1a5sQKR0nx+nfrPiwXvaugdfQSnV7o/fTH5nq1DAD/a1HlbdRwyxA7um+Tk6MhUJJQYMhQ2bIliWMXhQe/9/miufMsm4R7ywIePFTY3QmKe14cxHGg+ZHcRy37zFq1GrHU1a35S9EUGSY/6lQFI0REZGNjm41j3qrp8Bs6WDaiSvZ6XmOb7fYaj/lX1DKxL3AtUbcqiHXT4HWEYssUPCOZNZbFbVJ6Qp1QvkIbqzfrBVHkgqh/EujDXom9MvdijcrUL4y89DHAWebE="
+              },
               "additional_params": null
             },
             {
               "type": "toolcall",
               "id": {
                 "provider": {
-                  "call_id": "call_303694"
+                  "call_id": "call_341837"
                 }
               },
               "function": {
@@ -143,32 +146,33 @@
             }
           ],
           "usage": {
-            "input_tokens": 166,
-            "output_tokens": 26,
-            "total_tokens": 292,
-            "reasoning_tokens": 100
+            "input_tokens": 165,
+            "output_tokens": 113,
+            "total_tokens": 278,
+            "reasoning_tokens": 87
           },
           "message_id": null,
-          "response_id": "qa2yavGDENipmtkP_dm5kQw",
+          "response_id": "M-i6au6XGNrVz7IP3fvKoQ0",
           "finish_reason": "tool_calls",
           "provider": "gcp.gemini",
           "model": "gemini-3-flash-preview",
           "raw": {
-            "usage_metadata": {
-              "promptTokenCount": 166,
+            "usageMetadata": {
               "candidatesTokenCount": 26,
-              "totalTokenCount": 292,
-              "thoughtsTokenCount": 100,
+              "promptTokenCount": 165,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
-                  "tokenCount": 166
+                  "tokenCount": 165
                 }
-              ]
+              ],
+              "serviceTier": "standard",
+              "thoughtsTokenCount": 87,
+              "totalTokenCount": 278
             },
-            "finish_reason": "STOP",
-            "model_version": "gemini-3-flash-preview",
-            "response_id": "qa2yavGDENipmtkP_dm5kQw"
+            "finishReason": "STOP",
+            "modelVersion": "gemini-3-flash-preview",
+            "responseId": "M-i6au6XGNrVz7IP3fvKoQ0"
           }
         }
       }
@@ -251,21 +255,24 @@
                   "type": "toolcall",
                   "id": {
                     "provider": {
-                      "call_id": "call_303690"
+                      "call_id": "call_341836"
                     }
                   },
                   "function": {
                     "name": "lookup_harbor_label",
                     "arguments": {}
                   },
-                  "signature": "EqYECqMEAWkUfRN8hYijj6Ysytj8PIv+u1KYOcG73zop22hcGaAVqXmR+CBncgFflH7q7/avrjx0uS+YFeiXzgvKQNdnG8enmg+leCGgeY+w2SZBBg6snLyFwA2o/hapXZyQDIPtA0Ll1lyRptPL6oQb8niSg9UEQa4YIvM50nV9DLjtE0GPCz4YPeweoNbIFJMlVrGpfo277Ab93zJmRjp+pf2nh/S8kgVwa1EAg4ZV6RtuLxdnLa+fv6jL0/X4I9JUWTL4w1S9Mbqy2131L51KDOK8xe+yEdyANTQp68u0l1MSHwuBKjBIQVLIRL1qjo91Z9ZyaKiAzsAUpsJkAnr5kSvfhFRT2ZleQaIfEPp+4cN6MYUdnUf2z+w0yuhsigKExUKkPA3rWNdzNgmPs9L+0Ptuj3zR/N1MAIVyQ7Ifwu00lgUOVWPTijxbYV8gc0dGvq7KD4S10rPOdKW3e7EMRR9N0sSXcm6nDn6KSsJMECwFhZSd4twfR7y5MprYcOhdo3ExeOqYkUbBqySwss5KOW7lF2Dok+FwXJ7EvClmlX8XYPSg3p0deNUBof+etW4V6i6mUTWrVWl0tBDx9Zbi30gI52M0kZ7IJPjN+gmFMmNXdqgAhrumNbn98VuZ/96gcaiDcZE6xPlw3aMYC9egx4Fo+ShVeNpgfKrQ4OC0ksJz7bTDeil4mvgbSeq8pKTBtQ8Dp6L5anPC9J+gYVrRcYrxzKTz5g==",
+                  "signature": {
+                    "issuer": "gcp.gemini",
+                    "signature": "EuUDCuIDAWkUfRMdf8vaRpy66273JaW/cF5JzfP+C175ptuCtZFewuPTu1SE++HV2wzRD0D2uqcytAphxQgFnKpw6lvhPCmNqJQTjKiVoQgy7IyGC1pO7r1hcyR/MT6oFYwQQaDYBQUF2fX0suYt5zemjKtWLWXXad6UxzgMpbThWLw8RyjIHhhbrt5AAM++V1LEaSuxpIio90zfxQ8X8XRSKIiu1gZQAWVH5vY4/mjmDGp8naT5mPzPiFNI7LgMCs2ksc1yAqmPA5dHcA/Es5hPCA1wZlKNDutzBrlqcJkYKEh3bFyoNvB4EjV2Vi+KV33Agqy5HbAJZUNBAa4KbEIzb0rmtEptVp78X/BttmzNarg6CBxBFFh6wBJIi1a5sQKR0nx+nfrPiwXvaugdfQSnV7o/fTH5nq1DAD/a1HlbdRwyxA7um+Tk6MhUJJQYMhQ2bIliWMXhQe/9/miufMsm4R7ywIePFTY3QmKe14cxHGg+ZHcRy37zFq1GrHU1a35S9EUGSY/6lQFI0REZGNjm41j3qrp8Bs6WDaiSvZ6XmOb7fYaj/lX1DKxL3AtUbcqiHXT4HWEYssUPCOZNZbFbVJ6Qp1QvkIbqzfrBVHkgqh/EujDXom9MvdijcrUL4y89DHAWebE="
+                  },
                   "additional_params": null
                 },
                 {
                   "type": "toolcall",
                   "id": {
                     "provider": {
-                      "call_id": "call_303694"
+                      "call_id": "call_341837"
                     }
                   },
                   "function": {
@@ -284,7 +291,7 @@
                   "type": "toolresult",
                   "call": {
                     "provider": {
-                      "call_id": "call_303690"
+                      "call_id": "call_341836"
                     }
                   },
                   "name": "lookup_harbor_label",
@@ -299,7 +306,7 @@
                   "type": "toolresult",
                   "call": {
                     "provider": {
-                      "call_id": "call_303694"
+                      "call_id": "call_341837"
                     }
                   },
                   "name": "lookup_orchard_label",
@@ -348,34 +355,35 @@
           "choice": [
             {
               "type": "text",
-              "text": "The signals are crimson-harbor and silver-orchard."
+              "text": "The labels are crimson-harbor and silver-orchard."
             }
           ],
           "usage": {
-            "input_tokens": 331,
+            "input_tokens": 317,
             "output_tokens": 13,
-            "total_tokens": 344
+            "total_tokens": 330
           },
           "message_id": null,
-          "response_id": "qq2yaqqaJvKvqtsPwNXsuAo",
+          "response_id": "NOi6aqO8NcnVz7IP_J2y2AE",
           "finish_reason": "stop",
           "provider": "gcp.gemini",
           "model": "gemini-3-flash-preview",
           "raw": {
-            "usage_metadata": {
-              "promptTokenCount": 331,
+            "usageMetadata": {
               "candidatesTokenCount": 13,
-              "totalTokenCount": 344,
+              "promptTokenCount": 317,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
-                  "tokenCount": 331
+                  "tokenCount": 317
                 }
-              ]
+              ],
+              "serviceTier": "standard",
+              "totalTokenCount": 330
             },
-            "finish_reason": "STOP",
-            "model_version": "gemini-3-flash-preview",
-            "response_id": "qq2yaqqaJvKvqtsPwNXsuAo"
+            "finishReason": "STOP",
+            "modelVersion": "gemini-3-flash-preview",
+            "responseId": "NOi6aqO8NcnVz7IP_J2y2AE"
           }
         }
       }

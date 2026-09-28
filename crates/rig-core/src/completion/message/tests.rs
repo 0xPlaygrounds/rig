@@ -373,3 +373,74 @@ fn an_empty_tool_name_does_not_parse() {
     assert!(super::ToolName::new("").is_err());
     assert!(serde_json::from_str::<super::ToolName>(r#""""#).is_err());
 }
+
+/// A native part keeps its JSON text through a checkpoint, key order and
+/// number spelling included, whatever the build's `serde_json` features.
+#[test]
+fn a_native_part_round_trips_byte_for_byte() {
+    let json = r#"{"thoughtSignature":"c2ln","executableCode":{"language":"PYTHON","code":"print(1.50)","id":"b2"},"z":[3,1e2]}"#;
+    let raw = serde_json::value::RawValue::from_string(json.to_owned()).expect("raw JSON");
+    let native = super::Sealed::new(
+        super::Issuer::from("gcp.gemini"),
+        super::NativePart::new("google.ai.generativelanguage.v1beta.Part", raw),
+    );
+    let message = super::Message::Assistant {
+        id: None,
+        content: crate::NonEmpty::with_rest(
+            super::AssistantContent::Native(native),
+            [super::AssistantContent::Text(super::Text {
+                signature: Some(super::Signature::sealed("gcp.gemini", "dGV4dA==")),
+                ..super::Text::new("done")
+            })],
+        ),
+    };
+
+    let checkpoint = serde_json::to_string(&message).expect("serialize");
+    let restored: super::Message = serde_json::from_str(&checkpoint).expect("deserialize");
+    assert_eq!(restored, message);
+    assert_eq!(
+        serde_json::to_string(&restored).expect("serialize"),
+        checkpoint
+    );
+    let super::Message::Assistant { content, .. } = restored else {
+        panic!("an assistant message");
+    };
+    let super::AssistantContent::Native(native) = content.first() else {
+        panic!("the native part first");
+    };
+    let part = native
+        .open(&super::Issuer::from("gcp.gemini"))
+        .expect("its issuer opens it");
+    assert_eq!(part.json(), json);
+}
+
+/// A signature opens only for the service that issued it.
+#[test]
+fn a_signature_is_sealed_to_its_issuer() {
+    let signature = super::Signature::sealed("gcp.gemini", "c2ln");
+    assert!(signature.open(&super::Issuer::from("anthropic")).is_none());
+    assert_eq!(
+        signature
+            .open(&super::Issuer::from("gcp.gemini"))
+            .map(|signature| signature.signature.as_str()),
+        Some("c2ln")
+    );
+}
+
+/// A provider refuses a detail level it has no setting for; unset and auto
+/// always pass.
+#[test]
+fn media_detail_is_refused_where_it_cannot_be_expressed() {
+    use super::MediaDetail;
+    let supported = [MediaDetail::Low, MediaDetail::High];
+    assert!(MediaDetail::require(None, &supported, "openai").is_ok());
+    assert!(MediaDetail::require(Some(MediaDetail::Auto), &[], "openai").is_ok());
+    assert!(MediaDetail::require(Some(MediaDetail::Low), &supported, "openai").is_ok());
+    assert!(matches!(
+        MediaDetail::require(Some(MediaDetail::Medium), &supported, "openai"),
+        Err(super::MessageError::UnsupportedMediaDetail {
+            detail: MediaDetail::Medium,
+            provider: "openai",
+        })
+    ));
+}

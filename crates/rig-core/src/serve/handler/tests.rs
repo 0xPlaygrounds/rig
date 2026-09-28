@@ -233,7 +233,7 @@ fn response_reemission_preserves_local_tool_ids_without_provider_provenance() {
             serde_json::json!({"x": 1}),
         ),
     );
-    provider_call.signature = Some("signature".into());
+    provider_call.signature = Some(crate::message::Signature::sealed("local", "signature"));
     provider_call.additional_params = Some(serde_json::json!({"metadata": true}));
     calls.push(AssistantContent::ToolCall(provider_call));
     let response = CompletionResponse::new(

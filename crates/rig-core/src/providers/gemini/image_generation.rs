@@ -9,11 +9,7 @@
 //! # }
 //! ```
 
-use super::completion::gemini_api_types::{
-    Content, GenerateContentRequest, GenerateContentResponse, GenerationConfig, ImageConfig, Part,
-    PartKind, ResponseModality, Role,
-};
-use crate::completion::Usage;
+use super::api::{self, GenerateContentResponse};
 use crate::error::EncodeError;
 use crate::error::ProviderError;
 use crate::image_generation;
@@ -29,7 +25,7 @@ use base64::prelude::BASE64_STANDARD;
 use serde_json::Value;
 
 /// `gemini-2.5-flash-image` image generation model, commonly referred to as Nano Banana.
-pub const GEMINI_2_5_FLASH_IMAGE: &str = super::completion::GEMINI_2_5_FLASH_IMAGE;
+pub const GEMINI_2_5_FLASH_IMAGE: &str = "gemini-2.5-flash-image";
 
 impl NormalizeImageGenerationResponse for GenerateContentResponse {
     fn normalize(
@@ -40,13 +36,14 @@ impl NormalizeImageGenerationResponse for GenerateContentResponse {
         let usage = self
             .usage_metadata
             .as_ref()
-            .map(Usage::from)
+            .map(super::generate_content::counts)
+            .map(super::edge::usage)
             .unwrap_or_default();
 
         Ok(
             image_generation::ImageGenerationResponse::new(image, provider)
                 .with_optional_model(self.model_version)
-                .with_response_id(self.response_id)
+                .with_optional_response_id(self.response_id)
                 .with_usage(usage),
         )
     }
@@ -57,30 +54,24 @@ fn generate_content_path(model: &str) -> String {
 }
 
 fn create_request_body(generation_request: ImageGenerationRequest) -> Result<Value, EncodeError> {
-    let request = GenerateContentRequest {
-        contents: vec![Content {
-            role: Some(Role::User),
-            parts: vec![Part {
-                thought: None,
-                thought_signature: None,
-                part: PartKind::Text(generation_request.prompt),
-                additional_params: None,
+    let request = api::GenerateContentRequest {
+        contents: vec![api::Content {
+            role: Some("user".to_owned()),
+            parts: vec![api::Part {
+                text: Some(generation_request.prompt),
+                ..Default::default()
             }],
+            ..Default::default()
         }],
-        tools: None,
-        tool_config: None,
-        generation_config: Some(GenerationConfig {
-            response_modalities: Some(vec![ResponseModality::Image]),
-            image_config: Some(ImageConfig {
+        generation_config: Some(api::GenerationConfig {
+            response_modalities: vec![api::ResponseModalities::Image],
+            image_config: Some(api::ImageConfig {
                 aspect_ratio: aspect_ratio(generation_request.width, generation_request.height),
-                image_size: None,
+                ..Default::default()
             }),
             ..Default::default()
         }),
-        safety_settings: None,
-        system_instruction: None,
-        cached_content: None,
-        additional_params: None,
+        ..Default::default()
     };
 
     let mut body = serde_json::to_value(request)?;
@@ -130,12 +121,17 @@ fn first_image_bytes(response: &GenerateContentResponse) -> Result<Vec<u8>, Prov
                 continue;
             }
 
-            if let PartKind::InlineData(inline_data) = &part.part {
-                if !inline_data.mime_type.starts_with("image/") {
+            if let Some(inline_data) = &part.inline_data {
+                let is_image = inline_data
+                    .mime_type
+                    .as_deref()
+                    .is_some_and(|mime| mime.starts_with("image/"));
+                if !is_image {
                     continue;
                 }
 
-                return BASE64_STANDARD.decode(&inline_data.data).map_err(|err| {
+                let data = inline_data.data.as_deref().unwrap_or_default();
+                return BASE64_STANDARD.decode(data).map_err(|err| {
                     ProviderError::Response(format!(
                         "Gemini image data was not valid base64: {err}"
                     ))

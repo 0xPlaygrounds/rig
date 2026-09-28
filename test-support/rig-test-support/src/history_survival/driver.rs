@@ -394,9 +394,7 @@ fn tool_call_signatures(history: &[Message]) -> usize {
         .flatten()
         .filter(|content| match content {
             AssistantContent::ToolCall(call) => call.signature.is_some(),
-            AssistantContent::Text(text) => {
-                rig_core::providers::gemini::text_thought_signature(text).is_some()
-            }
+            AssistantContent::Text(text) => text.signature.is_some(),
             _ => false,
         })
         .count()

@@ -15,7 +15,7 @@ use crate::error::EncodeError;
 use crate::json_utils;
 use crate::json_utils::string_or_vec;
 use crate::message::{
-    Document, DocumentMediaType, DocumentSourceKind, ImageDetail, MessageError, MimeType, Text,
+    Document, DocumentMediaType, DocumentSourceKind, MediaDetail, MessageError, MimeType, Text,
 };
 use crate::{completion, message};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -304,7 +304,7 @@ pub enum ToolResultOutputContent {
         file_id: Option<String>,
         /// Provider image-detail preference.
         #[serde(default)]
-        detail: ImageDetail,
+        detail: MediaDetail,
     },
 }
 
@@ -408,6 +408,20 @@ fn input_items(
                 let mut items = Vec::new();
 
                 for user_content in content {
+                    match &user_content {
+                        crate::message::UserContent::Image(image) => MediaDetail::require(
+                            image.detail,
+                            &[MediaDetail::Low, MediaDetail::High],
+                            "openai",
+                        )?,
+                        crate::message::UserContent::Document(document) => {
+                            MediaDetail::require(document.detail, &[], "openai")?;
+                        }
+                        crate::message::UserContent::Video(video) => {
+                            MediaDetail::require(video.detail, &[], "openai")?;
+                        }
+                        _ => {}
+                    }
                     match user_content {
                         crate::message::UserContent::Text(Text { text, .. }) => {
                             items.push(InputItem::user_content(UserContent::InputText { text }));
@@ -505,6 +519,7 @@ fn input_items(
                         crate::message::AssistantContent::Text(Text {
                             text,
                             additional_params,
+                            ..
                         }) => {
                             let Some(message) =
                                 assistant_text_replay_message(id.clone(), text, additional_params)
@@ -575,6 +590,12 @@ fn input_items(
                                 "Assistant image content is not supported in OpenAI Responses API"
                                     .to_string(),
                             ));
+                        }
+                        crate::message::AssistantContent::Native(native) => {
+                            return Err(crate::message::AssistantContent::foreign_native(
+                                &native, "openai",
+                            )
+                            .into());
                         }
                     }
                 }
@@ -2306,6 +2327,7 @@ pub(crate) fn text_block(value: AssistantContent) -> Text {
                 .collect();
             Text {
                 text,
+                signature: None,
                 additional_params: crate::message::AdditionalParams::from_entries(
                     (!extras.is_empty())
                         .then_some((OPENAI_RESPONSES_EXTRAS_KEY, Value::Object(extras))),
@@ -2364,7 +2386,7 @@ pub enum UserContent {
     InputImage {
         image_url: String,
         #[serde(default)]
-        detail: ImageDetail,
+        detail: MediaDetail,
     },
     InputFile {
         #[serde(skip_serializing_if = "Option::is_none")]

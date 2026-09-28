@@ -185,6 +185,7 @@ async fn blocking_pdf_document_part_reaches_the_wire() {
                 .call(
                     CompletionRequest::new(multimodal_prompt(UserContent::Document(
                         rig::message::Document {
+                            detail: None,
                             data: DocumentSourceKind::Base64("JVBERi0xLjQK".to_owned()),
                             media_type: Some(DocumentMediaType::PDF),
                             additional_params: None,
@@ -250,6 +251,7 @@ async fn blocking_video_part_reaches_the_wire() {
                 .call(
                     CompletionRequest::new(multimodal_prompt(UserContent::Video(
                         rig::message::Video {
+                            detail: None,
                             data: DocumentSourceKind::Url(
                                 "https://example.invalid/clip.mp4".to_owned(),
                             ),

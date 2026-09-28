@@ -24,14 +24,7 @@
           }
         },
         {
-          "rig_ecs::agent::AdditionalParams": {
-            "generationConfig": {
-              "thinkingConfig": {
-                "includeThoughts": true,
-                "thinkingBudget": 128
-              }
-            }
-          },
+          "rig_ecs::agent::AdditionalParams": null,
           "rig_ecs::agent::DefaultMaxTurns": null,
           "rig_ecs::agent::InvalidCalls": {
             "retries": 0,

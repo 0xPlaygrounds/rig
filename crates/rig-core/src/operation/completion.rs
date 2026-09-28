@@ -19,8 +19,9 @@ use std::marker::PhantomData;
 use crate::completion::{CompletionRequest, CompletionResponse, FinishReason, Usage};
 use crate::error::{MalformedToolInput, ProviderError};
 use crate::message::{
-    AdditionalParams, AssistantContent, CallId, Image, Issuer, LocalCallId, ProviderCallId,
-    Reasoning, ReasoningContent, Text, ToolCall, ToolFunction, ToolName,
+    AdditionalParams, AssistantContent, CallId, Image, Issuer, LocalCallId, NativePart,
+    ProviderCallId, Reasoning, ReasoningContent, Sealed, Signature, Text, ToolCall, ToolFunction,
+    ToolName,
 };
 use crate::streaming::{Item, Part, PartKind, StreamEvent};
 use crate::telemetry::{GenAiOperation, SpanBuilder, SpanCombinator};
@@ -151,6 +152,7 @@ enum Draft {
         part: Option<Part>,
         text: String,
         params: Option<AdditionalParams>,
+        signature: Option<String>,
     },
     Reasoning {
         part: Option<Part>,
@@ -410,7 +412,12 @@ impl Turn {
     }
 
     fn close_text(&mut self, items: &mut Items, slot: usize) {
-        let Some(Draft::Text { part, text, params }) = self
+        let Some(Draft::Text {
+            part,
+            text,
+            params,
+            signature,
+        }) = self
             .drafts
             .get_mut(slot)
             .map(|draft| std::mem::replace(draft, Draft::Closed))
@@ -418,16 +425,18 @@ impl Turn {
             return;
         };
         // A text part survives with text or with the metadata it carries.
-        if text.is_empty() && params.is_none() {
+        if text.is_empty() && params.is_none() && signature.is_none() {
             return;
         }
         let part = part.unwrap_or_else(|| self.start(items, PartKind::Text));
+        let signature = signature.map(|signature| Signature::sealed(self.issuer(), signature));
         emit(
             items,
             StreamEvent::End {
                 part,
                 content: AssistantContent::Text(Text {
                     text,
+                    signature,
                     additional_params: params,
                 }),
             },
@@ -599,6 +608,7 @@ impl Turn {
             arguments.text
         };
         let part = self.start(items, PartKind::ToolCall);
+        let signature = signature.map(|signature| Signature::sealed(self.issuer(), signature));
         emit(items, StreamEvent::Arguments { part, json });
         emit(
             items,
@@ -718,12 +728,7 @@ impl Turn {
                         .map(|text| AssistantContent::text(text.clone()))
                 })
             })
-            .map(|part| match part {
-                AssistantContent::Reasoning(reasoning) => {
-                    AssistantContent::Reasoning(reasoning.reseal(self.issuer()))
-                }
-                part => part,
-            })
+            .map(|part| reseal(part, &self.issuer()))
             .collect();
         response
     }
@@ -733,12 +738,7 @@ impl Turn {
         let choice = self
             .snapshot()
             .into_iter()
-            .map(|part| match part {
-                AssistantContent::Reasoning(reasoning) => {
-                    AssistantContent::Reasoning(reasoning.reseal(issuer.clone()))
-                }
-                part => part,
-            })
+            .map(|part| reseal(part, &issuer))
             .collect();
         let Finish {
             usage,
@@ -763,6 +763,40 @@ pub(crate) type Items = std::collections::VecDeque<Result<Item<StreamEvent>, Pro
 
 fn emit(items: &mut Items, event: StreamEvent) {
     items.push_back(Ok(Item::Event(event)));
+}
+
+/// `part` with everything it seals sealed to `issuer`, the reply's issuer
+/// once it is known.
+fn reseal(part: AssistantContent, issuer: &Issuer) -> AssistantContent {
+    let signature = |signature: Option<Sealed<Signature>>| {
+        signature.map(|signature| signature.reseal(issuer.clone()))
+    };
+    match part {
+        AssistantContent::Reasoning(reasoning) => {
+            AssistantContent::Reasoning(reasoning.reseal(issuer.clone()))
+        }
+        AssistantContent::Native(native) => AssistantContent::Native(native.reseal(issuer.clone())),
+        AssistantContent::Text(text) => AssistantContent::Text(Text {
+            signature: signature(text.signature),
+            ..text
+        }),
+        AssistantContent::ToolCall(call) => AssistantContent::ToolCall(ToolCall {
+            signature: signature(call.signature),
+            ..call
+        }),
+        part @ AssistantContent::Image(_) => part,
+    }
+}
+
+/// The issuer a part names on its seal, if it seals anything.
+fn sealed_issuer(part: &AssistantContent) -> Option<&Issuer> {
+    match part {
+        AssistantContent::Reasoning(reasoning) => Some(reasoning.issuer()),
+        AssistantContent::Native(native) => Some(native.issuer()),
+        AssistantContent::Text(text) => text.signature.as_ref().map(Sealed::issuer),
+        AssistantContent::ToolCall(call) => call.signature.as_ref().map(Sealed::issuer),
+        AssistantContent::Image(_) => None,
+    }
 }
 
 /// Attach a signature to the last unsigned reasoning text, or add a
@@ -802,9 +836,11 @@ impl Fold<Completion> for Turn {
                 if let Some(slot) = self.choice.get_mut(part.index()) {
                     *slot = Some(content.clone());
                 }
-                // A relayed reply's reasoning names its issuer on its seal.
-                if let (None, AssistantContent::Reasoning(reasoning)) = (&self.issuer, content) {
-                    self.issuer = Some(reasoning.issuer().clone());
+                // A relayed reply's sealed parts name their issuer.
+                if self.issuer.is_none()
+                    && let Some(issuer) = sealed_issuer(content)
+                {
+                    self.issuer = Some(issuer.clone());
                 }
                 self.open_text.remove(&part.index());
             }
@@ -840,6 +876,7 @@ impl<'id> Out<'id, Completion> {
             part: None,
             text: String::new(),
             params: None,
+            signature: None,
         });
         TextPart {
             slot,
@@ -875,6 +912,40 @@ impl<'id> Out<'id, Completion> {
                 None => *params = Some(additional_params),
             }
         }
+    }
+
+    /// Sign an open text part: the signature returns on this part, sealed to
+    /// the reply's issuer. A signature is content: the part starts here if no
+    /// text started it.
+    pub fn text_signature(&mut self, part: &TextPart<'id>, signature: String) {
+        let mut shared = self.lock();
+        let Shared { fold, items, .. } = &mut *shared;
+        let unstarted = matches!(
+            fold.drafts.get(part.slot),
+            Some(Draft::Text { part: None, .. })
+        );
+        if unstarted {
+            let started = fold.start(items, PartKind::Text);
+            if let Some(Draft::Text { part, .. }) = fold.drafts.get_mut(part.slot) {
+                *part = Some(started);
+            }
+        }
+        if let Some(Draft::Text {
+            signature: open, ..
+        }) = fold.drafts.get_mut(part.slot)
+        {
+            *open = Some(signature);
+        }
+    }
+
+    /// A part in the issuing API's own schema, sealed to the reply's issuer
+    /// and replayed to it verbatim.
+    pub fn native(&mut self, native: NativePart) {
+        let mut shared = self.lock();
+        let Shared { fold, items, .. } = &mut *shared;
+        let part = fold.start(items, PartKind::Native);
+        let content = AssistantContent::Native(Sealed::new(fold.issuer(), native));
+        emit(items, StreamEvent::End { part, content });
     }
 
     /// Close a text part. One with neither text nor metadata is dropped.
@@ -999,7 +1070,8 @@ impl<'id> Out<'id, Completion> {
         }
     }
 
-    /// A whole tool call the provider sent in one piece.
+    /// A whole tool call the provider sent in one piece. Its signature is
+    /// sealed to the reply's issuer.
     pub fn tool_call(&mut self, call: ToolCall) -> Result<(), ProviderError> {
         let ToolCall {
             id,
@@ -1008,6 +1080,7 @@ impl<'id> Out<'id, Completion> {
             additional_params,
         } = call;
         let part = self.call(id, function.name)?;
+        let signature = signature.map(|signature| signature.into_value().signature);
         self.decorate_call(&part, signature, additional_params);
         let mut shared = self.lock();
         let Shared { fold, items, .. } = &mut *shared;
@@ -1040,6 +1113,10 @@ impl<'id> Out<'id, Completion> {
                 if let Some(params) = text.additional_params {
                     self.text_params(&part, params);
                 }
+                if let Some(signature) = text.signature {
+                    self.issued_by(signature.issuer().clone());
+                    self.text_signature(&part, signature.into_value().signature);
+                }
                 self.close_text(part);
             }
             AssistantContent::Reasoning(reasoning) => {
@@ -1049,8 +1126,17 @@ impl<'id> Out<'id, Completion> {
                     self.reasoning_block(reasoning.clone());
                 }
             }
-            AssistantContent::ToolCall(call) => self.tool_call(call)?,
+            AssistantContent::ToolCall(call) => {
+                if let Some(signature) = &call.signature {
+                    self.issued_by(signature.issuer().clone());
+                }
+                self.tool_call(call)?;
+            }
             AssistantContent::Image(image) => self.image(image),
+            AssistantContent::Native(native) => {
+                self.issued_by(native.issuer().clone());
+                self.native(native.into_value());
+            }
         }
         Ok(())
     }
@@ -1304,6 +1390,7 @@ impl Turn {
             part: None,
             text: String::new(),
             params: None,
+            signature: None,
         })
     }
 
@@ -1350,7 +1437,7 @@ impl Turn {
         }) = self.drafts.get_mut(slot)
         {
             arguments.announced = Some(function.arguments);
-            *open_signature = signature;
+            *open_signature = signature.map(|signature| signature.into_value().signature);
             *open_params = additional_params;
         }
         self.close_call(items, slot, IfMalformed::Fail)

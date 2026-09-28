@@ -243,7 +243,7 @@ impl GeminiModels {
     pub fn embedding(
         &self,
         model: impl Into<String>,
-        ndims: Option<usize>,
+        ndims: usize,
     ) -> Model<gemini::embedding::Embeddings> {
         self.client().embedding(model, ndims)
     }

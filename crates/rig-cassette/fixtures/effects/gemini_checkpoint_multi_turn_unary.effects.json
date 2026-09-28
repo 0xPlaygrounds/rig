@@ -119,12 +119,12 @@
             }
           ],
           "usage": {
-            "input_tokens": 141,
+            "input_tokens": 140,
             "output_tokens": 15,
-            "total_tokens": 156
+            "total_tokens": 155
           },
           "message_id": null,
-          "response_id": "n3izatCCA8Hfz7IPzaqI-A8",
+          "response_id": "gui6atnAK66lmtkPsZrEsQs",
           "finish_reason": "tool_calls",
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash-lite",
@@ -150,18 +150,18 @@
               }
             ],
             "modelVersion": "gemini-2.5-flash-lite",
-            "responseId": "n3izatCCA8Hfz7IPzaqI-A8",
+            "responseId": "gui6atnAK66lmtkPsZrEsQs",
             "usageMetadata": {
               "candidatesTokenCount": 15,
-              "promptTokenCount": 141,
+              "promptTokenCount": 140,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
-                  "tokenCount": 141
+                  "tokenCount": 140
                 }
               ],
               "serviceTier": "standard",
-              "totalTokenCount": 156
+              "totalTokenCount": 155
             }
           }
         }
@@ -307,12 +307,12 @@
             }
           ],
           "usage": {
-            "input_tokens": 191,
+            "input_tokens": 190,
             "output_tokens": 19,
-            "total_tokens": 210
+            "total_tokens": 209
           },
           "message_id": null,
-          "response_id": "n3izaq7jGoqsz7IP3-jl0Ac",
+          "response_id": "g-i6ao-tAvqqqtsP8JXs0Qs",
           "finish_reason": "tool_calls",
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash-lite",
@@ -338,18 +338,18 @@
               }
             ],
             "modelVersion": "gemini-2.5-flash-lite",
-            "responseId": "n3izaq7jGoqsz7IP3-jl0Ac",
+            "responseId": "g-i6ao-tAvqqqtsP8JXs0Qs",
             "usageMetadata": {
               "candidatesTokenCount": 19,
-              "promptTokenCount": 191,
+              "promptTokenCount": 190,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
-                  "tokenCount": 191
+                  "tokenCount": 190
                 }
               ],
               "serviceTier": "standard",
-              "totalTokenCount": 210
+              "totalTokenCount": 209
             }
           }
         }
@@ -537,12 +537,12 @@
             }
           ],
           "usage": {
-            "input_tokens": 245,
+            "input_tokens": 244,
             "output_tokens": 19,
-            "total_tokens": 264
+            "total_tokens": 263
           },
           "message_id": null,
-          "response_id": "n3izaq2eLpasz7IPuuXM-AE",
+          "response_id": "g-i6avHlFPmGqtsP3LTumA4",
           "finish_reason": "tool_calls",
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash-lite",
@@ -568,18 +568,18 @@
               }
             ],
             "modelVersion": "gemini-2.5-flash-lite",
-            "responseId": "n3izaq2eLpasz7IPuuXM-AE",
+            "responseId": "g-i6avHlFPmGqtsP3LTumA4",
             "usageMetadata": {
               "candidatesTokenCount": 19,
-              "promptTokenCount": 245,
+              "promptTokenCount": 244,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
-                  "tokenCount": 245
+                  "tokenCount": 244
                 }
               ],
               "serviceTier": "standard",
-              "totalTokenCount": 264
+              "totalTokenCount": 263
             }
           }
         }
@@ -809,12 +809,12 @@
             }
           ],
           "usage": {
-            "input_tokens": 299,
+            "input_tokens": 298,
             "output_tokens": 19,
-            "total_tokens": 318
+            "total_tokens": 317
           },
           "message_id": null,
-          "response_id": "oHizaubWA9Tjz7IPwrvp4Ac",
+          "response_id": "g-i6at-LLo2UmtkPu7OFuQs",
           "finish_reason": "tool_calls",
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash-lite",
@@ -840,18 +840,18 @@
               }
             ],
             "modelVersion": "gemini-2.5-flash-lite",
-            "responseId": "oHizaubWA9Tjz7IPwrvp4Ac",
+            "responseId": "g-i6at-LLo2UmtkPu7OFuQs",
             "usageMetadata": {
               "candidatesTokenCount": 19,
-              "promptTokenCount": 299,
+              "promptTokenCount": 298,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
-                  "tokenCount": 299
+                  "tokenCount": 298
                 }
               ],
               "serviceTier": "standard",
-              "totalTokenCount": 318
+              "totalTokenCount": 317
             }
           }
         }
@@ -1113,12 +1113,12 @@
             }
           ],
           "usage": {
-            "input_tokens": 348,
+            "input_tokens": 347,
             "output_tokens": 3,
-            "total_tokens": 351
+            "total_tokens": 350
           },
           "message_id": null,
-          "response_id": "oHizav-NGrKgz7IPu_6giAg",
+          "response_id": "hOi6atSeCP28qtsP1tTvwQs",
           "finish_reason": "stop",
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash-lite",
@@ -1138,18 +1138,18 @@
               }
             ],
             "modelVersion": "gemini-2.5-flash-lite",
-            "responseId": "oHizav-NGrKgz7IPu_6giAg",
+            "responseId": "hOi6atSeCP28qtsP1tTvwQs",
             "usageMetadata": {
               "candidatesTokenCount": 3,
-              "promptTokenCount": 348,
+              "promptTokenCount": 347,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
-                  "tokenCount": 348
+                  "tokenCount": 347
                 }
               ],
               "serviceTier": "standard",
-              "totalTokenCount": 351
+              "totalTokenCount": 350
             }
           }
         }

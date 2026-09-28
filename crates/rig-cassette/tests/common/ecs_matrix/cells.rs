@@ -112,12 +112,6 @@ fn openai_responses_thinking(on: bool) -> serde_json::Value {
     }
 }
 
-fn gemini_thinking(on: bool) -> serde_json::Value {
-    serde_json::json!({"generationConfig": {"thinkingConfig": {
-        "includeThoughts": on, "thinkingBudget": if on { 128 } else { 0 }
-    }}})
-}
-
 fn deepseek_thinking(on: bool) -> serde_json::Value {
     serde_json::json!({"thinking": {"type": if on { "enabled" } else { "disabled" }}})
 }
@@ -146,9 +140,11 @@ fn venice_thinking(on: bool) -> serde_json::Value {
 impl ThinkingWire {
     /// A function pointer fits the corpus's static programs. The closures
     /// delegate to one rendering per wire, so on/off cannot drift between
-    /// a builder's defaults and a second-turn patch.
-    pub(crate) fn params(self, on: bool) -> fn() -> serde_json::Value {
-        match (self, on) {
+    /// a builder's defaults and a second-turn patch. `None` for Gemini,
+    /// whose thinking is a model setting its wire's model carries.
+    pub(crate) fn params(self, on: bool) -> Option<fn() -> serde_json::Value> {
+        Some(match (self, on) {
+            (Self::Gemini, _) => return None,
             (Self::Anthropic, true) => {
                 || serde_json::json!({"thinking": {"type": "enabled", "budget_tokens": 1024}})
             }
@@ -157,15 +153,13 @@ impl ThinkingWire {
             (Self::OpenAiChat, false) => || openai_chat_thinking(false),
             (Self::OpenAiResponses, true) => || openai_responses_thinking(true),
             (Self::OpenAiResponses, false) => || openai_responses_thinking(false),
-            (Self::Gemini, true) => || gemini_thinking(true),
-            (Self::Gemini, false) => || gemini_thinking(false),
             (Self::DeepSeek, true) => || deepseek_thinking(true),
             (Self::DeepSeek, false) => || deepseek_thinking(false),
             (Self::Doubleword, true) => || doubleword_thinking(true),
             (Self::Doubleword, false) => || doubleword_thinking(false),
             (Self::Venice, true) => || venice_thinking(true),
             (Self::Venice, false) => || venice_thinking(false),
-        }
+        })
     }
 }
 

@@ -2,11 +2,11 @@
 //!
 //! ```no_run
 //! use rig_core::Model;
-//! use rig_gemini_grpc::{GeminiGrpc, completion::{GEMINI_2_0_FLASH, GenerateContent}};
+//! use rig_gemini_grpc::{GeminiGrpc, completion::{GEMINI_3_8_FLASH, GenerateContent}};
 //!
 //! # async fn example() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 //! let transport = GeminiGrpc::new("YOUR_API_KEY").await?;
-//! let model = transport.completion(GEMINI_2_0_FLASH);
+//! let model = transport.completion(GEMINI_3_8_FLASH);
 //! # let _ = model;
 //! # Ok(())
 //! # }
@@ -40,18 +40,6 @@ pub use proto::{
 
 impl From<&proto::GenerateContentResponse> for rig_core::completion::Usage {
     fn from(response: &proto::GenerateContentResponse) -> Self {
-        response
-            .usage_metadata
-            .as_ref()
-            .map(|u| rig_core::completion::Usage {
-                input_tokens: Some(u.prompt_token_count as u64),
-                output_tokens: Some(u.candidates_token_count as u64),
-                total_tokens: Some(u.total_token_count as u64),
-                cached_input_tokens: Some(u.cached_content_token_count as u64),
-                cache_creation_input_tokens: None,
-                tool_use_prompt_tokens: None,
-                reasoning_tokens: None,
-            })
-            .unwrap_or_default()
+        completion::map_usage(response.usage_metadata.as_ref())
     }
 }

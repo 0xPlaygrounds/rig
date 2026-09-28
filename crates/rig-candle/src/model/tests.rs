@@ -4,7 +4,7 @@ use candle_transformers::models::llama::LlamaConfig;
 #[cfg(not(target_family = "wasm"))]
 use futures::StreamExt;
 use rig_core::completion::{Document, ToolDefinition};
-use rig_core::message::{AudioMediaType, ImageDetail, ImageMediaType, ToolChoice};
+use rig_core::message::{AudioMediaType, ImageMediaType, MediaDetail, ToolChoice};
 #[cfg(not(target_family = "wasm"))]
 use rig_core::streaming::{Item, StreamEvent};
 #[cfg(not(target_family = "wasm"))]
@@ -1528,7 +1528,7 @@ fn rejects_unsupported_request_features() -> Result<(), Box<dyn std::error::Erro
         content: rig_core::NonEmpty::new(UserContent::image_base64(
             "data",
             Some(ImageMediaType::PNG),
-            Some(ImageDetail::Auto),
+            Some(MediaDetail::Auto),
         )),
     };
     assert!(render_prompt(&request(vec![image])).is_err());

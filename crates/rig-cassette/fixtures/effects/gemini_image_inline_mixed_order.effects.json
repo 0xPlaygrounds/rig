@@ -91,21 +91,20 @@
             {
               "type": "text",
               "text": "The dominant color is red.",
-              "additional_params": {
-                "gemini": {
-                  "thoughtSignature": "EuUCCuICAWkUfRPEVJeSmlVayrZEbA4UVsvFkH9eb9gMQcflCPxRslCf6GNxA6MrkLi+3v3PXw9J1H6td47fH1nKRirv+NMMzR391QaLsyKRFtU9lHo4+WHYSzgDCboUvZpIzQxk3v7L1C2OSPqs3cGH0z33AZ1zaublHD4egmSdbm2PmX8s6fkuejR1GDo1w+gtfgKN07+qZJ8nw55Yhgt4sI1BMjvfBV4KRe5xVnuGBPsGXcxOI/nRKpcsyBZ9vq/aGesEbVZhjBNgggwkjCnys2vGAEG7tRetm07zqHKHJlXbVqQjmEYq0zVY10dcJwFIGXeaHTMj4kXS/22wI7/KElz+UT5q+0rBG3Xhb4nsIga38RR5d2JUJnn7yptxrzqzDarxSMUtJ4+abwaEFJD1MqKjbSSJFOmOxeYo0FgtyAUgANghf7zhOtNvjpX2r5w4m299nn4LPtlE0X/mwqH49AJSn980"
-                }
+              "signature": {
+                "issuer": "gcp.gemini",
+                "signature": "EooDCocDAWkUfRMXBT/SQfjJGZnlhoDJ+NbTdei7CINQT66wxF8SGdgsHRjYX71OFJiMLFMs//F4/XOFTmMutI6o45//0GcJwRrpJSwhTSoubO2u0Qim95RgqUFuJvOW3ItY0p9wgUgtB0xQOo7scTbQZEQ5VIYzRk5bsUM1ZHOgo2SAfh/U6Vr+D0GpDyA8wH4TUa4b/4/ZPUm37BlZ107obzgOPorQvca9Wy5gO/dqGGnpXE5xCKPV1hEu/ZGXP4mGOGE40EAQYUkPjtXhLNJVP0agtk5N+DH9PCVk/cYshyjjBq9gfKIcmKNAWKUkiT63e18jn31oyXGEXKgc9ZfZHaG3BLi8HexpAzddzqH/XYUQOmV1YdsueT4hR63kJjXYHtalC9ovoeooBpB+phSdXPMredxSVZ7p8s6WKP4UBlj75ME4AZLWK+gCuOGsepoCIpa7XuZdEoPlGcWy0tanWYngYolKr+MCPXUnHBc6R3nGod12pZWfsV74WWChw7wjavgLcj4ABWB2ww=="
               }
             }
           ],
           "usage": {
-            "input_tokens": 2224,
-            "output_tokens": 6,
-            "total_tokens": 2285,
-            "reasoning_tokens": 55
+            "input_tokens": 2223,
+            "output_tokens": 67,
+            "total_tokens": 2290,
+            "reasoning_tokens": 62
           },
           "message_id": null,
-          "response_id": "pq6yarWkGYz8qtsPzL2BKA",
+          "response_id": "jei6avXsOZDrz7IPxpWq4Q8",
           "finish_reason": "stop",
           "provider": "gcp.gemini",
           "model": "gemini-3-flash-preview",
@@ -116,7 +115,7 @@
                   "parts": [
                     {
                       "text": "The dominant color is red.",
-                      "thoughtSignature": "EuUCCuICAWkUfRPEVJeSmlVayrZEbA4UVsvFkH9eb9gMQcflCPxRslCf6GNxA6MrkLi+3v3PXw9J1H6td47fH1nKRirv+NMMzR391QaLsyKRFtU9lHo4+WHYSzgDCboUvZpIzQxk3v7L1C2OSPqs3cGH0z33AZ1zaublHD4egmSdbm2PmX8s6fkuejR1GDo1w+gtfgKN07+qZJ8nw55Yhgt4sI1BMjvfBV4KRe5xVnuGBPsGXcxOI/nRKpcsyBZ9vq/aGesEbVZhjBNgggwkjCnys2vGAEG7tRetm07zqHKHJlXbVqQjmEYq0zVY10dcJwFIGXeaHTMj4kXS/22wI7/KElz+UT5q+0rBG3Xhb4nsIga38RR5d2JUJnn7yptxrzqzDarxSMUtJ4+abwaEFJD1MqKjbSSJFOmOxeYo0FgtyAUgANghf7zhOtNvjpX2r5w4m299nn4LPtlE0X/mwqH49AJSn980"
+                      "thoughtSignature": "EooDCocDAWkUfRMXBT/SQfjJGZnlhoDJ+NbTdei7CINQT66wxF8SGdgsHRjYX71OFJiMLFMs//F4/XOFTmMutI6o45//0GcJwRrpJSwhTSoubO2u0Qim95RgqUFuJvOW3ItY0p9wgUgtB0xQOo7scTbQZEQ5VIYzRk5bsUM1ZHOgo2SAfh/U6Vr+D0GpDyA8wH4TUa4b/4/ZPUm37BlZ107obzgOPorQvca9Wy5gO/dqGGnpXE5xCKPV1hEu/ZGXP4mGOGE40EAQYUkPjtXhLNJVP0agtk5N+DH9PCVk/cYshyjjBq9gfKIcmKNAWKUkiT63e18jn31oyXGEXKgc9ZfZHaG3BLi8HexpAzddzqH/XYUQOmV1YdsueT4hR63kJjXYHtalC9ovoeooBpB+phSdXPMredxSVZ7p8s6WKP4UBlj75ME4AZLWK+gCuOGsepoCIpa7XuZdEoPlGcWy0tanWYngYolKr+MCPXUnHBc6R3nGod12pZWfsV74WWChw7wjavgLcj4ABWB2ww=="
                     }
                   ],
                   "role": "model"
@@ -126,10 +125,10 @@
               }
             ],
             "modelVersion": "gemini-3-flash-preview",
-            "responseId": "pq6yarWkGYz8qtsPzL2BKA",
+            "responseId": "jei6avXsOZDrz7IPxpWq4Q8",
             "usageMetadata": {
-              "candidatesTokenCount": 6,
-              "promptTokenCount": 2224,
+              "candidatesTokenCount": 5,
+              "promptTokenCount": 2223,
               "promptTokensDetails": [
                 {
                   "modality": "IMAGE",
@@ -137,12 +136,12 @@
                 },
                 {
                   "modality": "TEXT",
-                  "tokenCount": 46
+                  "tokenCount": 45
                 }
               ],
               "serviceTier": "standard",
-              "thoughtsTokenCount": 55,
-              "totalTokenCount": 2285
+              "thoughtsTokenCount": 62,
+              "totalTokenCount": 2290
             }
           }
         }

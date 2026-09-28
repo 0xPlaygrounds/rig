@@ -237,10 +237,10 @@
           "rig_ecs::agent::Settled": {},
           "rig_ecs::agent::StreamRequested": false,
           "rig_ecs::agent::Usage": {
-            "input_tokens": 1115,
-            "output_tokens": 9,
-            "total_tokens": 1177,
-            "reasoning_tokens": 53
+            "input_tokens": 1114,
+            "output_tokens": 115,
+            "total_tokens": 1229,
+            "reasoning_tokens": 106
           },
           "rig_ecs::agent::UsesModel": 1,
           "rig_ecs::bus::effect::Scope": "golden/run#0"
@@ -332,10 +332,9 @@
               {
                 "type": "text",
                 "text": "The dominant non-background color is red.",
-                "additional_params": {
-                  "gemini": {
-                    "thoughtSignature": "EtwCCtkCAWkUfRMVZfhluvkgBKlrrEfuITuHmOUw3FvcjVcgS3ld5CDgcf7NEDTlp5cVLfMDY+utjaQQckkzQcPGMMeIvX6BMnpl0DntltmmTQt1XMZLZMGIMZ4pdUuSp8qGxjuqx1cpMvmYnvrY/T1k4Mpe+ogPZDuJFDsATW5OPLz7u+iS15s73Jr4pCerZ205ALj5N+4EZI068FS+5EtZPuzEL/kcQ3LKjPi+4qLrI+cy9Jkvoc4XXZMtlUhbvAp9FwXj5YQHLOii9cNOucMQCQClXbiwLVNqaNCkuB6S3xb7ET0WMKkM2GZfGmlGdu3Z5puBUa3mz0vT2+/X52QkummApVd4KVOKoWbTVSCO5rNcfcpCHQa3/pi/f/VKdes6eC3LCDP2ou5co+R9L0oi40tYYMeWNP7NAUBzbDjGXd8jF81WlglsJ9lkPqaSgrvbB2tHyHbkSTlx0ajP"
-                  }
+                "signature": {
+                  "issuer": "gcp.gemini",
+                  "signature": "ErEECq4EAWkUfRPKFStN3ZRcXZEkcwJGssOdsImTaNRJL7BRuqKBwcoazDk1TK029gYMWwfhLrxKBIX+KSiesdy07uZZVDeSxYohwUhE8UVArTFwxWr8qENQo4lDHnAG+V8Rt/+MYepcRa1/ZGTwCnCv7uEle1NPD7FJi6reKk/D27RnYVaxSzbMTxCTXDJlUbtm1a80BGhIxfZjU6fmfVmrbjWE19PYHXPD+Wyecu4EMaEbvz7r8FR49zxQNw2IU8o1wOij8/cwf6mcScGQRBvmtC3xafuCxFSLQpAl0kPxyrCoErTbh3LfAIxvWhS1jvwaLmP3FYXnt2x4dMv/kn1Ybgi48eyVXrltkF8kM+SdVfc6c0Z1EvpRbc1v5xv7pZ33p7e3hAktSxxWJqccd6twJfeiNdUIpzmOJtnTT4ns8Q5TIEp4W5heOjG524gcT7Ln8ccR0Y2td077bjDwjBeIyxU3HE4AWhO7f3/SgBPbZgF18LJe3q/XPZeEyBkw6Uf4EYSkePTAkofhXJPTG/H51lQO//D3tG9DcVaj4ux5AeEwXNmPnYPFZ8Bingtr8ZDy1TpK0YcnO8TlGcsGVFnODfiXmY5V+sfm0Ugk5DWlQ4kRjwu1IanywAdWDXXlRdx1yVM3+mPbx6M5BG/cSrFE6PqyxzzJ1ZjSCLmg5qLmIlLvu1kCCip2+TaoRwD83wN2y7F8SRQxvgQ9gKeP2UstyxAK5inOxXWh9QJbhvJDAcaN"
                 }
               }
             ],
@@ -361,21 +360,20 @@
                 {
                   "type": "text",
                   "text": "The dominant non-background color is red.",
-                  "additional_params": {
-                    "gemini": {
-                      "thoughtSignature": "EtwCCtkCAWkUfRMVZfhluvkgBKlrrEfuITuHmOUw3FvcjVcgS3ld5CDgcf7NEDTlp5cVLfMDY+utjaQQckkzQcPGMMeIvX6BMnpl0DntltmmTQt1XMZLZMGIMZ4pdUuSp8qGxjuqx1cpMvmYnvrY/T1k4Mpe+ogPZDuJFDsATW5OPLz7u+iS15s73Jr4pCerZ205ALj5N+4EZI068FS+5EtZPuzEL/kcQ3LKjPi+4qLrI+cy9Jkvoc4XXZMtlUhbvAp9FwXj5YQHLOii9cNOucMQCQClXbiwLVNqaNCkuB6S3xb7ET0WMKkM2GZfGmlGdu3Z5puBUa3mz0vT2+/X52QkummApVd4KVOKoWbTVSCO5rNcfcpCHQa3/pi/f/VKdes6eC3LCDP2ou5co+R9L0oi40tYYMeWNP7NAUBzbDjGXd8jF81WlglsJ9lkPqaSgrvbB2tHyHbkSTlx0ajP"
-                    }
+                  "signature": {
+                    "issuer": "gcp.gemini",
+                    "signature": "ErEECq4EAWkUfRPKFStN3ZRcXZEkcwJGssOdsImTaNRJL7BRuqKBwcoazDk1TK029gYMWwfhLrxKBIX+KSiesdy07uZZVDeSxYohwUhE8UVArTFwxWr8qENQo4lDHnAG+V8Rt/+MYepcRa1/ZGTwCnCv7uEle1NPD7FJi6reKk/D27RnYVaxSzbMTxCTXDJlUbtm1a80BGhIxfZjU6fmfVmrbjWE19PYHXPD+Wyecu4EMaEbvz7r8FR49zxQNw2IU8o1wOij8/cwf6mcScGQRBvmtC3xafuCxFSLQpAl0kPxyrCoErTbh3LfAIxvWhS1jvwaLmP3FYXnt2x4dMv/kn1Ybgi48eyVXrltkF8kM+SdVfc6c0Z1EvpRbc1v5xv7pZ33p7e3hAktSxxWJqccd6twJfeiNdUIpzmOJtnTT4ns8Q5TIEp4W5heOjG524gcT7Ln8ccR0Y2td077bjDwjBeIyxU3HE4AWhO7f3/SgBPbZgF18LJe3q/XPZeEyBkw6Uf4EYSkePTAkofhXJPTG/H51lQO//D3tG9DcVaj4ux5AeEwXNmPnYPFZ8Bingtr8ZDy1TpK0YcnO8TlGcsGVFnODfiXmY5V+sfm0Ugk5DWlQ4kRjwu1IanywAdWDXXlRdx1yVM3+mPbx6M5BG/cSrFE6PqyxzzJ1ZjSCLmg5qLmIlLvu1kCCip2+TaoRwD83wN2y7F8SRQxvgQ9gKeP2UstyxAK5inOxXWh9QJbhvJDAcaN"
                   }
                 }
               ],
               "usage": {
-                "input_tokens": 1115,
-                "output_tokens": 9,
-                "total_tokens": 1177,
-                "reasoning_tokens": 53
+                "input_tokens": 1114,
+                "output_tokens": 115,
+                "total_tokens": 1229,
+                "reasoning_tokens": 106
               },
               "message_id": null,
-              "response_id": "W2GzavWdO4qsz7IP3-jl0Ac",
+              "response_id": "h-i6arO7Nu2hz7IP_qWm0QM",
               "finish_reason": "stop",
               "provider": "gcp.gemini",
               "model": "gemini-3-flash-preview",
@@ -386,7 +384,7 @@
                       "parts": [
                         {
                           "text": "The dominant non-background color is red.",
-                          "thoughtSignature": "EtwCCtkCAWkUfRMVZfhluvkgBKlrrEfuITuHmOUw3FvcjVcgS3ld5CDgcf7NEDTlp5cVLfMDY+utjaQQckkzQcPGMMeIvX6BMnpl0DntltmmTQt1XMZLZMGIMZ4pdUuSp8qGxjuqx1cpMvmYnvrY/T1k4Mpe+ogPZDuJFDsATW5OPLz7u+iS15s73Jr4pCerZ205ALj5N+4EZI068FS+5EtZPuzEL/kcQ3LKjPi+4qLrI+cy9Jkvoc4XXZMtlUhbvAp9FwXj5YQHLOii9cNOucMQCQClXbiwLVNqaNCkuB6S3xb7ET0WMKkM2GZfGmlGdu3Z5puBUa3mz0vT2+/X52QkummApVd4KVOKoWbTVSCO5rNcfcpCHQa3/pi/f/VKdes6eC3LCDP2ou5co+R9L0oi40tYYMeWNP7NAUBzbDjGXd8jF81WlglsJ9lkPqaSgrvbB2tHyHbkSTlx0ajP"
+                          "thoughtSignature": "ErEECq4EAWkUfRPKFStN3ZRcXZEkcwJGssOdsImTaNRJL7BRuqKBwcoazDk1TK029gYMWwfhLrxKBIX+KSiesdy07uZZVDeSxYohwUhE8UVArTFwxWr8qENQo4lDHnAG+V8Rt/+MYepcRa1/ZGTwCnCv7uEle1NPD7FJi6reKk/D27RnYVaxSzbMTxCTXDJlUbtm1a80BGhIxfZjU6fmfVmrbjWE19PYHXPD+Wyecu4EMaEbvz7r8FR49zxQNw2IU8o1wOij8/cwf6mcScGQRBvmtC3xafuCxFSLQpAl0kPxyrCoErTbh3LfAIxvWhS1jvwaLmP3FYXnt2x4dMv/kn1Ybgi48eyVXrltkF8kM+SdVfc6c0Z1EvpRbc1v5xv7pZ33p7e3hAktSxxWJqccd6twJfeiNdUIpzmOJtnTT4ns8Q5TIEp4W5heOjG524gcT7Ln8ccR0Y2td077bjDwjBeIyxU3HE4AWhO7f3/SgBPbZgF18LJe3q/XPZeEyBkw6Uf4EYSkePTAkofhXJPTG/H51lQO//D3tG9DcVaj4ux5AeEwXNmPnYPFZ8Bingtr8ZDy1TpK0YcnO8TlGcsGVFnODfiXmY5V+sfm0Ugk5DWlQ4kRjwu1IanywAdWDXXlRdx1yVM3+mPbx6M5BG/cSrFE6PqyxzzJ1ZjSCLmg5qLmIlLvu1kCCip2+TaoRwD83wN2y7F8SRQxvgQ9gKeP2UstyxAK5inOxXWh9QJbhvJDAcaN"
                         }
                       ],
                       "role": "model"
@@ -396,23 +394,23 @@
                   }
                 ],
                 "modelVersion": "gemini-3-flash-preview",
-                "responseId": "W2GzavWdO4qsz7IP3-jl0Ac",
+                "responseId": "h-i6arO7Nu2hz7IP_qWm0QM",
                 "usageMetadata": {
                   "candidatesTokenCount": 9,
-                  "promptTokenCount": 1115,
+                  "promptTokenCount": 1114,
                   "promptTokensDetails": [
+                    {
+                      "modality": "TEXT",
+                      "tokenCount": 25
+                    },
                     {
                       "modality": "IMAGE",
                       "tokenCount": 1089
-                    },
-                    {
-                      "modality": "TEXT",
-                      "tokenCount": 26
                     }
                   ],
                   "serviceTier": "standard",
-                  "thoughtsTokenCount": 53,
-                  "totalTokenCount": 1177
+                  "thoughtsTokenCount": 106,
+                  "totalTokenCount": 1229
                 }
               }
             }
@@ -432,10 +430,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "Text": {
               "text": "The dominant non-background color is red.",
-              "additional_params": {
-                "gemini": {
-                  "thoughtSignature": "EtwCCtkCAWkUfRMVZfhluvkgBKlrrEfuITuHmOUw3FvcjVcgS3ld5CDgcf7NEDTlp5cVLfMDY+utjaQQckkzQcPGMMeIvX6BMnpl0DntltmmTQt1XMZLZMGIMZ4pdUuSp8qGxjuqx1cpMvmYnvrY/T1k4Mpe+ogPZDuJFDsATW5OPLz7u+iS15s73Jr4pCerZ205ALj5N+4EZI068FS+5EtZPuzEL/kcQ3LKjPi+4qLrI+cy9Jkvoc4XXZMtlUhbvAp9FwXj5YQHLOii9cNOucMQCQClXbiwLVNqaNCkuB6S3xb7ET0WMKkM2GZfGmlGdu3Z5puBUa3mz0vT2+/X52QkummApVd4KVOKoWbTVSCO5rNcfcpCHQa3/pi/f/VKdes6eC3LCDP2ou5co+R9L0oi40tYYMeWNP7NAUBzbDjGXd8jF81WlglsJ9lkPqaSgrvbB2tHyHbkSTlx0ajP"
-                }
+              "signature": {
+                "issuer": "gcp.gemini",
+                "signature": "ErEECq4EAWkUfRPKFStN3ZRcXZEkcwJGssOdsImTaNRJL7BRuqKBwcoazDk1TK029gYMWwfhLrxKBIX+KSiesdy07uZZVDeSxYohwUhE8UVArTFwxWr8qENQo4lDHnAG+V8Rt/+MYepcRa1/ZGTwCnCv7uEle1NPD7FJi6reKk/D27RnYVaxSzbMTxCTXDJlUbtm1a80BGhIxfZjU6fmfVmrbjWE19PYHXPD+Wyecu4EMaEbvz7r8FR49zxQNw2IU8o1wOij8/cwf6mcScGQRBvmtC3xafuCxFSLQpAl0kPxyrCoErTbh3LfAIxvWhS1jvwaLmP3FYXnt2x4dMv/kn1Ybgi48eyVXrltkF8kM+SdVfc6c0Z1EvpRbc1v5xv7pZ33p7e3hAktSxxWJqccd6twJfeiNdUIpzmOJtnTT4ns8Q5TIEp4W5heOjG524gcT7Ln8ccR0Y2td077bjDwjBeIyxU3HE4AWhO7f3/SgBPbZgF18LJe3q/XPZeEyBkw6Uf4EYSkePTAkofhXJPTG/H51lQO//D3tG9DcVaj4ux5AeEwXNmPnYPFZ8Bingtr8ZDy1TpK0YcnO8TlGcsGVFnODfiXmY5V+sfm0Ugk5DWlQ4kRjwu1IanywAdWDXXlRdx1yVM3+mPbx6M5BG/cSrFE6PqyxzzJ1ZjSCLmg5qLmIlLvu1kCCip2+TaoRwD83wN2y7F8SRQxvgQ9gKeP2UstyxAK5inOxXWh9QJbhvJDAcaN"
               }
             }
           }

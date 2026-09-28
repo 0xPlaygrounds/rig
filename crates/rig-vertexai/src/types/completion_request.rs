@@ -1,11 +1,18 @@
 use crate::types::message::RigMessage;
 use google_cloud_aiplatform_v1 as vertexai;
 use rig_core::error::ProviderError;
-use rig_core::providers::gemini::completion::gemini_api_types::{
-    AdditionalParameters, GenerationConfig as GeminiGenerationConfig,
-    ImageConfig as GeminiImageConfig, ResponseModality, ThinkingConfig as GeminiThinkingConfig,
-    ThinkingLevel,
+use rig_core::providers::gemini::api::{
+    GenerationConfig as GeminiGenerationConfig, ImageConfig as GeminiImageConfig,
+    ResponseModalities as ResponseModality, ThinkingConfig as GeminiThinkingConfig, ThinkingLevel,
 };
+
+/// The `additional_params` Vertex reads: Gemini's `generationConfig`.
+#[derive(Default, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AdditionalParameters {
+    #[serde(default)]
+    generation_config: Option<GeminiGenerationConfig>,
+}
 
 pub struct VertexCompletionRequest(pub rig_core::completion::CompletionRequest);
 
@@ -93,27 +100,34 @@ impl VertexCompletionRequest {
     pub fn generation_config(
         &self,
     ) -> Result<Option<vertexai::model::GenerationConfig>, ProviderError> {
-        let AdditionalParameters {
-            generation_config, ..
-        } = match self.0.additional_params.as_ref() {
-            Some(params) => serde::Deserialize::deserialize(params)?,
-            None => AdditionalParameters::default(),
-        };
+        let mut params = self
+            .0
+            .additional_params
+            .clone()
+            .unwrap_or_else(|| serde_json::Value::Object(serde_json::Map::new()));
+        if let Some(config) = params
+            .get_mut("generationConfig")
+            .and_then(serde_json::Value::as_object_mut)
+        {
+            // Typed values are authoritative, so an overridden provider value
+            // is neither converted nor range-checked.
+            if self.0.max_tokens.is_some() {
+                config.remove("maxOutputTokens");
+            }
+            if self.0.temperature.is_some() {
+                config.remove("temperature");
+            }
+            if let Some(max) = config
+                .get("maxOutputTokens")
+                .and_then(serde_json::Value::as_u64)
+            {
+                vertex_max_output_tokens(max)?;
+            }
+        }
+        let AdditionalParameters { generation_config } = serde_json::from_value(params)?;
 
         let mut config = generation_config
-            .map(|mut config| {
-                // Typed max_tokens is authoritative, so an overridden provider value must not be
-                // converted or range-validated before the typed value is applied below.
-                if self.0.max_tokens.is_some() {
-                    config.max_output_tokens = None;
-                }
-                // Typed temperature is likewise authoritative, so it must bypass provider
-                // conversion and range validation before being applied below.
-                if self.0.temperature.is_some() {
-                    config.temperature = None;
-                }
-                vertex_generation_config(config)
-            })
+            .map(vertex_generation_config)
             .transpose()?
             .unwrap_or_else(vertexai::model::GenerationConfig::new);
 
@@ -153,13 +167,13 @@ fn vertex_generation_config(
     config: GeminiGenerationConfig,
 ) -> Result<vertexai::model::GenerationConfig, ProviderError> {
     if config.response_schema.is_some()
-        && (config.response_json_schema.is_some() || config._response_json_schema.is_some())
+        && (config.response_json_schema.is_some() || config.legacy_response_json_schema.is_some())
     {
         return Err(ProviderError::request(
             "responseSchema cannot be combined with responseJsonSchema or _responseJsonSchema",
         ));
     }
-    if config.response_json_schema.is_some() && config._response_json_schema.is_some() {
+    if config.response_json_schema.is_some() && config.legacy_response_json_schema.is_some() {
         return Err(ProviderError::request(
             "responseJsonSchema cannot be combined with _responseJsonSchema",
         ));
@@ -167,8 +181,8 @@ fn vertex_generation_config(
 
     let mut vertex_config = vertexai::model::GenerationConfig::new();
 
-    if let Some(stop_sequences) = config.stop_sequences {
-        vertex_config = vertex_config.set_stop_sequences(stop_sequences);
+    if !config.stop_sequences.is_empty() {
+        vertex_config = vertex_config.set_stop_sequences(config.stop_sequences);
     }
     if let Some(response_mime_type) = config.response_mime_type {
         vertex_config = vertex_config.set_response_mime_type(response_mime_type);
@@ -178,13 +192,14 @@ fn vertex_generation_config(
             response_schema,
         )?)?);
     }
-    if let Some(response_json_schema) = config.response_json_schema.or(config._response_json_schema)
+    if let Some(response_json_schema) = config
+        .response_json_schema
+        .or(config.legacy_response_json_schema)
     {
         vertex_config.response_json_schema = Some(serde_json::from_value(response_json_schema)?);
     }
     if let Some(max_output_tokens) = config.max_output_tokens {
-        vertex_config =
-            vertex_config.set_max_output_tokens(vertex_max_output_tokens(max_output_tokens)?);
+        vertex_config = vertex_config.set_max_output_tokens(max_output_tokens);
     }
     if let Some(temperature) = config.temperature {
         vertex_config = vertex_config.set_temperature(vertex_f32(temperature, "temperature")?);
@@ -212,8 +227,9 @@ fn vertex_generation_config(
     if let Some(thinking_config) = config.thinking_config {
         vertex_config = vertex_config.set_thinking_config(vertex_thinking_config(thinking_config)?);
     }
-    if let Some(response_modalities) = config.response_modalities {
-        let response_modalities = response_modalities
+    if !config.response_modalities.is_empty() {
+        let response_modalities = config
+            .response_modalities
             .into_iter()
             .map(|modality| vertex_response_modality(&modality))
             .collect::<Result<Vec<_>, _>>()?;
@@ -240,23 +256,24 @@ fn vertex_thinking_config(
         vertex_config = vertex_config.set_include_thoughts(include_thoughts);
     }
     if let Some(thinking_budget) = config.thinking_budget {
-        let thinking_budget = i32::try_from(thinking_budget)
-            .map_err(|_| ProviderError::request("thinking_budget exceeds Vertex AI's i32 range"))?;
         vertex_config = vertex_config.set_thinking_budget(thinking_budget);
     }
     if let Some(thinking_level) = config.thinking_level {
-        vertex_config = vertex_config.set_thinking_level(match thinking_level {
-            ThinkingLevel::Minimal => {
-                vertexai::model::generation_config::thinking_config::ThinkingLevel::Minimal
-            }
-            ThinkingLevel::Low => {
-                vertexai::model::generation_config::thinking_config::ThinkingLevel::Low
-            }
-            ThinkingLevel::Medium => {
-                vertexai::model::generation_config::thinking_config::ThinkingLevel::Medium
-            }
-            ThinkingLevel::High => {
-                vertexai::model::generation_config::thinking_config::ThinkingLevel::High
+        use vertexai::model::generation_config::thinking_config::ThinkingLevel as Vertex;
+        // Google reads the level in either case.
+        let level = match thinking_level {
+            ThinkingLevel::Unknown(level) => level.to_ascii_uppercase(),
+            level => level.as_str().to_owned(),
+        };
+        vertex_config = vertex_config.set_thinking_level(match level.as_str() {
+            "MINIMAL" => Vertex::Minimal,
+            "LOW" => Vertex::Low,
+            "MEDIUM" => Vertex::Medium,
+            "HIGH" => Vertex::High,
+            _ => {
+                return Err(ProviderError::request(
+                    "thinking_level must be minimal, low, medium or high",
+                ));
             }
         });
     }
@@ -273,6 +290,9 @@ fn vertex_response_modality(
         ResponseModality::Audio => Err(ProviderError::request(
             "responseModalities AUDIO is unsupported because Rig cannot represent assistant audio responses",
         )),
+        ResponseModality::ModalityUnspecified | ResponseModality::Unknown(_) => Err(
+            ProviderError::request("responseModalities must be TEXT or IMAGE"),
+        ),
     }
 }
 
