@@ -214,6 +214,43 @@ fn test_tool_choice_specific_conversion() {
 }
 
 #[test]
+fn test_tool_choice_specific_requires_exactly_one_name() {
+    for function_names in [vec![], vec!["first".to_string(), "second".to_string()]] {
+        let request = CompletionRequest {
+            tool_choice: Some(ToolChoice::Specific { function_names }),
+            tools: vec![ToolDefinition {
+                name: "first".to_string(),
+                description: "A test tool".to_string(),
+                parameters: serde_json::json!({"type": "object"}),
+            }],
+            ..minimal_request()
+        };
+
+        let result = aws_request(request, false).tools_config();
+        assert!(matches!(
+            result,
+            Err(ProviderError::Request(error))
+                if error.to_string().contains("exactly one function name")
+        ));
+    }
+}
+
+#[test]
+fn test_tool_choice_specific_rejects_multiple_names_without_tools() {
+    let request = CompletionRequest {
+        tool_choice: Some(ToolChoice::Specific {
+            function_names: vec!["first".to_string(), "second".to_string()],
+        }),
+        ..minimal_request()
+    };
+
+    assert!(matches!(
+        aws_request(request, false).tools_config(),
+        Err(ProviderError::Request(_))
+    ));
+}
+
+#[test]
 fn test_no_tool_choice_when_not_specified() {
     // Test that when tool_choice is None (not set), it defaults to None in AWS
     let request = CompletionRequest {
