@@ -1,7 +1,7 @@
 //! Canonical streaming-grammar coverage for the OpenAI **chat-completions**
 //! wire (the compat family's canonical wire), asserted through the
 //! *normalized* path: the aggregated [`StreamingCompletionResponse::choice`],
-//! the terminal [`StreamFinal`] record, usage, IDs, and finish reason — real
+//! the terminal `CompletionResponse` record, usage, IDs, and finish reason — real
 //! recorded wire traffic, not synthetic chunks.
 //!
 //! Re-record with:
@@ -11,12 +11,12 @@
 //! preserved); assertions derive expected IDs from the recorded turn and never
 //! mint literal IDs.
 
-use rig::streaming::Item;
-use rig::completion::CompletionResponse;
 use futures::StreamExt;
+use rig::completion::CompletionResponse;
 use rig::completion::FinishReason;
 use rig::message::{AssistantContent, ToolCall};
 use rig::providers::openai;
+use rig::streaming::Item;
 use rig::streaming::StreamEvent;
 use serde_json::json;
 
@@ -52,7 +52,10 @@ async fn drain_stream(mut stream: rig::streaming::CompletionStream) -> StreamRun
                 run.text.push_str(&text);
                 run.text_chunks += 1;
             }
-            Item::Event(StreamEvent::End { content: AssistantContent::ToolCall(tool_call), .. }) => run.tool_calls.push(tool_call),
+            Item::Event(StreamEvent::End {
+                content: AssistantContent::ToolCall(tool_call),
+                ..
+            }) => run.tool_calls.push(tool_call),
             _ => {}
         }
     }

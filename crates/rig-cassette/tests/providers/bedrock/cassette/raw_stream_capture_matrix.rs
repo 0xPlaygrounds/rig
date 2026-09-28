@@ -1,5 +1,5 @@
 //! Matrix for raw terminal-record capture on Bedrock's ConverseStream path
-//! ([`StreamFinal::raw`](rig::completion::CompletionResponse::raw)).
+//! ([`CompletionResponse::raw`](rig::completion::CompletionResponse::raw)).
 //!
 //! # The feature
 //!
@@ -9,7 +9,7 @@
 //! Bedrock's own vocabulary, and the operation's AWS request id — serialized
 //! with `serde_json::to_value`. It is the terminal record only, and nothing
 //! about it is sent to Bedrock. `raw == Value::Null` means only that a
-//! `StreamFinal` was built by hand without a provider terminal behind it, which
+//! `CompletionResponse` was built by hand without a provider terminal behind it, which
 //! no cell here can produce.
 //!
 //! Bedrock streams the AWS event-stream binary framing (recorded base64), so
@@ -53,8 +53,8 @@ use serde_json::Value;
 use super::super::support::with_bedrock_cassette;
 use crate::cassettes::recorded_interaction_bodies;
 use crate::raw_capture::{assert_normalized_lacks, capture_terminal};
-use crate::support::normalized_without_raw;
 use crate::support::Observed;
+use crate::support::normalized_without_raw;
 use rig::completion::CompletionRequest;
 
 const BEDROCK_PROVIDER: &str = "bedrock";

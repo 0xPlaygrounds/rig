@@ -143,8 +143,10 @@ async fn run_cell(client: OpenAiModels, cell: Cell, observed: SharedObservation)
             while let Some(item) = stream.next().await {
                 item?;
             }
-            let terminal = Some(stream.finish().await.expect("the stream ends"));
-            let terminal = terminal.context("raw stream should carry a terminal response")?;
+            let terminal = stream
+                .finish()
+                .await
+                .context("raw stream should carry a terminal response")?;
             let serialized = terminal.raw;
             Observation {
                 logprobs: serialized["logprobs"].clone(),

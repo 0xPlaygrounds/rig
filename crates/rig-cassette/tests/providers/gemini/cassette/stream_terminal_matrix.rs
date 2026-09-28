@@ -4,7 +4,7 @@
 //!
 //! `GeminiRestAdapter::interpret` treated *any* chunk carrying a
 //! `finishReason` as the provider completing the turn and pushed the
-//! terminal `StreamEvent::Final` there; the shared driver stops reading
+//! terminal record there; the shared driver stops reading
 //! as soon as it sees a terminal record. Gemini's `streamGenerateContent`
 //! does not honour that assumption: when a built-in tool runs a round it
 //! emits an **intermediate** `finishReason` and keeps streaming. A recorded
@@ -39,7 +39,7 @@
 //! | 4 | `two_terminal_stream_terminal_carries_the_last_usage` | recorded | terminal metadata comes from the last chunk |
 //! | 5 | `two_terminal_stream_with_visible_thoughts` | recorded | reasoning spanning the boundary |
 //! | 6 | `gemini_3_flash_does_not_emit_the_intermediate_finish` | recorded | second model family: control, shape absent |
-//! | 7 | `two_terminal_stream_through_raw_stream` | recorded | the provider-native terminal on `Final.raw` |
+//! | 7 | `two_terminal_stream_through_raw_stream` | recorded | the provider-native terminal on the response's `raw` |
 //! | 8 | `two_terminal_stream_unicode_answer_after_the_first_finish` | recorded | multi-byte text after the boundary |
 //! | 9 | `single_terminal_text_stream_is_unchanged` | recorded | regression guard: ordinary stream |
 //! | 10 | `single_terminal_tool_call_stream_is_unchanged` | recorded | regression guard: tool-call stream |
@@ -77,11 +77,11 @@
 //! Re-record with:
 //! `RIG_PROVIDER_TEST_MODE=record GEMINI_API_KEY=... cargo test -p rig --all-features --test gemini stream_terminal_matrix -- --test-threads=1`
 
-use rig::streaming::Item;
 use futures::StreamExt;
 use rig::completion::FinishReason;
 use rig::message::AssistantContent;
 use rig::providers::gemini;
+use rig::streaming::Item;
 use rig::streaming::StreamEvent;
 use serde_json::{Value, json};
 
@@ -270,8 +270,9 @@ async fn two_terminal_stream_agent_prompt_keeps_the_answer() {
             let mut stream = agent.prompt(TWO_ROUND_PROMPT).stream();
             let mut answer = String::new();
             while let Some(item) = stream.next().await {
-                if let rig::agent::MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Text { text, .. }),
-                ) = item.expect("no stream item should be an error")
+                if let rig::agent::MultiTurnStreamItem::StreamAssistantItem(Item::Event(
+                    StreamEvent::Text { text, .. },
+                )) = item.expect("no stream item should be an error")
                 {
                     answer.push_str(&text);
                 }
@@ -435,35 +436,34 @@ async fn two_terminal_stream_through_raw_stream() {
             // well as the normalized one.
             let mut stream = model.stream(request).expect("stream should open");
             let mut text = String::new();
-            let mut natives = 0;
             while let Some(item) = stream.next().await {
-                match item.expect("no stream item should be an error") {
-                    Item::Event(StreamEvent::Text { text: chunk, .. }) => text.push_str(&chunk),
-                    _ => {}
+                if let Item::Event(StreamEvent::Text { text: chunk, .. }) =
+                    item.expect("no stream item should be an error")
+                {
+                    text.push_str(&chunk);
                 }
             }
-            {
-                let record = stream.finish().await.expect("the stream ends");
-                let native: gemini::streaming::StreamingCompletionResponse =
-                            serde_json::from_value(record.raw.clone())
-                                .expect("Final.raw should decode as Gemini's native terminal");
-                        assert_eq!(
-                            native
-                                .finish_reason
-                                .as_ref()
-                                .map(|reason| reason.as_wire_str()),
-                            Some("STOP"),
-                            "the native terminal reports the reason the turn actually ended on"
-                        );
-                        assert_eq!(record.finish_reason(), Some(FinishReason::Stop));
-                        natives += 1;
-            }
+            let record = stream
+                .finish()
+                .await
+                .expect("the stream should end with a terminal record");
+            let native: gemini::streaming::StreamingCompletionResponse =
+                serde_json::from_value(record.raw.clone())
+                    .expect("the terminal's raw should decode as Gemini's native terminal");
+            assert_eq!(
+                native
+                    .finish_reason
+                    .as_ref()
+                    .map(|reason| reason.as_wire_str()),
+                Some("STOP"),
+                "the native terminal reports the reason the turn actually ended on"
+            );
+            assert_eq!(record.finish_reason(), Some(FinishReason::Stop));
 
             assert!(
                 states(&text, FIRST_ROUND_VALUE),
                 "the raw stream must carry the answer, got {text:?}"
             );
-            assert_eq!(natives, 1, "exactly one provider-native terminal record");
         },
     )
     .await;
@@ -710,15 +710,21 @@ mod unit {
         };
         while let Some(item) = stream.next().await {
             match item {
-                Ok(item) => {
-                    match item {
-                        rig::streaming::Item::Event(StreamEvent::Text { text, .. }) => run.text.push_str(&text),
-                        rig::streaming::Item::Event(StreamEvent::End { content: AssistantContent::Reasoning(_), .. }) => run.reasoning += 1,
-                        rig::streaming::Item::Event(StreamEvent::End { content: AssistantContent::ToolCall(_), .. }) => run.tool_calls += 1,
-                        rig::streaming::Item::Unknown(_) => run.unknowns += 1,
-                        _ => {}
+                Ok(item) => match item {
+                    rig::streaming::Item::Event(StreamEvent::Text { text, .. }) => {
+                        run.text.push_str(&text)
                     }
-                }
+                    rig::streaming::Item::Event(StreamEvent::End {
+                        content: AssistantContent::Reasoning(_),
+                        ..
+                    }) => run.reasoning += 1,
+                    rig::streaming::Item::Event(StreamEvent::End {
+                        content: AssistantContent::ToolCall(_),
+                        ..
+                    }) => run.tool_calls += 1,
+                    rig::streaming::Item::Unknown(_) => run.unknowns += 1,
+                    _ => {}
+                },
                 Err(error) => {
                     run.errors += 1;
                     run.error_messages.push(error.to_string());
@@ -805,10 +811,7 @@ mod unit {
             "the envelope is a modeled frame, never skipped"
         );
         assert_eq!(run.errors, 1, "one error item: the provider's");
-        assert!(
-            run.response.is_none(),
-            "no terminal record after an abort"
-        );
+        assert!(run.response.is_none(), "no terminal record after an abort");
         let message = &run.error_messages[0];
         assert!(
             message.contains("INTERNAL"),

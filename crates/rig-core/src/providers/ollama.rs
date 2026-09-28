@@ -352,19 +352,11 @@ fn finish_of(response: StreamingCompletionResponse) -> Finish {
 
 /// Decode `/api/chat` records, one whole reply or a stream of lines. Only a
 /// `done: true` record ends the reply; EOF alone does not.
+#[derive(Default)]
 pub struct OllamaDecoder<'id> {
     /// Reasoning closes when content of another kind interleaves.
     thoughts: Thoughts<'id>,
     text: Option<TextPart<'id>>,
-}
-
-impl Default for OllamaDecoder<'_> {
-    fn default() -> Self {
-        Self {
-            thoughts: Thoughts::new(),
-            text: None,
-        }
-    }
 }
 
 impl<'id> OllamaDecoder<'id> {

@@ -1155,9 +1155,7 @@ fn a_tool_round_trip_is_top_level_steps() {
 /// Synthetic transcript tests required-ID request correlation without a paid call.
 #[test]
 fn full_request_preserves_typed_tool_pairs_across_turns() {
-    use crate::providers::internal::wire_ids::tests::{
-        adapter_requests, assert_adapter_pairs,
-    };
+    use crate::providers::internal::wire_ids::tests::{adapter_requests, assert_adapter_pairs};
     for request in adapter_requests() {
         for stream in [false, true] {
             let wire =

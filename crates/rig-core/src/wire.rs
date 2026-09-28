@@ -13,7 +13,6 @@
 //! assert_eq!(frame.as_str(), "response");
 //! ```
 
-
 use crate::error::{EncodeError, ProviderError};
 use crate::http_client::MultipartForm;
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
@@ -564,13 +563,28 @@ impl<Op: Operation<Emit = Free>> Out<'_, Op> {
     /// Only an operation whose decoders build their own events has this; a
     /// completion's events come from its part handles:
     ///
-    /// ```compile_fail
+    /// ```compile_fail,E0599
     /// use rig_core::operation::Completion;
     /// use rig_core::streaming::StreamEvent;
     /// use rig_core::wire::Out;
     ///
     /// fn reinject(out: &mut Out<'_, Completion>, seen: &StreamEvent) {
     ///     out.event(seen.clone());
+    /// }
+    /// ```
+    ///
+    /// An event rebuilt from its serialized form is no different:
+    ///
+    /// ```compile_fail,E0599
+    /// use rig_core::operation::Completion;
+    /// use rig_core::streaming::Transcript;
+    /// use rig_core::wire::Out;
+    ///
+    /// fn rebuild(out: &mut Out<'_, Completion>, recorded: serde_json::Value) {
+    ///     let Ok(transcript) = Transcript::parse(recorded) else { return };
+    ///     for event in transcript.events() {
+    ///         out.event(event.clone());
+    ///     }
     /// }
     /// ```
     pub fn event(&mut self, event: Op::Event) {

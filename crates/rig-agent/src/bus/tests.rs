@@ -1797,25 +1797,25 @@ impl rig_core::driver::Transport<rig_core::driver::Local<rig_core::operation::Re
     ) -> rig_core::driver::Opening<rig_core::driver::Step<rig_core::operation::Rerank>> {
         let failure = self.failure;
         rig_core::driver::Opening::ready(match failure {
-                Some(message) => {
-                    rig_core::driver::Opened::failed(ProviderError::Response(message.to_owned()))
-                }
-                None => rig_core::driver::Opened::new(futures::stream::iter([Ok(rig_core::driver::Step::End(
-                    RerankResponse::new(
-                        request
-                            .documents
-                            .into_iter()
-                            .enumerate()
-                            .map(|(index, document)| RerankResult {
-                                index,
-                                document: Some(document),
-                                relevance_score: 1.0,
-                            })
-                            .collect(),
-                        "probe",
-                    ),
-                ))])),
-            })
+            Some(message) => {
+                rig_core::driver::Opened::failed(ProviderError::Response(message.to_owned()))
+            }
+            None => rig_core::driver::Opened::new(futures::stream::iter([Ok(
+                rig_core::driver::Step::End(RerankResponse::new(
+                    request
+                        .documents
+                        .into_iter()
+                        .enumerate()
+                        .map(|(index, document)| RerankResult {
+                            index,
+                            document: Some(document),
+                            relevance_score: 1.0,
+                        })
+                        .collect(),
+                    "probe",
+                )),
+            )])),
+        })
     }
 }
 

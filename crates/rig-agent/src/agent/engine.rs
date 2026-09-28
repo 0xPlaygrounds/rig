@@ -41,9 +41,7 @@ use super::{
         transcript::{assistant_text_from_choice, is_empty_assistant_turn, tool_result_output},
     },
     runner::AgentRunner,
-    streaming::{
-        MultiTurnStreamItem, StreamingError, finalize_streamed_choice,
-    },
+    streaming::{MultiTurnStreamItem, StreamingError, finalize_streamed_choice},
     telemetry::{build_chat_span, new_execute_tool_span},
 };
 use crate::run::UnhandledInvalidToolCall;

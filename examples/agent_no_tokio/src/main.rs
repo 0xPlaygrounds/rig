@@ -19,7 +19,7 @@ use bevy_tasks::{AsyncComputeTaskPool, TaskPool, futures::check_ready};
 use rig::agent::MultiTurnStreamItem;
 use rig::prelude::*;
 use rig::providers::openai::{self, OpenAI};
-use rig::streaming::{Delta, StreamEvent};
+use rig::streaming::{Item, StreamEvent};
 
 const PREAMBLE: &str = "You are a comedian here to entertain the user using humour and jokes.";
 const PROMPT: &str = "Entertain me!";
@@ -42,7 +42,10 @@ fn main() -> Result<()> {
     let response = loop {
         while let Some(event) = events.try_next() {
             match event {
-                MultiTurnStreamItem::StreamAssistantItem(StreamEvent::Text { text, .. }) => {
+                MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Text {
+                    text,
+                    ..
+                })) => {
                     print!("{text}");
                 }
                 MultiTurnStreamItem::ToolExecutionCommitted { tool_call, .. } => {

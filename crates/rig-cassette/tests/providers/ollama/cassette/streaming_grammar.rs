@@ -1,6 +1,6 @@
 //! Canonical streaming-grammar coverage for Ollama's native chat wire,
 //! asserted through the *normalized* path: the aggregated
-//! [`CompletionStream::folded`] snapshot, the terminal [`StreamFinal`]
+//! [`Streamed::finish`](rig::streaming::Streamed::finish) response, the terminal `CompletionResponse`
 //! record, usage, and finish reason — real recorded wire traffic, not
 //! synthetic chunks.
 //!
@@ -15,11 +15,11 @@
 //! property that matters downstream: parallel calls stay distinct — by
 //! daemon id and by structure — and assemble with uncorrupted arguments.
 
-use rig::streaming::Item;
-use rig::completion::CompletionResponse;
 use futures::StreamExt;
+use rig::completion::CompletionResponse;
 use rig::completion::FinishReason;
 use rig::message::{AssistantContent, Reasoning, ToolCall};
+use rig::streaming::Item;
 use rig::streaming::StreamEvent;
 
 use super::super::support::with_ollama_cassette;
@@ -56,14 +56,20 @@ async fn drain_stream(mut stream: rig::streaming::CompletionStream) -> StreamRun
         raw_items.push(Ok(item.clone()));
         match item {
             Item::Event(StreamEvent::Text { text, .. }) => run.text.push_str(&text),
-            Item::Event(StreamEvent::End { content: AssistantContent::Reasoning(reasoning), .. }) => {
+            Item::Event(StreamEvent::End {
+                content: AssistantContent::Reasoning(reasoning),
+                ..
+            }) => {
                 run.reasoning_blocks
                     .push(reasoning.open(reasoning.issuer()).cloned().expect("opens"));
             }
             Item::Event(StreamEvent::Reasoning { text, .. }) => {
                 run.reasoning_delta.push_str(&text);
             }
-            Item::Event(StreamEvent::End { content: AssistantContent::ToolCall(tool_call), .. }) => run.tool_calls.push(tool_call),
+            Item::Event(StreamEvent::End {
+                content: AssistantContent::ToolCall(tool_call),
+                ..
+            }) => run.tool_calls.push(tool_call),
             _ => {}
         }
     }

@@ -211,7 +211,12 @@ pub(crate) fn assert_log(cell: &Cell, log: &EffectLog) {
                     "the completed call's arguments were delivered"
                 );
             } else {
-                assert!(events.events().any(|event| matches!(event, StreamEvent::Text { text, .. } if !text.is_empty())), "actual final answer text was streamed");
+                assert!(
+                    events.events().any(
+                        |event| matches!(event, StreamEvent::Text { text, .. } if !text.is_empty())
+                    ),
+                    "actual final answer text was streamed"
+                );
             }
         }
     }

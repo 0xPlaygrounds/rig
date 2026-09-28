@@ -1704,7 +1704,13 @@ fn assert_stream_delivery(cell: &Cell, turns: &[Turn<'_>]) {
             );
         }
         if turn.tools.is_empty() && turn.completion.outcome.is_ok() {
-            assert!(events.events().any(|event| matches!(event, StreamEvent::Text { text, .. } if !text.is_empty())), "{}: actual answer text was streamed", cell.name);
+            assert!(
+                events.events().any(
+                    |event| matches!(event, StreamEvent::Text { text, .. } if !text.is_empty())
+                ),
+                "{}: actual answer text was streamed",
+                cell.name
+            );
         }
     }
 }

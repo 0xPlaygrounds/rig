@@ -51,11 +51,13 @@ async fn agent_max_tokens_reaches_generation_config_without_additional_params() 
             .build();
 
             let mut stream = agent.prompt(STREAMING_PROMPT).stream();
-            let (_response, provider_final) =
-                collect_stream_final_response_and_provider_final(&mut stream)
-                    .await
-                    .expect("streaming prompt should succeed");
-
+            let (_response, call) = collect_stream_final_response_and_provider_final(&mut stream)
+                .await
+                .expect("streaming prompt should succeed");
+            assert!(
+                !call.raw.is_null(),
+                "the turn carries Gemini's terminal record"
+            );
         },
     )
     .await;

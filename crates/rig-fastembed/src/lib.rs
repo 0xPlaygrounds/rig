@@ -133,11 +133,7 @@ impl Fastembed {
 }
 
 impl Transport<Local<Embedding>> for Fastembed {
-    fn send(
-        &self,
-        texts: Vec<String>,
-        _exchange: Exchange,
-    ) -> Opening<Step<Embedding>> {
+    fn send(&self, texts: Vec<String>, _exchange: Exchange) -> Opening<Step<Embedding>> {
         let embedder = Arc::clone(&self.embedder);
         Opening::new(async move {
             let embedded = embedder
@@ -155,7 +151,9 @@ impl Transport<Local<Embedding>> for Fastembed {
                 })
                 .map_err(|err| ProviderError::Provider(err.to_string()));
             // A failed embed fails the reply, as a transport failure does.
-            Ok(Opened::new(futures::stream::iter([embedded.map(Step::End)])))
+            Ok(Opened::new(futures::stream::iter(
+                [embedded.map(Step::End)],
+            )))
         })
     }
 }

@@ -312,7 +312,7 @@ No hook trait: a user system writes a component at a set boundary and a library 
 | `on_outcome` → stop on a tool result | `On<Add, EffectOutcome>` on the tool child, or a system in the bus's `Judge` | the tool's record holds its real answer; nothing is committed | `anthropic_endings_tool_outcome_cancelled{,_streamed}` (`[Completion, Tool]`) |
 | `on_outcome` → stop on an answer | a system in `RigSet::Judge` | `[Completion]`, the real answer in the record | `anthropic_endings_answer_outcome_cancelled` |
 | `on_model_turn_finished` → stop | a system in `RigSet::Judge` (before `Materialise`) | the turn is not history | `anthropic_endings_turn_finished_stop{,_streamed}`, `anthropic_endings_answer_turn_stop` (`[C, T, C]`), `anthropic_oracle_stop_after_turn_two` (the stateful hook: `Cursor.turn == 2`) |
-| a delta stop | a system after `RigSet::Fold` on `Changed<Outputs>` (text), `Changed<Streamed>` (a tool-call delta: `Delta::ToolName` / `Delta::ToolArguments` among the new events) | the record is the handler's timing: the replayer ends the stream as it was recorded (`Cancelled` where the producer dropped it, a whole completion where the mock had already finished) | `anthropic_endings_text_delta_stop`, `anthropic_endings_tool_call_delta_stop`, `gemini_breadth_text_delta_stop`, `openai_breadth_text_delta_stop` (`Cancelled`, events kept); `mock_delta_stop_on_name`, `mock_delta_stop_on_arguments` (whole) |
+| a delta stop | a system after `RigSet::Fold` on `Changed<Outputs>` (text), `Changed<Streamed>` (a tool call: a `StreamEvent::End` carrying one among the new events; calls surface whole) | the record is the handler's timing: the replayer ends the stream as it was recorded (`Cancelled` where the producer dropped it, a whole completion where the mock had already finished) | `anthropic_endings_text_delta_stop`, `anthropic_endings_tool_call_delta_stop`, `gemini_breadth_text_delta_stop`, `openai_breadth_text_delta_stop` (`Cancelled`, events kept); `mock_delta_stop_on_arguments` (whole) |
 
 ### 9.2 Selecting: `UsesModel` on the run
 
@@ -722,18 +722,17 @@ requests, effect identities, usage, retry budgets or the existing run policy has
 
 `bus::StreamItemsDelivered { effect, id, start, items }` is a synchronous Bevy
 event for newly collected items of a streaming effect. `On<StreamItemsDelivered>`
-observers independently receive the same batch, including interleaved
-`StreamEvent` and `ErrorReport` values. `start` counts all prior events and
-errors for that effect; `id` is its issued effect identity, so retries remain
-distinct attempts. Provider block/call identity is carried unchanged in the
-items. Run/turn correlation uses existing relationships outside the bus.
+observers independently receive the same batch of
+`Result<Item<StreamEvent>, ErrorReport>` values. `start` counts all prior items
+and errors for that effect; `id` is its issued effect identity, so retries
+remain distinct attempts. Part indices and call ids are carried unchanged in
+the items. Run/turn correlation uses existing relationships outside the bus.
 
 The collector updates accumulated `Streamed` before delivery and publishes its
 `EffectOutcome` afterward. Live notifications execute during `BusSet::Collect`,
-before agent folding, tool-turn commit, or run settlement. A terminal stream
-record is an item, not stream closure: the existing first-outcome rule and
-accepted post-terminal metadata/errors are preserved. EOF and cancellation are
-not fabricated stream items. A unary request folded from a stream does not
+before agent folding, tool-turn commit, or run settlement. The reply's end is
+not an item: the finished response is the `EffectOutcome`, and an error is the
+stream's last item. EOF and cancellation are not fabricated stream items. A unary request folded from a stream does not
 expose streamed consumer delivery. Recording and recorder event retention do
 not determine live visibility.
 
@@ -789,7 +788,8 @@ Task cancellation reaches pending setup, unary folding and full delivery queues.
 An active native poll cannot be interrupted synchronously; observation closes
 atomically with cancellation so a late result cannot mutate the closed record.
 Registry replacement does not replace in-flight work. Streamed effects retain
-their serial slot through EOF, including post-final frames. Both reply forms
+their serial slot until the reply ends; frames after the provider's end are
+not read. Both reply forms
 converge through Collect, durable publication, `EffectOutcome` and `settle`.
 
 The observer records the innermost request and original answer. Denial discards

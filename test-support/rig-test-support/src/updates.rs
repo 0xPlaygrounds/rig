@@ -52,10 +52,9 @@ pub fn assert_update_contract(updates: &Updates) -> (CompletionResponse, Vec<Del
         .response
         .as_ref()
         .unwrap_or_else(|error| panic!("the stream finishes: {error:?}"));
-    let transcript = Transcript::parse(
-        serde_json::to_value(&updates.items).expect("stream items serialize"),
-    )
-    .unwrap_or_else(|error| panic!("the items are in the writer's order: {error}"));
+    let transcript =
+        Transcript::parse(serde_json::to_value(&updates.items).expect("stream items serialize"))
+            .unwrap_or_else(|error| panic!("the items are in the writer's order: {error}"));
     let mut delivered = Vec::new();
     for (index, expected) in done.choice.iter().enumerate() {
         let own: Vec<&StreamEvent> = transcript
@@ -81,7 +80,9 @@ pub fn assert_update_contract(updates: &Updates) -> (CompletionResponse, Vec<Del
         assert_eq!(part, expected, "part {index}'s end is choice[{index}]");
         match expected {
             AssistantContent::ToolCall(call) => assert_eq!(
-                serde_json::from_str::<serde_json::Value>(&text).ok().as_ref(),
+                serde_json::from_str::<serde_json::Value>(&text)
+                    .ok()
+                    .as_ref(),
                 Some(&call.function.arguments),
                 "part {index}'s arguments"
             ),

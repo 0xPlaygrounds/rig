@@ -57,8 +57,10 @@ async fn streaming_terminal_carries_identity() {
             while let Some(item) = stream.next().await {
                 item.expect("stream item should succeed");
             }
-            let terminal = Some(stream.finish().await.expect("the stream ends"));
-            let terminal = terminal.expect("stream should yield a terminal record");
+            let terminal = stream
+                .finish()
+                .await
+                .expect("stream should yield a terminal record");
             assert_request_id(
                 terminal.provider_request_id.as_deref(),
                 "streaming terminal",

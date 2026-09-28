@@ -2247,8 +2247,7 @@ pub fn judge_invalid_calls(
         .collect();
     turns.sort_by_key(|(seq, ..)| *seq);
     for (_, turn, run, mut outs) in turns {
-        let Ok((RunOf(agent), _, invalid_retries, _, &RunPhase::AwaitingModel)) =
-            runs.get(run)
+        let Ok((RunOf(agent), _, invalid_retries, _, &RunPhase::AwaitingModel)) = runs.get(run)
         else {
             continue;
         };

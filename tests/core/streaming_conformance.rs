@@ -697,7 +697,10 @@ mod interleaved_constant_id_reasoning {
         let mut minted_ids = Vec::new();
         let mut cities = Vec::new();
         for item in drained.items.iter().flatten() {
-            if let rig::streaming::Item::Event(StreamEvent::End { content: AssistantContent::ToolCall(tool_call), .. }) = item
+            if let rig::streaming::Item::Event(StreamEvent::End {
+                content: AssistantContent::ToolCall(tool_call),
+                ..
+            }) = item
             {
                 assert_eq!(tool_call.function.name, "get_weather");
                 assert!(
@@ -820,7 +823,10 @@ mod interleaved_constant_id_reasoning {
         let mut minted_ids = Vec::new();
         let mut cities = Vec::new();
         for item in drained.items.iter().flatten() {
-            if let rig::streaming::Item::Event(StreamEvent::End { content: AssistantContent::ToolCall(tool_call), .. }) = item
+            if let rig::streaming::Item::Event(StreamEvent::End {
+                content: AssistantContent::ToolCall(tool_call),
+                ..
+            }) = item
             {
                 assert_eq!(tool_call.function.name, "get_weather");
                 assert!(

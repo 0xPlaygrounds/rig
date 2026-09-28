@@ -30,12 +30,11 @@ fn drop_at_tool_delta(
     streams: Query<(Entity, &Streamed), Without<EffectOutcome>>,
 ) {
     for (entity, stream) in &streams {
-        if stream.events.events().any(|event| {
-            matches!(
-                event,
-                StreamEvent::Arguments { .. }
-            )
-        }) {
+        if stream
+            .events
+            .events()
+            .any(|event| matches!(event, StreamEvent::Arguments { .. }))
+        {
             commands.entity(entity).despawn();
         }
     }

@@ -7,7 +7,7 @@
 //! envelope fields a particular provider adds (`service_tier`,
 //! `metadata.system_fingerprint`), and its transport id contract.
 
-use rig_core::completion::{CompletionResponse, FinishReason, Usage};
+use rig_core::completion::{CompletionResponse, FinishReason};
 use rig_core::providers::openai::responses_api;
 use serde::Deserialize as _;
 use serde_json::Value;
@@ -27,14 +27,17 @@ pub type Terminal = responses_api::CompletionResponse;
 /// blocking reply keeps. The returned typed document is the cell's handle on
 /// whatever its dialect keeps beside the shared fields.
 pub fn assert_terminal_round_trips(terminal: &CompletionResponse) -> Terminal {
-    let typed = Terminal::deserialize(&terminal.raw)
-        .expect("raw is the Responses response object");
+    let typed = Terminal::deserialize(&terminal.raw).expect("raw is the Responses response object");
     assert_eq!(
         terminal.response_id.as_deref(),
         Some(typed.id.as_str()),
         "response id"
     );
-    assert_eq!(terminal.model.as_deref(), Some(typed.model.as_str()), "model");
+    assert_eq!(
+        terminal.model.as_deref(),
+        Some(typed.model.as_str()),
+        "model"
+    );
     let usage = typed.usage.as_ref().expect("the terminal reports usage");
     assert_eq!(
         (

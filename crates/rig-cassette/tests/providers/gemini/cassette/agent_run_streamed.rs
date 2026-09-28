@@ -69,8 +69,7 @@ async fn run_streamed_turn(
         while let Some(event) = events.pop_front() {
             match event {
                 StreamedTurnEvent::EmitIngested => {
-                    if let Item::Event(StreamEvent::Text { text, .. }) = &item
-                    {
+                    if let Item::Event(StreamEvent::Text { text, .. }) = &item {
                         collected_text.push_str(text);
                     }
                 }

@@ -304,7 +304,9 @@ async fn a_request_without_frames_is_refused_before_anything_runs() {
         .expect("the checkpoint loads")
         .pose();
     // The refusal is the stream's only item.
-    let mut stream = model.stream(PoseRequest::default()).expect("the stream opens");
+    let mut stream = model
+        .stream(PoseRequest::default())
+        .expect("the stream opens");
     assert!(matches!(stream.next().await, Some(Err(_))));
     assert!(stream.next().await.is_none());
     assert!(model.call(PoseRequest::default()).await.is_err());

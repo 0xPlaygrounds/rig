@@ -174,16 +174,16 @@ async fn run_cell(client: OpenAiModels, cell: Cell, observed: SharedObservation)
             while let Some(item) = stream.next().await {
                 match item? {
                     Item::Event(StreamEvent::Text { text, .. }) => observation.text.push_str(&text),
-                    Item::Event(StreamEvent::End { content: AssistantContent::ToolCall(tool_call), .. }) => observation
+                    Item::Event(StreamEvent::End {
+                        content: AssistantContent::ToolCall(tool_call),
+                        ..
+                    }) => observation
                         .calls
                         .push((tool_call.function.name.into(), tool_call.function.arguments)),
                     _ => {}
                 }
             }
-            {
-                let final_record = stream.finish().await.expect("the stream ends");
-                observation.finish_reason = final_record.finish_reason();
-            }
+            observation.finish_reason = stream.finish().await?.finish_reason();
             observation
         }
     };

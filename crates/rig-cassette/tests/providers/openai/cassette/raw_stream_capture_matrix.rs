@@ -1,5 +1,5 @@
 //! Raw provider response capture on OpenAI's streaming seams
-//! (`StreamFinal::raw`).
+//! (`CompletionResponse::raw`).
 //!
 //! # What this pins
 //!
@@ -12,7 +12,7 @@
 //! document — a streamed `raw` is the record the decoder assembled from the
 //! reply's frames, because no single frame is the terminal. So it
 //! round-trips into that terminal type and re-serializes equal, it exposes a
-//! terminal-only field the normalized `StreamFinal` does not model, and —
+//! terminal-only field the normalized `CompletionResponse` does not model, and —
 //! because capture is unconditional and must stay an escape hatch — running
 //! the decoder's own mapper over the captured record reproduces the `usage`,
 //! `finish_reason`, `model` and identity the stream reported.
@@ -28,7 +28,7 @@
 //! Cells 5–6 are the streamed twins of the reasoning and tool-call cells in
 //! `raw_capture_matrix`: a Responses reasoning stream, whose terminal
 //! carries the `reasoning` echo of `response.completed` as
-//! `reasoning_metadata` (a terminal-only field the normalized `StreamFinal`
+//! `reasoning_metadata` (a terminal-only field the normalized `CompletionResponse`
 //! does not model), and a forced Chat tool call, whose terminal spells
 //! `finish_reason` as `"tool_calls"` and whose normalized twin reports
 //! `FinishReason::ToolCalls`.
@@ -362,7 +362,7 @@ async fn responses_stream_raw_exposes_status() {
 
 /// A Responses reasoning stream: the terminal record round-trips, and the
 /// `reasoning` echo of `response.completed` — which the normalized
-/// `StreamFinal` does not model — is readable off `raw` as
+/// `CompletionResponse` does not model — is readable off `raw` as
 /// `reasoning_metadata`. Premise: the completed response object carries a
 /// `reasoning` output item with a string `encrypted_content`, i.e. this was a
 /// reasoning turn on the wire and not merely a reasoning-configured request.

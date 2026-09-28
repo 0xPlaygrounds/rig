@@ -1,5 +1,5 @@
 //! Parity matrix for the typed escape hatch: the provider-native reply rig
-//! hands back in `CompletionResponse::raw` / `StreamFinal::raw` must tell the
+//! hands back in `CompletionResponse::raw` / `CompletionResponse::raw` must tell the
 //! same story as the normalized response delivered with it, and both must be
 //! what the fixture recorded.
 //!
@@ -316,7 +316,10 @@ fn assert_raw_view_agrees(response: &RigCompletionResponse, reported: &Reported)
 async fn capture_terminal_pair(
     client: AnthropicModels,
     request: rig::completion::CompletionRequest,
-    sink: Observed<(rig::completion::CompletionResponse, rig::completion::CompletionResponse)>,
+    sink: Observed<(
+        rig::completion::CompletionResponse,
+        rig::completion::CompletionResponse,
+    )>,
 ) {
     let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
 
@@ -334,7 +337,10 @@ async fn capture_terminal_pair(
 /// Streamed twin of [`assert_blocking_parity`].
 fn assert_streamed_parity(
     scenario: &str,
-    (normalized, second_record): (rig::completion::CompletionResponse, rig::completion::CompletionResponse),
+    (normalized, second_record): (
+        rig::completion::CompletionResponse,
+        rig::completion::CompletionResponse,
+    ),
     expected: FinishReason,
     stop_reason: &str,
 ) {

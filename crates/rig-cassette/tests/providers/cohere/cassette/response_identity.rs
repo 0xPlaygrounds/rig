@@ -32,7 +32,6 @@ async fn nonstreaming_request_id_is_none_by_design() {
 #[tokio::test]
 async fn streaming_request_id_is_none_by_design() {
     use futures::StreamExt;
-    use rig::streaming::StreamEvent;
 
     with_cohere_cassette(
         "response_identity/streaming_request_id_is_none_by_design",
@@ -48,8 +47,10 @@ async fn streaming_request_id_is_none_by_design() {
             while let Some(item) = stream.next().await {
                 item.expect("stream item should succeed");
             }
-            let terminal = Some(stream.finish().await.expect("the stream ends"));
-            let terminal = terminal.expect("stream should yield a terminal record");
+            let terminal = stream
+                .finish()
+                .await
+                .expect("stream should yield a terminal record");
             assert_eq!(
                 terminal.provider_request_id, None,
                 "Cohere has no adopted request-id header on either surface"

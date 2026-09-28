@@ -30,11 +30,7 @@ fn generation(model: &CandleModel) -> rig_core::Model<Generation, CandleModel> {
 struct Scripted(Arc<std::sync::Mutex<Vec<GenerationEvent>>>);
 
 impl Transport<Generation> for Scripted {
-    fn send(
-        &self,
-        _request: CompletionRequest,
-        _exchange: Exchange,
-    ) -> Opening<CandleFrame> {
+    fn send(&self, _request: CompletionRequest, _exchange: Exchange) -> Opening<CandleFrame> {
         let events = match self.0.lock() {
             Ok(mut events) => std::mem::take(&mut *events),
             Err(_) => {
@@ -1622,7 +1618,7 @@ fn converts_finish_reason_and_usage() -> Result<(), CandleError> {
 }
 
 /// The load-bearing property behind `CompletionResponse::raw` and
-/// `StreamFinal::raw` for this crate: the captured value is
+/// `CompletionResponse::raw` for this crate: the captured value is
 /// `serde_json::to_value(&CandleCompletionResponse)` — the local record
 /// `raw_completion` returns — and a consumer must be able to read it back as
 /// the same type and get the same JSON, with the local generation metrics rig
@@ -1749,7 +1745,7 @@ async fn completion_raw_round_trips_into_the_local_record()
 }
 
 /// The streaming twin through the real `Model::stream` path: the
-/// terminal `StreamFinal.raw` is the local record the generator's `Final`
+/// terminal `CompletionResponse::raw` is the local record the generator's `Final`
 /// event carries — it round-trips into `CandleCompletionResponse`, agrees
 /// with a second stream's terminal on text and token counts, and
 /// re-normalizing it through the events-first seam reproduces every

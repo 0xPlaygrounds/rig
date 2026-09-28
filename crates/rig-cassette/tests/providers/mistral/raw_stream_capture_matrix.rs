@@ -31,8 +31,8 @@
 //! for `lookup_city` (and that the recorded request forced the call), so a
 //! recording that stopped calling fails instead of covering nothing.
 
-use rig::streaming::Item;
 use rig::message::AssistantContent;
+use rig::streaming::Item;
 
 use futures::StreamExt as _;
 use rig::completion::{CompletionRequest, FinishReason, ToolDefinition};
@@ -97,17 +97,20 @@ async fn collect_tool_calls_and_terminal(
         terminal: None,
     };
     while let Some(item) = stream.next().await {
-        match item.expect("stream item should not be an error") {
-            Item::Event(StreamEvent::End { content: AssistantContent::ToolCall(tool_call), .. }) => {
-                observation.tool_calls.push(tool_call);
-            }
-            _ => {}
+        if let Item::Event(StreamEvent::End {
+            content: AssistantContent::ToolCall(tool_call),
+            ..
+        }) = item.expect("stream item should not be an error")
+        {
+            observation.tool_calls.push(tool_call);
         }
     }
-    {
-        let final_record = stream.finish().await.expect("the stream ends");
-        observation.terminal = Some(final_record);
-    }
+    observation.terminal = Some(
+        stream
+            .finish()
+            .await
+            .expect("the stream should yield a terminal record"),
+    );
     observation
 }
 

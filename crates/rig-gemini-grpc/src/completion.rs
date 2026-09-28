@@ -91,9 +91,7 @@ impl Transport<GenerateContent> for GeminiGrpc {
         Opening::new(async move {
             Ok(match mode {
                 Mode::Unary => match client.generate_content(request).await {
-                    Ok(response) => {
-                        Opened::new(futures::stream::iter([Ok(response.into_inner())]))
-                    }
+                    Ok(response) => Opened::new(futures::stream::iter([Ok(response.into_inner())])),
                     Err(status) => Opened::failed(rpc_error(&status)),
                 },
                 Mode::Streaming => match client.stream_generate_content(request).await {

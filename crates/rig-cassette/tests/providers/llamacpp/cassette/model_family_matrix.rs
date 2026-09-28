@@ -37,7 +37,7 @@
 //!
 //! The const is now `false`. Flipping it changes no output and that was
 //! checked rather than argued: the shared accumulator's immediate-emit is a
-//! probe (`UnparseableToolInput::Keep`) that finalizes a call only when its
+//! probe that finalizes a call only when its
 //! accumulated arguments parse, so a lone `{` was already being declined, and
 //! the whole recorded streaming corpus replays byte-identically either way.
 //! What changes is that the const stops asserting something untrue — and that

@@ -64,7 +64,6 @@ const REQUEST_ID_HEADERS: &[&str] = &["request-id", "x-request-id", "mistral-cor
 #[tokio::test]
 async fn the_transport_request_id_is_absent_because_the_server_sends_none() {
     use futures::StreamExt as _;
-    
 
     with_llamacpp_cassette(
         "response_identity_matrix/blocking_identity",
@@ -96,8 +95,7 @@ async fn the_transport_request_id_is_absent_because_the_server_sends_none() {
             while let Some(item) = stream.next().await {
                 item.expect("stream item should be ok");
             }
-            let terminal = Some(stream.finish().await.expect("the stream ends"));
-            let terminal = terminal.expect("the stream must terminate");
+            let terminal = stream.finish().await.expect("the stream must terminate");
             assert!(
                 terminal.provider_request_id.is_none(),
                 "the streaming surface must agree: {:?}",
@@ -142,7 +140,6 @@ async fn the_transport_request_id_is_absent_because_the_server_sends_none() {
 #[tokio::test]
 async fn the_response_id_reaches_the_caller_on_both_transports() {
     use futures::StreamExt as _;
-    
 
     with_llamacpp_cassette(
         "response_identity_matrix/blocking_response_id",
@@ -171,13 +168,12 @@ async fn the_response_id_reaches_the_caller_on_both_transports() {
             let mut stream = model
                 .stream(CompletionRequest::new(PROBE).max_tokens(256))
                 .expect("stream should start");
-
-            let mut terminal = None;
             while let Some(item) = stream.next().await {
                 item.expect("stream item should be ok");
             }
-            terminal = Some(stream.finish().await.expect("the stream ends"));
-            let id = terminal
+            let id = stream
+                .finish()
+                .await
                 .expect("the stream must terminate")
                 .response_id
                 .expect("the streamed terminal must carry the same handle");

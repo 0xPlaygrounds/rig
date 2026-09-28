@@ -4,7 +4,6 @@
 //! Run with `RIG_GEMINI_DEFAULT_API_CANARY_ATTEMPTS=6` to increase the chance of
 //! seeing the recoverable legacy tool-name emission.
 
-use rig::streaming::Item;
 use futures::StreamExt;
 use rig::agent::{
     AgentHook, HookContext, InvalidToolCallAction, InvalidToolCallContext, MultiTurnStreamItem,
@@ -17,6 +16,7 @@ use rig::providers::gemini::{
     Gemini,
     completion::gemini_api_types::{AdditionalParameters, GenerationConfig, ThinkingConfig},
 };
+use rig::streaming::Item;
 use rig::streaming::{StreamEvent, StreamedUserContent};
 use rig::tool::Tool;
 use schemars::{JsonSchema, schema_for};
@@ -233,11 +233,17 @@ async fn consume_workspace_like_stream(
 
     while let Some(item) = stream.next().await {
         match item.map_err(|error| error.to_string())? {
-            MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Text { text, .. })) => {
+            MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Text {
+                text,
+                ..
+            })) => {
                 observation.events.push("text");
                 observation.streamed_text.push_str(&text);
             }
-            MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::End { content: AssistantContent::Reasoning(reasoning), .. })) => {
+            MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::End {
+                content: AssistantContent::Reasoning(reasoning),
+                ..
+            })) => {
                 observation.events.push("reasoning");
                 observation.reasoning_text.push_str(
                     &reasoning
@@ -246,7 +252,10 @@ async fn consume_workspace_like_stream(
                         .unwrap_or_default(),
                 );
             }
-            MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Reasoning { text: reasoning, .. })) => {
+            MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Reasoning {
+                text: reasoning,
+                ..
+            })) => {
                 observation.events.push("reasoning_delta");
                 observation.reasoning_text.push_str(&reasoning);
             }
@@ -260,7 +269,9 @@ async fn consume_workspace_like_stream(
                         .map_err(|error| error.to_string())?;
                 observation.executions.push(execution);
             }
-            MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Arguments { .. })) => {
+            MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Arguments {
+                ..
+            })) => {
                 observation.events.push("tool_call_delta");
                 observation.tool_call_deltas += 1;
             }

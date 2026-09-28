@@ -59,32 +59,27 @@ async fn streaming_emits_signature_only_adaptive_reasoning_regression() {
     let mut reasoning_chunks = 0;
     let mut signature_chunks = 0;
     let mut signature_only_chunks = 0;
-    let mut got_final = false;
 
     while let Some(item) = stream.next().await {
-        match item.expect("adaptive-thinking Bedrock stream item should succeed") {
-            rig::streaming::Item::Event(StreamEvent::End {
-                content: AssistantContent::Reasoning(reasoning),
-                ..
-            }) => {
-                reasoning_chunks += 1;
-                let reasoning = reasoning.open(reasoning.issuer()).expect("reasoning opens");
-                if reasoning.first_signature().is_some() {
-                    signature_chunks += 1;
-                    if reasoning.display_text().is_empty() {
-                        signature_only_chunks += 1;
-                    }
+        if let rig::streaming::Item::Event(StreamEvent::End {
+            content: AssistantContent::Reasoning(reasoning),
+            ..
+        }) = item.expect("adaptive-thinking Bedrock stream item should succeed")
+        {
+            reasoning_chunks += 1;
+            let reasoning = reasoning.open(reasoning.issuer()).expect("reasoning opens");
+            if reasoning.first_signature().is_some() {
+                signature_chunks += 1;
+                if reasoning.display_text().is_empty() {
+                    signature_only_chunks += 1;
                 }
             }
-            _ => {}
         }
     }
-    {
-        let _final = stream.finish().await.expect("the stream ends");
-        got_final = true;
-    }
-
-    assert!(got_final, "stream should emit a final response");
+    stream
+        .finish()
+        .await
+        .expect("stream should emit a final response");
     assert!(
         reasoning_chunks > 0,
         "expected at least one adaptive-thinking reasoning chunk"

@@ -33,9 +33,9 @@
 //! answer, while the blocking path answers the same request from candidate 0
 //! alone". This cell is that claim, measured.
 
-use rig::streaming::Item;
 use rig::message::AssistantContent;
 use rig::providers::llamacpp;
+use rig::streaming::Item;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -252,7 +252,8 @@ async fn n_greater_than_one_answers_from_candidate_zero_on_both_transports() {
 
             let mut text = String::new();
             while let Some(item) = stream.next().await {
-                if let Item::Event(StreamEvent::Text { text: chunk, .. }) = item.expect("stream item should be ok")
+                if let Item::Event(StreamEvent::Text { text: chunk, .. }) =
+                    item.expect("stream item should be ok")
                 {
                     text.push_str(&chunk);
                 }

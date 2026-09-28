@@ -355,10 +355,7 @@ async fn streamed_hand_driven_multi_turn_run_completes() {
 
     use super::super::agent_run_support::{Subtract, assert_canonical_assistant_order};
     use crate::support::assert_mentions_expected_number;
-    use rig::{
-        message::AssistantContent,
-        streaming::StreamEvent,
-    };
+    use rig::{message::AssistantContent, streaming::StreamEvent};
     with_gemini_cassette("agent_run_streamed/streamed_hand_driven_multi_turn_run_completes", |client| async move {
         let mut ecs = setup(&client);
         ecs.app.world_mut().entity_mut(ecs.agent).insert(ToolChoiceSpec(None));
@@ -380,6 +377,24 @@ async fn streamed_hand_driven_multi_turn_run_completes() {
         assert_eq!(ecs.app.world().get::<rig_ecs::agent::Usage>(run).expect("usage").0, total);
         assert!(total.total_tokens.is_some_and(|n| n > 0));
         let messages = history(&mut ecs, run);
+        // Every call the stream ended is the call history keeps, id and all.
+        let kept: Vec<&rig::message::ToolCall> = messages
+            .iter()
+            .filter_map(|message| match message {
+                rig::message::Message::Assistant { content, .. } => Some(content.iter()),
+                _ => None,
+            })
+            .flatten()
+            .filter_map(|content| match content {
+                AssistantContent::ToolCall(call) => Some(call),
+                _ => None,
+            })
+            .collect();
+        for event in turns.iter().flat_map(|turn| turn.events.events()) {
+            if let StreamEvent::End { content: AssistantContent::ToolCall(call), .. } = event {
+                assert!(kept.iter().any(|kept| kept.id == call.id), "{call:?}");
+            }
+        }
         assert!(history_has_assistant_tool_call(&messages, "add"));
         assert!(history_has_assistant_tool_call(&messages, "subtract"));
         assert_canonical_assistant_order(&messages);

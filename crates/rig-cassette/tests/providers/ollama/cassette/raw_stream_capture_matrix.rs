@@ -1,5 +1,5 @@
 //! Matrix for raw terminal-record capture on Ollama's streaming `/api/chat`
-//! path ([`StreamFinal::raw`](rig::completion::CompletionResponse::raw)).
+//! path ([`CompletionResponse::raw`](rig::completion::CompletionResponse::raw)).
 //!
 //! # The feature
 //!
@@ -8,14 +8,14 @@
 //! [`ollama::StreamingCompletionResponse`] carries it — serialized with
 //! `serde_json::to_value` by the provider adapter. It is the terminal record
 //! only, never the stream's frames, and nothing about it is sent to the daemon.
-//! `raw == Value::Null` means only that a `StreamFinal` was built by hand
+//! `raw == Value::Null` means only that a `CompletionResponse` was built by hand
 //! without a provider terminal behind it, which no cell here can produce.
 //!
 //! Ollama's stream is newline-delimited JSON, not SSE: every line is a chat
 //! record and exactly one — the last — carries `done: true` together with the
 //! token counts and the nanosecond timings. Those timings (`total_duration`,
 //! `eval_duration`, …) are what cell 2 reads back: the normalized
-//! [`StreamFinal`](rig::completion::CompletionResponse) has no field for them.
+//! [`CompletionResponse`](rig::completion::CompletionResponse) has no field for them.
 //!
 //! Because the wire is Ollama's own — NDJSON lines, `done`/`done_reason`,
 //! `prompt_eval_count`/`eval_count`, no response id — the shared
@@ -52,8 +52,8 @@ use serde_json::{Value, json};
 use super::super::support::with_ollama_cassette;
 use crate::cassettes::recorded_interaction_bodies;
 use crate::raw_capture::{assert_normalized_lacks, capture_terminal};
-use crate::support::normalized_without_raw;
 use crate::support::Observed;
+use crate::support::normalized_without_raw;
 use rig::completion::CompletionRequest;
 
 const OLLAMA_PROVIDER: &str = "ollama";

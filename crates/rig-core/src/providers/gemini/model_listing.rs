@@ -257,13 +257,11 @@ impl<'id> Decoder<'id, ModelListing> for ModelsDecoder {
         // Diagnostics identify the endpoint without retaining the previous page's cursor.
         let path = list_models_path(None);
         match parse_models_page(payload.as_bytes(), &path) {
-            Ok(page) => {
-                return Ok(out.end(ModelPage {
-                    models: ModelList::new(page.models),
-                    next: page.next_cursor,
-                }));
-            }
-            Err(error) => return Err(error),
+            Ok(page) => Ok(out.end(ModelPage {
+                models: ModelList::new(page.models),
+                next: page.next_cursor,
+            })),
+            Err(error) => Err(error),
         }
     }
 }
@@ -303,7 +301,7 @@ impl Wire for VerifyKey {
     }
 
     fn decoder<'id>(&self) -> Self::Decoder<'id> {
-        VerifyKeyDecoder::default()
+        VerifyKeyDecoder
     }
 }
 

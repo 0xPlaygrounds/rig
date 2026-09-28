@@ -230,6 +230,12 @@ pub struct MessagesDecoder<'id> {
     response_model: Option<String>,
 }
 
+impl Default for MessagesDecoder<'_> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl MessagesDecoder<'_> {
     /// A fresh decoder for one reply.
     pub fn new() -> Self {

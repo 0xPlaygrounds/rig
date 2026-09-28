@@ -330,14 +330,20 @@ pub async fn run_reasoning_roundtrip_streaming_with_final<F>(
         .choice
         .iter()
         .filter(|content| match content {
-            AssistantContent::Reasoning(reasoning) => reasoning
-                .open(reasoning.issuer())
-                .is_some_and(|reasoning| {
+            AssistantContent::Reasoning(reasoning) => {
+                reasoning.open(reasoning.issuer()).is_some_and(|reasoning| {
                     reasoning.id.is_some()
                         || reasoning.content.iter().any(|block| {
-                            !matches!(block, ReasoningContent::Text { signature: None, .. })
+                            !matches!(
+                                block,
+                                ReasoningContent::Text {
+                                    signature: None,
+                                    ..
+                                }
+                            )
                         })
-                }),
+                })
+            }
             _ => false,
         })
         .cloned()

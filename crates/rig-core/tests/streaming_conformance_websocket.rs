@@ -21,10 +21,10 @@ use rig_core::completion::CompletionRequest;
 use rig_core::error::ProviderError;
 use rig_core::providers::openai::OpenAIConfig;
 use rig_core::providers::openai::responses_api::websocket::ResponsesWebSocketEvent;
-use rig_core::test_utils::{RecordingHttpClient, SequencedStreamingHttpClient};
 use rig_core::test_utils::streaming_conformance::{
     self as conformance, fixtures::openai_responses,
 };
+use rig_core::test_utils::{RecordingHttpClient, SequencedStreamingHttpClient};
 
 use rig_tungstenite::tokio_tungstenite::{accept_async, tungstenite::Message};
 use tokio::net::TcpListener;

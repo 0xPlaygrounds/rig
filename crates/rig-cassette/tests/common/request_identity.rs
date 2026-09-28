@@ -107,8 +107,10 @@ pub async fn run<W, T, Wm, Tr>(
     while let Some(item) = stream.next().await {
         item.expect("stream item");
     }
-    let terminal = Some(stream.finish().await.expect("the stream ends"));
-    let terminal = terminal.expect("the stream ends with a final record");
+    let terminal = stream
+        .finish()
+        .await
+        .expect("the stream ends with a final record");
     let error: ProviderError = rejected
         .call(reject(
             CompletionRequest::new("Reply with exactly: rejected")

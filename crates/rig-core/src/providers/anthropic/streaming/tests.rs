@@ -1210,7 +1210,10 @@ fn novel_nested_delta_type_is_a_known_noop() {
         r#"{"type":"content_block_delta","index":0,"delta":{"type":"banana_delta","x":1}}"#,
     );
     let decoded = decode([event]);
-    assert!(decoded.events().is_empty(), "an unmodeled nested delta is a no-op");
+    assert!(
+        decoded.events().is_empty(),
+        "an unmodeled nested delta is a no-op"
+    );
 }
 
 /// Anthropic reports the per-TTL `cache_creation` split on
@@ -1297,7 +1300,10 @@ fn top_level_error_event_surfaces_as_a_provider_error() {
 #[test]
 fn message_start_with_null_message_is_a_known_noop() {
     let decoded = decode([classified(r#"{"type":"message_start","message":null}"#)]);
-    assert!(decoded.events().is_empty(), "a message-less message_start is a no-op");
+    assert!(
+        decoded.events().is_empty(),
+        "a message-less message_start is a no-op"
+    );
 }
 
 #[test]
@@ -1628,8 +1634,13 @@ mod terminal_emission {
     async fn terminal_raw_round_trips_into_the_terminal_type() {
         const STOP_SEQUENCE_DELTA: &str = r#"{"type":"message_delta","delta":{"stop_reason":"stop_sequence","stop_sequence":"alpha"},"usage":{"output_tokens":3}}"#;
 
-        let (_, saw_error, finished) =
-            collect(sse(&[MESSAGE_START, TEXT_START, TEXT_DELTA, STOP_SEQUENCE_DELTA])).await;
+        let (_, saw_error, finished) = collect(sse(&[
+            MESSAGE_START,
+            TEXT_START,
+            TEXT_DELTA,
+            STOP_SEQUENCE_DELTA,
+        ]))
+        .await;
         assert!(!saw_error);
         let response = finished.expect("the reply ended");
 

@@ -203,7 +203,11 @@ pub fn assert_terminal_round_trips(terminal: &CompletionResponse) -> Terminal {
     );
     assert_eq!(typed.response_id, terminal.response_id, "response id");
     assert_eq!(typed.model, terminal.model, "model");
-    assert_eq!(typed.finish_reason, terminal.finish_reason(), "finish reason");
+    assert_eq!(
+        typed.finish_reason,
+        terminal.finish_reason(),
+        "finish reason"
+    );
     let usage = typed
         .usage
         .as_ref()

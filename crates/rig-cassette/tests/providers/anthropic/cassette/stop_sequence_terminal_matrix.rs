@@ -62,7 +62,7 @@
 //! witness whether `stop_sequence` is skipped when `None`.
 //!
 //! Cells 25–26 assert the adjacent surfaces that share the same terminal
-//! construction still behave: rig's normalized [`StreamFinal`] deliberately has
+//! construction still behave: rig's normalized `CompletionResponse` deliberately has
 //! no `stop_sequence` (it is provider-specific and lives on the raw record), so
 //! those cells pin the normalized shape rather than the new field.
 
@@ -122,8 +122,10 @@ async fn raw_terminal(
     while let Some(item) = stream.next().await {
         item.expect("stream item should not error");
     }
-    let terminal = Some(stream.finish().await.expect("the stream ends"));
-    let record = terminal.expect("stream should yield a terminal record");
+    let record = stream
+        .finish()
+        .await
+        .expect("stream should yield a terminal record");
     serde_json::from_value(record.raw).expect("the terminal's raw is the provider record")
 }
 

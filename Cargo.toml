@@ -103,6 +103,9 @@ default-members = [
     "crates/rig-gemini-grpc",
     "test-support/service-tests",
     "test-support/rig-test-support",
+    # The design record's Frozen API programs: clippy and the full test
+    # lane compile them.
+    "examples/frozen_api",
 ]
 exclude = [
     "archived",

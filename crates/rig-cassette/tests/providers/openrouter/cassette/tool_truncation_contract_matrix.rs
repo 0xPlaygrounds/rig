@@ -221,7 +221,10 @@ async fn run_model(client: OpenAiModels, cell: Cell) -> Observation {
             let mut observation = Observation::default();
             while let Some(item) = stream.next().await {
                 match item {
-                    Ok(Item::Event(StreamEvent::End { content: AssistantContent::ToolCall(tool_call), .. })) => {
+                    Ok(Item::Event(StreamEvent::End {
+                        content: AssistantContent::ToolCall(tool_call),
+                        ..
+                    })) => {
                         observation.arguments.push(tool_call.function.arguments);
                     }
                     Ok(_) => {}

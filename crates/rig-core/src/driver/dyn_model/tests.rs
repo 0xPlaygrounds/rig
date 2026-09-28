@@ -1,5 +1,5 @@
 //! An erased model and the model it was made from are one code path: the same
-//! response, the same stream items (including `BlockEnd.block`), the same
+//! response, the same stream items (including each part's `End` content), the same
 //! span fields.
 
 use std::collections::BTreeMap;

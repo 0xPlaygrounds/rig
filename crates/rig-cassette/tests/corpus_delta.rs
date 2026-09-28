@@ -75,9 +75,7 @@
 
 use crate::corpus;
 
-use corpus::{
-    Ending, Hook, Output, Program, STOP_ON_TOOL_ARGUMENTS_DELTA, Unhandled,
-};
+use corpus::{Ending, Hook, Output, Program, STOP_ON_TOOL_ARGUMENTS_DELTA, Unhandled};
 
 const PREAMBLE: &str = "Use the add tool.";
 const PROMPT: &str = "What is 2 + 3?";
@@ -212,10 +210,9 @@ fn every_cell_streams_the_tool_call_arguments() {
             .as_ref()
             .unwrap_or_else(|| panic!("{fixture}: events are kept"));
         assert!(
-            events.events().any(|event| matches!(
-                event,
-                rig_core::streaming::StreamEvent::Arguments { .. }
-            )),
+            events
+                .events()
+                .any(|event| matches!(event, rig_core::streaming::StreamEvent::Arguments { .. })),
             "{fixture}: a tool call's arguments are in the record"
         );
     }

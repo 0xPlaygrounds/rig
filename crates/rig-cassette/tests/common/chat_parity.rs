@@ -16,7 +16,7 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use rig::completion::CompletionResponse;
-use rig::driver::Model;
+use rig::driver::{Exchange, Model, Opened, Opening, Transport};
 use rig::error::ErrorKind;
 use rig::message::{AssistantContent, ReasoningContent};
 use rig::providers::openai::wire::{
@@ -24,12 +24,28 @@ use rig::providers::openai::wire::{
     PERPLEXITY, VENICE,
 };
 use rig::test_utils::{MockHttpResponse, SequencedHttpClient};
+use rig::wire::{Encoded, Framing, WireFrame};
 
 /// Setting this regenerates the snapshot instead of comparing against it.
 const REGENERATE: &str = "RIG_REGENERATE_PARITY";
 
 /// The provider directories whose recorded chat-completions replies decode
-/// through the chat wire, with the dialect each was recorded under.
+/// through the chat wire.
+pub const PROVIDERS: &[&str] = &[
+    "copilot",
+    "deepseek",
+    "doubleword",
+    "groq",
+    "llamacpp",
+    "mistral",
+    "mistralrs",
+    "openai",
+    "openrouter",
+    "perplexity",
+    "venice",
+];
+
+/// The dialect each provider directory was recorded under.
 pub fn dialect(provider: &str) -> Dialect {
     match provider {
         "copilot" => rig::providers::copilot::wire::DIALECT,
@@ -182,6 +198,63 @@ pub async fn decode(
     stream.finish().await.map_err(|error| error.kind())
 }
 
+/// A recorded reply's frames, as they arrived, whatever mode reads them.
+#[derive(Clone)]
+struct Frames(Vec<WireFrame>, http::HeaderMap);
+
+impl Transport<Chat> for Frames {
+    fn send(&self, _payload: Encoded, _exchange: Exchange) -> Opening<WireFrame> {
+        let frames = futures::stream::iter(self.0.clone().into_iter().map(Ok));
+        Opening::ready(Opened::new(frames).with_http(http::StatusCode::OK, self.1.clone()))
+    }
+}
+
+/// One recorded reply's frames folded by `call` and by `stream().finish()`:
+/// one decoder and one fold, so the two must agree.
+pub async fn both_paths(
+    provider: &str,
+    interaction: &Interaction,
+) -> (
+    Result<CompletionResponse, ErrorKind>,
+    Result<CompletionResponse, ErrorKind>,
+) {
+    let framing = if interaction.streaming {
+        Framing::Sse
+    } else {
+        Framing::Whole
+    };
+    let frames = Frames(
+        framing.split(interaction.body.as_bytes()),
+        interaction.headers.clone(),
+    );
+    let wire = Chat::new(
+        OpenAIConfig::with_key(&dialect(provider), "parity-key"),
+        "parity",
+    );
+    let model = Model::new(wire, frames);
+    let called = model.call("parity").await.map_err(|error| error.kind());
+    let streamed = match model.stream("parity") {
+        Ok(mut stream) => {
+            while stream.next().await.is_some() {}
+            stream.finish().await.map_err(|error| error.kind())
+        }
+        Err(error) => Err(error.kind()),
+    };
+    (called, streamed)
+}
+
+/// The committed snapshot of `provider`'s replies.
+pub fn snapshot(provider: &str) -> BTreeMap<String, Value> {
+    let path = snapshot_path(provider);
+    serde_json::from_str(&std::fs::read_to_string(&path).unwrap_or_else(|error| {
+        panic!(
+            "{} is unreadable ({error}); run with {REGENERATE}=1",
+            path.display()
+        )
+    }))
+    .expect("snapshot is JSON")
+}
+
 /// The compared fields of one outcome.
 pub fn project(streaming: bool, outcome: &Result<CompletionResponse, ErrorKind>) -> Value {
     let mode = if streaming { "streaming" } else { "unary" };
@@ -272,14 +345,7 @@ pub async fn check(provider: &str) {
         std::fs::write(&path, text).expect("snapshot is writable");
         return;
     }
-    let expected: BTreeMap<String, Value> =
-        serde_json::from_str(&std::fs::read_to_string(&path).unwrap_or_else(|error| {
-            panic!(
-                "{} is unreadable ({error}); run with {REGENERATE}=1",
-                path.display()
-            )
-        }))
-        .expect("snapshot is JSON");
+    let expected = snapshot(provider);
     let mut diffs = Vec::new();
     for key in expected.keys().chain(actual.keys()) {
         let (before, after) = (expected.get(key), actual.get(key));

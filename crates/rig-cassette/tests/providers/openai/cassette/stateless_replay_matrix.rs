@@ -10,7 +10,7 @@
 //! the item verbatim; `OutputMessage.phase` is captured, rides rig history
 //! on the text block's own-wire extras, and is lifted back onto the assistant
 //! input item at replay. Exposing the terminal `output[]` on the streamed
-//! record was tried and reverted: `StreamFinal::raw` is replay identity for
+//! record was tried and reverted: `CompletionResponse::raw` is replay identity for
 //! every streamed effect log, and the field changed 66 goldens.
 //!
 //! **Fixtures.** Cell 1 is recorded live against `gpt-5.6-sol`, which

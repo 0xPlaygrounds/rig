@@ -58,7 +58,10 @@ fn event(value: serde_json::Value) -> serde_json::Value {
 fn items() -> Vec<Result<Relayed, ErrorReport>> {
     let call = ToolCall::from_wire(
         "real-call",
-        ToolFunction::new(ToolName::new("add").expect("tool name"), serde_json::json!({})),
+        ToolFunction::new(
+            ToolName::new("add").expect("tool name"),
+            serde_json::json!({}),
+        ),
     );
     relayed(
         serde_json::json!([
@@ -117,7 +120,10 @@ async fn boundary_pauses_before_polling_and_release_preserves_every_item() {
 async fn text_boundary_pauses_before_polling_and_release_preserves_every_item() {
     let call = ToolCall::from_wire(
         "real-call",
-        ToolFunction::new(ToolName::new("add").expect("tool name"), serde_json::json!({})),
+        ToolFunction::new(
+            ToolName::new("add").expect("tool name"),
+            serde_json::json!({}),
+        ),
     );
     let mut expected = relayed(
         serde_json::json!([

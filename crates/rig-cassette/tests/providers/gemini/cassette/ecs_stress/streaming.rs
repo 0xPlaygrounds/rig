@@ -106,10 +106,7 @@ fn observe_publication(world: &mut World) {
         .collect();
     for (effect, events, len) in events {
         for event in events {
-            if matches!(
-                event,
-                StreamEvent::Text { .. }
-            ) {
+            if matches!(event, StreamEvent::Text { .. }) {
                 emit(world, run_for(world, effect), "TextDelta");
             }
         }

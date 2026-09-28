@@ -289,7 +289,10 @@ fn stream_from_script(
         } => {
             // A fragmenting wire's shape: the name and the arguments as
             // fragments, closed by the call's end.
-            events.push(MockStreamEvent::tool_call_name_delta(id.clone(), name.clone()));
+            events.push(MockStreamEvent::tool_call_name_delta(
+                id.clone(),
+                name.clone(),
+            ));
             events.push(MockStreamEvent::tool_call_arguments_delta(
                 id.clone(),
                 arguments.to_string(),

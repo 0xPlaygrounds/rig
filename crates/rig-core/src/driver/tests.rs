@@ -15,11 +15,11 @@ use super::{Model, Transport};
 use crate::completion::CompletionRequest;
 use crate::error::{EncodeError, ProviderError};
 use crate::http_client::framing::Framing;
+use crate::message::{CallId, ToolName};
 use crate::model::{ModelInfo, ModelList};
 use crate::observe::{
     AdapterContext, AdapterEvent, AdapterUsage, AdapterVerdict, ObservationLog, Subject,
 };
-use crate::message::{CallId, ToolName};
 use crate::operation::{Completion, Finish, ModelListing, ModelPage, TextPart};
 use crate::streaming::Streamed;
 use crate::test_utils::{
@@ -145,7 +145,11 @@ impl<'id> Decoder<'id, Completion> for EchoDecoder<'id> {
         })
     }
 
-    fn decode(&mut self, event: Frame, mut out: Out<'id, Completion>) -> Result<Flow, ProviderError> {
+    fn decode(
+        &mut self,
+        event: Frame,
+        mut out: Out<'id, Completion>,
+    ) -> Result<Flow, ProviderError> {
         match event {
             // A whole message is the stream's text and end in one frame.
             Frame::Message { text, usage } => {
@@ -162,8 +166,8 @@ impl<'id> Decoder<'id, Completion> for EchoDecoder<'id> {
                 if let Some(part) = self.text.take() {
                     out.close_text(part);
                 }
-                let name =
-                    ToolName::new(name).map_err(|error| ProviderError::Response(error.to_string()))?;
+                let name = ToolName::new(name)
+                    .map_err(|error| ProviderError::Response(error.to_string()))?;
                 let part = out.call(CallId::from_wire("call_1"), name)?;
                 out.push_arguments(&part, &arguments);
                 out.close_call(part)?;
@@ -707,7 +711,10 @@ async fn a_malformed_tool_input_ends_the_attempt_as_a_decode_error() {
         .collect()
         .await;
     assert!(
-        matches!(items.last(), Some(Err(ProviderError::MalformedToolInput(_)))),
+        matches!(
+            items.last(),
+            Some(Err(ProviderError::MalformedToolInput(_)))
+        ),
         "the defect ends the stream: {items:?}"
     );
     assert_eq!(ending(&log), Some(decode_error));

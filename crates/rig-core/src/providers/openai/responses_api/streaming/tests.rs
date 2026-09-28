@@ -722,7 +722,9 @@ async fn first_error_from_event(event: serde_json::Value) -> ErrorReport {
 }
 
 /// What a stream of `event` finished with.
-async fn stream_final_from_event(event: serde_json::Value) -> crate::completion::CompletionResponse {
+async fn stream_final_from_event(
+    event: serde_json::Value,
+) -> crate::completion::CompletionResponse {
     let mut stream = responses_stream_of(&[event]).await;
     while let Some(item) = stream.next().await {
         item.expect("completed stream should not error");
@@ -1947,7 +1949,11 @@ async fn the_end_reports_tool_calls_when_the_stream_called_a_tool() {
     }
     // `completed` is reported as `ToolCalls`: the reply called a tool.
     assert_eq!(
-        stream.finish().await.expect("the reply ended").finish_reason(),
+        stream
+            .finish()
+            .await
+            .expect("the reply ended")
+            .finish_reason(),
         Some(crate::completion::FinishReason::ToolCalls)
     );
 }
@@ -2040,7 +2046,11 @@ async fn done_sentinel_is_ignored_without_debug_parse_noise() {
     while let Some(item) = stream.next().await {
         item.expect("stream should complete successfully");
     }
-    let usage = stream.finish().await.expect("expected final response").usage;
+    let usage = stream
+        .finish()
+        .await
+        .expect("expected final response")
+        .usage;
     assert_eq!(usage.input_tokens, Some(4));
     assert_eq!(usage.output_tokens, Some(2));
     assert_eq!(usage.total_tokens, Some(6));
@@ -2097,7 +2107,10 @@ async fn a_malformed_frame_ends_the_reply() {
     assert_eq!(text, "hello");
     let error = error.expect("malformed frame should surface an error item");
     assert_eq!(error.kind(), ErrorKind::Json, "{error:?}");
-    assert!(stream.finish().await.is_err(), "the corrupt frame ended the reply");
+    assert!(
+        stream.finish().await.is_err(),
+        "the corrupt frame ended the reply"
+    );
 }
 
 /// An item id the wire left empty identifies nothing: a text delta under

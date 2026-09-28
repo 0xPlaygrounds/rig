@@ -87,20 +87,12 @@ impl From<StreamingCompletionResponse> for crate::completion::Usage {
 
 /// The Gemini Interactions wire's decoder: one state machine for the whole
 /// interaction and its stream of steps.
+#[derive(Default)]
 pub struct InteractionsDecoder<'id> {
     /// Thought boundaries inferred from content transitions and signatures.
     thoughts: Thoughts<'id>,
     /// The answer text part text extends.
     text: Option<TextPart<'id>>,
-}
-
-impl Default for InteractionsDecoder<'_> {
-    fn default() -> Self {
-        Self {
-            thoughts: Thoughts::new(),
-            text: None,
-        }
-    }
 }
 
 /// One content item as the decoder writes it.

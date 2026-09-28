@@ -8,8 +8,8 @@
 use bevy_ecs::prelude::*;
 use rig_core::{
     effect::EffectId,
-    serve::{Reply, stream_truncated},
     error::{ErrorKind, ErrorReport},
+    serve::{Reply, stream_truncated},
     streaming::{Item, Relayed, StreamEvent},
 };
 use std::task::Poll;

@@ -15,7 +15,10 @@ fn a_writer_sequence_round_trips_through_serde() {
     ]);
     let transcript = Transcript::parse(value.clone()).expect("a writer sequence");
     assert_eq!(transcript.len(), 4);
-    assert_eq!(serde_json::to_value(&transcript).expect("serializes"), value);
+    assert_eq!(
+        serde_json::to_value(&transcript).expect("serializes"),
+        value
+    );
     let back: Transcript = serde_json::from_value(value).expect("deserializes");
     assert_eq!(back, transcript);
 }
@@ -23,19 +26,13 @@ fn a_writer_sequence_round_trips_through_serde() {
 #[test]
 fn an_event_for_a_part_that_never_started_is_refused() {
     let value = json!([{"item": "event", "value": {"event": "text", "part": 0, "text": "hi"}}]);
-    assert_eq!(
-        Transcript::parse(value),
-        Err(SequenceError::UnknownPart(0))
-    );
+    assert_eq!(Transcript::parse(value), Err(SequenceError::UnknownPart(0)));
 }
 
 #[test]
 fn a_start_that_skips_a_position_is_refused() {
     let value = json!([{"item": "event", "value": {"event": "start", "part": 1, "kind": "text"}}]);
-    assert_eq!(
-        Transcript::parse(value),
-        Err(SequenceError::UnknownPart(0))
-    );
+    assert_eq!(Transcript::parse(value), Err(SequenceError::UnknownPart(0)));
 }
 
 #[test]
@@ -45,10 +42,7 @@ fn a_part_that_grows_after_its_end_is_refused() {
         text_end(0, ""),
         {"item": "event", "value": {"event": "text", "part": 0, "text": "late"}},
     ]);
-    assert_eq!(
-        Transcript::parse(value),
-        Err(SequenceError::EndedTwice(2))
-    );
+    assert_eq!(Transcript::parse(value), Err(SequenceError::EndedTwice(2)));
 }
 
 #[test]
@@ -57,10 +51,7 @@ fn a_fragment_of_another_kind_is_refused() {
         {"item": "event", "value": {"event": "start", "part": 0, "kind": "text"}},
         {"item": "event", "value": {"event": "reasoning", "part": 0, "text": "no"}},
     ]);
-    assert_eq!(
-        Transcript::parse(value),
-        Err(SequenceError::WrongKind(1))
-    );
+    assert_eq!(Transcript::parse(value), Err(SequenceError::WrongKind(1)));
 }
 
 #[test]

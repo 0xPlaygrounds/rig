@@ -45,11 +45,7 @@ impl Keep {
 }
 
 impl Transport<Converse> for Keep {
-    fn send(
-        &self,
-        payload: ConverseRequest,
-        exchange: Exchange,
-    ) -> Opening<ConverseFrame> {
+    fn send(&self, payload: ConverseRequest, exchange: Exchange) -> Opening<ConverseFrame> {
         let sent = Transport::<Converse>::send(&self.runtime, payload, exchange);
         let outputs = Arc::clone(&self.outputs);
         Opening::new(async move {
@@ -141,7 +137,6 @@ async fn guardrail_trace_survives_into_the_converse_frame() {
 #[tokio::test]
 async fn request_id_survives_into_streamed_terminal() {
     use futures::StreamExt;
-    
 
     with_bedrock_cassette(
         "raw_provider_data/request_id_survives_into_streamed_terminal",
@@ -154,8 +149,10 @@ async fn request_id_survives_into_streamed_terminal() {
             while let Some(item) = stream.next().await {
                 item.expect("stream item should succeed");
             }
-            let terminal = Some(stream.finish().await.expect("the stream ends"));
-            let terminal = terminal.expect("stream should yield a terminal record");
+            let terminal = stream
+                .finish()
+                .await
+                .expect("stream should yield a terminal record");
             assert!(
                 terminal
                     .provider_request_id

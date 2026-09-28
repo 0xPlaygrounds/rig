@@ -654,11 +654,7 @@ type PoseItem = Result<Step<PoseEstimation>, ProviderError>;
 impl Transport<Local<PoseEstimation>> for CandlePoseModel {
     /// Refuses a request without frames; each frame is answered as it is
     /// estimated. Unary and streamed calls run the same inference.
-    fn send(
-        &self,
-        request: PoseRequest,
-        _exchange: Exchange,
-    ) -> Opening<Step<PoseEstimation>> {
+    fn send(&self, request: PoseRequest, _exchange: Exchange) -> Opening<Step<PoseEstimation>> {
         if request.frames.is_empty() {
             return Opening::failed(
                 CandleError::InvalidImage("a pose request needs at least one frame".into()).into(),

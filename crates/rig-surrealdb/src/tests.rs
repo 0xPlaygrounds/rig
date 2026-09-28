@@ -27,12 +27,7 @@ impl rig_core::driver::Transport<rig_core::driver::Local<rig_core::operation::Em
         &self,
         texts: Vec<String>,
         _exchange: rig_core::driver::Exchange,
-    ) -> Result<
-        rig_core::driver::Sending<
-            Result<rig_core::embeddings::EmbeddingResponse, rig_core::error::ProviderError>,
-        >,
-        rig_core::error::ProviderError,
-    > {
+    ) -> rig_core::driver::Opening<rig_core::driver::Step<rig_core::operation::Embedding>> {
         let response = rig_core::embeddings::EmbeddingResponse::new(
             texts
                 .into_iter()
@@ -43,9 +38,9 @@ impl rig_core::driver::Transport<rig_core::driver::Local<rig_core::operation::Em
                 .collect(),
             "mock",
         );
-        Ok(rig_core::driver::Sending::opened(
-            rig_core::driver::Opened::new(futures::stream::iter([Ok(Ok(response))])),
-        ))
+        rig_core::driver::Opening::ready(rig_core::driver::Opened::new(futures::stream::iter([
+            Ok(rig_core::driver::Step::End(response)),
+        ])))
     }
 }
 

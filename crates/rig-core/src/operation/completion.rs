@@ -276,7 +276,29 @@ pub struct Seal {
 
 type Brand<'id> = PhantomData<fn(&'id ()) -> &'id ()>;
 
-/// An open text part of one reply.
+/// An open text part of one reply. Only opening the part gives one, so a
+/// fragment cannot precede its part's start:
+///
+/// ```compile_fail,E0599
+/// use rig_core::operation::{Completion, TextPart};
+/// use rig_core::wire::Out;
+///
+/// fn early(out: &mut Out<'_, Completion>) {
+///     out.push_text(&TextPart::default(), "before the start");
+/// }
+/// ```
+///
+/// Nor can one be built from its fields to write into a part:
+///
+/// ```compile_fail,E0451
+/// use rig_core::operation::{Completion, TextPart};
+/// use rig_core::wire::Out;
+///
+/// fn forge<'id>(out: &mut Out<'id, Completion>) {
+///     let part = TextPart { slot: 0, brand: std::marker::PhantomData };
+///     out.push_text(&part, "into a part this code never opened");
+/// }
+/// ```
 #[must_use = "an open part is closed when the reply ends"]
 #[derive(Debug)]
 pub struct TextPart<'id> {
@@ -295,12 +317,12 @@ pub struct ReasoningPart<'id> {
 /// An open tool call of one reply. It has its id and its name, and becomes
 /// visible when it closes.
 ///
-/// ```compile_fail
-/// use rig_core::operation::Completion;
+/// ```compile_fail,E0382
+/// use rig_core::operation::{CallPart, Completion};
 /// use rig_core::wire::Out;
 ///
 /// // A closed call cannot be written again.
-/// fn twice(out: &mut Out<'_, Completion>, part: rig_core::operation::CallPart<'_>) {
+/// fn twice<'id>(out: &mut Out<'id, Completion>, part: CallPart<'id>) {
 ///     let _ = out.close_call(part);
 ///     out.push_arguments(&part, "{}");
 /// }
@@ -837,7 +859,10 @@ impl<'id> Out<'id, Completion> {
     pub fn text_params(&mut self, part: &TextPart<'id>, additional_params: AdditionalParams) {
         let mut shared = self.lock();
         let Shared { fold, items, .. } = &mut *shared;
-        let unstarted = matches!(fold.drafts.get(part.slot), Some(Draft::Text { part: None, .. }));
+        let unstarted = matches!(
+            fold.drafts.get(part.slot),
+            Some(Draft::Text { part: None, .. })
+        );
         if unstarted {
             let started = fold.start(items, PartKind::Text);
             if let Some(Draft::Text { part, .. }) = fold.drafts.get_mut(part.slot) {
@@ -900,6 +925,30 @@ impl<'id> Out<'id, Completion> {
 
     /// Open a tool call with its id and name. A provider id already used by
     /// another call of this reply is [`ProviderError::DuplicateCallId`].
+    ///
+    /// Both are required, so no call opens without an id:
+    ///
+    /// ```compile_fail,E0308
+    /// use rig_core::message::ToolName;
+    /// use rig_core::operation::Completion;
+    /// use rig_core::wire::Out;
+    ///
+    /// fn idless(out: &mut Out<'_, Completion>, name: ToolName) {
+    ///     let _ = out.call(None, name);
+    /// }
+    /// ```
+    ///
+    /// or without a name:
+    ///
+    /// ```compile_fail,E0308
+    /// use rig_core::message::CallId;
+    /// use rig_core::operation::Completion;
+    /// use rig_core::wire::Out;
+    ///
+    /// fn nameless(out: &mut Out<'_, Completion>, id: CallId) {
+    ///     let _ = out.call(id, "");
+    /// }
+    /// ```
     pub fn call(&mut self, id: CallId, name: ToolName) -> Result<CallPart<'id>, ProviderError> {
         let slot = self.lock().fold.open_call(id, name)?;
         Ok(CallPart {

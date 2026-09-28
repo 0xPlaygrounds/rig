@@ -1205,7 +1205,10 @@ async fn a_malformed_line_ends_the_reply() {
         .expect("stream should open");
     let (texts, error, finished) = drained(stream).await;
     assert_eq!(texts, ["hi"]);
-    assert!(error.is_some(), "the malformed line must reach the consumer");
+    assert!(
+        error.is_some(),
+        "the malformed line must reach the consumer"
+    );
     assert!(finished.is_err(), "the reply ended with the error");
 }
 

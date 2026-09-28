@@ -343,8 +343,9 @@ async fn streamed_usage(model: &AnthropicModel, request: CompletionRequest) -> U
     while let Some(item) = stream.next().await {
         item.expect("stream item should not error");
     }
-    let terminal = Some(stream.finish().await.expect("the stream ends"));
-    terminal
+    stream
+        .finish()
+        .await
         .expect("stream should yield a terminal record")
         .usage
 }

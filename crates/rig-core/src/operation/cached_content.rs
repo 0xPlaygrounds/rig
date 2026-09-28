@@ -27,7 +27,7 @@ impl Operation for ContextCache {
     type Emit = Free;
 
     fn fold(_request: &Self::Request, _call: &mut Call<'_>) -> Self::Fold {
-        CachedContentFold::default()
+        CachedContentFold
     }
 }
 

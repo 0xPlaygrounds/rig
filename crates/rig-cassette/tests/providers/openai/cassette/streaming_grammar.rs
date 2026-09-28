@@ -1,6 +1,6 @@
 //! Canonical streaming-grammar coverage for the OpenAI Responses API,
 //! asserted through the *normalized* path: the aggregated
-//! [`StreamingCompletionResponse::choice`], the terminal [`StreamFinal`]
+//! [`StreamingCompletionResponse::choice`], the terminal `CompletionResponse`
 //! record, usage, IDs, and finish reason — real recorded wire traffic, not
 //! synthetic chunks.
 //!
@@ -11,15 +11,15 @@
 //! preserved); assertions derive expected IDs from the recorded turn and never
 //! mint literal IDs.
 
-use rig::streaming::Item;
-use rig::completion::CompletionResponse;
 use futures::StreamExt;
+use rig::completion::CompletionResponse;
 use rig::completion::FinishReason;
 use rig::message::{
     AssistantContent, Message, Reasoning, ReasoningContent, ToolCall, ToolResultContent,
     UserContent,
 };
 use rig::providers::openai;
+use rig::streaming::Item;
 use rig::streaming::StreamEvent;
 use serde_json::json;
 
@@ -67,7 +67,10 @@ async fn drain_stream(mut stream: rig::streaming::CompletionStream) -> StreamRun
         raw_items.push(Ok(item.clone()));
         match item {
             Item::Event(StreamEvent::Text { text, .. }) => run.text.push_str(&text),
-            Item::Event(StreamEvent::End { content: AssistantContent::Reasoning(reasoning), .. }) => {
+            Item::Event(StreamEvent::End {
+                content: AssistantContent::Reasoning(reasoning),
+                ..
+            }) => {
                 run.reasoning_blocks.push(
                     reasoning
                         .open(reasoning.issuer())
@@ -75,10 +78,15 @@ async fn drain_stream(mut stream: rig::streaming::CompletionStream) -> StreamRun
                         .expect("reasoning opens"),
                 );
             }
-            Item::Event(StreamEvent::Reasoning { text: reasoning, .. }) => {
+            Item::Event(StreamEvent::Reasoning {
+                text: reasoning, ..
+            }) => {
                 run.reasoning_delta.push_str(&reasoning);
             }
-            Item::Event(StreamEvent::End { content: AssistantContent::ToolCall(tool_call), .. }) => {
+            Item::Event(StreamEvent::End {
+                content: AssistantContent::ToolCall(tool_call),
+                ..
+            }) => {
                 run.tool_calls.push(tool_call);
             }
             _ => {}

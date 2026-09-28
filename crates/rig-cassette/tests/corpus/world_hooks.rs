@@ -30,9 +30,8 @@ use super::{
     Hook, LOOKUP_ARGS, LOOKUP_KEY, NOTE_KEY, Note, PATCHED_ARGS, Program, REPLACED_ANSWER,
     REPLACED_RESULT, RERANK_KEY, SKIP_REASON, STOP_AFTER_TURN, STOP_AT_ANSWER,
     STOP_AT_COMPLETION_CALL, STOP_AT_MODEL_SELECT, STOP_AT_START, STOP_ON_REASONING_DELTA,
-    STOP_ON_TEXT_DELTA, STOP_ON_TOOL_ARGUMENTS_DELTA, STOP_ON_TOOL_CALL_DELTA,
-    Unserializable, hook_patch_with_thinking, rerank_request,
-    retry_feedback, stop_after_turn_reason,
+    STOP_ON_TEXT_DELTA, STOP_ON_TOOL_ARGUMENTS_DELTA, STOP_ON_TOOL_CALL_DELTA, Unserializable,
+    hook_patch_with_thinking, rerank_request, retry_feedback, stop_after_turn_reason,
 };
 
 /// The program's hooks, in registration order, and what the systems need

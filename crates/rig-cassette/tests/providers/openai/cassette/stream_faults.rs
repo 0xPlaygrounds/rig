@@ -7,7 +7,6 @@
 //! hypothesis is that the fault surfaces as its own kind, with nothing
 //! recorded, committed or executed after it.
 
-use rig::streaming::Item;
 use bytes::Bytes;
 use futures::StreamExt;
 use rig::agent::MultiTurnStreamItem;
@@ -15,6 +14,7 @@ use rig::effect::EffectFamily;
 use rig::error::ErrorKind;
 use rig::providers::openai::GPT_4O;
 use rig::providers::openai::OpenAIConfig;
+use rig::streaming::Item;
 use rig::streaming::StreamEvent;
 use rig::test_utils::SequencedStreamingHttpClient;
 use rig_cassette::agent::AgentReplayExt;
@@ -137,7 +137,9 @@ async fn truncation_after_content_fails_the_run_and_keeps_the_prefix() {
     for report in &drained.errors {
         assert_eq!(report.kind, ErrorKind::Response, "{report:?}");
         assert!(
-            report.message.contains("ended before the provider ended it"),
+            report
+                .message
+                .contains("ended before the provider ended it"),
             "a truncation, by name: {report:?}"
         );
     }
@@ -250,7 +252,9 @@ async fn dropping_the_stream_at_the_first_delta_records_a_cancel() {
             let mut stream = agent.prompt(STREAMING_PROMPT).stream();
             while let Some(item) = stream.next().await {
                 match item {
-                    Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Text { .. }))) => break,
+                    Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(
+                        StreamEvent::Text { .. },
+                    ))) => break,
                     Ok(MultiTurnStreamItem::FinalResponse(_)) => {
                         panic!("the answer arrived before the first delta")
                     }

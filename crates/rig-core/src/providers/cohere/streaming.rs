@@ -141,6 +141,7 @@ pub struct StreamingCompletionResponse {
 
 /// The `/v2/chat` decoder: one state machine for the whole reply and its
 /// stream of events.
+#[derive(Default)]
 pub struct ChatDecoder<'id> {
     /// The wire index the open tool call's fragments are buffered under.
     current_tool_call: Option<usize>,
@@ -150,18 +151,6 @@ pub struct ChatDecoder<'id> {
     /// Reasoning closes when subsequent content changes block type.
     thoughts: Thoughts<'id>,
     text: Option<TextPart<'id>>,
-}
-
-impl Default for ChatDecoder<'_> {
-    fn default() -> Self {
-        Self {
-            current_tool_call: None,
-            calls: 0,
-            message_id: None,
-            thoughts: Thoughts::new(),
-            text: None,
-        }
-    }
 }
 
 /// Tagged streaming event or untagged unary reply from `/v2/chat`.

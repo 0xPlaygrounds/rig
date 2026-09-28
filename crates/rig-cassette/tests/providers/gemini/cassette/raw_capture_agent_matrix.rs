@@ -4,8 +4,8 @@
 //!
 //! # The feature
 //!
-//! Capture is always on. The provider populates `CompletionResponse::raw` /
-//! `StreamFinal::raw` on every response, and the agent exposes that payload —
+//! Capture is always on. The provider populates `CompletionResponse::raw`
+//! on every response, and the agent exposes that payload —
 //! **per attempt**, never a previous attempt's — as `raw` on the
 //! `CompletionResponse` and `ModelTurnFinished` hook events, on each
 //! `CompletionCall` the run records, and on the streamed
@@ -20,7 +20,7 @@
 //! | 1 | `hooks_observe_raw_blocking` | `agent.prompt` | `CompletionResponse` and `ModelTurnFinished` see `raw`; `responseId` matches fixture | recorded |
 //! | 2 | `hooks_observe_raw_streamed` | `agent.prompt(..).stream()` | `CompletionResponse` and `ModelTurnFinished` see `raw`; `response_id` matches fixture | recorded |
 //! | 3 | `multi_turn_tool_run_records_distinct_raw_blocking` | tool run, `agent.prompt` | two `completion_calls`, two different `raw["responseId"]`s equal to the interactions' ids in order; the first carries the `functionCall` | recorded |
-//! | 4 | `multi_turn_tool_run_records_distinct_raw_streamed` | tool run, `agent.prompt(..).stream()` | two `CompletionCall` items, two different `raw["response_id"]`s equal to the interactions' ids in order; the forwarded last `Final.raw` is the final turn's | recorded |
+//! | 4 | `multi_turn_tool_run_records_distinct_raw_streamed` | tool run, `agent.prompt(..).stream()` | two `CompletionCall` items, two different `raw["response_id"]`s equal to the interactions' ids in order; the final response's `raw` is the final turn's | recorded |
 //!
 //! Both surfaces fire the same two events per accepted model turn:
 //! `CompletionResponse` — after the unary call returns on the blocking
@@ -54,7 +54,6 @@ use rig::agent::{
 };
 use rig::completion::Message;
 use rig::message::AssistantContent;
-use rig::streaming::StreamEvent;
 use rig::tool::Tool;
 use serde_json::Value;
 

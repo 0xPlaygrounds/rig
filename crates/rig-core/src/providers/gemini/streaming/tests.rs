@@ -844,7 +844,10 @@ mod terminal_emission {
             .call(super::streaming_request())
             .await
             .expect_err("a whole reply that named no finish reason");
-        assert!(matches!(error, crate::error::ProviderError::Truncated), "{error}");
+        assert!(
+            matches!(error, crate::error::ProviderError::Truncated),
+            "{error}"
+        );
 
         // The same undelivered bytes on the streamed path end the same way.
         let (texts, _, finished) = collect(sse(&[SILENT])).await;

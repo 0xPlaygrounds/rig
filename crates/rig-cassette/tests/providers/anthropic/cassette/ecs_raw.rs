@@ -168,9 +168,9 @@ async fn hooks_observe_raw_streamed() {
                     let finals: Vec<_> = query
                         .iter(ecs.app.world())
                         .filter_map(|s| match &s.outcome {
-                Some(Ok(rig::effect::Outcome::Completion(final_))) => Some(final_),
-                _ => None,
-            })
+                            Some(Ok(rig::effect::Outcome::Completion(final_))) => Some(final_),
+                            _ => None,
+                        })
                         .collect();
                     assert_eq!(finals.len(), 1);
                     assert!(!finals[0].raw.is_null());

@@ -405,11 +405,7 @@ impl<'id> rig_core::wire::Decoder<'id, Completion, CandleFrame> for CandleAdapte
 }
 
 impl Transport<Generation> for CandleModel {
-    fn send(
-        &self,
-        request: CompletionRequest,
-        exchange: Exchange,
-    ) -> Opening<CandleFrame> {
+    fn send(&self, request: CompletionRequest, exchange: Exchange) -> Opening<CandleFrame> {
         let mode = exchange.mode;
         // A closed admission controller refuses before anything runs, as
         // opening a completion or a stream always has.

@@ -39,7 +39,6 @@ use rig_core::observe::ObservationLog;
 
 use rig_core::observe::Stage;
 
-
 use rig_core::streaming::{Item, StreamEvent};
 
 use rig_ecs::agent::Utterance;
@@ -163,7 +162,10 @@ pub(crate) fn assert_log(cell: &Cell, wire: ThinkingWire, log: &EffectLog) {
                     .flat_map(|record| record.events.iter().flat_map(|events| events.events()))
                     .any(|event| matches!(
                         event,
-                        StreamEvent::Start { kind: PartKind::Reasoning, .. }
+                        StreamEvent::Start {
+                            kind: PartKind::Reasoning,
+                            ..
+                        }
                     )),
                 "the capped stream records the reasoning prefix"
             );

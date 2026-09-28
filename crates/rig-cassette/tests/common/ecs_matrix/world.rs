@@ -46,7 +46,6 @@ use rig_core::serve::adapters::MemoryAdapter;
 
 use rig_core::serve::adapters::ToolAdapter;
 
-
 use rig_core::streaming::{Item, Relayed, StreamEvent};
 
 use rig_core::streaming::StreamEvents;
@@ -241,10 +240,7 @@ fn stop_text_delta(world: &mut World) {
 
 fn stop_tool_delta(world: &mut World) {
     stop_stream(world, corpus::STOP_ON_TOOL_CALL_DELTA, |event| {
-        matches!(
-            event,
-            StreamEvent::Arguments { .. }
-        )
+        matches!(event, StreamEvent::Arguments { .. })
     });
 }
 

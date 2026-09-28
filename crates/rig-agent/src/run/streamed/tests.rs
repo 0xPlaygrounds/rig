@@ -562,7 +562,10 @@ fn streamed_invalid_tool_call_stop_leaves_run_terminal() {
     run.next_step().expect("next_step");
 
     let mut asm = assembler();
-    let invalid = surface_invalid(&mut asm, &items([call(0, &tool_call("tc_1", "default_api"))]));
+    let invalid = surface_invalid(
+        &mut asm,
+        &items([call(0, &tool_call("tc_1", "default_api"))]),
+    );
     let partial = asm.partial_turn(Some("msg_1".to_string()), &[]);
 
     let err = run
@@ -595,7 +598,10 @@ fn streamed_invalid_tool_call_retry_cannot_emit_call_past_total_budget() {
     run.next_step().expect("initial model call");
 
     let mut asm = assembler();
-    let invalid = surface_invalid(&mut asm, &items([call(0, &tool_call("tc_1", "default_api"))]));
+    let invalid = surface_invalid(
+        &mut asm,
+        &items([call(0, &tool_call("tc_1", "default_api"))]),
+    );
     let partial = asm.partial_turn(Some("msg_1".to_string()), &[]);
     let resolution = run
         .resolve_streamed_invalid_tool_call(
@@ -635,7 +641,10 @@ fn streamed_invalid_tool_call_skip_returns_synthetic_result() {
     run.next_step().expect("next_step");
 
     let mut asm = assembler();
-    let invalid = surface_invalid(&mut asm, &items([call(0, &tool_call("tc_1", "default_api"))]));
+    let invalid = surface_invalid(
+        &mut asm,
+        &items([call(0, &tool_call("tc_1", "default_api"))]),
+    );
     let partial = asm.partial_turn(None, &[]);
 
     let resolution = run
@@ -666,7 +675,10 @@ fn streamed_invalid_tool_call_repair_releases_the_renamed_call() {
     run.next_step().expect("next_step");
 
     let mut asm = assembler();
-    let invalid = surface_invalid(&mut asm, &items([call(0, &tool_call("tc_1", "default_api"))]));
+    let invalid = surface_invalid(
+        &mut asm,
+        &items([call(0, &tool_call("tc_1", "default_api"))]),
+    );
     assert_eq!(invalid.args.as_deref(), Some("{\"x\":1}"));
 
     let partial = asm.partial_turn(None, &[]);
@@ -846,10 +858,7 @@ fn typed_namespaces_survive_pending_tool_checkpoints_and_completed_turn_reuse() 
                     calls.reverse();
                 }
                 let mut asm = assembler();
-                ingest_all(
-                    &mut asm,
-                    &items([call(0, &calls[0]), call(1, &calls[1])]),
-                );
+                ingest_all(&mut asm, &items([call(0, &calls[0]), call(1, &calls[1])]));
                 let choice = calls
                     .iter()
                     .cloned()

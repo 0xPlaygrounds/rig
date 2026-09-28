@@ -20,7 +20,6 @@ use rig_core::observe::AdapterErrorBoundary;
 
 use rig_core::observe::AdapterEvent;
 
-
 use rig_core::streaming::StreamEvent;
 
 use rig_cassette::ecs::identity::stamp_run;

@@ -429,10 +429,7 @@ fn the_xai_dialect_keeps_every_system_message_in_input() {
     let encoded = wire
         .encode(prompt(), Mode::Unary)
         .expect("the request encodes");
-    assert_eq!(
-        encoded.request.uri(),
-        "https://api.x.ai/v1/responses"
-    );
+    assert_eq!(encoded.request.uri(), "https://api.x.ai/v1/responses");
 
     let body = encoded_body_of(
         &wire,

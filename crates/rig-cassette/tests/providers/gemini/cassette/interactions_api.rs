@@ -1,11 +1,11 @@
 //! Migrated from `examples/gemini_interactions_api.rs`.
 
-use rig::streaming::Item;
 use futures::StreamExt;
 use rig::message::{
     AssistantContent, Message, ToolCall, ToolChoice, ToolResultContent, UserContent,
 };
 use rig::providers::gemini::interactions_api::{AdditionalParameters, Interaction, Tool};
+use rig::streaming::Item;
 use rig::streaming::StreamEvent;
 use serde::Deserialize;
 
@@ -235,21 +235,18 @@ async fn streaming_interaction() {
             let mut stream = model.stream(request).expect("stream should start");
 
             let mut text = String::new();
-            let mut saw_usage = false;
             while let Some(chunk) = stream.next().await {
-                match chunk.expect("stream chunk should succeed") {
-                    Item::Event(StreamEvent::Text { text: delta, .. }) => text.push_str(&delta),
-                    _ => {}
+                if let Item::Event(StreamEvent::Text { text: delta, .. }) =
+                    chunk.expect("stream chunk should succeed")
+                {
+                    text.push_str(&delta);
                 }
             }
-            {
-                let response = stream.finish().await.expect("the stream ends");
-                saw_usage = response.usage.is_reported();
-            }
+            let response = stream.finish().await.expect("the stream ends");
 
             assert_nonempty_response(&text);
             assert!(
-                saw_usage,
+                response.usage.is_reported(),
                 "expected the final response to expose token usage"
             );
         },
@@ -268,34 +265,23 @@ async fn streaming_final_metadata_exposes_model_version() {
             let mut stream = model.stream(request).expect("stream should start");
 
             let mut text = String::new();
-            let mut final_model_version = None;
-            let mut final_response_count = 0;
-            let mut saw_usage = false;
             while let Some(chunk) = stream.next().await {
-                match chunk.expect("stream chunk should succeed") {
-                    Item::Event(StreamEvent::Text { text: delta, .. }) => text.push_str(&delta),
-                    _ => {}
+                if let Item::Event(StreamEvent::Text { text: delta, .. }) =
+                    chunk.expect("stream chunk should succeed")
+                {
+                    text.push_str(&delta);
                 }
             }
-            {
-                let response = stream.finish().await.expect("the stream ends");
-                final_response_count += 1;
-                        saw_usage = response.usage.is_reported();
-                        final_model_version = response.model.clone();
-            }
+            let response = stream.finish().await.expect("the stream ends");
 
             assert_nonempty_response(&text);
             assert_eq!(
-                final_response_count, 1,
-                "stream should yield exactly one final response"
-            );
-            assert_eq!(
-                final_model_version.as_deref(),
+                response.model.as_deref(),
                 Some("gemini-3-flash-preview"),
                 "expected Interactions stream final response to expose Interaction.model"
             );
             assert!(
-                saw_usage,
+                response.usage.is_reported(),
                 "expected final response to expose Interactions token usage"
             );
         },

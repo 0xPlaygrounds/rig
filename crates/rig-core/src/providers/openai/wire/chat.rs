@@ -1511,3 +1511,6 @@ fn typed_detail(detail: &serde_json::Value) -> Option<unary::ReasoningDetails> {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod hard_case_tests;

@@ -24,8 +24,8 @@ fn model_with_malformed_call() -> MockCompletionModel {
         vec![
             MockStreamEvent::tool_call_name_delta("tool_call_1", "add"),
             MockStreamEvent::tool_call_arguments_delta("tool_call_1", RAW),
-            // Closes under `UnparseableToolInput::Error`: the wire promised
-            // a complete block.
+            // The wire promised a complete call: arguments that do not parse
+            // are the call's error.
             MockStreamEvent::tool_call_end("tool_call_1"),
             MockStreamEvent::final_response_with_total_tokens(4),
         ],

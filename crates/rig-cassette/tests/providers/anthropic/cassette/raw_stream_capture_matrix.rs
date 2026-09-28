@@ -1,16 +1,16 @@
 //! Matrix for raw provider response capture on the streaming path:
-//! `StreamFinal::raw` beside the normalized terminal fields.
+//! `CompletionResponse::raw` beside the normalized terminal fields.
 //!
 //! # The feature
 //!
 //! Capture is always on. The wire's decoder assembles the provider-native
 //! terminal — `anthropic::streaming::StreamingCompletionResponse` — and the
-//! driver serializes it onto the terminal `StreamFinal::raw` before mapping it
+//! driver serializes it onto the terminal `CompletionResponse::raw` before mapping it
 //! to the normalized terminal. So `raw` is the **terminal record only**: the
 //! provider's own final record, not the stream's frames. Anthropic's terminal is
 //! assembled from `message_start` (id, model) and the closing `message_delta`
 //! (`stop_reason`, `stop_sequence`, usage), plus the transport `request-id`
-//! header the driver stamps. `raw` is `Value::Null` only on a `StreamFinal`
+//! header the driver stamps. `raw` is `Value::Null` only on a `CompletionResponse`
 //! built by hand, with no provider terminal behind it; `Value::Null` never
 //! means "not requested". Cells 1–3 pin the terminal round trip, a
 //! terminal-only field, and normalized/raw agreement on text streams; cells 4
@@ -64,8 +64,8 @@ use super::super::support::{
 };
 
 use crate::raw_capture::capture_terminal;
-use crate::support::normalized_without_raw;
 use crate::support::Observed;
+use crate::support::normalized_without_raw;
 use rig::completion::CompletionRequest;
 
 const ANTHROPIC_PROVIDER: &str = "anthropic";
@@ -627,7 +627,10 @@ async fn terminal_raw_round_trips_for_thinking_stream() {
     let streamed_reasoning = items
         .iter()
         .filter_map(|item| match item {
-            rig::streaming::Item::Event(StreamEvent::End { content: AssistantContent::Reasoning(reasoning), .. }) => Some(reasoning),
+            rig::streaming::Item::Event(StreamEvent::End {
+                content: AssistantContent::Reasoning(reasoning),
+                ..
+            }) => Some(reasoning),
             _ => None,
         })
         .flat_map(|reasoning| {
@@ -738,7 +741,10 @@ async fn terminal_raw_round_trips_for_tool_use_stream() {
     let streamed_calls = items
         .iter()
         .filter_map(|item| match item {
-            rig::streaming::Item::Event(StreamEvent::End { content: AssistantContent::ToolCall(tool_call), .. }) => Some(tool_call),
+            rig::streaming::Item::Event(StreamEvent::End {
+                content: AssistantContent::ToolCall(tool_call),
+                ..
+            }) => Some(tool_call),
             _ => None,
         })
         .collect::<Vec<_>>();

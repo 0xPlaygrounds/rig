@@ -537,10 +537,11 @@ async fn recorder_captures_every_dispatch_and_the_replayer_answers_from_it() {
     .await;
     let items: Vec<Relayed> = items.into_iter().map(|e| e.expect("ok")).collect();
     assert!(matches!(items.last(), Some(Relayed::Done(_))));
-    assert!(items.iter().any(|item| matches!(
-        item,
-        Relayed::Item(Item::Event(StreamEvent::Text { .. }))
-    )));
+    assert!(
+        items
+            .iter()
+            .any(|item| matches!(item, Relayed::Item(Item::Event(StreamEvent::Text { .. }))))
+    );
     // Past the log: a divergence, never a hang.
     let report = within(dispatcher.dispatch(&HandlerKey::from("add"), custom(json!(1))))
         .await

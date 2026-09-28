@@ -116,10 +116,9 @@ async fn entry_log_orders_and_turn_stamps_across_a_streamed_tool_run() {
                 .prompt("What is 9 + 16? Use the add tool, then reply with just the number.")
                 .max_turns(3)
                 .stream();
-            let (response, _final) =
-                collect_stream_final_response_and_provider_final(&mut stream)
-                    .await
-                    .expect("streamed tool run should succeed");
+            let (response, _final) = collect_stream_final_response_and_provider_final(&mut stream)
+                .await
+                .expect("streamed tool run should succeed");
             assert!(
                 response.contains("25"),
                 "the tool result reached the final answer: {response:?}"

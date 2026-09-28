@@ -41,11 +41,11 @@
 //! terminal `raw` and the normalized terminal legitimately disagree — `raw`
 //! must keep the wire spelling and the terminal must report the upgrade.
 
-use rig::streaming::Item;
 use futures::StreamExt;
 use rig::completion::FinishReason;
 use rig::message::{AssistantContent, ToolCall, ToolChoice};
 use rig::providers::gemini::streaming::StreamingCompletionResponse;
+use rig::streaming::Item;
 use rig::streaming::StreamEvent;
 use rig::tool::Tool;
 use serde::Deserialize;
@@ -106,24 +106,23 @@ async fn drain_stream<
     request: rig::completion::CompletionRequest,
 ) -> Drained {
     let mut stream = model.stream(request).expect("stream should open");
-    let mut terminal = None;
     let mut tool_calls = Vec::new();
     while let Some(item) = stream.next().await {
-        match item.expect("stream item should succeed") {
-            Item::Event(StreamEvent::End { content: AssistantContent::ToolCall(tool_call), .. }) => tool_calls.push(tool_call),
-            _ => {}
+        if let Item::Event(StreamEvent::End {
+            content: AssistantContent::ToolCall(tool_call),
+            ..
+        }) = item.expect("stream item should succeed")
+        {
+            tool_calls.push(tool_call)
         }
     }
-    {
-        let final_record = stream.finish().await.expect("the stream ends");
-        assert!(
-                    terminal.replace(final_record).is_none(),
-                    "a stream yields exactly one terminal record"
-                );
-    }
+    let terminal = stream
+        .finish()
+        .await
+        .expect("stream should yield a terminal record");
     Drained {
         tool_calls,
-        terminal: terminal.expect("stream should yield a terminal record"),
+        terminal,
     }
 }
 

@@ -49,10 +49,9 @@ async fn chat_baseline_effect_log_is_the_golden_fixture() {
         );
         let events = log.records[0].events.as_ref().expect("events are kept");
         assert!(
-            events.events().any(|event| matches!(
-                event,
-                StreamEvent::Arguments { .. }
-            )),
+            events
+                .events()
+                .any(|event| matches!(event, StreamEvent::Arguments { .. })),
             "the wire streams the tool's name as a delta"
         );
         crate::goldens::golden_effects("openai_delta_chat_baseline", &log);

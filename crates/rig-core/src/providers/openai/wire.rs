@@ -650,6 +650,20 @@ impl Quirks {
             responses: ResponsesQuirks::openai(),
         }
     }
+
+    /// These quirks without the streamed usage chunk: a streaming request
+    /// sends no `stream_options`, so streamed usage reports `None`.
+    pub const fn without_stream_usage(mut self) -> Self {
+        self.stream_include_usage = false;
+        self
+    }
+
+    /// These quirks without structured output: `output_schema` does not map
+    /// to `response_format`.
+    pub const fn without_response_format(mut self) -> Self {
+        self.supports_response_format = false;
+        self
+    }
 }
 
 /// Provider identity, endpoint defaults, and shared-wire policies.
@@ -690,6 +704,12 @@ impl Dialect {
             alternate_auth: None,
             quirks: Quirks::openai(),
         }
+    }
+
+    /// This dialect with `quirks`.
+    pub const fn with_quirks(mut self, quirks: Quirks) -> Self {
+        self.quirks = quirks;
+        self
     }
 }
 
@@ -1013,8 +1033,9 @@ impl OpenAIConfig {
         Responses::new(self.clone(), model)
     }
 
-    /// The chat-completions wire for `model`.
-    pub(crate) fn chat(&self, model: impl Into<String>) -> Chat {
+    /// The chat-completions wire for `model`, whatever the dialect's
+    /// [`completion_route`](Quirks::completion_route).
+    pub fn chat(&self, model: impl Into<String>) -> Chat {
         Chat::new(self.clone(), model)
     }
 

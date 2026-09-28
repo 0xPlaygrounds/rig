@@ -1,3 +1,5 @@
+#![allow(clippy::expect_used)]
+
 use rig_core::message::AssistantContent;
 use rig_core::streaming::Transcript;
 

@@ -8,13 +8,13 @@
 //! Run cassette tests in replay mode by default, or set
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
-use rig::streaming::Item;
 use futures::StreamExt;
 use rig::completion::CompletionResponse;
 use rig::driver::Model;
 use rig::message::{AssistantContent, Message, Reasoning};
 use rig::providers::openai;
 use rig::providers::openai::wire::OpenAiWire;
+use rig::streaming::Item;
 use rig::streaming::StreamEvent;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -333,8 +333,8 @@ async fn five_turn_streaming_reasoning_metadata_roundtrip() {
                         }
                     }));
                 // The terminal record under test is the Responses API's own
-                // streaming response, which rides on `StreamFinal::raw`; the
-                // normalized `StreamFinal` does not carry the reasoning
+                // streaming response, which rides on `CompletionResponse::raw`; the
+                // normalized `CompletionResponse` does not carry the reasoning
                 // metadata.
                 let mut stream = model.stream(request).unwrap_or_else(|error| {
                     panic!("turn {} stream should start: {error}", turn_index + 1)
@@ -348,18 +348,27 @@ async fn five_turn_streaming_reasoning_metadata_roundtrip() {
                         panic!("turn {} stream should succeed: {error}", turn_index + 1)
                     }) {
                         Item::Event(StreamEvent::Text { text: delta, .. }) => text.push_str(&delta),
-                        Item::Event(StreamEvent::End { content: AssistantContent::Reasoning(reasoning), .. }) => {
+                        Item::Event(StreamEvent::End {
+                            content: AssistantContent::Reasoning(reasoning),
+                            ..
+                        }) => {
                             reasoning_blocks.push(AssistantContent::Reasoning(reasoning));
                         }
-                        Item::Event(StreamEvent::Reasoning { text: reasoning, .. }) => {
+                        Item::Event(StreamEvent::Reasoning {
+                            text: reasoning, ..
+                        }) => {
                             reasoning_delta.push_str(&reasoning);
                         }
                         _ => {}
                     }
                 }
-                let response = stream.finish().await.expect("the stream ends");
-                let message_id = response.message_id.clone();
-                let final_response = Some(response);
+                let final_record = stream.finish().await.unwrap_or_else(|error| {
+                    panic!(
+                        "turn {} should yield a final response: {error}",
+                        turn_index + 1
+                    )
+                });
+                let message_id = final_record.message_id.clone();
 
                 assert_eq!(
                     text.trim(),
@@ -367,11 +376,8 @@ async fn five_turn_streaming_reasoning_metadata_roundtrip() {
                     "unexpected turn {} text",
                     turn_index + 1
                 );
-                let final_record = final_response.unwrap_or_else(|| {
-                    panic!("turn {} should yield a final response", turn_index + 1)
-                });
                 // The provider-native record rides on `raw`; the reasoning
-                // metadata lives there, not on the normalized `StreamFinal`.
+                // metadata lives there, not on the normalized response.
                 let final_response: openai::responses_api::CompletionResponse =
                     serde_json::from_value(final_record.raw.clone())
                         .expect("the terminal's raw is the Responses record");
@@ -460,7 +466,7 @@ async fn streaming_reasoning_metadata() {
                 }
             }));
             // The terminal record's `raw` keeps the provider-native response;
-            // the normalized `StreamFinal` carries no reasoning metadata.
+            // the normalized response carries no reasoning metadata.
             let mut stream = model
                 .stream(request)
                 .expect("GPT-5.6 reasoning stream should start");
@@ -474,18 +480,16 @@ async fn streaming_reasoning_metadata() {
             while let Some(item) = stream.next().await {
                 item.expect("GPT-5.6 reasoning stream should succeed");
             }
-            {
-                let record = stream.finish().await.expect("the stream ends");
-                let response: openai::responses_api::CompletionResponse =
-                        serde_json::from_value(record.raw.clone())
-                            .expect("the terminal's raw is the Responses record");
-                    assert_eq!(response.reasoning_context.as_deref(), Some("current_turn"));
-                    assert_eq!(response.reasoning_metadata.as_ref(), expected.as_object());
-                    assert_eq!(record.raw["reasoning"], expected);
-                    return;
-            }
-
-            panic!("GPT-5.6 reasoning stream should yield a final response");
+            let record = stream
+                .finish()
+                .await
+                .expect("GPT-5.6 reasoning stream should yield a final response");
+            let response: openai::responses_api::CompletionResponse =
+                serde_json::from_value(record.raw.clone())
+                    .expect("the terminal's raw is the Responses record");
+            assert_eq!(response.reasoning_context.as_deref(), Some("current_turn"));
+            assert_eq!(response.reasoning_metadata.as_ref(), expected.as_object());
+            assert_eq!(record.raw["reasoning"], expected);
         },
     )
     .await;

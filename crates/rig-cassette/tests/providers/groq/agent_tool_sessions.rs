@@ -777,7 +777,6 @@ async fn low_latency_streaming_text_surfaces_final_usage() -> Result<()> {
                 ?;
 
             let mut text_chunks = 0usize;
-            let mut final_usage = None;
             while let Some(item) = stream.next().await {
                 match item? {
                     Item::Event(StreamEvent::Text { text, .. }) if !text.is_empty() => {
@@ -786,13 +785,9 @@ async fn low_latency_streaming_text_surfaces_final_usage() -> Result<()> {
                     _ => {}
                 }
             }
-            {
-                let response = stream.finish().await.expect("the stream ends");
-                final_usage = Some(response.usage);
-            }
+            let usage = stream.finish().await?.usage;
 
             anyhow::ensure!(text_chunks > 0, "stream should emit text deltas");
-            let usage = final_usage.ok_or_else(|| anyhow::anyhow!("stream should emit final usage"))?;
             let input_tokens = usage.input_tokens.unwrap_or(0);
             let output_tokens = usage.output_tokens.unwrap_or(0);
             anyhow::ensure!(input_tokens > 0, "stream usage should include input tokens");

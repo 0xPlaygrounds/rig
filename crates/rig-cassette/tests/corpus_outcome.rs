@@ -21,7 +21,7 @@
 //!
 //! Full cross-product: 5 × 2 × 4 × 2 × 2 × 4 = 640. Recorded: the 8 goldens
 //! below; replayed as resume rows: 4 existing goldens. Pruned: a cancel
-//! after a `BlockEnd` (a text answer's only block ends with the stream, so
+//! after a part's `End` (a text answer's only block ends with the stream, so
 //! there is nothing left to cancel; a two-call stream cancelled between
 //! calls is the tool-call-delta cell with more of the stream kept); a
 //! unary cancel by timeout (whether a timeout fires before a cassette

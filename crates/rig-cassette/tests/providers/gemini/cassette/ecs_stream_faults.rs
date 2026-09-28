@@ -426,7 +426,9 @@ async fn witnessed_success_matches_the_unwitnessed_run() {
     );
         let usage = observed
             .stream()
-            .outcome.as_ref().and_then(|outcome| match outcome {
+            .outcome
+            .as_ref()
+            .and_then(|outcome| match outcome {
                 Ok(rig::effect::Outcome::Completion(final_event)) => Some(final_event.usage),
                 _ => None,
             })

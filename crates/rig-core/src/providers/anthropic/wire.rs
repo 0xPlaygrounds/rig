@@ -628,10 +628,10 @@ impl<'id> Decoder<'id, ModelListing> for ModelsDecoder {
         let next = page
             .last_id
             .filter(|cursor| page.has_more && !cursor.is_empty());
-        return Ok(out.end(ModelPage {
+        Ok(out.end(ModelPage {
             models: ModelList::new(page.data.into_iter().map(ModelInfo::from).collect()),
             next,
-        }));
+        }))
     }
 }
 

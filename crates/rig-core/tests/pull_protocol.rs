@@ -9,8 +9,8 @@ use rig_core::{
     },
     error::{ErrorKind, ErrorReport},
     message::{AssistantContent, DocumentSourceKind, Image},
-    serve::{Decision, Dispatch, ErasedHandler, Intercept, Observe, Reply, Serve, Verdict},
     operation::Finish,
+    serve::{Decision, Dispatch, ErasedHandler, Intercept, Observe, Reply, Serve, Verdict},
     streaming::{Item, Relayed, StreamEvent},
 };
 use serde_json::{Value, json};
@@ -281,17 +281,13 @@ fn unary_image_recording_survives_stream_projection_and_replacement() {
             .into_stream()
             .collect::<Vec<_>>(),
     );
-    assert!(
-        items
-            .iter()
-            .any(|item| matches!(
-                item,
-                Ok(Relayed::Item(Item::Event(StreamEvent::End {
-                    content: AssistantContent::Image(_),
-                    ..
-                })))
-            ))
-    );
+    assert!(items.iter().any(|item| matches!(
+        item,
+        Ok(Relayed::Item(Item::Event(StreamEvent::End {
+            content: AssistantContent::Image(_),
+            ..
+        })))
+    )));
     assert!(items.last().unwrap().is_err());
     let expected = block_on(
         block_on(ImageAnswer.serve(

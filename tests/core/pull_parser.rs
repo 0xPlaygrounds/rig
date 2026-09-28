@@ -6,7 +6,7 @@ use rig_core::http_client::{Request, Response, StatusCode};
 use rig_core::{
     http_client::{self, BoxedStream, HttpClientExt, LazyBody, MultipartForm, StreamingResponse},
     providers::{anthropic::Anthropic, deepseek, openai::OpenAI},
-    streaming::{StreamEvent, StreamEvents},
+    streaming::StreamEvents,
     wasm_compat::WasmCompatSend,
 };
 use std::{

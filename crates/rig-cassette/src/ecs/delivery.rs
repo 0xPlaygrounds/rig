@@ -178,10 +178,11 @@ impl ReplayDelivery {
                     // ended it, and without one it was cut short.
                     let folded = match &record.outcome {
                         Ok(outcome) => Ok(outcome.clone()),
-                        Err(_) => Err(errors.first().map_or_else(
-                            rig_core::serve::stream_truncated,
-                            |error| error.error.clone(),
-                        )),
+                        Err(_) => Err(errors
+                            .first()
+                            .map_or_else(rig_core::serve::stream_truncated, |error| {
+                                error.error.clone()
+                            })),
                     };
                     if serde_json::to_value(&folded).map_err(|error| invalid(error.to_string()))?
                         != serde_json::to_value(&record.outcome)

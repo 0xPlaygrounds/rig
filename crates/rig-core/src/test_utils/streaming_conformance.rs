@@ -370,9 +370,8 @@ pub fn transport_error_chunk() -> http_client::Result<WireInput> {
 ///
 /// Laws (universal — they hold for truncated and errored streams too):
 ///
-/// 1. **Terminal latch.** At most one [`StreamEvent::Final`],
-///    and no content item (text, reasoning, tool call or delta) follows it —
-///    only in-band errors and `Unknown` passthrough may.
+/// 1. **Terminal error.** An error is the stream's last item: nothing
+///    follows it.
 /// 2. **Text conservation.** The aggregated text is exactly the
 ///    concatenation of the yielded text deltas: accumulated delta content
 ///    equals the payload the aggregate delivers.
@@ -458,9 +457,11 @@ pub fn assert_valid_event_stream(
             .collect::<Vec<_>>(),
     )
     .unwrap_or_default();
-    if let Err(error) = crate::streaming::Transcript::parse_prefix(serialized) {
-        panic!("law 4 (sequence): the stream's events do not read back: {error}");
-    }
+    let read_back = crate::streaming::Transcript::parse_prefix(serialized);
+    assert!(
+        read_back.is_ok(),
+        "law 4 (sequence): the stream's events do not read back: {read_back:?}"
+    );
 
     // Law 5: reasoning provenance.
     let yielded_reasoning = events.iter().any(|event| {
@@ -1227,7 +1228,7 @@ pub async fn bare_terminal_after_only_unparseable_frames_fabricates_nothing(
 /// usage metrics must complete with no counter reported rather than being
 /// suppressed or invented.
 ///
-/// Pins the absent-usage contract on [`StreamFinal::usage`]
+/// Pins the absent-usage contract on [`CompletionResponse::usage`](crate::completion::CompletionResponse::usage)
 /// (round one, `rig-2257-code-review-findings-ec9f2625.md`).
 pub async fn usage_variants_are_reported_or_absent(
     fixture: &ProviderWireFixture,

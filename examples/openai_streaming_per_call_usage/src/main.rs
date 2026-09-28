@@ -121,7 +121,8 @@ async fn main() -> Result<()> {
     while let Some(item) = stream.next().await {
         match item? {
             MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Text {
-                text, ..
+                text,
+                ..
             })) => {
                 print!("{text}");
                 io::stdout().flush()?;

@@ -234,12 +234,12 @@ impl<'id> Decoder<'id, Embedding> for EmbeddingsDecoder {
                 vec: embedding.embedding,
             })
             .collect();
-        return Ok(out.end(
+        Ok(out.end(
             crate::embeddings::EmbeddingResponse::new(vectors, PROVIDER_NAME)
                 .with_model(reply.model)
                 .with_usage(usage)
                 .with_raw(raw),
-        ));
+        ))
     }
 }
 
@@ -397,12 +397,12 @@ impl<'id> Decoder<'id, RerankOp> for RerankDecoder {
                 relevance_score: result.relevance_score,
             })
             .collect();
-        return Ok(out.end(
+        Ok(out.end(
             RerankResponse::new(results, PROVIDER_NAME)
                 .with_model(reply.model)
                 .with_usage(usage)
                 .with_raw(raw),
-        ));
+        ))
     }
 }
 

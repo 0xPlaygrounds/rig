@@ -163,17 +163,11 @@ fn stop_stream(world: &mut World, reason: &str, predicate: impl Fn(&StreamEvent)
 }
 pub(super) fn stop_text_delta(world: &mut World) {
     stop_stream(world, STOP_ON_TEXT_DELTA, |event| {
-        matches!(
-            event,
-            StreamEvent::Text { .. }
-        )
+        matches!(event, StreamEvent::Text { .. })
     });
 }
 pub(super) fn stop_tool_delta(world: &mut World) {
     stop_stream(world, STOP_ON_TOOL_CALL_DELTA, |event| {
-        matches!(
-            event,
-            StreamEvent::Arguments { .. }
-        )
+        matches!(event, StreamEvent::Arguments { .. })
     });
 }

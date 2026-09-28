@@ -41,9 +41,12 @@ use rig::providers::perplexity;
 use serde_json::{Value, json};
 
 use super::super::support::with_perplexity_cassette;
-use crate::raw_capture::{assert_no_request_id, assert_normalized_lacks, capture_terminal, capture_text_and_terminal, chat};
-use crate::support::normalized_without_raw;
+use crate::raw_capture::{
+    assert_no_request_id, assert_normalized_lacks, capture_terminal, capture_text_and_terminal,
+    chat,
+};
 use crate::support::Observed;
+use crate::support::normalized_without_raw;
 
 const PROVIDER: &str = "perplexity";
 const MODEL: &str = perplexity::SONAR;

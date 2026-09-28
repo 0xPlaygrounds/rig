@@ -29,7 +29,11 @@ use crate::message::AssistantContent;
 use super::UnknownPayload;
 
 /// A part's position in the response's `choice`. Only this crate constructs
-/// one.
+/// one:
+///
+/// ```compile_fail,E0423
+/// let part = rig_core::streaming::Part(0);
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize)]
 #[serde(transparent)]
 pub struct Part(u32);

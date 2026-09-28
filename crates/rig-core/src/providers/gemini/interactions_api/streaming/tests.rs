@@ -174,7 +174,11 @@ async fn a_model_output_step_yields_every_convertible_item() {
     .await;
 
     let calls = calls_of(&items);
-    assert_eq!(texts_of(&items), ["answer: "], "the text survives, got {items:?}");
+    assert_eq!(
+        texts_of(&items),
+        ["answer: "],
+        "the text survives, got {items:?}"
+    );
     assert_eq!(
         calls.len(),
         1,

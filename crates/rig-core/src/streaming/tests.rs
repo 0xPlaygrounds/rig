@@ -168,7 +168,9 @@ async fn the_choice_is_in_the_order_its_parts_started() {
 async fn a_stop_that_carried_a_tool_call_is_reported_as_tool_calls() {
     let mut stream = stream_of(vec![
         MockStreamEvent::tool_call("call_1", "lookup", serde_json::json!({})),
-        MockStreamEvent::FinalResponse(Finish::new(Usage::default()).with_reason(FinishReason::Stop)),
+        MockStreamEvent::FinalResponse(
+            Finish::new(Usage::default()).with_reason(FinishReason::Stop),
+        ),
     ]);
     let _ = items_of(&mut stream).await;
     let response = stream.finish().await.expect("the reply ended");

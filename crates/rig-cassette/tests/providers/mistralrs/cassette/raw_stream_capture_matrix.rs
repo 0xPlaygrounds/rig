@@ -1,6 +1,6 @@
 //! Matrix for raw terminal-record capture on mistral.rs's streaming
 //! `/v1/chat/completions` route
-//! ([`StreamFinal::raw`](rig::completion::CompletionResponse::raw)).
+//! ([`CompletionResponse::raw`](rig::completion::CompletionResponse::raw)).
 //!
 //! # The feature
 //!
@@ -14,7 +14,7 @@
 //! and no single one is the answer, so a typed round trip through `raw` is
 //! exact here, unlike the unary path where `raw` is the reply document.
 //! Nothing about it is sent to the server. `raw == Value::Null` means only
-//! that a `StreamFinal` was built by hand without a provider terminal behind
+//! that a `CompletionResponse` was built by hand without a provider terminal behind
 //! it, which no cell here can produce.
 //!
 //! # Matrix
@@ -40,8 +40,8 @@ use serde_json::Value;
 use super::super::support::{model_name, with_mistralrs_completions_cassette};
 use crate::cassettes::CassetteMode;
 use crate::raw_capture::{assert_normalized_lacks, capture_terminal, chat};
-use crate::support::normalized_without_raw;
 use crate::support::Observed;
+use crate::support::normalized_without_raw;
 
 const MISTRALRS_PROVIDER: &str = "mistralrs";
 /// The plain OpenAI dialect names itself `openai`, and a terminal record is

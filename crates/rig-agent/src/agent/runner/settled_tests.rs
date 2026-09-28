@@ -87,9 +87,10 @@ mod slow_stream {
                     tokio::time::sleep(Duration::from_millis(50)).await;
                 }
                 let _ = out
-                    .finish("mock", rig_core::test_utils::mock_final(
-                        rig_core::completion::Usage::default(),
-                    ))
+                    .finish(
+                        "mock",
+                        rig_core::test_utils::mock_final(rig_core::completion::Usage::default()),
+                    )
                     .await;
             })
         }

@@ -3,7 +3,7 @@
 //!
 //! **The feature.** Every stream's terminal
 //! [`rig::completion::CompletionResponse::raw`] carries the decoder's own terminal
-//! record behind the stream's `StreamEvent::Final` — for Doubleword the
+//! record behind the stream's finished response — for Doubleword the
 //! shared chat-completions [`StreamingCompletionResponse`] over
 //! [`ChatUsage`] — serialized. Capture is always on: there is no flag to
 //! request it, nothing about it reaches the wire, and a `Value::Null` only
@@ -39,9 +39,12 @@ use serde_json::json;
 
 use super::super::DEFAULT_MODEL;
 use super::super::support::with_doubleword_cassette_result;
-use crate::raw_capture::{assert_no_request_id, assert_normalized_lacks, capture_terminal, capture_text_and_terminal, chat};
-use crate::support::normalized_without_raw;
+use crate::raw_capture::{
+    assert_no_request_id, assert_normalized_lacks, capture_terminal, capture_text_and_terminal,
+    chat,
+};
 use crate::support::Observed;
+use crate::support::normalized_without_raw;
 
 const PROVIDER: &str = "doubleword";
 const PROMPT: &str = "Reply with the single word: pong";

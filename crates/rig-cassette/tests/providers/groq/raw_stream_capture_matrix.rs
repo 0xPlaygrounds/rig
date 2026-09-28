@@ -2,7 +2,7 @@
 //!
 //! **The feature.** Every stream's terminal
 //! [`rig::completion::CompletionResponse::raw`] carries the provider-native terminal
-//! record the decoder assembled behind the stream's `StreamEvent::Final` —
+//! record the decoder assembled behind the stream's finished response —
 //! for Groq the shared chat-completions terminal
 //! [`StreamingCompletionResponse`] over [`ChatUsage`] — serialized. Capture
 //! is always on: there is no flag to request it, nothing about it reaches

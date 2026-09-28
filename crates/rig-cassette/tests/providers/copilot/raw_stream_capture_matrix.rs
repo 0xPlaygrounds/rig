@@ -1,5 +1,5 @@
 //! Matrix for raw terminal-record capture on both Copilot streaming routes
-//! ([`StreamFinal::raw`](rig::completion::CompletionResponse::raw)).
+//! ([`CompletionResponse::raw`](rig::completion::CompletionResponse::raw)).
 //!
 //! # The feature
 //!
@@ -9,7 +9,7 @@
 //! route that is the shared chat terminal type, on the Responses route the
 //! shared Responses one, and each cell reads `raw` back through the type its
 //! route owns. It is the terminal record only, and nothing about it is sent
-//! to Copilot. `raw == Value::Null` means only that a `StreamFinal` was built
+//! to Copilot. `raw == Value::Null` means only that a `CompletionResponse` was built
 //! by hand without a provider terminal behind it, which no cell here can
 //! produce. Which route a stream took is a fact about the wire rather than
 //! about `raw`, so each typed-access cell asserts it on the bound wire
@@ -28,7 +28,7 @@
 //! accumulates unknown top-level chunk fields under `additional_params`,
 //! which is where Copilot's own `copilot_usage` block (with `total_nano_aiu`)
 //! and the `system_fingerprint` land — neither has a home on the normalized
-//! [`StreamFinal`](rig::completion::CompletionResponse); on the Responses route the
+//! [`CompletionResponse`](rig::completion::CompletionResponse); on the Responses route the
 //! terminal `status`.
 //!
 //! # Matrix
@@ -58,8 +58,8 @@ use serde_json::Value;
 use crate::cassettes::{CassetteMode, recorded_interaction_bodies, recorded_sse_json_frames};
 use crate::copilot::with_copilot_cassette_result;
 use crate::raw_capture::{assert_normalized_lacks, capture_terminal, chat, responses};
-use crate::support::normalized_without_raw;
 use crate::support::Observed;
+use crate::support::normalized_without_raw;
 use rig::completion::CompletionRequest;
 
 const COPILOT_PROVIDER: &str = "copilot";

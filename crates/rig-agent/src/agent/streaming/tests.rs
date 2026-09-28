@@ -2010,7 +2010,10 @@ async fn stream_prompt_continues_after_tool_call_turn() {
             Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult { .. })) => {
                 saw_tool_result = true;
             }
-            Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Text { text, .. }))) => {
+            Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Text {
+                text,
+                ..
+            }))) => {
                 final_text.push_str(&text);
             }
             Ok(MultiTurnStreamItem::FinalResponse(res)) => {
@@ -3348,7 +3351,9 @@ async fn completed_unknown_tool_call_after_text_fails_before_finish_hook_or_late
 
     while let Some(item) = stream.next().await {
         match item {
-            Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Text { .. }))) => {
+            Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Text {
+                ..
+            }))) => {
                 saw_text = true;
             }
             Ok(MultiTurnStreamItem::CompletionCall(_)) => {
@@ -3798,7 +3803,9 @@ async fn tool_choice_none_rejects_streaming_tool_call_name_delta_before_hook_or_
 
     while let Some(item) = stream.next().await {
         match item {
-            Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Arguments { .. }))) => {
+            Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Arguments {
+                ..
+            }))) => {
                 saw_delta = true;
             }
             Ok(_) => {}
@@ -3857,7 +3864,9 @@ async fn unknown_tool_call_name_delta_fails_before_streaming_delta_hook_or_emit(
 
     while let Some(item) = stream.next().await {
         match item {
-            Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Arguments { .. }))) => {
+            Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Arguments {
+                ..
+            }))) => {
                 saw_delta = true;
             }
             Ok(_) => {}
@@ -3916,7 +3925,9 @@ async fn tool_call_args_delta_before_unknown_name_fails_before_hook_or_emit() {
 
     while let Some(item) = stream.next().await {
         match item {
-            Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Arguments { .. }))) => {
+            Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Arguments {
+                ..
+            }))) => {
                 saw_delta = true;
             }
             Ok(_) => {}
@@ -4000,7 +4011,11 @@ async fn tool_call_fragments_before_the_name_emit_one_call_when_it_closes() {
     assert_eq!(arguments, vec!["{\"x\":1,\"y\":2}".to_string()]);
     assert_eq!(
         hook.observed(),
-        vec![(call.id.clone(), "add".to_string(), "{\"x\":1,\"y\":2}".to_string())]
+        vec![(
+            call.id.clone(),
+            "add".to_string(),
+            "{\"x\":1,\"y\":2}".to_string()
+        )]
     );
 }
 
@@ -4073,7 +4088,9 @@ async fn tool_choice_none_buffers_args_then_rejects_name_without_emit() {
 
     while let Some(item) = stream.next().await {
         match item {
-            Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Arguments { .. }))) => {
+            Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Arguments {
+                ..
+            }))) => {
                 saw_delta = true;
             }
             Ok(_) => {}
@@ -4191,7 +4208,9 @@ async fn stream_prompt_reasoning_delta_stop_prevents_emit_and_later_hook_dispatc
 
     while let Some(item) = stream.next().await {
         match item {
-            Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Reasoning { .. }))) => saw_delta = true,
+            Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Reasoning {
+                ..
+            }))) => saw_delta = true,
             Ok(MultiTurnStreamItem::FinalResponse(_)) => saw_final_response = true,
             Ok(_) => {}
             Err(err) => {
@@ -4202,7 +4221,10 @@ async fn stream_prompt_reasoning_delta_stop_prevents_emit_and_later_hook_dispatc
     }
 
     let observed = stopping.observed();
-    assert_eq!(observed, vec![(0, "blocked".to_string(), "blocked".to_string())]);
+    assert_eq!(
+        observed,
+        vec![(0, "blocked".to_string(), "blocked".to_string())]
+    );
     assert!(later.observed().is_empty());
     assert!(!saw_delta);
     assert!(!saw_final_response);
@@ -4231,7 +4253,10 @@ async fn stream_prompt_skips_reasoning_delta_hook_without_observation_interest()
 
     while let Some(item) = stream.next().await {
         match item {
-            Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Reasoning { text: reasoning, .. }))) => emitted.push(reasoning),
+            Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Reasoning {
+                text: reasoning,
+                ..
+            }))) => emitted.push(reasoning),
             Ok(MultiTurnStreamItem::FinalResponse(_)) => break,
             Ok(_) => {}
             Err(err) => panic!("unexpected streaming error: {err:?}"),
@@ -4266,7 +4291,10 @@ async fn stream_prompt_reasoning_delta_hook_observes_retried_turns_as_provisiona
 
     while let Some(item) = stream.next().await {
         match item {
-            Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Reasoning { text: reasoning, .. }))) => order.push(reasoning),
+            Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Reasoning {
+                text: reasoning,
+                ..
+            }))) => order.push(reasoning),
             Ok(MultiTurnStreamItem::ModelTurnRetried { turn }) => {
                 order.push(format!("retry:{turn}"));
             }
@@ -4363,7 +4391,11 @@ async fn stream_prompt_emits_tool_call_deltas_after_hook_continue() {
     };
     assert_eq!(
         hook.observed(),
-        vec![(call_id.clone(), "add".to_string(), "{\"x\":1,\"y\":2}".to_string())]
+        vec![(
+            call_id.clone(),
+            "add".to_string(),
+            "{\"x\":1,\"y\":2}".to_string()
+        )]
     );
     assert_eq!(arguments, vec!["{\"x\":1,\"y\":2}".to_string()]);
 }
@@ -4388,7 +4420,9 @@ async fn stream_prompt_tool_call_deltas_hook_termination_prevents_delta_emit() {
 
     while let Some(item) = stream.next().await {
         match item {
-            Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Arguments { .. }))) => {
+            Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Arguments {
+                ..
+            }))) => {
                 saw_delta = true;
             }
             Ok(MultiTurnStreamItem::FinalResponse(_)) => {
@@ -4621,7 +4655,10 @@ async fn final_response_matches_streamed_text_when_provider_final_is_textless() 
 
     while let Some(item) = stream.next().await {
         match item {
-            Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Text { text, .. }))) => streamed_text.push_str(&text),
+            Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Text {
+                text,
+                ..
+            }))) => streamed_text.push_str(&text),
             Ok(MultiTurnStreamItem::FinalResponse(res)) => {
                 final_response_text = Some(res.output().to_owned());
                 break;
@@ -4753,7 +4790,10 @@ async fn final_response_can_remain_empty_for_truly_textless_turns() {
 
     while let Some(item) = stream.next().await {
         match item {
-            Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Text { text, .. }))) => streamed_text.push_str(&text),
+            Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Text {
+                text,
+                ..
+            }))) => streamed_text.push_str(&text),
             Ok(MultiTurnStreamItem::FinalResponse(res)) => {
                 final_response_text = Some(res.output().to_owned());
                 break;
@@ -5223,7 +5263,10 @@ async fn test_span_context_isolation() -> anyhow::Result<()> {
     let mut full_content = String::new();
     while let Some(item) = stream.next().await {
         match item {
-            Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Text { text, .. }))) => {
+            Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Text {
+                text,
+                ..
+            }))) => {
                 full_content.push_str(&text);
             }
             Ok(MultiTurnStreamItem::FinalResponse(_)) => {
@@ -5286,7 +5329,10 @@ async fn test_chat_history_in_final_response() -> anyhow::Result<()> {
     let mut final_history = None;
     while let Some(item) = stream.next().await {
         match item {
-            Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Text { text, .. }))) => {
+            Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Text {
+                text,
+                ..
+            }))) => {
                 response_text.push_str(&text);
             }
             Ok(MultiTurnStreamItem::FinalResponse(res)) => {

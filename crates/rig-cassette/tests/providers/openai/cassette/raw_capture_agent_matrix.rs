@@ -58,7 +58,6 @@ use rig::agent::{
 use rig::completion::ResponseIdentity;
 use rig::message::AssistantContent;
 use rig::providers::openai;
-use rig::streaming::StreamEvent;
 use serde_json::Value;
 
 use super::super::support::{OpenAiCassette, sse_json_frames, with_openai_cassette};

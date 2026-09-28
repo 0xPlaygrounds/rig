@@ -315,12 +315,12 @@ impl<'id> Decoder<'id, Embedding> for EmbeddingsDecoder {
             })
             .collect();
         // Cohere's `/v1/embed` reply names no model.
-        return Ok(out.end(
+        Ok(out.end(
             crate::embeddings::EmbeddingResponse::new(vectors, PROVIDER_NAME)
                 .with_response_id(reply.id)
                 .with_usage(usage)
                 .with_raw(raw),
-        ));
+        ))
     }
 }
 
@@ -423,7 +423,7 @@ impl<'id> Decoder<'id, ImageEmbedding> for ImageEmbeddingsDecoder {
         if let Some(id) = reply.id {
             response = response.with_response_id(id);
         }
-        return Ok(out.end(response));
+        Ok(out.end(response))
     }
 }
 

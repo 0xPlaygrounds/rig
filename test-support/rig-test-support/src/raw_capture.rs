@@ -28,9 +28,9 @@
 pub mod chat;
 pub mod responses;
 
+use crate::support::{Observed, collect_required_terminal, collect_text_and_terminal};
 use rig_core::completion::{CompletionRequest, CompletionResponse};
 use rig_core::error::ProviderError;
-use crate::support::{Observed, collect_required_terminal, collect_text_and_terminal};
 
 /// Run one recorded blocking turn and park the response it produced.
 ///
@@ -74,7 +74,10 @@ pub async fn capture_text_and_terminal(
 ) -> Result<(), ProviderError> {
     let model: rig_core::DynModel<rig_core::operation::Completion> = model.into();
     let (text, terminal) = collect_text_and_terminal(model.stream(request)?).await;
-    sink.put((text, terminal.expect("stream should finish with a response")));
+    sink.put((
+        text,
+        terminal.expect("stream should finish with a response"),
+    ));
     Ok(())
 }
 

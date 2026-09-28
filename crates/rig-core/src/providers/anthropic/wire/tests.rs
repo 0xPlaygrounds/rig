@@ -60,7 +60,6 @@ fn fold(body: &str, mode: Mode) -> crate::completion::CompletionResponse {
     let frames: Vec<WireFrame> = match mode {
         Mode::Streaming => crate::http_client::framing::SseFramer::new()
             .push(body.as_bytes())
-            .into_iter()
             .filter(|event| !event.data.trim().is_empty())
             .map(|event| WireFrame::Text(event.data))
             .collect(),

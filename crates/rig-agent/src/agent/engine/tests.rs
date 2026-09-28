@@ -820,9 +820,7 @@ async fn completion_calls_carry_each_attempts_own_raw_blocking() {
 /// Streamed multi-turn tool run: the tool-only turn and the text turn
 /// carry two *different* terminal records; `completion_calls` (both the
 /// forwarded items and the final response's record) carry each attempt's
-/// own, `CompletionResponse` and `ModelTurnFinished` agree for both, and
-/// the single forwarded `StreamEvent::Final` carries the
-/// final turn's.
+/// own, and `CompletionResponse` and `ModelTurnFinished` agree for both.
 #[tokio::test]
 async fn completion_calls_carry_each_attempts_own_raw_streamed() {
     let first_terminal = stream_final_for_attempt("stream-1", 1);
@@ -973,9 +971,8 @@ async fn retried_turn_records_the_retried_attempts_own_raw_streamed() {
 
     let mut final_response = None;
     while let Some(item) = stream.next().await {
-        match item.expect("stream item") {
-            MultiTurnStreamItem::FinalResponse(response) => final_response = Some(response),
-            _ => {}
+        if let MultiTurnStreamItem::FinalResponse(response) = item.expect("stream item") {
+            final_response = Some(response)
         }
     }
 
@@ -2685,9 +2682,7 @@ mod span_safety_net {
         let mut errors = 0;
         while let Some(item) = stream.next().await {
             match item {
-                Ok(MultiTurnStreamItem::CompletionCall(_)) => {
-                    completion_calls += 1
-                }
+                Ok(MultiTurnStreamItem::CompletionCall(_)) => completion_calls += 1,
                 Ok(MultiTurnStreamItem::FinalResponse(_)) => agent_finals += 1,
                 Ok(MultiTurnStreamItem::ModelTurnRetried { .. }) => retries += 1,
                 Ok(_) => {}
@@ -9432,9 +9427,7 @@ async fn streaming_model_turn_retry_rejects_tool_turn_without_committed_executio
             Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult { .. })) => {
                 tool_results += 1
             }
-            Ok(MultiTurnStreamItem::CompletionCall(_)) => {
-                completion_calls += 1
-            }
+            Ok(MultiTurnStreamItem::CompletionCall(_)) => completion_calls += 1,
             Ok(MultiTurnStreamItem::FinalResponse(_)) => agent_finals += 1,
             Ok(MultiTurnStreamItem::ModelTurnRetried { .. }) => retry_markers += 1,
             Ok(_) => {}

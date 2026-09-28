@@ -1,9 +1,9 @@
 //! ChatGPT completion normalization smoke tests.
 
-use rig::streaming::Item;
 use futures::StreamExt;
 use rig::message::AssistantContent;
 use rig::message::Message;
+use rig::streaming::Item;
 use rig::streaming::StreamEvent;
 
 use crate::chatgpt::{LIVE_MODEL, live_client};
@@ -56,7 +56,8 @@ async fn system_messages_are_lifted_into_instructions() {
 
     let mut text = String::new();
     while let Some(item) = stream.next().await {
-        if let Item::Event(StreamEvent::Text { text: delta, .. }) = item.expect("system-message stream item should succeed")
+        if let Item::Event(StreamEvent::Text { text: delta, .. }) =
+            item.expect("system-message stream item should succeed")
         {
             text.push_str(&delta);
         }

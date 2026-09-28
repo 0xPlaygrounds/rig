@@ -117,7 +117,10 @@ async fn stream_terminal_record_is_normalized() {
     ])
     .await;
     let response = replied.outcome.expect("the reply ended");
-    assert_eq!(response.provider, crate::providers::cohere::completion::PROVIDER_NAME);
+    assert_eq!(
+        response.provider,
+        crate::providers::cohere::completion::PROVIDER_NAME
+    );
     assert_eq!(response.response_id.as_deref(), Some("msg_1"));
     assert_eq!(response.message_id, None);
     assert_eq!(
@@ -159,7 +162,10 @@ async fn a_malformed_frame_ends_the_reply() {
     ])
     .await;
     assert_eq!(replied.texts(), ["hi"]);
-    assert!(replied.error().is_some(), "the malformed frame reaches the consumer");
+    assert!(
+        replied.error().is_some(),
+        "the malformed frame reaches the consumer"
+    );
     assert!(replied.outcome.is_err());
 }
 
@@ -192,7 +198,11 @@ async fn unknown_event_type_is_skipped_and_the_end_still_arrives() {
     assert!(replied.error().is_none(), "{:?}", replied.items);
     assert_eq!(replied.texts(), ["hi"]);
     assert_eq!(
-        replied.outcome.expect("the reply ended").usage.output_tokens,
+        replied
+            .outcome
+            .expect("the reply ended")
+            .usage
+            .output_tokens,
         Some(4)
     );
 }
@@ -524,8 +534,14 @@ async fn empty_tool_call_ids_are_minted_not_keyed_on_the_empty_string() {
     let response = replied(&events).await.outcome.expect("the reply ended");
     let calls: Vec<_> = response.tool_calls().collect();
     assert_eq!(calls.len(), 2, "two calls: {calls:?}");
-    assert_ne!(calls[0].id, calls[1].id, "each id-less call is its own call");
-    assert!(calls.iter().all(|call| call.id.provider().is_none()), "{calls:?}");
+    assert_ne!(
+        calls[0].id, calls[1].id,
+        "each id-less call is its own call"
+    );
+    assert!(
+        calls.iter().all(|call| call.id.provider().is_none()),
+        "{calls:?}"
+    );
     assert_eq!(calls[0].function.arguments, json!({"n": 1}));
     assert_eq!(calls[1].function.arguments, json!({"n": 2}));
 }

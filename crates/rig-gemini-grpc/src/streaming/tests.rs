@@ -1,8 +1,8 @@
 use super::*;
 use crate::completion::tests::{complete, stream_from_events};
 use futures::StreamExt;
-use rig_core::message::{AssistantContent, Reasoning, ReasoningContent};
 use rig_core::completion::CompletionResponse;
+use rig_core::message::{AssistantContent, Reasoning, ReasoningContent};
 use rig_core::streaming::{Item, StreamEvent};
 
 fn thought_part(text: &str, signature: &[u8]) -> proto::Part {

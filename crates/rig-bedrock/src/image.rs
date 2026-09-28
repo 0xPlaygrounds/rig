@@ -116,7 +116,8 @@ impl<'id> Decoder<'id, ImageGeneration, Vec<u8>> for ImagesDecoder {
         body: Vec<u8>,
         mut out: Out<'id, ImageGeneration>,
     ) -> Result<Flow, ProviderError> {
-        let body = String::from_utf8(body).map_err(|error| ProviderError::Response(error.to_string()))?;
+        let body =
+            String::from_utf8(body).map_err(|error| ProviderError::Response(error.to_string()))?;
         let response = serde_json::from_str::<TextToImageResponse>(&body)
             .map_err(|error| ProviderError::Response(error.to_string()))?;
         out.raw(serde_json::to_value(&response)?);

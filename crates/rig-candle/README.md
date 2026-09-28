@@ -77,8 +77,8 @@ are rejected before rendering so they cannot create structural prompt content.
 
 Qwen tool syntax can cross token boundaries, so streaming buffers one model
 turn, parses it, then emits ordered text/reasoning items and whole tool calls
-(a `BlockStart`/`BlockEnd` pair per call on the stream) followed by the
-terminal record. It does not currently emit tool-call deltas. This keeps model XML out of user-visible text
+(a `Start`/`End` pair per call on the stream) followed by the terminal
+record. This keeps model XML out of user-visible text
 while preserving cancellation, bounded backpressure, and the same parsed result
 as buffered completion.
 
@@ -169,6 +169,7 @@ other Rig model.
 ```rust,no_run
 use futures::StreamExt;
 use rig_candle::pose::{BodyPart, CandlePoseModel, ImageFrame, PoseRequest};
+use rig_core::streaming::Item;
 
 # async fn run(weights: Vec<u8>, video: Vec<(u32, u32, Vec<u8>)>) -> Result<(), Box<dyn std::error::Error>> {
 let model = CandlePoseModel::builder(weights)
@@ -181,9 +182,11 @@ let frames = video
     .map(|(width, height, rgb)| ImageFrame::from_rgb8(width, height, rgb))
     .collect::<Result<PoseRequest, _>>()?;
 let mut poses = model.stream(frames)?;
-while let Some(frame) = poses.next().await {
-    for person in frame?.people {
-        println!("{:?}", person.keypoint(BodyPart::LeftWrist));
+while let Some(item) = poses.next().await {
+    if let Item::Event(frame) = item? {
+        for person in frame.people {
+            println!("{:?}", person.keypoint(BodyPart::LeftWrist));
+        }
     }
 }
 # Ok(())

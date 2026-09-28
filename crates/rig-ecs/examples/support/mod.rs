@@ -99,7 +99,10 @@ impl Serve for Scripted {
                     }
                     writer.raw(serde_json::json!({ "provider": "scripted" }));
                     let _ = writer
-                        .finish("scripted", rig_core::operation::Finish::new(Usage::default()))
+                        .finish(
+                            "scripted",
+                            rig_core::operation::Finish::new(Usage::default()),
+                        )
                         .await;
                 })
             }

@@ -1,7 +1,7 @@
 //! Native run-owned entry storage and lifecycle observers for provider parity.
-use rig::completion::CompletionResponse;
 use crate::ecs_agent::EcsAgent;
 use bevy_ecs::prelude::*;
+use rig::completion::CompletionResponse;
 use rig::effect::EffectKind;
 use rig_ecs::{
     agent::{Cursor, MessageParts, Run, RunResult, Settled, Turn},

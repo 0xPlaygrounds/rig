@@ -3,11 +3,11 @@
 //! Each records once against the cassette transport and writes its golden
 //! under `RIG_REGENERATE_GOLDEN=1`, else asserts equality with it.
 
-use rig::streaming::Item;
 use futures::StreamExt;
 use rig::agent::MultiTurnStreamItem;
 use rig::effect::EffectFamily;
 use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
+use rig::streaming::Item;
 use rig::streaming::StreamEvent;
 use rig_cassette::agent::AgentReplayExt;
 
@@ -71,7 +71,9 @@ async fn cancelled_stream_effect_log_is_the_golden_fixture() {
                 .prompt("Write a 600-word essay on the history of the Rust programming language.")
                 .stream();
             while let Some(item) = stream.next().await {
-                if let Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Text { .. }))) = item
+                if let Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(
+                    StreamEvent::Text { .. },
+                ))) = item
                 {
                     break;
                 }

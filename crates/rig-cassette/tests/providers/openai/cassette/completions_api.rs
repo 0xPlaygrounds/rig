@@ -280,7 +280,7 @@ async fn completions_api_updates_keep_parallel_tool_calls_in_place() {
                 .preamble(TWO_TOOL_STREAM_PREAMBLE)
                 .tool(rig::tool::tool_definition(&AlphaSignal))
                 .tool(rig::tool::tool_definition(&BetaSignal));
-            let mut stream = model.stream(request).expect("the stream should start");
+            let stream = model.stream(request).expect("the stream should start");
             let updates = rig_test_support::updates::collect_updates(stream).await;
             let (_, parts) = rig_test_support::updates::assert_update_contract(&updates);
 

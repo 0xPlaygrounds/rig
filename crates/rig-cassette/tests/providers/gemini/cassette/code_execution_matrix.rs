@@ -63,12 +63,11 @@
 //! Re-record with:
 //! `RIG_PROVIDER_TEST_MODE=record GEMINI_API_KEY=... cargo test -p rig --all-features --test gemini code_execution_matrix -- --test-threads=1`
 
-use rig::streaming::PartKind;
-use rig::streaming::Item;
 use futures::StreamExt;
 use rig::message::{AssistantContent, Message};
 use rig::providers::gemini;
 use rig::providers::gemini::completion::gemini_api_types::GenerateContentResponse;
+use rig::streaming::Item;
 use rig::streaming::StreamEvent;
 use rig_test_support::cassette_models::GeminiModels;
 use serde::Deserialize;
@@ -162,9 +161,10 @@ async fn drain(
 ) -> (String, Vec<AssistantContent>, bool) {
     let mut text = String::new();
     while let Some(item) = stream.next().await {
-        match item.expect("no stream item should be an error") {
-            Item::Event(StreamEvent::Text { text: chunk, .. }) => text.push_str(&chunk),
-            _ => {}
+        if let Item::Event(StreamEvent::Text { text: chunk, .. }) =
+            item.expect("no stream item should be an error")
+        {
+            text.push_str(&chunk)
         }
     }
     let response = stream.finish().await;

@@ -1,5 +1,5 @@
 //! Matrix for raw terminal-record capture on ChatGPT's streaming `/responses`
-//! path ([`StreamFinal::raw`](rig::completion::CompletionResponse::raw)).
+//! path ([`CompletionResponse::raw`](rig::completion::CompletionResponse::raw)).
 //!
 //! # The feature
 //!
@@ -10,11 +10,11 @@
 //! the terminal `response.completed` event's usage, status, ids and model —
 //! serialized with `serde_json::to_value`. It is the terminal record only, and
 //! nothing about it is sent to ChatGPT. `raw == Value::Null` means only that a
-//! `StreamFinal` was built by hand without a provider terminal behind it,
+//! `CompletionResponse` was built by hand without a provider terminal behind it,
 //! which no cell here can produce.
 //!
 //! The terminal record spells the provider's `status` (`completed`), which
-//! the normalized [`StreamFinal`](rig::completion::CompletionResponse) folds into a
+//! the normalized [`CompletionResponse`](rig::completion::CompletionResponse) folds into a
 //! finish reason and does not carry; cell 2 reads it back through `raw`.
 //!
 //! # Matrix
@@ -38,8 +38,8 @@ use serde_json::Value;
 use super::super::support::with_chatgpt_cassette;
 use crate::cassettes::{recorded_interaction_bodies, recorded_sse_json_frames};
 use crate::raw_capture::{assert_normalized_lacks, capture_terminal, responses};
-use crate::support::normalized_without_raw;
 use crate::support::Observed;
+use crate::support::normalized_without_raw;
 use rig::completion::CompletionRequest;
 
 const CHATGPT_PROVIDER: &str = "chatgpt";

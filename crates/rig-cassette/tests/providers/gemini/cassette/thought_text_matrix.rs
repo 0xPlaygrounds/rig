@@ -98,12 +98,11 @@
 //! never filtered on it either. Nothing replaces the cell because nothing
 //! replaces the filter.
 
-use rig::streaming::PartKind;
-use rig::streaming::Item;
 use futures::StreamExt;
 use rig::message::AssistantContent;
 use rig::providers::gemini;
 use rig::providers::gemini::completion::gemini_api_types::GenerateContentResponse;
+use rig::streaming::Item;
 use rig::streaming::StreamEvent;
 use rig::transcription::TranscriptionRequestBuilder;
 use rig_test_support::cassette_models::GeminiModels;

@@ -6,6 +6,8 @@
 //! normalization — with no model load. This family never produces `Unknown` and has no frame-level decode,
 //! so the malformed/unknown scenarios self-report as skipped.
 
+#![allow(clippy::expect_used)]
+
 use rig_candle::{
     CandleCompletionResponse, CandleFrame, FinishReason as CandleFinishReason, Generation,
     GenerationEvent,
@@ -25,11 +27,7 @@ type CandleEvent = GenerationEvent;
 struct Scripted(std::sync::Arc<std::sync::Mutex<Vec<Result<CandleEvent, ProviderError>>>>);
 
 impl Transport<Generation> for Scripted {
-    fn send(
-        &self,
-        _request: CompletionRequest,
-        _exchange: Exchange,
-    ) -> Opening<CandleFrame> {
+    fn send(&self, _request: CompletionRequest, _exchange: Exchange) -> Opening<CandleFrame> {
         let events = match self.0.lock() {
             Ok(mut events) => std::mem::take(&mut *events),
             Err(_) => {

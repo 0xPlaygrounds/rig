@@ -7,7 +7,7 @@
 //! record from the `interaction.completed` event — the API's own
 //! [`StreamingCompletionResponse`], carrying the finished interaction, its
 //! usage and the model version — and serializes it onto the terminal
-//! [`rig::completion::CompletionResponse::raw`] it yields as `StreamEvent::Final`.
+//! [`rig::completion::CompletionResponse::raw`] its `finish` returns.
 //! There is no opt-in and nothing about it reaches the wire; `raw` is
 //! `Value::Null` only on a terminal constructed without a provider stream
 //! behind it, never because capture "was not requested".
@@ -32,10 +32,10 @@
 //! it is the only frame that carries the finished interaction and its usage,
 //! and it is what the decoder's terminal record is built from.
 
-use rig::streaming::Item;
 use futures::StreamExt;
 use rig::completion::FinishReason;
 use rig::providers::gemini::interactions_api::streaming::StreamingCompletionResponse;
+use rig::streaming::Item;
 use rig::streaming::StreamEvent;
 use serde::Deserialize;
 use serde_json::Value;
@@ -59,23 +59,20 @@ async fn stream_to_terminal(
     request: rig::completion::CompletionRequest,
 ) -> rig::completion::CompletionResponse {
     let mut stream = model.stream(request).expect("stream should open");
-    let mut terminal = None;
     let mut text = String::new();
     while let Some(item) = stream.next().await {
-        match item.expect("stream item should succeed") {
-            Item::Event(StreamEvent::Text { text: delta, .. }) => text.push_str(&delta),
-            _ => {}
+        if let Item::Event(StreamEvent::Text { text: delta, .. }) =
+            item.expect("stream item should succeed")
+        {
+            text.push_str(&delta)
         }
     }
-    {
-        let final_record = stream.finish().await.expect("the stream ends");
-        assert!(
-                    terminal.replace(final_record).is_none(),
-                    "a stream yields exactly one terminal record"
-                );
-    }
+    let terminal = stream
+        .finish()
+        .await
+        .expect("stream should yield a terminal record");
     assert!(!text.is_empty(), "the stream should have carried text");
-    terminal.expect("stream should yield a terminal record")
+    terminal
 }
 
 /// The recorded `interaction.completed` frame — the premise every cell rests

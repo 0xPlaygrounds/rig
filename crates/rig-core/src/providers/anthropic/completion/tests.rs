@@ -395,8 +395,7 @@ fn strict_tool_hook_is_a_noop_for_anthropic_compatible_gateways() {
     .with_strict_tools()
     .encode(request, Mode::Unary)
     .expect("the request encodes");
-    let crate::wire::Body::Bytes(body) = &encoded.request.body()
-    else {
+    let crate::wire::Body::Bytes(body) = &encoded.request.body() else {
         panic!("the Messages endpoint takes JSON")
     };
     let value: serde_json::Value =
@@ -3670,9 +3669,7 @@ mod raw_capture {
 /// Synthetic transcript tests required-ID request correlation without a paid call.
 #[test]
 fn full_request_preserves_typed_tool_pairs_across_turns() {
-    use crate::providers::internal::wire_ids::tests::{
-        adapter_requests, assert_adapter_pairs,
-    };
+    use crate::providers::internal::wire_ids::tests::{adapter_requests, assert_adapter_pairs};
     for request in adapter_requests() {
         let wire = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
             issuers: &[crate::message::Issuer::from_static("anthropic")],

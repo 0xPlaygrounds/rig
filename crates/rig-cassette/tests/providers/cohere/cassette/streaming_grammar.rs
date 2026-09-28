@@ -1,13 +1,13 @@
 //! Canonical streaming-grammar coverage for the Cohere v2 chat wire, asserted
 //! through the *normalized* path: the aggregated
-//! [`CompletionStream::folded`] snapshot, the terminal [`StreamFinal`]
+//! [`Streamed::finish`](rig::streaming::Streamed::finish) response, the terminal `CompletionResponse`
 //! record, usage, and finish reason.
 
-use rig::streaming::Item;
-use rig::completion::CompletionResponse;
 use futures::StreamExt;
+use rig::completion::CompletionResponse;
 use rig::completion::FinishReason;
 use rig::message::{AssistantContent, Reasoning, ReasoningContent, ToolCall, ToolChoice};
+use rig::streaming::Item;
 use rig::streaming::StreamEvent;
 
 use super::super::{
@@ -45,7 +45,10 @@ async fn drain_stream(mut stream: rig::streaming::CompletionStream) -> StreamRun
         raw_items.push(Ok(item.clone()));
         match item {
             Item::Event(StreamEvent::Text { text, .. }) => run.text.push_str(&text),
-            Item::Event(StreamEvent::End { content: AssistantContent::Reasoning(reasoning), .. }) => {
+            Item::Event(StreamEvent::End {
+                content: AssistantContent::Reasoning(reasoning),
+                ..
+            }) => {
                 run.reasoning_blocks.push(
                     reasoning
                         .open(reasoning.issuer())
@@ -56,9 +59,12 @@ async fn drain_stream(mut stream: rig::streaming::CompletionStream) -> StreamRun
             Item::Event(StreamEvent::Reasoning { text, .. }) => {
                 run.reasoning_delta.push_str(&text);
             }
-            Item::Event(StreamEvent::End { content: AssistantContent::ToolCall(tool_call), .. }) => run.tool_calls.push(tool_call),
+            Item::Event(StreamEvent::End {
+                content: AssistantContent::ToolCall(tool_call),
+                ..
+            }) => run.tool_calls.push(tool_call),
             Item::Event(StreamEvent::Start { .. })
-            | Item::Event(StreamEvent::Text { .. }) | Item::Event(StreamEvent::Reasoning { .. }) | Item::Event(StreamEvent::Arguments { .. })
+            | Item::Event(StreamEvent::Arguments { .. })
             | Item::Event(StreamEvent::End { .. })
             | Item::Unknown(_) => {}
         }

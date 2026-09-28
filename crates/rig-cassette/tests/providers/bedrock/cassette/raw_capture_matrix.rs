@@ -81,11 +81,7 @@ fn request() -> rig::completion::CompletionRequest {
 struct Reply(InternalConverseOutput);
 
 impl Transport<Converse> for Reply {
-    fn send(
-        &self,
-        payload: ConverseRequest,
-        _exchange: Exchange,
-    ) -> Opening<ConverseFrame> {
+    fn send(&self, payload: ConverseRequest, _exchange: Exchange) -> Opening<ConverseFrame> {
         let output = self.0.clone();
         let request_id = output.request_id().map(str::to_owned);
         Opening::ready(Opened::new(futures::stream::iter([

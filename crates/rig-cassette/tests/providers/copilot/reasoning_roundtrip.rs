@@ -12,7 +12,7 @@ async fn streaming() {
             "summary": null
         });
         // Copilot's terminal record carries reasoning metadata that rig's
-        // normalized `StreamFinal` does not model; its `raw` keeps it.
+        // normalized `CompletionResponse` does not model; its `raw` keeps it.
         let mut finals = Vec::new();
         reasoning::run_reasoning_roundtrip_streaming_with_final(
             ReasoningRoundtripAgent::new(

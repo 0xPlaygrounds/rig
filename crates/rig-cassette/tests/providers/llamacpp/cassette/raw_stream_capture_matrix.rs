@@ -1,5 +1,5 @@
 //! Matrix for raw terminal-record capture on llama.cpp's streaming path
-//! ([`StreamFinal::raw`](rig::completion::CompletionResponse::raw)).
+//! ([`CompletionResponse::raw`](rig::completion::CompletionResponse::raw)).
 //!
 //! # The feature
 //!
@@ -10,13 +10,13 @@
 //! plus the envelope fields the chunks carried (`object`, `created`,
 //! `system_fingerprint`) accumulated under `additional_params`. Every
 //! terminal record the seam yields carries `raw` — that record serialized by
-//! the decoder before it folds into a `StreamFinal` — the terminal record
+//! the decoder before it folds into a `CompletionResponse` — the terminal record
 //! only, never the frames, and nothing about it is sent to the server.
-//! `raw == Value::Null` means only that a `StreamFinal` was built by hand
+//! `raw == Value::Null` means only that a `CompletionResponse` was built by hand
 //! without a provider terminal behind it, which no cell here can produce.
 //!
 //! The envelope fields are exactly what the normalized
-//! [`StreamFinal`](rig::completion::CompletionResponse) has no home for, so cell 2
+//! [`CompletionResponse`](rig::completion::CompletionResponse) has no home for, so cell 2
 //! reads them back through `raw` and checks them against the recorded frames.
 //!
 //! # Matrix
@@ -62,8 +62,8 @@ use serde_json::Value;
 use super::super::cassette_support::*;
 use crate::cassettes::CassetteMode;
 use crate::raw_capture::{assert_normalized_lacks, capture_terminal, chat};
-use crate::support::normalized_without_raw;
 use crate::support::Observed;
+use crate::support::normalized_without_raw;
 use rig::completion::CompletionRequest;
 
 const LLAMACPP_PROVIDER: &str = "llamacpp";

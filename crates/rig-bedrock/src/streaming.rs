@@ -128,40 +128,42 @@ impl<'id> StreamState<'id> {
                             )?;
                         }
                     }
-                    aws_bedrock::ContentBlockDelta::ReasoningContent(reasoning) => match reasoning {
-                        aws_bedrock::ReasoningContentBlockDelta::Text(text) => {
-                            self.close_text(&mut out);
-                            let (part, _) = self
-                                .reasoning
-                                .get_or_insert_with(|| (out.reasoning(), None));
-                            out.push_reasoning(part, &text);
+                    aws_bedrock::ContentBlockDelta::ReasoningContent(reasoning) => {
+                        match reasoning {
+                            aws_bedrock::ReasoningContentBlockDelta::Text(text) => {
+                                self.close_text(&mut out);
+                                let (part, _) = self
+                                    .reasoning
+                                    .get_or_insert_with(|| (out.reasoning(), None));
+                                out.push_reasoning(part, &text);
+                            }
+                            aws_bedrock::ReasoningContentBlockDelta::Signature(signature) => {
+                                self.close_text(&mut out);
+                                self.reasoning
+                                    .get_or_insert_with(|| (out.reasoning(), None))
+                                    .1 = Some(signature);
+                            }
+                            aws_bedrock::ReasoningContentBlockDelta::RedactedContent(blob) => {
+                                // Close plaintext reasoning first, so redacted
+                                // content is a sibling rather than a replacement.
+                                self.close_text(&mut out);
+                                self.close_reasoning(&mut out);
+                                out.reasoning_block(rig_core::message::Reasoning {
+                                    id: None,
+                                    content: vec![ReasoningContent::Redacted {
+                                        // Base64 preserves opaque bytes for replay.
+                                        data: BASE64_STANDARD.encode(blob.as_ref()),
+                                    }],
+                                });
+                            }
+                            unknown => {
+                                tracing::warn!(
+                                    delta = ?std::mem::discriminant(&unknown),
+                                    "skipping unrecognized Bedrock reasoning content delta variant"
+                                );
+                            }
                         }
-                        aws_bedrock::ReasoningContentBlockDelta::Signature(signature) => {
-                            self.close_text(&mut out);
-                            self.reasoning
-                                .get_or_insert_with(|| (out.reasoning(), None))
-                                .1 = Some(signature);
-                        }
-                        aws_bedrock::ReasoningContentBlockDelta::RedactedContent(blob) => {
-                            // Close plaintext reasoning first, so redacted
-                            // content is a sibling rather than a replacement.
-                            self.close_text(&mut out);
-                            self.close_reasoning(&mut out);
-                            out.reasoning_block(rig_core::message::Reasoning {
-                                id: None,
-                                content: vec![ReasoningContent::Redacted {
-                                    // Base64 preserves opaque bytes for replay.
-                                    data: BASE64_STANDARD.encode(blob.as_ref()),
-                                }],
-                            });
-                        }
-                        unknown => {
-                            tracing::warn!(
-                                delta = ?std::mem::discriminant(&unknown),
-                                "skipping unrecognized Bedrock reasoning content delta variant"
-                            );
-                        }
-                    },
+                    }
                     unknown => {
                         tracing::warn!(
                             delta = ?std::mem::discriminant(&unknown),
@@ -262,7 +264,10 @@ impl<'id> StreamState<'id> {
 }
 
 /// A whole Converse reply, written as the parts a stream sends for it.
-fn whole(output: InternalConverseOutput, mut out: Out<'_, Completion>) -> Result<Flow, ProviderError> {
+fn whole(
+    output: InternalConverseOutput,
+    mut out: Out<'_, Completion>,
+) -> Result<Flow, ProviderError> {
     // The provider's own document, captured before the output is consumed
     // into normalized content.
     out.raw(serde_json::to_value(&output)?);
@@ -325,7 +330,11 @@ impl<'id> rig_core::wire::Decoder<'id, Completion, ConverseFrame> for StreamStat
     }
 
     /// EOF without Bedrock's `Metadata` event is truncation.
-    fn decode(&mut self, event: ConverseFrame, mut out: Out<'id, Completion>) -> Result<Flow, ProviderError> {
+    fn decode(
+        &mut self,
+        event: ConverseFrame,
+        mut out: Out<'id, Completion>,
+    ) -> Result<Flow, ProviderError> {
         match event {
             ConverseFrame::Opened { model, request_id } => {
                 let issuer = reasoning_issuer(&model);

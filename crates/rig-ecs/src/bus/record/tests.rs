@@ -41,7 +41,9 @@ fn cancellation_and_terminal_observation_have_one_recording_boundary() {
         recording.resolve(id, original.unwrap_or_else(|| Err(cancelled())));
         let closed = serde_json::to_value(recorder.log()).unwrap();
         observer.stream_item(&final_item, Some(&answer));
-        observer.event(&rig_core::streaming::Item::Unknown(serde_json::Value::Null.into()));
+        observer.event(&rig_core::streaming::Item::Unknown(
+            serde_json::Value::Null.into(),
+        ));
         observer.stream_error(&cancelled());
         observer.outcome(&answer);
         observer.patch(&kind);

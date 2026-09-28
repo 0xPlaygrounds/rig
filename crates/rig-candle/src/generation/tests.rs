@@ -39,8 +39,16 @@ fn parsed_missing_ids_keep_their_identity_and_provenance_through_stream_emission
             _ => None,
         })
         .collect();
-    assert_eq!(ids[1].to_string(), "tool-0");
-    assert!(ids[0].provider().is_none() && ids[2].provider().is_none());
+    assert_eq!(ids.len(), 3, "{ids:?}");
+    assert_eq!(
+        ids.get(1).map(ToString::to_string).as_deref(),
+        Some("tool-0")
+    );
+    assert!(
+        [ids.first(), ids.get(2)]
+            .iter()
+            .all(|id| id.is_some_and(|id| id.provider().is_none()))
+    );
     assert_eq!(
         serde_json::to_value(emitted).expect("valid parsed tool event"),
         serde_json::to_value(expected).expect("valid parsed tool event")

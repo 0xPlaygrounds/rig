@@ -35,8 +35,8 @@
 //! thinking), so a recording that stopped reasoning fails instead of
 //! covering nothing.
 
-use rig::streaming::Item;
 use rig::message::AssistantContent;
+use rig::streaming::Item;
 
 use futures::StreamExt as _;
 use rig::completion::CompletionRequest;
@@ -95,10 +95,15 @@ async fn collect_reasoning_text_and_terminal(
     };
     while let Some(item) = stream.next().await {
         match item.expect("stream item should not be an error") {
-            Item::Event(StreamEvent::Reasoning { text: reasoning, .. }) => {
+            Item::Event(StreamEvent::Reasoning {
+                text: reasoning, ..
+            }) => {
                 observation.reasoning.push_str(&reasoning);
             }
-            Item::Event(StreamEvent::End { content: AssistantContent::Reasoning(reasoning), .. }) => {
+            Item::Event(StreamEvent::End {
+                content: AssistantContent::Reasoning(reasoning),
+                ..
+            }) => {
                 observation.reasoning = reasoning
                     .open(reasoning.issuer())
                     .expect("sealed reasoning")
@@ -114,10 +119,12 @@ async fn collect_reasoning_text_and_terminal(
             _ => {}
         }
     }
-    {
-        let final_record = stream.finish().await.expect("the stream ends");
-        observation.terminal = Some(final_record);
-    }
+    observation.terminal = Some(
+        stream
+            .finish()
+            .await
+            .expect("the stream should yield a terminal record"),
+    );
     observation
 }
 

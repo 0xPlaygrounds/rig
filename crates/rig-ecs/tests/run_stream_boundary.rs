@@ -23,7 +23,7 @@ use rig_core::{
     completion::{CompletionResponse, Usage as ProviderUsage},
     effect::Outcome,
     message::AssistantContent,
-    };
+};
 use rig_ecs::{
     agent::{Grant, MessageParts, Resolution, RunResult, Settled, Usage},
     bus::RigSchedule,

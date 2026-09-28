@@ -4,12 +4,11 @@
 //!
 //! # The feature
 //!
-//! Capture is always on. The provider populates `CompletionResponse::raw` /
-//! `StreamFinal::raw` on every response, and the agent exposes that payload —
+//! Capture is always on. The provider populates `CompletionResponse::raw`
+//! on every response, and the agent exposes that payload —
 //! **per attempt**, never a previous attempt's — as `raw` on the
 //! `CompletionResponse` and `ModelTurnFinished` hook events, on each
-//! `CompletionCall` the run records, and on the streamed
-//! `StreamEvent::Final`. `raw` is `Value::Null` only on a value
+//! `CompletionCall` the run records, streamed or not. `raw` is `Value::Null` only on a value
 //! built by hand, with no provider response behind it; `Value::Null` never
 //! means "not requested".
 //!
@@ -21,7 +20,7 @@
 //! | 2 | `hooks_observe_raw_streamed` | `agent.prompt(..).stream()` | `CompletionResponse` and `ModelTurnFinished` see `raw`; `message_id` matches fixture | recorded |
 //! | 3 | `multi_turn_tool_run_records_distinct_raw_blocking` | tool run, `agent.prompt` | two `completion_calls`, two different `raw["id"]`s equal to the interactions' ids in order | recorded |
 //! | 4 | `multi_turn_tool_run_records_distinct_raw_streamed` | tool run, `agent.prompt(..).stream()` | two `CompletionCall` items, two different `raw["message_id"]`s equal to the interactions' ids in order | recorded |
-//! | 5 | `streamed_final_carries_final_turn_raw` | tool run, `agent.prompt(..).stream()` | the last `StreamEvent::Final.raw["message_id"]` is the last interaction's id | recorded |
+//! | 5 | `streamed_final_carries_final_turn_raw` | tool run, `agent.prompt(..).stream()` | the run's final response `raw["message_id"]` is the last interaction's id | recorded |
 //! | 6 | `retried_turn_records_retried_attempt_raw_blocking` | `ModelTurnFinished` → `Retry` once, `agent.prompt` | second recorded call / second event carry the second interaction's `id` | recorded |
 //! | 7 | `retried_turn_records_retried_attempt_raw_streamed` | same, `agent.prompt(..).stream()` | same, by `message_id` | recorded |
 //!

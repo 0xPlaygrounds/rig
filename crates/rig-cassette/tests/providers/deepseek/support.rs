@@ -1,5 +1,5 @@
-use rig::streaming::Item;
 use rig::message::AssistantContent;
+use rig::streaming::Item;
 use rig_test_support::cassette_models::OpenAiModels;
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
@@ -310,12 +310,18 @@ pub(super) async fn collect_raw_stream_outcome(
                 outcome.text.push_str(&text);
                 note(&mut outcome.order, "text");
             }
-            Ok(Item::Event(StreamEvent::End { content: AssistantContent::ToolCall(tool_call), .. })) => {
+            Ok(Item::Event(StreamEvent::End {
+                content: AssistantContent::ToolCall(tool_call),
+                ..
+            })) => {
                 outcome.tool_calls.push(tool_call);
                 note(&mut outcome.order, "tool_call");
             }
             Ok(Item::Event(StreamEvent::Arguments { .. })) => {}
-            Ok(Item::Event(StreamEvent::End { content: AssistantContent::Reasoning(reasoning), .. })) => {
+            Ok(Item::Event(StreamEvent::End {
+                content: AssistantContent::Reasoning(reasoning),
+                ..
+            })) => {
                 outcome.reasoning.push_str(
                     &reasoning
                         .open(reasoning.issuer())
@@ -324,14 +330,16 @@ pub(super) async fn collect_raw_stream_outcome(
                 );
                 note(&mut outcome.order, "reasoning");
             }
-            Ok(Item::Event(StreamEvent::Reasoning { text: reasoning, .. })) => {
+            Ok(Item::Event(StreamEvent::Reasoning {
+                text: reasoning, ..
+            })) => {
                 outcome.reasoning.push_str(&reasoning);
                 note(&mut outcome.order, "reasoning");
             }
             Ok(
                 Item::Unknown(_)
                 | Item::Event(StreamEvent::Start { .. })
-                | Item::Event(StreamEvent::End { .. })
+                | Item::Event(StreamEvent::End { .. }),
             ) => {}
             Err(error) => outcome.errors.push(error.to_string()),
         }

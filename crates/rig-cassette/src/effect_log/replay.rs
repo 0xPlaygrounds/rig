@@ -609,87 +609,93 @@ impl Serve for EffectLogReplayer {
             }
         };
         {
-            let outcome = match next {
-                None => Err(self.refuse(ErrorReport::new(ErrorKind::Divergence, missing))),
-                Some(record) => match divergence_under(self.check, &record.kind, &kind) {
-                    Some(what) => Err(self.refuse(ErrorReport::new(
-                        ErrorKind::Divergence,
-                        format!(
-                            "replay divergence: `{}` recorded {} ({}) but received {}: {what}",
-                            self.key,
-                            record.kind.name(),
-                            record.id,
-                            kind.name()
-                        ),
-                    ))),
-                    None => {
-                        if let Some(output) = record.tool_output {
-                            let Some(published) =
-                                dispatch.scope::<rig_core::tool::PublishedContext>()
-                            else {
-                                return Reply::Outcome(Err(self.refuse(ErrorReport::new(
-                                    ErrorKind::Divergence,
-                                    "replay requires a tool-result publication slot",
-                                ))));
-                            };
-                            let context = dispatch
-                                .scope::<rig_core::tool::ToolContext>()
-                                .map(|context| context.for_dispatch())
-                                .unwrap_or_default();
-                            published.publish(context.with_result_context(output));
-                        }
-                        // Preserve original item positions; the stream then ends with
-                        // the recorded response, or with the recorded failure when no
-                        // kept item reproduced it.
-                        if let (Some(events), true) = (record.events, dispatch.is_stream()) {
-                            let errors = self
-                                .stream_errors
-                                .get(&record.id)
-                                .cloned()
-                                .unwrap_or_default();
-                            // A reply that ended well ended before any error it
-                            // went on to carry: an earlier error would have been
-                            // its outcome.
-                            let (mut done, ending) = match record.outcome {
-                                Ok(rig_core::effect::Outcome::Completion(response)) => {
-                                    (Some(Box::new(response)), None)
-                                }
-                                Err(error)
-                                    if errors.is_empty()
-                                        && error != rig_core::serve::stream_truncated() =>
-                                {
-                                    (None, Some(Err(error)))
-                                }
-                                Ok(_) | Err(_) => (None, None),
-                            };
-                            let items = events.into_items();
-                            let events = items.len();
-                            let mut replayed = Vec::with_capacity(events + errors.len() + 1);
-                            let mut errors = errors.into_iter().peekable();
-                            let mut items = items.into_iter();
-                            for position in 0..events + errors.len() {
-                                if errors.peek().is_some_and(|error| error.item == position) {
-                                    if position >= events
-                                        && let Some(response) = done.take()
-                                    {
-                                        replayed.push(Ok(rig_core::streaming::Relayed::Done(response)));
-                                    }
-                                    replayed.extend(errors.next().map(|error| Err(error.error)));
-                                } else {
-                                    replayed.extend(
-                                        items.next().map(|item| Ok(rig_core::streaming::Relayed::Item(item))),
-                                    );
-                                }
+            let outcome =
+                match next {
+                    None => Err(self.refuse(ErrorReport::new(ErrorKind::Divergence, missing))),
+                    Some(record) => match divergence_under(self.check, &record.kind, &kind) {
+                        Some(what) => Err(self.refuse(ErrorReport::new(
+                            ErrorKind::Divergence,
+                            format!(
+                                "replay divergence: `{}` recorded {} ({}) but received {}: {what}",
+                                self.key,
+                                record.kind.name(),
+                                record.id,
+                                kind.name()
+                            ),
+                        ))),
+                        None => {
+                            if let Some(output) = record.tool_output {
+                                let Some(published) =
+                                    dispatch.scope::<rig_core::tool::PublishedContext>()
+                                else {
+                                    return Reply::Outcome(Err(self.refuse(ErrorReport::new(
+                                        ErrorKind::Divergence,
+                                        "replay requires a tool-result publication slot",
+                                    ))));
+                                };
+                                let context = dispatch
+                                    .scope::<rig_core::tool::ToolContext>()
+                                    .map(|context| context.for_dispatch())
+                                    .unwrap_or_default();
+                                published.publish(context.with_result_context(output));
                             }
-                            replayed.extend(done.map(|response| Ok(rig_core::streaming::Relayed::Done(response))));
-                            replayed.extend(ending);
-                            let items = replayed;
-                            return Reply::Stream(Box::pin(futures::stream::iter(items)));
+                            // Preserve original item positions; the stream then ends with
+                            // the recorded response, or with the recorded failure when no
+                            // kept item reproduced it.
+                            if let (Some(events), true) = (record.events, dispatch.is_stream()) {
+                                let errors = self
+                                    .stream_errors
+                                    .get(&record.id)
+                                    .cloned()
+                                    .unwrap_or_default();
+                                // A reply that ended well ended before any error it
+                                // went on to carry: an earlier error would have been
+                                // its outcome.
+                                let (mut done, ending) = match record.outcome {
+                                    Ok(rig_core::effect::Outcome::Completion(response)) => {
+                                        (Some(Box::new(response)), None)
+                                    }
+                                    Err(error)
+                                        if errors.is_empty()
+                                            && error != rig_core::serve::stream_truncated() =>
+                                    {
+                                        (None, Some(Err(error)))
+                                    }
+                                    Ok(_) | Err(_) => (None, None),
+                                };
+                                let items = events.into_items();
+                                let events = items.len();
+                                let mut replayed = Vec::with_capacity(events + errors.len() + 1);
+                                let mut errors = errors.into_iter().peekable();
+                                let mut items = items.into_iter();
+                                for position in 0..events + errors.len() {
+                                    if errors.peek().is_some_and(|error| error.item == position) {
+                                        if position >= events
+                                            && let Some(response) = done.take()
+                                        {
+                                            replayed.push(Ok(rig_core::streaming::Relayed::Done(
+                                                response,
+                                            )));
+                                        }
+                                        replayed
+                                            .extend(errors.next().map(|error| Err(error.error)));
+                                    } else {
+                                        replayed.extend(items.next().map(|item| {
+                                            Ok(rig_core::streaming::Relayed::Item(item))
+                                        }));
+                                    }
+                                }
+                                replayed.extend(done.map(|response| {
+                                    Ok(rig_core::streaming::Relayed::Done(response))
+                                }));
+                                replayed.extend(ending);
+                                let items = replayed;
+                                return Reply::Stream(Box::pin(futures::stream::iter(items)));
+                            }
+                            record.outcome
                         }
-                        record.outcome
-                    }
-                },
-            };
+                    },
+                };
             debug_assert_eq!(self.family, self.descriptor.family.family());
             Reply::Outcome(outcome)
         }

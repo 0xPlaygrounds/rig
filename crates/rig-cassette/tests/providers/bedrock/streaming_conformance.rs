@@ -23,11 +23,7 @@ type Events = Vec<Result<aws_bedrock::ConverseStreamOutput, ProviderError>>;
 struct Scripted(std::sync::Arc<std::sync::Mutex<Events>>);
 
 impl Transport<Converse> for Scripted {
-    fn send(
-        &self,
-        payload: ConverseRequest,
-        _exchange: Exchange,
-    ) -> Opening<ConverseFrame> {
+    fn send(&self, payload: ConverseRequest, _exchange: Exchange) -> Opening<ConverseFrame> {
         let events = match self.0.lock() {
             Ok(mut events) => std::mem::take(&mut *events),
             Err(_) => {

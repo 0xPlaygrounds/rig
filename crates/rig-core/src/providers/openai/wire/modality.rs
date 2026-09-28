@@ -273,11 +273,11 @@ impl<'id> Decoder<'id, Embedding> for EmbeddingsDecoder {
         } else {
             event.model
         };
-        return Ok(out.end(
+        Ok(out.end(
             embeddings::EmbeddingResponse::new(embeddings, self.provider)
                 .with_model(model)
                 .with_usage(usage),
-        ));
+        ))
     }
 }
 
@@ -502,13 +502,9 @@ impl<'id> Decoder<'id, Transcription> for TranscriptionsDecoder {
     ) -> Result<Flow, ProviderError> {
         use crate::transcription::NormalizeTranscriptionResponse;
 
-        match serde_json::to_value(&event) {
-            Ok(raw) => match event.normalize(self.provider) {
-                Ok(response) => return Ok(out.end(response.with_raw(raw))),
-                Err(error) => return Err(error),
-            },
-            Err(error) => return Err(ProviderError::from(error)),
-        }
+        let raw = serde_json::to_value(&event)?;
+        let response = event.normalize(self.provider)?;
+        Ok(out.end(response.with_raw(raw)))
     }
 }
 
@@ -698,7 +694,7 @@ impl<'id> Decoder<'id, crate::operation::ImageGeneration> for ImagesDecoder {
             }
         };
         let raw = serde_json::to_value(&reply).unwrap_or(serde_json::Value::Null);
-        return Ok(out.end(ImageGenerationResponse::new(image, self.provider).with_raw(raw)));
+        Ok(out.end(ImageGenerationResponse::new(image, self.provider).with_raw(raw)))
     }
 }
 
@@ -859,12 +855,12 @@ impl<'id> Decoder<'id, crate::operation::AudioGeneration> for SpeechDecoder {
                 }
             }
         };
-        return Ok(
+        Ok(
             out.end(crate::audio_generation::AudioGenerationResponse::new(
                 audio,
                 self.provider,
             )),
-        );
+        )
     }
 }
 
@@ -1025,10 +1021,10 @@ impl<'id> Decoder<'id, ModelListing> for ModelsDecoder {
         out: Out<'id, ModelListing>,
     ) -> Result<Flow, ProviderError> {
         let models = event.data.into_iter().map(ModelInfo::from).collect();
-        return Ok(out.end(ModelPage {
+        Ok(out.end(ModelPage {
             models: ModelList::new(models),
             next: None,
-        }));
+        }))
     }
 }
 
@@ -1156,12 +1152,12 @@ impl<'id> Decoder<'id, RerankOp> for RerankDecoder {
                 relevance_score: result.relevance_score,
             })
             .collect();
-        return Ok(out.end(
+        Ok(out.end(
             crate::rerank::RerankResponse::new(results, self.provider)
                 .with_optional_model(event.model)
                 .with_usage(usage)
                 .with_raw(raw),
-        ));
+        ))
     }
 }
 

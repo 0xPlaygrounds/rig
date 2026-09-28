@@ -129,7 +129,11 @@ pub(crate) fn assert_adapter_pairs(wire: serde_json::Value) {
         "{wire}"
     );
     assert_eq!(calls[1], SHARED);
-    assert_eq!(calls.iter().collect::<std::collections::HashSet<_>>().len(), 3, "{wire}");
+    assert_eq!(
+        calls.iter().collect::<std::collections::HashSet<_>>().len(),
+        3,
+        "{wire}"
+    );
 }
 
 pub(crate) fn adapter_requests() -> Vec<crate::completion::CompletionRequest> {
@@ -138,10 +142,12 @@ pub(crate) fn adapter_requests() -> Vec<crate::completion::CompletionRequest> {
 
 #[test]
 fn wire_slot_assignment_is_atomic_and_uses_original_content_order() {
-    let function = || ToolFunction::new(
-        crate::message::ToolName::new("test").expect("tool name"),
-        serde_json::json!({}),
-    );
+    let function = || {
+        ToolFunction::new(
+            crate::message::ToolName::new("test").expect("tool name"),
+            serde_json::json!({}),
+        )
+    };
     let history = vec![Message::Assistant {
         id: None,
         content: crate::NonEmpty::with_rest(

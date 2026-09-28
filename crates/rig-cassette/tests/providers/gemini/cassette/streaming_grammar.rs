@@ -1,7 +1,7 @@
 //! Canonical streaming-grammar coverage for Gemini (REST `generateContent`
 //! streaming plus the Interactions API), asserted through the *normalized*
-//! path: the aggregated [`CompletionStream::folded`] snapshot, the terminal
-//! [`StreamFinal`] record, usage, IDs, and finish reason — real recorded wire
+//! path: the aggregated [`Streamed::finish`](rig::streaming::Streamed::finish) response, the terminal
+//! `CompletionResponse` record, usage, IDs, and finish reason — real recorded wire
 //! traffic, not synthetic chunks.
 //!
 //! Re-record with:
@@ -10,9 +10,8 @@
 //! Cassette IDs are scrub placeholders; assertions derive expected IDs from
 //! the recorded turn and never mint literal IDs.
 
-use rig::streaming::Item;
-use rig::completion::CompletionResponse;
 use futures::StreamExt;
+use rig::completion::CompletionResponse;
 use rig::completion::FinishReason;
 use rig::message::{
     AssistantContent, Message, Reasoning, ReasoningContent, ToolCall, ToolChoice,
@@ -23,6 +22,7 @@ use rig::providers::gemini::completion::gemini_api_types::{
     AdditionalParameters, GenerationConfig, ThinkingConfig, ThinkingLevel,
 };
 use rig::providers::gemini::interactions_api;
+use rig::streaming::Item;
 use rig::streaming::StreamEvent;
 
 use crate::support::{
@@ -58,7 +58,10 @@ async fn drain_stream(mut stream: rig::streaming::CompletionStream) -> StreamRun
         raw_items.push(Ok(item.clone()));
         match item {
             Item::Event(StreamEvent::Text { text, .. }) => run.text.push_str(&text),
-            Item::Event(StreamEvent::End { content: AssistantContent::Reasoning(reasoning), .. }) => {
+            Item::Event(StreamEvent::End {
+                content: AssistantContent::Reasoning(reasoning),
+                ..
+            }) => {
                 run.reasoning_blocks.push(
                     reasoning
                         .open(reasoning.issuer())
@@ -69,9 +72,12 @@ async fn drain_stream(mut stream: rig::streaming::CompletionStream) -> StreamRun
             Item::Event(StreamEvent::Reasoning { text, .. }) => {
                 run.reasoning_delta.push_str(&text);
             }
-            Item::Event(StreamEvent::End { content: AssistantContent::ToolCall(tool_call), .. }) => run.tool_calls.push(tool_call),
+            Item::Event(StreamEvent::End {
+                content: AssistantContent::ToolCall(tool_call),
+                ..
+            }) => run.tool_calls.push(tool_call),
             Item::Event(StreamEvent::Start { .. })
-            | Item::Event(StreamEvent::Text { .. }) | Item::Event(StreamEvent::Reasoning { .. }) | Item::Event(StreamEvent::Arguments { .. })
+            | Item::Event(StreamEvent::Arguments { .. })
             | Item::Event(StreamEvent::End { .. })
             | Item::Unknown(_) => {}
         }

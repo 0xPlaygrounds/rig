@@ -407,10 +407,10 @@ impl<'id> Decoder<'id, ModelListing> for ModelsDecoder {
         event: Self::Event,
         out: Out<'id, ModelListing>,
     ) -> Result<Flow, ProviderError> {
-        return Ok(out.end(ModelPage {
+        Ok(out.end(ModelPage {
             models: ModelList::new(event.into_models()),
             next: None,
-        }));
+        }))
     }
 }
 

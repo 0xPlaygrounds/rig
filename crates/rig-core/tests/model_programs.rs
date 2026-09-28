@@ -269,11 +269,7 @@ async fn program_3_a_remote_pose_model_serves_the_operation_over_http() {
 struct OnnxRuntime;
 
 impl Transport<Local<PoseEstimation>> for OnnxRuntime {
-    fn send(
-        &self,
-        frames: Frames,
-        _: Exchange,
-    ) -> Opening<Step<PoseEstimation>> {
+    fn send(&self, frames: Frames, _: Exchange) -> Opening<Step<PoseEstimation>> {
         let count = frames.0.len();
         let poses = futures::stream::iter(frames.0.into_iter().enumerate()).then(
             move |(frame, image)| async move {

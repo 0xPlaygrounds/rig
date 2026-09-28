@@ -122,8 +122,7 @@ async fn caching_and_identity_share_the_wire_streaming() {
                 while let Some(item) = stream.next().await {
                     item.expect("stream item");
                 }
-                let terminal = Some(stream.finish().await.expect("the stream ends"));
-                terminal.expect("terminal record")
+                stream.finish().await.expect("terminal record")
             };
 
             let first = send(model.clone()).await;

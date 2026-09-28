@@ -1,13 +1,12 @@
 //! Gemini streaming coverage, including the migrated example path.
 
-use rig::streaming::Item;
-use rig::completion::CompletionResponse;
 use futures::StreamExt;
 use rig::completion::FinishReason;
 use rig::providers::gemini;
 use rig::providers::gemini::completion::gemini_api_types::{
     AdditionalParameters, GenerationConfig, ThinkingConfig, ThinkingLevel,
 };
+use rig::streaming::Item;
 use rig::streaming::StreamEvent;
 
 use crate::support::{
@@ -96,26 +95,19 @@ async fn final_metadata_exposes_finish_reason_and_model_version() {
             let mut stream = model.stream(request).expect("stream should start");
 
             let mut text = String::new();
-            let mut final_response = None;
-            let mut final_response_count = 0;
             while let Some(chunk) = stream.next().await {
-                match chunk.expect("stream chunk should succeed") {
-                    Item::Event(StreamEvent::Text { text: delta, .. }) => text.push_str(&delta),
-                    _ => {}
+                if let Item::Event(StreamEvent::Text { text: delta, .. }) =
+                    chunk.expect("stream chunk should succeed")
+                {
+                    text.push_str(&delta);
                 }
             }
-            {
-                let response = stream.finish().await.expect("the stream ends");
-                final_response_count += 1;
-                        final_response = Some(response);
-            }
+            let final_response = stream
+                .finish()
+                .await
+                .expect("stream should yield final metadata");
 
             assert_nonempty_response(&text);
-            assert_eq!(
-                final_response_count, 1,
-                "stream should yield exactly one final response"
-            );
-            let final_response = final_response.expect("stream should yield final metadata");
             assert!(
                 matches!(final_response.finish_reason(), Some(FinishReason::Stop)),
                 "expected STOP finish reason, got {:?}",
@@ -147,26 +139,19 @@ async fn final_metadata_handles_terminal_finish_reason_chunk() {
             let mut stream = model.stream(request).expect("stream should start");
 
             let mut text = String::new();
-            let mut final_response = None;
-            let mut final_response_count = 0;
             while let Some(chunk) = stream.next().await {
-                match chunk.expect("stream chunk should succeed") {
-                    Item::Event(StreamEvent::Text { text: delta, .. }) => text.push_str(&delta),
-                    _ => {}
+                if let Item::Event(StreamEvent::Text { text: delta, .. }) =
+                    chunk.expect("stream chunk should succeed")
+                {
+                    text.push_str(&delta);
                 }
             }
-            {
-                let response = stream.finish().await.expect("the stream ends");
-                final_response_count += 1;
-                        final_response = Some(response);
-            }
+            let final_response = stream
+                .finish()
+                .await
+                .expect("stream should yield final metadata");
 
             assert_eq!(text.trim(), "contentless final metadata ok");
-            assert_eq!(
-                final_response_count, 1,
-                "terminal finish chunk should yield exactly one final response"
-            );
-            let final_response = final_response.expect("stream should yield final metadata");
             assert!(
                 matches!(final_response.finish_reason(), Some(FinishReason::Stop)),
                 "expected STOP finish reason from contentless terminal chunk, got {:?}",

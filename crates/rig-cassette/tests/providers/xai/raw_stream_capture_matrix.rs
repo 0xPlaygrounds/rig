@@ -2,7 +2,7 @@
 //!
 //! **The feature.** Every stream's terminal
 //! [`rig::completion::CompletionResponse::raw`] carries the provider-native terminal record
-//! behind the stream's `StreamEvent::Final` — for xAI the Responses terminal
+//! behind the stream's finished response — for xAI the Responses terminal
 //! [`CompletionResponse`](rig::providers::openai::responses_api::CompletionResponse),
 //! built from the `response.completed` event —
 //! serialized. Capture is always on: there is no flag to request it, nothing
@@ -34,7 +34,10 @@ use serde_json::{Value, json};
 
 use super::support::with_xai_cassette_result;
 use crate::cassettes::recorded_response_header;
-use crate::raw_capture::{assert_contracted_request_id, assert_normalized_lacks, capture_terminal, capture_text_and_terminal, responses};
+use crate::raw_capture::{
+    assert_contracted_request_id, assert_normalized_lacks, capture_terminal,
+    capture_text_and_terminal, responses,
+};
 use crate::support::normalized_without_raw;
 use crate::support::{Observed, assert_matches_recorded_token};
 
@@ -79,7 +82,10 @@ fn recorded_request_id(scenario: &str) -> Option<String> {
 /// reproduces a *reply body*, while a stream's terminal is reproduced from
 /// one event's envelope, whose status is the event's own claim that the
 /// stream completed.
-fn assert_terminal_reproduces_event(terminal: &rig::completion::CompletionResponse, response: &Value) {
+fn assert_terminal_reproduces_event(
+    terminal: &rig::completion::CompletionResponse,
+    response: &Value,
+) {
     assert_eq!(terminal.provider, PROVIDER, "provider");
     assert_matches_recorded_token(
         terminal.response_id.as_deref(),

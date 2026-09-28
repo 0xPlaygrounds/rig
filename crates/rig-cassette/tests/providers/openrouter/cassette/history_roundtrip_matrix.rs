@@ -231,39 +231,33 @@ async fn run_cell(client: OpenAiModels, cell: Cell, observed: SharedObservation)
         }
         (Transport::Streaming, Surface::Raw) => {
             let mut stream = model.stream(request(cell))?;
-            let mut observation = Observation {
-                text: String::new(),
-                saw_terminal: false,
-            };
+            let mut text = String::new();
             while let Some(item) = stream.next().await {
-                match item? {
-                    Item::Event(StreamEvent::Text { text, .. }) => observation.text.push_str(&text),
-                    _ => {}
+                if let Item::Event(StreamEvent::Text { text: delta, .. }) = item? {
+                    text.push_str(&delta);
                 }
             }
-            {
-                let _final = stream.finish().await.expect("the stream ends");
-                observation.saw_terminal = true;
+            // `finish` succeeds only once the provider ended the reply.
+            stream.finish().await?;
+            Observation {
+                text,
+                saw_terminal: true,
             }
-            observation
         }
         (Transport::Streaming, Surface::Normalized) => {
             let mut stream = model.stream(request(cell))?;
-            let mut observation = Observation {
-                text: String::new(),
-                saw_terminal: false,
-            };
+            let mut text = String::new();
             while let Some(item) = stream.next().await {
-                match item? {
-                    Item::Event(StreamEvent::Text { text, .. }) => observation.text.push_str(&text),
-                    _ => {}
+                if let Item::Event(StreamEvent::Text { text: delta, .. }) = item? {
+                    text.push_str(&delta);
                 }
             }
-            {
-                let _final = stream.finish().await.expect("the stream ends");
-                observation.saw_terminal = true;
+            // `finish` succeeds only once the provider ended the reply.
+            stream.finish().await?;
+            Observation {
+                text,
+                saw_terminal: true,
             }
-            observation
         }
     };
 

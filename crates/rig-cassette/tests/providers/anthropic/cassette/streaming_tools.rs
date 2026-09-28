@@ -1,7 +1,7 @@
 //! Anthropic streaming tools smoke test.
 
-use rig::streaming::Item;
 use rig::message::AssistantContent;
+use rig::streaming::Item;
 use rig_cassette::agent::AgentReplayExt;
 
 use futures::StreamExt;
@@ -348,16 +348,26 @@ async fn collect_concurrent_tool_observation(
                 }
                 observation.events.push("final_response");
             }
-            Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Text { text: _, .. }))) => {
+            Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Text {
+                text: _,
+                ..
+            }))) => {
                 observation.events.push("text");
             }
-            Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Arguments { .. }))) => {
+            Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Arguments {
+                ..
+            }))) => {
                 observation.events.push("tool_call_delta");
             }
-            Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::End { content: AssistantContent::Reasoning(_), .. }))) => {
+            Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::End {
+                content: AssistantContent::Reasoning(_),
+                ..
+            }))) => {
                 observation.events.push("reasoning");
             }
-            Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Reasoning { .. }))) => {
+            Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Reasoning {
+                ..
+            }))) => {
                 observation.events.push("reasoning_delta");
             }
             Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Unknown(_))) => {

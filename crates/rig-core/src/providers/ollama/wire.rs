@@ -260,12 +260,12 @@ impl<'id> Decoder<'id, Embedding> for EmbeddingsDecoder {
                 vec,
             })
             .collect();
-        return Ok(out.end(
+        Ok(out.end(
             crate::embeddings::EmbeddingResponse::new(vectors, PROVIDER_NAME)
                 .with_model(reply.model)
                 .with_usage(usage)
                 .with_raw(raw),
-        ));
+        ))
     }
 }
 
@@ -315,10 +315,10 @@ impl<'id> Decoder<'id, ModelListing> for ModelsDecoder {
         reply: Self::Event,
         out: Out<'id, ModelListing>,
     ) -> Result<Flow, ProviderError> {
-        return Ok(out.end(ModelPage {
+        Ok(out.end(ModelPage {
             models: ModelList::new(reply.models.into_iter().map(ModelInfo::from).collect()),
             next: None,
-        }));
+        }))
     }
 }
 

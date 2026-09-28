@@ -45,8 +45,7 @@ fn observe_streams(streams: Query<(Entity, &Seq, &Streamed)>, mut seen: ResMut<S
     for (entity, _, stream) in streams {
         let offset = seen.offsets.get(&entity).copied().unwrap_or(0);
         for event in stream.events.events().skip(offset) {
-            if let StreamEvent::Text { text, .. } = event
-            {
+            if let StreamEvent::Text { text, .. } = event {
                 seen.observation.all_streamed_text.push_str(text);
                 seen.observation.final_turn_text.push_str(text);
                 seen.observation.events.push("text");

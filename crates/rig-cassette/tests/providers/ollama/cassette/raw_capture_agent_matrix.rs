@@ -4,12 +4,11 @@
 //!
 //! # The feature
 //!
-//! Capture is always on. The provider populates `CompletionResponse::raw` /
-//! `StreamFinal::raw` on every response, and the agent exposes that payload —
+//! Capture is always on. The provider populates `CompletionResponse::raw`
+//! on every response, and the agent exposes that payload —
 //! **per attempt**, never a previous attempt's — as `raw` on the
 //! `CompletionResponse` and `ModelTurnFinished` hook events, on each
-//! `CompletionCall` the run records, and on the streamed
-//! `StreamEvent::Final`. `raw` is `Value::Null` only on a value
+//! `CompletionCall` the run records, streamed or not. `raw` is `Value::Null` only on a value
 //! built by hand, with no provider response behind it; `Value::Null` never
 //! means "not requested".
 //!
@@ -20,7 +19,7 @@
 //! | 1 | `hooks_observe_raw_blocking` | `agent.prompt` | `CompletionResponse` and `ModelTurnFinished` see `raw`; `eval_count`/`done_reason`/durations match the fixture body | recorded |
 //! | 2 | `hooks_observe_raw_streamed` | `agent.prompt(..).stream()` | `CompletionResponse` and `ModelTurnFinished` see `raw`; `eval_count`/`done_reason`/durations match the fixture's `done: true` line | recorded |
 //! | 3 | `multi_turn_tool_run_records_distinct_raw_blocking` | tool run, `agent.prompt` | two `completion_calls`, two different payloads whose fingerprints equal the interactions' in order; the first carries `message.tool_calls` | recorded |
-//! | 4 | `multi_turn_tool_run_records_distinct_raw_streamed` | tool run, `agent.prompt(..).stream()` | two `CompletionCall` items, two different terminal payloads whose fingerprints equal the interactions' in order; the forwarded last `Final.raw` is the final turn's | recorded |
+//! | 4 | `multi_turn_tool_run_records_distinct_raw_streamed` | tool run, `agent.prompt(..).stream()` | two `CompletionCall` items, two different terminal payloads whose fingerprints equal the interactions' in order; the final response's `raw` is the final turn's | recorded |
 //!
 //! Both surfaces fire the same two events per accepted model turn:
 //! `CompletionResponse` — after the unary call returns on the blocking

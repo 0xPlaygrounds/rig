@@ -953,7 +953,6 @@ async fn update_expiry_accepts_an_absolute_timestamp() {
 #[tokio::test]
 async fn streaming_against_a_cache_reports_the_cache_read() {
     use futures::StreamExt;
-    use rig::streaming::StreamEvent;
 
     with_gemini_prompt_caching_cassette(
         "cached_content_matrix/use_streaming",
@@ -996,19 +995,17 @@ async fn streaming_against_a_cache_reports_the_cache_read() {
                 let mut stream = model
                     .stream(request)
                     .expect("streamed cached-content request should start");
-                let mut usage = None;
                 while let Some(item) = stream.next().await {
                     item.expect("stream item should succeed");
                 }
-                {
-                    let response = stream.finish().await.expect("the stream ends");
-                    usage = Some(response.usage);
-                }
-
-                let usage = usage.expect(
-                    "the stream should carry final usage; losing it on the streaming path is the \
-                     exact bug this cell exists to catch",
-                );
+                let usage = stream
+                    .finish()
+                    .await
+                    .expect(
+                        "the stream should carry final usage; losing it on the streaming path is \
+                         the exact bug this cell exists to catch",
+                    )
+                    .usage;
                 let cached = usage.cached_input_tokens.unwrap_or(0);
                 let input = usage.input_tokens.unwrap_or(0);
                 let ratio = cached as f64 / input as f64;

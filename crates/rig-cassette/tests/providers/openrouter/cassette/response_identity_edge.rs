@@ -36,7 +36,6 @@ async fn blocking_contract_and_gateway_both_report_none() {
 #[tokio::test]
 async fn streaming_contract_and_gateway_both_report_none() {
     use futures::StreamExt;
-    use rig::streaming::StreamEvent;
 
     with_openrouter_cassette(
         "response_identity_edge/streaming_contract_and_gateway_both_report_none",
@@ -50,8 +49,7 @@ async fn streaming_contract_and_gateway_both_report_none() {
             while let Some(item) = stream.next().await {
                 item.expect("stream item should succeed");
             }
-            let terminal = Some(stream.finish().await.expect("the stream ends"));
-            let terminal = terminal.expect("terminal record");
+            let terminal = stream.finish().await.expect("terminal record");
             assert_eq!(terminal.provider_request_id, None);
         },
     )

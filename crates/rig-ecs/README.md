@@ -178,7 +178,8 @@ it, despawning, dropping the world — cancels the task, including a worker
 parked on a full queue. An active native
 poll can finish before cancellation drops its future; closed recordings reject
 its late observations. Handler replacement leaves already-owned work intact.
-Streaming serial slots last through EOF and layer work after `Final`.
+Streaming serial slots last until the reply ends and through layer work
+after it.
 
 Recording keeps the original handler answer and events through layer verdicts.
 A recorded answer can survive cancellation while a verdict waits; recording an
@@ -333,8 +334,8 @@ cancellations are returned as errors. Logs without delivery metadata
 replay exchanges without a policy-order guarantee. Keeping event bytes
 preserves the event sequence; keeping delivery batches additionally preserves
 which events partial-state policy sees together. `header.stream_errors`
-retains error items at their original positions, including errors before or
-after `Final`; a folded outcome cannot recover those positions. One event per pass is not
+retains error items at their original positions; a folded outcome cannot
+recover those positions. One event per pass is not
 an exact replacement for a live multi-event batch. Kept events and the trace
 increase log size in proportion to recorded events and delivery batches.
 

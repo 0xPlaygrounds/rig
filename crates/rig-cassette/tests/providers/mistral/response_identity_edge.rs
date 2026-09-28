@@ -148,7 +148,9 @@ async fn streaming_error_carries_the_correlation_id() -> Result<()> {
                             break;
                         }
                     }
-                    rig::ErrorReport::from(&failure.expect("an unroutable model must fail the stream"))
+                    rig::ErrorReport::from(
+                        &failure.expect("an unroutable model must fail the stream"),
+                    )
                 }
             };
             assert_report_keeps_id_and_body(&error);

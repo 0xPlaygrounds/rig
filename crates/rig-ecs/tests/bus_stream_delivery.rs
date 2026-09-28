@@ -35,10 +35,10 @@ fn observe(app: &mut bevy_app::App) -> Trace {
             assert!(
                 state.events.len() + state.errors.len() >= delivery.start + delivery.items.len()
             );
-            output.lock().unwrap().push((
-                delivery.start,
-                batch(&delivery.items),
-            ));
+            output
+                .lock()
+                .unwrap()
+                .push((delivery.start, batch(&delivery.items)));
         },
     );
     trace
@@ -216,7 +216,9 @@ fn late_and_reenabled_consumers_hydrate_without_a_backlog() {
     let (sender, receiver) = futures::channel::mpsc::unbounded();
     bus_support::register(&mut app, "model", Controlled(Mutex::new(Some(receiver))));
     let effect = spawn_stream(&mut app, "model");
-    sender.unbounded_send(bus_support::text_start_item()).unwrap();
+    sender
+        .unbounded_send(bus_support::text_start_item())
+        .unwrap();
     sender.unbounded_send(text("early α")).unwrap();
     bus_support::tick_until(&mut app, "initial prefix", |world| {
         world
@@ -232,8 +234,7 @@ fn late_and_reenabled_consumers_hydrate_without_a_backlog() {
     app.add_observer(move |event: On<StreamItemsDelivered>| {
         if active.load(std::sync::atomic::Ordering::SeqCst) {
             for item in &event.items {
-                if let Ok(Item::Event(StreamEvent::Text { text, .. })) = item
-                {
+                if let Ok(Item::Event(StreamEvent::Text { text, .. })) = item {
                     output.lock().unwrap().push_str(text);
                 }
             }
@@ -342,9 +343,11 @@ fn delivery_precedes_run_settlement_and_terminal_graph_cleanup() {
     let final_seen = Arc::new(std::sync::atomic::AtomicBool::new(false));
     let observed = final_seen.clone();
     app.add_observer(move |event: On<StreamItemsDelivered>| {
-        if event.items.iter().any(|item| {
-            matches!(item, Ok(Item::Event(StreamEvent::Text { .. })))
-        }) {
+        if event
+            .items
+            .iter()
+            .any(|item| matches!(item, Ok(Item::Event(StreamEvent::Text { .. }))))
+        {
             observed.store(true, std::sync::atomic::Ordering::SeqCst);
         }
     });
@@ -377,7 +380,9 @@ fn cancellation_and_truncated_closure_do_not_fabricate_delivery_items() {
         let (sender, receiver) = futures::channel::mpsc::unbounded();
         bus_support::register(&mut app, "model", Controlled(Mutex::new(Some(receiver))));
         let effect = spawn_stream(&mut app, "model");
-        sender.unbounded_send(bus_support::text_start_item()).unwrap();
+        sender
+            .unbounded_send(bus_support::text_start_item())
+            .unwrap();
         sender.unbounded_send(text("partial")).unwrap();
         bus_support::tick_until(&mut app, "prefix delivered", |_| {
             flattened(&trace).len() == 2
@@ -402,7 +407,10 @@ fn cancellation_and_truncated_closure_do_not_fabricate_delivery_items() {
                 other => panic!("an item: {other:?}"),
             })
             .collect();
-        assert_eq!(flattened(&trace), batch(&delivered).as_array().unwrap().clone());
+        assert_eq!(
+            flattened(&trace),
+            batch(&delivered).as_array().unwrap().clone()
+        );
     }
 }
 
@@ -487,8 +495,7 @@ fn retried_streams_have_distinct_delivery_identities_and_identical_requests() {
         assert_eq!(*count, event.start);
         *count += event.items.len();
         for item in &event.items {
-            if let Ok(Item::Event(StreamEvent::Text { text: piece, .. })) = item
-            {
+            if let Ok(Item::Event(StreamEvent::Text { text: piece, .. })) = item {
                 text.push_str(piece);
             }
         }
