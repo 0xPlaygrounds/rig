@@ -168,7 +168,7 @@ pub enum ResponsesWebSocketEvent {
     Error(ResponsesWebSocketErrorEvent),
     /// An optional `response.done` event emitted by OpenAI over WebSockets.
     Done(ResponsesWebSocketDoneEvent),
-    /// Unrecognized event retained for [`StreamEvent::Unknown`] passthrough.
+    /// Unrecognized event retained for [`Item::Unknown`] passthrough.
     Unknown(crate::streaming::UnknownPayload),
 }
 
