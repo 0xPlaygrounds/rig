@@ -1,13 +1,14 @@
 //! `cargo xtask cassette audit [--base REF]`: check the effect goldens.
 //!
-//! Every golden's streams are checked on their own: a text end's block is
-//! the text its deltas carried, an unrestated reasoning end's block is the
-//! reasoning its deltas carried since the key's last end, and a tool call
-//! finalized from its fragments has the arguments they parse to. An end
-//! whose deltas assembled text, or that closes an open reasoning part,
-//! carries its block. Every golden that differs from the base is then
-//! classified change by change; a change outside the known kinds, or a
-//! block that disagrees with its deltas, fails the audit.
+//! Every golden's streams are checked on their own: an ended text part is
+//! the text its fragments carried, and an ended tool call's arguments are
+//! the JSON it streamed. Every golden that differs from the base is then
+//! classified change by change. A stream in the block shape that finalizes
+//! the same content, in the same order, as its typed replacement is a
+//! migrated stream; a count that follows the stream items (a delivery
+//! batch, a stream error's position, a validated offset) moves only in a
+//! migrated golden. A change outside these kinds, or a part that disagrees
+//! with its fragments, fails the audit.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
@@ -15,32 +16,51 @@ use std::path::Path;
 
 use serde_json::Value;
 
-use super::goldens::{expected_deliveries, git, is_close, same_event, starts_a_sibling};
+use super::goldens::git;
 
 const EFFECTS: &str = "crates/rig-cassette/fixtures/effects";
 
 /// What one kind of golden change is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) enum Change {
-    /// A text or reasoning end the sink inserted to close a block, before
-    /// the terminal record or at the end of the stream.
-    CloseInserted,
-    /// A reasoning start the sink inserted before a sibling part's end.
-    StartInserted,
-    /// An end that gained the block it finalized.
-    BlockAdded,
-    /// A count that follows the number of stream items, moved by exactly the
-    /// events inserted before it.
+    /// A block-shaped stream rewritten as the typed stream that finalizes
+    /// the same content in the same order.
+    Migrated,
+    /// A part the block stream left open where its run stopped, read to its
+    /// end by the typed stream.
+    ReadOn,
+    /// The tail of a cut stream: a part the block sink closed at the cut is
+    /// left open, or, a call, is absent because only closed calls surface.
+    CutTail,
+    /// A streamed effect's outcome `raw`, now the reply's terminal document
+    /// rather than the stream's own summary.
+    RawReplaced,
+    /// A truncated stream's error, now `ProviderError::Truncated`.
+    TruncationReported,
+    /// A rejected call a retried request replays as the call the model made.
+    CallRestored,
+    /// A migrated golden's delivery batches: its effects and their outcome
+    /// deliveries are the base's, in order, and no batch delivers past the
+    /// stream.
+    Rebatched,
+    /// A count that follows the number of stream items, in a migrated golden.
     CountShift,
+    /// A deleted golden no test names any more.
+    Retired,
 }
 
 impl fmt::Display for Change {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
-            Self::CloseInserted => "close inserted",
-            Self::StartInserted => "start inserted",
-            Self::BlockAdded => "block added to an end",
+            Self::Migrated => "stream migrated",
+            Self::ReadOn => "open part read on",
+            Self::CutTail => "cut tail left open",
+            Self::RawReplaced => "raw replaced by the terminal document",
+            Self::TruncationReported => "truncation reported as Truncated",
+            Self::CallRestored => "rejected call replayed as made",
+            Self::Rebatched => "delivery rebatched",
             Self::CountShift => "count shift",
+            Self::Retired => "golden retired",
         })
     }
 }
@@ -50,13 +70,10 @@ impl fmt::Display for Change {
 pub(crate) struct Audit {
     pub(crate) files: usize,
     pub(crate) changed: usize,
-    /// Blocks compared with their deltas.
-    pub(crate) blocks: usize,
-    /// Blocks an end restated or finalized from an authoritative payload,
-    /// which supersedes the deltas.
-    pub(crate) authoritative: usize,
+    /// Ended parts compared with their fragments.
+    pub(crate) parts: usize,
     pub(crate) changes: BTreeMap<Change, usize>,
-    /// A block that disagrees with its deltas.
+    /// A part that disagrees with its fragments.
     pub(crate) mismatches: Vec<String>,
     /// A change outside the known kinds, delivery churn included.
     pub(crate) other: Vec<String>,
@@ -75,7 +92,7 @@ impl Audit {
     /// when it has one.
     pub(crate) fn file(&mut self, path: &str, base: Option<&Value>, head: &Value) {
         self.files += 1;
-        walk_events(head, &mut |events| self.blocks(path, events));
+        walk_streams(head, &mut |items| self.parts(path, items));
         if let Some(base) = base
             && base != head
         {
@@ -84,109 +101,40 @@ impl Audit {
         }
     }
 
-    /// Check every block an end in `events` carries against its deltas.
-    fn blocks(&mut self, path: &str, events: &[Value]) {
-        let mut text: BTreeMap<&str, String> = BTreeMap::new();
-        let mut reasoning: BTreeMap<&str, String> = BTreeMap::new();
-        let mut arguments: BTreeMap<&str, String> = BTreeMap::new();
-        // Reasoning keys a start or a delta opened since their last end.
-        let mut open_reasoning: BTreeSet<&str> = BTreeSet::new();
-        for event in events {
-            let id = event.get("id").and_then(Value::as_str).unwrap_or_default();
+    /// Check every ended part in `items` against its fragments.
+    fn parts(&mut self, path: &str, items: &[Value]) {
+        let mut text: BTreeMap<u64, String> = BTreeMap::new();
+        let mut arguments: BTreeMap<u64, String> = BTreeMap::new();
+        for event in items.iter().filter_map(event_of) {
+            let part = event
+                .get("part")
+                .and_then(Value::as_u64)
+                .unwrap_or_default();
+            let field = |key| event.get(key).and_then(Value::as_str).unwrap_or_default();
             match event.get("event").and_then(Value::as_str) {
-                Some("block_start")
-                    if event.pointer("/kind/kind").and_then(Value::as_str) == Some("tool_call") =>
-                {
-                    arguments.insert(id, String::new());
-                }
-                Some("block_start")
-                    if event.pointer("/kind/kind").and_then(Value::as_str) == Some("reasoning") =>
-                {
-                    open_reasoning.insert(id);
-                }
-                Some("block_delta") => {
-                    let fragment = |key| {
-                        event
-                            .pointer(&format!("/delta/{key}"))
-                            .and_then(Value::as_str)
-                            .unwrap_or_default()
-                    };
-                    match event.pointer("/delta/delta").and_then(Value::as_str) {
-                        Some("text") => text.entry(id).or_default().push_str(fragment("text")),
-                        Some("reasoning") => {
-                            open_reasoning.insert(id);
-                            reasoning.entry(id).or_default().push_str(fragment("text"));
-                        }
-                        Some("tool_arguments") => {
-                            arguments
-                                .entry(id)
-                                .or_default()
-                                .push_str(fragment("arguments"));
-                        }
-                        _ => {}
-                    }
-                }
-                Some("block_end") => {
-                    let close = event.pointer("/end/close").and_then(Value::as_str);
-                    let block = event.get("block");
-                    let closes_open_reasoning =
-                        close == Some("reasoning") && open_reasoning.remove(id);
-                    let deltas = match close {
-                        Some("reasoning") => reasoning.remove(id).unwrap_or_default(),
-                        Some("tool_call") => arguments.remove(id).unwrap_or_default(),
-                        _ => String::new(),
-                    };
-                    let Some(block) = block.filter(|block| !block.is_null()) else {
-                        // An end that assembled content must carry it: text
-                        // its deltas carried, or a reasoning part it closes.
-                        let assembled = match close {
-                            Some("text") => text.get(id).is_some_and(|text| !text.is_empty()),
-                            Some("reasoning") => closes_open_reasoning,
-                            _ => false,
-                        };
-                        if assembled {
-                            self.mismatches.push(format!(
-                                "{path}: the end of {id} carries no block for what it assembled"
-                            ));
-                        }
-                        continue;
-                    };
-                    let authoritative = match close {
-                        Some("reasoning") => event.pointer("/end/reasoning").is_some(),
-                        Some("tool_call") => event.pointer("/end/arguments").is_some(),
-                        Some("text") => false,
-                        _ => true,
-                    };
-                    if authoritative {
-                        self.authoritative += 1;
-                        continue;
-                    }
-                    self.blocks += 1;
-                    let agrees = match close {
+                Some("text") => text.entry(part).or_default().push_str(field("text")),
+                Some("arguments") => arguments.entry(part).or_default().push_str(field("json")),
+                Some("end") => {
+                    let content = event.get("content").unwrap_or(&Value::Null);
+                    let agrees = match content.get("type").and_then(Value::as_str) {
                         Some("text") => {
-                            block.get("text").and_then(Value::as_str)
-                                == Some(text.get(id).map_or("", String::as_str))
+                            content.get("text").and_then(Value::as_str)
+                                == Some(text.remove(&part).unwrap_or_default().as_str())
                         }
-                        Some("reasoning") => reasoning_text(block) == deltas,
-                        // Fragments that are not strict JSON went through the
-                        // wire's repair policy.
-                        Some("tool_call") => match deltas.trim() {
-                            "" => {
-                                block.pointer("/function/arguments")
-                                    == Some(&Value::Object(serde_json::Map::new()))
-                            }
-                            fragments => {
-                                serde_json::from_str::<Value>(fragments).map_or(true, |parsed| {
-                                    parsed.is_null()
-                                        || block.pointer("/function/arguments") == Some(&parsed)
-                                })
-                            }
-                        },
-                        _ => true,
+                        Some("toolcall") => {
+                            let streamed = arguments.remove(&part).unwrap_or_default();
+                            let parsed = match streamed.trim() {
+                                "" => Some(Value::Object(serde_json::Map::new())),
+                                json => serde_json::from_str(json).ok(),
+                            };
+                            parsed.as_ref() == content.pointer("/function/arguments")
+                        }
+                        _ => continue,
                     };
+                    self.parts += 1;
                     if !agrees {
                         self.mismatches.push(format!(
-                            "{path}: the block on {id}'s end disagrees with its deltas"
+                            "{path}: part {part}'s end disagrees with its fragments"
                         ));
                     }
                 }
@@ -196,46 +144,224 @@ impl Audit {
     }
 }
 
-/// The text of a reasoning block's text parts, joined.
-fn reasoning_text(block: &Value) -> String {
-    block
-        .get("content")
-        .and_then(Value::as_array)
-        .into_iter()
+/// The event an item carries, when it is one.
+fn event_of(item: &Value) -> Option<&Value> {
+    (item.get("item").and_then(Value::as_str) == Some("event"))
+        .then(|| item.get("value"))
         .flatten()
-        .filter(|part| part.get("type").and_then(Value::as_str) == Some("text"))
-        .filter_map(|part| part.pointer("/content/text").and_then(Value::as_str))
-        .collect()
 }
 
-/// Call `visit` with every list of stream events in `value`.
-fn walk_events(value: &Value, visit: &mut impl FnMut(&[Value])) {
+/// Whether `events` is a typed stream: a list of items.
+fn typed(events: &[Value]) -> bool {
+    events.iter().all(|item| item.get("item").is_some())
+}
+
+/// Whether `events` is a block-shaped stream: a list of block events.
+fn block_shaped(events: &[Value]) -> bool {
+    events.iter().all(|event| event.get("event").is_some())
+}
+
+/// Call `visit` with every typed stream in `value`.
+fn walk_streams(value: &Value, visit: &mut impl FnMut(&[Value])) {
     match value {
         Value::Object(object) => {
-            if let Some(Value::Array(events)) = object.get("events")
-                && events.iter().all(|event| event.get("event").is_some())
+            if let Some(Value::Array(items)) = object.get("events")
+                && typed(items)
             {
-                visit(events);
+                visit(items);
             }
             for child in object.values() {
-                walk_events(child, visit);
+                walk_streams(child, visit);
             }
         }
-        Value::Array(values) => values.iter().for_each(|child| walk_events(child, visit)),
+        Value::Array(values) => values.iter().for_each(|child| walk_streams(child, visit)),
         _ => {}
     }
+}
+
+/// One part of a stream, in start order: its kind, the fragments it
+/// streamed, and what its end finalized. `ended` is `None` for a part left
+/// open and `Some(Value::Null)` for an end that finalized nothing.
+#[derive(Debug)]
+struct Part<'a> {
+    kind: &'a str,
+    fragments: String,
+    ended: Option<&'a Value>,
+}
+
+impl Part<'_> {
+    /// The text a part carried: its ended text, else its fragments.
+    fn text(&self) -> &str {
+        match self.ended {
+            Some(block) if block.get("type").and_then(Value::as_str) == Some("text") => block
+                .get("text")
+                .and_then(Value::as_str)
+                .unwrap_or_default(),
+            _ => &self.fragments,
+        }
+    }
+}
+
+/// The parts of a block-shaped stream, in the order their ids first appear.
+/// An event on an ended id opens a new part, unless it is another end.
+fn block_parts(events: &[Value]) -> Vec<Part<'_>> {
+    const NOTHING: &Value = &Value::Null;
+    let mut parts: Vec<Part<'_>> = Vec::new();
+    let mut current: BTreeMap<&str, usize> = BTreeMap::new();
+    for event in events {
+        let Some(id) = event.get("id").and_then(Value::as_str) else {
+            continue;
+        };
+        let name = event.get("event").and_then(Value::as_str);
+        let kind = event
+            .pointer("/kind/kind")
+            .or_else(|| event.pointer("/end/close"))
+            .and_then(Value::as_str)
+            .or(
+                match event.pointer("/delta/delta").and_then(Value::as_str) {
+                    Some("tool_arguments" | "tool_name") => Some("tool_call"),
+                    delta => delta,
+                },
+            );
+        let index = match current.get(id) {
+            Some(&index)
+                if name == Some("block_end")
+                    || parts.get(index).is_some_and(|part| part.ended.is_none()) =>
+            {
+                index
+            }
+            _ => {
+                parts.push(Part {
+                    kind: kind.unwrap_or_default(),
+                    fragments: String::new(),
+                    ended: None,
+                });
+                current.insert(id, parts.len() - 1);
+                parts.len() - 1
+            }
+        };
+        let Some(part) = parts.get_mut(index) else {
+            continue;
+        };
+        if part.kind.is_empty() {
+            part.kind = kind.unwrap_or_default();
+        }
+        match name {
+            Some("block_delta") => {
+                let fragment = event
+                    .pointer("/delta/text")
+                    .or_else(|| event.pointer("/delta/arguments"))
+                    .and_then(Value::as_str);
+                part.fragments.push_str(fragment.unwrap_or_default());
+            }
+            Some("block_end") => match event.get("block").filter(|block| !block.is_null()) {
+                Some(block) => part.ended = Some(block),
+                None => {
+                    part.ended.get_or_insert(NOTHING);
+                }
+            },
+            _ => {}
+        }
+    }
+    parts
+}
+
+/// The parts of a typed stream, in start order; an unknown item is a part
+/// of its own that finalized its payload.
+fn typed_parts(items: &[Value]) -> Vec<Part<'_>> {
+    let mut parts: Vec<Part<'_>> = Vec::new();
+    let mut by_index: BTreeMap<u64, usize> = BTreeMap::new();
+    for item in items {
+        let Some(event) = event_of(item) else {
+            parts.push(Part {
+                kind: "unknown",
+                fragments: String::new(),
+                ended: item.get("value"),
+            });
+            continue;
+        };
+        let part = event
+            .get("part")
+            .and_then(Value::as_u64)
+            .unwrap_or_default();
+        let field = |key| event.get(key).and_then(Value::as_str);
+        match field("event") {
+            Some("start") => {
+                by_index.insert(part, parts.len());
+                parts.push(Part {
+                    kind: field("kind").unwrap_or_default(),
+                    fragments: String::new(),
+                    ended: None,
+                });
+            }
+            Some(name) => {
+                let Some(part) = by_index.get(&part).and_then(|&index| parts.get_mut(index)) else {
+                    continue;
+                };
+                match name {
+                    "text" | "reasoning" => {
+                        part.fragments.push_str(field("text").unwrap_or_default())
+                    }
+                    "arguments" => part.fragments.push_str(field("json").unwrap_or_default()),
+                    "end" => part.ended = event.get("content"),
+                    _ => {}
+                }
+            }
+            None => {}
+        }
+    }
+    parts
+}
+
+/// Whether a record's stream was cut: its outcome is an error or a reply
+/// the provider ended for length.
+fn cut(outcome: Option<&Value>) -> bool {
+    outcome.is_some_and(|outcome| {
+        outcome.get("Err").is_some()
+            || outcome.pointer("/Ok/finish_reason").and_then(Value::as_str) == Some("length")
+    })
+}
+
+/// Whether the parts from `from` on are the tail of a cut stream: each part
+/// the block sink closed at the cut is open in the typed stream with the
+/// same content so far, or, a call, is absent because only closed calls
+/// surface.
+fn cut_tail(base: &[Part<'_>], head: &[Part<'_>], from: usize) -> bool {
+    head.len() <= base.len()
+        && base
+            .iter()
+            .enumerate()
+            .skip(from)
+            .all(|(at, old)| match head.get(at) {
+                Some(new) => {
+                    new.kind == old.kind
+                        && new.ended.is_none()
+                        && if old.kind == "tool_call" {
+                            old.fragments.starts_with(&new.fragments)
+                                || new.fragments.starts_with(&old.fragments)
+                        } else {
+                            new.fragments == old.text()
+                        }
+                }
+                None => old.kind == "tool_call",
+            })
 }
 
 /// The comparison of one golden with its base.
 struct File<'a> {
     audit: &'a mut Audit,
     path: &'a str,
-    /// Record id to the event positions its stream inserted.
-    inserted: BTreeMap<u64, Vec<usize>>,
-    /// World program run to the number of events inserted in it.
-    by_run: BTreeMap<String, usize>,
-    /// `stream_validated` offsets, checked once every run is counted.
-    validated: Vec<(String, u64, u64)>,
+    /// Whether a stream of this golden migrated: its counts may move.
+    migrated: bool,
+    /// The records whose streams migrated: their outcome's `raw` may be the
+    /// reply's terminal document.
+    records: BTreeSet<String>,
+    /// Record id to its typed stream's length.
+    lengths: BTreeMap<u64, usize>,
+    /// Every tool call the base's replies finalized.
+    calls: Vec<Value>,
+    /// A replayed call's base id to the id of the call it now is.
+    restored: BTreeMap<String, Value>,
 }
 
 impl<'a> File<'a> {
@@ -243,22 +369,38 @@ impl<'a> File<'a> {
         Self {
             audit,
             path,
-            inserted: BTreeMap::new(),
-            by_run: BTreeMap::new(),
-            validated: Vec::new(),
+            migrated: false,
+            records: BTreeSet::new(),
+            lengths: BTreeMap::new(),
+            calls: Vec::new(),
+            restored: BTreeMap::new(),
         }
     }
 
     fn run(mut self, base: &Value, head: &Value) {
-        self.compare(base, head, "");
-        self.header(base, head);
-        for (at, before, after) in std::mem::take(&mut self.validated) {
-            let run = run_of(&at);
-            let grown = run
-                .and_then(|run| self.by_run.get(run))
-                .copied()
-                .unwrap_or(0);
-            if after.checked_sub(before) == Some(grown as u64) && grown > 0 {
+        for record in base
+            .get("records")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+        {
+            let choice = record
+                .pointer("/outcome/Ok/choice")
+                .and_then(Value::as_array);
+            self.calls.extend(
+                choice
+                    .into_iter()
+                    .flatten()
+                    .filter(|content| {
+                        content.get("type").and_then(Value::as_str) == Some("toolcall")
+                    })
+                    .cloned(),
+            );
+        }
+        let mut validated = Vec::new();
+        self.compare(base, head, "", &mut validated);
+        for (at, before, after) in validated {
+            if self.migrated {
                 self.audit.count(Change::CountShift, 1);
             } else {
                 self.audit.other(
@@ -267,52 +409,70 @@ impl<'a> File<'a> {
                 );
             }
         }
+        self.header(base, head);
     }
 
-    fn compare(&mut self, base: &Value, head: &Value, at: &str) {
+    fn compare(
+        &mut self,
+        base: &Value,
+        head: &Value,
+        at: &str,
+        validated: &mut Vec<(String, Value, Value)>,
+    ) {
         match (base, head) {
             (Value::Object(old), Value::Object(new)) => {
+                if self.restored_call(base, head, at) {
+                    return;
+                }
                 if old.keys().ne(new.keys()) {
                     self.audit.other(self.path, format!("{at}: keys differ"));
                     return;
                 }
-                let streams = matches!(
-                    (old.get("events"), new.get("events")),
-                    (Some(Value::Array(old)), Some(Value::Array(new)))
-                        if old.iter().chain(new).all(|event| event.get("event").is_some())
-                );
-                if let (true, Some(Value::Array(old_events)), Some(Value::Array(new_events))) =
-                    (streams, old.get("events"), new.get("events"))
+                if let (Some(Value::Array(old_events)), Some(Value::Array(new_events))) =
+                    (old.get("events"), new.get("events"))
+                    && typed(new_events)
                 {
-                    let inserted = self.align(old_events, new_events, &format!("{at}/events"));
-                    if let Some(run) = run_of(at) {
-                        *self.by_run.entry(run.to_owned()).or_default() += inserted.len();
+                    if self.stream(
+                        old_events,
+                        new_events,
+                        new.get("outcome"),
+                        &format!("{at}/events"),
+                    ) {
+                        self.records.insert(at.to_owned());
                     }
-                    if let Some(id) = at
-                        .strip_prefix("/records[")
-                        .and_then(|_| new.get("id"))
-                        .and_then(Value::as_u64)
-                    {
-                        self.inserted.insert(id, inserted);
+                    if let (true, Some(id)) = (
+                        at.starts_with("/records["),
+                        new.get("id").and_then(Value::as_u64),
+                    ) {
+                        self.lengths.insert(id, new_events.len());
                     }
                 }
                 for (key, value) in old {
                     let child = format!("{at}/{key}");
-                    if (key == "events" && streams)
-                        || (at == "/header" && (key == "deliveries" || key == "stream_errors"))
+                    if key == "events"
+                        && new
+                            .get("events")
+                            .and_then(Value::as_array)
+                            .is_some_and(|events| typed(events))
+                        || at == "/header" && (key == "deliveries" || key == "stream_errors")
                     {
                         continue;
                     }
-                    if key == "stream_validated" && value != &new[key] {
-                        let (Some(before), Some(after)) = (value.as_u64(), new[key].as_u64())
-                        else {
-                            self.audit.other(self.path, format!("{child}: not a count"));
-                            continue;
-                        };
-                        self.validated.push((child, before, after));
+                    if (key == "outcome" || key.ends_with("::EffectOutcome"))
+                        && streamed(new)
+                        && value.pointer("/Ok/raw") != new[key].pointer("/Ok/raw")
+                        && new[key].pointer("/Ok/raw").is_some_and(Value::is_object)
+                    {
+                        self.audit.count(Change::RawReplaced, 1);
+                        let (old, new) = (without_raw(value), without_raw(&new[key]));
+                        self.compare(&old, &new, &child, validated);
                         continue;
                     }
-                    self.compare(value, &new[key], &child);
+                    if key == "stream_validated" && value != &new[key] {
+                        validated.push((child, value.clone(), new[key].clone()));
+                        continue;
+                    }
+                    self.compare(value, &new[key], &child, validated);
                 }
             }
             (Value::Array(old), Value::Array(new)) => {
@@ -321,82 +481,133 @@ impl<'a> File<'a> {
                     return;
                 }
                 for (index, (old, new)) in old.iter().zip(new).enumerate() {
-                    self.compare(old, new, &format!("{at}[{index}]"));
+                    self.compare(old, new, &format!("{at}[{index}]"), validated);
                 }
+            }
+            (Value::String(old), Value::String(new))
+                if at.ends_with("/Err/message")
+                    && old == "the stream ended before its terminal record"
+                    && new == "ResponseError: the reply ended before the provider ended it" =>
+            {
+                self.audit.count(Change::TruncationReported, 1);
             }
             (old, new) if old != new => self.audit.other(self.path, format!("{at}: value differs")),
             _ => {}
         }
     }
 
-    /// Align a base stream with the regenerated one; return the positions
-    /// of the events the change inserted.
-    fn align(&mut self, old: &[Value], new: &[Value], at: &str) -> Vec<usize> {
-        let mut inserted = Vec::new();
-        let (mut i, mut j) = (0, 0);
-        while let Some(event) = new.get(j) {
-            let base = old.get(i);
-            if base == Some(event) {
-                i += 1;
-                j += 1;
-            } else if base.is_some_and(|base| same_event(base, event)) {
-                self.audit.count(Change::BlockAdded, 1);
-                i += 1;
-                j += 1;
-            } else if is_close(event) {
-                let run = new
+    /// A rejected call a retried request replays: the base replayed it with a
+    /// local id and no arguments, and now it is the call the model made, one
+    /// the base's replies finalized under that name. Its result follows the
+    /// call's id.
+    fn restored_call(&mut self, base: &Value, head: &Value, at: &str) -> bool {
+        if !at.contains("/chat_history[") {
+            return false;
+        }
+        let kind = |value: &Value| value.get("type").and_then(Value::as_str).map(str::to_owned);
+        match (kind(base).as_deref(), kind(head).as_deref()) {
+            (Some("toolcall"), Some("toolcall")) => {
+                let local = base.pointer("/id/local").is_some();
+                let name = base.pointer("/function/name");
+                let made = self
+                    .calls
                     .iter()
-                    .skip(j)
-                    .take_while(|event| is_close(event))
-                    .count();
-                let follows = new.get(j + run);
-                let terminal = follows
-                    .is_none_or(|next| next.get("event").and_then(Value::as_str) == Some("final"));
-                if !terminal {
-                    self.audit
-                        .other(self.path, format!("{at}[{j}]: a close inserted mid-stream"));
+                    .any(|call| call == head && call.pointer("/function/name") == name);
+                if base != head && local && made {
+                    self.restored
+                        .insert(base["id"].to_string(), head["id"].clone());
+                    self.audit.count(Change::CallRestored, 1);
+                    return true;
                 }
-                // Each inserted close ends a block still open where it stands.
-                for (offset, close) in new.iter().skip(j).take(run).enumerate() {
-                    let open = new
-                        .iter()
-                        .take(j + offset)
-                        .rev()
-                        .find(|earlier| earlier.get("id") == close.get("id"))
-                        .is_some_and(|earlier| {
-                            earlier.get("event").and_then(Value::as_str) != Some("block_end")
-                        });
-                    if !open {
-                        self.audit.other(
-                            self.path,
-                            format!("{at}[{}]: a close inserted for no open block", j + offset),
-                        );
-                    }
-                }
-                self.audit.count(Change::CloseInserted, run);
-                inserted.extend(j..j + run);
-                j += run;
-            } else if event.get("id").is_some() && starts_a_sibling(event, new.get(j + 1)) {
-                self.audit.count(Change::StartInserted, 1);
-                inserted.push(j);
-                j += 1;
-            } else {
-                self.audit
-                    .other(self.path, format!("{at}[{j}]: event differs"));
-                return inserted;
+                false
             }
+            (Some("toolresult"), Some("toolresult")) => {
+                let Some(call) = self.restored.get(&base["call"].to_string()) else {
+                    return false;
+                };
+                let mut rebased = base.clone();
+                if let Some(result) = rebased.as_object_mut() {
+                    result.insert("call".to_owned(), call.clone());
+                }
+                &rebased == head
+            }
+            _ => false,
         }
-        if i != old.len() {
-            self.audit.other(
-                self.path,
-                format!("{at}: {} base events dropped", old.len() - i),
-            );
-        }
-        inserted
     }
 
-    /// Stream error positions and delivery batches, against what the
-    /// inserted events predict.
+    /// A stream that changed: a block-shaped one migrated to the typed
+    /// stream whose parts, in start order, finalize the same content. A part
+    /// the base left open may read on in the typed stream; a cut stream's
+    /// tail may stay open. Returns whether the stream migrated.
+    fn stream(&mut self, old: &[Value], new: &[Value], outcome: Option<&Value>, at: &str) -> bool {
+        if old == new {
+            return false;
+        }
+        if !block_shaped(old) {
+            self.audit
+                .other(self.path, format!("{at}: the stream changed"));
+            return false;
+        }
+        let (base, head) = (block_parts(old), typed_parts(new));
+        let mut read_on = 0;
+        for (index, (before, after)) in base.iter().zip(&head).enumerate() {
+            if before.kind == after.kind
+                && match before.ended {
+                    Some(ended) => after.ended == Some(ended),
+                    None => after.fragments.starts_with(&before.fragments),
+                }
+            {
+                read_on += usize::from(before.ended.is_none());
+                continue;
+            }
+            if cut(outcome) && cut_tail(&base, &head, index) {
+                self.audit.count(Change::CutTail, 1);
+                return self.migrated(read_on);
+            }
+            self.audit.other(
+                self.path,
+                format!(
+                    "{at}: part {index} finalizes {} in the base, {} now",
+                    finalized(before),
+                    finalized(after)
+                ),
+            );
+            return false;
+        }
+        if base.len() > head.len() {
+            if cut(outcome) && cut_tail(&base, &head, head.len()) {
+                self.audit.count(Change::CutTail, 1);
+                return self.migrated(read_on);
+            }
+            self.audit.other(
+                self.path,
+                format!("{at}: {} base parts dropped", base.len() - head.len()),
+            );
+            return false;
+        }
+        if head.len() > base.len() && base.last().is_none_or(|last| last.ended.is_some()) {
+            self.audit.other(
+                self.path,
+                format!(
+                    "{at}: {} parts past the base's end",
+                    head.len() - base.len()
+                ),
+            );
+            return false;
+        }
+        self.migrated(read_on)
+    }
+
+    /// Record a migrated stream, `read_on` of whose parts the base left open.
+    fn migrated(&mut self, read_on: usize) -> bool {
+        self.migrated = true;
+        self.audit.count(Change::Migrated, 1);
+        self.audit.count(Change::ReadOn, read_on);
+        true
+    }
+
+    /// Stream error positions and delivery batches: the base's, moved only
+    /// in a migrated golden, and never past the stream they count.
     fn header(&mut self, base: &Value, head: &Value) {
         let errors = |log: &Value| log.pointer("/header/stream_errors").cloned();
         match (errors(base), errors(head)) {
@@ -405,13 +616,7 @@ impl<'a> File<'a> {
                     self.audit.other(self.path, "stream error effects differ");
                 }
                 for (id, old) in &old {
-                    let inserted = id
-                        .parse::<u64>()
-                        .ok()
-                        .and_then(|id| self.inserted.get(&id))
-                        .cloned()
-                        .unwrap_or_default();
-                    self.errors(id, old, new.get(id).unwrap_or(&Value::Null), &inserted);
+                    self.errors(id, old, new.get(id).unwrap_or(&Value::Null));
                 }
             }
             (old, new) if old != new => self.audit.other(self.path, "stream errors differ"),
@@ -422,30 +627,10 @@ impl<'a> File<'a> {
         if old == new {
             return;
         }
-        self.deliveries_grow_by_the_inserted(old.as_ref(), new.as_ref());
-        match expected_deliveries(base, head) {
-            Ok(Some(expected)) if Some(&expected) == new.as_ref() => {
-                let shifted = old
-                    .iter()
-                    .flat_map(|old| old.as_array().into_iter().flatten())
-                    .zip(expected.as_array().into_iter().flatten())
-                    .filter(|(old, new)| old != new)
-                    .count();
-                self.audit.count(Change::CountShift, shifted);
-            }
-            Ok(_) => self
-                .audit
-                .other(self.path, "delivery batches differ from the base's"),
-            Err(reason) => self.audit.other(self.path, format!("deliveries: {reason}")),
-        }
-    }
-
-    /// Independent of the rebasing rule: the batches, their effects and
-    /// kinds are the base's, and each effect's stream items grow by at most
-    /// the events inserted into its stream.
-    fn deliveries_grow_by_the_inserted(&mut self, old: Option<&Value>, new: Option<&Value>) {
-        let (Some(old), Some(new)) = (old.and_then(Value::as_array), new.and_then(Value::as_array))
-        else {
+        let (Some(old), Some(new)) = (
+            old.as_ref().and_then(Value::as_array),
+            new.as_ref().and_then(Value::as_array),
+        ) else {
             self.audit
                 .other(self.path, "deliveries appeared or disappeared");
             return;
@@ -457,39 +642,84 @@ impl<'a> File<'a> {
                 delivery.pointer("/kind/delivery").cloned(),
             )
         };
-        if old.len() != new.len()
-            || old
+        let outcomes = |deliveries: &[Value]| {
+            deliveries
                 .iter()
-                .zip(new)
-                .any(|(old, new)| shape(old) != shape(new))
-        {
+                .filter(|delivery| delivery.pointer("/kind/items").is_none())
+                .map(|delivery| {
+                    (
+                        delivery.get("id").cloned(),
+                        delivery.pointer("/kind").cloned(),
+                    )
+                })
+                .collect::<Vec<_>>()
+        };
+        let streams = |deliveries: &[Value]| {
+            deliveries
+                .iter()
+                .filter(|delivery| delivery.pointer("/kind/items").is_some())
+                .filter_map(|delivery| delivery.get("id").and_then(Value::as_u64))
+                .collect::<BTreeSet<_>>()
+        };
+        let batches = new
+            .iter()
+            .map(|delivery| delivery.get("batch").and_then(Value::as_u64));
+        if !self.migrated {
             self.audit
                 .other(self.path, "delivery batches differ from the base's");
             return;
         }
-        let mut grown = BTreeMap::<u64, i64>::new();
-        for (old, new) in old.iter().zip(new) {
-            let items = |delivery: &Value| delivery.pointer("/kind/items").and_then(Value::as_i64);
-            if let (Some(id), Some(before), Some(after)) = (
-                new.get("id").and_then(Value::as_u64),
-                items(old),
-                items(new),
-            ) {
-                *grown.entry(id).or_default() += after - before;
+        if old.len() == new.len()
+            && old
+                .iter()
+                .zip(new)
+                .all(|(old, new)| shape(old) == shape(new))
+        {
+            let shifted = old.iter().zip(new).filter(|(old, new)| old != new).count();
+            self.audit.count(Change::CountShift, shifted);
+        } else if outcomes(old) == outcomes(new)
+            && streams(new).is_subset(&streams(old))
+            && batches.clone().is_sorted()
+            && batches.clone().all(|batch| batch.is_some())
+        {
+            self.audit.count(Change::Rebatched, 1);
+        } else {
+            self.audit
+                .other(self.path, "delivery batches differ from the base's");
+            return;
+        }
+        let mut delivered = BTreeMap::<u64, u64>::new();
+        for new in new {
+            let items = new.pointer("/kind/items").and_then(Value::as_u64);
+            if let (Some(id), Some(items)) = (new.get("id").and_then(Value::as_u64), items) {
+                *delivered.entry(id).or_default() += items;
             }
         }
-        for (id, grown) in grown {
-            let inserted = self.inserted.get(&id).map_or(0, Vec::len) as i64;
-            if !(0..=inserted).contains(&grown) {
+        let errors = head
+            .pointer("/header/stream_errors")
+            .and_then(Value::as_object);
+        for (id, delivered) in delivered {
+            let Some(length) = self.lengths.get(&id) else {
+                continue;
+            };
+            let errors = errors
+                .and_then(|errors| errors.get(&id.to_string()))
+                .and_then(Value::as_array)
+                .map_or(0, Vec::len);
+            if delivered > (length + errors) as u64 {
                 self.audit.other(
                     self.path,
-                    format!("effect {id}'s stream items grew by {grown}, {inserted} inserted"),
+                    format!(
+                        "effect {id} delivered {delivered} items of {length} and {errors} errors"
+                    ),
                 );
             }
         }
     }
 
-    fn errors(&mut self, id: &str, old: &Value, new: &Value, inserted: &[usize]) {
+    /// The same errors in the same order; their positions move only in a
+    /// migrated golden.
+    fn errors(&mut self, id: &str, old: &Value, new: &Value) {
         let (Some(old), Some(new)) = (old.as_array(), new.as_array()) else {
             self.audit
                 .other(self.path, format!("stream errors of {id} are not lists"));
@@ -502,40 +732,81 @@ impl<'a> File<'a> {
             );
             return;
         }
+        let strip = |error: &Value| {
+            let mut error = error.clone();
+            if let Some(object) = error.as_object_mut() {
+                object.remove("item");
+            }
+            error
+        };
         for (k, (old, new)) in old.iter().zip(new).enumerate() {
-            let position = |error: &Value| error.get("item").and_then(Value::as_u64);
-            let (Some(before), Some(after)) = (position(old), position(new)) else {
+            if strip(old) != strip(new) {
                 self.audit
-                    .other(self.path, format!("stream error {k} of {id} has no item"));
-                continue;
-            };
-            let strip = |error: &Value| {
-                let mut error = error.clone();
-                if let Some(object) = error.as_object_mut() {
-                    object.remove("item");
+                    .other(self.path, format!("stream error {k} of {id} changed"));
+            } else if old.get("item") != new.get("item") {
+                if self.migrated {
+                    self.audit.count(Change::CountShift, 1);
+                } else {
+                    self.audit
+                        .other(self.path, format!("stream error {k} of {id} moved"));
                 }
-                error
-            };
-            // Events before this error in the regenerated stream.
-            let events = after.saturating_sub(k as u64) as usize;
-            let grown = inserted.iter().filter(|&&at| at < events).count() as u64;
-            if strip(old) != strip(new) || after != before + grown {
-                self.audit.other(
-                    self.path,
-                    format!("stream error {k} of {id} moved {before} -> {after}"),
-                );
-            } else if after != before {
-                self.audit.count(Change::CountShift, 1);
             }
         }
     }
 }
 
-/// The world program run a path is inside (`/golden/<scope>[<run>]`).
-fn run_of(at: &str) -> Option<&str> {
-    let rest = at.strip_prefix("/golden/")?;
-    let close = rest.find(']')?;
-    Some(&at[..("/golden/".len() + close + 1)])
+/// Whether no test or source names a deleted golden any more, so its
+/// producer went with it.
+fn retired(root: &Path, path: &str) -> Result<bool, String> {
+    let Some(name) = Path::new(path)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .and_then(|name| name.strip_suffix(".effects.json"))
+    else {
+        return Ok(false);
+    };
+    let named = git(
+        root,
+        &["grep", "-l", "-F", &format!("\"{name}\""), "--", "*.rs"],
+    );
+    // `git grep` exits 1, an error here, when nothing matches.
+    Ok(named.is_err_and(|error| !error.contains("fatal")))
+}
+
+/// Whether an effect streamed: a completion requested as a stream, or one
+/// with a stream of its own or on a component.
+fn streamed(effect: &serde_json::Map<String, Value>) -> bool {
+    effect.get("kind").and_then(|kind| kind.get("stream")) == Some(&Value::Bool(true))
+        || std::iter::once(effect)
+            .chain(effect.values().filter_map(Value::as_object))
+            .any(|object| object.get("events").is_some_and(Value::is_array))
+}
+
+/// An outcome without its `raw` document.
+fn without_raw(outcome: &Value) -> Value {
+    let mut outcome = outcome.clone();
+    if let Some(ok) = outcome.get_mut("Ok").and_then(Value::as_object_mut) {
+        ok.remove("raw");
+    }
+    outcome
+}
+
+/// How a part reads in a finding.
+fn finalized(part: &Part<'_>) -> String {
+    let content = match part.ended {
+        Some(ended) => ended.to_string(),
+        None => format!("open {:?}", part.fragments),
+    };
+    let mut content = format!("{} {content}", part.kind);
+    if content.len() > 160 {
+        let cut = (0..=160)
+            .rev()
+            .find(|&at| content.is_char_boundary(at))
+            .unwrap_or(0);
+        content.truncate(cut);
+        content.push('…');
+    }
+    content
 }
 
 /// Every effect golden in the working tree, by its path from `root`, parsed
@@ -593,6 +864,7 @@ pub(crate) fn run(root: &Path, args: &[String]) -> Result<(), String> {
         let mut fields = line.split('\t');
         match (fields.next(), fields.next()) {
             (Some("M"), Some(path)) => changed.push(path),
+            (Some("D"), Some(path)) if retired(root, path)? => audit.count(Change::Retired, 1),
             (Some(kind), Some(path)) => audit.other(path, format!("golden status {kind}")),
             _ => audit.other(line, "unreadable golden status"),
         }
@@ -624,9 +896,8 @@ pub(crate) fn run(root: &Path, args: &[String]) -> Result<(), String> {
         audit.file(path, base.as_ref(), &head);
     }
     println!(
-        "{} goldens, {} changed from {base}; {} blocks checked against their deltas, {} carried \
-         authoritative payloads",
-        audit.files, audit.changed, audit.blocks, audit.authoritative
+        "{} goldens, {} changed from {base}; {} ended parts checked against their fragments",
+        audit.files, audit.changed, audit.parts
     );
     for (change, count) in &audit.changes {
         println!("{change}: {count}");
