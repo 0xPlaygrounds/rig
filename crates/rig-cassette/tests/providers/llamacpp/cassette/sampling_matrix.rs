@@ -421,9 +421,9 @@ fn additional_params_wins_over_the_typed_field_it_collides_with() {
 
     let request = rig::completion::CompletionRequest {
         model: None,
-        chat_history: vec![rig::message::Message::User {
-            content: vec![rig::message::UserContent::text("hi")],
-        }],
+        chat_history: rig_core::NonEmpty::new(rig::message::Message::User {
+            content: rig_core::NonEmpty::new(rig::message::UserContent::text("hi")),
+        }),
         documents: vec![],
         tools: vec![],
         temperature: Some(0.0),

@@ -108,24 +108,22 @@
           "choice": [
             {
               "type": "reasoning",
+              "issuer": "xai",
               "id": "rs_4d909b70-9a22-9434-8254-23a700f02443",
               "content": [
                 {
                   "type": "summary",
                   "content": "Extracting structured data from the text.\n\nExtracted name, age, and profession. Preparing to call the submit function."
                 }
-              ],
-              "provider": "xai"
+              ]
             },
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call-7275ae8a-12b6-485e-886a-b1e47a4e4f7a-0"
-              },
-              "provider": {
-                "call_id": "call-7275ae8a-12b6-485e-886a-b1e47a4e4f7a-0",
-                "item_id": "fc_4d909b70-9a22-9434-8254-23a700f02443_0"
+                "provider": {
+                  "call_id": "call-7275ae8a-12b6-485e-886a-b1e47a4e4f7a-0",
+                  "item_id": "fc_4d909b70-9a22-9434-8254-23a700f02443_0"
+                }
               },
               "function": {
                 "name": "submit",

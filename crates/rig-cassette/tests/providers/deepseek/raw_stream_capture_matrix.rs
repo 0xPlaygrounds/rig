@@ -105,6 +105,8 @@ async fn collect_reasoning_text_and_terminal(
                 ..
             } => {
                 observation.reasoning = reasoning
+                    .open(reasoning.issuer())
+                    .expect("sealed reasoning")
                     .content
                     .iter()
                     .filter_map(|content| match content {

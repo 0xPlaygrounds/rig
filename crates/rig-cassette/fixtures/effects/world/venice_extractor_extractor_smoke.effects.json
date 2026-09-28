@@ -101,6 +101,7 @@
           "choice": [
             {
               "type": "reasoning",
+              "issuer": "venice",
               "id": null,
               "content": [
                 {
@@ -109,17 +110,14 @@
                     "text": "The user is providing personal information about themselves. They want me to extract their name and job using the submit function.\n\nFrom the text:\n- First name: Ada\n- Last name: Lovelace\n- Job: mathematician\n\nI should submit this information using the submit function.\n"
                   }
                 }
-              ],
-              "provider": "venice"
+              ]
             },
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "chatcmpl-tool-9ead3cc0c2dad76d"
-              },
-              "provider": {
-                "call_id": "chatcmpl-tool-9ead3cc0c2dad76d"
+                "provider": {
+                  "call_id": "chatcmpl-tool-9ead3cc0c2dad76d"
+                }
               },
               "function": {
                 "name": "submit",

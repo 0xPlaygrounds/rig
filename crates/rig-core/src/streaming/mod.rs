@@ -28,13 +28,14 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 pub use update::{PartKind, Update};
 
-/// Record `issuer` on every reasoning part of `choice` that names none.
+/// Seal every reasoning part of `choice` to `issuer`, the service that
+/// issued this reply's reasoning.
 pub fn stamp_reasoning(choice: Vec<AssistantContent>, issuer: &str) -> Vec<AssistantContent> {
     choice
         .into_iter()
         .map(|part| match part {
-            AssistantContent::Reasoning(reasoning) if reasoning.provider.is_none() => {
-                AssistantContent::Reasoning(reasoning.with_provider(issuer))
+            AssistantContent::Reasoning(reasoning) => {
+                AssistantContent::Reasoning(reasoning.reseal(issuer.to_owned()))
             }
             part => part,
         })
@@ -139,8 +140,8 @@ pub struct StreamFinal {
     pub provider: String,
     /// The service whose reasoning this stream carries, when it is not
     /// [`Self::provider`]: a transport or deployment of another provider's
-    /// models. The stream's reasoning records it as its issuer
-    /// ([`crate::message::Reasoning::provider`]).
+    /// models. The stream's reasoning is sealed to it
+    /// ([`crate::message::Sealed::issuer`]).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reasoning_issuer: Option<String>,
     /// Provider-reported model identifier, when available.

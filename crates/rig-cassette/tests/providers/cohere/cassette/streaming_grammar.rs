@@ -52,7 +52,12 @@ async fn drain_stream(mut stream: rig::streaming::CompletionStream) -> StreamRun
                 block: Some(AssistantContent::Reasoning(reasoning)),
                 ..
             } => {
-                run.reasoning_blocks.push(reasoning);
+                run.reasoning_blocks.push(
+                    reasoning
+                        .open(reasoning.issuer())
+                        .cloned()
+                        .expect("reasoning opens"),
+                );
             }
             StreamEvent::BlockDelta {
                 delta: Delta::Reasoning { text },
@@ -124,7 +129,13 @@ async fn thinking_stream_keeps_reasoning_and_text_discrete() {
             .choice
             .iter()
             .filter_map(|content| match content {
-                AssistantContent::Reasoning(reasoning) => Some(reasoning.content.iter()),
+                AssistantContent::Reasoning(reasoning) => Some(
+                    reasoning
+                        .open(reasoning.issuer())
+                        .expect("sealed reasoning")
+                        .content
+                        .iter(),
+                ),
                 _ => None,
             })
             .flatten()

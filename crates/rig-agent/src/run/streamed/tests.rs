@@ -65,7 +65,13 @@ fn iid_for(id: &str) -> BlockId {
 fn tool_call(id: &str, name: &str) -> ToolCall {
     // The provider-boundary shape: the wire id becomes both the durable
     // id and the provider correlator.
-    ToolCall::from_wire(id, ToolFunction::new(name.to_string(), json!({"x": 1})))
+    ToolCall::from_wire(
+        id,
+        ToolFunction::new(
+            rig_core::message::ToolName::new(name.to_string()).expect("tool name"),
+            json!({"x": 1}),
+        ),
+    )
 }
 
 /// A completed tool call as the public stream yields it: the tool block's
@@ -206,12 +212,12 @@ fn decode_matrix_cases() -> Vec<(ShapeClass, serde_json::Value)> {
         ),
         (
             ShapeClass::TaggedRigBlock,
-            json!({"type": "toolcall", "id": {"origin":"explicit", "id":"call_1"},
+            json!({"type": "toolcall", "id": {"provider": {"call_id": "call_1"}},
                    "function": {"name": "add", "arguments": {}}}),
         ),
         (
             ShapeClass::TaggedRigBlock,
-            json!({"type": "reasoning", "id": null, "content": []}),
+            json!({"type": "reasoning", "issuer": "mock", "id": null, "content": []}),
         ),
         (
             ShapeClass::TaggedRigBlock,
@@ -445,12 +451,16 @@ fn completed_reasoning(
             signature: signature.map(str::to_string),
             wire_sent: true,
         },
-        block: Some(AssistantContent::Reasoning(reasoning)),
+        block: Some(AssistantContent::Reasoning(reasoning.sealed("test"))),
     }
 }
 
 fn assembled_reasoning_of(asm: &StreamedTurnAssembler) -> Vec<Reasoning> {
-    asm.partial_turn(None, Some("mock")).reasoning
+    asm.partial_turn(None, Some("mock"))
+        .reasoning
+        .into_iter()
+        .map(|reasoning| reasoning.open(reasoning.issuer()).cloned().expect("opens"))
+        .collect()
 }
 
 #[test]
@@ -763,7 +773,7 @@ fn canonical_choice_and_partial_turn_agree_on_multi_part_reasoning() {
     let partial = asm.partial_turn(None, Some("mock")).reasoning;
     let final_choice = vec![AssistantContent::text("")];
     let turn = asm.finish(None, &final_choice, Some("mock"));
-    let finished: Vec<Reasoning> = turn
+    let finished: Vec<rig_core::message::Sealed<Reasoning>> = turn
         .choice
         .iter()
         .filter_map(|content| match content {
@@ -832,9 +842,9 @@ fn streamed_run_completes_a_tool_roundtrip() {
     assert_eq!(calls.len(), 1);
     assert_eq!(calls[0].block_id, iid_for("tc_1"));
     run.tool_results(vec![UserContent::tool_result(
-        "tc_1",
-        "add",
-        vec![ToolResultContent::text("2")],
+        rig_core::message::CallId::from_wire("tc_1"),
+        rig_core::message::ToolName::new("add").expect("tool name"),
+        rig_core::NonEmpty::new(ToolResultContent::text("2")),
     )])
     .expect("tool_results should succeed");
 
@@ -1029,7 +1039,13 @@ fn streamed_invalid_tool_call_skip_returns_synthetic_result() {
     else {
         panic!("expected skipped tool result");
     };
-    assert_eq!(tool_result.call.explicit(), Some("tc_1"));
+    assert_eq!(
+        tool_result
+            .call
+            .provider()
+            .map(|provider| provider.call_id.as_str()),
+        Some("tc_1")
+    );
 }
 
 #[test]
@@ -1247,9 +1263,9 @@ fn streamed_run_serde_round_trips_while_tools_pend() {
     let mut restored: AgentRun = serde_json::from_str(&serialized).expect("deserialize mid-run");
     restored
         .tool_results(vec![UserContent::tool_result(
-            "tc_1",
-            "add",
-            vec![ToolResultContent::text("2")],
+            rig_core::message::CallId::from_wire("tc_1"),
+            rig_core::message::ToolName::new("add").expect("tool name"),
+            rig_core::NonEmpty::new(ToolResultContent::text("2")),
         )])
         .expect("tool_results should succeed");
     assert!(matches!(
@@ -1266,10 +1282,13 @@ fn typed_namespaces_survive_pending_tool_checkpoints_and_completed_turn_reuse() 
             run.next_step().unwrap();
             for turn in 0..2 {
                 let generated = ToolCall::new(
-                    rig_core::message::ToolCallId::minted(0),
-                    ToolFunction::new("add".into(), json!({"x": 1})),
+                    rig_core::message::CallId::from_wire(""),
+                    ToolFunction::new(
+                        rig_core::message::ToolName::new("add").expect("tool name"),
+                        json!({"x": 1}),
+                    ),
                 );
-                let explicit = tool_call(&generated.id.wire_hint(), "add");
+                let explicit = tool_call(&generated.id.wire(), "add");
                 let mut calls = [generated, explicit];
                 if reverse {
                     calls.reverse();
@@ -1309,11 +1328,10 @@ fn typed_namespaces_survive_pending_tool_checkpoints_and_completed_turn_reuse() 
                     .iter()
                     .rev()
                     .map(|call| {
-                        UserContent::tool_result_for(
+                        UserContent::tool_result(
                             call.id.clone(),
-                            call.provider.clone(),
-                            "add",
-                            vec![ToolResultContent::text("2")],
+                            rig_core::message::ToolName::new("add").expect("tool name"),
+                            rig_core::NonEmpty::new(ToolResultContent::text("2")),
                         )
                     })
                     .collect::<Vec<_>>();
@@ -1339,233 +1357,6 @@ fn typed_namespaces_survive_pending_tool_checkpoints_and_completed_turn_reuse() 
                     serde_json::to_value(&run).unwrap()
                 );
                 run = restored;
-            }
-        }
-    }
-}
-
-/// Restore while policy resolution is still pending, covering both persisted
-/// pending variants. Same-spelling peers must survive every resolution.
-#[test]
-fn pending_invalid_checkpoint_preserves_typed_namespaces_and_resolution() {
-    for full_call in [false, true] {
-        for action in ["repair", "retry", "ignore"] {
-            let block = rig_core::streaming::SyntheticIds::tool().mint();
-            let generated = rig_core::message::ToolCallId::from_block(&block);
-            let explicit = tool_call(&generated.wire_hint(), "multiply");
-            let mut invalid_call = if full_call {
-                explicit.clone()
-            } else {
-                ToolCall::new(generated.clone(), explicit.function.clone())
-            };
-            let mut peer = if full_call {
-                ToolCall::new(generated, ToolFunction::new("add".into(), json!({"x": 9})))
-            } else {
-                let mut peer = explicit;
-                peer.function = ToolFunction::new("add".into(), json!({"x": 9}));
-                peer
-            };
-            peer.signature = Some("peer-signature".into());
-            peer.additional_params = Some(json!({"peer": true}));
-            if full_call {
-                invalid_call.signature = Some("invalid-signature".into());
-                invalid_call.additional_params = Some(json!({"invalid": true}));
-            }
-            assert_ne!(invalid_call.id, peer.id);
-            assert_eq!(invalid_call.id.wire_hint(), peer.id.wire_hint());
-
-            let mut run = AgentRun::new("use both tools")
-                .max_turns(2)
-                .max_invalid_tool_call_retries(1);
-            run.next_step().unwrap();
-            let mut asm = assembler();
-            asm.ingest(&completed_tool_call(peer.clone(), BlockId::wire("peer")))
-                .unwrap();
-            let invalid = if full_call {
-                expect_invalid(
-                    asm.ingest(&completed_tool_call(invalid_call.clone(), block.clone()))
-                        .unwrap(),
-                )
-            } else {
-                for fragment in ["{\"x\":", "1}"] {
-                    assert!(
-                        asm.ingest(&StreamEvent::BlockDelta {
-                            id: block.clone(),
-                            delta: Delta::ToolArguments {
-                                arguments: fragment.into()
-                            },
-                        })
-                        .unwrap()
-                        .is_empty()
-                    );
-                }
-                expect_invalid(
-                    asm.ingest(&StreamEvent::BlockDelta {
-                        id: block.clone(),
-                        delta: Delta::ToolName {
-                            name: "multiply".into(),
-                        },
-                    })
-                    .unwrap(),
-                )
-            };
-            // Persist the driver's surfaced diagnostic alongside its run and
-            // assembler, before a policy decision can consume pending state.
-            let (mut run, mut asm, invalid): (
-                AgentRun,
-                StreamedTurnAssembler,
-                StreamedInvalidToolCall,
-            ) = serde_json::from_str(&serde_json::to_string(&(run, asm, invalid)).unwrap())
-                .unwrap();
-            assert_eq!(invalid.tool_call, invalid_call);
-            assert_eq!(invalid.block_id, block);
-            assert_eq!(invalid.args.as_deref(), Some("{\"x\":1}"));
-            let partial = asm.partial_turn(Some("assistant-id".into()), Some("mock"));
-            assert_eq!(partial.pending_tool_calls, vec![peer.clone()]);
-            let resolution = match action {
-                "repair" => run
-                    .resolve_streamed_invalid_tool_call(
-                        &partial,
-                        &invalid,
-                        InvalidToolCallAction::repair("add"),
-                    )
-                    .unwrap(),
-                "retry" => run
-                    .resolve_streamed_invalid_tool_call(
-                        &partial,
-                        &invalid,
-                        InvalidToolCallAction::retry("use add instead"),
-                    )
-                    .unwrap(),
-                "ignore" => StreamedResolution::Ignored,
-                _ => unreachable!(),
-            };
-            let events = asm.resolve_pending_invalid(&resolution);
-            if action == "repair" && !full_call {
-                let deltas: Vec<_> = events
-                    .into_iter()
-                    .map(|event| {
-                        let StreamedTurnEvent::EmitToolCallDelta { block_id, delta } = event else {
-                            panic!("expected repaired delta")
-                        };
-                        assert_eq!(block_id, block);
-                        delta
-                    })
-                    .collect();
-                assert_eq!(
-                    deltas,
-                    vec![
-                        Delta::ToolName { name: "add".into() },
-                        Delta::ToolArguments {
-                            arguments: "{\"x\":".into()
-                        },
-                        Delta::ToolArguments {
-                            arguments: "1}".into()
-                        },
-                    ]
-                );
-            } else {
-                assert!(events.is_empty());
-            }
-            assert!(asm.pending_delta_error().is_none());
-            assert!(
-                asm.resolve_pending_invalid(&resolution).is_empty(),
-                "resolution consumed exactly once"
-            );
-
-            if action == "retry" {
-                assert_eq!(run.messages().len(), 3);
-                assert_eq!(
-                    run.messages()[1],
-                    Message::Assistant {
-                        id: Some("assistant-id".into()),
-                        content: vec![
-                            AssistantContent::ToolCall(peer.clone()),
-                            AssistantContent::ToolCall(invalid_call.clone())
-                        ],
-                    }
-                );
-                let Message::User { content } = &run.messages()[2] else {
-                    panic!("retry results")
-                };
-                let results: Vec<_> = content
-                    .iter()
-                    .map(|item| {
-                        let UserContent::ToolResult(result) = item else {
-                            panic!("tool result")
-                        };
-                        result
-                    })
-                    .collect();
-                assert_eq!(results.len(), 2);
-                assert_eq!(results[0].call, peer.id);
-                assert_eq!(results[0].provider, peer.provider);
-                assert_eq!(results[0].name, "add");
-                assert_eq!(
-                    results[0].content,
-                    vec![ToolResultContent::text(
-                        TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER
-                    )]
-                );
-                assert_eq!(results[1].call, invalid_call.id);
-                assert_eq!(results[1].provider, invalid_call.provider);
-                assert_eq!(results[1].name, "multiply");
-                assert_eq!(
-                    results[1].content,
-                    vec![ToolResultContent::text("use add instead")]
-                );
-                run.record_streamed_completion_call(
-                    Usage::default(),
-                    Default::default(),
-                    None,
-                    serde_json::json!({}),
-                )
-                .unwrap();
-                assert!(matches!(
-                    run.next_step().unwrap(),
-                    AgentRunStep::CallModel { turn: 2, .. }
-                ));
-                continue;
-            }
-            if action == "repair" {
-                invalid_call.function.name = "add".into();
-            }
-            if !full_call {
-                // A restored ignore must swallow the later end, including a
-                // newly learned durable ID, and suppress its final snapshot.
-                if action == "ignore" {
-                    invalid_call = tool_call("late-provider-call", "multiply");
-                }
-                assert!(
-                    asm.ingest(&completed_tool_call(invalid_call.clone(), block.clone()))
-                        .unwrap()
-                        .is_empty()
-                );
-            }
-            let asm: StreamedTurnAssembler =
-                serde_json::from_str(&serde_json::to_string(&asm).unwrap()).unwrap();
-            let choice = vec![
-                AssistantContent::ToolCall(peer.clone()),
-                AssistantContent::ToolCall(invalid_call.clone()),
-            ];
-            let turn = asm.finish(Some("assistant-id".into()), &choice, Some("mock"));
-            let expected = if action == "repair" {
-                choice
-            } else {
-                vec![AssistantContent::ToolCall(peer.clone())]
-            };
-            assert_eq!(turn.choice, expected);
-            assert_eq!(turn.block_ids[0], (peer.id.clone(), BlockId::wire("peer")));
-            record_terminal(&mut run);
-            run.streamed_turn(turn).unwrap();
-            let AgentRunStep::CallTools { calls } = run.next_step().unwrap() else {
-                panic!("surviving tools")
-            };
-            assert_eq!(calls[0].tool_call, peer);
-            assert_eq!(calls.len(), if action == "repair" { 2 } else { 1 });
-            if action == "repair" {
-                assert_eq!(calls[1].tool_call, invalid_call);
-                assert_eq!(calls[1].block_id, block);
             }
         }
     }
@@ -1646,7 +1437,6 @@ async fn ignored_name_keeps_the_late_durable_id_out_of_the_final_snapshot() {
         ));
         asm.resolve_pending_invalid(&StreamedResolution::Ignored);
         let call = tool_call("provider-call-late", "multiply");
-        assert_ne!(call.id, rig_core::message::ToolCallId::from_block(&block));
         asm.ingest(&completed_tool_call(call.clone(), block))
             .expect("ignored end");
         // Also prove the durable tombstone survives checkpoint serialization.
@@ -1783,17 +1573,19 @@ fn a_completed_key_takes_precedence_over_another_keys_pending_provider_id() {
     // reply's end closes `other`, and history then groups it with A, the
     // completed part of another key sharing its provider item.
     let part = |texts: &[&str]| {
-        AssistantContent::Reasoning(Reasoning {
-            provider: Some("mock".into()),
-            id: Some("rs".into()),
-            content: texts
-                .iter()
-                .map(|text| rig_core::message::ReasoningContent::Text {
-                    text: (*text).to_owned(),
-                    signature: None,
-                })
-                .collect(),
-        })
+        AssistantContent::Reasoning(
+            Reasoning {
+                id: Some("rs".into()),
+                content: texts
+                    .iter()
+                    .map(|text| rig_core::message::ReasoningContent::Text {
+                        text: (*text).to_owned(),
+                        signature: None,
+                    })
+                    .collect(),
+            }
+            .sealed("mock"),
+        )
     };
     assert_eq!(
         asm.finish(None, &choice, Some("mock")).choice,
@@ -1854,7 +1646,11 @@ fn trailing_signature_updates_a_grouped_provider_part_without_duplication() {
     let expected: Vec<_> = choice
         .iter()
         .flat_map(|item| match item {
-            AssistantContent::Reasoning(reasoning) => reasoning.content.clone(),
+            AssistantContent::Reasoning(reasoning) => reasoning
+                .open(reasoning.issuer())
+                .expect("sealed reasoning")
+                .content
+                .clone(),
             _ => unreachable!(),
         })
         .collect();
@@ -1865,7 +1661,11 @@ fn trailing_signature_updates_a_grouped_provider_part_without_duplication() {
         "keep the established provider-item grouping"
     );
     assert_eq!(
-        reasoning[0].content, expected,
+        reasoning[0]
+            .open(reasoning[0].issuer())
+            .expect("sealed reasoning")
+            .content,
+        expected,
         "metadata must replace just B, never repeat its text"
     );
     let finished = asm.finish(None, &choice, Some("mock"));
@@ -1897,7 +1697,10 @@ fn a_provider_id_matched_completion_retains_its_new_correlator_for_metadata() {
         let reasoning = asm.partial_turn(None, Some("mock")).reasoning;
         assert_eq!(reasoning.len(), 1);
         assert_eq!(
-            reasoning[0].content,
+            reasoning[0]
+                .open(reasoning[0].issuer())
+                .expect("sealed reasoning")
+                .content,
             Reasoning::new_with_signature("think", Some("sig".into())).content
         );
         assert_eq!(
@@ -1959,10 +1762,10 @@ fn streamed_reasoning_records_the_stream_issuer() {
     ))
     .expect("ingest");
 
-    let issuers = |reasoning: &[Reasoning]| {
+    let issuers = |reasoning: &[rig_core::message::Sealed<Reasoning>]| {
         reasoning
             .iter()
-            .map(|reasoning| reasoning.provider.clone())
+            .map(|reasoning| Some(reasoning.issuer().to_string()))
             .collect::<Vec<_>>()
     };
     let partial = asm.partial_turn(None, Some("anthropic")).reasoning;
@@ -1974,7 +1777,7 @@ fn streamed_reasoning_records_the_stream_issuer() {
     );
 
     let turn = asm.finish(None, &[AssistantContent::text("")], Some("anthropic"));
-    let finished: Vec<Reasoning> = turn
+    let finished: Vec<rig_core::message::Sealed<Reasoning>> = turn
         .choice
         .iter()
         .filter_map(|content| match content {

@@ -115,8 +115,7 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "generated",
-                "id": "minted:tool:0"
+                "local": "00000000-0000-4000-8000-000000000000"
               },
               "function": {
                 "name": "checkpoint_large",
@@ -228,8 +227,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000000"
                   },
                   "function": {
                     "name": "checkpoint_large",
@@ -246,8 +244,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000000"
                   },
                   "name": "checkpoint_large",
                   "content": [

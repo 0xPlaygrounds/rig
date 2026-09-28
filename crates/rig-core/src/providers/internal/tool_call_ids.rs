@@ -86,7 +86,7 @@ impl ToolCallIds {
                         let AssistantContent::ToolCall(call) = part else {
                             continue;
                         };
-                        let provider = call.provider.as_ref().map(|id| id.call_id.clone());
+                        let provider = call.id.provider().map(|id| id.call_id.clone());
                         if occurrences.iter().any(|previous| {
                             previous.result.is_none()
                                 && (previous.call.id == call.id
@@ -107,7 +107,7 @@ impl ToolCallIds {
                         let UserContent::ToolResult(result) = part else {
                             continue;
                         };
-                        let provider = result.provider.as_ref().map(|id| &id.call_id);
+                        let provider = result.call.provider().map(|id| &id.call_id);
                         let local: Vec<_> = occurrences
                             .iter()
                             .enumerate()
@@ -200,19 +200,15 @@ impl ToolCallIds {
             .collect();
         let mut next = 0;
         for call in occurrences {
+            // A rig-issued id is spelled on the wire as a request-local alias.
             let id = if let Some(provider) = call.provider {
                 provider
             } else {
-                let hint = call.call.id.wire_hint().into_owned();
-                if !hint.is_empty() && used.insert(hint.clone()) {
-                    hint
-                } else {
-                    loop {
-                        let candidate = format!("tool-{next}");
-                        next += 1;
-                        if used.insert(candidate.clone()) {
-                            break candidate;
-                        }
+                loop {
+                    let candidate = format!("tool-{next}");
+                    next += 1;
+                    if used.insert(candidate.clone()) {
+                        break candidate;
                     }
                 }
             };

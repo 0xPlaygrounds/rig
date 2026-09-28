@@ -55,6 +55,7 @@ fn expected_text(part: &AssistantContent) -> String {
     match part {
         AssistantContent::Text(text) => text.text.clone(),
         AssistantContent::Reasoning(reasoning) => reasoning
+            .value()
             .content
             .iter()
             .map(|content| match content {
@@ -75,7 +76,7 @@ fn expected_kind(part: &AssistantContent) -> PartKind {
         AssistantContent::Text(_) => PartKind::Text,
         AssistantContent::Reasoning(_) => PartKind::Reasoning,
         AssistantContent::ToolCall(call) => PartKind::ToolCall {
-            name: call.function.name.clone(),
+            name: call.function.name.clone().into(),
         },
         AssistantContent::Image(_) => PartKind::Image,
     }
@@ -448,11 +449,15 @@ proptest! {
 fn parallel_calls_with_text_between_them_keep_their_positions() {
     let parts = [
         Part::Tool {
-            name: "a".into(),
+            name: crate::message::ToolName::new("a")
+                .expect("tool name")
+                .into(),
             arguments: vec!["{\"q\":".into(), " 1}".into()],
         },
         Part::Tool {
-            name: "b".into(),
+            name: crate::message::ToolName::new("b")
+                .expect("tool name")
+                .into(),
             arguments: vec!["{\"q\":".into(), " 2}".into()],
         },
         Part::Text(vec!["hel".into(), "lo".into()]),

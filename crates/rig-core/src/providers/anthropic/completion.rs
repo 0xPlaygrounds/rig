@@ -784,6 +784,7 @@ fn coerce_tool_input(input: serde_json::Value) -> serde_json::Value {
 
 fn anthropic_content_from_assistant_content(
     content: message::AssistantContent,
+    issuers: &[message::Issuer],
 ) -> Result<Vec<Content>, MessageError> {
     match content {
         message::AssistantContent::Text(text) => {
@@ -800,13 +801,17 @@ fn anthropic_content_from_assistant_content(
         message::AssistantContent::ToolCall(tool_call) => Ok(vec![Content::ToolUse {
             // The wire requires a non-empty id: the provider-issued one when it
             // exists, else rig's minted handle.
-            id: tool_call.wire_call_id().into_owned(),
-            name: tool_call.function.name,
+            id: tool_call.id.wire().into_owned(),
+            name: tool_call.function.name.into(),
             input: coerce_tool_input(tool_call.function.arguments),
         }]),
         message::AssistantContent::Reasoning(reasoning) => {
+            // Reasoning another service issued is not replayed.
+            let Some(reasoning) = reasoning.open_for(issuers) else {
+                return Ok(Vec::new());
+            };
             let mut converted = Vec::new();
-            for block in reasoning.content {
+            for block in reasoning.content.clone() {
                 match block {
                     message::ReasoningContent::Text { text, signature } => {
                         converted.push(Content::Thinking {
@@ -838,10 +843,23 @@ fn anthropic_content_from_assistant_content(
     }
 }
 
+/// The issuer-free conversion: no reasoning opens, so none is replayed. A
+/// request's own conversion ([`AnthropicRequestParams`]) replays the
+/// reasoning its issuers open.
 impl TryFrom<message::Message> for Message {
     type Error = MessageError;
 
     fn try_from(message: message::Message) -> Result<Self, Self::Error> {
+        Message::from_message(message, &[])
+    }
+}
+
+impl Message {
+    /// `message` on the wire, replaying the reasoning `issuers` open.
+    fn from_message(
+        message: message::Message,
+        issuers: &[message::Issuer],
+    ) -> Result<Self, MessageError> {
         Ok(match message {
             message::Message::User { content } => Message {
                 role: Role::User,
@@ -850,7 +868,7 @@ impl TryFrom<message::Message> for Message {
                         Ok(Content::from(text))
                     }
                     message::UserContent::ToolResult(tool_result) => Ok(Content::ToolResult {
-                        tool_use_id: tool_result.wire_call_id().into_owned(),
+                        tool_use_id: tool_result.call.wire().into_owned(),
                         content: tool_result.content.into_iter().map(|content| match content {
                             message::ToolResultContent::Text(message::Text { text, .. }) => {
                                 Ok(ToolResultContent::Text { text })
@@ -1007,8 +1025,10 @@ impl TryFrom<message::Message> for Message {
                 let converted_content = content.into_iter().try_fold(
                     Vec::new(),
                     |mut accumulated, assistant_content| {
-                        accumulated
-                            .extend(anthropic_content_from_assistant_content(assistant_content)?);
+                        accumulated.extend(anthropic_content_from_assistant_content(
+                            assistant_content,
+                            issuers,
+                        )?);
                         Ok::<Vec<Content>, MessageError>(accumulated)
                     },
                 )?;
@@ -2003,6 +2023,8 @@ pub struct AnthropicRequestParams<'a> {
     pub automatic_caching_ttl: Option<CacheTtl>,
     /// TTL for the static prefix (tools + system). `None` inherits the top-level TTL.
     pub static_prefix_cache_ttl: Option<CacheTtl>,
+    /// The issuers whose reasoning the request replays.
+    pub issuers: &'a [message::Issuer],
 }
 
 impl AnthropicCompletionRequest {
@@ -2019,6 +2041,7 @@ impl AnthropicCompletionRequest {
             automatic_caching,
             automatic_caching_ttl,
             static_prefix_cache_ttl,
+            issuers,
         } = params;
         let chat_history = req.chat_history_with_documents();
 
@@ -2038,7 +2061,7 @@ impl AnthropicCompletionRequest {
         let mut messages = full_history
             .iter()
             .cloned()
-            .map(Message::try_from)
+            .map(|message| Message::from_message(message, issuers))
             .collect::<Result<Vec<_>, _>>()?;
         // Server-tool references are preserved opaque content, not local calls.
         // Reserve their genuine handles so arbitrary local hints cannot alias them.

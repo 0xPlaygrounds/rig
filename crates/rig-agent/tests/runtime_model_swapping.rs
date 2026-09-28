@@ -176,10 +176,13 @@ impl Turn {
                 ..
             } => vec![AssistantContent::ToolCall(ToolCall::from_wire(
                 id.clone(),
-                ToolFunction::new(name.clone(), arguments.clone()),
+                ToolFunction::new(
+                    rig_core::message::ToolName::new(name.clone()).expect("tool name"),
+                    arguments.clone(),
+                ),
             ))],
             Self::Rich { text, .. } => vec![
-                AssistantContent::reasoning("considering the evidence"),
+                AssistantContent::reasoning("test", "considering the evidence"),
                 AssistantContent::text(text),
             ],
             Self::Error(_) => vec![AssistantContent::text("unreachable")],
@@ -321,7 +324,6 @@ fn stream_from_script(
                 id: whole,
                 end: BlockClose::Reasoning {
                     reasoning: Some(Reasoning {
-                        provider: None,
                         id: None,
                         content: vec![ReasoningContent::Summary("summary".to_owned())],
                     }),
@@ -468,7 +470,7 @@ fn beta_static(text: &str) -> FakeModel {
 fn request(prompt: &str) -> CompletionRequest {
     CompletionRequest {
         model: None,
-        chat_history: vec![Message::user(prompt)],
+        chat_history: rig_core::NonEmpty::new(Message::user(prompt)),
         documents: Vec::new(),
         tools: Vec::new(),
         temperature: None,
@@ -530,7 +532,9 @@ async fn downstream_models_keep_typed_low_level_apis_and_share_a_concrete_agent_
 
     let extraction_turn = Turn::Tool {
         id: "submit-call".to_owned(),
-        name: "submit".to_owned(),
+        name: rig_core::message::ToolName::new("submit")
+            .expect("tool name")
+            .into(),
         arguments: serde_json::json!({"value": "external model extraction"}),
         usage: usage(3),
         message_id: "extract-message".to_owned(),
@@ -761,21 +765,27 @@ async fn model_selection_stop_cancels_before_provider_execution() {
 async fn extraction_override_is_run_local_and_sets_each_retry_default() {
     let default_turn = Turn::Tool {
         id: "default-submit".to_owned(),
-        name: "submit".to_owned(),
+        name: rig_core::message::ToolName::new("submit")
+            .expect("tool name")
+            .into(),
         arguments: serde_json::json!({"value": "default"}),
         usage: usage(1),
         message_id: "default-extraction".to_owned(),
     };
     let specialist_turn = Turn::Tool {
         id: "specialist-submit".to_owned(),
-        name: "submit".to_owned(),
+        name: rig_core::message::ToolName::new("submit")
+            .expect("tool name")
+            .into(),
         arguments: serde_json::json!({"value": "specialist"}),
         usage: usage(2),
         message_id: "specialist-extraction".to_owned(),
     };
     let typed_turn = Turn::Tool {
         id: "typed-submit".to_owned(),
-        name: "submit".to_owned(),
+        name: rig_core::message::ToolName::new("submit")
+            .expect("tool name")
+            .into(),
         arguments: serde_json::json!({"value": "typed specialist"}),
         usage: usage(3),
         message_id: "typed-extraction".to_owned(),
@@ -827,7 +837,9 @@ async fn extraction_retries_reenter_model_selection_hooks() {
     let first_script = script_of(&first);
     let submit_turn = Turn::Tool {
         id: "routed-submit".to_owned(),
-        name: "submit".to_owned(),
+        name: rig_core::message::ToolName::new("submit")
+            .expect("tool name")
+            .into(),
         arguments: serde_json::json!({"value": "hook selected"}),
         usage: usage(2),
         message_id: "routed-extraction".to_owned(),

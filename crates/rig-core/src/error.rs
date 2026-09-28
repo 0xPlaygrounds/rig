@@ -159,12 +159,9 @@ pub enum ErrorDetail {
 pub struct MalformedToolInput {
     /// The tool the model named.
     pub name: String,
-    /// Durable correlation ID retained from the call for recovery actions,
-    /// including tool results and rollback.
-    pub id: crate::message::ToolCallId,
-    /// The provider's own call id(s), when the wire supplied any.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub provider: Option<crate::message::ProviderCallId>,
+    /// The call's id, retained for recovery actions, including tool results
+    /// and rollback.
+    pub id: crate::message::CallId,
     /// The raw argument text, byte-for-byte as accumulated.
     pub raw: String,
     /// The JSON parser's description of what was wrong.

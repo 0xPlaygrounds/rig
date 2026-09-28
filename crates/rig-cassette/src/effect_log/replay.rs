@@ -24,7 +24,7 @@ use rig_core::{
 use rig_core::serve::{Dispatch, Reply, Serve};
 
 use super::log::canonical_tool_args;
-use super::{EffectLog, stable_hash};
+use super::{EffectLog, canonical_local_ids, stable_hash};
 
 /// Selects request comparison by payload or [`stable_hash`].
 /// Payload diagnostics name the first differing field path; hash diagnostics
@@ -376,10 +376,14 @@ fn divergence_under(
     }
 }
 
-/// The effect with a tool call's arguments in canonical key order, so a
-/// replay does not diverge on key order alone.
+/// The effect with a tool call's arguments in canonical key order and its
+/// rig-issued call ids renamed in order of appearance, so a replay does not
+/// diverge on key order or on the ids rig issued afresh alone.
 fn with_canonical_args(kind: &EffectKind) -> EffectKind {
-    let mut kind = kind.clone();
+    let mut kind = serde_json::to_value(kind)
+        .map(canonical_local_ids)
+        .and_then(serde_json::from_value)
+        .unwrap_or_else(|_| kind.clone());
     if let EffectKind::ToolCall { args, .. } = &mut kind {
         *args = canonical_tool_args(args);
     }

@@ -152,9 +152,14 @@ impl CompletionReply {
     }
 
     /// Queue what the writer made canonical, stamping the transport request
-    /// id onto the terminal record unless the wire put one there.
+    /// id onto the terminal record unless the wire put one there, and
+    /// sealing each finished reasoning block to the issuer of the reply a
+    /// wire decodes. A relay carries its origin's seal.
     fn drain_into(&mut self, ready: &mut Ready<Completion>) {
         let request_id = ready.request_id().map(str::to_owned);
+        let issuer = (!self.fold.provider_from_terminal)
+            .then(|| self.fold.reasoning_issuer().map(str::to_owned))
+            .flatten();
         for item in self.writer.drain() {
             let item = match item {
                 Ok(StreamEvent::Final(mut terminal)) => {
@@ -163,6 +168,18 @@ impl CompletionReply {
                     }
                     Ok(StreamEvent::Final(terminal))
                 }
+                Ok(StreamEvent::BlockEnd {
+                    id,
+                    end,
+                    block: Some(AssistantContent::Reasoning(reasoning)),
+                }) => Ok(StreamEvent::BlockEnd {
+                    id,
+                    end,
+                    block: Some(AssistantContent::Reasoning(match &issuer {
+                        Some(issuer) => reasoning.reseal(issuer.clone()),
+                        None => reasoning,
+                    })),
+                }),
                 other => other,
             };
             ready.push(item);
@@ -207,6 +224,18 @@ impl Fold<Completion> for CompletionReply {
     }
 
     fn push(&mut self, item: Result<StreamEvent, ProviderError>, _ready: &mut Ready<Completion>) {
+        // A relayed stream learns its issuer from the first reasoning its
+        // origin sealed, before the terminal names it.
+        if let Ok(StreamEvent::BlockEnd {
+            block: Some(AssistantContent::Reasoning(reasoning)),
+            ..
+        }) = &item
+            && self.fold.provider_from_terminal
+            && self.fold.reasoning_issuer.is_none()
+            && !reasoning.issuer().as_str().is_empty()
+        {
+            self.fold.reasoning_issuer = Some(reasoning.issuer().to_string());
+        }
         self.writer.push(item);
     }
 
@@ -645,12 +674,26 @@ impl Canonical {
                         emit,
                     );
                 }
+                // A call's end that carries its block assembles again under
+                // the id that block was issued, and passes on as it came.
+                let mut assembled = end.clone();
+                if let (BlockClose::ToolCall(end), Some(AssistantContent::ToolCall(call))) =
+                    (&mut assembled, &block)
+                    && end.durable_id.is_none()
+                {
+                    end.durable_id = Some(call.id.clone());
+                }
+                let applied = self.blocks.apply(&StreamEvent::BlockEnd {
+                    id: id.clone(),
+                    end: assembled,
+                    block: None,
+                });
                 let event = StreamEvent::BlockEnd {
                     id,
                     end,
                     block: None,
                 };
-                match (self.blocks.apply(&event), event) {
+                match (applied, event) {
                     (Ok(Some((id, block))), StreamEvent::BlockEnd { end, .. }) => {
                         Ok(StreamEvent::BlockEnd {
                             id,
@@ -1154,7 +1197,6 @@ impl AdapterOutput {
             id,
             end: BlockClose::Reasoning {
                 reasoning: Some(crate::message::Reasoning {
-                    provider: None,
                     id: provider_id,
                     content: vec![content],
                 }),
@@ -1181,6 +1223,7 @@ impl AdapterOutput {
                     self.text_end(id);
                 }
                 AssistantContent::Reasoning(reasoning) => {
+                    let reasoning = reasoning.value();
                     let id = reasoning
                         .id
                         .as_deref()
@@ -1204,13 +1247,13 @@ impl AdapterOutput {
                     // provider metadata. Local names are never inferred to be
                     // wire IDs merely because they do not look minted.
                     let mut end = ToolCallEnd::whole(
-                        call.function.name.clone(),
+                        call.function.name.to_string(),
                         call.function.arguments.clone(),
                     )
                     .with_durable_id(call.id.clone())
                     .with_signature(call.signature.clone())
                     .with_additional_params(call.additional_params.clone());
-                    if let Some(provider) = &call.provider {
+                    if let Some(provider) = call.id.provider() {
                         end = match &provider.item_id {
                             Some(item_id) => end
                                 .with_call_id(provider.call_id.clone())

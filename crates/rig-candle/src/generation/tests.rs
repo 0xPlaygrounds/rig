@@ -6,7 +6,7 @@ use rig_core::{message::Message, operation::AdapterOutput};
 fn parsed_missing_ids_keep_their_identity_and_provenance_through_stream_emission() {
     let request = CompletionRequest {
         model: None,
-        chat_history: vec![Message::user("tools")],
+        chat_history: rig_core::NonEmpty::new(Message::user("tools")),
         documents: vec![],
         tools: vec![],
         temperature: None,
@@ -30,7 +30,7 @@ fn parsed_missing_ids_keep_their_identity_and_provenance_through_stream_emission
             assert_eq!(id.wire_str(), Some("tool-0"));
             assert_eq!(end.tool_id.as_deref(), Some("tool-0"));
         } else {
-            assert!(id.is_minted());
+            assert_ne!(id.wire_str(), Some("tool-0"));
             assert!(end.tool_id.is_none());
             assert!(end.call_id.is_none());
         }

@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 2,
+        "batch": 3,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,7 +10,7 @@
         }
       },
       {
-        "batch": 2,
+        "batch": 3,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -228,11 +228,9 @@
           "block": {
             "type": "toolcall",
             "id": {
-              "origin": "explicit",
-              "id": "call_MSWAJxTAnOcMqVUm9wUjMHMi"
-            },
-            "provider": {
-              "call_id": "call_MSWAJxTAnOcMqVUm9wUjMHMi"
+              "provider": {
+                "call_id": "call_MSWAJxTAnOcMqVUm9wUjMHMi"
+              }
             },
             "function": {
               "name": "add",

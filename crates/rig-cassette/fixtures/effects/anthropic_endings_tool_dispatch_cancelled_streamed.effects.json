@@ -118,11 +118,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "toolu_011kh1anBjCWreFoiEGX6ktm"
-              },
-              "provider": {
-                "call_id": "toolu_011kh1anBjCWreFoiEGX6ktm"
+                "provider": {
+                  "call_id": "toolu_011kh1anBjCWreFoiEGX6ktm"
+                }
               },
               "function": {
                 "name": "add",
@@ -231,11 +229,9 @@
           "block": {
             "type": "toolcall",
             "id": {
-              "origin": "explicit",
-              "id": "toolu_011kh1anBjCWreFoiEGX6ktm"
-            },
-            "provider": {
-              "call_id": "toolu_011kh1anBjCWreFoiEGX6ktm"
+              "provider": {
+                "call_id": "toolu_011kh1anBjCWreFoiEGX6ktm"
+              }
             },
             "function": {
               "name": "add",

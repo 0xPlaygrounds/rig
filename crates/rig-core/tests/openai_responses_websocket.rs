@@ -772,11 +772,11 @@ async fn reasoning_text_delta_arrives_over_websocket() {
         normalized.choice.iter().any(|content| matches!(
             content,
             AssistantContent::Reasoning(reasoning)
-                if reasoning.content.iter().any(|block| matches!(
+                if reasoning.open(reasoning.issuer()).is_some_and(|reasoning| reasoning.content.iter().any(|block| matches!(
                     block,
                     rig_core::message::ReasoningContent::Text { text, .. }
                         if text.contains("thinking hard")
-                ))
+                )))
         )),
         "reasoning delta should survive over websocket, got {:?}",
         normalized.choice

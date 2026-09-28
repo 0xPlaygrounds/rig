@@ -79,6 +79,7 @@
           "choice": [
             {
               "type": "reasoning",
+              "issuer": "venice",
               "id": null,
               "content": [
                 {
@@ -87,8 +88,7 @@
                     "text": "Here's a thinking process:\n\n1.  **Analyze User Input:**"
                   }
                 }
-              ],
-              "provider": "venice"
+              ]
             }
           ],
           "usage": {

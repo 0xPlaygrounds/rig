@@ -1,162 +1,68 @@
 use super::{CompletionResponse, FinishReason, ProviderCapabilities, Usage};
 use crate::completion::CompletionRequest;
+use crate::error::ProviderError;
 use crate::message::AssistantContent;
 use crate::{http_client, provider_response};
 
-mod message_content_validation {
-    use super::super::CompletionRequest;
-    use crate::message::{AssistantContent, Message, UserContent};
+/// An empty conversation or content list is not a value these types can
+/// hold, so it does not parse.
+mod empty_lists_do_not_parse {
+    use crate::message::Message;
+    use serde_json::json;
 
-    fn request(chat_history: Vec<Message>) -> CompletionRequest {
-        CompletionRequest {
-            model: None,
-            chat_history,
-            documents: Vec::new(),
-            tools: Vec::new(),
-            temperature: None,
-            max_tokens: None,
-            tool_choice: None,
-            additional_params: None,
-            output_schema: None,
-            record_telemetry_content: false,
+    #[test]
+    fn an_empty_history_is_not_a_request() {
+        let request =
+            serde_json::to_value(super::CompletionRequest::new("hello")).expect("serializes");
+        let mut empty = request.clone();
+        empty["chat_history"] = json!([]);
+        assert!(serde_json::from_value::<super::CompletionRequest>(request).is_ok());
+        assert!(serde_json::from_value::<super::CompletionRequest>(empty).is_err());
+    }
+
+    #[test]
+    fn an_empty_user_or_assistant_message_does_not_parse() {
+        for message in [
+            json!({"role": "user", "content": []}),
+            json!({"role": "assistant", "id": null, "content": []}),
+        ] {
+            assert!(serde_json::from_value::<Message>(message).is_err());
         }
     }
 
     #[test]
-    fn a_populated_history_passes() {
-        let request = request(vec![Message::user("hello")]);
-        assert!(request.validate_message_content().is_ok());
+    fn a_block_less_tool_result_does_not_parse() {
+        let result = json!({
+            "role": "user",
+            "content": [{
+                "type": "toolresult",
+                "call": {"provider": {"call_id": "call_1"}},
+                "name": "lookup",
+                "content": [],
+            }],
+        });
+        assert!(serde_json::from_value::<Message>(result).is_err());
     }
 
     #[test]
-    fn an_empty_history_is_rejected() {
-        // `chat_history` was non-empty by construction until the container
-        // was removed; the field is public, so this is now constructible.
-        let error = request(Vec::new())
-            .validate_message_content()
-            .expect_err("an empty history must not reach a provider");
-        assert!(
-            error.to_string().contains("empty chat history"),
-            "unexpected error: {error}"
-        );
-    }
-
-    #[test]
-    fn an_empty_user_message_is_rejected_by_index_and_role() {
-        let error = request(vec![
-            Message::user("hello"),
-            Message::User {
-                content: Vec::new(),
-            },
-        ])
-        .validate_message_content()
-        .expect_err("an empty user message must not reach a provider");
-        let message = error.to_string();
-        assert!(message.contains("user message at index 1"), "{message}");
-    }
-
-    #[test]
-    fn an_empty_assistant_message_is_rejected_by_index_and_role() {
-        let error = request(vec![Message::Assistant {
-            id: None,
-            content: Vec::new(),
-        }])
-        .validate_message_content()
-        .expect_err("an empty assistant message must not reach a provider");
-        let message = error.to_string();
-        assert!(
-            message.contains("assistant message at index 0"),
-            "{message}"
-        );
-    }
-
-    #[test]
-    fn an_empty_system_message_is_not_rejected() {
-        // System content is a `String` and always has been, so the removed
-        // container never constrained it. Rejecting an empty one would be a
-        // new restriction, and would break a history carrying a
-        // conditionally built preamble that resolved to `""`.
-        let request = request(vec![
-            Message::System {
-                content: String::new(),
-            },
-            Message::user("hello"),
-        ]);
-        assert!(request.validate_message_content().is_ok());
-    }
-
-    #[test]
-    fn a_block_less_tool_result_is_rejected_naming_the_tool() {
-        use crate::message::{ToolCallId, ToolResult, ToolResultContent};
-        // `ToolResult::content` was non-empty by construction until the
-        // container was removed; the message around it has one item, so the
-        // message-level check alone would let this reach the wire as
-        // `"content": []`.
-        let error = request(vec![
-            Message::user("hello"),
-            Message::User {
-                content: vec![UserContent::ToolResult(ToolResult {
-                    call: ToolCallId::new_or_minted("call_1", 0),
-                    provider: None,
-                    name: "lookup".to_owned(),
-                    content: Vec::<ToolResultContent>::new(),
-                })],
-            },
-        ])
-        .validate_message_content()
-        .expect_err("a block-less tool result must not reach a provider");
-        let message = error.to_string();
-        assert!(message.contains("`lookup`"), "{message}");
-        assert!(message.contains("index 0"), "{message}");
-        assert!(message.contains("user message at index 1"), "{message}");
-    }
-
-    #[test]
-    fn a_tool_result_with_one_empty_string_block_is_accepted() {
-        use crate::message::{ToolCallId, ToolResult, ToolResultContent};
-        // The guard is on the cardinality of the block list, not on the
-        // blocks' content. A tool that legitimately returned an empty
-        // string produces one block and must still send — this pins the
-        // "no blocks" / "no content" distinction so a future tightening
-        // pass cannot collapse it.
-        let request = request(vec![Message::User {
-            content: vec![UserContent::ToolResult(ToolResult {
-                call: ToolCallId::new_or_minted("call_1", 0),
-                provider: None,
-                name: "lookup".to_owned(),
-                content: vec![ToolResultContent::text("")],
-            })],
-        }]);
-        assert!(request.validate_message_content().is_ok());
-    }
-
-    #[test]
-    fn the_legacy_fabricated_sentinel_still_passes() {
-        // Histories persisted before message content became a `Vec` encode a
-        // content-less assistant turn as a single empty text part. That is a
-        // one-element list, so it validates — the rule is block count, not
-        // block content — and, being caller-supplied history, it is never
-        // filtered: it goes to the wire as-is (where some providers reject
-        // it). Callers migrating pre-`Vec` histories drop such turns
-        // themselves; see MIGRATING.
-        let request = request(vec![
-            Message::user("hello"),
-            Message::Assistant {
-                id: None,
-                content: vec![AssistantContent::text("")],
-            },
-            Message::User {
-                content: vec![UserContent::text("and again")],
-            },
-        ]);
-        assert!(request.validate_message_content().is_ok());
+    fn a_tool_result_with_one_empty_string_block_parses() {
+        let result = json!({
+            "role": "user",
+            "content": [{
+                "type": "toolresult",
+                "call": {"provider": {"call_id": "call_1"}},
+                "name": "lookup",
+                "content": [{"type": "text", "text": ""}],
+            }],
+        });
+        assert!(serde_json::from_value::<Message>(result).is_ok());
     }
 }
 
 fn tool_call_choice() -> Vec<AssistantContent> {
     vec![AssistantContent::tool_call(
         "call_1",
-        "lookup",
+        crate::message::ToolName::new("lookup").expect("tool name"),
         serde_json::json!({"query": "rig"}),
     )]
 }
@@ -445,15 +351,15 @@ fn message_telemetry_includes_normalized_documents() {
     assert!(matches!(
         &messages[2],
         Message::User { content }
-            if matches!(content.first(), Some(UserContent::Text(text)) if text.text == "history")
+            if matches!(content.first(), UserContent::Text(text) if text.text == "history")
     ));
     assert!(matches!(
         &messages[3],
         Message::User { content }
-            if matches!(content.first(), Some(UserContent::Text(text)) if text.text == "prompt")
+            if matches!(content.first(), UserContent::Text(text) if text.text == "prompt")
     ));
 
-    assert_eq!(messages, request.chat_history_with_documents());
+    assert_eq!(messages, request.chat_history_with_documents().into_vec());
 }
 
 fn is_document_message(message: &Message, expected_id: &str) -> bool {
@@ -519,7 +425,7 @@ fn test_normalize_documents_with_documents() {
 
     let request = CompletionRequest {
         model: None,
-        chat_history: vec!["What is the capital of France?".into()],
+        chat_history: crate::NonEmpty::new("What is the capital of France?".into()),
         documents: vec![doc1, doc2],
         tools: Vec::new(),
         temperature: None,
@@ -531,16 +437,16 @@ fn test_normalize_documents_with_documents() {
     };
 
     let expected = Message::User {
-        content: vec![
+        content: crate::NonEmpty::with_rest(
             UserContent::document(
                 "<file id: doc1>\nDocument 1 text.\n</file>\n".to_string(),
                 Some(DocumentMediaType::TXT),
             ),
-            UserContent::document(
+            [UserContent::document(
                 "<file id: doc2>\nDocument 2 text.\n</file>\n".to_string(),
                 Some(DocumentMediaType::TXT),
-            ),
-        ],
+            )],
+        ),
     };
 
     assert_eq!(request.normalized_documents(), Some(expected));
@@ -550,7 +456,7 @@ fn test_normalize_documents_with_documents() {
 fn test_normalize_documents_without_documents() {
     let request = CompletionRequest {
         model: None,
-        chat_history: vec!["What is the capital of France?".into()],
+        chat_history: crate::NonEmpty::new("What is the capital of France?".into()),
         documents: Vec::new(),
         tools: Vec::new(),
         temperature: None,
@@ -645,12 +551,14 @@ fn build_without_documents_keeps_message_order_unchanged() {
 fn chat_history_with_documents_places_documents_after_leading_system_messages() {
     let request = CompletionRequest {
         model: None,
-        chat_history: vec![
+        chat_history: crate::NonEmpty::with_rest(
             Message::system("System prompt"),
-            Message::assistant("Earlier assistant turn"),
-            Message::user("Earlier user turn"),
-            Message::user("Prompt"),
-        ],
+            [
+                Message::assistant("Earlier assistant turn"),
+                Message::user("Earlier user turn"),
+                Message::user("Prompt"),
+            ],
+        ),
         documents: vec![test_document("doc1", "Document text.")],
         tools: Vec::new(),
         temperature: None,
@@ -677,12 +585,14 @@ fn chat_history_with_documents_places_documents_after_leading_system_messages() 
 fn chat_history_with_documents_places_documents_before_mid_conversation_system_messages() {
     let request = CompletionRequest {
         model: None,
-        chat_history: vec![
+        chat_history: crate::NonEmpty::with_rest(
             Message::system("Leading system prompt"),
-            Message::assistant("Earlier assistant turn"),
-            Message::system("Mid-conversation instruction"),
-            Message::user("Prompt"),
-        ],
+            [
+                Message::assistant("Earlier assistant turn"),
+                Message::system("Mid-conversation instruction"),
+                Message::user("Prompt"),
+            ],
+        ),
         documents: vec![test_document("doc1", "Document text.")],
         tools: Vec::new(),
         temperature: None,
@@ -713,12 +623,14 @@ fn chat_history_with_documents_places_documents_before_mid_conversation_system_m
 fn chat_history_with_documents_does_not_duplicate_documents() {
     let request = CompletionRequest {
         model: None,
-        chat_history: vec![
+        chat_history: crate::NonEmpty::with_rest(
             Message::system("System prompt"),
-            Message::user("Earlier user turn"),
-            Message::assistant("Earlier assistant turn"),
-            Message::user("Prompt"),
-        ],
+            [
+                Message::user("Earlier user turn"),
+                Message::assistant("Earlier assistant turn"),
+                Message::user("Prompt"),
+            ],
+        ),
         documents: vec![test_document("doc1", "Document text.")],
         tools: Vec::new(),
         temperature: None,

@@ -170,9 +170,9 @@ fn an_empty_turn_is_not_history() {
 #[test]
 fn the_fold_reproduces_the_smoke_request() {
     let prompt = MessageParts::User {
-        content: vec![UserContent::text(
+        content: rig_core::NonEmpty::new(UserContent::text(
             "In one or two sentences, explain what Rust programming language is and why memory safety matters.",
-        )],
+        )),
     };
     let graph = RequestGraph {
         preamble: Some("You are a concise assistant. Answer directly."),
@@ -188,7 +188,8 @@ fn the_fold_reproduces_the_smoke_request() {
         output_tool: None,
         output_tool_config: None,
     };
-    let folded = serde_json::to_value(fold_request(&graph)).expect("serde");
+    let folded =
+        serde_json::to_value(fold_request(&graph).expect("the graph folds")).expect("serde");
     assert_eq!(folded, request("anthropic_completion_smoke", 0));
 }
 
@@ -202,7 +203,7 @@ fn documents_and_tools_fold_from_the_graph() {
     let documents: Vec<Document> =
         serde_json::from_value(golden["documents"].clone()).expect("serde");
     let prompt = MessageParts::User {
-        content: vec![UserContent::text("What does \"glarb-glarb\" mean?")],
+        content: rig_core::NonEmpty::new(UserContent::text("What does \"glarb-glarb\" mean?")),
     };
     let graph = RequestGraph {
         preamble: Some("You are a concise assistant. Answer directly."),
@@ -219,7 +220,7 @@ fn documents_and_tools_fold_from_the_graph() {
         output_tool_config: None,
     };
     assert_eq!(
-        serde_json::to_value(fold_request(&graph)).expect("serde"),
+        serde_json::to_value(fold_request(&graph).expect("the graph folds")).expect("serde"),
         golden
     );
 
@@ -239,9 +240,9 @@ fn documents_and_tools_fold_from_the_graph() {
         layers: Vec::new(),
     };
     let prompt = MessageParts::User {
-        content: vec![UserContent::text(
+        content: rig_core::NonEmpty::new(UserContent::text(
             "What is 17 + 25? Reply with just the number.",
-        )],
+        )),
     };
     let graph = RequestGraph {
         preamble: Some("You are a concise assistant. Answer directly."),
@@ -258,7 +259,7 @@ fn documents_and_tools_fold_from_the_graph() {
         output_tool_config: None,
     };
     assert_eq!(
-        serde_json::to_value(fold_request(&graph)).expect("serde"),
+        serde_json::to_value(fold_request(&graph).expect("the graph folds")).expect("serde"),
         golden
     );
 }
@@ -290,7 +291,7 @@ fn invalid_streamed_turn(
 ) -> (
     Vec<AssistantContent>,
     Vec<rig_core::streaming::StreamEvent>,
-    ToolCallId,
+    CallId,
 ) {
     use rig_core::{
         message::{ToolCall, ToolFunction},
@@ -298,7 +299,10 @@ fn invalid_streamed_turn(
     };
     let call = ToolCall::from_wire(
         "provider-final",
-        ToolFunction::new("unknown".into(), serde_json::json!({"x": 1})),
+        ToolFunction::new(
+            rig_core::message::ToolName::new("unknown").expect("tool name"),
+            serde_json::json!({"x": 1}),
+        ),
     );
     let block = BlockId::wire("assembly");
     let mut events = vec![StreamEvent::BlockStart {

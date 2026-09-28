@@ -321,7 +321,7 @@ fn assistant_content(
         .to_owned()
         .try_into()?;
     match message.0 {
-        rig_core::completion::Message::Assistant { content, .. } => Ok(content),
+        rig_core::completion::Message::Assistant { content, .. } => Ok(content.into_vec()),
         _ => Err(ProviderError::Response(
             "Converse output message was not an assistant message".to_owned(),
         )),

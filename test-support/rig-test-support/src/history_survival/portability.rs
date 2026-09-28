@@ -157,9 +157,10 @@ impl Source {
                     .to_owned();
                 UserContent::ToolResult(ToolResult {
                     call: call.id.clone(),
-                    provider: call.provider.clone(),
                     name: call.function.name.clone(),
-                    content: vec![ToolResultContent::text(weather_report(&city))],
+                    content: rig_core::NonEmpty::new(ToolResultContent::text(weather_report(
+                        &city,
+                    ))),
                 })
             })
             .collect();
@@ -172,9 +173,11 @@ impl Source {
             Message::user(TOOL_USER_PROMPT),
             Message::Assistant {
                 id: reply.message_id,
-                content: reply.choice,
+                content: rig_core::NonEmpty::from_vec(reply.choice).expect("non-empty"),
             },
-            Message::User { content: results },
+            Message::User {
+                content: rig_core::NonEmpty::from_vec(results).expect("non-empty"),
+            },
         ]
     }
 }

@@ -63,7 +63,8 @@ async fn drain_stream(mut stream: rig::streaming::CompletionStream) -> StreamRun
                 block: Some(AssistantContent::Reasoning(reasoning)),
                 ..
             } => {
-                run.reasoning_blocks.push(reasoning);
+                run.reasoning_blocks
+                    .push(reasoning.open(reasoning.issuer()).cloned().expect("opens"));
             }
             StreamEvent::BlockDelta {
                 delta: Delta::Reasoning { text },
@@ -159,11 +160,14 @@ async fn thinking_and_tool_call_in_one_stream() {
             // rig records it as the provider id and adopts it as the
             // durable id instead of discarding it.
             let provider = streamed
-                .provider
-                .as_ref()
+                .id
+                .provider()
                 .expect("the daemon-issued call id must be preserved");
             assert_eq!(
-                streamed.id.explicit(),
+                streamed
+                    .id
+                    .provider()
+                    .map(|provider| provider.call_id.as_str()),
                 Some(provider.call_id.as_str()),
                 "the durable id adopts the daemon's call id"
             );
@@ -216,7 +220,7 @@ async fn parallel_id_less_tool_calls_stay_distinct() {
                     "{name} id should aggregate"
                 );
                 assert!(
-                    streamed.provider.is_some(),
+                    streamed.id.provider().is_some(),
                     "{name} must keep its daemon-issued call id"
                 );
                 assert!(
@@ -238,7 +242,7 @@ async fn parallel_id_less_tool_calls_stay_distinct() {
             // streamed call is its own aggregated part, asserted above) and
             // by the daemon-issued ids, which are preserved and pairwise
             // distinct — nothing is fabricated, nothing collides.
-            let distinct_ids: std::collections::HashSet<&rig::message::ToolCallId> =
+            let distinct_ids: std::collections::HashSet<&rig::message::CallId> =
                 run.tool_calls.iter().map(|call| &call.id).collect();
             assert_eq!(
                 distinct_ids.len(),
@@ -293,7 +297,7 @@ async fn same_tool_called_twice_in_one_turn_stays_distinct() {
         // its daemon-issued id — nothing fabricated, nothing collapsed.
         for call in &add_calls {
             assert!(
-                call.provider.is_some(),
+                call.id.provider().is_some(),
                 "the daemon-issued call id must be preserved"
             );
             assert!(
@@ -310,7 +314,7 @@ async fn same_tool_called_twice_in_one_turn_stays_distinct() {
             argument_sets.len() >= 2,
             "the two same-name calls must keep distinct argument payloads, got {argument_sets:?}"
         );
-        let distinct_ids: std::collections::HashSet<&rig::message::ToolCallId> =
+        let distinct_ids: std::collections::HashSet<&rig::message::CallId> =
             add_calls.iter().map(|call| &call.id).collect();
         assert_eq!(
             distinct_ids.len(),
@@ -346,37 +350,38 @@ async fn chat_sourced_history_replays_the_tool_name_not_the_identifier() {
         "streaming_grammar/chat_sourced_history_replay",
         |client| async move {
             let model = client.completion(MODEL);
+            // A call rig issued the id for: Ollama's wire carries no id for
+            // it, so the result pairs with the call by name.
+            let call_id = rig::message::CallId::from_wire("");
             let history = vec![
                 rig::message::Message::user(
                     "/no_think Use the add tool to compute 2 + 3, then state the result.",
                 ),
                 rig::message::Message::Assistant {
                     id: None,
-                    content: vec![AssistantContent::ToolCall(rig::message::ToolCall {
-                        // The cross-provider shape: the other wire's
-                        // identifier survives as rig's correlation
-                        // handle, with no provider id for Ollama's wire.
-                        id: rig::message::ToolCallId::new("call_abc123")
-                            .expect("the chat-sourced identifier is non-empty"),
-                        provider: None,
-                        function: rig::message::ToolFunction {
-                            name: "add".to_owned(),
-                            arguments: serde_json::json!({"x": 2, "y": 3}),
+                    content: rig_core::NonEmpty::new(AssistantContent::ToolCall(
+                        rig::message::ToolCall {
+                            id: call_id.clone(),
+                            function: rig::message::ToolFunction {
+                                name: rig_core::message::ToolName::new("add").expect("tool name"),
+                                arguments: serde_json::json!({"x": 2, "y": 3}),
+                            },
+                            signature: None,
+                            additional_params: None,
                         },
-                        signature: None,
-                        additional_params: None,
-                    })],
+                    )),
                 },
                 rig::message::Message::User {
-                    content: vec![rig::message::UserContent::ToolResult(
+                    content: rig_core::NonEmpty::new(rig::message::UserContent::ToolResult(
                         rig::message::ToolResult {
-                            call: rig::message::ToolCallId::new("call_abc123")
-                                .expect("the chat-sourced identifier is non-empty"),
-                            provider: None,
-                            name: "add".to_owned(),
-                            content: vec![rig::message::ToolResultContent::text("5")],
+                            call: call_id,
+                            name: rig_core::message::ToolName::new("add".to_owned())
+                                .expect("tool name"),
+                            content: rig_core::NonEmpty::new(
+                                rig::message::ToolResultContent::text("5"),
+                            ),
                         },
-                    )],
+                    )),
                 },
             ];
             let request =

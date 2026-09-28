@@ -62,10 +62,10 @@ async fn models_from_clients_and_strings_hold_a_conversation() -> anyhow::Result
     println!("{}", res.text());
     anyhow::ensure!(res.text() == "identity probe");
 
-    let mut history = vec![Message::user("Capital of France?")];
-    history.push(model.call(history.clone()).await?.into());
+    let mut history = rig::NonEmpty::new(Message::user("Capital of France?"));
+    history.extend(model.call(history.clone()).await?.message());
     anyhow::ensure!(history.len() == 2);
-    anyhow::ensure!(matches!(history.last(), Some(Message::Assistant { .. })));
+    anyhow::ensure!(matches!(history.last(), Message::Assistant { .. }));
     responses.assert_calls_async(2).await;
 
     let deepseek = deepseek::from_env()?.chat(deepseek::DEEPSEEK_V4_FLASH);

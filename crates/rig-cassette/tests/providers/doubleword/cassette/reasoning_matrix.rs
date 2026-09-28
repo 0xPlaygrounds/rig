@@ -53,7 +53,7 @@ async fn exercise_blocking(client: OpenAiModels, model_name: &'static str) {
     // And the decoder's one mapping turned it into a reasoning block rather
     // than gluing it onto the answer.
     assert!(response.choice.iter().any(|part| {
-        matches!(part, AssistantContent::Reasoning(reasoning) if !reasoning.content.is_empty())
+        matches!(part, AssistantContent::Reasoning(reasoning) if !reasoning.open(reasoning.issuer()).expect("sealed reasoning").content.is_empty())
     }));
 }
 

@@ -379,7 +379,7 @@ async fn thinking_deltas_aggregate_into_one_reasoning_part_before_the_text() {
     assert!(matches!(
         parts.first(),
         Some(AssistantContent::Reasoning(reasoning))
-            if reasoning.content.iter().any(|content| matches!(
+            if reasoning.value().content.iter().any(|content| matches!(
                 content,
                 crate::message::ReasoningContent::Text { text, .. }
                     if text == "step one, step two"

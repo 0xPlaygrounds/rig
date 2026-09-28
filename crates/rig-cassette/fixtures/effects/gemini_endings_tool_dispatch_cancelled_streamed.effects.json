@@ -118,11 +118,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_199219"
-              },
-              "provider": {
-                "call_id": "call_199219"
+                "provider": {
+                  "call_id": "call_199219"
+                }
               },
               "function": {
                 "name": "add",
@@ -190,11 +188,9 @@
           "block": {
             "type": "toolcall",
             "id": {
-              "origin": "explicit",
-              "id": "call_199219"
-            },
-            "provider": {
-              "call_id": "call_199219"
+              "provider": {
+                "call_id": "call_199219"
+              }
             },
             "function": {
               "name": "add",

@@ -12,15 +12,14 @@ async fn collect_stream_stats_tracks_only_final_turn_text() {
     let tool_call = ToolCall::from_wire(
         "tool_1",
         ToolFunction::new(
-            "get_weather".to_string(),
+            rig::message::ToolName::new("get_weather").expect("tool name"),
             serde_json::json!({ "city": "Tokyo" }),
         ),
     );
     let tool_result = ToolResult {
         call: tool_call.id.clone(),
-        provider: tool_call.provider.clone(),
         name: tool_call.function.name.clone(),
-        content: vec![ToolResultContent::text("72F and sunny")],
+        content: rig_core::NonEmpty::new(ToolResultContent::text("72F and sunny")),
     };
 
     let items = vec![

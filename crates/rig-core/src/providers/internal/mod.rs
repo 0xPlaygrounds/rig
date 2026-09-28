@@ -3,9 +3,11 @@
 //! implementations that emit into [`AdapterOutput`](crate::operation::AdapterOutput).
 //!
 //! ```
-//! use rig_core::providers::internal::resolve_empty_tool_result_names;
-//! let mut history = Vec::new();
-//! resolve_empty_tool_result_names(&mut history);
+//! use rig_core::providers::internal::wire::classify_untyped_line;
+//! use rig_core::wire::WireEvent;
+//!
+//! let event: WireEvent<serde_json::Value> = classify_untyped_line(br#"{"done":true}"#);
+//! assert!(matches!(event, WireEvent::Known(_)));
 //! ```
 
 pub(crate) mod auth;
@@ -20,77 +22,6 @@ pub(crate) mod sequence_law;
 pub mod tool_call_bridge;
 pub mod tool_call_ids;
 pub mod wire;
-
-/// Fill empty tool-result names from preceding unmatched calls.
-/// Match local correlation handles before provider identifiers. Existing names
-/// disambiguate multiple matches; ambiguous or missing matches remain unchanged.
-/// This helper is available to companion serializers but is not a stable public API.
-pub fn resolve_empty_tool_result_names(history: &mut [crate::message::Message]) {
-    use crate::message::{AssistantContent, Message, ToolCall, UserContent};
-
-    // IDs are completion-local. Resolve only against preceding outstanding
-    // calls, never a future turn that happens to reuse the same generated key.
-    let mut pending: Vec<ToolCall> = Vec::new();
-    for message in history {
-        match message {
-            Message::Assistant { content, .. } => {
-                pending.extend(content.iter().filter_map(|item| match item {
-                    AssistantContent::ToolCall(call) => Some(call.clone()),
-                    _ => None,
-                }));
-            }
-            Message::User { content } => {
-                for item in content {
-                    let UserContent::ToolResult(result) = item else {
-                        continue;
-                    };
-                    let local: Vec<_> = pending
-                        .iter()
-                        .enumerate()
-                        .filter(|(_, call)| call.id == result.call)
-                        .map(|(index, _)| index)
-                        .collect();
-                    let mut candidates = if local.is_empty() {
-                        // Provider aliases are their own namespace, not strings
-                        // inserted alongside generated correlation keys.
-                        pending
-                            .iter()
-                            .enumerate()
-                            .filter(|(_, call)| match (&call.provider, &result.provider) {
-                                (Some(call), Some(result)) => {
-                                    call.call_id == result.call_id
-                                        || call.item_id.as_ref().is_some_and(|id| {
-                                            id == &result.call_id
-                                                || result.item_id.as_ref() == Some(id)
-                                        })
-                                        || result.item_id.as_ref() == Some(&call.call_id)
-                                }
-                                _ => false,
-                            })
-                            .map(|(index, _)| index)
-                            .collect()
-                    } else {
-                        local
-                    };
-                    if candidates.len() > 1 && !result.name.is_empty() {
-                        candidates.retain(|index| {
-                            pending
-                                .get(*index)
-                                .is_some_and(|call| call.function.name == result.name)
-                        });
-                    }
-                    if let [index] = candidates.as_slice() {
-                        let call = pending.remove(*index);
-                        if result.name.is_empty() {
-                            result.name = call.function.name;
-                        }
-                    }
-                }
-            }
-            Message::System { .. } => {}
-        }
-    }
-}
 
 /// A rig logging target for [`trace_json`]. An enum (not a `&str`) because
 /// `tracing` targets must be literals, so the dispatch is total by
@@ -160,9 +91,6 @@ pub(crate) mod named_dialect {
         })
     }
 }
-
-#[cfg(test)]
-mod tests;
 
 #[cfg(test)]
 mod tool_call_id_tests;

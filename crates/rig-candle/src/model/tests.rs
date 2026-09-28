@@ -282,11 +282,8 @@ fn config_with(
 fn request(messages: Vec<Message>) -> CompletionRequest {
     CompletionRequest {
         model: None,
-        chat_history: if messages.is_empty() {
-            vec![Message::user("hello")]
-        } else {
-            messages
-        },
+        chat_history: rig_core::NonEmpty::from_vec(messages)
+            .unwrap_or_else(|_| rig_core::NonEmpty::new(Message::user("hello"))),
         documents: Vec::new(),
         tools: Vec::new(),
         temperature: None,
@@ -910,12 +907,13 @@ async fn foreign_reasoning_in_history_is_refused_not_dropped()
         Message::user("hello"),
         Message::Assistant {
             id: None,
-            content: vec![
+            content: rig_core::NonEmpty::with_rest(
                 rig_core::message::AssistantContent::Reasoning(
-                    rig_core::message::Reasoning::new("elsewhere").with_provider("anthropic"),
+                    rig_core::message::Reasoning::new("elsewhere")
+                        .sealed(String::from("anthropic")),
                 ),
-                rig_core::message::AssistantContent::text("hi"),
-            ],
+                [rig_core::message::AssistantContent::text("hi")],
+            ),
         },
         Message::user("again"),
     ];
@@ -1528,20 +1526,24 @@ fn rejects_unsupported_request_features() -> Result<(), Box<dyn std::error::Erro
     override_request.model = Some("other".to_string());
     assert!(render_prompt(&override_request).is_err());
 
-    let tool_result = request(vec![Message::tool_result("id", "tool", "result")]);
+    let tool_result = request(vec![Message::tool_result(
+        rig_core::message::CallId::from_wire("id"),
+        rig_core::message::ToolName::new("tool")?,
+        "result",
+    )]);
     assert!(render_prompt(&tool_result).is_err());
 
     let image = Message::User {
-        content: vec![UserContent::image_base64(
+        content: rig_core::NonEmpty::new(UserContent::image_base64(
             "data",
             Some(ImageMediaType::PNG),
             Some(ImageDetail::Auto),
-        )],
+        )),
     };
     assert!(render_prompt(&request(vec![image])).is_err());
 
     let audio = Message::User {
-        content: vec![UserContent::audio("data", Some(AudioMediaType::WAV))],
+        content: rig_core::NonEmpty::new(UserContent::audio("data", Some(AudioMediaType::WAV))),
     };
     assert!(render_prompt(&request(vec![audio])).is_err());
     Ok(())

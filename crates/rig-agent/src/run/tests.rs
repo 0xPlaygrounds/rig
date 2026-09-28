@@ -218,18 +218,22 @@ fn tool_call(id: &str, name: &str) -> AssistantContent {
     // deterministic `tool-0` handle (`provider` records the absence).
     AssistantContent::ToolCall(ToolCall::from_wire(
         id,
-        ToolFunction::new(name.to_string(), json!({"x": 1})),
+        ToolFunction::new(
+            rig_core::message::ToolName::new(name.to_string()).expect("tool name"),
+            json!({"x": 1}),
+        ),
     ))
 }
 
-/// The `index`-th id-less call of one response: an adapter that meets a
-/// wire without ids names calls by position, so two such calls in one
-/// turn stay distinct (`tool-0`, `tool-1`).
-fn id_less_call(index: u64, name: &str) -> AssistantContent {
-    AssistantContent::ToolCall(ToolCall::from_wire_indexed(
+/// An id-less call of one response: rig issues its id, so two such calls in
+/// one turn stay distinct.
+fn id_less_call(name: &str) -> AssistantContent {
+    AssistantContent::ToolCall(ToolCall::from_wire(
         "",
-        index,
-        ToolFunction::new(name.to_string(), json!({"x": 1})),
+        ToolFunction::new(
+            rig_core::message::ToolName::new(name.to_string()).expect("tool name"),
+            json!({"x": 1}),
+        ),
     ))
 }
 
@@ -251,7 +255,11 @@ fn tool_call_turn_with_raw(id: &str, name: &str, raw: serde_json::Value) -> Mode
 fn tool_result(id: &str, output: &str) -> UserContent {
     // Every result in these tests answers a call to the `add` tool; the
     // executed tool's name is required data on a result.
-    UserContent::tool_result(id, "add", vec![ToolResultContent::text(output)])
+    UserContent::tool_result(
+        rig_core::message::CallId::from_wire(id),
+        rig_core::message::ToolName::new("add").expect("tool name"),
+        rig_core::NonEmpty::new(ToolResultContent::text(output)),
+    )
 }
 
 fn expect_call_model(run: &mut AgentRun) -> (Message, Vec<Message>, usize) {
@@ -513,8 +521,22 @@ fn parallel_tool_calls_surface_in_emission_order() {
 
     let calls = expect_call_tools(&mut run);
     assert_eq!(calls.len(), 2);
-    assert_eq!(calls[0].tool_call.id.explicit(), Some("call_1"));
-    assert_eq!(calls[1].tool_call.id.explicit(), Some("call_2"));
+    assert_eq!(
+        calls[0]
+            .tool_call
+            .id
+            .provider()
+            .map(|provider| provider.call_id.as_str()),
+        Some("call_1")
+    );
+    assert_eq!(
+        calls[1]
+            .tool_call
+            .id
+            .provider()
+            .map(|provider| provider.call_id.as_str()),
+        Some("call_2")
+    );
 
     // Results fed out of order still land in one user message.
     run.tool_results(vec![tool_result("call_2", "b"), tool_result("call_1", "a")])
@@ -664,7 +686,7 @@ fn invalid_tool_call_retry_rolls_back_with_feedback() {
     assert!(matches!(
         prompt,
         Message::User { ref content }
-            if matches!(content.first(), Some(UserContent::ToolResult(_)))
+            if matches!(content.first(), UserContent::ToolResult(_))
     ));
 
     // Budget of one: a second retry fails with UnknownToolCall.
@@ -784,7 +806,7 @@ fn id_less_calls_keep_distinct_skip_results() {
     expect_call_model(&mut run);
     let turn = ModelTurn::new(
         None,
-        vec![id_less_call(0, "unknown"), id_less_call(1, "add")],
+        vec![id_less_call("unknown"), id_less_call("add")],
         Usage::default(),
         tool_names(&["add"]),
         tool_names(&["add"]),
@@ -809,7 +831,7 @@ fn id_less_calls_keep_distinct_skip_results() {
     assert!(
         calls
             .iter()
-            .all(|call| call.tool_call.id.is_generated() && call.tool_call.provider.is_none()),
+            .all(|call| call.tool_call.id.is_local() && call.tool_call.id.provider().is_none()),
         "minted handles are non-empty and record the provider's absence"
     );
     let results: Vec<String> = calls
@@ -961,11 +983,10 @@ fn serialized_run_alone_carries_pending_tool_calls() {
     let results = calls
         .iter()
         .map(|call| {
-            UserContent::tool_result_for(
+            UserContent::tool_result(
                 call.tool_call.id.clone(),
-                call.tool_call.provider.clone(),
                 call.tool_call.function.name.clone(),
-                vec![ToolResultContent::text("2")],
+                rig_core::NonEmpty::new(ToolResultContent::text("2")),
             )
         })
         .collect::<Vec<_>>();
@@ -1034,7 +1055,7 @@ fn agent_run_deserializes_suspended_state() {
     let fixture = serde_json::to_string(&suspended).expect("suspended run should serialize");
 
     let bare_ids = fixture.replace(
-        r#""id":{"origin":"explicit","id":"call_1"}"#,
+        r#""id":{"provider":{"call_id":"call_1"}}"#,
         r#""id":"call_1""#,
     );
     assert_ne!(bare_ids, fixture);
@@ -1158,7 +1179,10 @@ fn pending_invalid_tool_call_survives_serde_round_trip() {
     assert_eq!(context.block_id, None);
     assert_eq!(restored_context.block_id, None);
     assert_eq!(
-        context.tool_call_id.as_ref().and_then(|id| id.explicit()),
+        context
+            .tool_call_id
+            .as_ref()
+            .and_then(|id| id.provider().map(|provider| provider.call_id.as_str())),
         Some("call_1")
     );
     assert_eq!(restored_context.tool_call_id, context.tool_call_id);
@@ -1182,7 +1206,10 @@ fn output_tool_turn_with_args(id: &str, name: &str, arguments: serde_json::Value
         None,
         vec![AssistantContent::ToolCall(ToolCall::from_wire(
             id,
-            ToolFunction::new(name.to_string(), arguments),
+            ToolFunction::new(
+                rig_core::message::ToolName::new(name.to_string()).expect("tool name"),
+                arguments,
+            ),
         ))],
         Usage::default(),
         tool_names(&["add"]),
@@ -1515,8 +1542,22 @@ fn durable_human_in_the_loop_approval_survives_serialize_resume() {
     // The resumed run re-emits the pending calls purely from its own state.
     let calls = expect_call_tools(&mut resumed);
     assert_eq!(calls.len(), 2);
-    assert_eq!(calls[0].tool_call.id.explicit(), Some("c1"));
-    assert_eq!(calls[1].tool_call.id.explicit(), Some("c2"));
+    assert_eq!(
+        calls[0]
+            .tool_call
+            .id
+            .provider()
+            .map(|provider| provider.call_id.as_str()),
+        Some("c1")
+    );
+    assert_eq!(
+        calls[1]
+            .tool_call
+            .id
+            .provider()
+            .map(|provider| provider.call_id.as_str()),
+        Some("c2")
+    );
 
     // The human decision lands only after the resume: approve c1 (real
     // result), deny c2 (the reason becomes the tool result the model sees).
@@ -1725,7 +1766,10 @@ fn from_spec_matches_the_builder_chain() {
 }
 
 fn assistant(content: Vec<AssistantContent>) -> Message {
-    Message::Assistant { id: None, content }
+    Message::Assistant {
+        id: None,
+        content: rig_core::NonEmpty::from_vec(content).expect("non-empty"),
+    }
 }
 
 #[test]
@@ -1767,7 +1811,7 @@ fn a_truncated_reasoning_only_turn_commits_nothing() {
     let turn = ModelTurn::new(
         None,
         vec![AssistantContent::Reasoning(
-            rig_core::message::Reasoning::new("thinking, never answering"),
+            rig_core::message::Reasoning::new("thinking, never answering").sealed("test"),
         )],
         Usage::default(),
         tool_names(&["add"]),

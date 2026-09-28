@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 4,
+        "batch": 7,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,21 +10,21 @@
         }
       },
       {
-        "batch": 4,
+        "batch": 7,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 6,
+        "batch": 9,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 10,
+        "batch": 14,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -32,7 +32,7 @@
         }
       },
       {
-        "batch": 11,
+        "batch": 15,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -40,7 +40,7 @@
         }
       },
       {
-        "batch": 11,
+        "batch": 15,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -210,8 +210,7 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "generated",
-                "id": "minted:tool:0"
+                "local": "00000000-0000-4000-8000-000000000000"
               },
               "function": {
                 "name": "add",
@@ -279,8 +278,7 @@
           "block": {
             "type": "toolcall",
             "id": {
-              "origin": "generated",
-              "id": "minted:tool:0"
+              "local": "00000000-0000-4000-8000-000000000000"
             },
             "function": {
               "name": "add",
@@ -382,8 +380,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000000"
                   },
                   "function": {
                     "name": "sum",
@@ -403,8 +400,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000000"
                   },
                   "name": "sum",
                   "content": [

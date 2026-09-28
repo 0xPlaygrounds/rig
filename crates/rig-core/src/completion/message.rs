@@ -1,3 +1,4 @@
+use crate::NonEmpty;
 use crate::error::ProviderError;
 use serde::{Deserialize, Serialize};
 use std::{convert::Infallible, str::FromStr};
@@ -17,15 +18,21 @@ pub enum Message {
     System { content: String },
 
     /// User message containing one or more content types defined by `UserContent`.
-    User { content: Vec<UserContent> },
+    User { content: NonEmpty<UserContent> },
 
     /// Assistant message containing one or more content types defined by `AssistantContent`.
     Assistant {
         /// Provider-assigned assistant message ID, when available.
         id: Option<String>,
-        content: Vec<AssistantContent>,
+        content: NonEmpty<AssistantContent>,
     },
 }
+
+mod identity;
+
+pub use identity::{
+    CallId, EmptyCallId, EmptyToolName, Issuer, LocalCallId, ProviderCallId, Sealed, ToolName,
+};
 
 /// Shared error text for an invalid empty response choice.
 /// Provider decoders must exempt legal empty outcomes, including recognized
@@ -60,7 +67,7 @@ pub fn non_empty<T>(items: Vec<T>) -> Option<Vec<T>> {
 /// Concatenates reasoning, text, and trailing content in that order without
 /// dropping items. Each group's input order is preserved.
 pub fn ordered_assistant_content(
-    reasoning_items: impl IntoIterator<Item = Reasoning>,
+    reasoning_items: impl IntoIterator<Item = Sealed<Reasoning>>,
     text_items: impl IntoIterator<Item = AssistantContent>,
     trailing_items: impl IntoIterator<Item = AssistantContent>,
 ) -> Vec<AssistantContent> {
@@ -142,8 +149,9 @@ pub enum AssistantContent {
     Text(Text),
     /// Tool call requested by the assistant.
     ToolCall(ToolCall),
-    /// Structured reasoning emitted by the assistant.
-    Reasoning(Reasoning),
+    /// Structured reasoning emitted by the assistant, readable only by the
+    /// service that issued it.
+    Reasoning(Sealed<Reasoning>),
     /// Image content emitted by the assistant.
     Image(Image),
 }
@@ -168,43 +176,14 @@ pub enum ReasoningContent {
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 /// Assistant reasoning payload with an optional provider-supplied identifier.
+/// A message carries it [`Sealed`] to the service that issued it:
+/// signatures, encrypted and redacted payloads and reasoning ids only mean
+/// something there.
 pub struct Reasoning {
     /// Provider reasoning identifier, when supplied by the upstream API.
     pub id: Option<String>,
     /// Ordered reasoning content blocks.
     pub content: Vec<ReasoningContent>,
-    /// The service that issued this reasoning, stamped when a completion is
-    /// decoded: the wire's [`Descriptor::name`](crate::wire::Descriptor::name), or the
-    /// model vendor where several transports serve the same models (Claude
-    /// on Bedrock records `anthropic`). Signatures, encrypted and redacted
-    /// payloads and reasoning ids only mean something to their issuer, so a
-    /// request elsewhere omits them ([`retain_replayable_reasoning`]).
-    /// `None` is unknown provenance (reasoning built by hand, or history
-    /// serialized before provenance existed) and is replayed as before.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub provider: Option<String>,
-}
-
-/// Drop reasoning none of `issuers` issued from `history`, before a request
-/// that accepts reasoning from `issuers` is encoded. Signatures, encrypted
-/// and redacted payloads and reasoning ids only mean something to the
-/// service that issued them. Reasoning of unknown provenance is kept. An
-/// assistant turn that held nothing else is dropped with it rather than sent
-/// empty, which leaves the user turns around it adjacent.
-pub fn retain_replayable_reasoning(history: &mut Vec<Message>, issuers: &[&str]) {
-    history.retain_mut(|message| {
-        let Message::Assistant { content, .. } = message else {
-            return true;
-        };
-        let before = content.len();
-        content.retain(|part| match part {
-            AssistantContent::Reasoning(reasoning) => {
-                issuers.iter().any(|issuer| reasoning.replayable_to(issuer))
-            }
-            _ => true,
-        });
-        before == 0 || !content.is_empty()
-    });
 }
 
 impl Reasoning {
@@ -216,7 +195,6 @@ impl Reasoning {
     /// Create a new reasoning item from a single text item and optional signature.
     pub fn new_with_signature(input: &str, signature: Option<String>) -> Self {
         Self {
-            provider: None,
             id: None,
             content: vec![ReasoningContent::Text {
                 text: input.to_string(),
@@ -225,20 +203,9 @@ impl Reasoning {
         }
     }
 
-    /// Record the wire that issued this reasoning.
-    pub fn with_provider(mut self, provider: impl Into<String>) -> Self {
-        self.provider = Some(provider.into());
-        self
-    }
-
-    /// Whether this reasoning may be replayed to `issuer`: it was issued
-    /// there, or its provenance is unknown. An `issuer` ending in `/` names a
-    /// family and accepts every issuer under it (`openrouter/` accepts
-    /// `openrouter/openai`).
-    pub fn replayable_to(&self, issuer: &str) -> bool {
-        self.provider.as_deref().is_none_or(|provider| {
-            provider == issuer || (issuer.ends_with('/') && provider.starts_with(issuer))
-        })
+    /// This reasoning, readable only by `issuer`.
+    pub fn sealed(self, issuer: impl Into<Issuer>) -> Sealed<Self> {
+        Sealed::new(issuer, self)
     }
 
     /// Set a provider reasoning ID.
@@ -250,7 +217,6 @@ impl Reasoning {
     /// Create reasoning content from multiple text blocks.
     pub fn multi(input: Vec<String>) -> Self {
         Self {
-            provider: None,
             id: None,
             content: input
                 .into_iter()
@@ -265,7 +231,6 @@ impl Reasoning {
     /// Create a redacted reasoning block.
     pub fn redacted(data: impl Into<String>) -> Self {
         Self {
-            provider: None,
             id: None,
             content: vec![ReasoningContent::Redacted { data: data.into() }],
         }
@@ -274,7 +239,6 @@ impl Reasoning {
     /// Create an encrypted reasoning block.
     pub fn encrypted(data: impl Into<String>) -> Self {
         Self {
-            provider: None,
             id: None,
             content: vec![ReasoningContent::Encrypted(data.into())],
         }
@@ -283,7 +247,6 @@ impl Reasoning {
     /// Create one reasoning block containing summary items.
     pub fn summaries(input: Vec<String>) -> Self {
         Self {
-            provider: None,
             id: None,
             content: input.into_iter().map(ReasoningContent::Summary).collect(),
         }
@@ -331,39 +294,19 @@ impl Reasoning {
     }
 }
 
-/// Tool result content containing information about a tool call and it's resulting content.
+/// The result of a tool call, sent back to the model.
+///
+/// Build it from the call it answers with [`ToolCall::result`], so its id
+/// and name match the call.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct ToolResult {
-    /// Correlation handle copied from the answered [`ToolCall::id`].
-    pub call: ToolCallId,
-    /// Provider-issued replay identifiers copied from the answered call.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub provider: Option<ProviderCallId>,
+    /// The id of the answered call.
+    pub call: CallId,
     /// Executed tool name, which may differ from the model-requested name after
     /// hook repair. Required for provider replay independently of call identity.
-    pub name: String,
+    pub name: ToolName,
     /// One or more content items produced by the tool.
-    pub content: Vec<ToolResultContent>,
-}
-
-impl ToolResult {
-    /// A non-empty candidate for a required wire call-ID slot: the exact
-    /// provider handle when present, otherwise the local identity's wire hint.
-    ///
-    /// This single-item helper cannot reserve future provider IDs or pair
-    /// repeated turns. Full request adapters must use
-    /// [`ToolCallIds`](crate::providers::internal::tool_call_ids::ToolCallIds)
-    /// to assign collision-free synthetic references consistently to both legs.
-    ///
-    /// Wires whose id slot is *optional* (Gemini REST, gRPC) must read
-    /// [`ToolResult::provider`] directly instead: minted handles never
-    /// travel upstream there.
-    pub fn wire_call_id(&self) -> std::borrow::Cow<'_, str> {
-        self.provider.as_ref().map_or_else(
-            || self.call.wire_hint(),
-            |provider| std::borrow::Cow::Borrowed(provider.call_id.as_str()),
-        )
-    }
+    pub content: NonEmpty<ToolResultContent>,
 }
 
 /// Describes one typed item in a tool result.
@@ -418,244 +361,12 @@ impl ToolResultContent {
     }
 }
 
-/// Error when adopting an empty explicit tool-call identifier.
-/// Represent absent provider identity with [`ToolCall::provider`] set to `None`.
-#[derive(Debug, thiserror::Error)]
-#[error("a tool-call identifier cannot be the empty string; absence is `None` or a minted id")]
-pub struct EmptyToolCallId;
-
-/// Rig's correlation identity for a tool call within one assistant completion.
-///
-/// Explicit handles and generated assembly keys occupy disjoint namespaces:
-/// an explicit `tool-0` never equals a generated tool key at index zero. Provider
-/// provenance is separate and lives only on [`ToolCall::provider`]. Applications
-/// may also choose explicit handles without claiming provider provenance.
-///
-/// Generated positions restart for each completion. State spanning completions
-/// must pair this identity with the owning turn or effect, or match call/result
-/// occurrences chronologically. Results copy their answered call's identity.
-///
-/// Serialization preserves an explicit origin tag and rejects legacy bare
-/// strings. Display is diagnostic text, not a provider handle or lookup key.
-///
-/// Keep the typed value as a map key and copy it into the corresponding result.
-/// Use [`Self::explicit`] or [`Self::generated`] to inspect its origin; outbound
-/// adapters separately assign protocol handles for complete call/result histories.
-///
-/// ```
-/// use rig_core::message::ToolCallId;
-///
-/// let explicit = ToolCallId::new("tool-0").ok_or("empty handle")?;
-/// let generated = ToolCallId::minted(0);
-/// assert_ne!(explicit, generated);
-/// assert_eq!(explicit.explicit(), Some("tool-0"));
-/// assert!(generated.is_generated());
-/// assert_eq!(
-///     serde_json::to_value(&generated)?,
-///     serde_json::json!({"origin": "generated", "id": "minted:tool:0"}),
-/// );
-/// let restored: ToolCallId = serde_json::from_value(serde_json::to_value(&generated)?)?;
-/// assert_eq!(restored, generated);
-/// assert!(serde_json::from_value::<ToolCallId>(serde_json::json!("tool-0")).is_err());
-/// # Ok::<(), Box<dyn std::error::Error>>(())
-/// ```
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-#[serde(try_from = "ToolCallIdWire", into = "ToolCallIdWire")]
-pub struct ToolCallId(ToolCallIdWire);
-
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-#[serde(tag = "origin", content = "id", rename_all = "snake_case")]
-enum ToolCallIdWire {
-    Explicit(String),
-    Generated(crate::streaming::BlockId),
-}
-
-impl ToolCallId {
-    /// Adopt a nonempty explicit correlation handle. This constructor alone
-    /// does not claim that any provider issued it; see [`ToolCall::provider`].
-    pub fn new(id: impl Into<String>) -> Option<Self> {
-        let id = id.into();
-        (!id.is_empty()).then_some(Self(ToolCallIdWire::Explicit(id)))
-    }
-
-    /// Generates a deterministic completion-local identity. Cross-turn maps
-    /// must pair it with a turn identifier because indices restart each turn.
-    pub fn minted(index: u64) -> Self {
-        Self::from_block(&crate::streaming::BlockId::minted(
-            crate::streaming::MintKind::Tool,
-            index,
-        ))
-    }
-
-    /// Derive an identity from the complete typed assembly key. A wire-shaped
-    /// assembly key and a minted key with the same display text stay distinct.
-    pub fn from_block(block: &crate::streaming::BlockId) -> Self {
-        Self(ToolCallIdWire::Generated(block.clone()))
-    }
-
-    /// Adopt a nonempty explicit handle, otherwise generate at `index`.
-    pub fn new_or_minted(id: impl Into<String>, index: u64) -> Self {
-        Self::new(id).unwrap_or_else(|| Self::minted(index))
-    }
-
-    /// Derive an explicit handle from provider metadata, or retain the supplied
-    /// generated identity when no nonempty provider call identifier exists.
-    pub fn for_provider_or(provider: Option<&ProviderCallId>, minted: Self) -> Self {
-        provider
-            .and_then(|provider| Self::new(provider.call_id.clone()))
-            .unwrap_or(minted)
-    }
-
-    /// Whether this identity was generated from an assembly key.
-    pub fn is_generated(&self) -> bool {
-        matches!(self.0, ToolCallIdWire::Generated(_))
-    }
-
-    /// The explicitly chosen handle, if any. This is not proof of provider
-    /// provenance and must not be used to compare differently typed identities.
-    pub fn explicit(&self) -> Option<&str> {
-        match &self.0 {
-            ToolCallIdWire::Explicit(id) => Some(id),
-            ToolCallIdWire::Generated(_) => None,
-        }
-    }
-
-    /// The typed assembly origin of a generated identity, if any. Explicit
-    /// identities have no generated origin, even when their text resembles one.
-    pub fn generated(&self) -> Option<&crate::streaming::BlockId> {
-        match &self.0 {
-            ToolCallIdWire::Generated(block) => Some(block),
-            ToolCallIdWire::Explicit(_) => None,
-        }
-    }
-
-    /// A candidate spelling for protocols requiring string handles. It is not
-    /// unique across namespaces: request adapters must reserve actual provider
-    /// handles and allocate aliases for colliding call/result occurrences.
-    pub fn wire_hint(&self) -> std::borrow::Cow<'_, str> {
-        match &self.0 {
-            ToolCallIdWire::Explicit(id) => std::borrow::Cow::Borrowed(id),
-            ToolCallIdWire::Generated(block) => std::borrow::Cow::Owned(block.to_string()),
-        }
-    }
-}
-
-impl std::fmt::Display for ToolCallId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match &self.0 {
-            ToolCallIdWire::Explicit(id) => write!(f, "explicit:{id}"),
-            ToolCallIdWire::Generated(crate::streaming::BlockId::Wire(id)) => {
-                write!(f, "generated:wire:{id}")
-            }
-            ToolCallIdWire::Generated(crate::streaming::BlockId::Minted { kind, index }) => {
-                write!(f, "generated:minted:{}:{index}", kind.as_str())
-            }
-        }
-    }
-}
-
-impl TryFrom<ToolCallIdWire> for ToolCallId {
-    type Error = EmptyToolCallId;
-
-    fn try_from(id: ToolCallIdWire) -> Result<Self, Self::Error> {
-        match id {
-            ToolCallIdWire::Explicit(id) => Self::new(id).ok_or(EmptyToolCallId),
-            generated @ ToolCallIdWire::Generated(_) => Ok(Self(generated)),
-        }
-    }
-}
-
-impl From<ToolCallId> for ToolCallIdWire {
-    fn from(id: ToolCallId) -> Self {
-        id.0
-    }
-}
-
-/// Wire shape for [`ProviderCallId`], so deserialization enforces the
-/// non-empty `call_id` invariant.
-#[derive(Deserialize)]
-struct ProviderCallIdWire {
-    call_id: String,
-    #[serde(default)]
-    item_id: Option<String>,
-}
-
-/// Provider-issued identifiers for replay. Single-ID protocols use `call_id`;
-/// dual-ID protocols also use `item_id`. Keep each identifier in its protocol slot.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(try_from = "ProviderCallIdWire")]
-pub struct ProviderCallId {
-    /// The call-correlation identifier the provider expects echoed back.
-    pub call_id: String,
-    /// The output-item id issued alongside `call_id` on dual-identifier
-    /// wires (OpenAI Responses `fc_…`).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub item_id: Option<String>,
-}
-
-impl ProviderCallId {
-    /// Adopt a provider-issued call identifier. `None` for the empty
-    /// string: absence is not an id.
-    pub fn new(call_id: impl Into<String>) -> Option<Self> {
-        let call_id = call_id.into();
-        if call_id.is_empty() {
-            None
-        } else {
-            Some(Self {
-                call_id,
-                item_id: None,
-            })
-        }
-    }
-
-    /// Attach the dual-wire output-item id (empty strings are dropped).
-    pub fn with_item_id(mut self, item_id: impl Into<String>) -> Self {
-        let item_id = item_id.into();
-        self.item_id = (!item_id.is_empty()).then_some(item_id);
-        self
-    }
-
-    /// Uses a nonempty `call_id` as the correlator and `tool_id` as the item ID.
-    /// Without a nonempty `call_id`, uses a nonempty `tool_id` as the correlator.
-    /// Returns `None` if neither supplies an identifier. For dual-ID protocols
-    /// that forbid this fallback, use [`ToolCall::from_dual_wire`].
-    pub fn from_optional_wire(call_id: Option<String>, tool_id: Option<String>) -> Option<Self> {
-        let call_id = call_id.filter(|call_id| !call_id.is_empty());
-        match (call_id, tool_id) {
-            (Some(call_id), tool_id) => Self::new(call_id).map(|provider| match tool_id {
-                Some(tool_id) => provider.with_item_id(tool_id),
-                None => provider,
-            }),
-            (None, Some(tool_id)) => Self::new(tool_id),
-            (None, None) => None,
-        }
-    }
-}
-
-impl TryFrom<ProviderCallIdWire> for ProviderCallId {
-    type Error = EmptyToolCallId;
-
-    fn try_from(wire: ProviderCallIdWire) -> Result<Self, Self::Error> {
-        let Some(provider) = Self::new(wire.call_id) else {
-            return Err(EmptyToolCallId);
-        };
-        Ok(match wire.item_id {
-            Some(item_id) => provider.with_item_id(item_id),
-            None => provider,
-        })
-    }
-}
-
 /// Describes a tool call with an id and function to call, generally produced by a provider.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct ToolCall {
-    /// Rig's correlation handle. Always present; minted when the provider
-    /// issued none.
-    pub id: ToolCallId,
-    /// Provider-issued replay identifiers, or `None` when none were supplied.
-    /// Local correlation handles do not establish provider provenance.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub provider: Option<ProviderCallId>,
+    /// The call's one identity: the provider's id, or one rig issued when
+    /// the provider sent none.
+    pub id: CallId,
     /// Function name and JSON arguments requested by the model.
     pub function: ToolFunction,
     /// Opaque provider signature preserved for replay. Rig does not verify it.
@@ -666,102 +377,41 @@ pub struct ToolCall {
     pub additional_params: Option<serde_json::Value>,
 }
 
-/// Assign deterministic completion-local handles to id-less provider calls.
-///
-/// A missing handle uses its tool-call position. Generated and explicit handles
-/// occupy separate namespaces, so a later explicit provider string never forces
-/// renumbering. Provider metadata and the existing explicit-duplicate policy are
-/// preserved. Use only at inbound provider boundaries, not on application
-/// messages with chosen local IDs or already-published streaming identities.
-pub fn normalize_missing_tool_call_ids(content: &mut [AssistantContent]) {
-    for (position, call) in content
-        .iter_mut()
-        .filter_map(|item| match item {
-            AssistantContent::ToolCall(call) => Some(call),
-            _ => None,
-        })
-        .enumerate()
-    {
-        if call.provider.is_none() {
-            call.id = ToolCallId::minted(position as u64);
-        }
-    }
-}
-
 impl ToolCall {
-    fn assemble(provider: Option<ProviderCallId>, index: u64, function: ToolFunction) -> Self {
+    /// A call with `id`.
+    pub fn new(id: CallId, function: ToolFunction) -> Self {
         Self {
-            id: ToolCallId::for_provider_or(provider.as_ref(), ToolCallId::minted(index)),
-            provider,
+            id,
             function,
             signature: None,
             additional_params: None,
         }
     }
 
-    /// A call with an explicit correlation handle and no provider-issued id.
-    pub fn new(id: ToolCallId, function: ToolFunction) -> Self {
-        Self {
-            id,
-            ..Self::assemble(None, 0, function)
-        }
-    }
-
-    /// The single-identifier provider boundary for a response's *only*
-    /// call: adopt the wire's id when it issued one, mint at index zero
-    /// when it did not (empty or absent ids mint). A converter that walks
-    /// a response's parts uses [`ToolCall::from_wire_indexed`] with the
-    /// call's position, otherwise two id-less calls in one turn mint the
-    /// same handle.
+    /// A call the provider identified by `wire_id`; rig issues an id when it
+    /// is empty.
     pub fn from_wire(wire_id: impl Into<String>, function: ToolFunction) -> Self {
-        Self::from_wire_indexed(wire_id, 0, function)
-    }
-
-    /// Adopts a provider ID or generates [`ToolCallId::minted`] at `index` when
-    /// the ID is empty. Supply distinct positions for id-less calls in one turn.
-    pub fn from_wire_indexed(
-        wire_id: impl Into<String>,
-        index: u64,
-        function: ToolFunction,
-    ) -> Self {
-        Self::assemble(ProviderCallId::new(wire_id), index, function)
+        Self::new(CallId::from_wire(wire_id), function)
     }
 
     /// The dual-identifier provider boundary (OpenAI Responses): `item_id`
     /// is the output-item handle (`fc_…`), `call_id` the correlator
-    /// (`call_…`). The correlator drives rig's id; empty ids mint.
+    /// (`call_…`). Rig issues an id when `call_id` is empty.
     pub fn from_dual_wire(
         item_id: impl Into<String>,
         call_id: impl Into<String>,
         function: ToolFunction,
     ) -> Self {
-        let provider =
-            ProviderCallId::new(call_id).map(|provider| provider.with_item_id(item_id.into()));
-        Self::assemble(provider, 0, function)
+        Self::new(CallId::from_dual_wire(item_id, call_id), function)
     }
 
-    /// Attach provider-issued identifiers.
-    pub fn with_provider(mut self, provider: ProviderCallId) -> Self {
-        self.provider = Some(provider);
-        self
-    }
-
-    /// A non-empty candidate for a required wire call-ID slot: the exact
-    /// provider handle when present, otherwise the local identity's wire hint.
-    ///
-    /// This single-item helper cannot reserve future provider IDs or pair
-    /// repeated turns. Full request adapters must use
-    /// [`ToolCallIds`](crate::providers::internal::tool_call_ids::ToolCallIds)
-    /// to assign collision-free synthetic references consistently to both legs.
-    ///
-    /// Wires whose id slot is *optional* (Gemini REST, gRPC) must read
-    /// [`ToolCall::provider`] directly instead: minted handles never travel
-    /// upstream there.
-    pub fn wire_call_id(&self) -> std::borrow::Cow<'_, str> {
-        self.provider.as_ref().map_or_else(
-            || self.id.wire_hint(),
-            |provider| std::borrow::Cow::Borrowed(provider.call_id.as_str()),
-        )
+    /// The result answering this call: its id and name, and `content`.
+    pub fn result(&self, content: impl Into<NonEmpty<ToolResultContent>>) -> ToolResult {
+        ToolResult {
+            call: self.id.clone(),
+            name: self.function.name.clone(),
+            content: content.into(),
+        }
     }
 
     pub fn with_signature(mut self, signature: Option<String>) -> Self {
@@ -779,14 +429,14 @@ impl ToolCall {
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct ToolFunction {
     /// Tool/function name to invoke.
-    pub name: String,
+    pub name: ToolName,
     /// JSON arguments for the tool/function.
     pub arguments: serde_json::Value,
 }
 
 impl ToolFunction {
     /// Create a tool function call payload.
-    pub fn new(name: String, arguments: serde_json::Value) -> Self {
+    pub fn new(name: ToolName, arguments: serde_json::Value) -> Self {
         Self { name, arguments }
     }
 }
@@ -1329,6 +979,19 @@ impl Message {
         }
     }
 
+    /// Whether a service replaying reasoning `issuers` issued has anything to
+    /// read in this message: false only for an assistant message whose every
+    /// part is reasoning none of them opens.
+    pub fn replays_to(&self, issuers: &[Issuer]) -> bool {
+        match self {
+            Message::Assistant { content, .. } => content.iter().any(|part| match part {
+                AssistantContent::Reasoning(reasoning) => reasoning.open_for(issuers).is_some(),
+                _ => true,
+            }),
+            Message::System { .. } | Message::User { .. } => true,
+        }
+    }
+
     /// Creates a system instruction message.
     pub fn system(text: impl Into<String>) -> Self {
         Message::System {
@@ -1339,7 +1002,7 @@ impl Message {
     /// Creates a user message containing one text block.
     pub fn user(text: impl Into<String>) -> Self {
         Message::User {
-            content: vec![UserContent::text(text)],
+            content: NonEmpty::new(UserContent::text(text)),
         }
     }
 
@@ -1347,26 +1010,27 @@ impl Message {
     pub fn assistant(text: impl Into<String>) -> Self {
         Message::Assistant {
             id: None,
-            content: vec![AssistantContent::text(text)],
+            content: NonEmpty::new(AssistantContent::text(text)),
         }
     }
 
-    /// Creates a user message containing a text tool result.
-    /// `call` is an explicit local handle and does not establish provider
-    /// provenance. To answer an existing call while preserving its typed identity
-    /// and provider metadata, use [`UserContent::tool_result_for`] inside a user
-    /// message. `name` is the executed tool's name.
-    pub fn tool_result(
-        call: impl Into<String>,
-        name: impl Into<String>,
-        content: impl Into<String>,
-    ) -> Self {
+    /// Creates a user message containing a text tool result answering the
+    /// call `call` to the tool `name`. To answer a call you hold, prefer
+    /// [`ToolCall::result`] with [`Self::tool_results`].
+    pub fn tool_result(call: CallId, name: ToolName, content: impl Into<String>) -> Self {
         Message::User {
-            content: vec![UserContent::tool_result(
+            content: NonEmpty::new(UserContent::tool_result(
                 call,
                 name,
-                vec![ToolResultContent::text(content)],
-            )],
+                ToolResultContent::text(content),
+            )),
+        }
+    }
+
+    /// Creates a user message carrying `results`, in order.
+    pub fn tool_results(results: NonEmpty<ToolResult>) -> Self {
+        Message::User {
+            content: results.map(UserContent::ToolResult),
         }
     }
 }
@@ -1450,63 +1114,17 @@ impl UserContent {
         })
     }
 
-    /// Creates a result with an explicit local handle and no provider identity.
-    /// An empty `call` generates the handle at index zero. To preserve an
-    /// existing call's typed identity and provenance, use [`Self::tool_result_for`].
-    /// `name` must identify the executed tool.
+    /// Creates a tool result answering the call `call` to the tool `name`.
     pub fn tool_result(
-        call: impl Into<String>,
-        name: impl Into<String>,
-        content: Vec<ToolResultContent>,
-    ) -> Self {
-        UserContent::ToolResult(ToolResult {
-            call: ToolCallId::new_or_minted(call, 0),
-            provider: None,
-            name: name.into(),
-            content,
-        })
-    }
-
-    /// Creates a result from a provider-issued ID. An empty ID records no
-    /// provider identity and generates a local handle at index zero.
-    pub fn tool_result_from_wire(
-        wire_id: impl Into<String>,
-        name: impl Into<String>,
-        content: Vec<ToolResultContent>,
-    ) -> Self {
-        let provider = ProviderCallId::new(wire_id);
-        let call = ToolCallId::for_provider_or(provider.as_ref(), ToolCallId::minted(0));
-        Self::tool_result_for(call, provider, name, content)
-    }
-
-    /// Creates a result using the executed call's identity and provider metadata.
-    /// `name` identifies the executed tool, including any hook-repaired name.
-    pub fn tool_result_for(
-        call: ToolCallId,
-        provider: Option<ProviderCallId>,
-        name: impl Into<String>,
-        content: Vec<ToolResultContent>,
+        call: CallId,
+        name: ToolName,
+        content: impl Into<NonEmpty<ToolResultContent>>,
     ) -> Self {
         UserContent::ToolResult(ToolResult {
             call,
-            provider,
-            name: name.into(),
-            content,
+            name,
+            content: content.into(),
         })
-    }
-
-    /// Tool result content for a dual-identifier wire (OpenAI Responses):
-    /// `item_id` is the output-item handle (`fc_…`), `call_id` the
-    /// correlator (`call_…`). Empty ids record no provider id and mint.
-    pub fn tool_result_with_call_id(
-        item_id: impl Into<String>,
-        call_id: impl Into<String>,
-        name: impl Into<String>,
-        content: Vec<ToolResultContent>,
-    ) -> Self {
-        let provider = ProviderCallId::new(call_id).map(|provider| provider.with_item_id(item_id));
-        let call = ToolCallId::for_provider_or(provider.as_ref(), ToolCallId::minted(0));
-        Self::tool_result_for(call, provider, name, content)
     }
 }
 
@@ -1522,19 +1140,9 @@ impl AssistantContent {
     }
 
     /// Creates a tool call from a provider-issued ID, name, and arguments.
-    /// An empty ID records no provider identity and generates a handle at index zero.
-    pub fn tool_call(
-        id: impl Into<String>,
-        name: impl Into<String>,
-        arguments: serde_json::Value,
-    ) -> Self {
-        AssistantContent::ToolCall(ToolCall::from_wire(
-            id,
-            ToolFunction {
-                name: name.into(),
-                arguments,
-            },
-        ))
+    /// Rig issues an id when `id` is empty.
+    pub fn tool_call(id: impl Into<String>, name: ToolName, arguments: serde_json::Value) -> Self {
+        AssistantContent::ToolCall(ToolCall::from_wire(id, ToolFunction { name, arguments }))
     }
 
     /// Dual-identifier variant (OpenAI Responses): `id` is the output-item
@@ -1542,21 +1150,19 @@ impl AssistantContent {
     pub fn tool_call_with_call_id(
         id: impl Into<String>,
         call_id: String,
-        name: impl Into<String>,
+        name: ToolName,
         arguments: serde_json::Value,
     ) -> Self {
         AssistantContent::ToolCall(ToolCall::from_dual_wire(
             id,
             call_id,
-            ToolFunction {
-                name: name.into(),
-                arguments,
-            },
+            ToolFunction { name, arguments },
         ))
     }
 
-    pub fn reasoning(reasoning: impl AsRef<str>) -> Self {
-        AssistantContent::Reasoning(Reasoning::new(reasoning.as_ref()))
+    /// Creates reasoning text issued by `issuer`.
+    pub fn reasoning(issuer: impl Into<Issuer>, reasoning: impl AsRef<str>) -> Self {
+        AssistantContent::Reasoning(Reasoning::new(reasoning.as_ref()).sealed(issuer))
     }
 }
 
@@ -1723,7 +1329,7 @@ macro_rules! single_content_message_from {
         impl From<$src> for Message {
             fn from(value: $src) -> Self {
                 Message::User {
-                    content: vec![UserContent::$variant(value.into())],
+                    content: NonEmpty::new(UserContent::$variant(value.into())),
                 }
             }
         }
@@ -1733,7 +1339,7 @@ macro_rules! single_content_message_from {
             fn from(value: $src) -> Self {
                 Message::Assistant {
                     id: None,
-                    content: vec![AssistantContent::$variant(value.into())],
+                    content: NonEmpty::new(AssistantContent::$variant(value.into())),
                 }
             }
         }
@@ -1773,7 +1379,7 @@ impl From<AssistantContent> for Message {
     fn from(content: AssistantContent) -> Self {
         Message::Assistant {
             id: None,
-            content: vec![content],
+            content: NonEmpty::new(content),
         }
     }
 }
@@ -1781,19 +1387,19 @@ impl From<AssistantContent> for Message {
 impl From<UserContent> for Message {
     fn from(content: UserContent) -> Self {
         Message::User {
-            content: vec![content],
+            content: NonEmpty::new(content),
         }
     }
 }
 
-impl From<Vec<AssistantContent>> for Message {
-    fn from(content: Vec<AssistantContent>) -> Self {
+impl From<NonEmpty<AssistantContent>> for Message {
+    fn from(content: NonEmpty<AssistantContent>) -> Self {
         Message::Assistant { id: None, content }
     }
 }
 
-impl From<Vec<UserContent>> for Message {
-    fn from(content: Vec<UserContent>) -> Self {
+impl From<NonEmpty<UserContent>> for Message {
+    fn from(content: NonEmpty<UserContent>) -> Self {
         Message::User { content }
     }
 }

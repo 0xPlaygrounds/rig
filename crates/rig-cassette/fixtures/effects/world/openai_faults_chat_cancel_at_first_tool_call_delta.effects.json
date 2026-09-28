@@ -14,7 +14,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 8
+          "items": 9
         }
       },
       {
@@ -22,7 +22,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 2
         }
       },
       {
@@ -148,11 +148,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_MSWAJxTAnOcMqVUm9wUjMHMi"
-              },
-              "provider": {
-                "call_id": "call_MSWAJxTAnOcMqVUm9wUjMHMi"
+                "provider": {
+                  "call_id": "call_MSWAJxTAnOcMqVUm9wUjMHMi"
+                }
               },
               "function": {
                 "name": "add",
@@ -294,11 +292,9 @@
           "block": {
             "type": "toolcall",
             "id": {
-              "origin": "explicit",
-              "id": "call_MSWAJxTAnOcMqVUm9wUjMHMi"
-            },
-            "provider": {
-              "call_id": "call_MSWAJxTAnOcMqVUm9wUjMHMi"
+              "provider": {
+                "call_id": "call_MSWAJxTAnOcMqVUm9wUjMHMi"
+              }
             },
             "function": {
               "name": "add",

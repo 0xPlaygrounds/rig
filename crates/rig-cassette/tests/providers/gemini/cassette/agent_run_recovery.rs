@@ -228,7 +228,7 @@ async fn skip_suppresses_every_call_in_the_turn() {
                             // may execute: each one is preresolved.
                             let mut names = Vec::new();
                             for call in &calls {
-                                names.push(call.tool_call.function.name.clone());
+                                names.push(call.tool_call.function.name.to_string());
                                 let preresolved = call
                                     .preresolved_result
                                     .clone()

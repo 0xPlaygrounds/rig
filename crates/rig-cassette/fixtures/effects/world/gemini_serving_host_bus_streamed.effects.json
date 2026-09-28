@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 6,
+        "batch": 7,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,7 +10,7 @@
         }
       },
       {
-        "batch": 7,
+        "batch": 8,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -18,21 +18,21 @@
         }
       },
       {
-        "batch": 7,
+        "batch": 8,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 8,
+        "batch": 9,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 13,
+        "batch": 14,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -40,7 +40,7 @@
         }
       },
       {
-        "batch": 15,
+        "batch": 16,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -48,7 +48,7 @@
         }
       },
       {
-        "batch": 15,
+        "batch": 16,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -171,11 +171,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_272311"
-              },
-              "provider": {
-                "call_id": "call_272311"
+                "provider": {
+                  "call_id": "call_272311"
+                }
               },
               "function": {
                 "name": "add",
@@ -243,11 +241,9 @@
           "block": {
             "type": "toolcall",
             "id": {
-              "origin": "explicit",
-              "id": "call_272311"
-            },
-            "provider": {
-              "call_id": "call_272311"
+              "provider": {
+                "call_id": "call_272311"
+              }
             },
             "function": {
               "name": "add",
@@ -348,11 +344,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_272311"
-                  },
-                  "provider": {
-                    "call_id": "call_272311"
+                    "provider": {
+                      "call_id": "call_272311"
+                    }
                   },
                   "function": {
                     "name": "add",
@@ -372,11 +366,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_272311"
-                  },
-                  "provider": {
-                    "call_id": "call_272311"
+                    "provider": {
+                      "call_id": "call_272311"
+                    }
                   },
                   "name": "add",
                   "content": [

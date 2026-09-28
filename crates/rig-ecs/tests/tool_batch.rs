@@ -83,7 +83,8 @@ fn tool_results(request: &rig_core::completion::CompletionRequest) -> Vec<(Strin
                     UserContent::ToolResult(result) => Some((
                         result
                             .call
-                            .explicit()
+                            .provider()
+                            .map(|provider| provider.call_id.as_str())
                             .expect("explicit provider test ID")
                             .to_owned(),
                         result
@@ -764,29 +765,29 @@ impl rig_core::serve::Serve for PeerAdder {
 
 #[test]
 fn repair_keeps_same_spelling_identity_namespaces_distinct() {
-    use rig_core::message::{ToolCall, ToolCallId, ToolFunction};
+    use rig_core::message::{CallId, ToolCall, ToolFunction};
     for generated_invalid in [false, true] {
         let generated = ToolCall::new(
-            ToolCallId::minted(0),
+            CallId::from_wire(""),
             ToolFunction {
-                name: if generated_invalid {
+                name: rig_core::message::ToolName::new(if generated_invalid {
                     "multiply"
                 } else {
                     "peer_add"
-                }
-                .into(),
+                })
+                .expect("tool name"),
                 arguments: serde_json::json!({"x": 2, "y": 3}),
             },
         );
         let explicit = ToolCall::from_wire(
-            generated.id.wire_hint(),
+            generated.id.wire(),
             ToolFunction {
-                name: if generated_invalid {
+                name: rig_core::message::ToolName::new(if generated_invalid {
                     "peer_add"
                 } else {
                     "multiply"
-                }
-                .into(),
+                })
+                .expect("tool name"),
                 arguments: serde_json::json!({"x": 4, "y": 5}),
             },
         );
@@ -843,7 +844,7 @@ fn repair_keeps_same_spelling_identity_namespaces_distinct() {
         assert_eq!(results.len(), 2);
         for (index, original) in original.iter().enumerate() {
             assert_eq!(calls[index].id, original.id);
-            assert_eq!(calls[index].provider, original.provider);
+            assert_eq!(calls[index].id.provider(), original.id.provider());
             assert_eq!(calls[index].function.arguments, original.function.arguments);
             let expected_name = if original.function.name == "multiply" {
                 "add"
@@ -855,7 +856,7 @@ fn repair_keeps_same_spelling_identity_namespaces_distinct() {
                 .iter()
                 .find(|result| result.call == original.id)
                 .unwrap();
-            assert_eq!(result.provider, original.provider);
+            assert_eq!(result.call.provider(), original.id.provider());
             assert_eq!(result.name, expected_name);
             assert!(
                 matches!(result.content.as_slice(), [rig_core::message::ToolResultContent::Json { value }] if value == &serde_json::json!(if index == 0 { 5 } else { 9 }))
@@ -933,19 +934,29 @@ fn a_system_retries_an_invalid_call_with_feedback() {
 
 #[test]
 fn retry_feedback_targets_only_the_invalid_identity_namespace() {
-    use rig_core::message::{ToolCall, ToolCallId, ToolFunction, ToolResultContent};
+    use rig_core::message::{CallId, ToolCall, ToolFunction, ToolResultContent};
     for generated_invalid in [false, true] {
         let generated = ToolCall::new(
-            ToolCallId::minted(0),
+            CallId::from_wire(""),
             ToolFunction {
-                name: if generated_invalid { "multiply" } else { "add" }.into(),
+                name: rig_core::message::ToolName::new(if generated_invalid {
+                    "multiply"
+                } else {
+                    "add"
+                })
+                .expect("tool name"),
                 arguments: serde_json::json!({"x":2,"y":3}),
             },
         );
         let explicit = ToolCall::from_wire(
-            generated.id.wire_hint(),
+            generated.id.wire(),
             ToolFunction {
-                name: if generated_invalid { "add" } else { "multiply" }.into(),
+                name: rig_core::message::ToolName::new(if generated_invalid {
+                    "add"
+                } else {
+                    "multiply"
+                })
+                .expect("tool name"),
                 arguments: serde_json::json!({"x":4,"y":5}),
             },
         );
@@ -996,7 +1007,7 @@ fn retry_feedback_targets_only_the_invalid_identity_namespace() {
                 .iter()
                 .find(|result| result.call == call.id)
                 .unwrap();
-            assert_eq!(result.provider, call.provider);
+            assert_eq!(result.call.provider(), call.id.provider());
             assert_eq!(result.name, call.function.name);
             let expected = if call.function.name == "multiply" {
                 "there is no tool named multiply; use add"

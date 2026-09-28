@@ -41,7 +41,7 @@ pub struct Responses {
 impl Responses {
     pub(crate) fn encode_with_headers(
         &self,
-        mut request: completion::CompletionRequest,
+        request: completion::CompletionRequest,
         mode: Mode,
         headers: impl FnOnce(
             &OpenAIConfig,
@@ -49,11 +49,11 @@ impl Responses {
             http::request::Builder,
         ) -> http::request::Builder,
     ) -> Result<Encoded, EncodeError> {
-        crate::providers::openai::wire::scope_reasoning(
+        let (request, issuers) = crate::providers::openai::wire::scope_reasoning(
             &self.provider.dialect,
             &self.model,
-            &mut request,
-        );
+            request,
+        )?;
         let quirks = &self.provider.dialect.quirks.responses;
         // The codex gateway only ever answers with an event stream, and
         // names no content type on it. It is asked for one whatever the
@@ -66,7 +66,7 @@ impl Responses {
             &request,
             http::Request::post(self.provider.uri(quirks.path, None)),
         );
-        let request = self.responses_request(request, streaming)?;
+        let request = self.responses_request(request, issuers, streaming)?;
         crate::providers::internal::trace_json(
             crate::providers::internal::LogTarget::Completions,
             "Responses completion request",
@@ -148,6 +148,7 @@ impl Responses {
     pub(crate) fn responses_request(
         &self,
         request: completion::CompletionRequest,
+        issuers: Vec<crate::message::Issuer>,
         streaming: bool,
     ) -> Result<CompletionRequest, EncodeError> {
         let quirks = &self.provider.dialect.quirks.responses;
@@ -155,6 +156,7 @@ impl Responses {
             model: self.model.clone(),
             request,
             system_instructions_placement: self.system_instructions,
+            issuers,
         })?;
         request.tools.extend(self.tools.clone());
         if self.strict_tools {

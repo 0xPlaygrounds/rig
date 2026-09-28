@@ -8,7 +8,7 @@ use serde_json::json;
 fn streaming_request() -> crate::completion::CompletionRequest {
     crate::completion::CompletionRequest {
         model: None,
-        chat_history: vec![crate::message::Message::user("hello")],
+        chat_history: crate::NonEmpty::new(crate::message::Message::user("hello")),
         documents: Vec::new(),
         tools: Vec::new(),
         temperature: None,
@@ -703,7 +703,7 @@ mod terminal_emission {
             }
         }
         let signed = signed.expect("signature-only block must be emitted");
-        assert!(signed.content.iter().any(|content| matches!(
+        assert!(signed.value().content.iter().any(|content| matches!(
             content,
             crate::message::ReasoningContent::Text { signature: Some(sig), .. } if sig == "sig-only"
         )));

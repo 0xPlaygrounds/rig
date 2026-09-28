@@ -26,7 +26,7 @@ use bevy_ecs::prelude::*;
 use rig_core::{
     completion::{CompletionResponse, Usage as ProviderUsage},
     effect::Outcome,
-    message::{AssistantContent, ToolCallId},
+    message::{AssistantContent, CallId},
     streaming::{BlockClose, StreamFinal, ToolCallEnd},
 };
 use rig_ecs::{
@@ -223,11 +223,8 @@ fn early_skip_retains_prefix_and_drained_usage_without_dispatching_tool() {
         })
         .collect();
     assert_eq!(calls.len(), 1);
-    assert_eq!(
-        calls[0].id,
-        ToolCallId::from_block(&BlockId::Wire("assembly-block".into()))
-    );
-    assert!(calls[0].provider.is_none());
+    // The name delta never completed a call, so rig issued its id.
+    assert!(calls[0].id.is_local());
     assert_eq!(calls[0].function.name, "wrong");
     assert_eq!(
         calls[0].function.arguments,
@@ -243,10 +240,7 @@ fn repair_name(
 ) {
     for (entity, call) in &invalid {
         assert_eq!(call.name, "wrong");
-        assert_eq!(
-            call.id,
-            ToolCallId::from_block(&BlockId::Wire("assembly-block".into()))
-        );
+        assert!(call.id.is_local());
         assert_eq!(call.prefix.len(), 1);
         count.0 += 1;
         commands
@@ -331,7 +325,7 @@ fn early_repair_survives_raw_block_completion_and_provider_identity() {
     assert_eq!(calls.len(), 1);
     assert_eq!(
         calls[0].id,
-        ToolCallId::new("provider-call").expect("valid id")
+        CallId::from_dual_wire("provider-tool", "provider-call")
     );
     assert_eq!(calls[0].function.name, "add");
     assert_eq!(

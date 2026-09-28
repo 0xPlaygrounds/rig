@@ -16,7 +16,7 @@
 //! Run cassette tests in replay mode by default, or set
 //! `RIG_PROVIDER_TEST_MODE=record` to record against a local llama.cpp server.
 
-use rig::message::{ImageMediaType, ProviderCallId, ToolCallId, ToolResult, ToolResultContent};
+use rig::message::{CallId, ImageMediaType, ToolResult, ToolResultContent};
 
 use super::super::cassette_support::*;
 use rig::completion::CompletionRequest;
@@ -31,25 +31,24 @@ const VISION_MODEL: &str = "Qwen3-VL-2B-Instruct-Q8_0";
 
 fn image_tool_result() -> ToolResult {
     ToolResult {
-        call: ToolCallId::new_or_minted("call_1", 0),
-        provider: ProviderCallId::new("call_1"),
-        name: "view_file".to_string(),
-        content: vec![ToolResultContent::image_base64(
+        call: CallId::from_wire("call_1"),
+        name: rig_core::message::ToolName::new("view_file".to_string()).expect("tool name"),
+        content: rig_core::NonEmpty::new(ToolResultContent::image_base64(
             MAGENTA_PNG_BASE64,
             Some(ImageMediaType::PNG),
             None,
-        )],
+        )),
     }
 }
 
 fn tool_call_turn() -> rig::message::Message {
     rig::message::Message::Assistant {
         id: None,
-        content: vec![rig::message::AssistantContent::tool_call(
+        content: rig_core::NonEmpty::new(rig::message::AssistantContent::tool_call(
             "call_1",
-            "view_file",
+            rig_core::message::ToolName::new("view_file").expect("tool name"),
             serde_json::json!({}),
-        )],
+        )),
     }
 }
 
@@ -86,7 +85,9 @@ async fn a_tool_result_image_is_read_by_the_model() {
             .messages(vec![
                 tool_call_turn(),
                 rig::message::Message::User {
-                    content: vec![rig::message::UserContent::ToolResult(image_tool_result())],
+                    content: rig_core::NonEmpty::new(rig::message::UserContent::ToolResult(
+                        image_tool_result(),
+                    )),
                 },
             ]);
 
@@ -117,14 +118,14 @@ async fn the_same_image_in_a_user_message_is_read_too() {
         |client| async move {
             let model = client.completion(VISION_MODEL);
             let request = CompletionRequest::new(rig::message::Message::User {
-                content: vec![
+                content: rig_core::NonEmpty::with_rest(
                     rig::message::UserContent::text("Reply with ONLY the dominant colour name."),
-                    rig::message::UserContent::image_base64(
+                    [rig::message::UserContent::image_base64(
                         MAGENTA_PNG_BASE64,
                         Some(ImageMediaType::PNG),
                         None,
-                    ),
-                ],
+                    )],
+                ),
             })
             .max_tokens(30)
             .temperature(0.0);

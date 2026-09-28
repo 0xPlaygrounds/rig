@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 3,
+        "batch": 2,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,7 +10,7 @@
         }
       },
       {
-        "batch": 3,
+        "batch": 2,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -141,6 +141,7 @@
           },
           "block": {
             "type": "reasoning",
+            "issuer": "openai",
             "id": "rs_00b0f43c455ec3c1006ab2b3df54f887d0a03a62160fe38a32",
             "content": [
               {

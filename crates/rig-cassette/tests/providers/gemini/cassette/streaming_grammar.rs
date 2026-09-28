@@ -65,7 +65,12 @@ async fn drain_stream(mut stream: rig::streaming::CompletionStream) -> StreamRun
                 block: Some(AssistantContent::Reasoning(reasoning)),
                 ..
             } => {
-                run.reasoning_blocks.push(reasoning);
+                run.reasoning_blocks.push(
+                    reasoning
+                        .open(reasoning.issuer())
+                        .cloned()
+                        .expect("reasoning opens"),
+                );
             }
             StreamEvent::BlockDelta {
                 delta: Delta::Reasoning { text },
@@ -144,7 +149,13 @@ fn aggregated_reasoning_text(choice: &[AssistantContent]) -> String {
     choice
         .iter()
         .filter_map(|content| match content {
-            AssistantContent::Reasoning(reasoning) => Some(reasoning.content.iter()),
+            AssistantContent::Reasoning(reasoning) => Some(
+                reasoning
+                    .open(reasoning.issuer())
+                    .expect("sealed reasoning")
+                    .content
+                    .iter(),
+            ),
             _ => None,
         })
         .flatten()
@@ -229,7 +240,7 @@ async fn streaming_tool_call_aggregates_with_tool_calls_finish() {
                 .expect("aggregated choice should keep the tool call");
             // IDs derived from the recorded turn, never minted literally.
             assert_eq!(aggregated.id, streamed.id);
-            assert_eq!(aggregated.provider, streamed.provider);
+            assert_eq!(aggregated.id.provider(), streamed.id.provider());
         },
     )
     .await;
@@ -323,7 +334,7 @@ async fn thinking_stream_aggregates_all_reasoning_text() {
             for content in run.choice.iter() {
                 if let AssistantContent::Reasoning(reasoning) = content {
                     let text: String = reasoning
-                        .content
+                        .open(reasoning.issuer()).expect("sealed reasoning").content
                         .iter()
                         .filter_map(|part| match part {
                             ReasoningContent::Text { text, .. } => Some(text.as_str()),
@@ -336,7 +347,7 @@ async fn thinking_stream_aggregates_all_reasoning_text() {
                         run.choice
                     );
                     assert!(
-                        reasoning.first_signature().is_none(),
+                        reasoning.open(reasoning.issuer()).expect("sealed reasoning").first_signature().is_none(),
                         "the answer's signature must not move onto reasoning: {:?}",
                         run.choice
                     );
@@ -413,7 +424,7 @@ async fn thinking_and_tool_call_interleave_as_discrete_parts() {
                 })
                 .expect("aggregated choice should keep the tool call");
             assert_eq!(aggregated_call.id, streamed.id);
-            assert_eq!(aggregated_call.provider, streamed.provider);
+            assert_eq!(aggregated_call.id.provider(), streamed.id.provider());
             assert!(
                 !aggregated_reasoning_text(&run.choice).is_empty(),
                 "reasoning text must survive alongside the tool call"
@@ -486,10 +497,10 @@ async fn parallel_function_calls_stay_distinct() {
             // index, not from the tool name): both calls surface with a
             // minted id and no provider id, and stay distinct as parts —
             // two calls, in wire order, uncorrupted.
-            assert!(aggregated[0].provider.is_none());
-            assert!(aggregated[1].provider.is_none());
-            assert!(aggregated[0].id.is_generated());
-            assert!(aggregated[1].id.is_generated());
+            assert!(aggregated[0].id.provider().is_none());
+            assert!(aggregated[1].id.provider().is_none());
+            assert!(aggregated[0].id.is_local());
+            assert!(aggregated[1].id.is_local());
             assert_ne!(
                 aggregated[0].id, aggregated[1].id,
                 "each id-less call mints a unique durable id"
@@ -612,7 +623,7 @@ async fn interactions_thinking_stream_keeps_reasoning_and_text_discrete() {
                 .choice
                 .iter()
                 .filter_map(|content| match content {
-                    AssistantContent::Reasoning(reasoning) => Some(reasoning.content.iter()),
+                    AssistantContent::Reasoning(reasoning) => Some(reasoning.open(reasoning.issuer()).expect("sealed reasoning").content.iter()),
                     _ => None,
                 })
                 .flatten()
@@ -637,7 +648,7 @@ async fn interactions_thinking_stream_keeps_reasoning_and_text_discrete() {
             for content in run.choice.iter() {
                 if let AssistantContent::Reasoning(reasoning) = content {
                     let text: String = reasoning
-                        .content
+                        .open(reasoning.issuer()).expect("sealed reasoning").content
                         .iter()
                         .filter_map(|part| match part {
                             ReasoningContent::Text { text, .. } => Some(text.as_str()),
@@ -651,7 +662,7 @@ async fn interactions_thinking_stream_keeps_reasoning_and_text_discrete() {
                     );
                     if text.contains(run.reasoning_delta.trim()) {
                         assert!(
-                            reasoning.content.iter().any(|part| matches!(
+                            reasoning.open(reasoning.issuer()).expect("sealed reasoning").content.iter().any(|part| matches!(
                                 part,
                                 ReasoningContent::Text { signature: Some(signature), .. }
                                     if !signature.is_empty()
@@ -752,17 +763,16 @@ async fn interactions_requires_action_roundtrip() {
                 .expect("normalized choice should carry the client tool call");
             // The call id comes from the recorded turn, never minted literally.
             assert!(
-                tool_call.provider.is_some(),
+                tool_call.id.provider().is_some(),
                 "the recorded interactions turn should carry a provider-issued call id"
             );
 
             let followup = model
                 .call(
-                    CompletionRequest::new(Message::from(UserContent::tool_result_for(
+                    CompletionRequest::new(Message::from(UserContent::tool_result(
                         tool_call.id.clone(),
-                        tool_call.provider.clone(),
                         tool_call.function.name.clone(),
-                        vec![ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)],
+                        rig_core::NonEmpty::new(ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)),
                     )))
                     .additional_params(
                         serde_json::to_value(interactions_api::AdditionalParameters {
@@ -840,11 +850,11 @@ async fn interactions_same_tool_called_twice_stays_distinct() {
             );
             for call in &add_calls {
                 assert_ne!(
-                    call.id.explicit(), Some("add"),
+                    call.id.provider().map(|provider| provider.call_id.as_str()), Some("add"),
                     "the tool name must never be fabricated into the durable id"
                 );
                 assert!(
-                    call.provider
+                    call.id.provider()
                         .as_ref()
                         .is_none_or(|provider| provider.call_id != "add"),
                     "the tool name must never be fabricated into the provider call id"
@@ -855,7 +865,7 @@ async fn interactions_same_tool_called_twice_stays_distinct() {
                     call.function.arguments
                 );
             }
-            let distinct_ids: std::collections::HashSet<&rig::message::ToolCallId> = add_calls
+            let distinct_ids: std::collections::HashSet<&rig::message::CallId> = add_calls
                 .iter()
                 .map(|call| &call.id)
                 .collect();
@@ -932,7 +942,7 @@ async fn interactions_signature_without_summaries_never_fabricates_an_empty_sibl
             assert!(!run.text.trim().is_empty(), "turn should produce text");
             let signature_delivered = run.choice.iter().any(|content| {
                 matches!(content, AssistantContent::Reasoning(reasoning)
-                    if reasoning.content.iter().any(|part| matches!(
+                    if reasoning.open(reasoning.issuer()).expect("sealed reasoning").content.iter().any(|part| matches!(
                         part,
                         ReasoningContent::Text { signature: Some(signature), .. }
                             if !signature.is_empty()
@@ -948,7 +958,7 @@ async fn interactions_signature_without_summaries_never_fabricates_an_empty_sibl
                 .choice
                 .iter()
                 .filter_map(|content| match content {
-                    AssistantContent::Reasoning(reasoning) => Some(reasoning),
+                    AssistantContent::Reasoning(reasoning) => reasoning.open(reasoning.issuer()),
                     _ => None,
                 })
                 .collect();
@@ -994,35 +1004,34 @@ async fn chat_sourced_history_replays_the_tool_name_not_the_identifier() {
         "streaming_grammar/chat_sourced_history_replay",
         |client| async move {
             let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
-            let cross_provider_handle = rig::message::ToolCallId::new("call_abc123")
-                .expect("the chat-sourced identifier is non-empty");
+            // A call rig issued the id for: Gemini's wire carries no id for
+            // it, so the result pairs with the call by name.
+            let cross_provider_handle = rig::message::CallId::from_wire("");
             let history = vec![
                 rig::message::Message::user(
                     "Use the add tool to compute 2 + 3, then state the result.",
                 ),
                 rig::message::Message::Assistant {
                     id: None,
-                    content: vec![AssistantContent::ToolCall(ToolCall {
-                        // The cross-provider shape: the other wire's
-                        // identifier survives as rig's correlation handle,
-                        // with no provider id for Gemini's wire.
+                    content: rig_core::NonEmpty::new(AssistantContent::ToolCall(ToolCall {
                         id: cross_provider_handle.clone(),
-                        provider: None,
                         function: rig::message::ToolFunction {
-                            name: "add".to_owned(),
+                            name: rig_core::message::ToolName::new("add").expect("tool name"),
                             arguments: serde_json::json!({"x": 2, "y": 3}),
                         },
                         signature: None,
                         additional_params: None,
-                    })],
+                    })),
                 },
                 rig::message::Message::User {
-                    content: vec![UserContent::ToolResult(rig::message::ToolResult {
-                        call: cross_provider_handle,
-                        provider: None,
-                        name: "add".to_owned(),
-                        content: vec![ToolResultContent::text("5")],
-                    })],
+                    content: rig_core::NonEmpty::new(UserContent::ToolResult(
+                        rig::message::ToolResult {
+                            call: cross_provider_handle,
+                            name: rig_core::message::ToolName::new("add".to_owned())
+                                .expect("tool name"),
+                            content: rig_core::NonEmpty::new(ToolResultContent::text("5")),
+                        },
+                    )),
                 },
             ];
             let request = CompletionRequest::new("State the final result in one short sentence.")

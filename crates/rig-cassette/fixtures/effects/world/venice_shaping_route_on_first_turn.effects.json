@@ -151,11 +151,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "VF0eZ6NE3"
-              },
-              "provider": {
-                "call_id": "VF0eZ6NE3"
+                "provider": {
+                  "call_id": "VF0eZ6NE3"
+                }
               },
               "function": {
                 "name": "add",
@@ -288,11 +286,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "VF0eZ6NE3"
-                  },
-                  "provider": {
-                    "call_id": "VF0eZ6NE3"
+                    "provider": {
+                      "call_id": "VF0eZ6NE3"
+                    }
                   },
                   "function": {
                     "name": "add",
@@ -312,11 +308,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "VF0eZ6NE3"
-                  },
-                  "provider": {
-                    "call_id": "VF0eZ6NE3"
+                    "provider": {
+                      "call_id": "VF0eZ6NE3"
+                    }
                   },
                   "name": "add",
                   "content": [

@@ -96,7 +96,7 @@ impl Transport<Local<Completion>> for Scripted {
             );
             vec![AssistantContent::ToolCall(ToolCall::from_wire(
                 "call-1",
-                ToolFunction::new("add".to_string(), serde_json::json!({"x": 2, "y": 3})),
+                ToolFunction::new(rig::message::ToolName::new("add").expect("tool name"), serde_json::json!({"x": 2, "y": 3})),
             ))]
         } else {
             vec![AssistantContent::text("done")]
@@ -204,7 +204,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     tool_calls += 1;
                     results.push(transcript::tool_result_output(
                         call.tool_call.id.clone(),
-                        call.tool_call.provider.clone(),
                         name,
                         result.output().clone(),
                     ));

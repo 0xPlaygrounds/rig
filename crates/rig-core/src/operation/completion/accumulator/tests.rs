@@ -1,7 +1,6 @@
 use super::*;
 use crate::error::{ErrorDetail, ErrorKind, ErrorReport, ProviderError};
 use crate::message::AdditionalParams;
-use crate::message::ToolCallId;
 use crate::streaming::{MintKind, non_empty_id};
 
 /// The test-side views of the assembly: the choice so far, and the choice
@@ -69,7 +68,6 @@ fn wid(id: &str) -> Option<String> {
 
 fn full(id: &str, content: ReasoningContent) -> Reasoning {
     Reasoning {
-        provider: None,
         id: wid(id),
         content: vec![content],
     }
@@ -91,7 +89,7 @@ fn reasoning_texts(parts: &[AssistantContent]) -> Vec<String> {
     parts
         .iter()
         .filter_map(|part| match part {
-            AssistantContent::Reasoning(reasoning) => Some(reasoning.content.iter()),
+            AssistantContent::Reasoning(reasoning) => Some(reasoning.value().content.iter()),
             _ => None,
         })
         .flatten()
@@ -187,7 +185,7 @@ fn reasoning_end(
         })
         .expect("reasoning ends never fail")
         .map(|(_, block)| match block {
-            AssistantContent::Reasoning(reasoning) => reasoning,
+            AssistantContent::Reasoning(reasoning) => reasoning.value().clone(),
             other => panic!("a reasoning end completed a non-reasoning block: {other:?}"),
         })
 }
@@ -295,7 +293,6 @@ fn an_id_less_restatement_keeps_the_open_parts_provider_handle() {
         &mut accumulator,
         "rs_1",
         Some(Reasoning {
-            provider: None,
             id: None,
             content: vec![reasoning_text("the complete chain")],
         }),
@@ -384,10 +381,14 @@ fn a_second_signature_under_a_constant_key_records_a_distinct_part() {
             _ => None,
         })
         .flat_map(|reasoning| {
-            reasoning.content.iter().map(|content| match content {
-                ReasoningContent::Text { text, signature } => (text.clone(), signature.clone()),
-                other => (format!("{other:?}"), None),
-            })
+            reasoning
+                .value()
+                .content
+                .iter()
+                .map(|content| match content {
+                    ReasoningContent::Text { text, signature } => (text.clone(), signature.clone()),
+                    other => (format!("{other:?}"), None),
+                })
         })
         .collect();
     assert_eq!(
@@ -517,7 +518,7 @@ fn a_trailing_signature_signs_the_finished_block() {
     assert!(matches!(
         parts.first(),
         Some(AssistantContent::Reasoning(reasoning))
-            if matches!(reasoning.content.first(), Some(ReasoningContent::Text { text, signature })
+            if matches!(reasoning.value().content.first(), Some(ReasoningContent::Text { text, signature })
                 if text == "the chain" && signature.as_deref() == Some("sig"))
     ));
 }
@@ -539,7 +540,7 @@ fn a_signature_end_signs_the_open_block() {
     assert!(matches!(
         parts.first(),
         Some(AssistantContent::Reasoning(reasoning))
-            if matches!(reasoning.content.first(), Some(ReasoningContent::Text { signature, .. })
+            if matches!(reasoning.value().content.first(), Some(ReasoningContent::Text { signature, .. })
                 if signature.as_deref() == Some("sig"))
     ));
 }
@@ -766,7 +767,13 @@ fn fragments_assemble_into_a_completed_tool_call() {
     let tool_call = tool_end(&mut accumulator, "call_1", end(UnparseableToolInput::Drop))
         .expect("no error")
         .expect("call must finalize");
-    assert_eq!(tool_call.id.explicit(), Some("call_1"));
+    assert_eq!(
+        tool_call
+            .id
+            .provider()
+            .map(|provider| provider.call_id.as_str()),
+        Some("call_1")
+    );
     assert_eq!(tool_call.function.name, "get_weather");
     assert!(accumulator.saw_tool_call());
 }
@@ -835,9 +842,8 @@ fn error_mode_surfaces_malformed_input_as_a_typed_error() {
     assert_eq!(detail.name, "get_weather");
     assert_eq!(detail.raw, "{\"location\": not-json");
     assert!(!detail.error.is_empty());
-    assert_eq!(detail.id, ToolCallId::new("call_1").expect("wire id"));
     assert_eq!(
-        detail.provider.as_ref().map(|p| p.call_id.as_str()),
+        detail.id.provider().map(|p| p.call_id.as_str()),
         Some("call_1")
     );
 
@@ -898,8 +904,14 @@ fn authoritative_end_fields_supersede_assembly() {
         .expect("authoritative payload finalizes");
     // The authoritative correlator drives rig's id; the wire-derived
     // assembly key rides along as the provider item id.
-    assert_eq!(tool_call.id.explicit(), Some("call_abc"));
-    let provider = tool_call.provider.as_ref().expect("provider ids are kept");
+    assert_eq!(
+        tool_call
+            .id
+            .provider()
+            .map(|provider| provider.call_id.as_str()),
+        Some("call_abc")
+    );
+    let provider = tool_call.id.provider().expect("provider ids are kept");
     assert_eq!(provider.call_id, "call_abc");
     assert_eq!(provider.item_id.as_deref(), Some("fc_1"));
     assert_eq!(tool_call.function.name, "final_name");
@@ -1084,11 +1096,11 @@ fn minted_keys_keep_id_less_parallel_calls_distinct() {
         .expect("finalizes");
     // Id-less calls mint distinct correlation handles and record that
     // the provider issued nothing — never a shared empty sentinel.
-    assert!(first.id.is_generated());
-    assert!(second.id.is_generated());
+    assert!(first.id.is_local());
+    assert!(second.id.is_local());
     assert_ne!(first.id, second.id);
-    assert!(first.provider.is_none());
-    assert!(second.provider.is_none());
+    assert!(first.id.provider().is_none());
+    assert!(second.id.provider().is_none());
     assert_eq!(
         first.function.arguments,
         serde_json::json!({"city": "Tokyo"})
@@ -1120,7 +1132,13 @@ fn the_tool_id_override_supersedes_the_assembly_key() {
     let tool_call = tool_end(&mut accumulator, "tool-0", done)
         .expect("no error")
         .expect("finalizes");
-    assert_eq!(tool_call.id.explicit(), Some("call_late"));
+    assert_eq!(
+        tool_call
+            .id
+            .provider()
+            .map(|provider| provider.call_id.as_str()),
+        Some("call_late")
+    );
 }
 
 #[test]
@@ -1434,7 +1452,7 @@ fn folds_a_provider_less_event_stream() {
     ));
     assert!(matches!(
         completed.get(1),
-        Some((_, AssistantContent::Reasoning(reasoning))) if reasoning.id.as_deref() == Some("rs_1")
+        Some((_, AssistantContent::Reasoning(reasoning))) if reasoning.value().id.as_deref() == Some("rs_1")
     ));
 }
 
@@ -1507,11 +1525,11 @@ fn snapshot_omits_open_calls_and_keeps_open_reasoning() {
     assert_eq!(reasoning_texts(&snapshot), vec!["thinking"]);
 }
 
-/// A wire that carries no tool id names the call after the block that
-/// assembled it — the same handle on every run of the same wire.
+/// A wire that carries no tool id leaves rig to issue one: a fresh local id
+/// per call.
 #[test]
-fn an_id_less_tool_call_is_named_by_its_block_deterministically() {
-    fn finalize() -> String {
+fn an_id_less_tool_call_gets_a_rig_issued_id() {
+    fn finalize() -> crate::message::CallId {
         let mut accumulator = BlockAccumulator::new();
         let id = BlockId::minted(MintKind::Tool, 3);
         accumulator
@@ -1544,16 +1562,13 @@ fn an_id_less_tool_call_is_named_by_its_block_deterministically() {
             .expect("a completed call");
         match finalized.1 {
             AssistantContent::ToolCall(call) => {
-                assert!(call.provider.is_none(), "no provider id existed");
-                call.id.to_string()
+                assert!(call.id.provider().is_none(), "no provider id existed");
+                call.id
             }
             other => panic!("expected a tool call, got {other:?}"),
         }
     }
-    assert_eq!(finalize(), "generated:minted:tool:3");
-    assert_eq!(
-        finalize(),
-        finalize(),
-        "the same wire mints the same handle"
-    );
+    let id = finalize();
+    assert!(id.is_local(), "rig issues the id: {id:?}");
+    assert_ne!(id, finalize(), "each call gets a fresh id");
 }

@@ -208,7 +208,7 @@ fn project_content(content: &AssistantContent) -> Value {
             "additional_params": text.additional_params,
         }),
         AssistantContent::ToolCall(call) => {
-            let (id, item_id) = match &call.provider {
+            let (id, item_id) = match call.id.provider() {
                 Some(provider) => (provider.call_id.clone(), provider.item_id.clone()),
                 None => ("rig-issued".to_owned(), None),
             };
@@ -223,20 +223,25 @@ fn project_content(content: &AssistantContent) -> Value {
                 }
             })
         }
-        AssistantContent::Reasoning(reasoning) => json!({
-            "reasoning": {
-                "id": reasoning.id,
-                "issuer": reasoning.provider,
-                "content": reasoning.content.iter().map(|part| match part {
-                    ReasoningContent::Text { text, signature } => {
-                        json!({ "text": text, "signature": signature })
-                    }
-                    ReasoningContent::Encrypted(data) => json!({ "encrypted": data }),
-                    ReasoningContent::Redacted { data } => json!({ "redacted": data }),
-                    ReasoningContent::Summary(summary) => json!({ "summary": summary }),
-                }).collect::<Vec<_>>(),
-            }
-        }),
+        AssistantContent::Reasoning(sealed) => {
+            let reasoning = sealed
+                .open(sealed.issuer())
+                .expect("reasoning opens for its issuer");
+            json!({
+                "reasoning": {
+                    "id": reasoning.id,
+                    "issuer": sealed.issuer(),
+                    "content": reasoning.content.iter().map(|part| match part {
+                        ReasoningContent::Text { text, signature } => {
+                            json!({ "text": text, "signature": signature })
+                        }
+                        ReasoningContent::Encrypted(data) => json!({ "encrypted": data }),
+                        ReasoningContent::Redacted { data } => json!({ "redacted": data }),
+                        ReasoningContent::Summary(summary) => json!({ "summary": summary }),
+                    }).collect::<Vec<_>>(),
+                }
+            })
+        }
         AssistantContent::Image(image) => json!({ "image": image }),
     }
 }

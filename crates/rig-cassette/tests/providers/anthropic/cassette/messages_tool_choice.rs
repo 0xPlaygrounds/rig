@@ -23,6 +23,7 @@ fn tool_call_names(choice: &[AssistantContent]) -> Vec<String> {
             AssistantContent::ToolCall(tool_call) => Some(tool_call.function.name.clone()),
             _ => None,
         })
+        .map(String::from)
         .collect()
 }
 

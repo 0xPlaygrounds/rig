@@ -6,7 +6,10 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::error::{MalformedToolInput, ProviderError};
-use crate::message::{AssistantContent, Reasoning, ReasoningContent, ToolCall, ToolFunction};
+use crate::message::{
+    AssistantContent, CallId, Issuer, ProviderCallId, Reasoning, ReasoningContent, Sealed,
+    ToolCall, ToolFunction, ToolName,
+};
 use crate::streaming::UnparseableToolInput;
 use crate::streaming::{BlockClose, BlockId, BlockKind, Delta, StreamEvent, ToolCallEnd};
 
@@ -116,7 +119,7 @@ impl BlockAccumulator {
                     ..
                 } => Ok(self
                     .reasoning_end(id, reasoning.clone(), signature.clone())
-                    .map(|reasoning| (id.clone(), AssistantContent::Reasoning(reasoning)))),
+                    .map(|reasoning| (id.clone(), unstamped(reasoning)))),
                 BlockClose::ToolCall(end) => Ok(self
                     .tool_end(id, end.clone())?
                     .map(|(id, call)| (id, AssistantContent::ToolCall(call)))),
@@ -211,7 +214,7 @@ impl BlockAccumulator {
                 && matches!(
                     self.parts.get(index),
                     Some(AssistantContent::Reasoning(reasoning))
-                        if reasoning.content.iter().any(|content| matches!(
+                        if reasoning.value().content.iter().any(|content| matches!(
                             content,
                             ReasoningContent::Text { signature: Some(_), .. }
                         ))
@@ -270,6 +273,7 @@ impl BlockAccumulator {
     fn reasoning_delta(&mut self, id: &BlockId, provider_id: Option<&str>, text: &str) {
         if let Some(&index) = self.open_reasoning.get(id) {
             if let Some(AssistantContent::Reasoning(existing)) = self.parts.get_mut(index) {
+                let existing = existing.value_mut();
                 if let Some(ReasoningContent::Text {
                     text: existing_text,
                     ..
@@ -315,9 +319,9 @@ impl BlockAccumulator {
                 if restatement.id.is_none()
                     && let AssistantContent::Reasoning(open) = &*part
                 {
-                    restatement.id.clone_from(&open.id);
+                    restatement.id.clone_from(&open.value().id);
                 }
-                *part = AssistantContent::Reasoning(restatement);
+                *part = unstamped(restatement);
             }
             if let Some(signature) = signature
                 && let Some(part) = self.parts.get_mut(index)
@@ -336,7 +340,7 @@ impl BlockAccumulator {
                     let part_already_signed = matches!(
                         self.parts.get(index),
                         Some(AssistantContent::Reasoning(reasoning))
-                            if reasoning.content.iter().any(|content| matches!(
+                            if reasoning.value().content.iter().any(|content| matches!(
                                 content,
                                 ReasoningContent::Text { signature: Some(_), .. }
                             ))
@@ -384,7 +388,6 @@ impl BlockAccumulator {
     /// under `id`.
     fn finish_signature_only(&mut self, id: &BlockId, signature: String) -> Option<Reasoning> {
         let index = self.push_reasoning_part(Reasoning {
-            provider: None,
             id: None,
             content: vec![ReasoningContent::Text {
                 text: String::new(),
@@ -402,7 +405,6 @@ impl BlockAccumulator {
         content: Vec<ReasoningContent>,
     ) {
         let index = self.push_reasoning_part(Reasoning {
-            provider: None,
             id: provider_id.map(str::to_owned),
             content,
         });
@@ -412,13 +414,13 @@ impl BlockAccumulator {
 
     /// Register a new reasoning part at the current arrival position.
     fn push_reasoning_part(&mut self, reasoning: Reasoning) -> usize {
-        self.parts.push(AssistantContent::Reasoning(reasoning));
+        self.parts.push(unstamped(reasoning));
         self.parts.len() - 1
     }
 
     fn reasoning_at(&self, index: usize) -> Option<Reasoning> {
         match self.parts.get(index) {
-            Some(AssistantContent::Reasoning(reasoning)) => Some(reasoning.clone()),
+            Some(AssistantContent::Reasoning(reasoning)) => Some(reasoning.value().clone()),
             _ => None,
         }
     }
@@ -579,14 +581,11 @@ impl BlockAccumulator {
         // Derive identity before parsing so malformed-input reports retain the
         // same correlation metadata as successful calls.
         let wire_tool_id = end.tool_id.or(opened_wire_id);
-        let provider =
-            crate::message::ProviderCallId::from_optional_wire(end.call_id, wire_tool_id);
-        // No provider id: the block that assembled the call names it, so a
-        // re-run of the same wire mints the same handle.
+        // No provider id: rig issues one.
         let durable_id = end.durable_id.unwrap_or_else(|| {
-            crate::message::ToolCallId::for_provider_or(
-                provider.as_ref(),
-                crate::message::ToolCallId::from_block(&published),
+            provider_call_id(end.call_id, wire_tool_id).map_or_else(
+                || CallId::Local(crate::message::LocalCallId::new()),
+                CallId::Provider,
             )
         });
 
@@ -635,7 +634,6 @@ impl BlockAccumulator {
                                     MalformedToolInput {
                                         name,
                                         id: durable_id,
-                                        provider,
                                         raw: buffer,
                                         error: err.to_string(),
                                     },
@@ -652,9 +650,12 @@ impl BlockAccumulator {
             },
         };
 
+        let Ok(name) = ToolName::new(name) else {
+            // Unreachable: an unnamed call returned above.
+            return Ok(None);
+        };
         let tool_call = ToolCall {
             id: durable_id,
-            provider,
             function: ToolFunction { name, arguments },
             signature: end.signature,
             additional_params: end.additional_params,
@@ -681,12 +682,11 @@ impl BlockAccumulator {
             .open_tool_inputs
             .iter()
             .position(|open| {
-                let named = crate::message::ToolCallId::from_block(&open.id) == input.id
-                    || open.id.wire_str().is_some_and(|wire| {
-                        input.provider.as_ref().is_some_and(|provider| {
-                            provider.call_id == wire || provider.item_id.as_deref() == Some(wire)
-                        })
-                    });
+                let named = open.id.wire_str().is_some_and(|wire| {
+                    input.id.provider().is_some_and(|provider| {
+                        provider.call_id == wire || provider.item_id.as_deref() == Some(wire)
+                    })
+                });
                 raw(open) && named
             })
             .or_else(|| {
@@ -770,7 +770,24 @@ fn json_subsumes(outer: &serde_json::Value, inner: &serde_json::Value) -> bool {
 
 fn attach_signature(part: &mut AssistantContent, signature: String) {
     if let AssistantContent::Reasoning(reasoning) = part {
-        attach_reasoning_signature(reasoning, signature);
+        attach_reasoning_signature(reasoning.value_mut(), signature);
+    }
+}
+
+/// A reasoning part the reply has not named the issuer of yet; the fold
+/// seals it to the issuer when the reply ends.
+fn unstamped(reasoning: Reasoning) -> AssistantContent {
+    AssistantContent::Reasoning(Sealed::new(Issuer::unstamped(), reasoning))
+}
+
+/// The provider's identifiers from a wire's optional ids: a non-empty
+/// `call_id` correlates and `tool_id` is the output item; without one, a
+/// non-empty `tool_id` correlates.
+fn provider_call_id(call_id: Option<String>, tool_id: Option<String>) -> Option<ProviderCallId> {
+    match (call_id.filter(|call_id| !call_id.is_empty()), tool_id) {
+        (Some(call_id), tool_id) => ProviderCallId::new(call_id)
+            .map(|provider| provider.with_item_id(tool_id.unwrap_or_default())),
+        (None, tool_id) => tool_id.and_then(ProviderCallId::new),
     }
 }
 

@@ -299,14 +299,14 @@ pub async fn run_reasoning_roundtrip_streaming_with_final<F>(
     F: FnMut(&rig_core::streaming::StreamFinal),
 {
     let turn1_prompt = Message::User {
-        content: vec![UserContent::text(ROUNDTRIP_TURN1_TEXT)],
+        content: rig_core::NonEmpty::new(UserContent::text(ROUNDTRIP_TURN1_TEXT)),
     };
 
     let request = completion::CompletionRequest {
-        chat_history: vec![
+        chat_history: rig_core::NonEmpty::with_rest(
             Message::system(agent.preamble.clone()),
-            turn1_prompt.clone(),
-        ],
+            [turn1_prompt.clone()],
+        ),
         documents: vec![],
         tools: vec![],
         temperature: None,
@@ -371,9 +371,8 @@ pub async fn run_reasoning_roundtrip_streaming_with_final<F>(
 
         let signed = assistant_content.iter().any(|content| match content {
             AssistantContent::Reasoning(reasoning) => reasoning
-                .content
-                .iter()
-                .any(|block| matches!(block, ReasoningContent::Text { signature, .. } if signature.is_some())),
+                .open(reasoning.issuer())
+                .is_some_and(|reasoning| reasoning.content.iter().any(|block| matches!(block, ReasoningContent::Text { signature, .. } if signature.is_some()))),
             _ => false,
         });
         assert!(
@@ -386,9 +385,14 @@ pub async fn run_reasoning_roundtrip_streaming_with_final<F>(
     // Providers like Gemini 2.5 emit thinking as deltas without signatures,
     // so turn the deltas into a single reasoning block before round-tripping.
     if !saw_reasoning_block && !reasoning_delta_text.is_empty() {
-        assistant_content.push(AssistantContent::Reasoning(Reasoning::new(
-            &reasoning_delta_text,
-        )));
+        let issuer = stream
+            .folded()
+            .reasoning_issuer()
+            .expect("a finished stream names its reasoning issuer")
+            .to_owned();
+        assistant_content.push(AssistantContent::Reasoning(
+            Reasoning::new(&reasoning_delta_text).sealed(issuer),
+        ));
     }
 
     assert!(!streamed_text.is_empty(), "Turn 1 produced no text output.");
@@ -397,20 +401,18 @@ pub async fn run_reasoning_roundtrip_streaming_with_final<F>(
 
     let turn1_assistant = Message::Assistant {
         id: stream.folded().message_id().map(str::to_owned),
-        content: assistant_content,
+        content: rig_core::NonEmpty::from_vec(assistant_content).expect("non-empty"),
     };
 
     let turn2_prompt = Message::User {
-        content: vec![UserContent::text(ROUNDTRIP_TURN2_TEXT)],
+        content: rig_core::NonEmpty::new(UserContent::text(ROUNDTRIP_TURN2_TEXT)),
     };
 
     let request2 = completion::CompletionRequest {
-        chat_history: vec![
+        chat_history: rig_core::NonEmpty::with_rest(
             Message::system(agent.preamble.clone()),
-            turn1_prompt,
-            turn1_assistant,
-            turn2_prompt,
-        ],
+            [turn1_prompt, turn1_assistant, turn2_prompt],
+        ),
         documents: vec![],
         tools: vec![],
         temperature: None,
@@ -457,14 +459,14 @@ pub async fn run_reasoning_roundtrip_streaming_with_final<F>(
 /// Run and assert the two-turn nonstreaming reasoning-history roundtrip.
 pub async fn run_reasoning_roundtrip_nonstreaming(agent: ReasoningRoundtripAgent) {
     let turn1_prompt = Message::User {
-        content: vec![UserContent::text(ROUNDTRIP_TURN1_TEXT)],
+        content: rig_core::NonEmpty::new(UserContent::text(ROUNDTRIP_TURN1_TEXT)),
     };
 
     let request = completion::CompletionRequest {
-        chat_history: vec![
+        chat_history: rig_core::NonEmpty::with_rest(
             Message::system(agent.preamble.clone()),
-            turn1_prompt.clone(),
-        ],
+            [turn1_prompt.clone()],
+        ),
         documents: vec![],
         tools: vec![],
         temperature: None,
@@ -497,20 +499,18 @@ pub async fn run_reasoning_roundtrip_nonstreaming(agent: ReasoningRoundtripAgent
 
     let turn1_assistant = Message::Assistant {
         id: response.message_id,
-        content: response.choice,
+        content: rig_core::NonEmpty::from_vec(response.choice).expect("non-empty"),
     };
 
     let turn2_prompt = Message::User {
-        content: vec![UserContent::text(ROUNDTRIP_TURN2_TEXT)],
+        content: rig_core::NonEmpty::new(UserContent::text(ROUNDTRIP_TURN2_TEXT)),
     };
 
     let request2 = completion::CompletionRequest {
-        chat_history: vec![
+        chat_history: rig_core::NonEmpty::with_rest(
             Message::system(agent.preamble.clone()),
-            turn1_prompt,
-            turn1_assistant,
-            turn2_prompt,
-        ],
+            [turn1_prompt, turn1_assistant, turn2_prompt],
+        ),
         documents: vec![],
         tools: vec![],
         temperature: None,
@@ -737,7 +737,7 @@ pub async fn collect_stream_stats(
             Ok(MultiTurnStreamItem::ToolCall { ref tool_call, .. }) => {
                 stats
                     .tool_calls_in_stream
-                    .push(tool_call.function.name.clone());
+                    .push(tool_call.function.name.clone().into());
                 stats.events.push("tool_call");
             }
             Ok(MultiTurnStreamItem::StreamAssistantItem(content)) => match content {
@@ -746,7 +746,9 @@ pub async fn collect_stream_stats(
                     block: Some(AssistantContent::Reasoning(ref reasoning)),
                     ..
                 } => {
-                    record_reasoning(&mut stats, reasoning, provider);
+                    if let Some(reasoning) = reasoning.open(reasoning.issuer()) {
+                        record_reasoning(&mut stats, reasoning, provider);
+                    }
                 }
                 StreamEvent::BlockDelta {
                     delta: Delta::Reasoning { .. },

@@ -735,9 +735,10 @@ pub(crate) fn requested_calls(record: &EffectRecord) -> Vec<(String, serde_json:
             .choice
             .iter()
             .filter_map(|content| match content {
-                AssistantContent::ToolCall(call) => {
-                    Some((call.function.name.clone(), call.function.arguments.clone()))
-                }
+                AssistantContent::ToolCall(call) => Some((
+                    call.function.name.to_string(),
+                    call.function.arguments.clone(),
+                )),
                 _ => None,
             })
             .collect(),
@@ -749,7 +750,7 @@ pub(crate) fn requested_calls(record: &EffectRecord) -> Vec<(String, serde_json:
 /// The ids of the calls a completion record's response asked for, in
 /// call order: the `i`-th id belongs to the `i`-th record of `turn.tools`
 /// (`assert_log` step 1 pins the two orders together).
-pub(crate) fn requested_call_ids(record: &EffectRecord) -> Vec<&rig_core::message::ToolCallId> {
+pub(crate) fn requested_call_ids(record: &EffectRecord) -> Vec<&rig_core::message::CallId> {
     match &record.outcome {
         Ok(Outcome::Completion(response)) => response
             .choice
@@ -1044,9 +1045,10 @@ pub(crate) fn assert_log(cell: &Cell, thinking: ThinkingWire, log: &EffectLog) {
                         "{}: request {n}'s result {i} ({name}) answers the turn's {i}th call, in call order",
                         cell.name
                     );
-                    let replayed = rig_core::tool::ToolOutput::content(part.content.clone())
-                        .expect("a tool-result part carries content")
-                        .render();
+                    let replayed =
+                        rig_core::tool::ToolOutput::content(part.content.clone().into_vec())
+                            .expect("a tool-result part carries content")
+                            .render();
                     assert_eq!(
                         replayed,
                         dispatched_result(record).output().render(),

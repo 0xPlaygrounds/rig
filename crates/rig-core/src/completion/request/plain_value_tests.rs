@@ -11,7 +11,7 @@ use crate::message::{Reasoning, ToolChoice, ToolFunction};
 fn bare(chat_history: Vec<Message>) -> CompletionRequest {
     CompletionRequest {
         model: None,
-        chat_history,
+        chat_history: crate::NonEmpty::from_vec(chat_history).expect("non-empty"),
         documents: Vec::new(),
         tools: Vec::new(),
         temperature: None,
@@ -89,18 +89,6 @@ fn a_second_preamble_goes_ahead_of_the_first() {
             Message::system("first"),
             Message::user("prompt"),
         ]),
-    );
-}
-
-/// A conversation with no prompt yet: the last message stays last.
-#[test]
-fn a_message_goes_before_the_last_message_of_any_conversation() {
-    let request = CompletionRequest::from(Vec::<Message>::new())
-        .preamble("system")
-        .message(Message::user("hi"));
-    assert_same(
-        &request,
-        &bare(vec![Message::user("hi"), Message::system("system")]),
     );
 }
 
@@ -242,32 +230,29 @@ fn every_prompt_form_converts_to_the_same_request() {
     assert_same(&CompletionRequest::from("hi".to_owned()), &expected);
     assert_same(&CompletionRequest::from(Message::user("hi")), &expected);
     assert_same(
-        &CompletionRequest::from(vec![Message::user("hi")]),
+        &CompletionRequest::from(crate::NonEmpty::new(Message::user("hi"))),
         &expected,
     );
 }
 
 #[test]
-fn a_conversation_is_sent_as_given_and_an_empty_one_is_refused() {
+fn a_conversation_is_sent_as_given_and_an_empty_one_cannot_be_built() {
     let history = vec![
         Message::system("s"),
         Message::user("q"),
         Message::assistant("a"),
         Message::user("q2"),
     ];
-    assert_same(&CompletionRequest::from(history.clone()), &bare(history));
-    assert!(
-        CompletionRequest::from(Vec::new())
-            .validate_message_content()
-            .is_err()
-    );
+    let conversation = crate::NonEmpty::from_vec(history.clone()).expect("non-empty");
+    assert_same(&CompletionRequest::from(conversation), &bare(history));
+    assert!(crate::NonEmpty::<Message>::from_vec(Vec::new()).is_err());
 }
 
 fn call(id: &str, name: &str) -> ToolCall {
     ToolCall::from_wire(
         id,
         ToolFunction {
-            name: name.to_owned(),
+            name: crate::message::ToolName::new(name.to_owned()).expect("tool name"),
             arguments: serde_json::json!({"q": id}),
         },
     )
@@ -281,7 +266,7 @@ fn response(choice: Vec<AssistantContent>) -> CompletionResponse {
 fn text_concatenates_the_text_parts_in_order() {
     let response = response(vec![
         AssistantContent::text("Par"),
-        AssistantContent::Reasoning(Reasoning::new("not text")),
+        AssistantContent::Reasoning(Reasoning::new("not text").sealed("test")),
         AssistantContent::ToolCall(call("c1", "lookup")),
         AssistantContent::text("is"),
     ]);
@@ -291,10 +276,12 @@ fn text_concatenates_the_text_parts_in_order() {
 #[test]
 fn reasoning_concatenates_reasoning_text_and_summaries_in_order() {
     let response = response(vec![
-        AssistantContent::Reasoning(Reasoning::new("first, ")),
+        AssistantContent::Reasoning(Reasoning::new("first, ").sealed("test")),
         AssistantContent::text("answer"),
-        AssistantContent::Reasoning(Reasoning::summaries(vec!["then ".into(), "done".into()])),
-        AssistantContent::Reasoning(Reasoning::encrypted("opaque")),
+        AssistantContent::Reasoning(
+            Reasoning::summaries(vec!["then ".into(), "done".into()]).sealed("test"),
+        ),
+        AssistantContent::Reasoning(Reasoning::encrypted("opaque").sealed("test")),
     ]);
     assert_eq!(response.reasoning(), "first, then done");
     assert_eq!(response.text(), "answer");
@@ -317,16 +304,16 @@ fn tool_calls_are_the_calls_in_order() {
 #[test]
 fn a_response_is_the_assistant_turn() {
     let choice = vec![
-        AssistantContent::Reasoning(Reasoning::new("hmm")),
+        AssistantContent::Reasoning(Reasoning::new("hmm").sealed("test")),
         AssistantContent::text("hi"),
         AssistantContent::ToolCall(call("c1", "a")),
     ];
     let response = response(choice.clone()).with_message_id("msg_1");
     assert_eq!(
-        Message::from(response),
+        response.message().expect("a non-empty choice"),
         Message::Assistant {
             id: Some("msg_1".to_owned()),
-            content: choice,
+            content: crate::NonEmpty::from_vec(choice).expect("non-empty"),
         }
     );
 }

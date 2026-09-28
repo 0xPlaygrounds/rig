@@ -97,6 +97,13 @@ impl TryFrom<RigMessage> for vertexai::model::Content {
             Message::Assistant { content, .. } => {
                 let parts: Result<Vec<vertexai::model::Part>, _> = content
                     .into_iter()
+                    // Reasoning another service issued is not replayed.
+                    .filter(|part| match part {
+                        AssistantContent::Reasoning(reasoning) => reasoning
+                            .open(&crate::types::completion_response::ISSUER)
+                            .is_some(),
+                        _ => true,
+                    })
                     .map(|assistant_content| match assistant_content {
                         AssistantContent::Text(text) => {
                             let signature = rig_core::providers::gemini::text_signature_at(
@@ -129,7 +136,7 @@ impl TryFrom<RigMessage> for vertexai::model::Content {
                             };
 
                             let function_call = vertexai::model::FunctionCall::new()
-                                .set_name(tool_call.function.name.clone())
+                                .set_name(tool_call.function.name.to_string())
                                 .set_args(struct_val);
 
                             let mut part =
@@ -152,6 +159,13 @@ impl TryFrom<RigMessage> for vertexai::model::Content {
                             Ok(part)
                         }
                         AssistantContent::Reasoning(reasoning) => {
+                            let reasoning = reasoning
+                                .open(&crate::types::completion_response::ISSUER)
+                                .ok_or_else(|| {
+                                    ProviderError::request(
+                                        "Vertex cannot replay reasoning another service issued",
+                                    )
+                                })?;
                             let mut part = vertexai::model::Part::new()
                                 .set_text(reasoning.display_text())
                                 .set_thought(true);

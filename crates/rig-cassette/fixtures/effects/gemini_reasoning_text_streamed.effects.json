@@ -73,6 +73,7 @@
           "choice": [
             {
               "type": "reasoning",
+              "issuer": "gcp.gemini",
               "id": null,
               "content": [
                 {
@@ -81,8 +82,7 @@
                     "text": "**Defining Rust's Core**\n\nI've been drilling down on Rust. Right now, I am trying to define Rust. It's a systems programming language. I need to explain the concept concisely, in one or two sentences.\n\n\n"
                   }
                 }
-              ],
-              "provider": "gcp.gemini"
+              ]
             },
             {
               "type": "text",
@@ -153,6 +153,7 @@
           },
           "block": {
             "type": "reasoning",
+            "issuer": "gcp.gemini",
             "id": null,
             "content": [
               {

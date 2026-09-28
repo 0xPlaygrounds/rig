@@ -103,6 +103,7 @@
           "choice": [
             {
               "type": "reasoning",
+              "issuer": "deepseek",
               "id": null,
               "content": [
                 {
@@ -111,17 +112,14 @@
                     "text": "The user wants a concise event object for a local Rust meetup in Seattle. I should call final_result with title, category, summary.\n\nCategories: \"meetup\" maybe. Let's produce."
                   }
                 }
-              ],
-              "provider": "deepseek"
+              ]
             },
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_00_2g1OMQFZ41XFC1VlfRAA2168"
-              },
-              "provider": {
-                "call_id": "call_00_2g1OMQFZ41XFC1VlfRAA2168"
+                "provider": {
+                  "call_id": "call_00_2g1OMQFZ41XFC1VlfRAA2168"
+                }
               },
               "function": {
                 "name": "final_result",

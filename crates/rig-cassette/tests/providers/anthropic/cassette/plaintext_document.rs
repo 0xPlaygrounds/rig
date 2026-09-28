@@ -58,12 +58,12 @@ fn cited_rust_document() -> Document {
 
 fn citation_prompt() -> Message {
     Message::User {
-        content: vec![
+        content: rig_core::NonEmpty::with_rest(
             UserContent::Document(cited_rust_document()),
-            UserContent::text(
+            [UserContent::text(
                 "Using citations, answer in one sentence: what three goals does Rust focus on?",
-            ),
-        ],
+            )],
+        ),
     }
 }
 
@@ -131,12 +131,12 @@ async fn plaintext_document_with_instruction() {
 
             let response = agent
                 .prompt(Message::User {
-                    content: vec![
+                    content: rig_core::NonEmpty::with_rest(
                         UserContent::document(rust_document(), Some(DocumentMediaType::TXT)),
-                        UserContent::text(
+                        [UserContent::text(
                             "List the three main goals of Rust mentioned in this document.",
-                        ),
-                    ],
+                        )],
+                    ),
                 })
                 .await
                 .expect("instruction prompt should succeed")
@@ -229,7 +229,8 @@ async fn document_citations_followup_preserves_assistant_citation_history() {
                         .message(prompt)
                         .message(Message::Assistant {
                             id: first_turn.message_id.clone(),
-                            content: first_turn.choice.clone(),
+                            content: rig_core::NonEmpty::from_vec(first_turn.choice.clone())
+                                .expect("non-empty"),
                         }),
                 )
                 .await

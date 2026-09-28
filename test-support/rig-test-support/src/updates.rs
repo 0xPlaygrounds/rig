@@ -107,7 +107,9 @@ fn finished_text(part: &AssistantContent) -> String {
     match part {
         AssistantContent::Text(text) => text.text.clone(),
         AssistantContent::Reasoning(reasoning) => reasoning
-            .content
+            .open(reasoning.issuer())
+            .map(|reasoning| reasoning.content.as_slice())
+            .unwrap_or_default()
             .iter()
             .map(|content| match content {
                 ReasoningContent::Text { text, .. } => text.as_str(),

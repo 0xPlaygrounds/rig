@@ -141,11 +141,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_242dd7cefafc4421b2ed396a"
-              },
-              "provider": {
-                "call_id": "call_242dd7cefafc4421b2ed396a"
+                "provider": {
+                  "call_id": "call_242dd7cefafc4421b2ed396a"
+                }
               },
               "function": {
                 "name": "add",
@@ -276,11 +274,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_242dd7cefafc4421b2ed396a"
-                  },
-                  "provider": {
-                    "call_id": "call_242dd7cefafc4421b2ed396a"
+                    "provider": {
+                      "call_id": "call_242dd7cefafc4421b2ed396a"
+                    }
                   },
                   "function": {
                     "name": "add",
@@ -300,11 +296,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_242dd7cefafc4421b2ed396a"
-                  },
-                  "provider": {
-                    "call_id": "call_242dd7cefafc4421b2ed396a"
+                    "provider": {
+                      "call_id": "call_242dd7cefafc4421b2ed396a"
+                    }
                   },
                   "name": "add",
                   "content": [
@@ -381,11 +375,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_8a911ab7dd8944c8b972c1cb"
-              },
-              "provider": {
-                "call_id": "call_8a911ab7dd8944c8b972c1cb"
+                "provider": {
+                  "call_id": "call_8a911ab7dd8944c8b972c1cb"
+                }
               },
               "function": {
                 "name": "final_result",

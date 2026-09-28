@@ -163,12 +163,10 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_oGgQAeg7HiDegO9MUuOvJexg"
-              },
-              "provider": {
-                "call_id": "call_oGgQAeg7HiDegO9MUuOvJexg",
-                "item_id": "fc_02396dbad274c2d0006ab396a50e9c87d0a86ddfc4cd2734e3"
+                "provider": {
+                  "call_id": "call_oGgQAeg7HiDegO9MUuOvJexg",
+                  "item_id": "fc_02396dbad274c2d0006ab396a50e9c87d0a86ddfc4cd2734e3"
+                }
               },
               "function": {
                 "name": "subtract",
@@ -322,12 +320,10 @@
           "block": {
             "type": "toolcall",
             "id": {
-              "origin": "explicit",
-              "id": "call_oGgQAeg7HiDegO9MUuOvJexg"
-            },
-            "provider": {
-              "call_id": "call_oGgQAeg7HiDegO9MUuOvJexg",
-              "item_id": "fc_02396dbad274c2d0006ab396a50e9c87d0a86ddfc4cd2734e3"
+              "provider": {
+                "call_id": "call_oGgQAeg7HiDegO9MUuOvJexg",
+                "item_id": "fc_02396dbad274c2d0006ab396a50e9c87d0a86ddfc4cd2734e3"
+              }
             },
             "function": {
               "name": "subtract",
@@ -432,12 +428,10 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_oGgQAeg7HiDegO9MUuOvJexg"
-                  },
-                  "provider": {
-                    "call_id": "call_oGgQAeg7HiDegO9MUuOvJexg",
-                    "item_id": "fc_02396dbad274c2d0006ab396a50e9c87d0a86ddfc4cd2734e3"
+                    "provider": {
+                      "call_id": "call_oGgQAeg7HiDegO9MUuOvJexg",
+                      "item_id": "fc_02396dbad274c2d0006ab396a50e9c87d0a86ddfc4cd2734e3"
+                    }
                   },
                   "function": {
                     "name": "subtract",
@@ -457,12 +451,10 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_oGgQAeg7HiDegO9MUuOvJexg"
-                  },
-                  "provider": {
-                    "call_id": "call_oGgQAeg7HiDegO9MUuOvJexg",
-                    "item_id": "fc_02396dbad274c2d0006ab396a50e9c87d0a86ddfc4cd2734e3"
+                    "provider": {
+                      "call_id": "call_oGgQAeg7HiDegO9MUuOvJexg",
+                      "item_id": "fc_02396dbad274c2d0006ab396a50e9c87d0a86ddfc4cd2734e3"
+                    }
                   },
                   "name": "subtract",
                   "content": [

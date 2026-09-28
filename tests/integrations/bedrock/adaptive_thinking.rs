@@ -68,6 +68,7 @@ async fn streaming_emits_signature_only_adaptive_reasoning_regression() {
                 ..
             } => {
                 reasoning_chunks += 1;
+                let reasoning = reasoning.open(reasoning.issuer()).expect("reasoning opens");
                 if reasoning.first_signature().is_some() {
                     signature_chunks += 1;
                     if reasoning.display_text().is_empty() {

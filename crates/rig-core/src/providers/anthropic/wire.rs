@@ -13,6 +13,7 @@
 use crate::client::env::{self, EnvError};
 use crate::completion::{CompletionRequest, ProviderCapabilities};
 use crate::error::EncodeError;
+use crate::message::Issuer;
 use crate::model::{ModelInfo, ModelList};
 pub use crate::operation::VerifyDecoder;
 use crate::operation::{Completion, ModelListing, ModelPage, Verify as VerifyOp};
@@ -456,9 +457,13 @@ impl Messages {
             request.max_tokens = Some(tokens);
         }
         let model = request.model.clone().unwrap_or_else(|| self.model.clone());
+        // Only reasoning this dialect issued is replayed here.
+        let issuers = [Issuer::from_static(self.provider.dialect.name)];
+        let request = request.replayable_to(&issuers)?;
         let typed = AnthropicCompletionRequest::try_from_params(
             AnthropicRequestParams {
                 model: &model,
+                issuers: &issuers,
                 request,
                 prompt_caching: self.prompt_caching,
                 automatic_caching: self.automatic_caching,
@@ -501,12 +506,7 @@ impl Wire for Messages {
             ))
     }
 
-    fn encode(&self, mut request: CompletionRequest, mode: Mode) -> Result<Encoded, EncodeError> {
-        // Reasoning another issuer signed is not replayed here.
-        crate::message::retain_replayable_reasoning(
-            &mut request.chat_history,
-            &[self.provider.dialect.name],
-        );
+    fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, EncodeError> {
         let body = self.body(request, mode)?;
         crate::providers::internal::trace_json(
             crate::providers::internal::LogTarget::Completions,

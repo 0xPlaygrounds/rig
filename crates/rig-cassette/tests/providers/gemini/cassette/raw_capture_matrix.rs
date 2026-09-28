@@ -187,9 +187,10 @@ fn tool_functions(choice: &[AssistantContent]) -> Vec<(String, Value)> {
     choice
         .iter()
         .filter_map(|content| match content {
-            AssistantContent::ToolCall(call) => {
-                Some((call.function.name.clone(), call.function.arguments.clone()))
-            }
+            AssistantContent::ToolCall(call) => Some((
+                call.function.name.to_string(),
+                call.function.arguments.clone(),
+            )),
             _ => None,
         })
         .collect()

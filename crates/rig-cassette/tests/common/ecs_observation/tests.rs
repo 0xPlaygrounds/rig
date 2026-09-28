@@ -11,15 +11,17 @@ fn calls_follow_slot_order_instead_of_spawn_order() {
     for (index, name) in [(2, "unexpected"), (1, "beta"), (0, "alpha")] {
         let call = rig::message::ToolCall::from_wire(
             name,
-            rig::message::ToolFunction::new(name.into(), serde_json::json!({})),
+            rig::message::ToolFunction::new(
+                rig_core::message::ToolName::new(name).expect("tool name"),
+                serde_json::json!({}),
+            ),
         );
         world.spawn((
             ChildOf(turn),
             ToolCallSlot {
                 index,
                 id: call.id,
-                provider: None,
-                name: name.into(),
+                name: rig_core::message::ToolName::new(name).expect("tool name"),
             },
         ));
     }

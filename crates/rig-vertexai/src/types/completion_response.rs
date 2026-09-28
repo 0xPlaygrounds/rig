@@ -16,6 +16,10 @@ use rig_core::wire::{Decoder, Out, TypedEvent, WireEvent};
 /// Stable descriptor name reported on normalized Vertex AI responses.
 pub const PROVIDER_NAME: &str = "vertexai";
 
+/// The issuer of Vertex's reasoning, the only reasoning this wire replays.
+pub(crate) const ISSUER: rig_core::message::Issuer =
+    rig_core::message::Issuer::from_static(PROVIDER_NAME);
+
 /// The text-block `AdditionalParams` key holding Vertex AI extras for that
 /// text, today the `thoughtSignature` Vertex put on the answer part. Only the
 /// Vertex codec reads it, so the signature returns only to Vertex.
@@ -106,7 +110,6 @@ fn assistant_content(
     // Vertex function calls carry no id: the `index`-th call of the
     // response mints its own handle, so two calls in one turn never
     // share one (the position pass below is then a no-op).
-    let mut tool_index = 0u64;
 
     for part in content.parts.iter() {
         // Preserve opaque signature bytes as base64 for exact replay.
@@ -119,22 +122,19 @@ fn assistant_content(
                 |s| serde_json::Value::Object(s.clone()),
             );
 
-            // Mint by call index, not name, so repeated calls to one tool
-            // retain distinct correlation handles.
-            let index = tool_index;
-            tool_index += 1;
+            let name =
+                rig_core::message::ToolName::new(function_call.name.clone()).map_err(|error| {
+                    ProviderError::Response(format!("Vertex returned a function call: {error}"))
+                })?;
+            // Vertex sends no call id: rig issues one per call.
             assistant_contents.push(AssistantContent::ToolCall(
-                ToolCall::from_wire_indexed(
-                    "",
-                    index,
-                    ToolFunction::new(function_call.name.clone(), args_json),
-                )
-                .with_signature(signature),
+                ToolCall::from_wire("", ToolFunction::new(name, args_json))
+                    .with_signature(signature),
             ));
         } else if let Some(text) = part.text() {
             if part.thought {
                 assistant_contents.push(AssistantContent::Reasoning(
-                    Reasoning::new_with_signature(text, signature).with_provider(PROVIDER_NAME),
+                    Reasoning::new_with_signature(text, signature).sealed(PROVIDER_NAME),
                 ));
             } else {
                 // A signature on answer text returns on that text part.
@@ -199,7 +199,6 @@ fn assistant_content(
         }
     }
 
-    rig_core::message::normalize_missing_tool_call_ids(&mut assistant_contents);
     rig_core::message::require_non_empty_response(assistant_contents)
 }
 

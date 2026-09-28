@@ -57,7 +57,12 @@ async fn drain_stream(mut stream: rig::streaming::CompletionStream) -> StreamRun
                 block: Some(AssistantContent::Reasoning(reasoning)),
                 ..
             } => {
-                run.reasoning_blocks.push(reasoning);
+                run.reasoning_blocks.push(
+                    reasoning
+                        .open(reasoning.issuer())
+                        .cloned()
+                        .expect("reasoning opens"),
+                );
             }
             StreamEvent::BlockDelta {
                 delta: Delta::Reasoning { text: reasoning },
@@ -217,7 +222,8 @@ async fn parallel_tool_use_stays_distinct() {
             assert!(
                 streamed
                     .id
-                    .explicit()
+                    .provider()
+                    .map(|provider| provider.call_id.as_str())
                     .is_some_and(|id| id.starts_with("toolu_")),
                 "{name} should carry the wire's toolu_* id, got {}",
                 streamed.id

@@ -161,7 +161,10 @@ async fn tool_call_response_normalizes_to_tool_calls_finish_reason() {
     let Some(completion::AssistantContent::ToolCall(call)) = normalized.choice.first() else {
         panic!("expected a tool call, got {:?}", normalized.choice);
     };
-    assert_eq!(call.id.explicit(), Some("subtract_1"));
+    assert_eq!(
+        call.id.provider().map(|provider| provider.call_id.as_str()),
+        Some("subtract_1")
+    );
     assert_eq!(call.function.name, "subtract");
     assert_eq!(call.function.arguments, serde_json::json!({"x": 5, "y": 2}));
 }

@@ -5,7 +5,7 @@ use rig_cassette::agent::AgentReplayExt;
 
 use futures::StreamExt;
 use rig::agent::{MultiTurnStreamItem, StreamingError, StreamingResult};
-use rig::message::{Message, ToolCallId, UserContent};
+use rig::message::{CallId, Message, UserContent};
 use rig::providers::anthropic;
 use rig::streaming::{Delta, StreamEvent, StreamedUserContent};
 use rig::tool::Tool;
@@ -320,8 +320,8 @@ async fn collect_concurrent_tool_observation(
     while let Some(item) = stream.next().await {
         match item {
             Ok(MultiTurnStreamItem::ToolCall { tool_call, .. }) => {
-                tool_names_by_id.insert(tool_call.id.clone(), tool_call.function.name.clone());
-                observation.tool_calls.push(tool_call.function.name);
+                tool_names_by_id.insert(tool_call.id.clone(), tool_call.function.name.to_string());
+                observation.tool_calls.push(tool_call.function.name.into());
                 observation.events.push("tool_call");
             }
             Ok(MultiTurnStreamItem::ToolExecutionCommitted { .. }) => {
@@ -395,7 +395,7 @@ fn streaming_error_to_string(error: StreamingError) -> String {
 
 fn tool_result_names_in_history(
     history: &[Message],
-    tool_names_by_id: &HashMap<ToolCallId, String>,
+    tool_names_by_id: &HashMap<CallId, String>,
 ) -> Vec<String> {
     history
         .iter()
@@ -416,7 +416,7 @@ fn tool_result_names_in_history(
 
 fn last_tool_result_message_names(
     history: &[Message],
-    tool_names_by_id: &HashMap<ToolCallId, String>,
+    tool_names_by_id: &HashMap<CallId, String>,
 ) -> Vec<String> {
     history
         .iter()
@@ -444,10 +444,7 @@ fn last_tool_result_message_names(
         .unwrap_or_default()
 }
 
-fn tool_name_for_result(
-    tool_names_by_id: &HashMap<ToolCallId, String>,
-    call: &ToolCallId,
-) -> String {
+fn tool_name_for_result(tool_names_by_id: &HashMap<CallId, String>, call: &CallId) -> String {
     tool_names_by_id
         .get(call)
         .cloned()

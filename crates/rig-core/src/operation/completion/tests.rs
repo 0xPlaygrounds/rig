@@ -11,7 +11,6 @@ use crate::wire::Wire;
 
 const OWN: &str = "own-opaque-reasoning-state";
 const FOREIGN: &str = "foreign-opaque-reasoning-state";
-const UNKNOWN: &str = "unknown-opaque-reasoning-state";
 
 /// One of each reasoning representation, signed or encrypted with `data`.
 /// Each carries an item id, which the Responses encoder requires to replay.
@@ -34,26 +33,28 @@ fn history(own: &str) -> CompletionRequest {
     let content = [
         reasoning(OWN)
             .into_iter()
-            .map(|reasoning| reasoning.with_provider(own))
+            .map(|reasoning| reasoning.sealed(own.to_owned()))
             .collect::<Vec<_>>(),
         reasoning(FOREIGN)
             .into_iter()
-            .map(|reasoning| reasoning.with_provider("another.provider"))
+            .map(|reasoning| reasoning.sealed("another.provider"))
             .collect(),
-        reasoning(UNKNOWN),
     ]
     .concat()
     .into_iter()
     .map(AssistantContent::Reasoning)
     .chain([AssistantContent::text("The answer is 4.")])
-    .collect();
+    .collect::<Vec<_>>();
+    let content = crate::NonEmpty::from_vec(content).expect("non-empty");
     CompletionRequest {
         model: None,
-        chat_history: vec![
+        chat_history: crate::NonEmpty::with_rest(
             Message::user("What is 2 + 2?"),
-            Message::Assistant { id: None, content },
-            Message::user("And 3 + 3?"),
-        ],
+            [
+                Message::Assistant { id: None, content },
+                Message::user("And 3 + 3?"),
+            ],
+        ),
         documents: vec![],
         tools: vec![],
         temperature: None,
@@ -65,8 +66,8 @@ fn history(own: &str) -> CompletionRequest {
     }
 }
 
-/// The body `wire` sends for a history holding its own, another
-/// provider's, and unattributed reasoning.
+/// The body `wire` sends for a history holding its own and another
+/// provider's reasoning.
 async fn sent<W>(wire: W) -> String
 where
     W: Wire<Op = super::Completion>,
@@ -92,10 +93,6 @@ fn assert_scoped(body: &str, wire: &str, replays_opaque: bool) {
         assert!(
             body.contains(OWN),
             "{wire} replays its own reasoning: {body}"
-        );
-        assert!(
-            body.contains(UNKNOWN),
-            "{wire} replays reasoning of unknown provenance: {body}"
         );
     }
 }
@@ -153,23 +150,25 @@ async fn a_local_runtime_replays_only_its_own_reasoning() {
 }
 
 #[test]
-fn provenance_round_trips_and_older_histories_load() {
+fn sealed_reasoning_round_trips_and_older_histories_do_not_load() {
     let signed =
-        Reasoning::new_with_signature("thought", Some("sig".to_owned())).with_provider("anthropic");
+        Reasoning::new_with_signature("thought", Some("sig".to_owned())).sealed("anthropic");
     let json = serde_json::to_value(&signed).expect("serializes");
-    assert_eq!(json["provider"], "anthropic");
-    let back: Reasoning = serde_json::from_value(json.clone()).expect("loads");
+    assert_eq!(json["issuer"], "anthropic");
+    let back: crate::message::Sealed<Reasoning> =
+        serde_json::from_value(json.clone()).expect("loads");
     assert_eq!(back, signed);
+    assert!(back.open(&"anthropic".into()).is_some());
+    assert!(back.open(&"gcp.gemini".into()).is_none());
 
+    // Reasoning persisted before it was sealed names a `provider`, or no
+    // issuer at all: it does not load.
     let mut legacy = json;
-    legacy
-        .as_object_mut()
-        .expect("an object")
-        .remove("provider");
-    let loaded: Reasoning = serde_json::from_value(legacy).expect("a pre-provenance value loads");
-    assert_eq!(loaded.provider, None);
-    assert!(loaded.replayable_to("anthropic") && loaded.replayable_to("gcp.gemini"));
-    assert!(signed.replayable_to("anthropic") && !signed.replayable_to("gcp.gemini"));
+    let object = legacy.as_object_mut().expect("an object");
+    object.remove("issuer");
+    assert!(serde_json::from_value::<crate::message::Sealed<Reasoning>>(legacy.clone()).is_err());
+    legacy["provider"] = serde_json::json!("anthropic");
+    assert!(serde_json::from_value::<crate::message::Sealed<Reasoning>>(legacy).is_err());
 }
 
 #[test]
@@ -179,15 +178,20 @@ fn a_turn_that_held_only_foreign_reasoning_is_omitted() {
         1,
         Message::Assistant {
             id: None,
-            content: reasoning(FOREIGN)
-                .into_iter()
-                .map(|reasoning| AssistantContent::Reasoning(reasoning.with_provider("another")))
-                .collect(),
+            content: crate::NonEmpty::from_vec(
+                reasoning(FOREIGN)
+                    .into_iter()
+                    .map(|reasoning| AssistantContent::Reasoning(reasoning.sealed("another")))
+                    .collect(),
+            )
+            .expect("non-empty"),
         },
     );
     assert_eq!(request.chat_history.len(), 4);
     // What the Messages wire keeps of a history before it encodes it.
-    crate::message::retain_replayable_reasoning(&mut request.chat_history, &["anthropic"]);
+    let request = request
+        .replayable_to(&["anthropic".into()])
+        .expect("messages are left");
     assert_eq!(request.chat_history.len(), 3, "{:?}", request.chat_history);
     assert!(request.chat_history.iter().all(|message| match message {
         Message::Assistant { content, .. } => !content.is_empty(),
@@ -208,19 +212,20 @@ fn a_stream_stamps_its_reasoning_with_the_terminal_issuer() {
 
     let choice = stamp_reasoning(
         vec![
-            AssistantContent::Reasoning(Reasoning::new("unstamped")),
-            AssistantContent::Reasoning(Reasoning::new("stamped").with_provider("gcp.gemini")),
+            AssistantContent::Reasoning(Reasoning::new("unstamped").sealed("test")),
+            AssistantContent::Reasoning(Reasoning::new("stamped").sealed("gcp.gemini")),
         ],
         terminal.issuer(),
     );
     let issuers: Vec<_> = choice
         .iter()
         .filter_map(|part| match part {
-            AssistantContent::Reasoning(reasoning) => reasoning.provider.as_deref(),
+            AssistantContent::Reasoning(reasoning) => Some(reasoning.issuer().as_str()),
             _ => None,
         })
         .collect();
-    assert_eq!(issuers, ["anthropic", "gcp.gemini"]);
+    // Every part of a reply's choice is this reply's reasoning.
+    assert_eq!(issuers, ["anthropic", "anthropic"]);
 
     let json = serde_json::to_value(&terminal).expect("serializes");
     let back: StreamFinal = serde_json::from_value(json).expect("loads");
@@ -303,7 +308,7 @@ fn a_gateway_attributes_reasoning_to_the_upstream_family() {
 
 /// A request to OpenRouter replays only the requested model family's
 /// reasoning, plus reasoning stamped with the gateway alone before issuers
-/// were upstream-scoped, and reasoning of unknown provenance.
+/// were upstream-scoped.
 #[tokio::test]
 async fn openrouter_replays_only_the_requested_familys_reasoning() {
     let issuers = [
@@ -318,13 +323,9 @@ async fn openrouter_replays_only_the_requested_familys_reasoning() {
         .map(|issuer| {
             AssistantContent::Reasoning(
                 Reasoning::new_with_signature(issuer, Some(format!("sig-{issuer}")))
-                    .with_provider(*issuer),
+                    .sealed(*issuer),
             )
         })
-        .chain([AssistantContent::Reasoning(Reasoning::new_with_signature(
-            "unknown",
-            Some("sig-unknown".to_owned()),
-        ))])
         .chain([AssistantContent::text("4")])
         .collect();
     // Through the chat wire itself and through the route wrapper
@@ -335,7 +336,10 @@ async fn openrouter_replays_only_the_requested_familys_reasoning() {
         RecordingHttpClient: crate::driver::Transport<W>,
     {
         let mut request = history("unused");
-        request.chat_history[1] = Message::Assistant { id: None, content };
+        request.chat_history[1] = Message::Assistant {
+            id: None,
+            content: crate::NonEmpty::from_vec(content).expect("non-empty"),
+        };
         let http = RecordingHttpClient::new(Bytes::from_static(b"{}"));
         let _ = crate::driver::Model::new(wire, http.clone())
             .call(request)
@@ -363,18 +367,17 @@ async fn openrouter_replays_only_the_requested_familys_reasoning() {
     let kept = |body: &str| {
         issuers
             .iter()
-            .chain(["unknown"].iter())
             .filter(|issuer| body.contains(&format!("sig-{issuer}")))
             .copied()
             .collect::<Vec<_>>()
     };
     assert_eq!(
         kept(&body_for("google/gemini-3-flash-preview").await),
-        ["openrouter/google", "openrouter", "unknown"]
+        ["openrouter/google", "openrouter"]
     );
     assert_eq!(
         kept(&body_for("anthropic/claude-haiku-4.5").await),
-        ["anthropic", "openrouter", "unknown"]
+        ["anthropic", "openrouter"]
     );
     // A router or preset names no family, so every relayed family replays;
     // direct-provider reasoning of another service still does not.
@@ -386,7 +389,6 @@ async fn openrouter_replays_only_the_requested_familys_reasoning() {
                 "openrouter/openai",
                 "openrouter/google",
                 "openrouter",
-                "unknown"
             ],
             "{router}"
         );
@@ -410,19 +412,19 @@ async fn openrouter_responses_route_scopes_reasoning_by_family() {
             AssistantContent::Reasoning(
                 Reasoning::new(issuer)
                     .with_id(format!("rs-{issuer}"))
-                    .with_provider(*issuer),
+                    .sealed(*issuer),
             )
         })
-        .chain([
-            AssistantContent::Reasoning(Reasoning::new("unknown").with_id("rs-unknown".to_owned())),
-            AssistantContent::text("4"),
-        ])
+        .chain([AssistantContent::text("4")])
         .collect();
     let kept = |model: &'static str| {
         let content = content.clone();
         async move {
             let mut request = history("unused");
-            request.chat_history[1] = Message::Assistant { id: None, content };
+            request.chat_history[1] = Message::Assistant {
+                id: None,
+                content: crate::NonEmpty::from_vec(content).expect("non-empty"),
+            };
             let http = RecordingHttpClient::new(Bytes::from_static(b"{}"));
             let wire = OpenAIConfig::with_key(&OPENROUTER, "test-key").responses(model);
             let _ = crate::driver::Model::new(wire, http.clone())
@@ -431,7 +433,6 @@ async fn openrouter_responses_route_scopes_reasoning_by_family() {
             let body = String::from_utf8_lossy(&http.requests()[0].body).into_owned();
             issuers
                 .iter()
-                .chain(["unknown"].iter())
                 .filter(|issuer| body.contains(&format!("\"rs-{issuer}\"")))
                 .copied()
                 .collect::<Vec<_>>()
@@ -439,11 +440,11 @@ async fn openrouter_responses_route_scopes_reasoning_by_family() {
     };
     assert_eq!(
         kept("openai/gpt-5-mini").await,
-        ["openrouter/openai", "openrouter", "unknown"]
+        ["openrouter/openai", "openrouter"]
     );
     assert_eq!(
         kept("anthropic/claude-haiku-4.5").await,
-        ["anthropic", "openrouter", "unknown"]
+        ["anthropic", "openrouter"]
     );
 
     let reply = serde_json::json!({
@@ -467,7 +468,7 @@ async fn openrouter_responses_route_scopes_reasoning_by_family() {
         .choice
         .iter()
         .filter_map(|part| match part {
-            AssistantContent::Reasoning(reasoning) => reasoning.provider.as_deref(),
+            AssistantContent::Reasoning(reasoning) => Some(reasoning.issuer().as_str()),
             _ => None,
         })
         .collect();
@@ -503,13 +504,16 @@ async fn openrouter_responses_route_round_trips_a_claude_signature() {
     let Some(AssistantContent::Reasoning(reasoning)) = response.choice.first() else {
         panic!("the reply opens with reasoning: {:?}", response.choice);
     };
-    assert_eq!(reasoning.first_signature(), Some("claude-signature"));
-    assert_eq!(reasoning.provider.as_deref(), Some("anthropic"));
+    assert_eq!(
+        reasoning.value().first_signature(),
+        Some("claude-signature")
+    );
+    assert_eq!(Some(reasoning.issuer().as_str()), Some("anthropic"));
 
     let mut request = history("unused");
     request.chat_history[1] = Message::Assistant {
         id: None,
-        content: response.choice.clone(),
+        content: crate::NonEmpty::from_vec(response.choice.clone()).expect("non-empty"),
     };
     let http = RecordingHttpClient::new(Bytes::from_static(b"{}"));
     let _ = crate::driver::Model::new(wire, http.clone())
@@ -549,7 +553,7 @@ async fn openrouter_reasoning_records_its_upstream_family() {
         choice
             .iter()
             .filter_map(|part| match part {
-                AssistantContent::Reasoning(reasoning) => reasoning.provider.clone(),
+                AssistantContent::Reasoning(reasoning) => Some(reasoning.issuer().to_string()),
                 _ => None,
             })
             .collect::<Vec<_>>()

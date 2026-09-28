@@ -270,6 +270,69 @@ pub fn stable_hash<T: Serialize>(value: &T) -> Result<u64, serde_json::Error> {
     Ok(hash)
 }
 
+/// `log` with each rig-issued call id (a random uuid) renamed, in order of
+/// first appearance, to a fixed one. Rig issues its ids afresh on every run,
+/// so two runs that differ only in them record and replay the same log.
+///
+/// ```
+/// let issued = serde_json::json!({"local": "7ecaf57b-5bbb-4b9e-a440-63738a5939ec"});
+/// assert_eq!(
+///     rig_cassette::effect_log::canonical_local_ids(issued),
+///     serde_json::json!({"local": "00000000-0000-4000-8000-000000000000"}),
+/// );
+/// ```
+pub fn canonical_local_ids(mut log: serde_json::Value) -> serde_json::Value {
+    use serde_json::Value;
+    fn issued(value: &Value, ids: &mut Vec<String>) {
+        match value {
+            Value::Object(object) => {
+                if let (1, Some(Value::String(id))) = (object.len(), object.get("local"))
+                    && !ids.contains(id)
+                {
+                    ids.push(id.clone());
+                }
+                object.values().for_each(|value| issued(value, ids));
+            }
+            Value::Array(values) => values.iter().for_each(|value| issued(value, ids)),
+            _ => {}
+        }
+    }
+    fn rename(value: &mut Value, ids: &[String], order: &mut Vec<String>) {
+        match value {
+            Value::String(text) => {
+                // Mark every id first, so a fixed id that is also an issued
+                // one is never renamed twice.
+                let mut marked = text.clone();
+                for id in ids.iter().filter(|id| text.contains(id.as_str())) {
+                    let index = order.iter().position(|seen| seen == id).unwrap_or_else(|| {
+                        order.push(id.clone());
+                        order.len() - 1
+                    });
+                    marked = marked.replace(id.as_str(), &format!("\u{0}{index}\u{0}"));
+                }
+                for index in 0..order.len() {
+                    marked = marked.replace(
+                        &format!("\u{0}{index}\u{0}"),
+                        &format!("00000000-0000-4000-8000-{index:012}"),
+                    );
+                }
+                *text = marked;
+            }
+            Value::Object(object) => object
+                .values_mut()
+                .for_each(|value| rename(value, ids, order)),
+            Value::Array(values) => values
+                .iter_mut()
+                .for_each(|value| rename(value, ids, order)),
+            _ => {}
+        }
+    }
+    let mut ids = Vec::new();
+    issued(&log, &mut ids);
+    rename(&mut log, &ids, &mut Vec::new());
+    log
+}
+
 /// A tool call's JSON arguments with object keys sorted, or the text as is
 /// when it is not JSON. Two argument strings that differ only in key order
 /// describe the same call; which order a build emits depends on whether

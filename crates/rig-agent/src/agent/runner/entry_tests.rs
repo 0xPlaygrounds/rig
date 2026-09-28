@@ -160,11 +160,7 @@ async fn resume_continues_a_run_without_a_prompt() {
     let requests = recorded.requests();
     assert_eq!(requests.len(), 1);
     assert_eq!(
-        requests[0]
-            .chat_history
-            .last()
-            .and_then(Message::rag_text)
-            .as_deref(),
+        requests[0].chat_history.last().rag_text().as_deref(),
         Some("from the run"),
         "the run's own prompt is what the provider saw"
     );
@@ -193,11 +189,7 @@ async fn resume_streams_a_run_without_a_prompt() {
     let requests = recorded.requests();
     assert_eq!(requests.len(), 1);
     assert_eq!(
-        requests[0]
-            .chat_history
-            .last()
-            .and_then(Message::rag_text)
-            .as_deref(),
+        requests[0].chat_history.last().rag_text().as_deref(),
         Some("from the run")
     );
 }

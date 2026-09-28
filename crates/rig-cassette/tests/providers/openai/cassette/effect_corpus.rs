@@ -46,8 +46,8 @@ fn assert_dual_ids(calls: &[rig::message::ToolCall]) {
     assert!(!calls.is_empty(), "the program calls tools");
     for call in calls {
         let provider = call
-            .provider
-            .as_ref()
+            .id
+            .provider()
             .unwrap_or_else(|| panic!("a Responses call carries a provider id: {call:?}"));
         assert!(
             provider.item_id.is_some(),

@@ -9,7 +9,7 @@
 
 use super::*;
 use rig_core::{
-    message::{ToolCall, ToolCallId, ToolFunction},
+    message::{CallId, ToolCall, ToolFunction},
     operation::{AdapterOutput, CompletionFold},
     streaming::{BlockId, Delta, StreamEvent},
     wire::Fold,
@@ -51,7 +51,7 @@ fn completed_calls(events: &[StreamEvent]) -> Vec<Option<(BlockId, ToolCall)>> {
 /// Resolve a delivered name's block to the final identity of the call it
 /// completed. The offset disambiguates a block identifier reused later in
 /// the stream.
-pub(super) fn completed_call_id(events: &[StreamEvent], offset: usize) -> Option<ToolCallId> {
+pub(super) fn completed_call_id(events: &[StreamEvent], offset: usize) -> Option<CallId> {
     let block_id = match events.get(offset)? {
         StreamEvent::BlockDelta { id, .. } | StreamEvent::BlockEnd { id, .. } => id,
         _ => return None,
@@ -147,12 +147,12 @@ pub fn discover_streamed_invalid_calls(
                 StreamEvent::BlockDelta {
                     id,
                     delta: Delta::ToolName { name },
-                } => (id, name, false),
+                } => (id, name.as_str(), false),
                 StreamEvent::BlockEnd {
                     id,
                     block: Some(AssistantContent::ToolCall(call)),
                     ..
-                } => (id, &call.function.name, true),
+                } => (id, call.function.name.as_str(), true),
                 StreamEvent::BlockEnd {
                     id,
                     end: rig_core::streaming::BlockClose::ToolCall(end),
@@ -161,14 +161,13 @@ pub fn discover_streamed_invalid_calls(
                     let Some(name) = &end.name else {
                         continue;
                     };
-                    (id, name, true)
+                    (id, name.as_str(), true)
                 }
                 _ => continue,
             };
-            if allowed.contains(name) {
+            if allowed.iter().any(|allowed| allowed == name) {
                 continue;
             }
-            let call_id = ToolCallId::from_block(id);
             // Ignore applies to the whole open occurrence, not just the
             // first name delta. An ended block may reuse the same identifier.
             if pending.iter().any(|(_, call, resolution)| {
@@ -206,7 +205,7 @@ pub fn discover_streamed_invalid_calls(
                     match resolution {
                         Some(Resolution::Repair { to }) => {
                             for part in &mut prefix {
-                                if let AssistantContent::ToolCall(call) = part && call.id == completed_id { call.function.name = to.clone(); }
+                                if let AssistantContent::ToolCall(call) = part && call.id == completed_id && let Ok(to) = rig_core::message::ToolName::new(to.clone()) { call.function.name = to; }
                             }
                         }
                         Some(Resolution::Ignore) => prefix.retain(|part| !matches!(part, AssistantContent::ToolCall(call) if call.id == completed_id)),
@@ -222,19 +221,27 @@ pub fn discover_streamed_invalid_calls(
                 }).collect();
             fragments.reverse();
             let args = serde_json::from_str(&fragments.concat()).unwrap_or(serde_json::Value::Null);
-            let diagnostic = completed.unwrap_or_else(|| {
-                ToolCall::new(
-                    call_id.clone(),
-                    ToolFunction::new(name.clone(), args.clone()),
-                )
-            });
+            let diagnostic = match completed {
+                Some(completed) => completed,
+                None => {
+                    let Ok(name) = rig_core::message::ToolName::new(name) else {
+                        continue;
+                    };
+                    // The call has not completed, so no provider id names
+                    // it: rig issues one.
+                    ToolCall::new(
+                        CallId::Local(rig_core::message::LocalCallId::new()),
+                        ToolFunction::new(name, args.clone()),
+                    )
+                }
+            };
             let call_id = diagnostic.id.clone();
             let args = diagnostic.function.arguments.clone();
             prefix.push(AssistantContent::ToolCall(diagnostic));
             commands.spawn((
                 InvalidCall {
                     id: call_id,
-                    name: name.clone(),
+                    name: name.to_owned(),
                     arguments: args,
                     prefix,
                     stream_offset: Some(index),

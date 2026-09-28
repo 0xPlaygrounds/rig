@@ -95,11 +95,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "MixWwdT5P"
-              },
-              "provider": {
-                "call_id": "MixWwdT5P"
+                "provider": {
+                  "call_id": "MixWwdT5P"
+                }
               },
               "function": {
                 "name": "final_result",

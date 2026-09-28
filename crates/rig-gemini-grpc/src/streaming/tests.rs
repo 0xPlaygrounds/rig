@@ -39,7 +39,7 @@ async fn reasoning_blocks(events: Vec<proto::GenerateContentResponse>) -> Vec<Re
             ..
         } = item.expect("stream item should be ok")
         {
-            blocks.push(reasoning);
+            blocks.push(reasoning.open(reasoning.issuer()).cloned().expect("opens"));
         }
     }
     blocks

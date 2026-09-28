@@ -2,14 +2,6 @@
   "header": {
     "deliveries": [
       {
-        "batch": 5,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
         "batch": 6,
         "id": 0,
         "kind": {
@@ -22,7 +14,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 1
         }
       },
       {
@@ -30,7 +22,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 1
         }
       },
       {
@@ -38,7 +30,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -46,7 +38,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -54,33 +46,73 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 1
         }
       },
       {
-        "batch": 11,
+        "batch": 12,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 13,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 14,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 15,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 6
+        }
+      },
+      {
+        "batch": 15,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 12,
+        "batch": 16,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 16,
+        "batch": 21,
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 4
+          "items": 2
         }
       },
       {
-        "batch": 16,
+        "batch": 23,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 23,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -203,11 +235,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_00_ADi2NKg7kcahUqM1fxqv8350"
-              },
-              "provider": {
-                "call_id": "call_00_ADi2NKg7kcahUqM1fxqv8350"
+                "provider": {
+                  "call_id": "call_00_ADi2NKg7kcahUqM1fxqv8350"
+                }
               },
               "function": {
                 "name": "add",
@@ -377,11 +407,9 @@
           "block": {
             "type": "toolcall",
             "id": {
-              "origin": "explicit",
-              "id": "call_00_ADi2NKg7kcahUqM1fxqv8350"
-            },
-            "provider": {
-              "call_id": "call_00_ADi2NKg7kcahUqM1fxqv8350"
+              "provider": {
+                "call_id": "call_00_ADi2NKg7kcahUqM1fxqv8350"
+              }
             },
             "function": {
               "name": "add",
@@ -485,11 +513,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_00_ADi2NKg7kcahUqM1fxqv8350"
-                  },
-                  "provider": {
-                    "call_id": "call_00_ADi2NKg7kcahUqM1fxqv8350"
+                    "provider": {
+                      "call_id": "call_00_ADi2NKg7kcahUqM1fxqv8350"
+                    }
                   },
                   "function": {
                     "name": "add",
@@ -509,11 +535,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_00_ADi2NKg7kcahUqM1fxqv8350"
-                  },
-                  "provider": {
-                    "call_id": "call_00_ADi2NKg7kcahUqM1fxqv8350"
+                    "provider": {
+                      "call_id": "call_00_ADi2NKg7kcahUqM1fxqv8350"
+                    }
                   },
                   "name": "add",
                   "content": [

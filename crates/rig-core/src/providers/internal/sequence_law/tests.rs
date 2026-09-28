@@ -66,7 +66,6 @@ fn whole_reasoning(id: BlockId, provider_id: Option<String>, text: &str) -> Stre
         id,
         end: BlockClose::Reasoning {
             reasoning: Some(crate::message::Reasoning {
-                provider: None,
                 id: provider_id,
                 content: vec![crate::message::ReasoningContent::Text {
                     text: text.to_owned(),

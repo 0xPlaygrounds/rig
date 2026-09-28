@@ -161,11 +161,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_iSqtSTVC54dfIeDaZHX1nzvu"
-              },
-              "provider": {
-                "call_id": "call_iSqtSTVC54dfIeDaZHX1nzvu"
+                "provider": {
+                  "call_id": "call_iSqtSTVC54dfIeDaZHX1nzvu"
+                }
               },
               "function": {
                 "name": "record_payload",

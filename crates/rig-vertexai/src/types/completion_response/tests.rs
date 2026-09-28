@@ -153,12 +153,24 @@ fn test_thought_text_response_captures_thought_signature() {
 
     match response.choice.first() {
         Some(AssistantContent::Reasoning(reasoning)) => {
-            assert_eq!(reasoning.display_text(), "thinking text");
             assert_eq!(
-                reasoning.first_signature(),
+                reasoning
+                    .open(reasoning.issuer())
+                    .expect("sealed reasoning")
+                    .display_text(),
+                "thinking text"
+            );
+            assert_eq!(
+                reasoning
+                    .open(reasoning.issuer())
+                    .expect("sealed reasoning")
+                    .first_signature(),
                 Some(BASE64.encode(raw).as_str())
             );
-            assert_eq!(reasoning.provider.as_deref(), Some(super::PROVIDER_NAME));
+            assert_eq!(
+                Some(reasoning.issuer().as_str()),
+                Some(super::PROVIDER_NAME)
+            );
         }
         _ => panic!("Expected Reasoning"),
     }
@@ -192,17 +204,9 @@ fn test_tool_call_response_conversion() {
     let response = completion_response.unwrap();
 
     match response.choice.first() {
-        Some(AssistantContent::ToolCall(ToolCall {
-            id,
-            provider,
-            function,
-            ..
-        })) => {
-            // Vertex issues no call ids: decoding generates a local identity
-            // in a separate namespace and preserves absent provider identity.
-            assert!(id.is_generated());
-            assert_eq!(id.explicit(), None);
-            assert_eq!(provider, &None);
+        Some(AssistantContent::ToolCall(ToolCall { id, function, .. })) => {
+            // Vertex issues no call ids: rig issues one.
+            assert!(id.is_local());
             assert_eq!(function.name, "add");
             assert_eq!(function.arguments, args);
         }
@@ -429,9 +433,9 @@ fn vertex_generate_content_output_round_trips_through_serde_json_value() {
     );
 }
 
-/// Constructed SDK values isolate deterministic normalization without credentials.
+/// Constructed SDK values isolate id normalization without credentials.
 #[test]
-fn multiple_missing_call_ids_are_distinct_and_repeatable() {
+fn multiple_missing_call_ids_are_distinct() {
     let convert = || {
         complete(create_parts_response((0..3).map(|i| {
             vertexai::model::Part::new().set_function_call(
@@ -443,7 +447,6 @@ fn multiple_missing_call_ids_are_distinct_and_repeatable() {
         .unwrap()
     };
     let first = convert();
-    assert_eq!(first.choice, convert().choice);
     let calls: Vec<_> = first
         .choice
         .iter()
@@ -461,7 +464,7 @@ fn multiple_missing_call_ids_are_distinct_and_repeatable() {
             .len(),
         3
     );
-    assert!(calls.iter().all(|call| call.provider.is_none()));
+    assert!(calls.iter().all(|call| call.id.provider().is_none()));
     for (i, call) in calls.iter().enumerate() {
         assert_eq!(call.function.arguments, serde_json::json!({"n":i}));
     }
@@ -469,11 +472,11 @@ fn multiple_missing_call_ids_are_distinct_and_repeatable() {
 
 /// Vertex never issues call ids (its `FunctionCall` has no id field). The
 /// `index`-th call of a response mints its own handle at the converter, so
-/// two same-tool calls in one turn stay distinct, a text part between them
-/// does not shift the count, and a re-run yields the same ids.
+/// two same-tool calls in one turn stay distinct and a text part between them
+/// does not merge them.
 #[test]
 fn id_less_calls_in_one_turn_mint_distinct_handles_by_position() {
-    use rig_core::message::ToolCallId;
+    use rig_core::message::CallId;
     let call = || {
         let function_call = vertexai::model::FunctionCall::new()
             .set_name("same".to_string())
@@ -493,8 +496,6 @@ fn id_less_calls_in_one_turn_mint_distinct_handles_by_position() {
         vertexai::model::GenerateContentResponse::new().set_candidates([candidate])
     };
     let first = complete(build()).expect("converts");
-    let again = complete(build()).expect("converts");
-    assert_eq!(first.choice, again.choice, "a re-run yields the same ids");
     let ids: Vec<_> = first
         .choice
         .iter()
@@ -503,13 +504,11 @@ fn id_less_calls_in_one_turn_mint_distinct_handles_by_position() {
             _ => None,
         })
         .collect();
+    assert_eq!(ids.len(), 3);
+    assert!(ids.iter().all(CallId::is_local));
     assert_eq!(
-        ids,
-        [
-            ToolCallId::minted(0),
-            ToolCallId::minted(1),
-            ToolCallId::minted(2),
-        ]
+        ids.iter().collect::<std::collections::HashSet<_>>().len(),
+        3
     );
 }
 
@@ -540,7 +539,7 @@ fn answer_text_signature_is_kept_and_replayed_on_its_part() {
     let replayed: vertexai::model::Content =
         crate::types::message::RigMessage(rig_core::message::Message::Assistant {
             id: None,
-            content: response.choice.clone(),
+            content: rig_core::NonEmpty::from_vec(response.choice.clone()).expect("non-empty"),
         })
         .try_into()
         .expect("the turn replays");

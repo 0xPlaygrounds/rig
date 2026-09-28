@@ -116,14 +116,13 @@ fn extract_text(choice: &[AssistantContent]) -> String {
 
 fn tool_result_message(tool_call: &ToolCall, output: ToolOutput) -> Message {
     let content = output.into_content();
-    let result = UserContent::tool_result_for(
+    let result = UserContent::tool_result(
         tool_call.id.clone(),
-        tool_call.provider.clone(),
         tool_call.function.name.clone(),
         content,
     );
     Message::User {
-        content: vec![result],
+        content: rig::NonEmpty::new(result),
     }
 }
 
@@ -162,10 +161,7 @@ async fn main() -> Result<()> {
         let tool_calls = collect_tool_calls(&response.choice);
 
         history.push(current_prompt.clone());
-        history.push(Message::Assistant {
-            id: response.message_id.clone(),
-            content: response.choice.clone(),
-        });
+        history.extend(response.message());
 
         if tool_calls.is_empty() {
             let final_text = extract_text(&response.choice);

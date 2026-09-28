@@ -939,9 +939,11 @@ pub async fn collect_stream_observation(stream: &mut StreamingResult) -> StreamO
             // The engine reports the model's completed calls itself once the
             // turn commits; the provider-level `BlockEnd` is not forwarded.
             Ok(MultiTurnStreamItem::ToolCall { tool_call, .. }) => {
-                observation.tool_calls.push(tool_call.function.name.clone());
+                observation
+                    .tool_calls
+                    .push(tool_call.function.name.clone().into());
                 observation.tool_call_records.push(ToolCallRecord {
-                    name: tool_call.function.name,
+                    name: tool_call.function.name.into(),
                     signature: tool_call.signature,
                     additional_params: tool_call.additional_params,
                 });
@@ -1341,7 +1343,7 @@ where
             }) => {
                 observation.tool_calls.push(tool_call.clone());
                 observation.tool_call_records.push(ToolCallRecord {
-                    name: tool_call.function.name,
+                    name: tool_call.function.name.into(),
                     signature: tool_call.signature,
                     additional_params: tool_call.additional_params,
                 });
@@ -1626,7 +1628,7 @@ pub fn assert_raw_stream_contains_distinct_tool_calls_before_text(
     let tool_call_names = observation
         .tool_calls
         .iter()
-        .map(|tool_call| tool_call.function.name.clone())
+        .map(|tool_call| tool_call.function.name.to_string())
         .collect::<Vec<_>>();
 
     for expected_tool in expected_tools {

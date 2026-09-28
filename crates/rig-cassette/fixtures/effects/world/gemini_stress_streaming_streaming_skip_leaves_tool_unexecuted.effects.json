@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 5,
+        "batch": 8,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,29 +10,37 @@
         }
       },
       {
-        "batch": 5,
+        "batch": 8,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 6,
+        "batch": 9,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 10,
+        "batch": 14,
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 2
         }
       },
       {
-        "batch": 11,
+        "batch": 15,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 16,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -40,14 +48,14 @@
         }
       },
       {
-        "batch": 11,
+        "batch": 16,
         "id": 2,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 16,
+        "batch": 22,
         "id": 3,
         "kind": {
           "delivery": "stream",
@@ -55,7 +63,7 @@
         }
       },
       {
-        "batch": 17,
+        "batch": 23,
         "id": 3,
         "kind": {
           "delivery": "stream",
@@ -63,7 +71,7 @@
         }
       },
       {
-        "batch": 18,
+        "batch": 24,
         "id": 3,
         "kind": {
           "delivery": "stream",
@@ -71,7 +79,7 @@
         }
       },
       {
-        "batch": 18,
+        "batch": 24,
         "id": 3,
         "kind": {
           "delivery": "outcome"
@@ -241,8 +249,7 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "generated",
-                "id": "minted:tool:0"
+                "local": "00000000-0000-4000-8000-000000000000"
               },
               "function": {
                 "name": "add",
@@ -310,8 +317,7 @@
           "block": {
             "type": "toolcall",
             "id": {
-              "origin": "generated",
-              "id": "minted:tool:0"
+              "local": "00000000-0000-4000-8000-000000000000"
             },
             "function": {
               "name": "add",
@@ -413,8 +419,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000000"
                   },
                   "function": {
                     "name": "add",
@@ -434,8 +439,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000000"
                   },
                   "name": "add",
                   "content": [
@@ -512,8 +516,7 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "generated",
-                "id": "minted:tool:0"
+                "local": "00000000-0000-4000-8000-000000000001"
               },
               "function": {
                 "name": "subtract",
@@ -601,8 +604,7 @@
           "block": {
             "type": "toolcall",
             "id": {
-              "origin": "generated",
-              "id": "minted:tool:0"
+              "local": "00000000-0000-4000-8000-000000000001"
             },
             "function": {
               "name": "subtract",
@@ -688,8 +690,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000000"
                   },
                   "function": {
                     "name": "add",
@@ -709,8 +710,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000000"
                   },
                   "name": "add",
                   "content": [
@@ -733,8 +733,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000001"
                   },
                   "function": {
                     "name": "subtract",
@@ -754,8 +753,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000001"
                   },
                   "name": "subtract",
                   "content": [

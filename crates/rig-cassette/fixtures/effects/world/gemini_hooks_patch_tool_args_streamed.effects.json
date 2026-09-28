@@ -6,29 +6,29 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 3
         }
       },
       {
-        "batch": 7,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 7,
+        "batch": 6,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 8,
+        "batch": 7,
         "id": 1,
         "kind": {
           "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 12,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
         }
       },
       {
@@ -36,7 +36,7 @@
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 7
+          "items": 5
         }
       },
       {
@@ -163,11 +163,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_84285"
-              },
-              "provider": {
-                "call_id": "call_84285"
+                "provider": {
+                  "call_id": "call_84285"
+                }
               },
               "function": {
                 "name": "add",
@@ -235,11 +233,9 @@
           "block": {
             "type": "toolcall",
             "id": {
-              "origin": "explicit",
-              "id": "call_84285"
-            },
-            "provider": {
-              "call_id": "call_84285"
+              "provider": {
+                "call_id": "call_84285"
+              }
             },
             "function": {
               "name": "add",
@@ -340,11 +336,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_84285"
-                  },
-                  "provider": {
-                    "call_id": "call_84285"
+                    "provider": {
+                      "call_id": "call_84285"
+                    }
                   },
                   "function": {
                     "name": "add",
@@ -364,11 +358,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_84285"
-                  },
-                  "provider": {
-                    "call_id": "call_84285"
+                    "provider": {
+                      "call_id": "call_84285"
+                    }
                   },
                   "name": "add",
                   "content": [

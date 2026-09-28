@@ -18,10 +18,10 @@ async fn text_only_content_parts_are_flattened() {
         |client| async move {
             let model = client.completion(perplexity::SONAR);
             let prompt = Message::User {
-                content: vec![
+                content: rig_core::NonEmpty::with_rest(
                     UserContent::text("First text part: amber."),
-                    UserContent::text("Second text part: rig."),
-                ],
+                    [UserContent::text("Second text part: rig.")],
+                ),
             };
 
             let response = model
@@ -50,7 +50,11 @@ async fn tool_exchange_history_is_stripped_and_remerged() {
             let model = client.completion(perplexity::SONAR);
             let tool_call = ToolCall::from_wire(
                 "call_amber",
-                ToolFunction::new("lookup_code_word".to_string(), json!({})),
+                ToolFunction::new(
+                    rig_core::message::ToolName::new("lookup_code_word".to_string())
+                        .expect("tool name"),
+                    json!({}),
+                ),
             );
 
             let response = model
@@ -62,11 +66,11 @@ async fn tool_exchange_history_is_stripped_and_remerged() {
                     .message(Message::user("Remember this code word: amber-rig."))
                     .message(Message::Assistant {
                         id: None,
-                        content: vec![AssistantContent::ToolCall(tool_call)],
+                        content: rig_core::NonEmpty::new(AssistantContent::ToolCall(tool_call)),
                     })
                     .message(Message::tool_result(
-                        "call_amber",
-                        "lookup_code_word",
+                        rig_core::message::CallId::from_wire("call_amber"),
+                        rig_core::message::ToolName::new("lookup_code_word").expect("tool name"),
                         "tool result: amber-rig",
                     ))
                     .message(Message::user(

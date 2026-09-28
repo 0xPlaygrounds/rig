@@ -49,7 +49,7 @@ fn copilot() -> CopilotConfig {
 fn prompt() -> CompletionRequest {
     CompletionRequest {
         model: None,
-        chat_history: vec![Message::user("say hi")],
+        chat_history: crate::NonEmpty::new(Message::user("say hi")),
         documents: Vec::new(),
         tools: Vec::new(),
         temperature: None,
@@ -478,7 +478,7 @@ async fn a_contentless_reasoning_item_survives_the_fold() {
             _ => None,
         })
         .unwrap_or_else(|| panic!("the turn's reasoning item survives: {:?}", response.choice));
-    assert_eq!(reasoning.id.as_deref(), Some("id_REDACTED_1"));
+    assert_eq!(reasoning.value().id.as_deref(), Some("id_REDACTED_1"));
 }
 
 // ── the modality wires ──────────────────────────────────────────────────
@@ -800,15 +800,15 @@ fn configured_outbound_endpoints_remain_explicit_after_rotation() {
 fn both_completion_envelopes_see_the_original_vision_and_assistant_history() {
     use crate::message::{DocumentSourceKind, Image, UserContent};
     let mut request = prompt();
-    request.chat_history = vec![
+    request.chat_history = crate::NonEmpty::with_rest(
         Message::assistant("send an image"),
-        Message::User {
-            content: vec![UserContent::Image(Image {
+        [Message::User {
+            content: crate::NonEmpty::new(UserContent::Image(Image {
                 data: DocumentSourceKind::Url("https://image.invalid/example.png".into()),
                 ..Image::default()
-            })],
-        },
-    ];
+            })),
+        }],
+    );
     for model in [super::super::GPT_4O, super::super::GPT_5_3_CODEX] {
         let direct = copilot().completion(model).with_edits_intent();
         let generic = copilot().openai().completion(model);

@@ -84,14 +84,14 @@ fn two_tool_calls_then_done() -> MockCompletionModel {
             rig_core::message::AssistantContent::ToolCall(rig_core::message::ToolCall::from_wire(
                 "tc-1",
                 rig_core::message::ToolFunction::new(
-                    "slow".to_owned(),
+                    rig_core::message::ToolName::new("slow".to_owned()).expect("tool name"),
                     json!({"delay_ms": 40, "tag": "first"}),
                 ),
             )),
             rig_core::message::AssistantContent::ToolCall(rig_core::message::ToolCall::from_wire(
                 "tc-2",
                 rig_core::message::ToolFunction::new(
-                    "slow".to_owned(),
+                    rig_core::message::ToolName::new("slow".to_owned()).expect("tool name"),
                     json!({"delay_ms": 0, "tag": "second"}),
                 ),
             )),
@@ -545,7 +545,10 @@ fn one_tool_call(name: &str) -> MockCompletionModel {
         MockTurn::from_contents([rig_core::message::AssistantContent::ToolCall(
             rig_core::message::ToolCall::from_wire(
                 "tc-1",
-                rig_core::message::ToolFunction::new(name.to_owned(), json!({})),
+                rig_core::message::ToolFunction::new(
+                    rig_core::message::ToolName::new(name.to_owned()).expect("tool name"),
+                    json!({}),
+                ),
             ),
         )]),
         MockTurn::text("done"),
@@ -623,7 +626,10 @@ async fn a_nested_agent_call_from_a_tool_is_served_by_the_driving_run() {
         MockTurn::from_contents([rig_core::message::AssistantContent::ToolCall(
             rig_core::message::ToolCall::from_wire(
                 "tc-1",
-                rig_core::message::ToolFunction::new("nested".to_owned(), json!({})),
+                rig_core::message::ToolFunction::new(
+                    rig_core::message::ToolName::new("nested".to_owned()).expect("tool name"),
+                    json!({}),
+                ),
             ),
         )]),
         MockTurn::text("inner-done"),
@@ -754,7 +760,10 @@ async fn a_nested_call_to_the_in_flight_tool_under_serial_serving_fails_fast() {
         MockTurn::from_contents([rig_core::message::AssistantContent::ToolCall(
             rig_core::message::ToolCall::from_wire(
                 "tc",
-                rig_core::message::ToolFunction::new("same".to_owned(), json!({})),
+                rig_core::message::ToolFunction::new(
+                    rig_core::message::ToolName::new("same".to_owned()).expect("tool name"),
+                    json!({}),
+                ),
             ),
         )])
     };
@@ -797,7 +806,10 @@ async fn a_nested_call_over_the_calls_scope_under_serial_serving_fails_fast() {
         MockTurn::from_contents([rig_core::message::AssistantContent::ToolCall(
             rig_core::message::ToolCall::from_wire(
                 "tc",
-                rig_core::message::ToolFunction::new("same".to_owned(), json!({})),
+                rig_core::message::ToolFunction::new(
+                    rig_core::message::ToolName::new("same".to_owned()).expect("tool name"),
+                    json!({}),
+                ),
             ),
         )])
     };
@@ -1777,7 +1789,7 @@ async fn a_streamed_completion_names_its_provider_like_a_unary_one() {
         .expect("the route is registered under the agent's owner");
     let request = |text: &str| rig_core::completion::CompletionRequest {
         model: None,
-        chat_history: vec![rig_core::message::Message::user(text)],
+        chat_history: rig_core::NonEmpty::new(rig_core::message::Message::user(text)),
         documents: Vec::new(),
         tools: Vec::new(),
         temperature: None,
@@ -1912,7 +1924,9 @@ impl AgentHook for AsksTheModel {
         let model = ctx.bind(&self.key).expect("bound for this run");
         let request = rig_core::completion::CompletionRequest {
             model: None,
-            chat_history: vec![rig_core::message::Message::user("side question")],
+            chat_history: rig_core::NonEmpty::new(rig_core::message::Message::user(
+                "side question",
+            )),
             documents: Vec::new(),
             tools: Vec::new(),
             temperature: None,
@@ -1971,13 +1985,15 @@ async fn a_hook_binds_a_run_scoped_view_and_dispatches_through_it() {
 /// streaming surface alike.
 #[tokio::test]
 async fn id_less_calls_across_turns_keep_the_history_canonical() {
-    use rig_core::message::{AssistantContent, Message, ToolCall, ToolCallId, ToolFunction};
+    use rig_core::message::{AssistantContent, CallId, Message, ToolCall, ToolFunction};
     let turn = |tags: [&str; 2]| {
         MockTurn::from_contents(tags.map(|tag| {
-            AssistantContent::ToolCall(ToolCall::from_wire_indexed(
+            AssistantContent::ToolCall(ToolCall::from_wire(
                 "",
-                u64::from(tag.ends_with('b')),
-                ToolFunction::new("slow".to_owned(), json!({"delay_ms": 0, "tag": tag})),
+                ToolFunction::new(
+                    rig_core::message::ToolName::new("slow".to_owned()).expect("tool name"),
+                    json!({"delay_ms": 0, "tag": tag}),
+                ),
             ))
         }))
     };
@@ -1989,7 +2005,7 @@ async fn id_less_calls_across_turns_keep_the_history_canonical() {
         ])
     };
     let expected_call_ids = |messages: &[Message]| {
-        let assistant_calls: Vec<Vec<ToolCallId>> = messages
+        let assistant_calls: Vec<Vec<CallId>> = messages
             .iter()
             .filter_map(|message| match message {
                 Message::Assistant { content, .. } => Some(
@@ -2005,13 +2021,14 @@ async fn id_less_calls_across_turns_keep_the_history_canonical() {
             })
             .filter(|calls: &Vec<_>| !calls.is_empty())
             .collect();
+        assert_eq!(assistant_calls.len(), 2, "two tool turns");
+        let ids: Vec<&CallId> = assistant_calls.iter().flatten().collect();
+        assert_eq!(ids.len(), 4);
+        assert!(ids.iter().all(|id| id.is_local()), "rig issues each id");
         assert_eq!(
-            assistant_calls,
-            vec![
-                vec![ToolCallId::minted(0), ToolCallId::minted(1)],
-                vec![ToolCallId::minted(0), ToolCallId::minted(1)],
-            ],
-            "each turn mints from zero"
+            ids.iter().collect::<std::collections::HashSet<_>>().len(),
+            4,
+            "every issued id is distinct"
         );
         rig_core::transcript::validate_canonical(messages)
             .expect("every call answered by the adjacent result");
@@ -2026,9 +2043,8 @@ async fn id_less_calls_across_turns_keep_the_history_canonical() {
     expected_call_ids(response.messages().expect("history"));
     assert_eq!(tool.completed.lock().expect("lock").len(), 4);
 
-    // The streaming surface mints at the stream boundary: an id-less
-    // tool-call event keys its block `tool-<n>` per stream, and the
-    // committed turn carries that identity into history.
+    // The streaming surface issues the ids at the stream boundary, and the
+    // committed turn carries them into history.
     use rig_core::test_utils::MockStreamEvent;
     let streamed_turn = |tags: [&str; 2]| {
         let mut events: Vec<_> = tags

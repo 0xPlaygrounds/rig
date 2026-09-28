@@ -225,15 +225,17 @@ fn mixed_user_content_preserves_message_order() {
     use crate::message::{Message as RigMessage, ToolResultContent, UserContent};
 
     let message = RigMessage::User {
-        content: vec![
+        content: crate::NonEmpty::with_rest(
             UserContent::text("before"),
-            UserContent::tool_result(
-                "call-not-the-tool-name",
-                "lookup",
-                vec![ToolResultContent::json(json!({ "ok": true }))],
-            ),
-            UserContent::text("after"),
-        ],
+            [
+                UserContent::tool_result(
+                    crate::message::CallId::from_wire("call-not-the-tool-name"),
+                    crate::message::ToolName::new("lookup").expect("tool name"),
+                    crate::NonEmpty::new(ToolResultContent::json(json!({ "ok": true }))),
+                ),
+                UserContent::text("after"),
+            ],
+        ),
     };
 
     let messages = Vec::<Message>::try_from(message).expect("mixed content should convert");
@@ -258,11 +260,11 @@ fn unsupported_user_content_returns_a_conversion_error() {
     use crate::message::{ImageMediaType, Message as RigMessage, UserContent};
 
     let message = RigMessage::User {
-        content: vec![UserContent::image_url(
+        content: crate::NonEmpty::new(UserContent::image_url(
             "https://example.com/image.png",
             Some(ImageMediaType::PNG),
             None,
-        )],
+        )),
     };
 
     let error = Vec::<Message>::try_from(message).expect_err("URL image should be rejected");
@@ -419,12 +421,12 @@ fn test_message_conversion_with_thinking() {
 
     let internal_msg = crate::message::Message::Assistant {
         id: None,
-        content: vec![
-            crate::message::AssistantContent::Reasoning(reasoning_content),
-            crate::message::AssistantContent::Text(crate::message::Text::new(
-                "The answer is X".to_string(),
-            )),
-        ],
+        content: crate::NonEmpty::with_rest(
+            crate::message::AssistantContent::Reasoning(reasoning_content.sealed("ollama")),
+            [crate::message::AssistantContent::Text(
+                crate::message::Text::new("The answer is X".to_string()),
+            )],
+        ),
     };
 
     // Convert to provider Message
@@ -490,7 +492,7 @@ async fn nonstreaming_response_preserves_thinking_as_reasoning() {
         "non-streaming response must surface `thinking` as AssistantContent::Reasoning (issue #1926)",
     );
     assert_eq!(
-        reasoning.display_text(),
+        reasoning.value().display_text(),
         "The user asked for the weather in Berlin. I should call get_weather with location=Berlin.",
     );
 }
@@ -595,12 +597,14 @@ fn test_completion_request_with_think_param() {
     // Create a CompletionRequest with "think": true, "keep_alive", and "num_ctx" in additional_params
     let completion_request = CompletionRequest {
         model: None,
-        chat_history: vec![
+        chat_history: crate::NonEmpty::with_rest(
             CompletionMessage::system("You are a helpful assistant."),
-            CompletionMessage::User {
-                content: vec![UserContent::Text(Text::new("What is 2 + 2?".to_string()))],
-            },
-        ],
+            [CompletionMessage::User {
+                content: crate::NonEmpty::new(UserContent::Text(Text::new(
+                    "What is 2 + 2?".to_string(),
+                ))),
+            }],
+        ),
         documents: vec![],
         tools: vec![],
         temperature: Some(0.7),
@@ -661,12 +665,14 @@ fn test_completion_request_with_level_low_think_param() {
     // Create a CompletionRequest with "think": true, "keep_alive", and "num_ctx" in additional_params
     let completion_request = CompletionRequest {
         model: None,
-        chat_history: vec![
+        chat_history: crate::NonEmpty::with_rest(
             CompletionMessage::system("You are a helpful assistant."),
-            CompletionMessage::User {
-                content: vec![UserContent::Text(Text::new("What is 2 + 2?".to_string()))],
-            },
-        ],
+            [CompletionMessage::User {
+                content: crate::NonEmpty::new(UserContent::Text(Text::new(
+                    "What is 2 + 2?".to_string(),
+                ))),
+            }],
+        ),
         documents: vec![],
         tools: vec![],
         temperature: Some(0.7),
@@ -727,12 +733,14 @@ fn test_completion_request_with_level_medium_think_param() {
     // Create a CompletionRequest with "think": true, "keep_alive", and "num_ctx" in additional_params
     let completion_request = CompletionRequest {
         model: None,
-        chat_history: vec![
+        chat_history: crate::NonEmpty::with_rest(
             CompletionMessage::system("You are a helpful assistant."),
-            CompletionMessage::User {
-                content: vec![UserContent::Text(Text::new("What is 2 + 2?".to_string()))],
-            },
-        ],
+            [CompletionMessage::User {
+                content: crate::NonEmpty::new(UserContent::Text(Text::new(
+                    "What is 2 + 2?".to_string(),
+                ))),
+            }],
+        ),
         documents: vec![],
         tools: vec![],
         temperature: Some(0.7),
@@ -793,12 +801,14 @@ fn test_completion_request_with_level_high_think_param() {
     // Create a CompletionRequest with "think": true, "keep_alive", and "num_ctx" in additional_params
     let completion_request = CompletionRequest {
         model: None,
-        chat_history: vec![
+        chat_history: crate::NonEmpty::with_rest(
             CompletionMessage::system("You are a helpful assistant."),
-            CompletionMessage::User {
-                content: vec![UserContent::Text(Text::new("What is 2 + 2?".to_string()))],
-            },
-        ],
+            [CompletionMessage::User {
+                content: crate::NonEmpty::new(UserContent::Text(Text::new(
+                    "What is 2 + 2?".to_string(),
+                ))),
+            }],
+        ),
         documents: vec![],
         tools: vec![],
         temperature: Some(0.7),
@@ -859,12 +869,14 @@ fn test_completion_request_with_level_invalid_think_param() {
     // Create a CompletionRequest with "think": true, "keep_alive", and "num_ctx" in additional_params
     let completion_request = CompletionRequest {
         model: None,
-        chat_history: vec![
+        chat_history: crate::NonEmpty::with_rest(
             CompletionMessage::system("You are a helpful assistant."),
-            CompletionMessage::User {
-                content: vec![UserContent::Text(Text::new("What is 2 + 2?".to_string()))],
-            },
-        ],
+            [CompletionMessage::User {
+                content: crate::NonEmpty::new(UserContent::Text(Text::new(
+                    "What is 2 + 2?".to_string(),
+                ))),
+            }],
+        ),
         documents: vec![],
         tools: vec![],
         temperature: Some(0.7),
@@ -895,12 +907,12 @@ fn test_completion_request_with_think_omitted_by_default() {
     // Create a CompletionRequest WITHOUT "think" in additional_params
     let completion_request = CompletionRequest {
         model: None,
-        chat_history: vec![
+        chat_history: crate::NonEmpty::with_rest(
             CompletionMessage::system("You are a helpful assistant."),
-            CompletionMessage::User {
-                content: vec![UserContent::Text(Text::new("Hello!".to_string()))],
-            },
-        ],
+            [CompletionMessage::User {
+                content: crate::NonEmpty::new(UserContent::Text(Text::new("Hello!".to_string()))),
+            }],
+        ),
         documents: vec![],
         tools: vec![],
         temperature: Some(0.5),
@@ -951,9 +963,9 @@ fn test_completion_request_num_predict_from_additional_params_wins() {
 
     let completion_request = CompletionRequest {
         model: None,
-        chat_history: vec![CompletionMessage::User {
-            content: vec![UserContent::Text(Text::new("Hello!".to_string()))],
-        }],
+        chat_history: crate::NonEmpty::new(CompletionMessage::User {
+            content: crate::NonEmpty::new(UserContent::Text(Text::new("Hello!".to_string()))),
+        }),
         documents: vec![],
         tools: vec![],
         temperature: None,
@@ -983,9 +995,9 @@ fn test_completion_request_num_predict_without_additional_params() {
 
     let completion_request = CompletionRequest {
         model: None,
-        chat_history: vec![CompletionMessage::User {
-            content: vec![UserContent::Text(Text::new("Hello!".to_string()))],
-        }],
+        chat_history: crate::NonEmpty::new(CompletionMessage::User {
+            content: crate::NonEmpty::new(UserContent::Text(Text::new("Hello!".to_string()))),
+        }),
         documents: vec![],
         tools: vec![],
         temperature: Some(0.7),
@@ -1019,9 +1031,9 @@ fn test_completion_request_options_omit_unset_parameters() {
 
     let completion_request = CompletionRequest {
         model: None,
-        chat_history: vec![CompletionMessage::User {
-            content: vec![UserContent::Text(Text::new("Hello!".to_string()))],
-        }],
+        chat_history: crate::NonEmpty::new(CompletionMessage::User {
+            content: crate::NonEmpty::new(UserContent::Text(Text::new("Hello!".to_string()))),
+        }),
         documents: vec![],
         tools: vec![],
         temperature: None,
@@ -1056,11 +1068,11 @@ fn test_completion_request_with_output_schema() {
 
     let completion_request = CompletionRequest {
         model: Some("llama3.1".to_string()),
-        chat_history: vec![CompletionMessage::User {
-            content: vec![UserContent::Text(Text::new(
+        chat_history: crate::NonEmpty::new(CompletionMessage::User {
+            content: crate::NonEmpty::new(UserContent::Text(Text::new(
                 "How old is Ollama?".to_string(),
-            ))],
-        }],
+            ))),
+        }),
         documents: vec![],
         tools: vec![],
         temperature: None,
@@ -1099,9 +1111,9 @@ fn test_completion_request_without_output_schema() {
 
     let completion_request = CompletionRequest {
         model: Some("llama3.1".to_string()),
-        chat_history: vec![CompletionMessage::User {
-            content: vec![UserContent::Text(Text::new("Hello!".to_string()))],
-        }],
+        chat_history: crate::NonEmpty::new(CompletionMessage::User {
+            content: crate::NonEmpty::new(UserContent::Text(Text::new("Hello!".to_string()))),
+        }),
         documents: vec![],
         tools: vec![],
         temperature: None,
@@ -1418,10 +1430,10 @@ mod raw_capture {
     }
 }
 
-/// Synthetic wire values test absent-ID and explicit-ID collisions deterministically;
-/// recordings cannot reliably force a provider to emit these boundary combinations.
+/// Synthetic wire values test absent-ID and explicit-ID collisions; recordings
+/// cannot reliably force a provider to emit these boundary combinations.
 #[tokio::test]
-async fn missing_tool_ids_are_distinct_stable_and_collision_free_in_responses() {
+async fn missing_tool_ids_are_distinct_and_collision_free_in_responses() {
     let wire = json!({
         "model": "test", "created_at": "2024-01-01T00:00:00Z", "done": true,
         "message": {"role":"assistant", "content":"", "tool_calls":[
@@ -1430,12 +1442,7 @@ async fn missing_tool_ids_are_distinct_stable_and_collision_free_in_responses() 
             {"function":{"name":"same","arguments":{"value":3}}}
         ]}
     });
-    let normalize = || async { unary(wire.clone()).await.unwrap() };
-    let first = normalize().await;
-    assert_eq!(
-        serde_json::to_value(&first.choice).unwrap(),
-        serde_json::to_value(normalize().await.choice).unwrap()
-    );
+    let first = unary(wire.clone()).await.unwrap();
     let calls: Vec<_> = first
         .choice
         .iter()
@@ -1452,9 +1459,15 @@ async fn missing_tool_ids_are_distinct_stable_and_collision_free_in_responses() 
             .len(),
         3
     );
-    assert!(calls[0].provider.is_none());
-    assert_eq!(calls[1].id.explicit(), Some("tool-0"));
-    assert!(calls[2].provider.is_none());
+    assert!(calls[0].id.provider().is_none());
+    assert_eq!(
+        calls[1]
+            .id
+            .provider()
+            .map(|provider| provider.call_id.as_str()),
+        Some("tool-0")
+    );
+    assert!(calls[2].id.provider().is_none());
 }
 
 /// A provider-issued call id is replayed on both legs; a locally minted
@@ -1463,33 +1476,31 @@ async fn missing_tool_ids_are_distinct_stable_and_collision_free_in_responses() 
 #[test]
 fn daemon_issued_call_ids_replay_and_minted_handles_do_not() {
     use crate::message::{
-        AssistantContent, Message as RigMessage, ProviderCallId, ToolCall, ToolCallId,
-        ToolFunction, ToolResult, ToolResultContent, UserContent,
+        AssistantContent, CallId, Message as RigMessage, ToolCall, ToolFunction, ToolResult,
+        ToolResultContent, UserContent,
     };
 
-    let call = |provider: Option<ProviderCallId>| RigMessage::Assistant {
+    let call = |id: CallId| RigMessage::Assistant {
         id: None,
-        content: vec![AssistantContent::ToolCall(ToolCall {
-            id: ToolCallId::new("handle").expect("non-empty"),
-            provider,
+        content: crate::NonEmpty::new(AssistantContent::ToolCall(ToolCall {
+            id,
             function: ToolFunction {
-                name: "add".to_owned(),
+                name: crate::message::ToolName::new("add".to_owned()).expect("tool name"),
                 arguments: serde_json::json!({"x": 1}),
             },
             signature: None,
             additional_params: None,
-        })],
+        })),
     };
-    let result = |provider: Option<ProviderCallId>| RigMessage::User {
-        content: vec![UserContent::ToolResult(ToolResult {
-            call: ToolCallId::new("handle").expect("non-empty"),
-            provider,
-            name: "add".to_owned(),
-            content: vec![ToolResultContent::text("2")],
-        })],
+    let result = |call: CallId| RigMessage::User {
+        content: crate::NonEmpty::new(UserContent::ToolResult(ToolResult {
+            call,
+            name: crate::message::ToolName::new("add".to_owned()).expect("tool name"),
+            content: crate::NonEmpty::new(ToolResultContent::text("2")),
+        })),
     };
 
-    let issued = ProviderCallId::new("call_daemon_1");
+    let issued = CallId::from_wire("call_daemon_1");
     let assistant = Vec::<Message>::try_from(call(issued.clone())).expect("converts");
     let tool = Vec::<Message>::try_from(result(issued)).expect("converts");
     let assistant = serde_json::to_value(&assistant[0]).expect("serializes");
@@ -1498,8 +1509,9 @@ fn daemon_issued_call_ids_replay_and_minted_handles_do_not() {
     assert_eq!(tool["tool_call_id"], "call_daemon_1");
     assert_eq!(tool["tool_name"], "add");
 
-    let assistant = Vec::<Message>::try_from(call(None)).expect("converts");
-    let tool = Vec::<Message>::try_from(result(None)).expect("converts");
+    let local = CallId::from_wire("");
+    let assistant = Vec::<Message>::try_from(call(local.clone())).expect("converts");
+    let tool = Vec::<Message>::try_from(result(local)).expect("converts");
     let assistant = serde_json::to_value(&assistant[0]).expect("serializes");
     let tool = serde_json::to_value(&tool[0]).expect("serializes");
     assert!(assistant["tool_calls"][0].get("id").is_none());

@@ -2,11 +2,19 @@
   "header": {
     "deliveries": [
       {
-        "batch": 7,
+        "batch": 8,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 11
+          "items": 2
+        }
+      },
+      {
+        "batch": 9,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
         }
       },
       {
@@ -18,21 +26,61 @@
         }
       },
       {
-        "batch": 10,
+        "batch": 11,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 12,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 13,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 14,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 20,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 20,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 11,
+        "batch": 21,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 22,
+        "batch": 35,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -40,7 +88,7 @@
         }
       },
       {
-        "batch": 23,
+        "batch": 38,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -48,7 +96,7 @@
         }
       },
       {
-        "batch": 27,
+        "batch": 45,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -56,7 +104,7 @@
         }
       },
       {
-        "batch": 27,
+        "batch": 45,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -179,12 +227,10 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_Zp38uddUnG24W519w6jMn4CB"
-              },
-              "provider": {
-                "call_id": "call_Zp38uddUnG24W519w6jMn4CB",
-                "item_id": "fc_0ae556d915a54b9c006ab3969c713487d092294d701873c537"
+                "provider": {
+                  "call_id": "call_Zp38uddUnG24W519w6jMn4CB",
+                  "item_id": "fc_0ae556d915a54b9c006ab3969c713487d092294d701873c537"
+                }
               },
               "function": {
                 "name": "add",
@@ -338,12 +384,10 @@
           "block": {
             "type": "toolcall",
             "id": {
-              "origin": "explicit",
-              "id": "call_Zp38uddUnG24W519w6jMn4CB"
-            },
-            "provider": {
-              "call_id": "call_Zp38uddUnG24W519w6jMn4CB",
-              "item_id": "fc_0ae556d915a54b9c006ab3969c713487d092294d701873c537"
+              "provider": {
+                "call_id": "call_Zp38uddUnG24W519w6jMn4CB",
+                "item_id": "fc_0ae556d915a54b9c006ab3969c713487d092294d701873c537"
+              }
             },
             "function": {
               "name": "add",
@@ -450,12 +494,10 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_Zp38uddUnG24W519w6jMn4CB"
-                  },
-                  "provider": {
-                    "call_id": "call_Zp38uddUnG24W519w6jMn4CB",
-                    "item_id": "fc_0ae556d915a54b9c006ab3969c713487d092294d701873c537"
+                    "provider": {
+                      "call_id": "call_Zp38uddUnG24W519w6jMn4CB",
+                      "item_id": "fc_0ae556d915a54b9c006ab3969c713487d092294d701873c537"
+                    }
                   },
                   "function": {
                     "name": "add",
@@ -475,12 +517,10 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_Zp38uddUnG24W519w6jMn4CB"
-                  },
-                  "provider": {
-                    "call_id": "call_Zp38uddUnG24W519w6jMn4CB",
-                    "item_id": "fc_0ae556d915a54b9c006ab3969c713487d092294d701873c537"
+                    "provider": {
+                      "call_id": "call_Zp38uddUnG24W519w6jMn4CB",
+                      "item_id": "fc_0ae556d915a54b9c006ab3969c713487d092294d701873c537"
+                    }
                   },
                   "name": "add",
                   "content": [

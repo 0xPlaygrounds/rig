@@ -150,7 +150,7 @@ fn finalize_streamed_choice_surfaces_output_over_tool_call_and_prose() {
     let output_call = AssistantContent::ToolCall(ToolCall::from_wire(
         "c1",
         ToolFunction::new(
-            "final_result".to_string(),
+            rig_core::message::ToolName::new("final_result".to_string()).expect("tool name"),
             serde_json::json!({"city": "Tokyo"}),
         ),
     ));
@@ -200,9 +200,8 @@ fn tool_result_output_preserves_multimodal_tool_output() {
         None,
     ));
     let user_content = tool_result_output(
-        rig_core::message::ToolCallId::new_or_minted("tool_call_1", 0),
-        rig_core::message::ProviderCallId::new("call_1"),
-        "render_reference_image".to_string(),
+        rig_core::message::CallId::from_wire("call_1"),
+        rig_core::message::ToolName::new("render_reference_image").expect("tool name"),
         crate::tool::ToolOutput::content(content).expect("fixture content is non-empty"),
     );
 
@@ -211,10 +210,17 @@ fn tool_result_output_preserves_multimodal_tool_output() {
         other => panic!("expected tool result content, got {other:?}"),
     };
 
-    assert_eq!(tool_result.call.explicit(), Some("tool_call_1"));
     assert_eq!(
         tool_result
-            .provider
+            .call
+            .provider()
+            .map(|provider| provider.call_id.as_str()),
+        Some("call_1")
+    );
+    assert_eq!(
+        tool_result
+            .call
+            .provider()
             .as_ref()
             .map(|provider| provider.call_id.as_str()),
         Some("call_1")
@@ -251,10 +257,10 @@ fn validate_follow_up_tool_history(request: &CompletionRequest) -> Result<(), St
 
     if !matches!(
         history.first(),
-        Some(Message::User { content })
+        Message::User { content }
             if matches!(
                 content.first(),
-                Some(UserContent::Text(text)) if text.text == "do tool work"
+                UserContent::Text(text) if text.text == "do tool work"
             )
     ) {
         return Err(format!(
@@ -270,9 +276,9 @@ fn validate_follow_up_tool_history(request: &CompletionRequest) -> Result<(), St
         Some(Message::Assistant { content, .. })
             if matches!(
                 content.first(),
-                Some(AssistantContent::ToolCall(tool_call))
-                    if tool_call.id.explicit() == Some("call_1")
-                        && tool_call.provider.as_ref().is_some_and(|provider| {
+                AssistantContent::ToolCall(tool_call)
+                    if tool_call.id.provider().map(|provider| provider.call_id.as_str()) == Some("call_1")
+                        && tool_call.id.provider().as_ref().is_some_and(|provider| {
                             provider.call_id == "call_1"
                                 && provider.item_id.as_deref() == Some("tool_call_1")
                         })
@@ -288,9 +294,9 @@ fn validate_follow_up_tool_history(request: &CompletionRequest) -> Result<(), St
         Some(Message::User { content })
             if matches!(
                 content.first(),
-                Some(UserContent::ToolResult(tool_result))
-                    if tool_result.call.explicit() == Some("call_1")
-                        && tool_result.provider.as_ref().is_some_and(|provider| {
+                UserContent::ToolResult(tool_result)
+                    if tool_result.call.provider().map(|provider| provider.call_id.as_str()) == Some("call_1")
+                        && tool_result.call.provider().as_ref().is_some_and(|provider| {
                             provider.call_id == "call_1"
                                 && provider.item_id.as_deref() == Some("tool_call_1")
                         })
@@ -326,7 +332,7 @@ fn assert_retry_transcript_ids_pair(assistant: &Message, results: &Message) {
     let Message::Assistant { content, .. } = assistant else {
         panic!("expected the assistant tool-call turn, got {assistant:?}");
     };
-    let call_ids: Vec<&rig_core::message::ToolCallId> = content
+    let call_ids: Vec<&rig_core::message::CallId> = content
         .iter()
         .filter_map(|item| match item {
             AssistantContent::ToolCall(tool_call) => Some(&tool_call.id),
@@ -336,21 +342,20 @@ fn assert_retry_transcript_ids_pair(assistant: &Message, results: &Message) {
     let Message::User { content } = results else {
         panic!("expected the user retry-result turn, got {results:?}");
     };
-    let result_ids: Vec<&rig_core::message::ToolCallId> = content
+    let result_ids: Vec<&rig_core::message::CallId> = content
         .iter()
         .filter_map(|item| match item {
             UserContent::ToolResult(result) => Some(&result.call),
             _ => None,
         })
         .collect();
-    let unique_calls: BTreeSet<&rig_core::message::ToolCallId> = call_ids.iter().copied().collect();
+    let unique_calls: BTreeSet<&rig_core::message::CallId> = call_ids.iter().copied().collect();
     assert_eq!(
         unique_calls.len(),
         call_ids.len(),
         "tool-call ids must be unique: {call_ids:?}"
     );
-    let unique_results: BTreeSet<&rig_core::message::ToolCallId> =
-        result_ids.iter().copied().collect();
+    let unique_results: BTreeSet<&rig_core::message::CallId> = result_ids.iter().copied().collect();
     assert_eq!(
         unique_results.len(),
         result_ids.len(),
@@ -389,7 +394,7 @@ fn assistant_reasoning_precedes_tool_call(
             matches!(
                 item,
                 AssistantContent::Reasoning(reasoning)
-                    if reasoning.content.iter().any(|content| matches!(
+                    if reasoning.open(reasoning.issuer()).expect("sealed reasoning").content.iter().any(|content| matches!(
                         content,
                         ReasoningContent::Text { text, .. }
                             if text == expected_reasoning
@@ -423,7 +428,7 @@ fn assistant_reasoning_precedes_text_and_tool_call(
             matches!(
                 item,
                 AssistantContent::Reasoning(reasoning)
-                    if reasoning.content.iter().any(|content| matches!(
+                    if reasoning.open(reasoning.issuer()).expect("sealed reasoning").content.iter().any(|content| matches!(
                         content,
                         ReasoningContent::Text { text, .. }
                             if text == expected_reasoning
@@ -620,8 +625,11 @@ async fn execution_commit_items_are_not_emitted_when_run_commit_fails() {
         None,
         vec![AssistantContent::ToolCall(
             rig_core::message::ToolCall::new(
-                rig_core::message::ToolCallId::new_or_minted("expected_call", 0),
-                rig_core::message::ToolFunction::new(tool_name, serde_json::json!({})),
+                rig_core::message::CallId::from_wire("expected_call"),
+                rig_core::message::ToolFunction::new(
+                    rig_core::message::ToolName::new(tool_name).expect("tool name"),
+                    serde_json::json!({}),
+                ),
             ),
         )],
         Usage::default(),
@@ -641,7 +649,7 @@ async fn execution_commit_items_are_not_emitted_when_run_commit_fails() {
     };
     // Corrupt only the driver's copy so execution settles successfully but
     // `AgentRun` rejects the result before any commit-labelled item escapes.
-    calls[0].tool_call.id = rig_core::message::ToolCallId::new_or_minted("mismatched_call", 0);
+    calls[0].tool_call.id = rig_core::message::CallId::from_wire("mismatched_call");
 
     let hook_context = HookContext::new(true, None, None);
     hook_context.set_turn(1);
@@ -2347,7 +2355,10 @@ async fn invalid_tool_call_context_uses_completed_streaming_tool_call_provider_i
     // ("provider_call_1") drives rig's durable id, which is what the
     // context reports; the wire's item id travels on `provider`.
     assert_eq!(
-        context.tool_call_id.as_ref().and_then(|id| id.explicit()),
+        context
+            .tool_call_id
+            .as_ref()
+            .and_then(|id| id.provider().map(|provider| provider.call_id.as_str())),
         Some("provider_call_1")
     );
     assert!(context.block_id.is_some());
@@ -2410,10 +2421,17 @@ async fn invalid_tool_call_hook_skip_emits_streaming_tool_result() {
         skipped_tool_result.expect("skip recovery should emit a synthetic tool result");
     // The correlator ("call_1") is the durable id; the wire's item id
     // ("tool_call_1") travels on `provider`.
-    assert_eq!(skipped_tool_result.call.explicit(), Some("call_1"));
+    assert_eq!(
+        skipped_tool_result
+            .call
+            .provider()
+            .map(|provider| provider.call_id.as_str()),
+        Some("call_1")
+    );
     assert!(
         skipped_tool_result
-            .provider
+            .call
+            .provider()
             .as_ref()
             .is_some_and(|provider| {
                 provider.call_id == "call_1" && provider.item_id.as_deref() == Some("tool_call_1")
@@ -2435,7 +2453,7 @@ async fn invalid_tool_call_hook_skip_emits_streaming_tool_result() {
             if content.iter().any(|item| matches!(
                 item,
                 UserContent::ToolResult(result)
-                    if result.call.explicit() == Some("call_1")
+                    if result.call.provider().map(|provider| provider.call_id.as_str()) == Some("call_1")
                         && result.content.iter().any(|content| matches!(
                             content,
                             ToolResultContent::Text(text)
@@ -2533,13 +2551,13 @@ async fn invalid_tool_call_hook_retries_mixed_streaming_turn_without_executing_v
                 && content.iter().any(|item| matches!(
                     item,
                     AssistantContent::ToolCall(tool_call)
-                        if tool_call.id.explicit() == Some("call_1")
+                        if tool_call.id.provider().map(|provider| provider.call_id.as_str()) == Some("call_1")
                             && tool_call.function.name == "add"
                 ))
                 && content.iter().any(|item| matches!(
                     item,
                     AssistantContent::ToolCall(tool_call)
-                        if tool_call.id.explicit() == Some("call_2")
+                        if tool_call.id.provider().map(|provider| provider.call_id.as_str()) == Some("call_2")
                             && tool_call.function.name == "default_api"
                 ))
     ));
@@ -2550,7 +2568,7 @@ async fn invalid_tool_call_hook_retries_mixed_streaming_turn_without_executing_v
                 && content.iter().any(|item| matches!(
                     item,
                     UserContent::ToolResult(result)
-                        if result.call.explicit() == Some("call_1")
+                        if result.call.provider().map(|provider| provider.call_id.as_str()) == Some("call_1")
                             && result.content.iter().any(|content| matches!(
                                 content,
                                 ToolResultContent::Text(text)
@@ -2560,7 +2578,7 @@ async fn invalid_tool_call_hook_retries_mixed_streaming_turn_without_executing_v
                 && content.iter().any(|item| matches!(
                     item,
                     UserContent::ToolResult(result)
-                        if result.call.explicit() == Some("call_2")
+                        if result.call.provider().map(|provider| provider.call_id.as_str()) == Some("call_2")
                             && result.content.iter().any(|content| matches!(
                                 content,
                                 ToolResultContent::Text(text)
@@ -2632,10 +2650,17 @@ async fn invalid_tool_call_hook_skips_mixed_streaming_turn_without_executing_val
         skipped_tool_result.expect("skip recovery should emit a synthetic tool result");
     // The correlator ("call_2") is the durable id; the wire's item id
     // ("tool_call_2") travels on `provider`.
-    assert_eq!(skipped_tool_result.call.explicit(), Some("call_2"));
+    assert_eq!(
+        skipped_tool_result
+            .call
+            .provider()
+            .map(|provider| provider.call_id.as_str()),
+        Some("call_2")
+    );
     assert!(
         skipped_tool_result
-            .provider
+            .call
+            .provider()
             .as_ref()
             .is_some_and(|provider| {
                 provider.call_id == "call_2" && provider.item_id.as_deref() == Some("tool_call_2")
@@ -2658,13 +2683,13 @@ async fn invalid_tool_call_hook_skips_mixed_streaming_turn_without_executing_val
                 && content.iter().any(|item| matches!(
                     item,
                     AssistantContent::ToolCall(tool_call)
-                        if tool_call.id.explicit() == Some("call_1")
+                        if tool_call.id.provider().map(|provider| provider.call_id.as_str()) == Some("call_1")
                             && tool_call.function.name == "add"
                 ))
                 && content.iter().any(|item| matches!(
                     item,
                     AssistantContent::ToolCall(tool_call)
-                        if tool_call.id.explicit() == Some("call_2")
+                        if tool_call.id.provider().map(|provider| provider.call_id.as_str()) == Some("call_2")
                             && tool_call.function.name == "default_api"
                 ))
     ));
@@ -2675,8 +2700,8 @@ async fn invalid_tool_call_hook_skips_mixed_streaming_turn_without_executing_val
                 && content.iter().any(|item| matches!(
                     item,
                     UserContent::ToolResult(result)
-                        if result.call.explicit() == Some("call_1")
-                            && result.provider.as_ref().is_some_and(
+                        if result.call.provider().map(|provider| provider.call_id.as_str()) == Some("call_1")
+                            && result.call.provider().as_ref().is_some_and(
                                 |provider| provider.call_id == "call_1"
                             )
                             && result.content.iter().any(|content| matches!(
@@ -2688,8 +2713,8 @@ async fn invalid_tool_call_hook_skips_mixed_streaming_turn_without_executing_val
                 && content.iter().any(|item| matches!(
                     item,
                     UserContent::ToolResult(result)
-                        if result.call.explicit() == Some("call_2")
-                            && result.provider.as_ref().is_some_and(
+                        if result.call.provider().map(|provider| provider.call_id.as_str()) == Some("call_2")
+                            && result.call.provider().as_ref().is_some_and(
                                 |provider| provider.call_id == "call_2"
                             )
                             && result.content.iter().any(|content| matches!(
@@ -2762,7 +2787,7 @@ async fn invalid_completed_tool_call_skip_preserves_streaming_reasoning_history(
 }
 
 #[tokio::test]
-async fn invalid_name_delta_retry_preserves_streaming_reasoning_history() {
+async fn invalid_name_delta_retry_leaves_out_reasoning_no_issuer_named() {
     let model = MockCompletionModel::from_stream_turns([
         vec![
             MockStreamEvent::reasoning_delta_with_id("rs_1", "delta reason"),
@@ -2797,7 +2822,10 @@ async fn invalid_name_delta_retry_preserves_streaming_reasoning_history() {
     let requests = recorded.requests();
     assert_eq!(requests.len(), 2);
     let retry_history = requests[1].chat_history.clone();
-    assert!(assistant_reasoning_precedes_tool_call(
+    // The reasoning was still open when the turn was abandoned, so nothing
+    // named its issuer: it opens for no provider and is left out.
+    assert!(history_contains_tool_call(&retry_history, "default_api"));
+    assert!(!assistant_reasoning_precedes_tool_call(
         &retry_history,
         "delta reason",
         "default_api"
@@ -2942,7 +2970,7 @@ async fn invalid_tool_call_delta_retry_uses_structured_tool_feedback() {
                 && content.iter().any(|item| matches!(
                     item,
                     AssistantContent::ToolCall(tool_call)
-                        if tool_call.id.explicit() == Some("call_0")
+                        if tool_call.id.provider().map(|provider| provider.call_id.as_str()) == Some("call_0")
                             && tool_call.function.name == "add"
                 ))
                 && content.iter().any(|item| matches!(
@@ -2952,8 +2980,8 @@ async fn invalid_tool_call_delta_retry_uses_structured_tool_feedback() {
                 // handle at the boundary (wire schemas require a
                 // non-empty tool_call_id; stream keys never surface).
                 AssistantContent::ToolCall(tool_call)
-                    if tool_call.id.is_generated()
-                        && tool_call.provider.is_none()
+                    if tool_call.id.is_local()
+                        && tool_call.id.provider().is_none()
                         && tool_call.function.name == "default_api"
                         && tool_call.function.arguments == serde_json::json!({"x": 2, "y": 3})
             ))
@@ -2965,8 +2993,8 @@ async fn invalid_tool_call_delta_retry_uses_structured_tool_feedback() {
                 && content.iter().any(|item| matches!(
                     item,
                     UserContent::ToolResult(result)
-                        if result.call.explicit() == Some("call_0")
-                            && result.provider.as_ref().is_some_and(
+                        if result.call.provider().map(|provider| provider.call_id.as_str()) == Some("call_0")
+                            && result.call.provider().as_ref().is_some_and(
                                 |provider| provider.call_id == "call_0"
                             )
                             && result.content.iter().any(|content| matches!(
@@ -2978,7 +3006,7 @@ async fn invalid_tool_call_delta_retry_uses_structured_tool_feedback() {
                 && content.iter().any(|item| matches!(
                 item,
                 UserContent::ToolResult(result)
-                    if result.call.is_generated()
+                    if result.call.is_local()
                         && result.name == "default_api"
                         && result.content.iter().any(|content| matches!(
                             content,
@@ -3042,7 +3070,7 @@ async fn invalid_tool_call_delta_context_includes_same_turn_history_and_tool_cal
         context
             .tool_call_id
             .as_ref()
-            .is_some_and(|id| id.is_generated()),
+            .is_some_and(|id| id.is_local()),
         "an unfinished call still carries a non-empty minted durable id, got {:?}",
         context.tool_call_id
     );
@@ -3172,9 +3200,9 @@ async fn invalid_tool_call_delta_skip_uses_structured_tool_feedback() {
     // `provider` faithfully records that absence, while the diagnostic
     // call mints rig's correlation handle at the boundary — the synthetic
     // result carries that non-empty minted id, never an empty sentinel.
-    assert!(skipped_tool_result.call.is_generated());
+    assert!(skipped_tool_result.call.is_local());
     assert_eq!(skipped_tool_result.name, "default_api");
-    assert!(skipped_tool_result.provider.is_none());
+    assert!(skipped_tool_result.call.provider().is_none());
     assert!(skipped_tool_result.content.iter().any(|content| matches!(
         content,
         ToolResultContent::Text(text) if text.text == "default_api was skipped"
@@ -3196,7 +3224,7 @@ async fn invalid_tool_call_delta_skip_uses_structured_tool_feedback() {
                 && content.iter().any(|item| matches!(
                     item,
                     AssistantContent::ToolCall(tool_call)
-                        if tool_call.id.explicit() == Some("call_0")
+                        if tool_call.id.provider().map(|provider| provider.call_id.as_str()) == Some("call_0")
                             && tool_call.function.name == "add"
                 ))
                 && content.iter().any(|item| matches!(
@@ -3206,8 +3234,8 @@ async fn invalid_tool_call_delta_skip_uses_structured_tool_feedback() {
                 // handle at the boundary (wire schemas require a
                 // non-empty tool_call_id; stream keys never surface).
                 AssistantContent::ToolCall(tool_call)
-                    if tool_call.id.is_generated()
-                        && tool_call.provider.is_none()
+                    if tool_call.id.is_local()
+                        && tool_call.id.provider().is_none()
                         && tool_call.function.name == "default_api"
                         && tool_call.function.arguments == serde_json::json!({"x": 2, "y": 3})
             ))
@@ -3219,8 +3247,8 @@ async fn invalid_tool_call_delta_skip_uses_structured_tool_feedback() {
                 && content.iter().any(|item| matches!(
                     item,
                     UserContent::ToolResult(result)
-                        if result.call.explicit() == Some("call_0")
-                            && result.provider.as_ref().is_some_and(
+                        if result.call.provider().map(|provider| provider.call_id.as_str()) == Some("call_0")
+                            && result.call.provider().as_ref().is_some_and(
                                 |provider| provider.call_id == "call_0"
                             )
                             && result.content.iter().any(|content| matches!(
@@ -3232,7 +3260,7 @@ async fn invalid_tool_call_delta_skip_uses_structured_tool_feedback() {
                 && content.iter().any(|item| matches!(
                 item,
                 UserContent::ToolResult(result)
-                    if result.call.is_generated()
+                    if result.call.is_local()
                         && result.name == "default_api"
                         && result.content.iter().any(|content| matches!(
                             content,
@@ -3574,7 +3602,8 @@ async fn multiple_valid_streaming_tool_calls_execute_after_batch_validation() {
                 tool_result_ids.push(
                     tool_result
                         .call
-                        .explicit()
+                        .provider()
+                        .map(|provider| provider.call_id.as_str())
                         .expect("explicit provider ID")
                         .to_owned(),
                 );
@@ -5335,7 +5364,12 @@ async fn partial_reasoning_reaches_the_consumer_when_the_truncated_turn_errors()
                 block: Some(rig_core::message::AssistantContent::Reasoning(reasoning)),
                 ..
             })) => {
-                streamed_reasoning.push_str(&reasoning.display_text());
+                streamed_reasoning.push_str(
+                    &reasoning
+                        .open(reasoning.issuer())
+                        .expect("sealed reasoning")
+                        .display_text(),
+                );
             }
             Ok(MultiTurnStreamItem::FinalResponse(_)) => {
                 panic!("the truncated reasoning-only turn should error")
@@ -5652,7 +5686,7 @@ async fn streaming_reasoning_without_tools_does_not_duplicate_final_history() {
         Some(Message::User { content })
             if matches!(
                 content.first(),
-                Some(UserContent::Text(text)) if text.text == "think before answering"
+                UserContent::Text(text) if text.text == "think before answering"
             )
     ));
 
@@ -5678,8 +5712,8 @@ async fn streaming_reasoning_without_tools_does_not_duplicate_final_history() {
     assert!(assistant_content.iter().any(|item| matches!(
         item,
         AssistantContent::Reasoning(reasoning)
-            if reasoning.id.as_deref() == Some("rs_1")
-                && reasoning.content.iter().any(|content| matches!(
+            if reasoning.open(reasoning.issuer()).expect("sealed reasoning").id.as_deref() == Some("rs_1")
+                && reasoning.open(reasoning.issuer()).expect("sealed reasoning").content.iter().any(|content| matches!(
                     content,
                     ReasoningContent::Text { text, .. } if text == "reasoned step"
                 ))
@@ -6238,12 +6272,13 @@ async fn a_blocking_run_started_outside_a_span_stays_a_root_when_polled_inside_o
 
 /// A turn abandoned mid-stream, before its terminal record, keeps reasoning
 /// the issuing provider will accept on the retry: the stream arrived over
-/// the bus under a handler label, which names no issuer.
+/// the bus under a handler label, which names no issuer, but the origin
+/// sealed the reasoning it closed.
 #[tokio::test]
 async fn an_abandoned_streamed_turn_keeps_reasoning_its_provider_accepts() {
     let model = MockCompletionModel::from_stream_turns([
         vec![
-            MockStreamEvent::reasoning_delta_with_id("rs_1", "delta reason"),
+            MockStreamEvent::reasoning("delta reason").with_reasoning_id("rs_1"),
             MockStreamEvent::tool_call_arguments_delta("tool_call_1", r#"{"x":2,"y":3}"#),
             MockStreamEvent::tool_call_name_delta("tool_call_1", "default_api"),
             MockStreamEvent::final_response_with_total_tokens(4),
@@ -6288,9 +6323,9 @@ async fn an_abandoned_streamed_turn_keeps_reasoning_its_provider_accepts() {
         "the retry carries the abandoned turn's reasoning"
     );
     assert!(
-        reasoning
-            .iter()
-            .all(|reasoning| reasoning.replayable_to(rig_core::test_utils::MOCK_PROVIDER)),
+        reasoning.iter().all(|reasoning| reasoning
+            .open(&rig_core::test_utils::MOCK_PROVIDER.into())
+            .is_some()),
         "the issuing provider accepts it: {reasoning:?}"
     );
 }

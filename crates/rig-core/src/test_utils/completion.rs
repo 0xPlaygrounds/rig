@@ -90,16 +90,20 @@ impl MockTurn {
         Self::from_content(AssistantContent::text(text.into()))
     }
 
-    /// Create a tool-call response turn.
+    /// Create a tool-call response turn. An empty `name` scripts a provider
+    /// error instead: no call can be built without a name.
     pub fn tool_call(
         id: impl Into<String>,
         name: impl Into<String>,
         arguments: serde_json::Value,
     ) -> Self {
-        Self::from_content(AssistantContent::ToolCall(ToolCall::from_wire(
-            id,
-            ToolFunction::new(name.into(), arguments),
-        )))
+        match crate::message::ToolName::new(name) {
+            Ok(name) => Self::from_content(AssistantContent::ToolCall(ToolCall::from_wire(
+                id,
+                ToolFunction::new(name, arguments),
+            ))),
+            Err(error) => Self::error(error.to_string()),
+        }
     }
 
     /// Create a provider-error response turn.
@@ -171,7 +175,7 @@ impl MockTurn {
         if let Ok(response) = &mut self.response {
             for content in response.choice.iter_mut() {
                 if let AssistantContent::ToolCall(tool_call) = content {
-                    tool_call.provider = crate::message::ProviderCallId::new(call_id);
+                    tool_call.id = crate::message::CallId::from_wire(call_id);
                     break;
                 }
             }

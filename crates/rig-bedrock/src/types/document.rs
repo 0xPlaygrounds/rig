@@ -27,7 +27,7 @@ impl TryFrom<RigDocument> for aws_bedrock::DocumentBlock {
             DocumentSourceKind::Base64(blob) => {
                 let bytes = BASE64_STANDARD
                     .decode(blob)
-                    .map_err(|e| ProviderError::request(e))?;
+                    .map_err(ProviderError::request)?;
 
                 aws_bedrock::DocumentSource::Bytes(aws_smithy_types::Blob::new(bytes))
             }

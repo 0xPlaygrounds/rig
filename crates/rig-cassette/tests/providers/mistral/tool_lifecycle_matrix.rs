@@ -179,6 +179,7 @@ fn normalized_calls(choice: &[AssistantContent]) -> (Vec<String>, Vec<String>, V
         calls
             .iter()
             .map(|call| call.function.name.clone())
+            .map(String::from)
             .collect(),
         calls.iter().map(|call| call.id.to_string()).collect(),
         calls
@@ -294,7 +295,7 @@ async fn run_model(client: OpenAiModels, cell: Cell) -> Observation {
                         block: Some(AssistantContent::ToolCall(tool_call)),
                         ..
                     }) => {
-                        observation.names.push(tool_call.function.name);
+                        observation.names.push(tool_call.function.name.into());
                         observation.ids.push(tool_call.id.to_string());
                         observation.arguments.push(tool_call.function.arguments);
                     }

@@ -404,7 +404,7 @@ fn history_tool_calls(history: &[Message]) -> Vec<HistoryToolCall> {
                 .filter_map(move |content| match content {
                     AssistantContent::ToolCall(tool_call) => Some(HistoryToolCall {
                         message_index,
-                        name: tool_call.function.name.clone(),
+                        name: tool_call.function.name.clone().into(),
                     }),
                     _ => None,
                 })

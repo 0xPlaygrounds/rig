@@ -2,19 +2,11 @@
   "header": {
     "deliveries": [
       {
-        "batch": 4,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
         "batch": 5,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 3
         }
       },
       {
@@ -167,11 +159,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_128624"
-              },
-              "provider": {
-                "call_id": "call_128624"
+                "provider": {
+                  "call_id": "call_128624"
+                }
               },
               "function": {
                 "name": "add",
@@ -239,11 +229,9 @@
           "block": {
             "type": "toolcall",
             "id": {
-              "origin": "explicit",
-              "id": "call_128624"
-            },
-            "provider": {
-              "call_id": "call_128624"
+              "provider": {
+                "call_id": "call_128624"
+              }
             },
             "function": {
               "name": "add",
@@ -352,11 +340,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_128624"
-                  },
-                  "provider": {
-                    "call_id": "call_128624"
+                    "provider": {
+                      "call_id": "call_128624"
+                    }
                   },
                   "function": {
                     "name": "add",
@@ -376,11 +362,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_128624"
-                  },
-                  "provider": {
-                    "call_id": "call_128624"
+                    "provider": {
+                      "call_id": "call_128624"
+                    }
                   },
                   "name": "add",
                   "content": [

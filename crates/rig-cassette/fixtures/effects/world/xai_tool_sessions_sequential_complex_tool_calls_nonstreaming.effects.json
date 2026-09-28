@@ -358,24 +358,22 @@
           "choice": [
             {
               "type": "reasoning",
+              "issuer": "xai",
               "id": "rs_936fb76b-48d3-98ee-8fc6-f704799c1f86",
               "content": [
                 {
                   "type": "summary",
                   "content": "Running the production-readiness scenario."
                 }
-              ],
-              "provider": "xai"
+              ]
             },
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call-d68ee46c-30da-4dd4-9538-a9b194f0eecd-0"
-              },
-              "provider": {
-                "call_id": "call-d68ee46c-30da-4dd4-9538-a9b194f0eecd-0",
-                "item_id": "fc_936fb76b-48d3-98ee-8fc6-f704799c1f86_0"
+                "provider": {
+                  "call_id": "call-d68ee46c-30da-4dd4-9538-a9b194f0eecd-0",
+                  "item_id": "fc_936fb76b-48d3-98ee-8fc6-f704799c1f86_0"
+                }
               },
               "function": {
                 "name": "ping_empty",
@@ -644,24 +642,22 @@
               "content": [
                 {
                   "type": "reasoning",
+                  "issuer": "xai",
                   "id": "rs_936fb76b-48d3-98ee-8fc6-f704799c1f86",
                   "content": [
                     {
                       "type": "summary",
                       "content": "Running the production-readiness scenario."
                     }
-                  ],
-                  "provider": "xai"
+                  ]
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call-d68ee46c-30da-4dd4-9538-a9b194f0eecd-0"
-                  },
-                  "provider": {
-                    "call_id": "call-d68ee46c-30da-4dd4-9538-a9b194f0eecd-0",
-                    "item_id": "fc_936fb76b-48d3-98ee-8fc6-f704799c1f86_0"
+                    "provider": {
+                      "call_id": "call-d68ee46c-30da-4dd4-9538-a9b194f0eecd-0",
+                      "item_id": "fc_936fb76b-48d3-98ee-8fc6-f704799c1f86_0"
+                    }
                   },
                   "function": {
                     "name": "ping_empty",
@@ -678,12 +674,10 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call-d68ee46c-30da-4dd4-9538-a9b194f0eecd-0"
-                  },
-                  "provider": {
-                    "call_id": "call-d68ee46c-30da-4dd4-9538-a9b194f0eecd-0",
-                    "item_id": "fc_936fb76b-48d3-98ee-8fc6-f704799c1f86_0"
+                    "provider": {
+                      "call_id": "call-d68ee46c-30da-4dd4-9538-a9b194f0eecd-0",
+                      "item_id": "fc_936fb76b-48d3-98ee-8fc6-f704799c1f86_0"
+                    }
                   },
                   "name": "ping_empty",
                   "content": [
@@ -815,24 +809,22 @@
           "choice": [
             {
               "type": "reasoning",
+              "issuer": "xai",
               "id": "rs_3da86732-1504-9e36-be1e-bfc0a90061e5",
               "content": [
                 {
                   "type": "summary",
                   "content": "The production-readiness scenario requires calling exactly one tool at a time in the specified order.\n\nThe first tool call returned EMPTY-OK. The remaining three tools are next: inspect_manifest, join_labels, and escape_echo."
                 }
-              ],
-              "provider": "xai"
+              ]
             },
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call-145f2ad6-315c-4bf8-b96a-47ac313b636f-1"
-              },
-              "provider": {
-                "call_id": "call-145f2ad6-315c-4bf8-b96a-47ac313b636f-1",
-                "item_id": "fc_3da86732-1504-9e36-be1e-bfc0a90061e5_0"
+                "provider": {
+                  "call_id": "call-145f2ad6-315c-4bf8-b96a-47ac313b636f-1",
+                  "item_id": "fc_3da86732-1504-9e36-be1e-bfc0a90061e5_0"
+                }
               },
               "function": {
                 "name": "inspect_manifest",
@@ -1118,24 +1110,22 @@
               "content": [
                 {
                   "type": "reasoning",
+                  "issuer": "xai",
                   "id": "rs_936fb76b-48d3-98ee-8fc6-f704799c1f86",
                   "content": [
                     {
                       "type": "summary",
                       "content": "Running the production-readiness scenario."
                     }
-                  ],
-                  "provider": "xai"
+                  ]
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call-d68ee46c-30da-4dd4-9538-a9b194f0eecd-0"
-                  },
-                  "provider": {
-                    "call_id": "call-d68ee46c-30da-4dd4-9538-a9b194f0eecd-0",
-                    "item_id": "fc_936fb76b-48d3-98ee-8fc6-f704799c1f86_0"
+                    "provider": {
+                      "call_id": "call-d68ee46c-30da-4dd4-9538-a9b194f0eecd-0",
+                      "item_id": "fc_936fb76b-48d3-98ee-8fc6-f704799c1f86_0"
+                    }
                   },
                   "function": {
                     "name": "ping_empty",
@@ -1152,12 +1142,10 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call-d68ee46c-30da-4dd4-9538-a9b194f0eecd-0"
-                  },
-                  "provider": {
-                    "call_id": "call-d68ee46c-30da-4dd4-9538-a9b194f0eecd-0",
-                    "item_id": "fc_936fb76b-48d3-98ee-8fc6-f704799c1f86_0"
+                    "provider": {
+                      "call_id": "call-d68ee46c-30da-4dd4-9538-a9b194f0eecd-0",
+                      "item_id": "fc_936fb76b-48d3-98ee-8fc6-f704799c1f86_0"
+                    }
                   },
                   "name": "ping_empty",
                   "content": [
@@ -1175,24 +1163,22 @@
               "content": [
                 {
                   "type": "reasoning",
+                  "issuer": "xai",
                   "id": "rs_3da86732-1504-9e36-be1e-bfc0a90061e5",
                   "content": [
                     {
                       "type": "summary",
                       "content": "The production-readiness scenario requires calling exactly one tool at a time in the specified order.\n\nThe first tool call returned EMPTY-OK. The remaining three tools are next: inspect_manifest, join_labels, and escape_echo."
                     }
-                  ],
-                  "provider": "xai"
+                  ]
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call-145f2ad6-315c-4bf8-b96a-47ac313b636f-1"
-                  },
-                  "provider": {
-                    "call_id": "call-145f2ad6-315c-4bf8-b96a-47ac313b636f-1",
-                    "item_id": "fc_3da86732-1504-9e36-be1e-bfc0a90061e5_0"
+                    "provider": {
+                      "call_id": "call-145f2ad6-315c-4bf8-b96a-47ac313b636f-1",
+                      "item_id": "fc_3da86732-1504-9e36-be1e-bfc0a90061e5_0"
+                    }
                   },
                   "function": {
                     "name": "inspect_manifest",
@@ -1226,12 +1212,10 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call-145f2ad6-315c-4bf8-b96a-47ac313b636f-1"
-                  },
-                  "provider": {
-                    "call_id": "call-145f2ad6-315c-4bf8-b96a-47ac313b636f-1",
-                    "item_id": "fc_3da86732-1504-9e36-be1e-bfc0a90061e5_0"
+                    "provider": {
+                      "call_id": "call-145f2ad6-315c-4bf8-b96a-47ac313b636f-1",
+                      "item_id": "fc_3da86732-1504-9e36-be1e-bfc0a90061e5_0"
+                    }
                   },
                   "name": "inspect_manifest",
                   "content": [
@@ -1364,12 +1348,10 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call-1c05ca51-6b67-4de1-b13a-136744fa7635-2"
-              },
-              "provider": {
-                "call_id": "call-1c05ca51-6b67-4de1-b13a-136744fa7635-2",
-                "item_id": "fc_419fcec5-5803-98f0-a5a9-d7ca2c92ac5e_0"
+                "provider": {
+                  "call_id": "call-1c05ca51-6b67-4de1-b13a-136744fa7635-2",
+                  "item_id": "fc_419fcec5-5803-98f0-a5a9-d7ca2c92ac5e_0"
+                }
               },
               "function": {
                 "name": "join_labels",
@@ -1635,24 +1617,22 @@
               "content": [
                 {
                   "type": "reasoning",
+                  "issuer": "xai",
                   "id": "rs_936fb76b-48d3-98ee-8fc6-f704799c1f86",
                   "content": [
                     {
                       "type": "summary",
                       "content": "Running the production-readiness scenario."
                     }
-                  ],
-                  "provider": "xai"
+                  ]
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call-d68ee46c-30da-4dd4-9538-a9b194f0eecd-0"
-                  },
-                  "provider": {
-                    "call_id": "call-d68ee46c-30da-4dd4-9538-a9b194f0eecd-0",
-                    "item_id": "fc_936fb76b-48d3-98ee-8fc6-f704799c1f86_0"
+                    "provider": {
+                      "call_id": "call-d68ee46c-30da-4dd4-9538-a9b194f0eecd-0",
+                      "item_id": "fc_936fb76b-48d3-98ee-8fc6-f704799c1f86_0"
+                    }
                   },
                   "function": {
                     "name": "ping_empty",
@@ -1669,12 +1649,10 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call-d68ee46c-30da-4dd4-9538-a9b194f0eecd-0"
-                  },
-                  "provider": {
-                    "call_id": "call-d68ee46c-30da-4dd4-9538-a9b194f0eecd-0",
-                    "item_id": "fc_936fb76b-48d3-98ee-8fc6-f704799c1f86_0"
+                    "provider": {
+                      "call_id": "call-d68ee46c-30da-4dd4-9538-a9b194f0eecd-0",
+                      "item_id": "fc_936fb76b-48d3-98ee-8fc6-f704799c1f86_0"
+                    }
                   },
                   "name": "ping_empty",
                   "content": [
@@ -1692,24 +1670,22 @@
               "content": [
                 {
                   "type": "reasoning",
+                  "issuer": "xai",
                   "id": "rs_3da86732-1504-9e36-be1e-bfc0a90061e5",
                   "content": [
                     {
                       "type": "summary",
                       "content": "The production-readiness scenario requires calling exactly one tool at a time in the specified order.\n\nThe first tool call returned EMPTY-OK. The remaining three tools are next: inspect_manifest, join_labels, and escape_echo."
                     }
-                  ],
-                  "provider": "xai"
+                  ]
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call-145f2ad6-315c-4bf8-b96a-47ac313b636f-1"
-                  },
-                  "provider": {
-                    "call_id": "call-145f2ad6-315c-4bf8-b96a-47ac313b636f-1",
-                    "item_id": "fc_3da86732-1504-9e36-be1e-bfc0a90061e5_0"
+                    "provider": {
+                      "call_id": "call-145f2ad6-315c-4bf8-b96a-47ac313b636f-1",
+                      "item_id": "fc_3da86732-1504-9e36-be1e-bfc0a90061e5_0"
+                    }
                   },
                   "function": {
                     "name": "inspect_manifest",
@@ -1743,12 +1719,10 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call-145f2ad6-315c-4bf8-b96a-47ac313b636f-1"
-                  },
-                  "provider": {
-                    "call_id": "call-145f2ad6-315c-4bf8-b96a-47ac313b636f-1",
-                    "item_id": "fc_3da86732-1504-9e36-be1e-bfc0a90061e5_0"
+                    "provider": {
+                      "call_id": "call-145f2ad6-315c-4bf8-b96a-47ac313b636f-1",
+                      "item_id": "fc_3da86732-1504-9e36-be1e-bfc0a90061e5_0"
+                    }
                   },
                   "name": "inspect_manifest",
                   "content": [
@@ -1767,12 +1741,10 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call-1c05ca51-6b67-4de1-b13a-136744fa7635-2"
-                  },
-                  "provider": {
-                    "call_id": "call-1c05ca51-6b67-4de1-b13a-136744fa7635-2",
-                    "item_id": "fc_419fcec5-5803-98f0-a5a9-d7ca2c92ac5e_0"
+                    "provider": {
+                      "call_id": "call-1c05ca51-6b67-4de1-b13a-136744fa7635-2",
+                      "item_id": "fc_419fcec5-5803-98f0-a5a9-d7ca2c92ac5e_0"
+                    }
                   },
                   "function": {
                     "name": "join_labels",
@@ -1797,12 +1769,10 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call-1c05ca51-6b67-4de1-b13a-136744fa7635-2"
-                  },
-                  "provider": {
-                    "call_id": "call-1c05ca51-6b67-4de1-b13a-136744fa7635-2",
-                    "item_id": "fc_419fcec5-5803-98f0-a5a9-d7ca2c92ac5e_0"
+                    "provider": {
+                      "call_id": "call-1c05ca51-6b67-4de1-b13a-136744fa7635-2",
+                      "item_id": "fc_419fcec5-5803-98f0-a5a9-d7ca2c92ac5e_0"
+                    }
                   },
                   "name": "join_labels",
                   "content": [
@@ -1934,24 +1904,22 @@
           "choice": [
             {
               "type": "reasoning",
+              "issuer": "xai",
               "id": "rs_8868afed-f733-9ee3-8085-20c58409643c",
               "content": [
                 {
                   "type": "summary",
                   "content": "Running the production-readiness scenario."
                 }
-              ],
-              "provider": "xai"
+              ]
             },
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call-c1f677f5-0589-4de1-9776-4b9def1ca322-3"
-              },
-              "provider": {
-                "call_id": "call-c1f677f5-0589-4de1-9776-4b9def1ca322-3",
-                "item_id": "fc_8868afed-f733-9ee3-8085-20c58409643c_0"
+                "provider": {
+                  "call_id": "call-c1f677f5-0589-4de1-9776-4b9def1ca322-3",
+                  "item_id": "fc_8868afed-f733-9ee3-8085-20c58409643c_0"
+                }
               },
               "function": {
                 "name": "escape_echo",
@@ -2222,24 +2190,22 @@
               "content": [
                 {
                   "type": "reasoning",
+                  "issuer": "xai",
                   "id": "rs_936fb76b-48d3-98ee-8fc6-f704799c1f86",
                   "content": [
                     {
                       "type": "summary",
                       "content": "Running the production-readiness scenario."
                     }
-                  ],
-                  "provider": "xai"
+                  ]
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call-d68ee46c-30da-4dd4-9538-a9b194f0eecd-0"
-                  },
-                  "provider": {
-                    "call_id": "call-d68ee46c-30da-4dd4-9538-a9b194f0eecd-0",
-                    "item_id": "fc_936fb76b-48d3-98ee-8fc6-f704799c1f86_0"
+                    "provider": {
+                      "call_id": "call-d68ee46c-30da-4dd4-9538-a9b194f0eecd-0",
+                      "item_id": "fc_936fb76b-48d3-98ee-8fc6-f704799c1f86_0"
+                    }
                   },
                   "function": {
                     "name": "ping_empty",
@@ -2256,12 +2222,10 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call-d68ee46c-30da-4dd4-9538-a9b194f0eecd-0"
-                  },
-                  "provider": {
-                    "call_id": "call-d68ee46c-30da-4dd4-9538-a9b194f0eecd-0",
-                    "item_id": "fc_936fb76b-48d3-98ee-8fc6-f704799c1f86_0"
+                    "provider": {
+                      "call_id": "call-d68ee46c-30da-4dd4-9538-a9b194f0eecd-0",
+                      "item_id": "fc_936fb76b-48d3-98ee-8fc6-f704799c1f86_0"
+                    }
                   },
                   "name": "ping_empty",
                   "content": [
@@ -2279,24 +2243,22 @@
               "content": [
                 {
                   "type": "reasoning",
+                  "issuer": "xai",
                   "id": "rs_3da86732-1504-9e36-be1e-bfc0a90061e5",
                   "content": [
                     {
                       "type": "summary",
                       "content": "The production-readiness scenario requires calling exactly one tool at a time in the specified order.\n\nThe first tool call returned EMPTY-OK. The remaining three tools are next: inspect_manifest, join_labels, and escape_echo."
                     }
-                  ],
-                  "provider": "xai"
+                  ]
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call-145f2ad6-315c-4bf8-b96a-47ac313b636f-1"
-                  },
-                  "provider": {
-                    "call_id": "call-145f2ad6-315c-4bf8-b96a-47ac313b636f-1",
-                    "item_id": "fc_3da86732-1504-9e36-be1e-bfc0a90061e5_0"
+                    "provider": {
+                      "call_id": "call-145f2ad6-315c-4bf8-b96a-47ac313b636f-1",
+                      "item_id": "fc_3da86732-1504-9e36-be1e-bfc0a90061e5_0"
+                    }
                   },
                   "function": {
                     "name": "inspect_manifest",
@@ -2330,12 +2292,10 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call-145f2ad6-315c-4bf8-b96a-47ac313b636f-1"
-                  },
-                  "provider": {
-                    "call_id": "call-145f2ad6-315c-4bf8-b96a-47ac313b636f-1",
-                    "item_id": "fc_3da86732-1504-9e36-be1e-bfc0a90061e5_0"
+                    "provider": {
+                      "call_id": "call-145f2ad6-315c-4bf8-b96a-47ac313b636f-1",
+                      "item_id": "fc_3da86732-1504-9e36-be1e-bfc0a90061e5_0"
+                    }
                   },
                   "name": "inspect_manifest",
                   "content": [
@@ -2354,12 +2314,10 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call-1c05ca51-6b67-4de1-b13a-136744fa7635-2"
-                  },
-                  "provider": {
-                    "call_id": "call-1c05ca51-6b67-4de1-b13a-136744fa7635-2",
-                    "item_id": "fc_419fcec5-5803-98f0-a5a9-d7ca2c92ac5e_0"
+                    "provider": {
+                      "call_id": "call-1c05ca51-6b67-4de1-b13a-136744fa7635-2",
+                      "item_id": "fc_419fcec5-5803-98f0-a5a9-d7ca2c92ac5e_0"
+                    }
                   },
                   "function": {
                     "name": "join_labels",
@@ -2384,12 +2342,10 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call-1c05ca51-6b67-4de1-b13a-136744fa7635-2"
-                  },
-                  "provider": {
-                    "call_id": "call-1c05ca51-6b67-4de1-b13a-136744fa7635-2",
-                    "item_id": "fc_419fcec5-5803-98f0-a5a9-d7ca2c92ac5e_0"
+                    "provider": {
+                      "call_id": "call-1c05ca51-6b67-4de1-b13a-136744fa7635-2",
+                      "item_id": "fc_419fcec5-5803-98f0-a5a9-d7ca2c92ac5e_0"
+                    }
                   },
                   "name": "join_labels",
                   "content": [
@@ -2407,24 +2363,22 @@
               "content": [
                 {
                   "type": "reasoning",
+                  "issuer": "xai",
                   "id": "rs_8868afed-f733-9ee3-8085-20c58409643c",
                   "content": [
                     {
                       "type": "summary",
                       "content": "Running the production-readiness scenario."
                     }
-                  ],
-                  "provider": "xai"
+                  ]
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call-c1f677f5-0589-4de1-9776-4b9def1ca322-3"
-                  },
-                  "provider": {
-                    "call_id": "call-c1f677f5-0589-4de1-9776-4b9def1ca322-3",
-                    "item_id": "fc_8868afed-f733-9ee3-8085-20c58409643c_0"
+                    "provider": {
+                      "call_id": "call-c1f677f5-0589-4de1-9776-4b9def1ca322-3",
+                      "item_id": "fc_8868afed-f733-9ee3-8085-20c58409643c_0"
+                    }
                   },
                   "function": {
                     "name": "escape_echo",
@@ -2443,12 +2397,10 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call-c1f677f5-0589-4de1-9776-4b9def1ca322-3"
-                  },
-                  "provider": {
-                    "call_id": "call-c1f677f5-0589-4de1-9776-4b9def1ca322-3",
-                    "item_id": "fc_8868afed-f733-9ee3-8085-20c58409643c_0"
+                    "provider": {
+                      "call_id": "call-c1f677f5-0589-4de1-9776-4b9def1ca322-3",
+                      "item_id": "fc_8868afed-f733-9ee3-8085-20c58409643c_0"
+                    }
                   },
                   "name": "escape_echo",
                   "content": [

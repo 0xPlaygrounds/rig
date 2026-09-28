@@ -91,11 +91,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call-1"
-              },
-              "provider": {
-                "call_id": "call-1"
+                "provider": {
+                  "call_id": "call-1"
+                }
               },
               "function": {
                 "name": "final_result",
@@ -119,11 +117,9 @@
               {
                 "type": "toolcall",
                 "id": {
-                  "origin": "explicit",
-                  "id": "call-1"
-                },
-                "provider": {
-                  "call_id": "call-1"
+                  "provider": {
+                    "call_id": "call-1"
+                  }
                 },
                 "function": {
                   "name": "final_result",
@@ -174,11 +170,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call-1"
-                  },
-                  "provider": {
-                    "call_id": "call-1"
+                    "provider": {
+                      "call_id": "call-1"
+                    }
                   },
                   "function": {
                     "name": "final_result",
@@ -198,11 +192,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call-1"
-                  },
-                  "provider": {
-                    "call_id": "call-1"
+                    "provider": {
+                      "call_id": "call-1"
+                    }
                   },
                   "name": "final_result",
                   "content": [
@@ -256,11 +248,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call-2"
-              },
-              "provider": {
-                "call_id": "call-2"
+                "provider": {
+                  "call_id": "call-2"
+                }
               },
               "function": {
                 "name": "final_result",
@@ -285,11 +275,9 @@
               {
                 "type": "toolcall",
                 "id": {
-                  "origin": "explicit",
-                  "id": "call-2"
-                },
-                "provider": {
-                  "call_id": "call-2"
+                  "provider": {
+                    "call_id": "call-2"
+                  }
                 },
                 "function": {
                   "name": "final_result",

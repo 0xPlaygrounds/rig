@@ -17,7 +17,7 @@ use std::marker::PhantomData;
 
 use crate::completion::CompletionRequest;
 use crate::error::{EncodeError, ProviderError};
-use crate::message::retain_replayable_reasoning;
+use crate::message::{AssistantContent, Issuer, Message};
 use crate::wire::{Capabilities, Decoder, Descriptor, Mode, Operation, Out, Wire, WireEvent};
 
 /// A wire whose payload is the request and whose frames are the events.
@@ -98,7 +98,28 @@ impl<Op: Operation> Wire for Local<Op> {
         // every completion wire's encode scopes it.
         let any: &mut dyn std::any::Any = &mut request;
         if let Some(request) = any.downcast_mut::<CompletionRequest>() {
-            retain_replayable_reasoning(&mut request.chat_history, &[&self.name]);
+            let issuers = [Issuer::from(self.name.clone())];
+            for message in request.chat_history.iter_mut() {
+                if let Message::Assistant { content, .. } = message
+                    && let Some(kept) = content.clone().filter(|part| match part {
+                        AssistantContent::Reasoning(reasoning) => {
+                            reasoning.open_for(&issuers).is_some()
+                        }
+                        _ => true,
+                    })
+                {
+                    *content = kept;
+                }
+            }
+            request.chat_history = request
+                .chat_history
+                .clone()
+                .filter(|message| message.replays_to(&issuers))
+                .ok_or_else(|| {
+                    EncodeError::request(
+                        "no message is left once reasoning another service issued is left out",
+                    )
+                })?;
         }
         Ok(request)
     }

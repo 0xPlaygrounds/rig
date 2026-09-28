@@ -6,7 +6,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 1
         }
       },
       {
@@ -22,7 +22,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 4
+          "items": 2
         }
       },
       {
@@ -30,11 +30,19 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 4
+          "items": 3
         }
       },
       {
         "batch": 11,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 12,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -42,25 +50,25 @@
         }
       },
       {
-        "batch": 11,
+        "batch": 13,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 13,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 12,
+        "batch": 14,
         "id": 1,
         "kind": {
           "delivery": "outcome"
-        }
-      },
-      {
-        "batch": 20,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 4
         }
       },
       {
@@ -68,7 +76,7 @@
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 4
+          "items": 1
         }
       },
       {
@@ -76,7 +84,7 @@
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 3
         }
       },
       {
@@ -84,11 +92,27 @@
         "id": 2,
         "kind": {
           "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 24,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
           "items": 2
         }
       },
       {
-        "batch": 23,
+        "batch": 25,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 25,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -223,11 +247,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "toolu_019Mq78rMtohgavHsEAZexWj"
-              },
-              "provider": {
-                "call_id": "toolu_019Mq78rMtohgavHsEAZexWj"
+                "provider": {
+                  "call_id": "toolu_019Mq78rMtohgavHsEAZexWj"
+                }
               },
               "function": {
                 "name": "add",
@@ -383,11 +405,9 @@
           "block": {
             "type": "toolcall",
             "id": {
-              "origin": "explicit",
-              "id": "toolu_019Mq78rMtohgavHsEAZexWj"
-            },
-            "provider": {
-              "call_id": "toolu_019Mq78rMtohgavHsEAZexWj"
+              "provider": {
+                "call_id": "toolu_019Mq78rMtohgavHsEAZexWj"
+              }
             },
             "function": {
               "name": "add",
@@ -511,11 +531,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "toolu_019Mq78rMtohgavHsEAZexWj"
-                  },
-                  "provider": {
-                    "call_id": "toolu_019Mq78rMtohgavHsEAZexWj"
+                    "provider": {
+                      "call_id": "toolu_019Mq78rMtohgavHsEAZexWj"
+                    }
                   },
                   "function": {
                     "name": "add",
@@ -535,11 +553,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "toolu_019Mq78rMtohgavHsEAZexWj"
-                  },
-                  "provider": {
-                    "call_id": "toolu_019Mq78rMtohgavHsEAZexWj"
+                    "provider": {
+                      "call_id": "toolu_019Mq78rMtohgavHsEAZexWj"
+                    }
                   },
                   "name": "add",
                   "content": [

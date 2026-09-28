@@ -109,11 +109,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "toolu_01SPgxpjTY3oRQGp8rp3TUkw"
-              },
-              "provider": {
-                "call_id": "toolu_01SPgxpjTY3oRQGp8rp3TUkw"
+                "provider": {
+                  "call_id": "toolu_01SPgxpjTY3oRQGp8rp3TUkw"
+                }
               },
               "function": {
                 "name": "lookup",
@@ -237,11 +235,9 @@
           "block": {
             "type": "toolcall",
             "id": {
-              "origin": "explicit",
-              "id": "toolu_01SPgxpjTY3oRQGp8rp3TUkw"
-            },
-            "provider": {
-              "call_id": "toolu_01SPgxpjTY3oRQGp8rp3TUkw"
+              "provider": {
+                "call_id": "toolu_01SPgxpjTY3oRQGp8rp3TUkw"
+              }
             },
             "function": {
               "name": "lookup",
@@ -426,11 +422,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "toolu_01SPgxpjTY3oRQGp8rp3TUkw"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01SPgxpjTY3oRQGp8rp3TUkw"
+                    "provider": {
+                      "call_id": "toolu_01SPgxpjTY3oRQGp8rp3TUkw"
+                    }
                   },
                   "function": {
                     "name": "lookup",
@@ -449,11 +443,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "toolu_01SPgxpjTY3oRQGp8rp3TUkw"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01SPgxpjTY3oRQGp8rp3TUkw"
+                    "provider": {
+                      "call_id": "toolu_01SPgxpjTY3oRQGp8rp3TUkw"
+                    }
                   },
                   "name": "lookup",
                   "content": [

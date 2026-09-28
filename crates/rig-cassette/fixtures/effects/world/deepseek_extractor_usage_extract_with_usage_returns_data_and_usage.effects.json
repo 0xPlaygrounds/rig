@@ -108,6 +108,7 @@
           "choice": [
             {
               "type": "reasoning",
+              "issuer": "deepseek",
               "id": null,
               "content": [
                 {
@@ -116,17 +117,14 @@
                     "text": "We need answer. We need extract structured data. Use submit. Fields: name, age, profession. Jane Smith, 45, data scientist. Must call submit even with defaults."
                   }
                 }
-              ],
-              "provider": "deepseek"
+              ]
             },
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_00_UxZtz2IMskWA9Q93SIle5900"
-              },
-              "provider": {
-                "call_id": "call_00_UxZtz2IMskWA9Q93SIle5900"
+                "provider": {
+                  "call_id": "call_00_UxZtz2IMskWA9Q93SIle5900"
+                }
               },
               "function": {
                 "name": "submit",

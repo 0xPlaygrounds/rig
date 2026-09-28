@@ -64,7 +64,7 @@ const FILE_TEXT: &str =
 fn ask_with(history: Vec<Message>) -> CompletionRequest {
     CompletionRequest {
         model: None,
-        chat_history: history,
+        chat_history: rig_core::NonEmpty::from_vec(history).expect("non-empty"),
         documents: vec![],
         tools: vec![],
         temperature: None,
@@ -79,7 +79,7 @@ fn ask_with(history: Vec<Message>) -> CompletionRequest {
 fn ask(prompt: &str) -> CompletionRequest {
     CompletionRequest {
         model: None,
-        chat_history: vec![Message::user(prompt)],
+        chat_history: rig_core::NonEmpty::new(Message::user(prompt)),
         documents: vec![],
         tools: vec![],
         temperature: Some(0.0),
@@ -368,13 +368,12 @@ async fn interactions_chain_with_tool_call() {
 
                 let second = model
                     .call(
-                        CompletionRequest::new(Message::from(UserContent::tool_result_for(
+                        CompletionRequest::new(Message::from(UserContent::tool_result(
                             call.id.clone(),
-                            call.provider.clone(),
                             call.function.name.clone(),
-                            vec![ToolResultContent::text(format!(
+                            rig_core::NonEmpty::new(ToolResultContent::text(format!(
                                 "record alpha: code {CODE}"
-                            ))],
+                            ))),
                         )))
                         .additional_params(params(Some(first_id))),
                     )
@@ -465,16 +464,13 @@ async fn file_uri_chain() {
 
             let body = async {
                 let document = Message::User {
-                    content: vec![
-                        UserContent::Document(Document {
+                    content: rig_core::NonEmpty::with_rest(UserContent::Document(Document {
                             data: DocumentSourceKind::Url(uri.clone()),
                             media_type: Some(DocumentMediaType::TXT),
                             additional_params: None,
-                        }),
-                        UserContent::text(
+                        }), [UserContent::text(
                             "What is the ordering token in the attached file? Reply with the token only.",
-                        ),
-                    ],
+                        )]),
                 };
                 let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
                 let first = model
@@ -490,7 +486,7 @@ async fn file_uri_chain() {
                     document,
                     Message::Assistant {
                         id: first.message_id.clone(),
-                        content: first.choice.clone(),
+                        content: rig_core::NonEmpty::from_vec(first.choice.clone()).expect("non-empty"),
                     },
                     Message::user(
                         "What is the shelf code in the same attached file? Reply with the code only.",

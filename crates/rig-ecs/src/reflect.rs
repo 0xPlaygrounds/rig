@@ -109,7 +109,7 @@ pub fn install_reflect(world: &mut World) {
             ToolChoiceReflect,
             UsageReflect,
             ToolCallIdReflect,
-            ProviderCallIdReflect,
+            ToolNameReflect,
             AssistantContentsReflect,
             MessageReflect,
         ]

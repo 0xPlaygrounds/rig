@@ -58,13 +58,13 @@ async fn pdf_document_citations_decode_as_page_locations() {
             let response = model
                 .call(
                     CompletionRequest::new(Message::User {
-                        content: vec![
+                        content: rig_core::NonEmpty::with_rest(
                             UserContent::Document(cited_pdf()),
-                            UserContent::text(
+                            [UserContent::text(
                                 "Using citations, state in one sentence what problem this \
                                      paper says it solves.",
-                            ),
-                        ],
+                            )],
+                        ),
                     })
                     .temperature(0.0)
                     .max_tokens(512),

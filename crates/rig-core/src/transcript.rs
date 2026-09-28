@@ -9,9 +9,7 @@
 
 use std::collections::BTreeSet;
 
-use crate::message::{
-    AssistantContent, Message, ProviderCallId, ToolCallId, ToolResultContent, UserContent,
-};
+use crate::message::{AssistantContent, CallId, Message, ToolName, ToolResultContent, UserContent};
 use crate::tool::ToolOutput;
 
 /// Why a history is not a canonical transcript. See [`validate_canonical`].
@@ -29,7 +27,7 @@ pub enum TranscriptError {
         /// Index of the assistant message carrying the call.
         index: usize,
         /// The unanswered call id.
-        call_id: ToolCallId,
+        call_id: CallId,
     },
     /// A tool result that answers no call from the immediately preceding
     /// assistant message.
@@ -40,7 +38,7 @@ pub enum TranscriptError {
         /// Index of the user message carrying the result.
         index: usize,
         /// The orphan result's call id.
-        call_id: ToolCallId,
+        call_id: CallId,
     },
 }
 
@@ -50,7 +48,7 @@ pub enum TranscriptError {
 /// System messages reset the consecutive-assistant check but retain pending calls.
 /// Duplicate call IDs are treated as one pending ID.
 pub fn validate_canonical(messages: &[Message]) -> Result<(), TranscriptError> {
-    let mut prev_assistant_calls: Option<BTreeSet<ToolCallId>> = None;
+    let mut prev_assistant_calls: Option<BTreeSet<CallId>> = None;
     let mut prev_was_assistant = false;
     for (index, message) in messages.iter().enumerate() {
         match message {
@@ -67,7 +65,7 @@ pub fn validate_canonical(messages: &[Message]) -> Result<(), TranscriptError> {
                         call_id,
                     });
                 }
-                let calls: BTreeSet<ToolCallId> = content
+                let calls: BTreeSet<CallId> = content
                     .iter()
                     .filter_map(|c| match c {
                         AssistantContent::ToolCall(call) => Some(call.id.clone()),
@@ -109,36 +107,16 @@ pub fn validate_canonical(messages: &[Message]) -> Result<(), TranscriptError> {
     Ok(())
 }
 
-fn tool_result_with(
-    call: ToolCallId,
-    provider: Option<ProviderCallId>,
-    name: String,
-    content: Vec<ToolResultContent>,
-) -> UserContent {
-    // Replay protocols require the executed tool's name separately from its call ID.
-    UserContent::tool_result_for(call, provider, name, content)
-}
-
 /// Shape a canonical real tool output as a tool result without reparsing text.
-pub fn tool_result_output(
-    call: ToolCallId,
-    provider: Option<ProviderCallId>,
-    name: String,
-    output: ToolOutput,
-) -> UserContent {
-    tool_result_with(call, provider, name, output.into_content())
+pub fn tool_result_output(call: CallId, name: ToolName, output: ToolOutput) -> UserContent {
+    UserContent::tool_result(call, name, output.into_content())
 }
 
 /// Constructs a synthetic tool result containing verbatim text, such as recovery
 /// feedback or a skip reason. JSON-shaped text is not reinterpreted as structured
 /// or multimodal output.
-pub fn tool_result_message(
-    call: ToolCallId,
-    provider: Option<ProviderCallId>,
-    name: String,
-    message: String,
-) -> UserContent {
-    tool_result_with(call, provider, name, vec![ToolResultContent::text(message)])
+pub fn tool_result_message(call: CallId, name: ToolName, message: String) -> UserContent {
+    UserContent::tool_result(call, name, ToolResultContent::text(message))
 }
 
 #[cfg(test)]

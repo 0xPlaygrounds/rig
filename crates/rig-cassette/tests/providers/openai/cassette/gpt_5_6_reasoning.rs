@@ -269,7 +269,7 @@ async fn five_turn_reasoning_metadata_roundtrip() {
                     user: user_message,
                     assistant: Message::Assistant {
                         id: response.message_id,
-                        content: response.choice,
+                        content: rig_core::NonEmpty::from_vec(response.choice).expect("non-empty"),
                     },
                     raw_response,
                 });
@@ -417,16 +417,16 @@ async fn five_turn_streaming_reasoning_metadata_roundtrip() {
                 );
 
                 if reasoning_blocks.is_empty() && !reasoning_delta.is_empty() {
-                    reasoning_blocks.push(AssistantContent::Reasoning(Reasoning::new(
-                        &reasoning_delta,
-                    )));
+                    reasoning_blocks.push(AssistantContent::Reasoning(
+                        Reasoning::new(&reasoning_delta).sealed("openai"),
+                    ));
                 }
                 reasoning_blocks.push(AssistantContent::text(&text));
                 stored_turns.push(StoredStreamingTurn {
                     user: user_message,
                     assistant: Message::Assistant {
                         id: message_id,
-                        content: reasoning_blocks,
+                        content: rig_core::NonEmpty::from_vec(reasoning_blocks).expect("non-empty"),
                     },
                     final_response,
                 });

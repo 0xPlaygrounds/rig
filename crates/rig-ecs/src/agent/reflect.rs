@@ -10,7 +10,7 @@
 use bevy_reflect::{ReflectDeserialize, ReflectSerialize, prelude::ReflectDefault};
 use rig_core::completion::{
     Usage,
-    message::{AssistantContent, Message, ProviderCallId, ToolCallId, ToolChoice},
+    message::{AssistantContent, CallId, Message, ToolChoice, ToolName},
 };
 use serde::{Deserialize, Serialize};
 
@@ -23,10 +23,10 @@ crate::reflect::opaque_reflect! {
     enum OptionalJsonReflect(Option<serde_json::Value>): Default, PartialEq;
     /// An `Option<ToolChoice>`, reflected.
     enum ToolChoiceReflect(Option<ToolChoice>): Default, PartialEq;
-    /// A [`ToolCallId`], reflected.
-    struct ToolCallIdReflect(ToolCallId): PartialEq;
-    /// An `Option<ProviderCallId>`, reflected.
-    enum ProviderCallIdReflect(Option<ProviderCallId>): Default, PartialEq;
+    /// A [`CallId`], reflected.
+    struct ToolCallIdReflect(CallId): PartialEq;
+    /// A [`ToolName`], reflected.
+    struct ToolNameReflect(ToolName): PartialEq;
     /// An assistant turn's parts, `Vec<AssistantContent>`, reflected.
     struct AssistantContentsReflect(Vec<AssistantContent>): Default, PartialEq;
     /// A [`Message`], reflected.

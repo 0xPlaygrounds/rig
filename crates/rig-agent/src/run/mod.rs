@@ -31,8 +31,9 @@ use rig_core::completion::{CompletionResponse, FinishReason, ToolDefinition};
 use rig_core::error::ProviderError;
 use rig_core::streaming::BlockId;
 
+use rig_core::NonEmpty;
 use rig_core::message::{
-    AssistantContent, ToolCall, ToolChoice, ToolResult, ToolResultContent, UserContent,
+    AssistantContent, ToolCall, ToolChoice, ToolName, ToolResult, ToolResultContent, UserContent,
 };
 
 use rig_core::completion::{Message, ResponseIdentity, Usage};
@@ -47,9 +48,10 @@ pub use response::{CompletionCall, MemoryAppend, PromptError, PromptResponse};
 use rig_core::completion::message::turn_delivered_no_answer;
 use rig_core::json_utils;
 use transcript::{
-    TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER, TranscriptError, assistant_text_from_choice,
-    build_full_history, build_history_for_request, invalid_tool_retry_user_message,
-    is_empty_assistant_turn, tool_result_message, validate_canonical,
+    TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER, TranscriptError, assistant_message,
+    assistant_text_from_choice, assistant_turn, build_full_history, build_history_for_request,
+    invalid_tool_retry_user_message, is_empty_assistant_turn, tool_result_message,
+    validate_canonical,
 };
 
 pub use streamed::{
@@ -95,7 +97,7 @@ impl InvalidToolCallDiagnostic<'_> {
     fn unknown_current(&self) -> PromptError {
         match self.reason {
             InvalidToolCallReason::UnknownTool => {
-                self.unknown(self.tool_call.function.name.clone())
+                self.unknown(self.tool_call.function.name.to_string())
             }
             InvalidToolCallReason::MalformedArguments { error } => {
                 PromptError::Report(malformed_tool_input_report(self.tool_call, error))
@@ -314,7 +316,7 @@ fn pending_invalid_call(resolving: &ResolvingState) -> Option<&ToolCall> {
         Some(AssistantContent::ToolCall(tool_call))
             if !resolving
                 .allowed_tool_names
-                .contains(&tool_call.function.name) =>
+                .contains(tool_call.function.name.as_str()) =>
         {
             Some(tool_call)
         }
@@ -337,7 +339,7 @@ struct TurnState {
     skipped: BTreeMap<usize, UserContent>,
     /// `(tool_call_id, block_id)` pairs for streamed turns, in
     /// emission order; empty for non-streamed turns.
-    block_ids: Vec<(rig_core::message::ToolCallId, BlockId)>,
+    block_ids: Vec<(rig_core::message::CallId, BlockId)>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -816,13 +818,8 @@ impl AgentRun {
             RetryRequest::Feedback(feedback) => {
                 // Feedback may retry an empty answer, but empty assistant messages
                 // must not enter provider history.
-                let content = turn.items;
-                if !is_empty_assistant_turn(&content) {
-                    self.new_messages.push(Message::Assistant {
-                        id: turn.message_id,
-                        content,
-                    });
-                }
+                self.new_messages
+                    .extend(assistant_turn(turn.message_id, turn.items));
                 self.new_messages.push(Message::user(feedback));
             }
         }
@@ -868,7 +865,7 @@ impl AgentRun {
         let tool_call = pending_invalid_call(resolving)?;
 
         Some(InvalidToolCallContext {
-            tool_name: tool_call.function.name.clone(),
+            tool_name: tool_call.function.name.to_string(),
             tool_call_id: Some(tool_call.id.clone()),
             // A buffered/unary diagnostic has no live stream block.
             // Correlation uses the typed call ID, including after resume.
@@ -958,10 +955,8 @@ impl AgentRun {
 
                     let missing = self.missing_required_output_fields(&args);
                     if !missing.is_empty() && self.can_reprompt_for_output() {
-                        self.new_messages.push(Message::Assistant {
-                            id: message_id,
-                            content: items.clone(),
-                        });
+                        self.new_messages
+                            .extend(assistant_message(message_id, items.clone()));
                         let feedback = format!(
                             "The `{output_tool_name}` arguments were missing required field(s): \
                              {}. Call `{output_tool_name}` again with every required field.",
@@ -983,10 +978,8 @@ impl AgentRun {
                         .cloned()
                         .collect();
                     final_items.push(AssistantContent::text(output.clone()));
-                    self.new_messages.push(Message::Assistant {
-                        id: message_id,
-                        content: final_items.clone(),
-                    });
+                    self.new_messages
+                        .extend(assistant_message(message_id, final_items.clone()));
 
                     return Ok(self.finish(output, final_items, output_tool_calls));
                 }
@@ -1000,12 +993,8 @@ impl AgentRun {
                 }
 
                 // Empty turns may succeed but cannot form provider history entries.
-                if !is_empty_assistant_turn(&items) {
-                    self.new_messages.push(Message::Assistant {
-                        id: message_id,
-                        content: items.clone(),
-                    });
-                }
+                self.new_messages
+                    .extend(assistant_turn(message_id, items.clone()));
 
                 if has_tool_calls {
                     // Output retries are budgeted per finalization attempt, not per run.
@@ -1195,7 +1184,7 @@ impl AgentRun {
         items: Vec<AssistantContent>,
         has_tool_calls: bool,
         skipped: BTreeMap<usize, UserContent>,
-        block_ids: Vec<(rig_core::message::ToolCallId, BlockId)>,
+        block_ids: Vec<(rig_core::message::CallId, BlockId)>,
     ) {
         self.state = RunState::AwaitingAdvance(TurnState {
             message_id,
@@ -1300,10 +1289,10 @@ impl AgentRun {
 
         match action {
             ValidatedInvalidToolCallAction::Retry { feedback } => {
-                self.new_messages.push(Message::Assistant {
-                    id: resolving.message_id.clone(),
-                    content: resolving.original_choice.clone(),
-                });
+                self.new_messages.extend(assistant_message(
+                    resolving.message_id.clone(),
+                    resolving.original_choice.clone(),
+                ));
                 let Some(user_message) = invalid_tool_retry_user_message(
                     &resolving.original_choice,
                     &tool_call.id,
@@ -1321,6 +1310,7 @@ impl AgentRun {
             ValidatedInvalidToolCallAction::Repair { tool_name } => {
                 if let Some(AssistantContent::ToolCall(tool_call)) =
                     resolving.items.get_mut(resolving.next_index)
+                    && let Ok(tool_name) = ToolName::new(tool_name)
                 {
                     tool_call.function.name = tool_name;
                 }
@@ -1329,11 +1319,10 @@ impl AgentRun {
                 self.advance_resolution()
             }
             ValidatedInvalidToolCallAction::Skip { reason } => {
-                let user_content = UserContent::tool_result_for(
+                let user_content = UserContent::tool_result(
                     tool_call.id.clone(),
-                    tool_call.provider.clone(),
                     tool_call.function.name.clone(),
-                    vec![reason.into()],
+                    ToolResultContent::from(reason),
                 );
                 // Keyed by the call's position: `next_index` is exactly the
                 // invalid call's slot in `items`, and later mutations only
@@ -1393,7 +1382,7 @@ impl AgentRun {
         };
         // Match results against pending calls by tool call ID as a multiset,
         // so duplicate provider IDs within one turn stay answerable.
-        let mut unanswered: Vec<rig_core::message::ToolCallId> = pending
+        let mut unanswered: Vec<rig_core::message::CallId> = pending
             .iter()
             .map(|call| call.tool_call.id.clone())
             .collect();
@@ -1425,7 +1414,9 @@ impl AgentRun {
             )));
         }
 
-        self.new_messages.push(Message::User { content: results });
+        if let Ok(content) = NonEmpty::from_vec(results) {
+            self.new_messages.push(Message::User { content });
+        }
         self.state = RunState::PreparingRequest;
         Ok(())
     }
@@ -1453,7 +1444,7 @@ impl AgentRun {
                 AssistantContent::ToolCall(tool_call)
                     if !resolving
                         .allowed_tool_names
-                        .contains(&tool_call.function.name) =>
+                        .contains(tool_call.function.name.as_str()) =>
                 {
                     break;
                 }
@@ -1489,7 +1480,6 @@ impl AgentRun {
                     skipped.entry(index).or_insert_with(|| {
                         tool_result_message(
                             tool_call.id.clone(),
-                            tool_call.provider.clone(),
                             tool_call.function.name.clone(),
                             TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER.to_string(),
                         )
@@ -1543,7 +1533,7 @@ impl AgentRun {
         invalid: &StreamedInvalidToolCall,
     ) -> InvalidToolCallContext {
         InvalidToolCallContext {
-            tool_name: invalid.tool_call.function.name.clone(),
+            tool_name: invalid.tool_call.function.name.to_string(),
             tool_call_id: Some(invalid.tool_call.id.clone()),
             block_id: Some(invalid.block_id.clone()),
             args: invalid.args.clone(),
@@ -1603,12 +1593,9 @@ impl AgentRun {
                 // Synthetic skip reason: emit verbatim text, matching the
                 // non-streamed `resolve_invalid_tool_call` skip path (parity) and
                 // avoiding re-parsing a rejection message as structured output.
-                let skipped_tool_result = ToolResult {
-                    call: invalid.tool_call.id.clone(),
-                    provider: invalid.tool_call.provider.clone(),
-                    name: invalid.tool_call.function.name.clone(),
-                    content: vec![ToolResultContent::text(reason.as_str())],
-                };
+                let skipped_tool_result = invalid
+                    .tool_call
+                    .result(ToolResultContent::text(reason.as_str()));
                 self.abandon_streamed_turn(
                     partial,
                     invalid,
@@ -1688,19 +1675,18 @@ impl AgentRun {
             let AssistantContent::ToolCall(tool_call) = item else {
                 continue;
             };
-            if !turn.allowed_tool_names.contains(&tool_call.function.name) {
+            if !turn
+                .allowed_tool_names
+                .contains(tool_call.function.name.as_str())
+            {
                 let mut diagnostic_messages = self.new_messages.clone();
-                if !is_empty_assistant_turn(&turn.choice) {
-                    diagnostic_messages.push(Message::Assistant {
-                        id: turn.message_id.clone(),
-                        content: turn.choice.clone(),
-                    });
-                }
+                diagnostic_messages
+                    .extend(assistant_turn(turn.message_id.clone(), turn.choice.clone()));
                 let diagnostic_history =
                     build_full_history(self.chat_history.as_deref(), diagnostic_messages);
                 self.state = RunState::Failed;
                 return Err(unknown_tool_call_error(
-                    tool_call.function.name.clone(),
+                    tool_call.function.name.to_string(),
                     turn.executable_tool_names.iter().cloned().collect(),
                     turn.allowed_tool_names.iter().cloned().collect(),
                     diagnostic_history,
@@ -1736,10 +1722,10 @@ impl AgentRun {
     /// the unmodified assistant turn under inspection.
     fn diagnostic_history(&self, resolving: &ResolvingState) -> Vec<Message> {
         let mut diagnostic_messages = self.new_messages.clone();
-        diagnostic_messages.push(Message::Assistant {
-            id: resolving.message_id.clone(),
-            content: resolving.original_choice.clone(),
-        });
+        diagnostic_messages.extend(assistant_message(
+            resolving.message_id.clone(),
+            resolving.original_choice.clone(),
+        ));
         build_full_history(self.chat_history.as_deref(), diagnostic_messages)
     }
 

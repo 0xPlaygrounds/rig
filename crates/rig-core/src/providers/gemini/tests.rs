@@ -34,7 +34,7 @@ fn a_serialized_config_carries_no_key_material() {
     // redaction above is a serialization property, not a lost credential.
     let request = crate::completion::CompletionRequest {
         model: None,
-        chat_history: vec!["probe".into()],
+        chat_history: crate::NonEmpty::new("probe".into()),
         documents: vec![],
         tools: vec![],
         temperature: None,

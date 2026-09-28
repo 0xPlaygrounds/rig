@@ -367,9 +367,6 @@ impl ResponsesWebSocketSession {
             ));
         }
 
-        // Direct session requests bypass builder validation.
-        completion_request.validate_message_content()?;
-
         let payload = ResponsesWebSocketClientEvent {
             kind: ResponsesWebSocketClientEventKind::ResponseCreate,
             request: self.prepare_request(completion_request)?,
@@ -502,7 +499,14 @@ impl ResponsesWebSocketSession {
         &self,
         completion_request: crate::completion::CompletionRequest,
     ) -> Result<crate::providers::openai::responses_api::CompletionRequest, ProviderError> {
-        let mut request = self.wire.responses_request(completion_request, false)?;
+        let (completion_request, issuers) = crate::providers::openai::wire::scope_reasoning(
+            &self.wire.provider.dialect,
+            &self.wire.model,
+            completion_request,
+        )?;
+        let mut request = self
+            .wire
+            .responses_request(completion_request, issuers, false)?;
 
         // WebSocket mode is always event-driven, so these HTTP/SSE-specific flags
         // are ignored by the provider and only add noise to the payload.

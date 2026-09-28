@@ -2260,8 +2260,14 @@ pub fn assert_same_records(replayed: &EffectLog, log: &EffectLog, interpreter: &
     };
     let golden_parents = parent_positions(log, "the golden");
     let replayed_parents = parent_positions(replayed, "the replay");
-    let replayed: Vec<_> = replayed.iter().map(as_data).collect();
-    let recorded: Vec<_> = log.iter().map(as_data).collect();
+    // The ids rig issued afresh are compared by where they appear.
+    let as_log = |which: &EffectLog| -> Vec<serde_json::Value> {
+        let records = serde_json::Value::Array(which.iter().map(as_data).collect());
+        let canonical = rig_cassette::effect_log::canonical_local_ids(records);
+        canonical.as_array().cloned().unwrap_or_default()
+    };
+    let replayed = as_log(replayed);
+    let recorded = as_log(log);
     for (position, (got, want)) in replayed_parents.iter().zip(&golden_parents).enumerate() {
         assert_eq!(
             got, want,
@@ -2897,7 +2903,6 @@ pub async fn call_tools(
         if is_add && hooks.contains(&Hook::DenyAdd) {
             return Ok(tool_result_output(
                 call.tool_call.id.clone(),
-                call.tool_call.provider.clone(),
                 name,
                 ToolOutput::text(DENY_REASON),
             ));
@@ -2922,7 +2927,6 @@ pub async fn call_tools(
             Err(report) if report.kind == ErrorKind::Denied => {
                 return Ok(tool_result_output(
                     call.tool_call.id.clone(),
-                    call.tool_call.provider.clone(),
                     name,
                     rig_core::tool::ToolResult::skipped(report.message)
                         .output()
@@ -2932,7 +2936,6 @@ pub async fn call_tools(
             Err(report) => {
                 return Ok(tool_result_output(
                     call.tool_call.id.clone(),
-                    call.tool_call.provider.clone(),
                     name,
                     rig_core::tool::ToolResult::failed(
                         rig_core::tool::ToolExecutionError::other(report.message.clone())
@@ -2965,12 +2968,7 @@ pub async fn call_tools(
             output = ToolOutput::text(REPLACED_RESULT);
         }
         // The engine's own shaping of a result (`rig_core::transcript`).
-        Ok(tool_result_output(
-            call.tool_call.id.clone(),
-            call.tool_call.provider.clone(),
-            name,
-            output,
-        ))
+        Ok(tool_result_output(call.tool_call.id.clone(), name, output))
     };
     futures::stream::iter(calls)
         .map(dispatch)

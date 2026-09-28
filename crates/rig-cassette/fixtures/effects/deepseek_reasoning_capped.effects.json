@@ -72,6 +72,7 @@
           "choice": [
             {
               "type": "reasoning",
+              "issuer": "deepseek",
               "id": null,
               "content": [
                 {
@@ -80,8 +81,7 @@
                     "text": "We need answer 1-2 sentences. Explain Rust and why memory safety matters"
                   }
                 }
-              ],
-              "provider": "deepseek"
+              ]
             }
           ],
           "usage": {

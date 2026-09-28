@@ -46,7 +46,6 @@ fn every_event_round_trips_through_serde() {
             id: BlockId::wire("rs_1"),
             end: BlockClose::Reasoning {
                 reasoning: Some(Reasoning {
-                    provider: None,
                     id: Some("rs_1".into()),
                     content: vec![ReasoningContent::Text {
                         text: "think".into(),

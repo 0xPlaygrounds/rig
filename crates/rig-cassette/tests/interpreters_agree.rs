@@ -122,7 +122,11 @@ fn model_for(case: &Case) -> MockCompletionModel {
             id += 1;
             rig_core::message::AssistantContent::ToolCall(rig_core::message::ToolCall::from_wire(
                 format!("tc-{id}"),
-                rig_core::message::ToolFunction::new(tool_name(*tool).to_owned(), json!({"n": n})),
+                rig_core::message::ToolFunction::new(
+                    rig_core::message::ToolName::new(tool_name(*tool).to_owned())
+                        .expect("tool name"),
+                    json!({"n": n}),
+                ),
             ))
         })),
     }))
@@ -268,7 +272,6 @@ async fn hand_interpreter(case: &Case) -> (String, Trace) {
                     .expect("the tool");
                     results.push(transcript::tool_result_output(
                         call.tool_call.id.clone(),
-                        call.tool_call.provider.clone(),
                         name,
                         answer.result.output().clone(),
                     ));

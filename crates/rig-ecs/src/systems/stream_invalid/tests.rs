@@ -41,7 +41,7 @@ fn a_raw_call_end_resolves_to_the_call_its_events_assemble() {
     let events = raw_call(&call, "wrong", r#"{"q":1}"#);
     let completed: Vec<_> = completed_calls(&events)
         .into_iter()
-        .map(|call| call.map(|(_, call)| (call.function.name, call.function.arguments)))
+        .map(|call| call.map(|(_, call)| (call.function.name.to_string(), call.function.arguments)))
         .collect();
     assert_eq!(
         completed,

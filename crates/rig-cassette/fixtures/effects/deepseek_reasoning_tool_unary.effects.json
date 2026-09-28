@@ -119,6 +119,7 @@
           "choice": [
             {
               "type": "reasoning",
+              "issuer": "deepseek",
               "id": null,
               "content": [
                 {
@@ -127,17 +128,14 @@
                     "text": "The user wants me to add 17 and 25 using the add tool."
                   }
                 }
-              ],
-              "provider": "deepseek"
+              ]
             },
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_00_xQdqqhpWgy3GoPoaxsxy0225"
-              },
-              "provider": {
-                "call_id": "call_00_xQdqqhpWgy3GoPoaxsxy0225"
+                "provider": {
+                  "call_id": "call_00_xQdqqhpWgy3GoPoaxsxy0225"
+                }
               },
               "function": {
                 "name": "add",
@@ -260,6 +258,7 @@
               "content": [
                 {
                   "type": "reasoning",
+                  "issuer": "deepseek",
                   "id": null,
                   "content": [
                     {
@@ -268,17 +267,14 @@
                         "text": "The user wants me to add 17 and 25 using the add tool."
                       }
                     }
-                  ],
-                  "provider": "deepseek"
+                  ]
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_00_xQdqqhpWgy3GoPoaxsxy0225"
-                  },
-                  "provider": {
-                    "call_id": "call_00_xQdqqhpWgy3GoPoaxsxy0225"
+                    "provider": {
+                      "call_id": "call_00_xQdqqhpWgy3GoPoaxsxy0225"
+                    }
                   },
                   "function": {
                     "name": "add",
@@ -298,11 +294,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_00_xQdqqhpWgy3GoPoaxsxy0225"
-                  },
-                  "provider": {
-                    "call_id": "call_00_xQdqqhpWgy3GoPoaxsxy0225"
+                    "provider": {
+                      "call_id": "call_00_xQdqqhpWgy3GoPoaxsxy0225"
+                    }
                   },
                   "name": "add",
                   "content": [
@@ -357,6 +351,7 @@
           "choice": [
             {
               "type": "reasoning",
+              "issuer": "deepseek",
               "id": null,
               "content": [
                 {
@@ -365,8 +360,7 @@
                     "text": "The result is 42. Reply with just the number."
                   }
                 }
-              ],
-              "provider": "deepseek"
+              ]
             },
             {
               "type": "text",

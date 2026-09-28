@@ -126,11 +126,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_75abeaf7378644cea5cc79e6"
-              },
-              "provider": {
-                "call_id": "call_75abeaf7378644cea5cc79e6"
+                "provider": {
+                  "call_id": "call_75abeaf7378644cea5cc79e6"
+                }
               },
               "function": {
                 "name": "add",

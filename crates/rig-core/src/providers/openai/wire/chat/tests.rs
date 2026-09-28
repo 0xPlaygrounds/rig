@@ -28,7 +28,7 @@ fn wire() -> Chat {
 fn prompt(text: &str) -> CompletionRequest {
     CompletionRequest {
         model: None,
-        chat_history: vec![crate::message::Message::user(text)],
+        chat_history: crate::NonEmpty::new(crate::message::Message::user(text)),
         documents: Vec::new(),
         tools: Vec::new(),
         temperature: Some(0.0),
@@ -131,10 +131,10 @@ async fn a_recorded_tool_call_turn_folds_alike_from_both_reply_shapes() {
     assert_eq!(call.function, streamed_call.function);
     assert_eq!(call.signature, streamed_call.signature);
     assert_eq!(
-        call.provider.as_ref().map(|provider| &provider.item_id),
+        call.id.provider().map(|provider| &provider.item_id),
         streamed_call
-            .provider
-            .as_ref()
+            .id
+            .provider()
             .map(|provider| &provider.item_id)
     );
     assert_eq!(call.additional_params, streamed_call.additional_params);
@@ -150,16 +150,15 @@ async fn a_recorded_tool_call_turn_folds_alike_from_both_reply_shapes() {
     ] {
         let id = call
             .id
-            .explicit()
+            .provider()
+            .map(|provider| provider.call_id.as_str())
             .expect("the call keeps the provider's id");
         assert!(
             recorded("then", cassette).contains(&format!("\"id\":\"{id}\"")),
             "{cassette}: the call id {id} is the recorded one"
         );
         assert_eq!(
-            call.provider
-                .as_ref()
-                .map(|provider| provider.call_id.as_str()),
+            call.id.provider().map(|provider| provider.call_id.as_str()),
             Some(id)
         );
     }
@@ -374,13 +373,13 @@ fn openrouter_refuses_a_document_that_is_only_a_file_id() {
 
     let with_file_id = || {
         let mut request = prompt("read this");
-        request.chat_history = vec![Message::User {
-            content: vec![UserContent::Document(Document {
+        request.chat_history = crate::NonEmpty::new(Message::User {
+            content: crate::NonEmpty::new(UserContent::Document(Document {
                 data: DocumentSourceKind::FileId("file-abc".to_owned()),
                 media_type: None,
                 additional_params: None,
-            })],
-        }];
+            })),
+        });
         request
     };
 
@@ -472,8 +471,6 @@ async fn the_streamed_terminal_reads_back_as_the_provider_record() {
 /// shared emitter.
 #[tokio::test]
 async fn a_unary_reply_with_reasoning_folds_like_the_stream_of_the_same_turn() {
-    use crate::message::Reasoning;
-
     const UNARY: &str = concat!(
         r#"{"object":"chat.completion","id":"chatcmpl-1","model":"m","#,
         r#""choices":[{"index":0,"finish_reason":"stop","message":{"role":"assistant","#,
@@ -512,8 +509,8 @@ async fn a_unary_reply_with_reasoning_folds_like_the_stream_of_the_same_turn() {
 
     // Reasoning first, then the visible text — one emitter, one order.
     let reasoning_text = |choice: &[AssistantContent]| match choice.first() {
-        Some(AssistantContent::Reasoning(Reasoning { content, .. })) => {
-            Some(format!("{content:?}"))
+        Some(AssistantContent::Reasoning(reasoning)) => {
+            Some(format!("{:?}", reasoning.value().content))
         }
         _ => None,
     };
@@ -688,7 +685,10 @@ async fn a_tool_call_cut_mid_arguments_drops_only_itself() {
             folded.choice
         );
     };
-    assert_eq!(call.id.explicit(), Some("call_whole"));
+    assert_eq!(
+        call.id.provider().map(|provider| provider.call_id.as_str()),
+        Some("call_whole")
+    );
     assert_eq!(call.function.name, "record");
     assert_eq!(
         call.function.arguments,
@@ -763,7 +763,10 @@ async fn valid_arguments_survive_a_length_truncated_turn() {
             folded.choice
         );
     };
-    assert_eq!(call.id.explicit(), Some("call_odd"));
+    assert_eq!(
+        call.id.provider().map(|provider| provider.call_id.as_str()),
+        Some("call_odd")
+    );
     assert_eq!(
         call.function.arguments,
         serde_json::json!({"unexpected": 1})
@@ -914,7 +917,9 @@ fn the_mistral_body_rebuilds_content_as_its_own_chunks() {
 
     let encode = |content: Vec<UserContent>| {
         let mut request = prompt("look at this");
-        request.chat_history = vec![Message::User { content }];
+        request.chat_history = crate::NonEmpty::new(Message::User {
+            content: crate::NonEmpty::from_vec(content).expect("non-empty"),
+        });
         OpenAIConfig::new("k")
             .with_dialect(&MISTRAL)
             .chat("mistral-small-latest")
@@ -987,14 +992,14 @@ fn the_mistral_body_rebuilds_content_as_its_own_chunks() {
 
     // And no other dialect rebuilds content this way.
     let mut request = prompt("describe");
-    request.chat_history = vec![Message::User {
-        content: vec![UserContent::Image(Image {
+    request.chat_history = crate::NonEmpty::new(Message::User {
+        content: crate::NonEmpty::new(UserContent::Image(Image {
             data: crate::message::DocumentSourceKind::Url("https://x.invalid/a.png".to_owned()),
             media_type: None,
             detail: None,
             additional_params: None,
-        })],
-    }];
+        })),
+    });
     let openai = wire().encode(request, Mode::Unary).expect("encodes");
     let [http_request] = openai.requests.as_slice() else {
         panic!("one request")
@@ -1019,26 +1024,28 @@ fn groq_replays_reasoning_turns_without_reasoning_content() {
     use crate::message::{Message, Reasoning};
     use crate::providers::openai::wire::DEEPSEEK;
 
-    let history = || {
+    let history = |issuer: &'static str| {
         let mut request = prompt("and then?");
-        request.chat_history = vec![
+        request.chat_history = crate::NonEmpty::with_rest(
             Message::user("think first"),
-            Message::Assistant {
-                id: None,
-                content: vec![
-                    AssistantContent::Reasoning(Reasoning::new("private chain")),
-                    AssistantContent::text("visible answer"),
-                ],
-            },
-            Message::user("and then?"),
-        ];
+            [
+                Message::Assistant {
+                    id: None,
+                    content: crate::NonEmpty::with_rest(
+                        AssistantContent::Reasoning(Reasoning::new("private chain").sealed(issuer)),
+                        [AssistantContent::text("visible answer")],
+                    ),
+                },
+                Message::user("and then?"),
+            ],
+        );
         request
     };
     let assistant = |dialect: &Dialect| {
         let encoded = OpenAIConfig::new("k")
             .with_dialect(dialect)
             .chat("m")
-            .encode(history(), Mode::Unary)
+            .encode(history(dialect.name), Mode::Unary)
             .expect("encodes");
         let [request] = encoded.requests.as_slice() else {
             panic!("a chat turn is one request");

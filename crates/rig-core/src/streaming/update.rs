@@ -312,7 +312,7 @@ impl Projector {
                 let part = match (&kind, &slot.end) {
                     (PartKind::ToolCall { .. }, Some(AssistantContent::ToolCall(call))) => {
                         PartKind::ToolCall {
-                            name: call.function.name.clone(),
+                            name: call.function.name.clone().into(),
                         }
                     }
                     _ => kind,
@@ -332,10 +332,8 @@ impl Projector {
             if let Some(part) = slot.end.take_if(|_| !held) {
                 slot.ended_as = Some(part.clone());
                 let part = match (part, issuer) {
-                    (AssistantContent::Reasoning(reasoning), Some(issuer))
-                        if reasoning.provider.is_none() =>
-                    {
-                        AssistantContent::Reasoning(reasoning.with_provider(issuer))
+                    (AssistantContent::Reasoning(reasoning), Some(issuer)) => {
+                        AssistantContent::Reasoning(reasoning.reseal(issuer.to_owned()))
                     }
                     (part, _) => part,
                 };
@@ -368,7 +366,7 @@ fn kind_of(block: &AssistantContent) -> PartKind {
         AssistantContent::Text(_) => PartKind::Text,
         AssistantContent::Reasoning(_) => PartKind::Reasoning,
         AssistantContent::ToolCall(call) => PartKind::ToolCall {
-            name: call.function.name.clone(),
+            name: call.function.name.clone().into(),
         },
         AssistantContent::Image(_) => PartKind::Image,
     }
@@ -379,9 +377,9 @@ fn kind_of(block: &AssistantContent) -> PartKind {
 fn finished_text(part: &AssistantContent) -> Option<String> {
     match part {
         AssistantContent::Text(text) => Some(text.text.clone()),
-        AssistantContent::Reasoning(reasoning) => {
-            Some(crate::completion::request::reasoning_text(reasoning))
-        }
+        AssistantContent::Reasoning(reasoning) => Some(crate::completion::request::reasoning_text(
+            reasoning.value(),
+        )),
         AssistantContent::ToolCall(call) => Some(call.function.arguments.to_string()),
         AssistantContent::Image(_) => None,
     }

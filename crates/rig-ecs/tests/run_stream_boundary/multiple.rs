@@ -158,16 +158,13 @@ fn completed_block_without_name_delta_is_actionable_before_eof() {
     let seen = &app.world().resource::<Decisions>().seen;
     assert_eq!(seen.len(), 1);
     assert_eq!(seen[0].stream_offset, Some(1));
-    assert_eq!(
-        seen[0].id,
-        ToolCallId::new("first-final").expect("provider id")
-    );
+    assert_eq!(seen[0].id, CallId::from_dual_wire("reused", "first-final"));
     assert_eq!(seen[0].arguments, serde_json::json!({}));
     assert_eq!(seen[0].prefix.len(), 1);
     let AssistantContent::ToolCall(call) = &seen[0].prefix[0] else {
         panic!("retained completed call")
     };
-    assert!(call.provider.is_some());
+    assert!(call.id.provider().is_some());
     assert_eq!(call.id, seen[0].id);
     assert_eq!(
         app.world_mut()
@@ -216,7 +213,7 @@ fn later_failure_keeps_its_prefix_with_earlier_repair_and_reused_block() {
             match rig_ecs::agent::content::parts::read_message(app.world(), entity)
                 .expect("valid history graph")
             {
-                MessageParts::Assistant { content, .. } => content.clone(),
+                MessageParts::Assistant { content, .. } => content.clone().into_vec(),
                 _ => vec![],
             }
         })

@@ -77,7 +77,7 @@ fn completed_reasoning(event: &StreamEvent) -> Option<(BlockId, Reasoning)> {
             id,
             block: Some(AssistantContent::Reasoning(reasoning)),
             ..
-        } => Some((id.clone(), reasoning.clone())),
+        } => Some((id.clone(), reasoning.value().clone())),
         _ => None,
     }
 }
@@ -792,11 +792,10 @@ async fn test_stream_aggregates_reasoning_content() {
 
     assert!(choice_items.iter().any(|item| matches!(
         item,
-        AssistantContent::Reasoning(Reasoning {
-            id: Some(id),
-            content, .. }) if id == "rs_1"
+        AssistantContent::Reasoning(reasoning)
+            if reasoning.value().id.as_deref() == Some("rs_1")
             && matches!(
-                content.first(),
+                reasoning.value().content.first(),
                 Some(ReasoningContent::Text {
                     text,
                     signature: Some(signature)
@@ -828,7 +827,7 @@ async fn full_reasoning_block_supersedes_its_accumulated_deltas() {
     let reasoning_items: Vec<&Reasoning> = choice_items
         .iter()
         .filter_map(|item| match item {
-            AssistantContent::Reasoning(reasoning) => Some(reasoning),
+            AssistantContent::Reasoning(reasoning) => Some(reasoning.value()),
             _ => None,
         })
         .collect();
@@ -869,7 +868,7 @@ async fn full_reasoning_block_with_a_different_id_appends() {
     let reasoning_ids: Vec<Option<&str>> = choice_items
         .iter()
         .filter_map(|item| match item {
-            AssistantContent::Reasoning(reasoning) => Some(reasoning.id.as_deref()),
+            AssistantContent::Reasoning(reasoning) => Some(reasoning.value().id.as_deref()),
             _ => None,
         })
         .collect();
@@ -912,7 +911,11 @@ async fn a_bare_end_yields_the_completed_block_wire_sent_or_synthesized() {
         ));
         assert_eq!(
             snapshot,
-            vec![AssistantContent::Reasoning(completed[0].clone())]
+            vec![AssistantContent::Reasoning(
+                completed[0]
+                    .clone()
+                    .sealed(crate::message::Issuer::unstamped())
+            )]
         );
     }
 }
@@ -1039,7 +1042,11 @@ async fn late_signature_after_synthesized_end_restates_the_delta_block_id() {
         .collect();
     assert_eq!(
         reasoning_parts,
-        vec![AssistantContent::Reasoning(reasoning.clone())],
+        vec![AssistantContent::Reasoning(
+            reasoning
+                .clone()
+                .sealed(crate::message::Issuer::unstamped())
+        )],
         "the restatement replaces the part; it never duplicates it"
     );
 }
@@ -1173,7 +1180,7 @@ async fn full_reasoning_block_supersedes_deltas_across_interleaved_output() {
     let reasoning_items: Vec<&Reasoning> = choice_items
         .iter()
         .filter_map(|item| match item {
-            AssistantContent::Reasoning(reasoning) => Some(reasoning),
+            AssistantContent::Reasoning(reasoning) => Some(reasoning.value()),
             _ => None,
         })
         .collect();
@@ -1222,7 +1229,7 @@ async fn minted_id_full_reasoning_block_does_not_clobber_a_wire_id_item() {
     let reasoning_ids: Vec<Option<&str>> = choice_items
         .iter()
         .filter_map(|item| match item {
-            AssistantContent::Reasoning(reasoning) => Some(reasoning.id.as_deref()),
+            AssistantContent::Reasoning(reasoning) => Some(reasoning.value().id.as_deref()),
             _ => None,
         })
         .collect();
@@ -1239,7 +1246,7 @@ async fn test_stream_reasoning_only_does_not_inject_empty_text() {
     assert_eq!(choice_items.len(), 1);
     assert!(matches!(
         choice_items.first(),
-        Some(AssistantContent::Reasoning(Reasoning { id: Some(id), .. })) if id == "rs_only"
+        Some(AssistantContent::Reasoning(reasoning)) if reasoning.value().id.as_deref() == Some("rs_only")
     ));
 }
 
@@ -1252,7 +1259,8 @@ async fn test_stream_aggregates_assistant_items_in_arrival_order() {
     assert_eq!(choice_items.len(), 3);
     assert!(matches!(
         choice_items.first(),
-        Some(AssistantContent::Reasoning(Reasoning { id: Some(id), .. })) if id == "rs_interleaved"
+        Some(AssistantContent::Reasoning(reasoning))
+            if reasoning.value().id.as_deref() == Some("rs_interleaved")
     ));
     assert!(matches!(
         choice_items.get(1),
@@ -1260,7 +1268,7 @@ async fn test_stream_aggregates_assistant_items_in_arrival_order() {
     ));
     assert!(matches!(
         choice_items.get(2),
-        Some(AssistantContent::ToolCall(ToolCall { id, .. })) if id.explicit() == Some("tool_1")
+        Some(AssistantContent::ToolCall(ToolCall { id, .. })) if id.provider().map(|provider| provider.call_id.as_str()) == Some("tool_1")
     ));
 }
 
@@ -1314,7 +1322,7 @@ async fn test_stream_keeps_non_contiguous_text_chunks_split_by_tool_call() {
     ));
     assert!(matches!(
         choice_items.get(1),
-        Some(AssistantContent::ToolCall(ToolCall { id, .. })) if id.explicit() == Some("tool_split")
+        Some(AssistantContent::ToolCall(ToolCall { id, .. })) if id.provider().map(|provider| provider.call_id.as_str()) == Some("tool_split")
     ));
     assert!(matches!(
         choice_items.get(2),
@@ -1401,7 +1409,6 @@ async fn a_tool_end_carries_the_completed_call_or_nothing_when_dropped() {
 /// force buffering. Provider serialization is tested at its request boundary.
 #[tokio::test]
 async fn typed_tool_identity_streams_colliding_spellings_without_lookahead() {
-    use crate::message::ToolCallId;
     use futures::FutureExt;
     for explicit_first in [false, true] {
         let (sender, receiver) = futures::channel::mpsc::unbounded();
@@ -1445,13 +1452,10 @@ async fn typed_tool_identity_streams_colliding_spellings_without_lookahead() {
             })
             .await
             .expect("completed call must not wait for later frames");
-            let expected = if explicit {
-                ToolCallId::new("tool-0").expect("explicit")
-            } else {
-                ToolCallId::from_block(&key)
-            };
-            assert_eq!(completed.id, expected);
-            assert_eq!(completed.provider.is_some(), explicit);
+            if explicit {
+                assert_eq!(completed.id.wire(), "tool-0");
+            }
+            assert_eq!(completed.id.provider().is_some(), explicit);
             assert_eq!(
                 response.folded().snapshot().len(),
                 position + 1,

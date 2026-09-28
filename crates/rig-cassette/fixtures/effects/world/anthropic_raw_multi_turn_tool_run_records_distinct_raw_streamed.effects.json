@@ -6,7 +6,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 3
         }
       },
       {
@@ -14,7 +14,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -48,14 +48,6 @@
         }
       },
       {
-        "batch": 18,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
         "batch": 19,
         "id": 2,
         "kind": {
@@ -72,7 +64,15 @@
         }
       },
       {
-        "batch": 20,
+        "batch": 22,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 22,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -195,11 +195,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "toolu_01EVxu9UfcJoLZU66p5wP294"
-              },
-              "provider": {
-                "call_id": "toolu_01EVxu9UfcJoLZU66p5wP294"
+                "provider": {
+                  "call_id": "toolu_01EVxu9UfcJoLZU66p5wP294"
+                }
               },
               "function": {
                 "name": "add",
@@ -300,11 +298,9 @@
           "block": {
             "type": "toolcall",
             "id": {
-              "origin": "explicit",
-              "id": "toolu_01EVxu9UfcJoLZU66p5wP294"
-            },
-            "provider": {
-              "call_id": "toolu_01EVxu9UfcJoLZU66p5wP294"
+              "provider": {
+                "call_id": "toolu_01EVxu9UfcJoLZU66p5wP294"
+              }
             },
             "function": {
               "name": "add",
@@ -405,11 +401,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "toolu_01EVxu9UfcJoLZU66p5wP294"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01EVxu9UfcJoLZU66p5wP294"
+                    "provider": {
+                      "call_id": "toolu_01EVxu9UfcJoLZU66p5wP294"
+                    }
                   },
                   "function": {
                     "name": "add",
@@ -429,11 +423,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "toolu_01EVxu9UfcJoLZU66p5wP294"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01EVxu9UfcJoLZU66p5wP294"
+                    "provider": {
+                      "call_id": "toolu_01EVxu9UfcJoLZU66p5wP294"
+                    }
                   },
                   "name": "add",
                   "content": [

@@ -92,6 +92,7 @@
           "choice": [
             {
               "type": "reasoning",
+              "issuer": "doubleword",
               "id": null,
               "content": [
                 {
@@ -100,17 +101,14 @@
                     "text": "The user is asking me to create a concise event object for a local Rust meetup in Seattle. This seems like a straightforward request to generate event information, not something that requires me to search for actual existing events.\n\nI should create a reasonable event object with typical meetup details like title, category, and summary. Let me structure this appropriately.\n\nFor a Rust meetup in Seattle:\n- Title: Something like \"Seattle Rust Meetup\" or \"Rust Developers Seattle\"\n- Category: \"Technology\" or \"Programming\" or \"Meetup\"\n- Summary: A brief description of what the meetup is about\n\nLet me create this event object.\n"
                   }
                 }
-              ],
-              "provider": "doubleword"
+              ]
             },
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_00a91a28eb7346ad91e4bc46"
-              },
-              "provider": {
-                "call_id": "call_00a91a28eb7346ad91e4bc46"
+                "provider": {
+                  "call_id": "call_00a91a28eb7346ad91e4bc46"
+                }
               },
               "function": {
                 "name": "final_result",

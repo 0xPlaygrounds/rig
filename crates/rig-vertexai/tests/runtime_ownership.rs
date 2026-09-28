@@ -32,9 +32,9 @@ use support::{LocalEndpoint, Reply, SentinelCredentials, text_response};
 fn request(prompt: &str) -> CompletionRequest {
     CompletionRequest {
         model: None,
-        chat_history: vec![Message::User {
-            content: vec![UserContent::Text(Text::new(prompt.to_string()))],
-        }],
+        chat_history: rig_core::NonEmpty::new(Message::User {
+            content: rig_core::NonEmpty::new(UserContent::Text(Text::new(prompt.to_string()))),
+        }),
         documents: vec![],
         tools: vec![],
         temperature: None,

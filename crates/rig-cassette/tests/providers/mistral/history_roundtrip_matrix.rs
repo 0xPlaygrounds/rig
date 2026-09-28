@@ -92,13 +92,13 @@ fn history(shape: Shape) -> Vec<Message> {
     match shape {
         Shape::Text => vec![
             Message::User {
-                content: vec![UserContent::text(
+                content: rig_core::NonEmpty::new(UserContent::text(
                     "Unicode context: café 東京. The marker is exactly: lantern-42.",
-                )],
+                )),
             },
             Message::Assistant {
                 id: None,
-                content: vec![AssistantContent::text("lantern-42")],
+                content: rig_core::NonEmpty::new(AssistantContent::text("lantern-42")),
             },
         ],
     }

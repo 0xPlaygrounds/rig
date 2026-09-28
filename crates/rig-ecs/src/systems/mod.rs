@@ -687,7 +687,8 @@ fn open_run(world: &mut World, run: Entity) {
             .any(|child| world.get::<Utterance>(child).is_some())
     });
     if let Some(Prompt(content)) = world.entity_mut(run).take::<Prompt>()
-        && let Err(error) = spawn_utterance(world, run, MessageParts::User { content })
+        && let Err(error) =
+            MessageParts::user(content).and_then(|prompt| spawn_utterance(world, run, prompt))
     {
         world
             .entity_mut(run)
@@ -1680,7 +1681,13 @@ pub fn fold_turn(
             output_tool: inputs.output_tool.as_deref(),
             output_tool_config: inputs.output_tool_config.as_ref(),
         };
-        let request = policy::fold_request(&graph);
+        let request = match policy::fold_request(&graph) {
+            Ok(request) => request,
+            Err(error) => {
+                fail_content(&mut commands, run, error);
+                continue;
+            }
+        };
         commands.spawn((
             PendingEffect::new(
                 model.key.clone(),
@@ -1937,12 +1944,7 @@ pub fn land_batch(
                 continue;
             };
             let slot = child.slot;
-            match policy::tool_result_part(
-                slot.id.clone(),
-                slot.provider.clone(),
-                slot.name.clone(),
-                outcome,
-            ) {
+            match policy::tool_result_part(slot.id.clone(), slot.name.clone(), outcome) {
                 Ok((part, status)) => {
                     parts.push(part);
                     statuses.push(status);
@@ -1958,15 +1960,15 @@ pub fn land_batch(
             commands.entity(run).end(Failed(failure));
             continue;
         }
-        let results = MessageParts::User { content: parts };
-        let results_entity =
-            match spawn_deferred_with(&mut commands, &mut assets, run, results, statuses) {
-                Ok(results) => results,
-                Err(error) => {
-                    fail_content(&mut commands, run, error);
-                    continue;
-                }
-            };
+        let results_entity = match MessageParts::user(parts).and_then(|results| {
+            spawn_deferred_with(&mut commands, &mut assets, run, results, statuses)
+        }) {
+            Ok(results) => results,
+            Err(error) => {
+                fail_content(&mut commands, run, error);
+                continue;
+            }
+        };
         commands.entity(turn).insert((
             ToolTurnCommit { turn: cursor.turn },
             TurnResults(results_entity),
@@ -2150,8 +2152,9 @@ fn edited_content(
                 for part in &mut content {
                     if let AssistantContent::ToolCall(tool_call) = part
                         && tool_call.id == call.id
+                        && let Ok(to) = rig_core::message::ToolName::new(to.clone())
                     {
-                        tool_call.function.name = to.clone();
+                        tool_call.function.name = to;
                     }
                 }
             }
@@ -2180,11 +2183,7 @@ fn fail_unknown_call(
     call: InvalidCall,
 ) -> Result<(), ContentError> {
     commands.entity(turn).insert(Materialised);
-    if !call.prefix.is_empty() {
-        let assistant = MessageParts::Assistant {
-            id: outs.message_id.clone(),
-            content: call.prefix.clone(),
-        };
+    if let Ok(assistant) = MessageParts::assistant(outs.message_id.clone(), call.prefix.clone()) {
         spawn_deferred(commands, assets, run, assistant)?;
     }
     commands
@@ -2217,12 +2216,10 @@ fn abandon_turn(
         } else {
             policy::partial_turn_at(&outs.content, events, &call.id, allowed_names)
         };
-    let assistant = MessageParts::Assistant {
-        id: outs.message_id.clone(),
-        content: content.clone(),
-    };
+    let assistant = MessageParts::assistant(outs.message_id.clone(), content.clone())?;
     spawn_deferred(commands, assets, run, assistant)?;
-    let results = policy::invalid_peer_results(&content, &diagnostic_id, feedback);
+    let results = policy::invalid_peer_results(&content, &diagnostic_id, feedback)
+        .ok_or(ContentError::Shape)?;
     let skipped = match &results {
         MessageParts::User { content } => vec![ToolResultStatus::Skipped; content.len()],
         MessageParts::Assistant { .. } => Vec::new(),
@@ -2488,7 +2485,7 @@ pub fn read_turn(
                 commands.spawn((
                     InvalidCall {
                         id: call.id.clone(),
-                        name: call.function.name.clone(),
+                        name: call.function.name.to_string(),
                         arguments: call.function.arguments.clone(),
                         prefix: Vec::new(),
                         stream_offset: None,
@@ -2515,7 +2512,7 @@ fn say_assistant(
 ) -> Result<(), ContentError> {
     let feedback_utterance = |commands: &mut Commands, assets: &mut BinaryAssets, feedback| {
         let user = MessageParts::User {
-            content: vec![UserContent::text(feedback)],
+            content: rig_core::NonEmpty::new(UserContent::text(feedback)),
         };
         spawn_deferred(commands, assets, run, user).map(drop)
     };
@@ -2536,10 +2533,7 @@ fn say_assistant(
         }
         return Ok(());
     }
-    let assistant = MessageParts::Assistant {
-        id: read.message_id.clone(),
-        content: read.content.clone(),
-    };
+    let assistant = MessageParts::assistant(read.message_id.clone(), read.content.clone())?;
     if let Some(Retry { feedback }) = retry {
         commands.entity(turn).remove::<(Retry, TurnRead)>();
         if read.calls().next().is_some() {
@@ -2628,7 +2622,7 @@ pub fn materialise_batch(
                 PendingEffect::new(
                     tool.key.clone(),
                     EffectKind::ToolCall {
-                        name: call.function.name.clone(),
+                        name: call.function.name.to_string(),
                         args: call.function.arguments.to_string(),
                     },
                 ),
@@ -2636,7 +2630,6 @@ pub fn materialise_batch(
                 ToolCallSlot {
                     index,
                     id: call.id.clone(),
-                    provider: call.provider.clone(),
                     name: call.function.name.clone(),
                 },
                 ChildOf(turn),
@@ -2691,14 +2684,9 @@ fn reprompt_for(
             }
             let feedback = policy::reprompt_missing_fields(name, &missing);
             let reprompt = MessageParts::User {
-                content: vec![UserContent::ToolResult(
-                    rig_core::completion::message::ToolResult {
-                        call: call.id.clone(),
-                        provider: call.provider.clone(),
-                        name: name.to_owned(),
-                        content: vec![ToolResultContent::text(feedback)],
-                    },
-                )],
+                content: rig_core::NonEmpty::new(UserContent::ToolResult(
+                    call.result(ToolResultContent::text(feedback)),
+                )),
             };
             Some((reprompt, vec![ToolResultStatus::Skipped]))
         }
@@ -2707,7 +2695,9 @@ fn reprompt_for(
                 return None;
             }
             let reprompt = MessageParts::User {
-                content: vec![UserContent::text(policy::text::reprompt_text_answer(name))],
+                content: rig_core::NonEmpty::new(UserContent::text(
+                    policy::text::reprompt_text_answer(name),
+                )),
             };
             Some((reprompt, Vec::new()))
         }
@@ -2808,11 +2798,10 @@ pub fn materialise_answer(
             .cloned()
             .collect();
         final_content.push(AssistantContent::text(output.clone()));
-        let restated = MessageParts::Assistant {
-            id: read.message_id.clone(),
-            content: final_content,
-        };
-        match replace_deferred(&mut commands, &mut assets, assistant, restated) {
+        let restated = MessageParts::assistant(read.message_id.clone(), final_content);
+        match restated
+            .and_then(|restated| replace_deferred(&mut commands, &mut assets, assistant, restated))
+        {
             Ok(()) => {
                 commands.entity(run).end((RunResult(output), Settled));
             }

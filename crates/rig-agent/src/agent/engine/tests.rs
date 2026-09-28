@@ -2445,11 +2445,17 @@ mod structured_tool_results {
         let turn = MockTurn::from_contents([
             AssistantContent::ToolCall(MessageToolCall::from_wire(
                 "tc_add",
-                ToolFunction::new("add".to_string(), json!({ "x": 2, "y": 3 })),
+                ToolFunction::new(
+                    rig_core::message::ToolName::new("add".to_string()).expect("tool name"),
+                    json!({ "x": 2, "y": 3 }),
+                ),
             )),
             AssistantContent::ToolCall(MessageToolCall::from_wire(
                 "tc_flaky",
-                ToolFunction::new("flaky_tool".to_string(), json!({})),
+                ToolFunction::new(
+                    rig_core::message::ToolName::new("flaky_tool".to_string()).expect("tool name"),
+                    json!({}),
+                ),
             )),
         ]);
 
@@ -2489,7 +2495,8 @@ mod structured_tool_results {
                         UserContent::ToolResult(result) => Some(
                             result
                                 .call
-                                .explicit()
+                                .provider()
+                                .map(|provider| provider.call_id.as_str())
                                 .expect("explicit provider ID")
                                 .to_owned(),
                         ),
@@ -3363,7 +3370,10 @@ fn tool_call_content(id: &str, args: serde_json::Value) -> AssistantContent {
     // provider correlator, keeping blocking/streaming parity exact.
     AssistantContent::ToolCall(MessageToolCall::from_wire(
         id,
-        ToolFunction::new("add".to_string(), args),
+        ToolFunction::new(
+            rig_core::message::ToolName::new("add".to_string()).expect("tool name"),
+            args,
+        ),
     ))
 }
 
@@ -3547,7 +3557,8 @@ async fn run_preserves_tool_call_order_under_out_of_order_completion() {
                     UserContent::ToolResult(result) => Some(
                         result
                             .call
-                            .explicit()
+                            .provider()
+                            .map(|provider| provider.call_id.as_str())
                             .expect("explicit provider ID")
                             .to_owned(),
                     ),
@@ -3588,7 +3599,8 @@ fn tool_result_ids(messages: &[Message]) -> Vec<String> {
                     UserContent::ToolResult(result) => Some(
                         result
                             .call
-                            .explicit()
+                            .provider()
+                            .map(|provider| provider.call_id.as_str())
                             .expect("explicit provider ID")
                             .to_owned(),
                     ),
@@ -3738,7 +3750,8 @@ async fn stream_emits_tool_results_in_call_order_after_batch_settles_under_concu
                 }) => streamed_result_ids.push(
                     tool_result
                         .call
-                        .explicit()
+                        .provider()
+                        .map(|provider| provider.call_id.as_str())
                         .expect("explicit provider ID")
                         .to_owned(),
                 ),
@@ -5273,7 +5286,11 @@ impl ScriptedTurn {
                 MockTurn::from_contents(calls.iter().map(|call| {
                     AssistantContent::ToolCall(MessageToolCall::from_wire(
                         call.id,
-                        ToolFunction::new(call.name.to_string(), call.args.clone()),
+                        ToolFunction::new(
+                            rig_core::message::ToolName::new(call.name.to_string())
+                                .expect("tool name"),
+                            call.args.clone(),
+                        ),
                     ))
                 }))
             }
@@ -5572,7 +5589,10 @@ async fn recovered_turn_suppresses_completion_response_on_both_drivers() {
             AssistantContent::text("let me compute that"),
             AssistantContent::ToolCall(MessageToolCall::from_wire(
                 "tc1",
-                ToolFunction::new("default_api".to_string(), json!({"x": 2, "y": 3})),
+                ToolFunction::new(
+                    rig_core::message::ToolName::new("default_api".to_string()).expect("tool name"),
+                    json!({"x": 2, "y": 3}),
+                ),
             )),
         ]),
         MockTurn::text("the answer is 5"),
@@ -6917,11 +6937,11 @@ async fn dynamic_context_preserves_query_selection_formatting_and_order_on_both_
         )
         .build()
         .prompt(Message::User {
-            content: vec![UserContent::image_url(
+            content: rig_core::NonEmpty::new(UserContent::image_url(
                 "https://example.com/prompt.png",
                 None,
                 None,
-            )],
+            )),
         })
         .history(vec![
             Message::user("older history query"),
@@ -7093,11 +7113,11 @@ async fn retrieved_tool_query_selection_is_unchanged_on_both_surfaces() {
         )
         .build()
         .prompt(Message::User {
-            content: vec![UserContent::image_url(
+            content: rig_core::NonEmpty::new(UserContent::image_url(
                 "https://example.com/blocking.png",
                 None,
                 None,
-            )],
+            )),
         })
         .history(vec![
             Message::user("older blocking history query"),
@@ -7137,11 +7157,11 @@ async fn retrieved_tool_query_selection_is_unchanged_on_both_surfaces() {
     )
     .build()
     .prompt(Message::User {
-        content: vec![UserContent::image_url(
+        content: rig_core::NonEmpty::new(UserContent::image_url(
             "https://example.com/streaming.png",
             None,
             None,
-        )],
+        )),
     })
     .history(vec![
         Message::user("older streaming history query"),
@@ -7701,7 +7721,7 @@ async fn initial_output_tool_collision_uses_a_unique_synthetic_name() {
                 if content.iter().any(|item| matches!(
                     item,
                     UserContent::ToolResult(result)
-                        if result.call.explicit() == Some("real")
+                        if result.call.provider().map(|provider| provider.call_id.as_str()) == Some("real")
                             && result.content.iter().any(|content| matches!(
                                 content,
                                 rig_core::message::ToolResultContent::Text(text)
@@ -9049,7 +9069,7 @@ async fn blocking_model_turn_repeat_preserves_prompt_history_with_fresh_preparat
     assert_eq!(requests.len(), 2);
     let first = requests[0].chat_history.clone();
     let second = requests[1].chat_history.clone();
-    assert_eq!(first, vec![Message::user("question")]);
+    assert_eq!(first, rig_core::NonEmpty::new(Message::user("question")));
     assert_eq!(
         second, first,
         "Repeat must preserve the prompt and preceding history"
@@ -9089,11 +9109,13 @@ async fn blocking_model_turn_feedback_preserves_rejected_response() {
     let second_request = &model.requests()[1];
     assert_eq!(
         second_request.chat_history.clone(),
-        vec![
+        rig_core::NonEmpty::with_rest(
             Message::user("question"),
-            Message::assistant("rejected"),
-            Message::user("try another approach"),
-        ]
+            [
+                Message::assistant("rejected"),
+                Message::user("try another approach")
+            ]
+        )
     );
 }
 
@@ -9131,10 +9153,10 @@ async fn blocking_empty_feedback_retry_omits_empty_assistant_history() {
     );
     assert_eq!(
         model.requests()[1].chat_history.clone(),
-        vec![
+        rig_core::NonEmpty::with_rest(
             Message::user("question"),
-            Message::user("provide an answer"),
-        ],
+            [Message::user("provide an answer")]
+        ),
         "the retry request must not contain an empty assistant message"
     );
 }
@@ -9331,10 +9353,10 @@ async fn streaming_empty_feedback_retry_omits_empty_assistant_history() {
     );
     assert_eq!(
         model.requests()[1].chat_history.clone(),
-        vec![
+        rig_core::NonEmpty::with_rest(
             Message::user("question"),
-            Message::user("provide an answer"),
-        ],
+            [Message::user("provide an answer")]
+        ),
         "the retry request must not contain an empty assistant message"
     );
 }

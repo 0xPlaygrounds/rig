@@ -206,7 +206,7 @@ fn test_logprobs_result_deserializes_official_json_field_names() {
 fn test_resolve_request_model_uses_override() {
     let request = CompletionRequest {
         model: Some("gemini-2.5-flash".to_string()),
-        chat_history: vec!["Hello".into()],
+        chat_history: crate::NonEmpty::new("Hello".into()),
         documents: vec![],
         tools: vec![],
         temperature: None,
@@ -233,7 +233,7 @@ fn test_resolve_request_model_uses_override() {
 fn test_resolve_request_model_uses_default_when_unset() {
     let request = CompletionRequest {
         model: None,
-        chat_history: vec!["Hello".into()],
+        chat_history: crate::NonEmpty::new("Hello".into()),
         documents: vec![],
         tools: vec![],
         temperature: None,
@@ -432,9 +432,9 @@ async fn test_thought_signature_is_preserved_from_response_reasoning_part() {
     assert!(
         matches!(
             first,
-            Some(message::AssistantContent::Reasoning(message::Reasoning { content, .. }))
+            Some(message::AssistantContent::Reasoning(reasoning))
                 if matches!(
-                    content.first(),
+                    reasoning.value().content.first(),
                     Some(message::ReasoningContent::Text {
                         text,
                         signature: Some(signature)
@@ -720,12 +720,13 @@ async fn test_completion_response_upgrades_stop_to_tool_calls() {
 fn test_reasoning_signature_is_emitted_in_gemini_part() {
     let msg = message::Message::Assistant {
         id: None,
-        content: vec![message::AssistantContent::Reasoning(
+        content: crate::NonEmpty::new(message::AssistantContent::Reasoning(
             message::Reasoning::new_with_signature(
                 "structured thought",
                 Some("reuse_sig_456".to_string()),
-            ),
-        )],
+            )
+            .sealed("gcp.gemini"),
+        )),
     };
 
     let converted: Content = msg.try_into().expect("convert message");
@@ -743,14 +744,14 @@ fn test_message_conversion_tool_call() {
     let tool_call = message::ToolCall::from_wire(
         "call-123",
         message::ToolFunction {
-            name: "test_function".to_string(),
+            name: crate::message::ToolName::new("test_function".to_string()).expect("tool name"),
             arguments: json!({"arg1": "value1"}),
         },
     );
 
     let msg = message::Message::Assistant {
         id: None,
-        content: vec![message::AssistantContent::ToolCall(tool_call)],
+        content: crate::NonEmpty::new(message::AssistantContent::ToolCall(tool_call)),
     };
 
     let content: Content = msg.try_into().unwrap();
@@ -782,9 +783,15 @@ async fn test_response_function_call_preserves_correlation_id() {
     let Some(message::AssistantContent::ToolCall(tool_call)) = converted.choice.first() else {
         panic!("expected a tool call");
     };
-    assert_eq!(tool_call.id.explicit(), Some("call-123"));
     assert_eq!(
-        tool_call.provider.as_ref().expect("wire id").call_id,
+        tool_call
+            .id
+            .provider()
+            .map(|provider| provider.call_id.as_str()),
+        Some("call-123")
+    );
+    assert_eq!(
+        tool_call.id.provider().expect("wire id").call_id,
         "call-123"
     );
 }
@@ -996,9 +1003,11 @@ fn test_txt_document_conversion_to_text_part() {
         Some(DocumentMediaType::TXT),
     );
 
-    let content: Content = message::Message::User { content: vec![doc] }
-        .try_into()
-        .unwrap();
+    let content: Content = message::Message::User {
+        content: crate::NonEmpty::new(doc),
+    }
+    .try_into()
+    .unwrap();
 
     if let Part {
         part: PartKind::Text(text),
@@ -1024,23 +1033,19 @@ fn test_tool_result_with_image_content() {
 
     // Create a tool result with both text and image content
     let tool_result = ToolResult {
-        call: message::ToolCallId::new_or_minted("call-123", 0),
-        provider: message::ProviderCallId::new("call-123"),
-        name: "test_tool".to_string(),
-        content: vec![
-            ToolResultContent::Text(message::Text::new(r#"{"status": "success"}"#.to_string())),
-            ToolResultContent::Image(Image {
+        call: crate::message::CallId::from_wire("call-123"),
+        name: crate::message::ToolName::new("test_tool".to_string()).expect("tool name"),
+        content: crate::NonEmpty::with_rest(ToolResultContent::Text(message::Text::new(r#"{"status": "success"}"#.to_string())), [ToolResultContent::Image(Image {
                 data: DocumentSourceKind::Base64("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==".to_string()),
                 media_type: Some(ImageMediaType::PNG),
                 detail: None,
                 additional_params: None,
-            }),
-        ],
+            })]),
     };
 
     let user_content = message::UserContent::ToolResult(tool_result);
     let msg = message::Message::User {
-        content: vec![user_content],
+        content: crate::NonEmpty::new(user_content),
     };
 
     // Convert to Gemini Content
@@ -1088,16 +1093,21 @@ fn mixed_inline_images_and_text_keep_text_response_and_ordered_parts() {
     use crate::message::{ImageMediaType, ToolResult, ToolResultContent};
 
     let message = message::Message::User {
-        content: vec![message::UserContent::ToolResult(ToolResult {
-            call: message::ToolCallId::minted(0),
-            provider: None,
-            name: "ordered_tool".to_string(),
-            content: vec![
+        content: crate::NonEmpty::new(message::UserContent::ToolResult(ToolResult {
+            call: crate::message::CallId::from_wire(""),
+            name: crate::message::ToolName::new("ordered_tool".to_string()).expect("tool name"),
+            content: crate::NonEmpty::with_rest(
                 ToolResultContent::image_base64("first-image", Some(ImageMediaType::PNG), None),
-                ToolResultContent::text("between-images"),
-                ToolResultContent::image_base64("second-image", Some(ImageMediaType::JPEG), None),
-            ],
-        })],
+                [
+                    ToolResultContent::text("between-images"),
+                    ToolResultContent::image_base64(
+                        "second-image",
+                        Some(ImageMediaType::JPEG),
+                        None,
+                    ),
+                ],
+            ),
+        })),
     };
 
     let content: Content = message.try_into().expect("tool result should convert");
@@ -1130,15 +1140,18 @@ fn mixed_inline_image_and_json_keep_structured_value_and_media_part() {
     use crate::message::{ImageMediaType, ToolResult, ToolResultContent};
 
     let message = message::Message::User {
-        content: vec![message::UserContent::ToolResult(ToolResult {
-            call: message::ToolCallId::minted(0),
-            provider: None,
-            name: "ordered_tool".to_string(),
-            content: vec![
+        content: crate::NonEmpty::new(message::UserContent::ToolResult(ToolResult {
+            call: crate::message::CallId::from_wire(""),
+            name: crate::message::ToolName::new("ordered_tool".to_string()).expect("tool name"),
+            content: crate::NonEmpty::with_rest(
                 ToolResultContent::json(json!({ "status": "ok" })),
-                ToolResultContent::image_base64("image-data", Some(ImageMediaType::PNG), None),
-            ],
-        })],
+                [ToolResultContent::image_base64(
+                    "image-data",
+                    Some(ImageMediaType::PNG),
+                    None,
+                )],
+            ),
+        })),
     };
 
     let content: Content = message.try_into().expect("tool result should convert");
@@ -1165,20 +1178,19 @@ fn mixed_url_image_and_response_value_is_rejected() {
     use crate::message::{DocumentSourceKind, Image, ImageMediaType, ToolResultContent};
 
     let tool_result = message::Message::User {
-        content: vec![message::UserContent::ToolResult(message::ToolResult {
-            call: message::ToolCallId::minted(0),
-            provider: None,
-            name: "url_tool".to_string(),
-            content: vec![
+        content: crate::NonEmpty::new(message::UserContent::ToolResult(message::ToolResult {
+            call: crate::message::CallId::from_wire(""),
+            name: crate::message::ToolName::new("url_tool".to_string()).expect("tool name"),
+            content: crate::NonEmpty::with_rest(
                 ToolResultContent::Image(Image {
                     data: DocumentSourceKind::Url("https://example.com/image.png".to_string()),
                     media_type: Some(ImageMediaType::PNG),
                     detail: None,
                     additional_params: None,
                 }),
-                ToolResultContent::text("after-image"),
-            ],
-        })],
+                [ToolResultContent::text("after-image")],
+            ),
+        })),
     };
 
     let error = Content::try_from(tool_result)
@@ -1202,16 +1214,15 @@ fn tool_result_rejects_unsupported_image_media_types() {
         ImageMediaType::SVG,
     ] {
         let message = message::Message::User {
-            content: vec![message::UserContent::ToolResult(ToolResult {
-                call: message::ToolCallId::minted(0),
-                provider: None,
-                name: "image_tool".to_string(),
-                content: vec![ToolResultContent::image_base64(
+            content: crate::NonEmpty::new(message::UserContent::ToolResult(ToolResult {
+                call: crate::message::CallId::from_wire(""),
+                name: crate::message::ToolName::new("image_tool".to_string()).expect("tool name"),
+                content: crate::NonEmpty::new(ToolResultContent::image_base64(
                     "image-data",
                     Some(media_type),
                     None,
-                )],
-            })],
+                )),
+            })),
         };
 
         let error = Content::try_from(message)
@@ -1230,19 +1241,22 @@ fn structured_json_refs_remain_literal_with_unreferenced_image_parts() {
     use crate::message::{ImageMediaType, ToolResult, ToolResultContent};
 
     let message = message::Message::User {
-        content: vec![message::UserContent::ToolResult(ToolResult {
-            call: message::ToolCallId::minted(0),
-            provider: None,
-            name: "collision_tool".to_string(),
-            content: vec![
+        content: crate::NonEmpty::new(message::UserContent::ToolResult(ToolResult {
+            call: crate::message::CallId::from_wire(""),
+            name: crate::message::ToolName::new("collision_tool".to_string()).expect("tool name"),
+            content: crate::NonEmpty::with_rest(
                 ToolResultContent::json(json!({
                     "literal": {
                         "$ref": "tool_result_image_0"
                     }
                 })),
-                ToolResultContent::image_base64("image-data", Some(ImageMediaType::PNG), None),
-            ],
-        })],
+                [ToolResultContent::image_base64(
+                    "image-data",
+                    Some(ImageMediaType::PNG),
+                    None,
+                )],
+            ),
+        })),
     };
 
     let content: Content = message.try_into().expect("tool result should convert");
@@ -1288,12 +1302,11 @@ fn tool_result_literal_text_and_structured_json_remain_distinct() {
 
     for (tool_content, expected) in cases {
         let message = message::Message::User {
-            content: vec![message::UserContent::ToolResult(ToolResult {
-                call: message::ToolCallId::minted(0),
-                provider: None,
-                name: "test_tool".to_string(),
-                content: vec![tool_content],
-            })],
+            content: crate::NonEmpty::new(message::UserContent::ToolResult(ToolResult {
+                call: crate::message::CallId::from_wire(""),
+                name: crate::message::ToolName::new("test_tool".to_string()).expect("tool name"),
+                content: crate::NonEmpty::new(tool_content),
+            })),
         };
         let content: Content = message.try_into().expect("tool result should convert");
 
@@ -1310,24 +1323,23 @@ fn tool_result_literal_text_and_structured_json_remain_distinct() {
 /// an asymmetric functionCall/functionResponse id pair is rejected.
 #[test]
 fn echoed_minted_handle_never_reaches_the_function_response_id() {
-    use crate::message::{ToolCall, ToolCallId, ToolFunction, ToolResultContent};
+    use crate::message::{CallId, ToolCall, ToolFunction, ToolResultContent};
 
-    // An id-less wire minted the handle (Gemini REST issued no id).
+    // An id-less wire: rig issued the id (Gemini REST issued none).
     let call = ToolCall::new(
-        ToolCallId::minted(0),
+        CallId::from_wire(""),
         ToolFunction {
-            name: "lookup".to_string(),
+            name: crate::message::ToolName::new("lookup".to_string()).expect("tool name"),
             arguments: json!({}),
         },
     );
 
     let message = message::Message::User {
-        content: vec![message::UserContent::ToolResult(message::ToolResult {
+        content: crate::NonEmpty::new(message::UserContent::ToolResult(message::ToolResult {
             call: call.id.clone(),
-            provider: None,
-            name: "lookup".into(),
-            content: vec![ToolResultContent::text("out")],
-        })],
+            name: call.function.name.clone(),
+            content: crate::NonEmpty::new(ToolResultContent::text("out")),
+        })),
     };
     let content: Content = message.try_into().expect("tool result should convert");
     let PartKind::FunctionResponse(response) = &content.parts[0].part else {
@@ -1336,71 +1348,17 @@ fn echoed_minted_handle_never_reaches_the_function_response_id() {
     assert_eq!(response.id, None);
 }
 
-/// A cross-provider ingested transcript (rig's inbound converters
-/// stamp `name: ""` — Anthropic/OpenAI-chat/Cohere/Bedrock wires carry
-/// no name) must reach Gemini with the name resolved from the paired
-/// call: `functionResponse.name: ""` is INVALID_ARGUMENT.
-#[test]
-fn ingested_nameless_results_resolve_their_name_at_request_assembly() {
-    use crate::completion::request::CompletionRequest;
-    use crate::message::{AssistantContent, ToolCall, ToolFunction, ToolResultContent};
-
-    let request = CompletionRequest {
-        chat_history: vec![
-            message::Message::user("weather?"),
-            message::Message::Assistant {
-                id: None,
-                content: vec![AssistantContent::ToolCall(ToolCall::from_wire(
-                    "toolu_abc",
-                    ToolFunction {
-                        name: "get_weather".to_owned(),
-                        arguments: json!({"city": "Paris"}),
-                    },
-                ))],
-            },
-            message::Message::User {
-                content: vec![message::UserContent::tool_result_from_wire(
-                    "toolu_abc",
-                    "",
-                    vec![ToolResultContent::text("sunny")],
-                )],
-            },
-        ],
-        documents: vec![],
-        tools: vec![],
-        temperature: None,
-        model: None,
-        output_schema: None,
-        record_telemetry_content: false,
-        max_tokens: None,
-        tool_choice: None,
-        additional_params: None,
-    };
-
-    let body = create_request_body(request).expect("request should build");
-    let response_names: Vec<_> = body
-        .contents
-        .iter()
-        .flat_map(|content| &content.parts)
-        .filter_map(|part| match &part.part {
-            PartKind::FunctionResponse(response) => Some(response.name.clone()),
-            _ => None,
-        })
-        .collect();
-    assert_eq!(response_names, ["get_weather"]);
-}
-
 /// A wire-derived result keeps its provider-issued id on replay.
 #[test]
 fn wire_derived_tool_result_keeps_the_provider_id_on_the_wire() {
     use crate::message::ToolResultContent;
 
     let message = message::Message::User {
-        content: vec![message::UserContent::tool_result_from_wire(
-            "gemini-issued-id",
-            "lookup",
-            vec![ToolResultContent::text("out")],
-        )],
+        content: crate::NonEmpty::new(message::UserContent::tool_result(
+            crate::message::CallId::from_wire("gemini-issued-id"),
+            crate::message::ToolName::new("lookup").expect("tool name"),
+            crate::NonEmpty::new(ToolResultContent::text("out")),
+        )),
     };
     let content: Content = message.try_into().expect("tool result should convert");
     let PartKind::FunctionResponse(response) = &content.parts[0].part else {
@@ -1419,9 +1377,11 @@ fn test_markdown_document_conversion_to_text_part() {
         Some(DocumentMediaType::MARKDOWN),
     );
 
-    let content: Content = message::Message::User { content: vec![doc] }
-        .try_into()
-        .unwrap();
+    let content: Content = message::Message::User {
+        content: crate::NonEmpty::new(doc),
+    }
+    .try_into()
+    .unwrap();
 
     if let Part {
         part: PartKind::Text(text),
@@ -1450,9 +1410,11 @@ fn test_markdown_url_document_conversion_to_file_data_part() {
         additional_params: None,
     });
 
-    let content: Content = message::Message::User { content: vec![doc] }
-        .try_into()
-        .unwrap();
+    let content: Content = message::Message::User {
+        content: crate::NonEmpty::new(doc),
+    }
+    .try_into()
+    .unwrap();
 
     if let Part {
         part: PartKind::FileData(file_data),
@@ -1487,7 +1449,7 @@ fn test_user_image_url_renders_as_file_data() {
     });
 
     let content: Content = message::Message::User {
-        content: vec![image],
+        content: crate::NonEmpty::new(image),
     }
     .try_into()
     .unwrap();
@@ -1511,20 +1473,19 @@ fn test_tool_result_with_url_image_is_rejected() {
     };
 
     let tool_result = ToolResult {
-        call: message::ToolCallId::minted(0),
-        provider: None,
-        name: "screenshot_tool".to_string(),
-        content: vec![ToolResultContent::Image(Image {
+        call: crate::message::CallId::from_wire(""),
+        name: crate::message::ToolName::new("screenshot_tool".to_string()).expect("tool name"),
+        content: crate::NonEmpty::new(ToolResultContent::Image(Image {
             data: DocumentSourceKind::Url("https://example.com/image.png".to_string()),
             media_type: Some(ImageMediaType::PNG),
             detail: None,
             additional_params: None,
-        })],
+        })),
     };
 
     let user_content = message::UserContent::ToolResult(tool_result);
     let msg = message::Message::User {
-        content: vec![user_content],
+        content: crate::NonEmpty::new(user_content),
     };
 
     let error =
@@ -1557,7 +1518,7 @@ fn test_create_request_body_with_documents() {
     ];
 
     let documents_message = CompletionRequest {
-        chat_history: vec![Message::user("placeholder")],
+        chat_history: crate::NonEmpty::new(Message::user("placeholder")),
         documents,
         tools: vec![],
         temperature: None,
@@ -1572,11 +1533,10 @@ fn test_create_request_body_with_documents() {
     .unwrap();
 
     let completion_request = CompletionRequest {
-        chat_history: vec![
+        chat_history: crate::NonEmpty::with_rest(
             Message::system("You are a helpful assistant"),
-            documents_message,
-            Message::user("What are my notes about?"),
-        ],
+            [documents_message, Message::user("What are my notes about?")],
+        ),
         documents: vec![],
         tools: vec![],
         temperature: None,
@@ -1641,10 +1601,10 @@ fn test_create_request_body_without_documents() {
     use crate::message::Message;
 
     let completion_request = CompletionRequest {
-        chat_history: vec![
+        chat_history: crate::NonEmpty::with_rest(
             Message::system("You are a helpful assistant"),
-            Message::user("Hello"),
-        ],
+            [Message::user("Hello")],
+        ),
         documents: vec![], // No documents
         tools: vec![],
         temperature: None,
@@ -1772,7 +1732,7 @@ const SIGNED_STREAM: &str = concat!(
 fn wire_request(prompt: &str) -> CompletionRequest {
     CompletionRequest {
         model: None,
-        chat_history: vec![prompt.into()],
+        chat_history: crate::NonEmpty::new(prompt.into()),
         documents: vec![],
         tools: vec![],
         temperature: None,
@@ -1889,7 +1849,7 @@ async fn a_trailing_thought_signature_stays_on_the_part_that_carried_it() {
     ] {
         let content: Content = message::Message::Assistant {
             id: None,
-            content: response.choice.clone(),
+            content: crate::NonEmpty::from_vec(response.choice.clone()).expect("non-empty"),
         }
         .try_into()
         .expect("the turn replays");
@@ -2091,14 +2051,16 @@ fn a_text_signature_reaches_no_other_wire() {
     };
     let request = CompletionRequest {
         model: None,
-        chat_history: vec![
+        chat_history: crate::NonEmpty::with_rest(
             message::Message::user("q"),
-            message::Message::Assistant {
-                id: None,
-                content: vec![message::AssistantContent::Text(signed)],
-            },
-            message::Message::user("again"),
-        ],
+            [
+                message::Message::Assistant {
+                    id: None,
+                    content: crate::NonEmpty::new(message::AssistantContent::Text(signed)),
+                },
+                message::Message::user("again"),
+            ],
+        ),
         documents: Vec::new(),
         tools: Vec::new(),
         temperature: None,
@@ -2142,13 +2104,13 @@ fn a_text_signature_reaches_no_other_wire() {
 fn a_signed_answer_text_round_trips_through_serde() {
     let message = message::Message::Assistant {
         id: None,
-        content: vec![message::AssistantContent::Text(message::Text {
+        content: crate::NonEmpty::new(message::AssistantContent::Text(message::Text {
             text: "the answer".to_owned(),
             additional_params: super::super::text_signature_extras(
                 super::super::GEMINI_TEXT_EXTRAS_KEY,
                 "c2lnbmVk".to_owned(),
             ),
-        })],
+        })),
     };
     let json = serde_json::to_string(&message).expect("the message serializes");
     let loaded: message::Message = serde_json::from_str(&json).expect("the message loads");
@@ -2168,13 +2130,13 @@ fn a_signed_answer_text_round_trips_through_serde() {
 fn a_history_with_a_signature_only_reasoning_block_still_replays() {
     let message = message::Message::Assistant {
         id: None,
-        content: vec![
+        content: crate::NonEmpty::with_rest(
             message::AssistantContent::text("289"),
-            message::AssistantContent::Reasoning(message::Reasoning::new_with_signature(
-                "",
-                Some("c2lnbmVk".to_owned()),
-            )),
-        ],
+            [message::AssistantContent::Reasoning(
+                message::Reasoning::new_with_signature("", Some("c2lnbmVk".to_owned()))
+                    .sealed("gcp.gemini"),
+            )],
+        ),
     };
     let json = serde_json::to_string(&message).expect("the message serializes");
     let loaded: message::Message = serde_json::from_str(&json).expect("the message loads");

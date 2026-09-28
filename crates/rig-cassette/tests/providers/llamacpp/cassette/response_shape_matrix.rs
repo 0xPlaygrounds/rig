@@ -93,6 +93,8 @@ async fn reasoning_content_reaches_the_caller_on_both_transports() {
                     )
                 });
             let reasoning_text = reasoning
+                .open(reasoning.issuer())
+                .expect("sealed reasoning")
                 .content
                 .iter()
                 .filter_map(|block| match block {

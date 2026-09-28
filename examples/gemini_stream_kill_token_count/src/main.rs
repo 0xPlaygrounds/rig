@@ -53,7 +53,7 @@ use rig::completion::CompletionRequest;
 use rig::completion::Usage;
 use rig::error::ErrorReport;
 use rig::error::ProviderError;
-use rig::message::AssistantContent;
+use rig::message::{AssistantContent, Reasoning};
 use rig::providers::gemini::Gemini;
 use rig::providers::gemini::completion::gemini_api_types::{
     AdditionalParameters, GenerationConfig, ThinkingConfig,
@@ -177,7 +177,9 @@ fn visible_len(item: &StreamEvent) -> usize {
             end: BlockClose::Reasoning { .. },
             block: Some(AssistantContent::Reasoning(r)),
             ..
-        } => r.display_text().chars().count(),
+        } => r
+            .open(r.issuer())
+            .map_or(0, |r| r.display_text().chars().count()),
         _ => 0,
     }
 }
@@ -253,7 +255,11 @@ where
                     block: Some(AssistantContent::Reasoning(r)),
                     ..
                 } => {
-                    output.push_str(&r.display_text());
+                    output.push_str(
+                        &r.open(r.issuer())
+                            .map(Reasoning::display_text)
+                            .unwrap_or_default(),
+                    );
                 }
                 StreamEvent::Final(resp) => {
                     // Authoritative usage. A premature clean close (shape #3)

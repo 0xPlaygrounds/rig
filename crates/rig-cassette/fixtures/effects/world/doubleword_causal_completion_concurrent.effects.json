@@ -146,11 +146,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_d344dec1864846f18b0e8f0e"
-              },
-              "provider": {
-                "call_id": "call_d344dec1864846f18b0e8f0e"
+                "provider": {
+                  "call_id": "call_d344dec1864846f18b0e8f0e"
+                }
               },
               "function": {
                 "name": "lookup",
@@ -292,6 +290,7 @@
           "choice": [
             {
               "type": "reasoning",
+              "issuer": "doubleword",
               "id": null,
               "content": [
                 {
@@ -300,8 +299,7 @@
                     "text": "Thinking Process:\n\n1.  **Analyze the Request:**\n    *   Question: \"What is the capital of France?\"\n    *   Constraint: \"Answer in one word.\"\n\n2.  **Identify the Answer:**\n    *   The capital of France is Paris.\n\n3.  **Check Constraint:**\n    *   \"Paris\" is one word.\n\n4.  **Formulate Output:**\n    *   Paris.\n\n5.  **Final Verification:**\n    *   Does it answer the question? Yes.\n    *   Is it one word? Yes.\n\n6.  **Construct Final Response:** Paris.cw\n"
                   }
                 }
-              ],
-              "provider": "doubleword"
+              ]
             },
             {
               "type": "text",
@@ -404,11 +402,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_d344dec1864846f18b0e8f0e"
-                  },
-                  "provider": {
-                    "call_id": "call_d344dec1864846f18b0e8f0e"
+                    "provider": {
+                      "call_id": "call_d344dec1864846f18b0e8f0e"
+                    }
                   },
                   "function": {
                     "name": "lookup",
@@ -427,11 +423,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_d344dec1864846f18b0e8f0e"
-                  },
-                  "provider": {
-                    "call_id": "call_d344dec1864846f18b0e8f0e"
+                    "provider": {
+                      "call_id": "call_d344dec1864846f18b0e8f0e"
+                    }
                   },
                   "name": "lookup",
                   "content": [

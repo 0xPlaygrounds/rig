@@ -56,7 +56,7 @@ pub struct Chat {
 impl Chat {
     pub(crate) fn encode_with_headers(
         &self,
-        mut request: CompletionRequest,
+        request: CompletionRequest,
         mode: Mode,
         headers: impl FnOnce(
             &OpenAIConfig,
@@ -64,7 +64,8 @@ impl Chat {
             http::request::Builder,
         ) -> http::request::Builder,
     ) -> Result<Encoded, EncodeError> {
-        super::scope_reasoning(&self.provider.dialect, &self.model, &mut request);
+        let (request, issuers) =
+            super::scope_reasoning(&self.provider.dialect, &self.model, request)?;
         let quirks = &self.provider.dialect.quirks;
         // Azure's deployment URL remains pinned to the handle, not a request override.
         let uri = self.provider.uri(
@@ -89,6 +90,7 @@ impl Chat {
             supports_tools: quirks.supports_tools,
             supports_image_tool_results: quirks.supports_image_tool_results,
             reasoning_details: quirks.reasoning_details,
+            issuers,
         })?;
         self.prepare(&mut typed)?;
 

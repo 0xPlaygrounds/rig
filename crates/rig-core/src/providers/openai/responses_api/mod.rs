@@ -379,10 +379,23 @@ fn responses_tool_result_output(
     }
 }
 
+/// The issuer-free conversion: no reasoning opens, so none is replayed. A
+/// request's own conversion ([`ResponsesRequestParams`]) replays the
+/// reasoning its issuers open.
 impl TryFrom<crate::completion::Message> for Vec<InputItem> {
     type Error = EncodeError;
 
     fn try_from(value: crate::completion::Message) -> Result<Self, Self::Error> {
+        input_items(value, &[])
+    }
+}
+
+/// `value` as input items, replaying the reasoning `issuers` open.
+fn input_items(
+    value: crate::completion::Message,
+    issuers: &[crate::message::Issuer],
+) -> Result<Vec<InputItem>, EncodeError> {
+    {
         match value {
             crate::completion::Message::System { content } => Ok(vec![InputItem {
                 role: Some(Role::System),
@@ -401,8 +414,9 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                         }
                         crate::message::UserContent::ToolResult(tool_result) => {
                             // Prefer provider identity so results match replayed calls.
-                            let call_id = tool_result.wire_call_id().into_owned();
-                            let output = responses_tool_result_output(tool_result.content)?;
+                            let call_id = tool_result.call.wire().into_owned();
+                            let output =
+                                responses_tool_result_output(tool_result.content.into_vec())?;
                             items.push(InputItem {
                                 role: None,
                                 input: InputContent::FunctionCallOutput(ToolResult {
@@ -524,16 +538,14 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                         }
                         crate::message::AssistantContent::ToolCall(crate::message::ToolCall {
                             id,
-                            provider,
                             function,
                             ..
                         }) => {
-                            let (call_id, item_id) = match provider {
-                                Some(provider) => {
-                                    let item_id = provider.item_id.clone().unwrap_or_default();
-                                    (provider.call_id, item_id)
+                            let (call_id, item_id) = match id {
+                                crate::message::CallId::Provider(provider) => {
+                                    (provider.call_id, provider.item_id.unwrap_or_default())
                                 }
-                                None => (id.wire_hint().into_owned(), String::new()),
+                                local => (local.wire().into_owned(), String::new()),
                             };
                             other_items.push(InputItem {
                                 role: None,
@@ -541,13 +553,17 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                                     arguments: function.arguments.into(),
                                     call_id,
                                     id: item_id,
-                                    name: function.name,
+                                    name: function.name.into(),
                                     status: ToolStatus::Completed,
                                 }),
                             });
                         }
                         crate::message::AssistantContent::Reasoning(reasoning) => {
-                            if let Some(openai_reasoning) = openai_reasoning_from_core(&reasoning) {
+                            // Reasoning another service issued is not replayed.
+                            if let Some(openai_reasoning) = reasoning
+                                .open_for(issuers)
+                                .and_then(openai_reasoning_from_core)
+                            {
                                 reasoning_items.push(InputItem {
                                     role: None,
                                     input: InputContent::Reasoning(openai_reasoning),
@@ -1119,6 +1135,7 @@ impl TryFrom<(String, crate::completion::CompletionRequest)> for CompletionReque
             model,
             request,
             system_instructions_placement: SystemInstructionsPlacement::default(),
+            issuers: Vec::new(),
         })
     }
 }
@@ -1129,6 +1146,8 @@ pub struct ResponsesRequestParams {
     pub model: String,
     pub request: crate::completion::CompletionRequest,
     pub system_instructions_placement: SystemInstructionsPlacement,
+    /// The issuers whose reasoning the request replays.
+    pub issuers: Vec<crate::message::Issuer>,
 }
 
 impl TryFrom<ResponsesRequestParams> for CompletionRequest {
@@ -1139,6 +1158,7 @@ impl TryFrom<ResponsesRequestParams> for CompletionRequest {
             model,
             request: mut req,
             system_instructions_placement,
+            issuers,
         } = params;
         let chat_history = req.chat_history_with_documents();
         let model = req.model.clone().unwrap_or(model);
@@ -1149,7 +1169,7 @@ impl TryFrom<ResponsesRequestParams> for CompletionRequest {
                 crate::providers::internal::tool_call_ids::ToolCallIds::new(&chat_history)
                     .map_err(EncodeError::request)?;
             for (position, history_item) in chat_history.into_iter().enumerate() {
-                let mut items = <Vec<InputItem>>::try_from(history_item)?;
+                let mut items = input_items(history_item, &issuers)?;
                 tool_ids
                     .apply(
                         position,

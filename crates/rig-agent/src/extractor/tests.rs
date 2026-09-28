@@ -38,7 +38,10 @@ fn submit_turn(name: &str) -> MockTurn {
 fn tool_call(id: &str, name: &str, arguments: serde_json::Value) -> AssistantContent {
     AssistantContent::ToolCall(ToolCall::from_wire(
         id,
-        ToolFunction::new(name.to_string(), arguments),
+        ToolFunction::new(
+            rig_core::message::ToolName::new(name.to_string()).expect("tool name"),
+            arguments,
+        ),
     ))
 }
 

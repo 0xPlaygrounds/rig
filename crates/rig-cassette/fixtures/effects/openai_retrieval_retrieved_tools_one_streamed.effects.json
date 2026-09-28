@@ -186,12 +186,10 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_pEo0IlvaunBZNuCvDjL4ibDN"
-              },
-              "provider": {
-                "call_id": "call_pEo0IlvaunBZNuCvDjL4ibDN",
-                "item_id": "fc_06d2eb07f6220f2a006ab396943e4487d0bd62df28bc958fa0"
+                "provider": {
+                  "call_id": "call_pEo0IlvaunBZNuCvDjL4ibDN",
+                  "item_id": "fc_06d2eb07f6220f2a006ab396943e4487d0bd62df28bc958fa0"
+                }
               },
               "function": {
                 "name": "subtract",
@@ -345,12 +343,10 @@
           "block": {
             "type": "toolcall",
             "id": {
-              "origin": "explicit",
-              "id": "call_pEo0IlvaunBZNuCvDjL4ibDN"
-            },
-            "provider": {
-              "call_id": "call_pEo0IlvaunBZNuCvDjL4ibDN",
-              "item_id": "fc_06d2eb07f6220f2a006ab396943e4487d0bd62df28bc958fa0"
+              "provider": {
+                "call_id": "call_pEo0IlvaunBZNuCvDjL4ibDN",
+                "item_id": "fc_06d2eb07f6220f2a006ab396943e4487d0bd62df28bc958fa0"
+              }
             },
             "function": {
               "name": "subtract",
@@ -485,12 +481,10 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_pEo0IlvaunBZNuCvDjL4ibDN"
-                  },
-                  "provider": {
-                    "call_id": "call_pEo0IlvaunBZNuCvDjL4ibDN",
-                    "item_id": "fc_06d2eb07f6220f2a006ab396943e4487d0bd62df28bc958fa0"
+                    "provider": {
+                      "call_id": "call_pEo0IlvaunBZNuCvDjL4ibDN",
+                      "item_id": "fc_06d2eb07f6220f2a006ab396943e4487d0bd62df28bc958fa0"
+                    }
                   },
                   "function": {
                     "name": "subtract",
@@ -510,12 +504,10 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_pEo0IlvaunBZNuCvDjL4ibDN"
-                  },
-                  "provider": {
-                    "call_id": "call_pEo0IlvaunBZNuCvDjL4ibDN",
-                    "item_id": "fc_06d2eb07f6220f2a006ab396943e4487d0bd62df28bc958fa0"
+                    "provider": {
+                      "call_id": "call_pEo0IlvaunBZNuCvDjL4ibDN",
+                      "item_id": "fc_06d2eb07f6220f2a006ab396943e4487d0bd62df28bc958fa0"
+                    }
                   },
                   "name": "subtract",
                   "content": [

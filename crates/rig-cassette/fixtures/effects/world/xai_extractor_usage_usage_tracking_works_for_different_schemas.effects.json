@@ -121,24 +121,22 @@
           "choice": [
             {
               "type": "reasoning",
+              "issuer": "xai",
               "id": "rs_41b2457e-5f07-939d-ad83-e81bc313df73",
               "content": [
                 {
                   "type": "summary",
                   "content": "Extracting structured data from the text about Alice."
                 }
-              ],
-              "provider": "xai"
+              ]
             },
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call-12cf4203-021a-4973-8651-a02b1228b883-0"
-              },
-              "provider": {
-                "call_id": "call-12cf4203-021a-4973-8651-a02b1228b883-0",
-                "item_id": "fc_41b2457e-5f07-939d-ad83-e81bc313df73_0"
+                "provider": {
+                  "call_id": "call-12cf4203-021a-4973-8651-a02b1228b883-0",
+                  "item_id": "fc_41b2457e-5f07-939d-ad83-e81bc313df73_0"
+                }
               },
               "function": {
                 "name": "submit",
@@ -359,24 +357,22 @@
           "choice": [
             {
               "type": "reasoning",
+              "issuer": "xai",
               "id": "rs_12f9ab78-5f5a-9e31-92b4-8f4ea09febb1",
               "content": [
                 {
                   "type": "summary",
                   "content": "Extracting structured address data from the provided text."
                 }
-              ],
-              "provider": "xai"
+              ]
             },
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call-8870dc1d-c8ff-4bc2-bdd2-8c2424792f67-0"
-              },
-              "provider": {
-                "call_id": "call-8870dc1d-c8ff-4bc2-bdd2-8c2424792f67-0",
-                "item_id": "fc_12f9ab78-5f5a-9e31-92b4-8f4ea09febb1_0"
+                "provider": {
+                  "call_id": "call-8870dc1d-c8ff-4bc2-bdd2-8c2424792f67-0",
+                  "item_id": "fc_12f9ab78-5f5a-9e31-92b4-8f4ea09febb1_0"
+                }
               },
               "function": {
                 "name": "submit",

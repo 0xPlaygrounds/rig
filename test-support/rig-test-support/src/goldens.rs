@@ -77,7 +77,10 @@ pub fn golden_effects(name: &str, log: &EffectLog) {
         );
         return;
     }
-    let rendered = serde_json::to_string_pretty(log).expect("the log serializes");
+    let rendered = serde_json::to_string_pretty(&rig_cassette::effect_log::canonical_local_ids(
+        serde_json::to_value(log).expect("the log serializes"),
+    ))
+    .expect("the log serializes");
     let path = golden_path(name);
     if std::env::var_os("RIG_REGENERATE_GOLDEN").is_some() {
         std::fs::create_dir_all(path.parent().expect("a parent")).expect("fixtures dir");
@@ -122,10 +125,13 @@ pub fn world_golden_effects(name: &str, log: &EffectLog) {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../crates/rig-cassette/fixtures/effects/world")
         .join(format!("{name}.effects.json"));
+    let value = rig_cassette::effect_log::canonical_local_ids(
+        serde_json::to_value(log).expect("the world log serializes"),
+    );
     if std::env::var_os("RIG_REGENERATE_GOLDEN").is_some() {
         std::fs::create_dir_all(path.parent().expect("world corpus directory"))
             .expect("create world corpus directory");
-        let rendered = serde_json::to_string_pretty(log).expect("the world log serializes");
+        let rendered = serde_json::to_string_pretty(&value).expect("the world log serializes");
         std::fs::write(&path, format!("{rendered}\n")).expect("write world golden");
         world::programs(
             &path.with_file_name(format!("{name}.programs.json")),
@@ -147,10 +153,8 @@ pub fn world_golden_effects(name: &str, log: &EffectLog) {
     );
     let expected: serde_json::Value = serde_json::from_str(&committed).expect("world golden JSON");
     assert_eq!(
-        world::without_delivery_boundaries(expected),
-        world::without_delivery_boundaries(
-            serde_json::to_value(log).expect("the world log serializes")
-        ),
+        world::without_delivery_boundaries(rig_cassette::effect_log::canonical_local_ids(expected)),
+        world::without_delivery_boundaries(value),
         "the world's effects diverged from world golden `{name}`"
     );
 }

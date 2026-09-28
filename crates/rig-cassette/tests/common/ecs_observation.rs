@@ -74,7 +74,7 @@ fn observe_calls(
     }
     calls.sort_by_key(|(_, call)| call.index);
     for (_, call) in calls {
-        seen.observation.tool_calls.push(call.name.clone());
+        seen.observation.tool_calls.push(call.name.clone().into());
         // The reused assertion consumes names and order, not signature or
         // additional-params records. Leave those unobserved fields empty.
         seen.observation.events.push("tool_call");

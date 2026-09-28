@@ -149,11 +149,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "pFr5laDY2"
-              },
-              "provider": {
-                "call_id": "pFr5laDY2"
+                "provider": {
+                  "call_id": "pFr5laDY2"
+                }
               },
               "function": {
                 "name": "add",
@@ -286,11 +284,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "pFr5laDY2"
-                  },
-                  "provider": {
-                    "call_id": "pFr5laDY2"
+                    "provider": {
+                      "call_id": "pFr5laDY2"
+                    }
                   },
                   "function": {
                     "name": "add",
@@ -310,11 +306,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "pFr5laDY2"
-                  },
-                  "provider": {
-                    "call_id": "pFr5laDY2"
+                    "provider": {
+                      "call_id": "pFr5laDY2"
+                    }
                   },
                   "name": "add",
                   "content": [

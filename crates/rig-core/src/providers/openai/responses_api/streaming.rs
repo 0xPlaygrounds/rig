@@ -141,7 +141,6 @@ pub(crate) fn reasoning_from_done_item(
     }
 
     Some(crate::message::Reasoning {
-        provider: None,
         id: provider_id.map(str::to_owned),
         content: blocks,
     })
@@ -676,7 +675,6 @@ impl RawChoiceAccumulator {
                 .or_else(|| {
                     let id = provider_id.filter(|_| pure_replay)?;
                     Some(crate::message::Reasoning {
-                        provider: None,
                         id: Some(id),
                         content: Vec::new(),
                     })

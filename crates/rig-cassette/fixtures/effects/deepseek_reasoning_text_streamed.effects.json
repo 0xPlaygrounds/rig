@@ -70,6 +70,7 @@
           "choice": [
             {
               "type": "reasoning",
+              "issuer": "deepseek",
               "id": null,
               "content": [
                 {
@@ -78,8 +79,7 @@
                     "text": "We need answer in one or two sentences. Explain Rust and why memory safety matters. Concise. Could mention Rust is systems language with compile-time ownership/borrow checker preventing memory errors. Memory safety matters because bugs like use-after-free, buffer overflows lead to crashes/security vulnerabilities. Two sentences. Ensure accurate."
                   }
                 }
-              ],
-              "provider": "deepseek"
+              ]
             },
             {
               "type": "text",
@@ -652,6 +652,7 @@
           },
           "block": {
             "type": "reasoning",
+            "issuer": "deepseek",
             "id": null,
             "content": [
               {

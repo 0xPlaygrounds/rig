@@ -146,11 +146,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_iQcZJOsBb7eb834rq0hyuJEI"
-              },
-              "provider": {
-                "call_id": "call_iQcZJOsBb7eb834rq0hyuJEI"
+                "provider": {
+                  "call_id": "call_iQcZJOsBb7eb834rq0hyuJEI"
+                }
               },
               "function": {
                 "name": "lookup_harbor_label",
@@ -162,11 +160,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_B2tEwlopa4FIVqJtadPwpzQL"
-              },
-              "provider": {
-                "call_id": "call_B2tEwlopa4FIVqJtadPwpzQL"
+                "provider": {
+                  "call_id": "call_B2tEwlopa4FIVqJtadPwpzQL"
+                }
               },
               "function": {
                 "name": "lookup_orchard_label",
@@ -338,11 +334,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_iQcZJOsBb7eb834rq0hyuJEI"
-                  },
-                  "provider": {
-                    "call_id": "call_iQcZJOsBb7eb834rq0hyuJEI"
+                    "provider": {
+                      "call_id": "call_iQcZJOsBb7eb834rq0hyuJEI"
+                    }
                   },
                   "function": {
                     "name": "lookup_harbor_label",
@@ -354,11 +348,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_B2tEwlopa4FIVqJtadPwpzQL"
-                  },
-                  "provider": {
-                    "call_id": "call_B2tEwlopa4FIVqJtadPwpzQL"
+                    "provider": {
+                      "call_id": "call_B2tEwlopa4FIVqJtadPwpzQL"
+                    }
                   },
                   "function": {
                     "name": "lookup_orchard_label",
@@ -375,11 +367,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_iQcZJOsBb7eb834rq0hyuJEI"
-                  },
-                  "provider": {
-                    "call_id": "call_iQcZJOsBb7eb834rq0hyuJEI"
+                    "provider": {
+                      "call_id": "call_iQcZJOsBb7eb834rq0hyuJEI"
+                    }
                   },
                   "name": "lookup_harbor_label",
                   "content": [
@@ -392,11 +382,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_B2tEwlopa4FIVqJtadPwpzQL"
-                  },
-                  "provider": {
-                    "call_id": "call_B2tEwlopa4FIVqJtadPwpzQL"
+                    "provider": {
+                      "call_id": "call_B2tEwlopa4FIVqJtadPwpzQL"
+                    }
                   },
                   "name": "lookup_orchard_label",
                   "content": [

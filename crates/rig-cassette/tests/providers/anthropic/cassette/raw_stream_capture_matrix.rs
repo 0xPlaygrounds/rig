@@ -635,7 +635,13 @@ async fn terminal_raw_round_trips_for_thinking_stream() {
             } => Some(reasoning),
             _ => None,
         })
-        .flat_map(|reasoning| reasoning.content.iter())
+        .flat_map(|reasoning| {
+            reasoning
+                .open(reasoning.issuer())
+                .expect("sealed reasoning")
+                .content
+                .iter()
+        })
         .filter_map(|content| match content {
             ReasoningContent::Text { text, .. } => Some(text.as_str()),
             _ => None,
@@ -754,7 +760,8 @@ async fn terminal_raw_round_trips_for_tool_use_stream() {
     assert_eq!(call.function.arguments, recorded_input);
     assert_ids_match_recording(
         &[call
-            .provider
+            .id
+            .provider()
             .as_ref()
             .map(|provider| provider.call_id.clone())],
         std::slice::from_ref(&recorded_tool_id),

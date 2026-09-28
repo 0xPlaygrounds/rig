@@ -154,12 +154,10 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_m8F6xXO6Gqb3j4UDnp3SGZ89"
-              },
-              "provider": {
-                "call_id": "call_m8F6xXO6Gqb3j4UDnp3SGZ89",
-                "item_id": "fc_0a65494bcf9aa481006ab395f0a34487d0a8aedd6e2f213228"
+                "provider": {
+                  "call_id": "call_m8F6xXO6Gqb3j4UDnp3SGZ89",
+                  "item_id": "fc_0a65494bcf9aa481006ab395f0a34487d0a8aedd6e2f213228"
+                }
               },
               "function": {
                 "name": "add",
@@ -377,12 +375,10 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_m8F6xXO6Gqb3j4UDnp3SGZ89"
-                  },
-                  "provider": {
-                    "call_id": "call_m8F6xXO6Gqb3j4UDnp3SGZ89",
-                    "item_id": "fc_0a65494bcf9aa481006ab395f0a34487d0a8aedd6e2f213228"
+                    "provider": {
+                      "call_id": "call_m8F6xXO6Gqb3j4UDnp3SGZ89",
+                      "item_id": "fc_0a65494bcf9aa481006ab395f0a34487d0a8aedd6e2f213228"
+                    }
                   },
                   "function": {
                     "name": "add",
@@ -402,12 +398,10 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_m8F6xXO6Gqb3j4UDnp3SGZ89"
-                  },
-                  "provider": {
-                    "call_id": "call_m8F6xXO6Gqb3j4UDnp3SGZ89",
-                    "item_id": "fc_0a65494bcf9aa481006ab395f0a34487d0a8aedd6e2f213228"
+                    "provider": {
+                      "call_id": "call_m8F6xXO6Gqb3j4UDnp3SGZ89",
+                      "item_id": "fc_0a65494bcf9aa481006ab395f0a34487d0a8aedd6e2f213228"
+                    }
                   },
                   "name": "add",
                   "content": [

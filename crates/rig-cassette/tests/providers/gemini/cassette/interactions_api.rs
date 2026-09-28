@@ -199,11 +199,12 @@ async fn tool_result_roundtrip() {
 
             let followup = model
                 .call(
-                    CompletionRequest::new(Message::from(UserContent::tool_result_for(
+                    CompletionRequest::new(Message::from(UserContent::tool_result(
                         tool_call.id.clone(),
-                        tool_call.provider.clone(),
                         tool_call.function.name.clone(),
-                        vec![ToolResultContent::json(serde_json::json!({ "sum": 18.0 }))],
+                        rig_core::NonEmpty::new(ToolResultContent::json(
+                            serde_json::json!({ "sum": 18.0 }),
+                        )),
                     )))
                     .additional_params(
                         serde_json::to_value(AdditionalParameters {

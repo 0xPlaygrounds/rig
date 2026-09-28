@@ -137,7 +137,9 @@ async fn drain(events: Vec<aws_bedrock::ConverseStreamOutput>) -> Drained {
                 block: Some(AssistantContent::Reasoning(reasoning)),
                 ..
             }) => {
-                drained.reasoning.push(reasoning);
+                drained
+                    .reasoning
+                    .push(reasoning.open(reasoning.issuer()).cloned().expect("opens"));
             }
             Ok(StreamEvent::Final(_)) => drained.reached_terminal = true,
             Ok(_) => {}
@@ -617,14 +619,26 @@ async fn parallel_tool_calls_all_emitted_with_tool_use_terminal() {
     assert!(errors.is_empty());
     assert_eq!(calls.len(), 2, "both parallel tool calls must be emitted");
     let first = calls.first().expect("first call");
-    assert_eq!(first.id.explicit(), Some("call_a"));
+    assert_eq!(
+        first
+            .id
+            .provider()
+            .map(|provider| provider.call_id.as_str()),
+        Some("call_a")
+    );
     assert_eq!(first.function.name, "get_weather");
     assert_eq!(
         first.function.arguments,
         serde_json::json!({"location": "Paris"})
     );
     let second = calls.get(1).expect("second call");
-    assert_eq!(second.id.explicit(), Some("call_b"));
+    assert_eq!(
+        second
+            .id
+            .provider()
+            .map(|provider| provider.call_id.as_str()),
+        Some("call_b")
+    );
     assert_eq!(second.function.name, "get_time");
     assert_eq!(
         second.function.arguments,
@@ -663,11 +677,21 @@ async fn message_stop_flushes_stragglers_missing_a_block_stop() {
     assert!(errors.is_empty());
     assert_eq!(calls.len(), 2);
     assert_eq!(
-        calls.first().expect("first call").id.explicit(),
+        calls
+            .first()
+            .expect("first call")
+            .id
+            .provider()
+            .map(|provider| provider.call_id.as_str()),
         Some("call_a")
     );
     assert_eq!(
-        calls.get(1).expect("second call").id.explicit(),
+        calls
+            .get(1)
+            .expect("second call")
+            .id
+            .provider()
+            .map(|provider| provider.call_id.as_str()),
         Some("call_b")
     );
 }
@@ -921,7 +945,7 @@ async fn a_claude_stream_records_anthropic_as_its_reasoning_issuer() {
         .choice
         .iter()
         .filter_map(|part| match part {
-            AssistantContent::Reasoning(reasoning) => reasoning.provider.as_deref(),
+            AssistantContent::Reasoning(reasoning) => Some(reasoning.issuer().as_str()),
             _ => None,
         })
         .collect();

@@ -76,14 +76,10 @@ impl Wire for GenerateContent {
     /// so that is the reasoning a request may replay.
     fn encode(
         &self,
-        mut request: CompletionRequest,
+        request: CompletionRequest,
         _mode: Mode,
     ) -> Result<GenerateContentRequest, EncodeError> {
-        rig_core::message::retain_replayable_reasoning(
-            &mut request.chat_history,
-            &[REASONING_ISSUER],
-        );
-        create_grpc_request(&self.model, request)
+        create_grpc_request(&self.model, request.replayable_to(&[ISSUER])?)
     }
 
     fn decoder(&self, _mode: Mode) -> GrpcAdapter {
@@ -139,6 +135,9 @@ pub const PROVIDER_NAME: &str = "gemini-grpc";
 /// which also serves the REST transport, so thought signatures move between
 /// the two.
 pub const REASONING_ISSUER: &str = rig_core::providers::gemini::completion::PROVIDER_NAME;
+
+/// [`REASONING_ISSUER`], the only issuer whose reasoning this wire replays.
+const ISSUER: message::Issuer = message::Issuer::from_static(REASONING_ISSUER);
 
 /// Map Gemini's protobuf `finishReason` onto rig's normalized vocabulary.
 ///
@@ -246,12 +245,8 @@ pub(crate) fn create_grpc_request(
         record_telemetry_content: _,
     } = completion_request;
 
-    let mut chat_history = chat_history;
-    rig_core::message::retain_replayable_reasoning(&mut chat_history, &[REASONING_ISSUER]);
-    let (history_system, mut chat_history) = split_system_messages_from_history(chat_history);
-    // functionResponse.name keys the replay: cross-provider ingested
-    // results arrive with an empty name and their call carries it.
-    rig_core::providers::internal::resolve_empty_tool_result_names(&mut chat_history);
+    let (history_system, chat_history) =
+        split_system_messages_from_history(chat_history.into_vec());
     let mut contents = Vec::new();
 
     for msg in chat_history {
@@ -335,6 +330,13 @@ fn rig_message_to_grpc_content(msg: message::Message) -> Result<proto::Content, 
         message::Message::Assistant { content, .. } => {
             let parts = content
                 .into_iter()
+                // Reasoning another service issued is not replayed.
+                .filter(|part| match part {
+                    message::AssistantContent::Reasoning(reasoning) => {
+                        reasoning.open(&ISSUER).is_some()
+                    }
+                    _ => true,
+                })
                 .map(rig_assistant_content_to_grpc_part)
                 .collect::<Result<Vec<_>, _>>()?;
 
@@ -378,11 +380,12 @@ fn rig_user_content_to_grpc_part(
             // correlation handles must not reach the wire.
             Ok(data_part(proto::part::Data::FunctionResponse(
                 proto::FunctionResponse {
-                    name: result.name,
+                    name: result.name.into(),
                     response: Some(response_struct),
                     id: result
-                        .provider
-                        .map(|provider| provider.call_id)
+                        .call
+                        .provider()
+                        .map(|provider| provider.call_id.clone())
                         .unwrap_or_default(),
                 },
             )))
@@ -452,27 +455,33 @@ fn rig_assistant_content_to_grpc_part(
             Ok(proto::Part {
                 thought_signature: decode_optional_base64(tool_call.signature)?,
                 ..data_part(proto::part::Data::FunctionCall(proto::FunctionCall {
-                    name: tool_call.function.name,
+                    name: tool_call.function.name.into(),
                     args: Some(args),
                     // Only a provider-issued id may travel back on the
-                    // wire; minted correlation handles stay internal.
+                    // wire; rig-issued ids stay internal.
                     id: tool_call
-                        .provider
-                        .map(|provider| provider.call_id)
+                        .id
+                        .provider()
+                        .map(|provider| provider.call_id.clone())
                         .unwrap_or_default(),
                 }))
             })
         }
-        message::AssistantContent::Reasoning(reasoning) => Ok(proto::Part {
-            data: Some(proto::part::Data::Text(reasoning.display_text())),
-            thought: true,
-            thought_signature: decode_optional_base64(
-                reasoning
-                    .first_signature()
-                    .map(std::string::ToString::to_string),
-            )?,
-            part_metadata: None,
-        }),
+        message::AssistantContent::Reasoning(reasoning) => {
+            let reasoning = reasoning.open(&ISSUER).ok_or_else(|| {
+                EncodeError::request("Gemini cannot replay reasoning another service issued")
+            })?;
+            Ok(proto::Part {
+                data: Some(proto::part::Data::Text(reasoning.display_text())),
+                thought: true,
+                thought_signature: decode_optional_base64(
+                    reasoning
+                        .first_signature()
+                        .map(std::string::ToString::to_string),
+                )?,
+                part_metadata: None,
+            })
+        }
         _ => Err(EncodeError::request("Unsupported assistant content type")),
     }
 }
@@ -505,7 +514,6 @@ pub(crate) fn assistant_content(
 
     let mut assistant_contents = Vec::new();
 
-    let mut tool_index = 0u64;
     for part in &content_ref.parts {
         let assistant_content = match &part.data {
             Some(proto::part::Data::Text(text)) => {
@@ -515,7 +523,7 @@ pub(crate) fn assistant_content(
                             text,
                             encode_optional_base64(&part.thought_signature),
                         )
-                        .with_provider(REASONING_ISSUER),
+                        .sealed(REASONING_ISSUER),
                     )
                 } else {
                     // A signature on answer text returns on that text part.
@@ -553,13 +561,13 @@ pub(crate) fn assistant_content(
                     prost_struct_to_json,
                 );
 
-                // Index-based handles distinguish repeated calls to one tool.
-                let index = tool_index;
-                tool_index += 1;
-                let tool_call = message::ToolCall::from_wire_indexed(
+                let name = message::ToolName::new(function_call.name.clone()).map_err(|error| {
+                    ProviderError::Response(format!("Gemini returned a function call: {error}"))
+                })?;
+                // Rig issues an id for a call the provider sent without one.
+                let tool_call = message::ToolCall::from_wire(
                     function_call.id.clone(),
-                    index,
-                    message::ToolFunction::new(function_call.name.clone(), args),
+                    message::ToolFunction::new(name, args),
                 )
                 .with_signature(encode_optional_base64(&part.thought_signature));
 
@@ -575,7 +583,6 @@ pub(crate) fn assistant_content(
         assistant_contents.push(assistant_content);
     }
 
-    rig_core::message::normalize_missing_tool_call_ids(&mut assistant_contents);
     rig_core::message::require_non_empty_response(assistant_contents)
 }
 

@@ -9,7 +9,7 @@ use futures::StreamExt;
 fn request(prompt: &str) -> CompletionRequest {
     CompletionRequest {
         model: None,
-        chat_history: vec![Message::user(prompt)],
+        chat_history: crate::NonEmpty::new(Message::user(prompt)),
         documents: Vec::new(),
         tools: Vec::new(),
         temperature: None,
@@ -46,11 +46,7 @@ async fn completion_consumes_scripted_turns_and_records_requests() {
     assert!(matches!(
         second.choice.first(),
         Some(AssistantContent::ToolCall(tool_call))
-            if tool_call.id.explicit() == Some("tool_1")
-                && tool_call
-                    .provider
-                    .as_ref()
-                    .is_some_and(|provider| provider.call_id == "call_1")
+            if tool_call.id.provider().map(|provider| provider.call_id.as_str()) == Some("call_1")
     ));
 
     assert_eq!(model.request_count(), 2);
@@ -194,8 +190,8 @@ async fn stream_yields_scripted_events_and_records_requests() {
                 ..
             } => {
                 saw_tool_call = tool_call
-                    .provider
-                    .as_ref()
+                    .id
+                    .provider()
                     .is_some_and(|provider| provider.call_id == "call_1");
             }
             StreamEvent::Final(response) => {

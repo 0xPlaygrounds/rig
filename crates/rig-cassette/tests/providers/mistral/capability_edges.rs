@@ -261,18 +261,18 @@ fn turn_one_history() -> Vec<rig::completion::Message> {
     vec![
         rig::completion::Message::Assistant {
             id: None,
-            content: vec![rig::message::AssistantContent::tool_call(
+            content: rig_core::NonEmpty::new(rig::message::AssistantContent::tool_call(
                 "call_REDACTED_1",
-                "add",
+                rig_core::message::ToolName::new("add").expect("tool name"),
                 serde_json::json!({"x": 2, "y": 3}),
-            )],
+            )),
         },
         rig::completion::Message::User {
-            content: vec![rig::message::UserContent::tool_result(
-                "call_REDACTED_1",
-                "add",
-                vec![rig::message::ToolResultContent::text("5")],
-            )],
+            content: rig_core::NonEmpty::new(rig::message::UserContent::tool_result(
+                rig_core::message::CallId::from_wire("call_REDACTED_1"),
+                rig_core::message::ToolName::new("add").expect("tool name"),
+                rig_core::NonEmpty::new(rig::message::ToolResultContent::text("5")),
+            )),
         },
     ]
 }

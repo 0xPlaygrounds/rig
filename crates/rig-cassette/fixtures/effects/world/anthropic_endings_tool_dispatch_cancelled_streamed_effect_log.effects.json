@@ -2,23 +2,39 @@
   "header": {
     "deliveries": [
       {
-        "batch": 6,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 3
-        }
-      },
-      {
-        "batch": 7,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 5
-        }
-      },
-      {
         "batch": 8,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 9,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 10,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 11,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 12,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -26,7 +42,7 @@
         }
       },
       {
-        "batch": 8,
+        "batch": 12,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -148,11 +164,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "toolu_011kh1anBjCWreFoiEGX6ktm"
-              },
-              "provider": {
-                "call_id": "toolu_011kh1anBjCWreFoiEGX6ktm"
+                "provider": {
+                  "call_id": "toolu_011kh1anBjCWreFoiEGX6ktm"
+                }
               },
               "function": {
                 "name": "add",
@@ -261,11 +275,9 @@
           "block": {
             "type": "toolcall",
             "id": {
-              "origin": "explicit",
-              "id": "toolu_011kh1anBjCWreFoiEGX6ktm"
-            },
-            "provider": {
-              "call_id": "toolu_011kh1anBjCWreFoiEGX6ktm"
+              "provider": {
+                "call_id": "toolu_011kh1anBjCWreFoiEGX6ktm"
+              }
             },
             "function": {
               "name": "add",

@@ -335,7 +335,7 @@ fn assert_normalized_order(scenario: &str, cell: Cell, observed: SharedChoice) {
         choice.iter().any(|content| matches!(
             content,
             AssistantContent::Reasoning(reasoning)
-                if reasoning.content.iter().any(|part| matches!(
+                if reasoning.open(reasoning.issuer()).expect("sealed reasoning").content.iter().any(|part| matches!(
                     part,
                     rig::message::ReasoningContent::Text {
                         signature: Some(signature),

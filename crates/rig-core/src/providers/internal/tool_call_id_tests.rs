@@ -18,7 +18,7 @@ fn fold_document<W: Wire<Op = Completion, Frame = WireFrame>>(
     driver.finish();
     let request = crate::completion::CompletionRequest {
         model: None,
-        chat_history: vec![crate::message::Message::user("probe")],
+        chat_history: crate::NonEmpty::new(crate::message::Message::user("probe")),
         documents: Vec::new(),
         tools: Vec::new(),
         temperature: None,
@@ -47,9 +47,9 @@ fn fold_document<W: Wire<Op = Completion, Frame = WireFrame>>(
 fn assert_normalization(convert: impl Fn() -> CompletionResponse) {
     let first = convert();
     assert_eq!(
-        first.choice,
-        convert().choice,
-        "repeat conversion is deterministic"
+        first.choice.len(),
+        convert().choice.len(),
+        "repeat conversion yields the same parts"
     );
     let calls: Vec<_> = first
         .choice
@@ -68,10 +68,16 @@ fn assert_normalization(convert: impl Fn() -> CompletionResponse) {
             .len(),
         3
     );
-    assert_eq!(calls[1].id.explicit(), Some("tool-0"));
-    assert_eq!(calls[1].provider.as_ref().unwrap().call_id, "tool-0");
+    assert_eq!(
+        calls[1]
+            .id
+            .provider()
+            .map(|provider| provider.call_id.as_str()),
+        Some("tool-0")
+    );
+    assert_eq!(calls[1].id.provider().unwrap().call_id, "tool-0");
     for index in [0, 2] {
-        assert!(calls[index].provider.is_none());
+        assert!(calls[index].id.provider().is_none());
     }
     for (index, call) in calls.iter().enumerate() {
         assert_eq!(call.function.arguments, json!({"n":index}));

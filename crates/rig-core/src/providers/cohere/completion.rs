@@ -317,7 +317,7 @@ impl TryFrom<message::Message> for Vec<Message> {
                         content: vec![UserContent::Text { text }],
                     }),
                     message::UserContent::ToolResult(tool_result) => Ok(Message::Tool {
-                        tool_call_id: tool_result.wire_call_id().into_owned(),
+                        tool_call_id: tool_result.call.wire().into_owned(),
                         content: tool_result
                             .content
                             .into_iter()
@@ -358,7 +358,6 @@ impl TryFrom<message::Message> for Vec<Message> {
                         }
                         message::AssistantContent::ToolCall(message::ToolCall {
                             id,
-                            provider,
                             function:
                                 message::ToolFunction {
                                     name, arguments, ..
@@ -366,20 +365,20 @@ impl TryFrom<message::Message> for Vec<Message> {
                             ..
                         }) => {
                             tool_calls.push(ToolCall {
-                                id: Some(match provider {
-                                    Some(provider) => provider.call_id,
-                                    None => id.wire_hint().into_owned(),
-                                }),
+                                id: Some(id.wire().into_owned()),
                                 r#type: Some(ToolType::Function),
                                 function: Some(ToolCallFunction {
-                                    name,
+                                    name: name.into(),
                                     arguments: serde_json::to_value(arguments).unwrap_or_default(),
                                 }),
                             });
                         }
                         message::AssistantContent::Reasoning(reasoning) => {
-                            let thinking = reasoning.display_text();
-                            text_content.push(AssistantContent::Thinking { thinking });
+                            // Reasoning another service issued is not replayed.
+                            if let Some(reasoning) = reasoning.open(&super::wire::ISSUER) {
+                                let thinking = reasoning.display_text();
+                                text_content.push(AssistantContent::Thinking { thinking });
+                            }
                         }
                         message::AssistantContent::Image(_) => {
                             return Err(message::MessageError::ConversionError(

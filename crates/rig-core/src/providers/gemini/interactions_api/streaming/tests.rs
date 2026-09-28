@@ -8,7 +8,7 @@ use serde_json::json;
 fn interactions_request() -> crate::completion::CompletionRequest {
     crate::completion::CompletionRequest {
         model: None,
-        chat_history: vec![crate::message::Message::user("hello")],
+        chat_history: crate::NonEmpty::new(crate::message::Message::user("hello")),
         documents: Vec::new(),
         tools: Vec::new(),
         temperature: None,
@@ -294,8 +294,8 @@ async fn a_streamed_call_carries_a_single_wire_identity() {
     let provider = tool_calls
         .first()
         .expect("one call")
-        .provider
-        .as_ref()
+        .id
+        .provider()
         .expect("the wire issued an id");
     assert_eq!(provider.call_id, "fc_1");
     assert_eq!(
@@ -346,7 +346,13 @@ async fn a_missing_step_stop_does_not_lose_the_announced_call() {
         serde_json::json!({"city": "Paris"}),
         "the streamed argument fragments finalize the call"
     );
-    assert_eq!(tool_call.id.explicit(), Some("fc_1"));
+    assert_eq!(
+        tool_call
+            .id
+            .provider()
+            .map(|provider| provider.call_id.as_str()),
+        Some("fc_1")
+    );
 
     // The turn completed normally: the terminal record survives too.
     assert!(stream.folded().terminal().is_some());
@@ -427,7 +433,7 @@ async fn thought_signature_completes_the_accumulated_reasoning_block() {
         })
         .expect("the signature must yield a completed Reasoning block");
     assert_eq!(
-        signed.content,
+        signed.value().content,
         vec![crate::completion::message::ReasoningContent::Text {
             text: "think1 think2".to_string(),
             signature: Some("sig-abc".to_string()),
@@ -447,8 +453,8 @@ async fn thought_signature_completes_the_accumulated_reasoning_block() {
         .collect();
     assert_eq!(aggregated.len(), 1, "got {choice:?}");
     assert_eq!(
-        aggregated.first().map(|r| r.content.clone()),
-        Some(signed.content)
+        aggregated.first().map(|r| r.value().content.clone()),
+        Some(signed.value().content.clone())
     );
 }
 
@@ -478,7 +484,7 @@ async fn signature_only_thought_still_carries_the_signature() {
         })
         .expect("a signature-only block must still yield a signed Reasoning");
     assert_eq!(
-        signed.content,
+        signed.value().content,
         vec![crate::completion::message::ReasoningContent::Text {
             text: String::new(),
             signature: Some("sig-only".to_string()),

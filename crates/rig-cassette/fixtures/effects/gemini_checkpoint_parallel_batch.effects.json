@@ -116,8 +116,7 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "generated",
-                "id": "minted:tool:0"
+                "local": "00000000-0000-4000-8000-000000000000"
               },
               "function": {
                 "name": "checkpoint_batch",
@@ -131,8 +130,7 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "generated",
-                "id": "minted:tool:1"
+                "local": "00000000-0000-4000-8000-000000000001"
               },
               "function": {
                 "name": "checkpoint_batch",
@@ -146,8 +144,7 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "generated",
-                "id": "minted:tool:2"
+                "local": "00000000-0000-4000-8000-000000000002"
               },
               "function": {
                 "name": "checkpoint_batch",
@@ -333,8 +330,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000000"
                   },
                   "function": {
                     "name": "checkpoint_batch",
@@ -348,8 +344,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "generated",
-                    "id": "minted:tool:1"
+                    "local": "00000000-0000-4000-8000-000000000001"
                   },
                   "function": {
                     "name": "checkpoint_batch",
@@ -363,8 +358,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "generated",
-                    "id": "minted:tool:2"
+                    "local": "00000000-0000-4000-8000-000000000002"
                   },
                   "function": {
                     "name": "checkpoint_batch",
@@ -383,8 +377,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000000"
                   },
                   "name": "checkpoint_batch",
                   "content": [
@@ -397,8 +390,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "generated",
-                    "id": "minted:tool:1"
+                    "local": "00000000-0000-4000-8000-000000000001"
                   },
                   "name": "checkpoint_batch",
                   "content": [
@@ -411,8 +403,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "generated",
-                    "id": "minted:tool:2"
+                    "local": "00000000-0000-4000-8000-000000000002"
                   },
                   "name": "checkpoint_batch",
                   "content": [

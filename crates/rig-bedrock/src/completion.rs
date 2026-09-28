@@ -218,16 +218,14 @@ impl Wire for Converse {
     /// signed.
     fn encode(
         &self,
-        mut request: CompletionRequest,
+        request: CompletionRequest,
         _mode: Mode,
     ) -> Result<ConverseRequest, EncodeError> {
         let model = self.request_model(request.model.as_deref()).to_owned();
-        rig_core::message::retain_replayable_reasoning(
-            &mut request.chat_history,
-            &[reasoning_issuer(&model)],
-        );
+        let issuer = rig_core::message::Issuer::from(reasoning_issuer(&model));
+        let request = request.replayable_to(std::slice::from_ref(&issuer))?;
         Ok(ConverseRequest {
-            request: AwsCompletionRequest::new(request, self.prompt_caching),
+            request: AwsCompletionRequest::new(request, issuer, self.prompt_caching),
             model,
             guardrail: self.guardrail.clone(),
         })

@@ -7,7 +7,8 @@
 //! assert_eq!(history.len(), 1);
 //! ```
 
-use rig_core::message::{AssistantContent, Message, ToolCallId, non_empty};
+use rig_core::NonEmpty;
+use rig_core::message::{AssistantContent, CallId, Message};
 pub use rig_core::transcript::{
     TranscriptError, tool_result_message, tool_result_output, validate_canonical,
 };
@@ -39,7 +40,7 @@ pub fn build_full_history(
 /// other calls, in content order. Returns `None` when there are no tool calls.
 pub fn invalid_tool_retry_user_message(
     assistant_content: &[AssistantContent],
-    invalid_tool_call_id: &ToolCallId,
+    invalid_tool_call_id: &CallId,
     feedback: &str,
 ) -> Option<Message> {
     // Call IDs distinguish peers even when the provider supplies no wire IDs.
@@ -49,14 +50,12 @@ pub fn invalid_tool_retry_user_message(
             AssistantContent::ToolCall(tool_call) if tool_call.id == *invalid_tool_call_id => {
                 Some(tool_result_message(
                     tool_call.id.clone(),
-                    tool_call.provider.clone(),
                     tool_call.function.name.clone(),
                     feedback.to_string(),
                 ))
             }
             AssistantContent::ToolCall(tool_call) => Some(tool_result_message(
                 tool_call.id.clone(),
-                tool_call.provider.clone(),
                 tool_call.function.name.clone(),
                 TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER.to_string(),
             )),
@@ -65,8 +64,25 @@ pub fn invalid_tool_retry_user_message(
         .collect::<Vec<_>>();
 
     Some(Message::User {
-        content: non_empty(retry_results)?,
+        content: rig_core::NonEmpty::from_vec(retry_results).ok()?,
     })
+}
+
+/// The assistant message carrying `choice` under `id`, or `None` when the
+/// choice is empty.
+pub fn assistant_message(id: Option<String>, choice: Vec<AssistantContent>) -> Option<Message> {
+    NonEmpty::from_vec(choice)
+        .ok()
+        .map(|content| Message::Assistant { id, content })
+}
+
+/// The assistant message for a generated turn, or `None` for an empty turn
+/// ([`is_empty_assistant_turn`]), which must not enter provider history.
+pub fn assistant_turn(id: Option<String>, choice: Vec<AssistantContent>) -> Option<Message> {
+    if is_empty_assistant_turn(&choice) {
+        return None;
+    }
+    assistant_message(id, choice)
 }
 
 /// Return true for zero parts or exactly one empty, unannotated text part.

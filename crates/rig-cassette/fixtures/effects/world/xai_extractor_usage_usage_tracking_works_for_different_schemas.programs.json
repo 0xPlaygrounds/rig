@@ -234,24 +234,22 @@
             "content": [
               {
                 "type": "reasoning",
+                "issuer": "xai",
                 "id": "rs_41b2457e-5f07-939d-ad83-e81bc313df73",
                 "content": [
                   {
                     "type": "summary",
                     "content": "Extracting structured data from the text about Alice."
                   }
-                ],
-                "provider": "xai"
+                ]
               },
               {
                 "type": "toolcall",
                 "id": {
-                  "origin": "explicit",
-                  "id": "call-12cf4203-021a-4973-8651-a02b1228b883-0"
-                },
-                "provider": {
-                  "call_id": "call-12cf4203-021a-4973-8651-a02b1228b883-0",
-                  "item_id": "fc_41b2457e-5f07-939d-ad83-e81bc313df73_0"
+                  "provider": {
+                    "call_id": "call-12cf4203-021a-4973-8651-a02b1228b883-0",
+                    "item_id": "fc_41b2457e-5f07-939d-ad83-e81bc313df73_0"
+                  }
                 },
                 "function": {
                   "name": "submit",
@@ -286,24 +284,22 @@
               "choice": [
                 {
                   "type": "reasoning",
+                  "issuer": "xai",
                   "id": "rs_41b2457e-5f07-939d-ad83-e81bc313df73",
                   "content": [
                     {
                       "type": "summary",
                       "content": "Extracting structured data from the text about Alice."
                     }
-                  ],
-                  "provider": "xai"
+                  ]
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call-12cf4203-021a-4973-8651-a02b1228b883-0"
-                  },
-                  "provider": {
-                    "call_id": "call-12cf4203-021a-4973-8651-a02b1228b883-0",
-                    "item_id": "fc_41b2457e-5f07-939d-ad83-e81bc313df73_0"
+                    "provider": {
+                      "call_id": "call-12cf4203-021a-4973-8651-a02b1228b883-0",
+                      "item_id": "fc_41b2457e-5f07-939d-ad83-e81bc313df73_0"
+                    }
                   },
                   "function": {
                     "name": "submit",
@@ -461,14 +457,14 @@
           "bevy_ecs::hierarchy::ChildOf": 7,
           "rig_ecs::agent::content::parts::ContentPart": {
             "Reasoning": {
+              "issuer": "xai",
               "id": "rs_41b2457e-5f07-939d-ad83-e81bc313df73",
               "content": [
                 {
                   "type": "summary",
                   "content": "Extracting structured data from the text about Alice."
                 }
-              ],
-              "provider": "xai"
+              ]
             }
           }
         },

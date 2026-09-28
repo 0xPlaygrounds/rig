@@ -252,11 +252,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "toolu_01SrncL8NmfADzbSvLQPmVfw"
-              },
-              "provider": {
-                "call_id": "toolu_01SrncL8NmfADzbSvLQPmVfw"
+                "provider": {
+                  "call_id": "toolu_01SrncL8NmfADzbSvLQPmVfw"
+                }
               },
               "function": {
                 "name": "list_files",
@@ -378,11 +376,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "toolu_01SrncL8NmfADzbSvLQPmVfw"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01SrncL8NmfADzbSvLQPmVfw"
+                    "provider": {
+                      "call_id": "toolu_01SrncL8NmfADzbSvLQPmVfw"
+                    }
                   },
                   "function": {
                     "name": "list_files",
@@ -399,11 +395,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "toolu_01SrncL8NmfADzbSvLQPmVfw"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01SrncL8NmfADzbSvLQPmVfw"
+                    "provider": {
+                      "call_id": "toolu_01SrncL8NmfADzbSvLQPmVfw"
+                    }
                   },
                   "name": "list_files",
                   "content": [
@@ -495,11 +489,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "toolu_01DNAN9B7vVpiqPhdU6LwuWf"
-              },
-              "provider": {
-                "call_id": "toolu_01DNAN9B7vVpiqPhdU6LwuWf"
+                "provider": {
+                  "call_id": "toolu_01DNAN9B7vVpiqPhdU6LwuWf"
+                }
               },
               "function": {
                 "name": "read_file",
@@ -625,11 +617,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "toolu_01SrncL8NmfADzbSvLQPmVfw"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01SrncL8NmfADzbSvLQPmVfw"
+                    "provider": {
+                      "call_id": "toolu_01SrncL8NmfADzbSvLQPmVfw"
+                    }
                   },
                   "function": {
                     "name": "list_files",
@@ -646,11 +636,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "toolu_01SrncL8NmfADzbSvLQPmVfw"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01SrncL8NmfADzbSvLQPmVfw"
+                    "provider": {
+                      "call_id": "toolu_01SrncL8NmfADzbSvLQPmVfw"
+                    }
                   },
                   "name": "list_files",
                   "content": [
@@ -673,11 +661,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "toolu_01DNAN9B7vVpiqPhdU6LwuWf"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01DNAN9B7vVpiqPhdU6LwuWf"
+                    "provider": {
+                      "call_id": "toolu_01DNAN9B7vVpiqPhdU6LwuWf"
+                    }
                   },
                   "function": {
                     "name": "read_file",
@@ -696,11 +682,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "toolu_01DNAN9B7vVpiqPhdU6LwuWf"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01DNAN9B7vVpiqPhdU6LwuWf"
+                    "provider": {
+                      "call_id": "toolu_01DNAN9B7vVpiqPhdU6LwuWf"
+                    }
                   },
                   "name": "read_file",
                   "content": [
@@ -792,11 +776,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "toolu_01RdeQa1LTwx1otxHfAN9PYD"
-              },
-              "provider": {
-                "call_id": "toolu_01RdeQa1LTwx1otxHfAN9PYD"
+                "provider": {
+                  "call_id": "toolu_01RdeQa1LTwx1otxHfAN9PYD"
+                }
               },
               "function": {
                 "name": "read_file",

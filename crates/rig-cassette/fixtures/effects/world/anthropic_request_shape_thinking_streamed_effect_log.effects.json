@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 9,
+        "batch": 8,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,7 +10,7 @@
         }
       },
       {
-        "batch": 11,
+        "batch": 10,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -18,7 +18,7 @@
         }
       },
       {
-        "batch": 12,
+        "batch": 11,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -26,7 +26,7 @@
         }
       },
       {
-        "batch": 14,
+        "batch": 13,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -34,7 +34,7 @@
         }
       },
       {
-        "batch": 14,
+        "batch": 13,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -112,6 +112,7 @@
           "choice": [
             {
               "type": "reasoning",
+              "issuer": "anthropic",
               "id": null,
               "content": [
                 {
@@ -121,8 +122,7 @@
                     "signature": "EvgBCpIBCBIYAipAKnhWKgywsbqL0MYDI+1O3EbQArywSbA2RBMYp2bC5iEBOECZAZED/MotYTqfAhV1bAXeNOJkfATZBc9LzD0LqzIRY2xhdWRlLXNvbm5ldC00LTY4AEIIdGhpbmtpbmdaJDcyOGRjYWE5LThhZjYtNDNhMi05Mzk3LTI1ZGEzN2I5YzM5ZKgB1+rK1QYSDLQye0zlfY1zHIj2rhoMXsXWz4lKsMp1KptTIjDYWvLD3YfvGTvI+A3P7t/o4HG2ajW8tjIUc+KHM68Gf+ITg0mEHs17o0JrVewaifUqE0l40tnm9uIMyloMbMr3BQykVdEYAQ=="
                   }
                 }
-              ],
-              "provider": "anthropic"
+              ]
             },
             {
               "type": "text",
@@ -189,6 +189,7 @@
           },
           "block": {
             "type": "reasoning",
+            "issuer": "anthropic",
             "id": null,
             "content": [
               {

@@ -31,24 +31,25 @@ fn history(text: &str) -> Vec<MessageParts> {
     vec![
         MessageParts::Assistant {
             id: None,
-            content: vec![AssistantContent::tool_call(
+            content: rig_core::NonEmpty::new(AssistantContent::tool_call(
                 "c1",
-                "probe",
+                rig_core::message::ToolName::new("probe").expect("tool name"),
                 serde_json::json!({}),
-            )],
+            )),
         },
         MessageParts::User {
-            content: vec![UserContent::ToolResult(rig_core::message::ToolResult {
-                call: rig_core::message::ToolCallId::new("c1").unwrap(),
-                provider: None,
-                name: "probe".to_owned(),
-                content: vec![
-                    ToolResultContent::text(text),
-                    ToolResultContent::Json {
-                        value: serde_json::json!({"payload": LONG}),
-                    },
-                ],
-            })],
+            content: rig_core::NonEmpty::new(UserContent::ToolResult(
+                rig_core::message::ToolResult {
+                    call: rig_core::message::CallId::from_wire("c1"),
+                    name: rig_core::message::ToolName::new("probe".to_owned()).expect("tool name"),
+                    content: rig_core::NonEmpty::with_rest(
+                        ToolResultContent::text(text),
+                        [ToolResultContent::Json {
+                            value: serde_json::json!({"payload": LONG}),
+                        }],
+                    ),
+                },
+            )),
         },
     ]
 }
@@ -86,7 +87,10 @@ fn no_limit_is_verbatim() {
     world.run_schedule(RigSchedule);
     let requests = requests(&mut world, run);
     assert_eq!(requests.len(), 1);
-    assert_eq!(requests[0].chat_history, before);
+    assert_eq!(
+        requests[0].chat_history,
+        rig_core::NonEmpty::from_vec(before.clone()).expect("non-empty")
+    );
     assert_eq!(
         serde_json::to_vec(&requests[0].chat_history).unwrap(),
         serde_json::to_vec(&before).unwrap(),
@@ -134,7 +138,10 @@ fn a_limit_cuts_the_request_and_keeps_the_graph_and_checkpoint_verbatim() {
             other => panic!("{other:?}"),
         })
         .unwrap();
-    assert_eq!(cut, before);
+    assert_eq!(
+        cut,
+        rig_core::NonEmpty::from_vec(before.clone()).expect("non-empty")
+    );
 
     // The graph and a checkpoint keep the full text.
     assert_eq!(graph_messages(&mut world, run), before);
@@ -198,7 +205,7 @@ fn json_items_and_user_text_are_never_cut() {
         &mut world,
         prompt,
         MessageParts::User {
-            content: vec![UserContent::text(LONG)],
+            content: rig_core::NonEmpty::new(UserContent::text(LONG)),
         },
     )
     .unwrap();
@@ -207,7 +214,8 @@ fn json_items_and_user_text_are_never_cut() {
     world.run_schedule(RigSchedule);
     let requests = requests(&mut world, run);
     assert_eq!(
-        requests[0].chat_history, before,
+        requests[0].chat_history,
+        rig_core::NonEmpty::from_vec(before.clone()).expect("non-empty"),
         "a short text, a long JSON item and a long user text: nothing to cut"
     );
 }
@@ -228,7 +236,8 @@ fn a_limit_change_between_turns_affects_only_later_turns() {
     let requests = requests(&mut world, run);
     assert_eq!(requests.len(), 3);
     assert_eq!(
-        requests[0].chat_history, before,
+        requests[0].chat_history,
+        rig_core::NonEmpty::from_vec(before.clone()).expect("non-empty"),
         "verbatim before any limit"
     );
     let texts: Vec<String> = requests

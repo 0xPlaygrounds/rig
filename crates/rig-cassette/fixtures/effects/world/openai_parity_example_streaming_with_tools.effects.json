@@ -2,38 +2,6 @@
   "header": {
     "deliveries": [
       {
-        "batch": 11,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 3
-        }
-      },
-      {
-        "batch": 12,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 3
-        }
-      },
-      {
-        "batch": 13,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 14,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 3
-        }
-      },
-      {
         "batch": 16,
         "id": 0,
         "kind": {
@@ -42,29 +10,85 @@
         }
       },
       {
-        "batch": 16,
+        "batch": 17,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 18,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 19,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 20,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 21,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 22,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 23,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 31,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 31,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 17,
+        "batch": 32,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 28,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 29,
+        "batch": 63,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -72,15 +96,63 @@
         }
       },
       {
-        "batch": 30,
+        "batch": 64,
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 4
+          "items": 1
         }
       },
       {
-        "batch": 31,
+        "batch": 65,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 66,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 67,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 68,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 69,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 70,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 71,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -88,7 +160,7 @@
         }
       },
       {
-        "batch": 32,
+        "batch": 72,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -96,7 +168,15 @@
         }
       },
       {
-        "batch": 33,
+        "batch": 73,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 75,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -104,55 +184,15 @@
         }
       },
       {
-        "batch": 34,
+        "batch": 77,
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 3
         }
       },
       {
-        "batch": 35,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 36,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 37,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 38,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 41,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 49,
+        "batch": 79,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -160,7 +200,7 @@
         }
       },
       {
-        "batch": 49,
+        "batch": 79,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -330,12 +370,10 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_nqQoyAI8s94obZpYJLyaT8VL"
-              },
-              "provider": {
-                "call_id": "call_nqQoyAI8s94obZpYJLyaT8VL",
-                "item_id": "fc_08cb637cfdc74423006ab396a050d887d0b1f7f3da90392f62"
+                "provider": {
+                  "call_id": "call_nqQoyAI8s94obZpYJLyaT8VL",
+                  "item_id": "fc_08cb637cfdc74423006ab396a050d887d0b1f7f3da90392f62"
+                }
               },
               "function": {
                 "name": "subtract",
@@ -489,12 +527,10 @@
           "block": {
             "type": "toolcall",
             "id": {
-              "origin": "explicit",
-              "id": "call_nqQoyAI8s94obZpYJLyaT8VL"
-            },
-            "provider": {
-              "call_id": "call_nqQoyAI8s94obZpYJLyaT8VL",
-              "item_id": "fc_08cb637cfdc74423006ab396a050d887d0b1f7f3da90392f62"
+              "provider": {
+                "call_id": "call_nqQoyAI8s94obZpYJLyaT8VL",
+                "item_id": "fc_08cb637cfdc74423006ab396a050d887d0b1f7f3da90392f62"
+              }
             },
             "function": {
               "name": "subtract",
@@ -601,12 +637,10 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_nqQoyAI8s94obZpYJLyaT8VL"
-                  },
-                  "provider": {
-                    "call_id": "call_nqQoyAI8s94obZpYJLyaT8VL",
-                    "item_id": "fc_08cb637cfdc74423006ab396a050d887d0b1f7f3da90392f62"
+                    "provider": {
+                      "call_id": "call_nqQoyAI8s94obZpYJLyaT8VL",
+                      "item_id": "fc_08cb637cfdc74423006ab396a050d887d0b1f7f3da90392f62"
+                    }
                   },
                   "function": {
                     "name": "subtract",
@@ -626,12 +660,10 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_nqQoyAI8s94obZpYJLyaT8VL"
-                  },
-                  "provider": {
-                    "call_id": "call_nqQoyAI8s94obZpYJLyaT8VL",
-                    "item_id": "fc_08cb637cfdc74423006ab396a050d887d0b1f7f3da90392f62"
+                    "provider": {
+                      "call_id": "call_nqQoyAI8s94obZpYJLyaT8VL",
+                      "item_id": "fc_08cb637cfdc74423006ab396a050d887d0b1f7f3da90392f62"
+                    }
                   },
                   "name": "subtract",
                   "content": [

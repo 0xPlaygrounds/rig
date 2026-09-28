@@ -235,12 +235,10 @@
               {
                 "type": "toolcall",
                 "id": {
-                  "origin": "explicit",
-                  "id": "call_3ymAR8TCfsol4GJniEYlL0OV"
-                },
-                "provider": {
-                  "call_id": "call_3ymAR8TCfsol4GJniEYlL0OV",
-                  "item_id": "fc_0b7fd47ba2f409b2006ab3969d151087d08d857ffbce26f660"
+                  "provider": {
+                    "call_id": "call_3ymAR8TCfsol4GJniEYlL0OV",
+                    "item_id": "fc_0b7fd47ba2f409b2006ab3969d151087d08d857ffbce26f660"
+                  }
                 },
                 "function": {
                   "name": "submit",
@@ -276,12 +274,10 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_3ymAR8TCfsol4GJniEYlL0OV"
-                  },
-                  "provider": {
-                    "call_id": "call_3ymAR8TCfsol4GJniEYlL0OV",
-                    "item_id": "fc_0b7fd47ba2f409b2006ab3969d151087d08d857ffbce26f660"
+                    "provider": {
+                      "call_id": "call_3ymAR8TCfsol4GJniEYlL0OV",
+                      "item_id": "fc_0b7fd47ba2f409b2006ab3969d151087d08d857ffbce26f660"
+                    }
                   },
                   "function": {
                     "name": "submit",

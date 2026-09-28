@@ -82,6 +82,7 @@
           "choice": [
             {
               "type": "reasoning",
+              "issuer": "gcp.gemini",
               "id": null,
               "content": [
                 {
@@ -90,8 +91,7 @@
                     "text": "**My Thoughts on Rust and Memory Safety**\n\nOkay, so I'm thinking about Rust. It's a systems language, aiming for top performance, but the real standout is how it handles memory safety. The key is its ownership system; a completely different approach to memory management compared to languages with garbage collectors. That's why it's so important to focus on how Rust prevents errors like buffer overflows and null pointer dereferences. These are the classic security flaws and crash culprits. I need to make sure to clearly convey that this focus on safety is what sets Rust apart, and that these memory errors are the major sources of vulnerabilities.\n\n\n"
                   }
                 }
-              ],
-              "provider": "gcp.gemini"
+              ]
             },
             {
               "type": "text",

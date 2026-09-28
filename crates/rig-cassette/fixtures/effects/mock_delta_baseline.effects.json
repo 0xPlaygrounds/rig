@@ -112,11 +112,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call-1"
-              },
-              "provider": {
-                "call_id": "call-1"
+                "provider": {
+                  "call_id": "call-1"
+                }
               },
               "function": {
                 "name": "add",
@@ -190,11 +188,9 @@
           "block": {
             "type": "toolcall",
             "id": {
-              "origin": "explicit",
-              "id": "call-1"
-            },
-            "provider": {
-              "call_id": "call-1"
+              "provider": {
+                "call_id": "call-1"
+              }
             },
             "function": {
               "name": "add",
@@ -282,11 +278,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call-1"
-                  },
-                  "provider": {
-                    "call_id": "call-1"
+                    "provider": {
+                      "call_id": "call-1"
+                    }
                   },
                   "function": {
                     "name": "add",
@@ -306,11 +300,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call-1"
-                  },
-                  "provider": {
-                    "call_id": "call-1"
+                    "provider": {
+                      "call_id": "call-1"
+                    }
                   },
                   "name": "add",
                   "content": [

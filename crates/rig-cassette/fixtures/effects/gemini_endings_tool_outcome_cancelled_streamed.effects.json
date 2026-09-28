@@ -119,11 +119,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_243109"
-              },
-              "provider": {
-                "call_id": "call_243109"
+                "provider": {
+                  "call_id": "call_243109"
+                }
               },
               "function": {
                 "name": "add",
@@ -191,11 +189,9 @@
           "block": {
             "type": "toolcall",
             "id": {
-              "origin": "explicit",
-              "id": "call_243109"
-            },
-            "provider": {
-              "call_id": "call_243109"
+              "provider": {
+                "call_id": "call_243109"
+              }
             },
             "function": {
               "name": "add",

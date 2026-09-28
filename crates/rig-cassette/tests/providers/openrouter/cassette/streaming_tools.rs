@@ -81,9 +81,9 @@ async fn observe_stream(
                 block: Some(AssistantContent::Reasoning(reasoning)),
                 ..
             }) => {
-                observation
-                    .streamed_encrypted
-                    .extend(encrypted_blocks_of(&reasoning));
+                observation.streamed_encrypted.extend(encrypted_blocks_of(
+                    reasoning.open(reasoning.issuer()).expect("reasoning opens"),
+                ));
             }
             Ok(StreamEvent::BlockEnd {
                 block: Some(AssistantContent::ToolCall(tool_call)),
@@ -116,7 +116,9 @@ fn encrypted_blocks_in_choice(choice: &[AssistantContent]) -> Vec<(Option<String
     choice
         .iter()
         .filter_map(|content| match content {
-            AssistantContent::Reasoning(reasoning) => Some(encrypted_blocks_of(reasoning)),
+            AssistantContent::Reasoning(reasoning) => {
+                reasoning.open(reasoning.issuer()).map(encrypted_blocks_of)
+            }
             _ => None,
         })
         .flatten()
@@ -242,15 +244,10 @@ async fn stream_encrypted_reasoning_survives_into_the_next_turn() {
             // replays as history.
             let assistant_message = Message::Assistant {
                 id: stream.folded().message_id().map(str::to_owned),
-                content: stream.folded().snapshot(),
+                content: rig_core::NonEmpty::from_vec(stream.folded().snapshot()).expect("non-empty"),
             };
             let tool_result_message = Message::User {
-        content: vec![UserContent::tool_result_for(
-            tool_call.id.clone(),
-            tool_call.provider.clone(),
-            tool_call.function.name.clone(),
-            vec![ToolResultContent::text("Weather in Tokyo, Japan: 72F (22C), sunny with light clouds, humidity 45%, wind 8 mph NW")],
-        )],
+        content: rig_core::NonEmpty::new(UserContent::tool_result(tool_call.id.clone(), tool_call.function.name.clone(), rig_core::NonEmpty::new(ToolResultContent::text("Weather in Tokyo, Japan: 72F (22C), sunny with light clouds, humidity 45%, wind 8 mph NW")))),
     };
 
             let followup = CompletionRequest::new("Summarize the weather using the tool result.")
@@ -332,15 +329,10 @@ async fn raw_followup_uses_tool_result_without_new_tool_calls() {
                 .expect("raw stream should yield lookup_harbor_label");
             let assistant_message = Message::Assistant {
                 id: None,
-                content: vec![AssistantContent::ToolCall(tool_call.clone())],
+                content: rig_core::NonEmpty::new(AssistantContent::ToolCall(tool_call.clone())),
             };
             let tool_result_message = Message::User {
-        content: vec![UserContent::tool_result_for(
-            tool_call.id.clone(),
-            tool_call.provider.clone(),
-            tool_call.function.name.clone(),
-            vec![ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)],
-        )],
+        content: rig_core::NonEmpty::new(UserContent::tool_result(tool_call.id.clone(), tool_call.function.name.clone(), rig_core::NonEmpty::new(ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)))),
     };
             let followup_request = CompletionRequest::new(
                     "Now reply in one short sentence using the provided tool result. Do not call any tools.",

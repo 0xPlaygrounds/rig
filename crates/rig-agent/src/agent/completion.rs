@@ -135,10 +135,6 @@ pub(crate) async fn build_prepared_completion_request(
     } else {
         Vec::new()
     };
-    // An empty history or content block is a local, named error, not a
-    // remote 400.
-    request.validate_message_content()?;
-
     Ok(PreparedCompletionRequest {
         request,
         telemetry_messages,

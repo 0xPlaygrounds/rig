@@ -119,6 +119,7 @@
           "choice": [
             {
               "type": "reasoning",
+              "issuer": "llamacpp",
               "id": null,
               "content": [
                 {
@@ -127,17 +128,14 @@
                     "text": "Okay, let's see. The user provided the sentence \"Alice is a 25 year old developer.\" I need to extract the relevant information into the structured data using the submit function.\n\nFirst, the name is clearly Alice. The age is 25, so that's straightforward. The profession is developer. The sentence mentions \"25 year old,\" but the age field is an integer, so I'll use 25. The profession is \"developer\" as stated. \n\nI need to make sure all required fields are included: name, age, profession. The title is \"Person\" as per the schema. The submit function requires these three fields. So the JSON should have name: \"Alice\", age: 25, profession: \"developer\". \n\nI don't see any other information to extract. The sentence is simple, so no need for additional fields. Just fill in the ones mentioned.\n"
                   }
                 }
-              ],
-              "provider": "llamacpp"
+              ]
             },
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "jQjw1lbjJlpFarjNXYdhdLo36sZD6a4g"
-              },
-              "provider": {
-                "call_id": "jQjw1lbjJlpFarjNXYdhdLo36sZD6a4g"
+                "provider": {
+                  "call_id": "jQjw1lbjJlpFarjNXYdhdLo36sZD6a4g"
+                }
               },
               "function": {
                 "name": "submit",
@@ -284,6 +282,7 @@
           "choice": [
             {
               "type": "reasoning",
+              "issuer": "llamacpp",
               "id": null,
               "content": [
                 {
@@ -292,17 +291,14 @@
                     "text": "Okay, let's see. The user provided an address: \"456 Oak Avenue, Cambridge, MA 02139\". I need to extract the street, city, state, and zip code.\n\nFirst, the street is \"456 Oak Avenue\". Then the city is \"Cambridge\". The state is \"MA\" because that's the two-letter abbreviation for Massachusetts. The zip code is \"02139\". \n\nI should check if all the required fields are present. The submit function needs street, city, state, and zip_code. All of these are here. No missing fields. So I can call the submit function with these values.\n"
                   }
                 }
-              ],
-              "provider": "llamacpp"
+              ]
             },
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "5Epj41G7a3OV6b6ec73vOTNteHO0v0Ns"
-              },
-              "provider": {
-                "call_id": "5Epj41G7a3OV6b6ec73vOTNteHO0v0Ns"
+                "provider": {
+                  "call_id": "5Epj41G7a3OV6b6ec73vOTNteHO0v0Ns"
+                }
               },
               "function": {
                 "name": "submit",

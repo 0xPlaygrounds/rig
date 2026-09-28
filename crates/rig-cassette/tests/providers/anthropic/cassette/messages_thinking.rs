@@ -37,7 +37,7 @@ fn has_redacted_reasoning(content: &AssistantContent) -> bool {
         content,
         AssistantContent::Reasoning(reasoning)
             if reasoning
-                .content
+                .open(reasoning.issuer()).expect("sealed reasoning").content
                 .iter()
                 .any(|item| matches!(item, ReasoningContent::Redacted { .. }))
     )
@@ -73,7 +73,8 @@ async fn redacted_thinking_roundtrip_nonstreaming() {
                     .message(Message::user(redacted_thinking_prompt()))
                     .message(Message::Assistant {
                         id: first_response.message_id.clone(),
-                        content: first_response.choice.clone(),
+                        content: rig_core::NonEmpty::from_vec(first_response.choice.clone())
+                            .expect("non-empty"),
                     });
 
             let second_response = model
@@ -165,6 +166,8 @@ async fn redacted_thinking_streaming() {
                         block: Some(AssistantContent::Reasoning(reasoning)),
                         ..
                     } if reasoning
+                        .open(reasoning.issuer())
+                        .expect("sealed reasoning")
                         .content
                         .iter()
                         .any(|item| matches!(item, ReasoningContent::Redacted { .. })) =>

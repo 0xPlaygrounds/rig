@@ -2,7 +2,15 @@
   "header": {
     "deliveries": [
       {
-        "batch": 7,
+        "batch": 4,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 5,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,38 +18,14 @@
         }
       },
       {
-        "batch": 9,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 10,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 12,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 12,
+        "batch": 5,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 13,
+        "batch": 6,
         "id": 1,
         "kind": {
           "delivery": "outcome"
@@ -143,11 +127,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_cmyrP3ueVTbLcseTCE6Ig3T3"
-              },
-              "provider": {
-                "call_id": "call_cmyrP3ueVTbLcseTCE6Ig3T3"
+                "provider": {
+                  "call_id": "call_cmyrP3ueVTbLcseTCE6Ig3T3"
+                }
               },
               "function": {
                 "name": "ping",
@@ -223,11 +205,9 @@
           "block": {
             "type": "toolcall",
             "id": {
-              "origin": "explicit",
-              "id": "call_cmyrP3ueVTbLcseTCE6Ig3T3"
-            },
-            "provider": {
-              "call_id": "call_cmyrP3ueVTbLcseTCE6Ig3T3"
+              "provider": {
+                "call_id": "call_cmyrP3ueVTbLcseTCE6Ig3T3"
+              }
             },
             "function": {
               "name": "ping",

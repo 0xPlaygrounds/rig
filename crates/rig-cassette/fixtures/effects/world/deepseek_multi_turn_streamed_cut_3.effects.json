@@ -2,30 +2,40 @@
   "header": {
     "deliveries": [
       {
-        "batch": 4,
+        "batch": 6,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 12
+          "items": 1
         }
       },
       {
-        "batch": 4,
+        "batch": 7,
         "id": 0,
         "kind": {
-          "delivery": "outcome"
+          "delivery": "stream",
+          "items": 2
         }
       },
       {
-        "batch": 5,
-        "id": 1,
+        "batch": 8,
+        "id": 0,
         "kind": {
-          "delivery": "outcome"
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 9,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
         }
       },
       {
         "batch": 10,
-        "id": 2,
+        "id": 0,
         "kind": {
           "delivery": "stream",
           "items": 1
@@ -33,7 +43,7 @@
       },
       {
         "batch": 11,
-        "id": 2,
+        "id": 0,
         "kind": {
           "delivery": "stream",
           "items": 2
@@ -41,14 +51,28 @@
       },
       {
         "batch": 12,
-        "id": 2,
+        "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 5
+          "items": 3
+        }
+      },
+      {
+        "batch": 12,
+        "id": 0,
+        "kind": {
+          "delivery": "outcome"
         }
       },
       {
         "batch": 13,
+        "id": 1,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 18,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -56,143 +80,79 @@
         }
       },
       {
-        "batch": 14,
+        "batch": 19,
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 4
         }
       },
       {
-        "batch": 15,
+        "batch": 20,
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 8
         }
       },
       {
-        "batch": 15,
+        "batch": 20,
         "id": 2,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 16,
+        "batch": 21,
         "id": 3,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 20,
+        "batch": 26,
         "id": 4,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 4
         }
       },
       {
-        "batch": 21,
+        "batch": 27,
         "id": 4,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 3
         }
       },
       {
-        "batch": 22,
+        "batch": 28,
         "id": 4,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 5
         }
       },
       {
-        "batch": 23,
+        "batch": 29,
         "id": 4,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 3
         }
       },
       {
-        "batch": 24,
-        "id": 4,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 25,
-        "id": 4,
-        "kind": {
-          "delivery": "stream",
-          "items": 7
-        }
-      },
-      {
-        "batch": 25,
+        "batch": 29,
         "id": 4,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 26,
+        "batch": 31,
         "id": 5,
         "kind": {
           "delivery": "outcome"
-        }
-      },
-      {
-        "batch": 33,
-        "id": 6,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 34,
-        "id": 6,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 35,
-        "id": 6,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 36,
-        "id": 6,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 37,
-        "id": 6,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 38,
-        "id": 6,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
         }
       },
       {
@@ -200,7 +160,7 @@
         "id": 6,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -208,7 +168,7 @@
         "id": 6,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -216,7 +176,7 @@
         "id": 6,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -224,11 +184,27 @@
         "id": 6,
         "kind": {
           "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 43,
+        "id": 6,
+        "kind": {
+          "delivery": "stream",
           "items": 1
         }
       },
       {
-        "batch": 43,
+        "batch": 44,
+        "id": 6,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 45,
         "id": 6,
         "kind": {
           "delivery": "stream",
@@ -236,25 +212,25 @@
         }
       },
       {
-        "batch": 43,
+        "batch": 46,
+        "id": 6,
+        "kind": {
+          "delivery": "stream",
+          "items": 4
+        }
+      },
+      {
+        "batch": 46,
         "id": 6,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 44,
+        "batch": 47,
         "id": 7,
         "kind": {
           "delivery": "outcome"
-        }
-      },
-      {
-        "batch": 50,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
         }
       },
       {
@@ -270,7 +246,7 @@
         "id": 8,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -278,11 +254,19 @@
         "id": 8,
         "kind": {
           "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 54,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
           "items": 2
         }
       },
       {
-        "batch": 53,
+        "batch": 54,
         "id": 8,
         "kind": {
           "delivery": "outcome"
@@ -399,11 +383,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_00_lXSDJtOMgnFiHN2CneHI8468"
-              },
-              "provider": {
-                "call_id": "call_00_lXSDJtOMgnFiHN2CneHI8468"
+                "provider": {
+                  "call_id": "call_00_lXSDJtOMgnFiHN2CneHI8468"
+                }
               },
               "function": {
                 "name": "checkpoint_step",
@@ -540,11 +522,9 @@
           "block": {
             "type": "toolcall",
             "id": {
-              "origin": "explicit",
-              "id": "call_00_lXSDJtOMgnFiHN2CneHI8468"
-            },
-            "provider": {
-              "call_id": "call_00_lXSDJtOMgnFiHN2CneHI8468"
+              "provider": {
+                "call_id": "call_00_lXSDJtOMgnFiHN2CneHI8468"
+              }
             },
             "function": {
               "name": "checkpoint_step",
@@ -651,11 +631,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_00_lXSDJtOMgnFiHN2CneHI8468"
-                  },
-                  "provider": {
-                    "call_id": "call_00_lXSDJtOMgnFiHN2CneHI8468"
+                    "provider": {
+                      "call_id": "call_00_lXSDJtOMgnFiHN2CneHI8468"
+                    }
                   },
                   "function": {
                     "name": "checkpoint_step",
@@ -674,11 +652,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_00_lXSDJtOMgnFiHN2CneHI8468"
-                  },
-                  "provider": {
-                    "call_id": "call_00_lXSDJtOMgnFiHN2CneHI8468"
+                    "provider": {
+                      "call_id": "call_00_lXSDJtOMgnFiHN2CneHI8468"
+                    }
                   },
                   "name": "checkpoint_step",
                   "content": [
@@ -733,11 +709,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_00_6KMSqcqow8jqjBOIjClk0065"
-              },
-              "provider": {
-                "call_id": "call_00_6KMSqcqow8jqjBOIjClk0065"
+                "provider": {
+                  "call_id": "call_00_6KMSqcqow8jqjBOIjClk0065"
+                }
               },
               "function": {
                 "name": "checkpoint_step",
@@ -898,11 +872,9 @@
           "block": {
             "type": "toolcall",
             "id": {
-              "origin": "explicit",
-              "id": "call_00_6KMSqcqow8jqjBOIjClk0065"
-            },
-            "provider": {
-              "call_id": "call_00_6KMSqcqow8jqjBOIjClk0065"
+              "provider": {
+                "call_id": "call_00_6KMSqcqow8jqjBOIjClk0065"
+              }
             },
             "function": {
               "name": "checkpoint_step",
@@ -1009,11 +981,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_00_lXSDJtOMgnFiHN2CneHI8468"
-                  },
-                  "provider": {
-                    "call_id": "call_00_lXSDJtOMgnFiHN2CneHI8468"
+                    "provider": {
+                      "call_id": "call_00_lXSDJtOMgnFiHN2CneHI8468"
+                    }
                   },
                   "function": {
                     "name": "checkpoint_step",
@@ -1032,11 +1002,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_00_lXSDJtOMgnFiHN2CneHI8468"
-                  },
-                  "provider": {
-                    "call_id": "call_00_lXSDJtOMgnFiHN2CneHI8468"
+                    "provider": {
+                      "call_id": "call_00_lXSDJtOMgnFiHN2CneHI8468"
+                    }
                   },
                   "name": "checkpoint_step",
                   "content": [
@@ -1059,11 +1027,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_00_6KMSqcqow8jqjBOIjClk0065"
-                  },
-                  "provider": {
-                    "call_id": "call_00_6KMSqcqow8jqjBOIjClk0065"
+                    "provider": {
+                      "call_id": "call_00_6KMSqcqow8jqjBOIjClk0065"
+                    }
                   },
                   "function": {
                     "name": "checkpoint_step",
@@ -1082,11 +1048,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_00_6KMSqcqow8jqjBOIjClk0065"
-                  },
-                  "provider": {
-                    "call_id": "call_00_6KMSqcqow8jqjBOIjClk0065"
+                    "provider": {
+                      "call_id": "call_00_6KMSqcqow8jqjBOIjClk0065"
+                    }
                   },
                   "name": "checkpoint_step",
                   "content": [
@@ -1141,11 +1105,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_00_Gaot4zJvo5PBtiNE095S2432"
-              },
-              "provider": {
-                "call_id": "call_00_Gaot4zJvo5PBtiNE095S2432"
+                "provider": {
+                  "call_id": "call_00_Gaot4zJvo5PBtiNE095S2432"
+                }
               },
               "function": {
                 "name": "checkpoint_step",
@@ -1306,11 +1268,9 @@
           "block": {
             "type": "toolcall",
             "id": {
-              "origin": "explicit",
-              "id": "call_00_Gaot4zJvo5PBtiNE095S2432"
-            },
-            "provider": {
-              "call_id": "call_00_Gaot4zJvo5PBtiNE095S2432"
+              "provider": {
+                "call_id": "call_00_Gaot4zJvo5PBtiNE095S2432"
+              }
             },
             "function": {
               "name": "checkpoint_step",
@@ -1417,11 +1377,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_00_lXSDJtOMgnFiHN2CneHI8468"
-                  },
-                  "provider": {
-                    "call_id": "call_00_lXSDJtOMgnFiHN2CneHI8468"
+                    "provider": {
+                      "call_id": "call_00_lXSDJtOMgnFiHN2CneHI8468"
+                    }
                   },
                   "function": {
                     "name": "checkpoint_step",
@@ -1440,11 +1398,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_00_lXSDJtOMgnFiHN2CneHI8468"
-                  },
-                  "provider": {
-                    "call_id": "call_00_lXSDJtOMgnFiHN2CneHI8468"
+                    "provider": {
+                      "call_id": "call_00_lXSDJtOMgnFiHN2CneHI8468"
+                    }
                   },
                   "name": "checkpoint_step",
                   "content": [
@@ -1467,11 +1423,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_00_6KMSqcqow8jqjBOIjClk0065"
-                  },
-                  "provider": {
-                    "call_id": "call_00_6KMSqcqow8jqjBOIjClk0065"
+                    "provider": {
+                      "call_id": "call_00_6KMSqcqow8jqjBOIjClk0065"
+                    }
                   },
                   "function": {
                     "name": "checkpoint_step",
@@ -1490,11 +1444,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_00_6KMSqcqow8jqjBOIjClk0065"
-                  },
-                  "provider": {
-                    "call_id": "call_00_6KMSqcqow8jqjBOIjClk0065"
+                    "provider": {
+                      "call_id": "call_00_6KMSqcqow8jqjBOIjClk0065"
+                    }
                   },
                   "name": "checkpoint_step",
                   "content": [
@@ -1517,11 +1469,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_00_Gaot4zJvo5PBtiNE095S2432"
-                  },
-                  "provider": {
-                    "call_id": "call_00_Gaot4zJvo5PBtiNE095S2432"
+                    "provider": {
+                      "call_id": "call_00_Gaot4zJvo5PBtiNE095S2432"
+                    }
                   },
                   "function": {
                     "name": "checkpoint_step",
@@ -1540,11 +1490,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_00_Gaot4zJvo5PBtiNE095S2432"
-                  },
-                  "provider": {
-                    "call_id": "call_00_Gaot4zJvo5PBtiNE095S2432"
+                    "provider": {
+                      "call_id": "call_00_Gaot4zJvo5PBtiNE095S2432"
+                    }
                   },
                   "name": "checkpoint_step",
                   "content": [
@@ -1599,11 +1547,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_00_fOsFhuEUAAhBYKyLDd9s8493"
-              },
-              "provider": {
-                "call_id": "call_00_fOsFhuEUAAhBYKyLDd9s8493"
+                "provider": {
+                  "call_id": "call_00_fOsFhuEUAAhBYKyLDd9s8493"
+                }
               },
               "function": {
                 "name": "checkpoint_step",
@@ -1772,11 +1718,9 @@
           "block": {
             "type": "toolcall",
             "id": {
-              "origin": "explicit",
-              "id": "call_00_fOsFhuEUAAhBYKyLDd9s8493"
-            },
-            "provider": {
-              "call_id": "call_00_fOsFhuEUAAhBYKyLDd9s8493"
+              "provider": {
+                "call_id": "call_00_fOsFhuEUAAhBYKyLDd9s8493"
+              }
             },
             "function": {
               "name": "checkpoint_step",
@@ -1883,11 +1827,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_00_lXSDJtOMgnFiHN2CneHI8468"
-                  },
-                  "provider": {
-                    "call_id": "call_00_lXSDJtOMgnFiHN2CneHI8468"
+                    "provider": {
+                      "call_id": "call_00_lXSDJtOMgnFiHN2CneHI8468"
+                    }
                   },
                   "function": {
                     "name": "checkpoint_step",
@@ -1906,11 +1848,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_00_lXSDJtOMgnFiHN2CneHI8468"
-                  },
-                  "provider": {
-                    "call_id": "call_00_lXSDJtOMgnFiHN2CneHI8468"
+                    "provider": {
+                      "call_id": "call_00_lXSDJtOMgnFiHN2CneHI8468"
+                    }
                   },
                   "name": "checkpoint_step",
                   "content": [
@@ -1933,11 +1873,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_00_6KMSqcqow8jqjBOIjClk0065"
-                  },
-                  "provider": {
-                    "call_id": "call_00_6KMSqcqow8jqjBOIjClk0065"
+                    "provider": {
+                      "call_id": "call_00_6KMSqcqow8jqjBOIjClk0065"
+                    }
                   },
                   "function": {
                     "name": "checkpoint_step",
@@ -1956,11 +1894,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_00_6KMSqcqow8jqjBOIjClk0065"
-                  },
-                  "provider": {
-                    "call_id": "call_00_6KMSqcqow8jqjBOIjClk0065"
+                    "provider": {
+                      "call_id": "call_00_6KMSqcqow8jqjBOIjClk0065"
+                    }
                   },
                   "name": "checkpoint_step",
                   "content": [
@@ -1983,11 +1919,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_00_Gaot4zJvo5PBtiNE095S2432"
-                  },
-                  "provider": {
-                    "call_id": "call_00_Gaot4zJvo5PBtiNE095S2432"
+                    "provider": {
+                      "call_id": "call_00_Gaot4zJvo5PBtiNE095S2432"
+                    }
                   },
                   "function": {
                     "name": "checkpoint_step",
@@ -2006,11 +1940,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_00_Gaot4zJvo5PBtiNE095S2432"
-                  },
-                  "provider": {
-                    "call_id": "call_00_Gaot4zJvo5PBtiNE095S2432"
+                    "provider": {
+                      "call_id": "call_00_Gaot4zJvo5PBtiNE095S2432"
+                    }
                   },
                   "name": "checkpoint_step",
                   "content": [
@@ -2033,11 +1965,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_00_fOsFhuEUAAhBYKyLDd9s8493"
-                  },
-                  "provider": {
-                    "call_id": "call_00_fOsFhuEUAAhBYKyLDd9s8493"
+                    "provider": {
+                      "call_id": "call_00_fOsFhuEUAAhBYKyLDd9s8493"
+                    }
                   },
                   "function": {
                     "name": "checkpoint_step",
@@ -2056,11 +1986,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_00_fOsFhuEUAAhBYKyLDd9s8493"
-                  },
-                  "provider": {
-                    "call_id": "call_00_fOsFhuEUAAhBYKyLDd9s8493"
+                    "provider": {
+                      "call_id": "call_00_fOsFhuEUAAhBYKyLDd9s8493"
+                    }
                   },
                   "name": "checkpoint_step",
                   "content": [

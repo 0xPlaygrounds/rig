@@ -131,12 +131,14 @@ fn test_streaming_tool_build_marks_final_combined_tool() {
 fn streaming_request_keeps_documents_after_leading_system_messages() {
     let request = CompletionRequest {
         model: None,
-        chat_history: vec![
+        chat_history: crate::NonEmpty::with_rest(
             RigMessage::system("System prompt"),
-            RigMessage::assistant("Earlier assistant turn"),
-            RigMessage::system("Mid-conversation instruction"),
-            RigMessage::user("Prompt"),
-        ],
+            [
+                RigMessage::assistant("Earlier assistant turn"),
+                RigMessage::system("Mid-conversation instruction"),
+                RigMessage::user("Prompt"),
+            ],
+        ),
         documents: vec![RigDocument {
             id: "doc1".to_string(),
             text: "Document text.".to_string(),
@@ -188,10 +190,10 @@ fn streaming_body_is_blocking_body_plus_stream_flag_and_carries_output_schema() 
 
     let request = CompletionRequest {
         model: None,
-        chat_history: vec![
+        chat_history: crate::NonEmpty::with_rest(
             RigMessage::system("You are helpful"),
-            RigMessage::user("What's the weather?"),
-        ],
+            [RigMessage::user("What's the weather?")],
+        ),
         documents: vec![],
         tools: vec![],
         temperature: Some(0.5),
@@ -224,6 +226,7 @@ fn streaming_body_is_blocking_body_plus_stream_flag_and_carries_output_schema() 
     // (built via the same typed request) plus `stream: true`. Pins the two
     // wire formats together so a future edit can't reintroduce drift.
     let blocking = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+        issuers: &[crate::message::Issuer::from_static("anthropic")],
         model: CLAUDE_OPUS_4_8,
         request,
         prompt_caching: false,
@@ -245,7 +248,7 @@ fn streaming_body_is_blocking_body_plus_stream_flag_and_carries_output_schema() 
 fn streaming_body_keeps_explicit_tool_choice_auto_when_tools_present_but_unset() {
     let request = CompletionRequest {
         model: None,
-        chat_history: vec![RigMessage::user("Add 2 and 3")],
+        chat_history: crate::NonEmpty::new(RigMessage::user("Add 2 and 3")),
         documents: vec![],
         tools: vec![crate::completion::ToolDefinition {
             name: "add".to_string(),
@@ -277,7 +280,7 @@ fn streaming_body_keeps_explicit_tool_choice_auto_when_tools_present_but_unset()
 fn streaming_body_applies_strict_tool_opt_in() {
     let request = CompletionRequest {
         model: None,
-        chat_history: vec![RigMessage::user("Look this up")],
+        chat_history: crate::NonEmpty::new(RigMessage::user("Look this up")),
         documents: vec![],
         tools: vec![crate::completion::ToolDefinition {
             name: "lookup".to_string(),
@@ -318,7 +321,7 @@ fn streaming_body_drops_tool_choice_when_no_tools_are_advertised() {
     // otherwise). A `tool_choice` set with no tools must not reach the wire.
     let request = CompletionRequest {
         model: None,
-        chat_history: vec![RigMessage::user("Hi")],
+        chat_history: crate::NonEmpty::new(RigMessage::user("Hi")),
         documents: vec![],
         tools: vec![],
         temperature: None,
@@ -2169,7 +2172,7 @@ mod projection {
     fn request() -> CompletionRequest {
         CompletionRequest {
             model: None,
-            chat_history: vec![crate::message::Message::user("hello")],
+            chat_history: crate::NonEmpty::new(crate::message::Message::user("hello")),
             documents: Vec::new(),
             tools: Vec::new(),
             temperature: None,

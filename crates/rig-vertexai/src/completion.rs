@@ -72,10 +72,10 @@ impl Wire for GenerateContent {
 
     fn encode(
         &self,
-        mut request: CompletionRequest,
+        request: CompletionRequest,
         _mode: Mode,
     ) -> Result<VertexRequest, EncodeError> {
-        rig_core::message::retain_replayable_reasoning(&mut request.chat_history, &[PROVIDER_NAME]);
+        let request = request.replayable_to(&[crate::types::completion_response::ISSUER])?;
         tracing::debug!(
             target: "rig_core::vertexai",
             "Vertex AI completion request: {request:?}"

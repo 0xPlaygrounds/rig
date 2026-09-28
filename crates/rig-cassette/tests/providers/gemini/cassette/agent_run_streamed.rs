@@ -224,7 +224,7 @@ async fn streamed_hand_driven_multi_turn_run_completes() {
                             // issued one, else the id the adapter minted.
                             match &call.block_id {
                                 rig::streaming::BlockId::Wire(id) => {
-                                    assert_eq!(call.tool_call.provider.as_ref().map(|provider| provider.call_id.as_str()), Some(id.as_str()), "{call:?}");
+                                    assert_eq!(call.tool_call.id.provider().as_ref().map(|provider| provider.call_id.as_str()), Some(id.as_str()), "{call:?}");
                                 }
                                 rig::streaming::BlockId::Minted { .. } => {}
                             }
@@ -465,8 +465,8 @@ async fn streamed_skip_abandons_the_turn_and_recovers() {
                                 // name — the synthetic result answers the
                                 // call's minted correlation handle and
                                 // records no provider-issued id.
-                                assert!(tool_result.call.is_generated());
-                                assert!(tool_result.provider.is_none());
+                                assert!(tool_result.call.is_local());
+                                assert!(tool_result.call.provider().is_none());
                                 abandoned = true;
                             }
                             TurnEnd::Finished => {

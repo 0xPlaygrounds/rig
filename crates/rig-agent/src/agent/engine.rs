@@ -1713,7 +1713,7 @@ pub(crate) async fn run_single_tool(
 ) -> Result<ToolCallOutcome, PromptError> {
     let tool_context = &runner.tool_context;
     let record_content = runner.config.record_telemetry_content;
-    let tool_name = &tool_call.function.name;
+    let tool_name = tool_call.function.name.as_str();
     let args = json_utils::serialize_json_value(&tool_call.function.arguments);
 
     let tool_span = tracing::Span::current();
@@ -1784,7 +1784,6 @@ pub(crate) async fn run_single_tool(
     }
     let content = tool_result_output(
         tool_call.id.clone(),
-        tool_call.provider.clone(),
         tool_call.function.name.clone(),
         exec.output().clone(),
     );

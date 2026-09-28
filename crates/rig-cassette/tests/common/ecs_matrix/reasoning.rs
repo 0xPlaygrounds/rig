@@ -227,9 +227,15 @@ pub(crate) fn assert_log(cell: &Cell, wire: ThinkingWire, log: &EffectLog) {
             ));
             match wire {
                 ThinkingWire::OpenAiResponses => {
-                    assert!(reasoning.iter().any(|block| block.id.is_some()));
                     assert!(reasoning.iter().any(|block| {
-                        block.content.iter().any(|content|
+                        block
+                            .open(block.issuer())
+                            .expect("sealed reasoning")
+                            .id
+                            .is_some()
+                    }));
+                    assert!(reasoning.iter().any(|block| {
+                        block.open(block.issuer()).expect("sealed reasoning").content.iter().any(|content|
                         matches!(content, ReasoningContent::Encrypted(value) if !value.is_empty()))
                     }));
                 }
@@ -238,9 +244,11 @@ pub(crate) fn assert_log(cell: &Cell, wire: ThinkingWire, log: &EffectLog) {
                     // on ToolCall.signature, a thought's on its reasoning
                     // block, an answer's on its text.
                     assert!(
-                        reasoning
-                            .iter()
-                            .any(|block| block.first_signature().is_some())
+                        reasoning.iter().any(|block| block
+                            .open(block.issuer())
+                            .expect("sealed reasoning")
+                            .first_signature()
+                            .is_some())
                             || parts.iter().any(|part| match part {
                                 AssistantContent::ToolCall(call) => call.signature.is_some(),
                                 AssistantContent::Text(text) => {
@@ -396,11 +404,12 @@ pub(crate) fn assert_history(cell: &Cell, log: &EffectLog, history: &[Message]) 
                     .cloned()
                     .collect();
                 parts.push(AssistantContent::text(call.function.arguments.to_string()));
-                parts
+                rig_core::NonEmpty::from_vec(parts).expect("non-empty")
             } else if cell.program.streamed {
-                canonical_streamed_choice(response.choice.clone())
+                rig_core::NonEmpty::from_vec(canonical_streamed_choice(response.choice.clone()))
+                    .expect("non-empty")
             } else {
-                response.choice.clone()
+                rig_core::NonEmpty::from_vec(response.choice.clone()).expect("non-empty")
             },
         })
         .collect();
@@ -483,7 +492,7 @@ pub(crate) fn assert_witness(cell: &Cell, log: &EffectLog, trace: &ObservationLo
         && completions(log).iter().any(|response| {
             response.choice.iter().any(|part| {
                 matches!(part,
-            AssistantContent::Reasoning(block) if !block.display_text().is_empty())
+            AssistantContent::Reasoning(block) if !block.open(block.issuer()).expect("sealed reasoning").display_text().is_empty())
             })
         })
     {

@@ -210,22 +210,26 @@ fn dropping_the_writer_without_finishing_is_truncation() {
 
 #[test]
 fn response_reemission_preserves_local_tool_ids_without_provider_provenance() {
-    use crate::message::{AssistantContent, ToolCall, ToolCallId, ToolFunction};
-    let mut calls = ["local-call", "tool-00", "tool-0", "wire-call"]
+    use crate::message::{AssistantContent, CallId, ToolCall, ToolFunction, ToolName};
+    let mut calls = [0, 1, 2]
         .into_iter()
         .map(|id| {
             AssistantContent::ToolCall(ToolCall::new(
-                ToolCallId::new(id).expect("nonempty local id"),
-                ToolFunction::new("local".into(), serde_json::json!({"id": id})),
+                CallId::from_wire(""),
+                ToolFunction::new(
+                    ToolName::new("local").expect("tool name"),
+                    serde_json::json!({"id": id}),
+                ),
             ))
         })
         .collect::<Vec<_>>();
     let mut provider_call = ToolCall::new(
-        ToolCallId::new("local-provider").expect("local provider call id"),
-        ToolFunction::new("provider".into(), serde_json::json!({"x": 1})),
+        CallId::from_dual_wire("wire-item", "wire-call"),
+        ToolFunction::new(
+            ToolName::new("provider").expect("tool name"),
+            serde_json::json!({"x": 1}),
+        ),
     );
-    provider_call.provider = crate::message::ProviderCallId::new("wire-call")
-        .map(|provider| provider.with_item_id("wire-item"));
     provider_call.signature = Some("signature".into());
     provider_call.additional_params = Some(serde_json::json!({"metadata": true}));
     calls.push(AssistantContent::ToolCall(provider_call));
@@ -678,10 +682,9 @@ fn a_streamed_reply_folded_to_an_outcome_records_its_reasoning_issuer() {
 
     let mut tap = StreamTap::new();
     for event in re_emitted_events(&CompletionResponse::new(
-        vec![AssistantContent::Reasoning(Reasoning::new_with_signature(
-            "thinking",
-            Some("sig".to_owned()),
-        ))],
+        vec![AssistantContent::Reasoning(
+            Reasoning::new_with_signature("thinking", Some("sig".to_owned())).sealed("test"),
+        )],
         Default::default(),
         "aws_bedrock",
         serde_json::Value::Null,
@@ -702,7 +705,7 @@ fn a_streamed_reply_folded_to_an_outcome_records_its_reasoning_issuer() {
         .choice
         .iter()
         .filter_map(|part| match part {
-            AssistantContent::Reasoning(reasoning) => reasoning.provider.as_deref(),
+            AssistantContent::Reasoning(reasoning) => Some(reasoning.issuer().as_str()),
             _ => None,
         })
         .collect();

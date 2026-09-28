@@ -11,7 +11,7 @@ mod vec_content_serde {
         // this migration changes no persisted history and no recorded
         // provider fixture. Pin the wire shape so that stays true.
         let message = Message::User {
-            content: vec![UserContent::text("hi")],
+            content: crate::NonEmpty::new(UserContent::text("hi")),
         };
         let json = serde_json::to_value(&message).expect("serialize");
         assert_eq!(
@@ -27,7 +27,7 @@ mod vec_content_serde {
     fn message_content_round_trips_byte_identically() {
         let message = Message::Assistant {
             id: Some("msg_1".to_owned()),
-            content: vec![AssistantContent::text("hello")],
+            content: crate::NonEmpty::new(AssistantContent::text("hello")),
         };
         let encoded = serde_json::to_string(&message).expect("serialize");
         let decoded: Message = serde_json::from_str(&encoded).expect("deserialize");
@@ -38,17 +38,12 @@ mod vec_content_serde {
     }
 
     #[test]
-    fn an_empty_content_array_now_deserializes() {
-        // The container's `Deserialize` implemented only `visit_seq` and
-        // rejected `[]`. That is the single input whose behaviour this
-        // migration changes: it was an error, and it is now an empty list.
-        let message: Message =
-            serde_json::from_value(serde_json::json!({"role": "user", "content": []}))
-                .expect("an empty content list is representable now");
-        let Message::User { content } = message else {
-            panic!("expected a user message");
-        };
-        assert!(content.is_empty());
+    fn an_empty_content_array_does_not_deserialize() {
+        // Content is non-empty by type, so `[]` is not a message.
+        assert!(
+            serde_json::from_value::<Message>(serde_json::json!({"role": "user", "content": []}))
+                .is_err()
+        );
     }
 }
 
@@ -115,21 +110,21 @@ fn system_message_constructor_and_serde_roundtrip() {
 }
 
 #[test]
-fn current_schema_tool_call_json_round_trips_without_provider_promotion() {
-    // A minted handle with no provider must stay provider-less —
-    // nothing in the round trip may invent provider provenance.
-    let call = super::ToolCall::new(
-        super::ToolCallId::new("minted-handle").expect("non-empty"),
+fn a_rig_issued_call_id_round_trips_as_local() {
+    // A call the provider sent without an id carries a rig-issued one, and
+    // the round trip never turns it into a provider id.
+    let call = super::ToolCall::from_wire(
+        "",
         super::ToolFunction {
-            name: "add".to_string(),
+            name: super::ToolName::new("add").expect("tool name"),
             arguments: serde_json::json!({}),
         },
     );
+    assert!(call.id.is_local());
 
     let json = serde_json::to_value(&call).expect("serialize");
-    assert!(json.get("call_id").is_none());
     let roundtrip: super::ToolCall = serde_json::from_value(json).expect("deserialize");
-    assert_eq!(roundtrip.provider, None);
+    assert!(roundtrip.id.provider().is_none());
     assert_eq!(roundtrip, call);
 }
 
@@ -319,84 +314,62 @@ fn tool_result_content_decodes_structured_and_legacy_json() {
     }
 }
 
-/// Generated positions occupy a namespace disjoint from explicit handles.
+/// Every call has exactly one id: the provider's, or a fresh rig-issued one.
 #[test]
-fn missing_call_id_normalization_separates_namespaces_and_preserves_metadata() {
-    use super::{AssistantContent, ToolCall, ToolFunction, normalize_missing_tool_call_ids};
-    use serde_json::json;
-    let mut content = vec![
-        AssistantContent::text("not a call position"),
-        AssistantContent::ToolCall(
-            ToolCall::from_wire("", ToolFunction::new("same".into(), json!({"n":1})))
-                .with_signature(Some("signed".into()))
-                .with_additional_params(Some(json!({"opaque":true}))),
-        ),
-        AssistantContent::tool_call("tool-0", "same", json!({"n":2})),
-        AssistantContent::tool_call("tool-1", "same", json!({"n":3})),
-        AssistantContent::tool_call("", "same", json!({"n":4})),
-        AssistantContent::tool_call("tool-0", "same", json!({"n":5})),
-    ];
-    normalize_missing_tool_call_ids(&mut content);
-    let calls: Vec<_> = content
-        .iter()
-        .filter_map(|item| match item {
-            AssistantContent::ToolCall(call) => Some(call),
-            _ => None,
-        })
-        .collect();
+fn a_call_carries_the_providers_id_or_a_fresh_local_one() {
+    use super::{CallId, ProviderCallId};
+    let provider = CallId::from_wire("call_1");
     assert_eq!(
-        calls.iter().map(|call| call.id.clone()).collect::<Vec<_>>(),
-        [
-            super::ToolCallId::minted(0),
-            super::ToolCallId::new("tool-0").expect("explicit"),
-            super::ToolCallId::new("tool-1").expect("explicit"),
-            super::ToolCallId::minted(3),
-            super::ToolCallId::new("tool-0").expect("explicit"),
-        ]
+        provider.provider(),
+        Some(&ProviderCallId::new("call_1").expect("non-empty"))
     );
-    assert!(calls[0].provider.is_none());
-    assert_eq!(calls[0].signature.as_deref(), Some("signed"));
-    assert_eq!(calls[0].additional_params, Some(json!({"opaque":true})));
-    assert_eq!(calls[1].provider.as_ref().unwrap().call_id, "tool-0");
-    let first = content.clone();
-    normalize_missing_tool_call_ids(&mut content);
-    assert_eq!(content, first, "normalization is stable when repeated");
+    assert_eq!(provider.wire(), "call_1");
+
+    let (first, second) = (CallId::from_wire(""), CallId::from_wire(""));
+    assert!(first.is_local() && second.is_local());
+    assert_ne!(first, second);
+    assert_eq!(first.wire().len(), 36, "a hyphenated v4 UUID");
 }
 
-/// Internal identity law: provider text must not impersonate a generated key.
+/// A dual-identifier wire keeps both ids in their slots.
 #[test]
-fn typed_tool_identity_separates_generated_and_explicit_keys() {
-    use super::ToolCallId;
-    let generated = ToolCallId::minted(0);
-    let explicit = ToolCallId::new("tool-0").expect("nonempty explicit ID");
-    assert_ne!(generated, explicit);
-    let keys = std::collections::HashSet::from([generated.clone(), explicit.clone()]);
-    assert_eq!(keys.len(), 2);
-    let generated_json = serde_json::to_value(&generated).expect("serialize generated ID");
-    let explicit_json = serde_json::to_value(&explicit).expect("serialize explicit ID");
-    assert_ne!(generated_json, explicit_json);
-    for id in [generated, explicit] {
-        let json = serde_json::to_string(&id).expect("serialize ID");
-        assert_eq!(
-            serde_json::from_str::<ToolCallId>(&json).expect("decode ID"),
-            id
-        );
-    }
+fn a_dual_wire_id_keeps_the_output_item() {
+    let id = super::CallId::from_dual_wire("fc_1", "call_1");
+    let provider = id.provider().expect("provider id");
+    assert_eq!(provider.call_id, "call_1");
+    assert_eq!(provider.item_id.as_deref(), Some("fc_1"));
+    assert!(super::CallId::from_dual_wire("fc_1", "").is_local());
 }
 
-/// Assembly keys with equal display text still name different generated origins.
+/// A result built from its call answers that call under its name.
 #[test]
-fn typed_tool_identity_preserves_the_assembly_key_discriminant() {
-    use super::ToolCallId;
-    use crate::streaming::{BlockId, SyntheticIds};
-    assert_ne!(
-        ToolCallId::from_block(&BlockId::wire("tool-0")),
-        ToolCallId::from_block(&SyntheticIds::tool().mint()),
+fn a_result_is_built_from_the_call_it_answers() {
+    let call = super::ToolCall::from_wire(
+        "call_1",
+        super::ToolFunction::new(
+            super::ToolName::new("add").expect("tool name"),
+            serde_json::json!({}),
+        ),
     );
+    let result = call.result(super::ToolResultContent::text("42"));
+    assert_eq!(result.call, call.id);
+    assert_eq!(result.name, call.function.name);
 }
 
-/// Legacy untagged IDs cannot tell generated handles from explicit handles.
+/// The shapes persisted before calls had one id no longer parse.
 #[test]
-fn typed_tool_identity_rejects_legacy_untagged_serialization() {
-    assert!(serde_json::from_str::<super::ToolCallId>(r#""tool-0""#).is_err());
+fn the_legacy_tool_call_id_shape_does_not_parse() {
+    let legacy = serde_json::json!({
+        "id": {"origin": "explicit", "id": "call_1"},
+        "function": {"name": "add", "arguments": {}},
+    });
+    assert!(serde_json::from_value::<super::ToolCall>(legacy).is_err());
+    assert!(serde_json::from_str::<super::CallId>(r#""call_1""#).is_err());
+}
+
+/// An empty tool name is not a name.
+#[test]
+fn an_empty_tool_name_does_not_parse() {
+    assert!(super::ToolName::new("").is_err());
+    assert!(serde_json::from_str::<super::ToolName>(r#""""#).is_err());
 }

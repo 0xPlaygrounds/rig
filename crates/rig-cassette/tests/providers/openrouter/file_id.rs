@@ -51,11 +51,11 @@ fn sole_body(encoded: Encoded) -> Value {
 #[test]
 fn generic_document_file_id_fails_openrouter_message_conversion() {
     let message = Message::User {
-        content: vec![RigUserContent::Document(Document {
+        content: rig_core::NonEmpty::new(RigUserContent::Document(Document {
             data: DocumentSourceKind::file_id("file_abc"),
             media_type: None,
             additional_params: None,
-        })],
+        })),
     };
 
     let result = encoded_body(message);
@@ -74,11 +74,11 @@ fn generic_document_file_id_fails_openrouter_message_conversion() {
 #[test]
 fn file_data_document_encodes_as_an_openrouter_file_part() {
     let message = Message::User {
-        content: vec![RigUserContent::Document(Document {
+        content: rig_core::NonEmpty::new(RigUserContent::Document(Document {
             data: DocumentSourceKind::Base64("AAAA".to_string()),
             media_type: Some(DocumentMediaType::PDF),
             additional_params: None,
-        })],
+        })),
     };
 
     let body = encoded_body(message).expect("a file_data document should encode");

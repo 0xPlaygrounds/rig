@@ -129,6 +129,7 @@
           "choice": [
             {
               "type": "reasoning",
+              "issuer": "deepseek",
               "id": null,
               "content": [
                 {
@@ -137,17 +138,14 @@
                     "text": "We need answer user asks use add tool to add 17 and 25, then reply with just number. Need call tool."
                   }
                 }
-              ],
-              "provider": "deepseek"
+              ]
             },
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_00_NtN5I3xPqFjeezHrbNEd9030"
-              },
-              "provider": {
-                "call_id": "call_00_NtN5I3xPqFjeezHrbNEd9030"
+                "provider": {
+                  "call_id": "call_00_NtN5I3xPqFjeezHrbNEd9030"
+                }
               },
               "function": {
                 "name": "add",
@@ -270,6 +268,7 @@
               "content": [
                 {
                   "type": "reasoning",
+                  "issuer": "deepseek",
                   "id": null,
                   "content": [
                     {
@@ -278,17 +277,14 @@
                         "text": "We need answer user asks use add tool to add 17 and 25, then reply with just number. Need call tool."
                       }
                     }
-                  ],
-                  "provider": "deepseek"
+                  ]
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_00_NtN5I3xPqFjeezHrbNEd9030"
-                  },
-                  "provider": {
-                    "call_id": "call_00_NtN5I3xPqFjeezHrbNEd9030"
+                    "provider": {
+                      "call_id": "call_00_NtN5I3xPqFjeezHrbNEd9030"
+                    }
                   },
                   "function": {
                     "name": "add",
@@ -308,11 +304,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_00_NtN5I3xPqFjeezHrbNEd9030"
-                  },
-                  "provider": {
-                    "call_id": "call_00_NtN5I3xPqFjeezHrbNEd9030"
+                    "provider": {
+                      "call_id": "call_00_NtN5I3xPqFjeezHrbNEd9030"
+                    }
                   },
                   "name": "add",
                   "content": [

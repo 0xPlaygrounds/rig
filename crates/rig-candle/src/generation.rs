@@ -647,25 +647,20 @@ fn emit_parsed_items(
         match item {
             AssistantContent::Text(text) => emit(GenerationEvent::Text(text.text))?,
             AssistantContent::ToolCall(call) => {
-                let id = if let Some(provider) = &call.provider {
-                    BlockId::wire(provider.call_id.clone())
-                } else {
-                    call.id.generated().cloned().ok_or_else(|| {
-                        CandleError::Inference(
-                            "id-less parsed call has no normalized block identity".into(),
-                        )
-                    })?
-                };
+                let id = BlockId::wire(call.id.wire());
                 let mut end = ToolCallEnd::whole(call.function.name, call.function.arguments)
-                    .with_durable_id(call.id)
                     .with_signature(call.signature)
                     .with_additional_params(call.additional_params);
-                if let Some(provider) = call.provider {
-                    end = end.with_tool_id(provider.call_id);
+                if let Some(provider) = call.id.provider() {
+                    end = end.with_tool_id(provider.call_id.clone());
                 }
+                let end = end.with_durable_id(call.id);
                 emit(GenerationEvent::ToolCall { id, end })?;
             }
             AssistantContent::Reasoning(reasoning) => {
+                let Some(reasoning) = reasoning.open(reasoning.issuer()).cloned() else {
+                    continue;
+                };
                 // Whole reasoning blocks share an identity without replacing
                 // accumulated deltas because local generation emits no reasoning deltas.
                 for content in reasoning.content {

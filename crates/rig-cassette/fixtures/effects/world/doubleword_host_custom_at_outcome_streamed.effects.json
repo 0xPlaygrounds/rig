@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 6,
+        "batch": 4,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,52 +10,36 @@
         }
       },
       {
-        "batch": 11,
+        "batch": 5,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 3
         }
       },
       {
-        "batch": 12,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 14,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 14,
+        "batch": 5,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 15,
+        "batch": 6,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 16,
+        "batch": 7,
         "id": 2,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 21,
+        "batch": 12,
         "id": 3,
         "kind": {
           "delivery": "stream",
@@ -63,7 +47,7 @@
         }
       },
       {
-        "batch": 24,
+        "batch": 13,
         "id": 3,
         "kind": {
           "delivery": "stream",
@@ -71,7 +55,7 @@
         }
       },
       {
-        "batch": 24,
+        "batch": 13,
         "id": 3,
         "kind": {
           "delivery": "outcome"
@@ -204,11 +188,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_9bca907a7dd94cb2a11965b1"
-              },
-              "provider": {
-                "call_id": "call_9bca907a7dd94cb2a11965b1"
+                "provider": {
+                  "call_id": "call_9bca907a7dd94cb2a11965b1"
+                }
               },
               "function": {
                 "name": "add",
@@ -292,11 +274,9 @@
           "block": {
             "type": "toolcall",
             "id": {
-              "origin": "explicit",
-              "id": "call_9bca907a7dd94cb2a11965b1"
-            },
-            "provider": {
-              "call_id": "call_9bca907a7dd94cb2a11965b1"
+              "provider": {
+                "call_id": "call_9bca907a7dd94cb2a11965b1"
+              }
             },
             "function": {
               "name": "add",
@@ -432,11 +412,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_9bca907a7dd94cb2a11965b1"
-                  },
-                  "provider": {
-                    "call_id": "call_9bca907a7dd94cb2a11965b1"
+                    "provider": {
+                      "call_id": "call_9bca907a7dd94cb2a11965b1"
+                    }
                   },
                   "function": {
                     "name": "add",
@@ -456,11 +434,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_9bca907a7dd94cb2a11965b1"
-                  },
-                  "provider": {
-                    "call_id": "call_9bca907a7dd94cb2a11965b1"
+                    "provider": {
+                      "call_id": "call_9bca907a7dd94cb2a11965b1"
+                    }
                   },
                   "name": "add",
                   "content": [

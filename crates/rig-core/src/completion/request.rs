@@ -10,11 +10,10 @@
 //! ```
 
 use super::message::{AssistantContent, DocumentMediaType, Reasoning, ReasoningContent, ToolCall};
-use crate::error::ProviderError;
 use crate::message::ToolChoice;
 use crate::{
-    json_utils,
-    message::{Message, UserContent},
+    NonEmpty, json_utils,
+    message::{Message, ToolName, UserContent},
 };
 
 use serde::{Deserialize, Serialize};
@@ -62,6 +61,22 @@ pub struct ToolDefinition {
     pub description: String,
     /// JSON Schema describing tool arguments.
     pub parameters: serde_json::Value,
+}
+
+impl ToolDefinition {
+    /// A tool the model may call by `name`, with arguments matching the
+    /// JSON Schema `parameters`.
+    pub fn new(
+        name: ToolName,
+        description: impl Into<String>,
+        parameters: serde_json::Value,
+    ) -> Self {
+        Self {
+            name: name.into(),
+            description: description.into(),
+            parameters,
+        }
+    }
 }
 
 /// Provider-native tool definition.
@@ -274,10 +289,22 @@ impl CompletionResponse {
         self.choice
             .iter()
             .filter_map(|part| match part {
-                AssistantContent::Reasoning(reasoning) => Some(reasoning_text(reasoning)),
+                AssistantContent::Reasoning(reasoning) => {
+                    reasoning.open(reasoning.issuer()).map(reasoning_text)
+                }
                 _ => None,
             })
             .collect()
+    }
+
+    /// The assistant turn to append to the conversation: [`Self::choice`] in
+    /// order under the provider's message id, or `None` for an empty choice.
+    pub fn message(&self) -> Option<Message> {
+        let content = NonEmpty::from_vec(self.choice.clone()).ok()?;
+        Some(Message::Assistant {
+            id: self.message_id.clone(),
+            content,
+        })
     }
 
     /// The tool calls in [`Self::choice`], in order.
@@ -301,17 +328,6 @@ impl CompletionResponse {
 }
 
 crate::provider_response::response_metadata_setters!(CompletionResponse);
-
-/// The assistant turn: [`CompletionResponse::choice`] in order, under the
-/// provider's message id.
-impl From<CompletionResponse> for Message {
-    fn from(response: CompletionResponse) -> Self {
-        Message::Assistant {
-            id: response.message_id,
-            content: response.choice,
-        }
-    }
-}
 
 /// The text and summaries of one reasoning part, concatenated in order.
 pub(crate) fn reasoning_text(reasoning: &Reasoning) -> String {
@@ -468,9 +484,8 @@ impl ProviderCapabilities {
 pub struct CompletionRequest {
     /// Optional model override for this request.
     pub model: Option<String>,
-    /// Conversation ending with the prompt. Must contain at least one message;
-    /// checked by [`Self::validate_message_content`].
-    pub chat_history: Vec<Message>,
+    /// Conversation ending with the prompt.
+    pub chat_history: NonEmpty<Message>,
     /// The documents to be sent to the completion model provider
     pub documents: Vec<Document>,
     /// The tools to be sent to the completion model provider
@@ -502,73 +517,30 @@ impl CompletionRequest {
     /// [`Self::preamble`] places it.
     pub fn system_instructions(&self) -> Option<&str> {
         match self.chat_history.first() {
-            Some(Message::System { content }) => Some(content.as_str()),
+            Message::System { content } => Some(content.as_str()),
             _ => None,
         }
     }
 
-    /// Returns a request error for empty history, empty user or assistant
-    /// content lists, or tool results with no content blocks. Empty strings,
-    /// including system messages, are allowed.
+    /// This request as a service replaying reasoning `issuers` issued reads
+    /// it: assistant messages holding only reasoning none of them opens are
+    /// left out ([`Message::replays_to`]). A wire reads each remaining
+    /// reasoning part through [`Sealed::open_for`](crate::message::Sealed::open_for).
     ///
-    /// The agent runtime validates the requests it prepares; call this
-    /// before [`Model::call`](crate::Model::call) or `stream` when the
-    /// history came from a caller.
-    /// Response-content validation is provider-specific and is not performed
-    /// here.
-    pub fn validate_message_content(&self) -> Result<(), ProviderError> {
-        if self.chat_history.is_empty() {
-            return Err(ProviderError::request(
-                "request has an empty chat history; providers require at least one message"
-                    .to_owned(),
-            ));
-        }
-
-        let empty_message = |role: &str, index: usize| {
-            ProviderError::request(format!(
-                "{role} message at index {index} has no content; \
-                     providers reject empty content blocks"
-            ))
-        };
-
-        for (index, message) in self.chat_history.iter().enumerate() {
-            match message {
-                Message::System { .. } => {}
-                Message::Assistant { content, .. } => {
-                    if content.is_empty() {
-                        return Err(empty_message("assistant", index));
-                    }
-                }
-                Message::User { content } => {
-                    if content.is_empty() {
-                        return Err(empty_message("user", index));
-                    }
-
-                    for (position, item) in content.iter().enumerate() {
-                        // Keep exhaustive so new content variants must choose a
-                        // request-validation policy.
-                        match item {
-                            UserContent::ToolResult(result) if result.content.is_empty() => {
-                                let name = &result.name;
-                                return Err(ProviderError::request(format!(
-                                    "tool result for `{name}` at index {position} of the \
-                                         user message at index {index} has no content; \
-                                         providers reject empty content blocks"
-                                )));
-                            }
-                            UserContent::ToolResult(_)
-                            | UserContent::Text(_)
-                            | UserContent::Image(_)
-                            | UserContent::Audio(_)
-                            | UserContent::Video(_)
-                            | UserContent::Document(_) => {}
-                        }
-                    }
-                }
-            }
-        }
-
-        Ok(())
+    /// Returns a request error when nothing is left to send.
+    pub fn replayable_to(
+        mut self,
+        issuers: &[crate::message::Issuer],
+    ) -> Result<Self, crate::error::EncodeError> {
+        self.chat_history = self
+            .chat_history
+            .filter(|message| message.replays_to(issuers))
+            .ok_or_else(|| {
+                crate::error::EncodeError::request(
+                    "no message is left once reasoning another service issued is left out",
+                )
+            })?;
+        Ok(self)
     }
 
     /// Extracts a name from the output schema's `"title"` field, falling back to `"response_schema"`.
@@ -601,10 +573,12 @@ impl CompletionRequest {
             .map(|doc| UserContent::document(doc.to_string(), Some(DocumentMediaType::TXT)))
             .collect::<Vec<_>>();
 
-        crate::message::non_empty(messages).map(|content| Message::User { content })
+        NonEmpty::from_vec(messages)
+            .ok()
+            .map(|content| Message::User { content })
     }
 
-    pub(crate) fn chat_history_with_documents(&self) -> Vec<Message> {
+    pub(crate) fn chat_history_with_documents(&self) -> NonEmpty<Message> {
         let mut chat_history = self.chat_history.clone();
         if let Some(documents) = self.normalized_documents() {
             insert_after_leading_system(&mut chat_history, documents);
@@ -616,7 +590,7 @@ impl CompletionRequest {
 /// Insert `message` at the first non-system position so document context lands
 /// after any leading system messages; telemetry and the sent request must
 /// agree on this placement.
-fn insert_after_leading_system(chat_history: &mut Vec<Message>, message: Message) {
+fn insert_after_leading_system(chat_history: &mut NonEmpty<Message>, message: Message) {
     let insert_at = chat_history
         .iter()
         .position(|message| !matches!(message, Message::System { .. }))
@@ -662,8 +636,7 @@ fn merge_provider_tools_into_additional_params(
 
 impl CompletionRequest {
     /// A request whose conversation is the one user message `prompt`, with
-    /// no preamble, documents or tools. The setters below add to it; like
-    /// [`Self::validate_message_content`], nothing here checks the content.
+    /// no preamble, documents or tools. The setters below add to it.
     ///
     /// Each setter changes the request's public fields as it is called, so
     /// order matters where two setters touch the same field: a second
@@ -681,11 +654,11 @@ impl CompletionRequest {
     /// assert_eq!(request.temperature, Some(0.5));
     /// ```
     pub fn new(prompt: impl Into<Message>) -> Self {
-        Self::conversation(vec![prompt.into()])
+        Self::conversation(NonEmpty::new(prompt.into()))
     }
 
     /// A request for `chat_history` as given, with nothing else set.
-    fn conversation(chat_history: Vec<Message>) -> Self {
+    fn conversation(chat_history: NonEmpty<Message>) -> Self {
         Self {
             model: None,
             chat_history,
@@ -724,9 +697,9 @@ impl CompletionRequest {
     /// Add `messages` to the conversation in order, before the prompt (its
     /// last message).
     pub fn messages(mut self, messages: impl IntoIterator<Item = Message>) -> Self {
-        let prompt = self.chat_history.pop();
-        self.chat_history.extend(messages);
-        self.chat_history.extend(prompt);
+        for (at, message) in (self.chat_history.len() - 1..).zip(messages) {
+            self.chat_history.insert(at, message);
+        }
         self
     }
 
@@ -837,7 +810,7 @@ impl CompletionRequest {
     /// The input messages telemetry records: the conversation with the
     /// documents inserted after any leading system messages.
     pub fn messages_for_telemetry(&self) -> Vec<Message> {
-        self.chat_history_with_documents()
+        self.chat_history_with_documents().into_vec()
     }
 
     /// Log a typed field `key` that `additional_params` already overrides.
@@ -880,10 +853,9 @@ impl From<Message> for CompletionRequest {
     }
 }
 
-/// The conversation as given, ending with the prompt. An empty one fails
-/// [`CompletionRequest::validate_message_content`].
-impl From<Vec<Message>> for CompletionRequest {
-    fn from(chat_history: Vec<Message>) -> Self {
+/// The conversation as given, ending with the prompt.
+impl From<NonEmpty<Message>> for CompletionRequest {
+    fn from(chat_history: NonEmpty<Message>) -> Self {
         Self::conversation(chat_history)
     }
 }

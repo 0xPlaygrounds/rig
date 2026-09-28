@@ -2,52 +2,68 @@
   "header": {
     "deliveries": [
       {
-        "batch": 6,
+        "batch": 4,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 6
+          "items": 3
         }
       },
       {
-        "batch": 7,
+        "batch": 5,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 6
+          "items": 13
         }
       },
       {
-        "batch": 8,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 4
-        }
-      },
-      {
-        "batch": 8,
+        "batch": 5,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 9,
+        "batch": 6,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 9,
+        "batch": 6,
         "id": 2,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
+        "batch": 11,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 6
+        }
+      },
+      {
+        "batch": 12,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 7
+        }
+      },
+      {
         "batch": 13,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 9
+        }
+      },
+      {
+        "batch": 14,
         "id": 3,
         "kind": {
           "delivery": "stream",
@@ -56,22 +72,6 @@
       },
       {
         "batch": 14,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 4
-        }
-      },
-      {
-        "batch": 15,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 18
-        }
-      },
-      {
-        "batch": 15,
         "id": 3,
         "kind": {
           "delivery": "outcome"
@@ -198,11 +198,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_00_P8B0j4zhcpojwuNDpaXL0376"
-              },
-              "provider": {
-                "call_id": "call_00_P8B0j4zhcpojwuNDpaXL0376"
+                "provider": {
+                  "call_id": "call_00_P8B0j4zhcpojwuNDpaXL0376"
+                }
               },
               "function": {
                 "name": "lookup_harbor_label",
@@ -214,11 +212,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_01_fbiiTimVqJyLyivp8wtu5600"
-              },
-              "provider": {
-                "call_id": "call_01_fbiiTimVqJyLyivp8wtu5600"
+                "provider": {
+                  "call_id": "call_01_fbiiTimVqJyLyivp8wtu5600"
+                }
               },
               "function": {
                 "name": "lookup_orchard_label",
@@ -368,11 +364,9 @@
           "block": {
             "type": "toolcall",
             "id": {
-              "origin": "explicit",
-              "id": "call_00_P8B0j4zhcpojwuNDpaXL0376"
-            },
-            "provider": {
-              "call_id": "call_00_P8B0j4zhcpojwuNDpaXL0376"
+              "provider": {
+                "call_id": "call_00_P8B0j4zhcpojwuNDpaXL0376"
+              }
             },
             "function": {
               "name": "lookup_harbor_label",
@@ -393,11 +387,9 @@
           "block": {
             "type": "toolcall",
             "id": {
-              "origin": "explicit",
-              "id": "call_01_fbiiTimVqJyLyivp8wtu5600"
-            },
-            "provider": {
-              "call_id": "call_01_fbiiTimVqJyLyivp8wtu5600"
+              "provider": {
+                "call_id": "call_01_fbiiTimVqJyLyivp8wtu5600"
+              }
             },
             "function": {
               "name": "lookup_orchard_label",
@@ -546,11 +538,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_00_P8B0j4zhcpojwuNDpaXL0376"
-                  },
-                  "provider": {
-                    "call_id": "call_00_P8B0j4zhcpojwuNDpaXL0376"
+                    "provider": {
+                      "call_id": "call_00_P8B0j4zhcpojwuNDpaXL0376"
+                    }
                   },
                   "function": {
                     "name": "lookup_harbor_label",
@@ -562,11 +552,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_01_fbiiTimVqJyLyivp8wtu5600"
-                  },
-                  "provider": {
-                    "call_id": "call_01_fbiiTimVqJyLyivp8wtu5600"
+                    "provider": {
+                      "call_id": "call_01_fbiiTimVqJyLyivp8wtu5600"
+                    }
                   },
                   "function": {
                     "name": "lookup_orchard_label",
@@ -583,11 +571,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_00_P8B0j4zhcpojwuNDpaXL0376"
-                  },
-                  "provider": {
-                    "call_id": "call_00_P8B0j4zhcpojwuNDpaXL0376"
+                    "provider": {
+                      "call_id": "call_00_P8B0j4zhcpojwuNDpaXL0376"
+                    }
                   },
                   "name": "lookup_harbor_label",
                   "content": [
@@ -600,11 +586,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_01_fbiiTimVqJyLyivp8wtu5600"
-                  },
-                  "provider": {
-                    "call_id": "call_01_fbiiTimVqJyLyivp8wtu5600"
+                    "provider": {
+                      "call_id": "call_01_fbiiTimVqJyLyivp8wtu5600"
+                    }
                   },
                   "name": "lookup_orchard_label",
                   "content": [

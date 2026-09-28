@@ -116,11 +116,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "DVb96VrYY"
-              },
-              "provider": {
-                "call_id": "DVb96VrYY"
+                "provider": {
+                  "call_id": "DVb96VrYY"
+                }
               },
               "function": {
                 "name": "add",
@@ -251,11 +249,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "DVb96VrYY"
-                  },
-                  "provider": {
-                    "call_id": "DVb96VrYY"
+                    "provider": {
+                      "call_id": "DVb96VrYY"
+                    }
                   },
                   "function": {
                     "name": "add",
@@ -275,11 +271,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "DVb96VrYY"
-                  },
-                  "provider": {
-                    "call_id": "DVb96VrYY"
+                    "provider": {
+                      "call_id": "DVb96VrYY"
+                    }
                   },
                   "name": "add",
                   "content": [

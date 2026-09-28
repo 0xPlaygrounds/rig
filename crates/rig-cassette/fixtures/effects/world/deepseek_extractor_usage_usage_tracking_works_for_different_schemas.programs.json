@@ -234,6 +234,7 @@
             "content": [
               {
                 "type": "reasoning",
+                "issuer": "deepseek",
                 "id": null,
                 "content": [
                   {
@@ -242,17 +243,14 @@
                       "text": "The user provided a text: \"Alice is a 25 year old developer.\" I need to extract structured data: name, age, profession.\n\nName: Alice\nAge: 25\nProfession: developer\n\nSubmit."
                     }
                   }
-                ],
-                "provider": "deepseek"
+                ]
               },
               {
                 "type": "toolcall",
                 "id": {
-                  "origin": "explicit",
-                  "id": "call_00_hnAM2ynSS6NSzW7jorYZ1678"
-                },
-                "provider": {
-                  "call_id": "call_00_hnAM2ynSS6NSzW7jorYZ1678"
+                  "provider": {
+                    "call_id": "call_00_hnAM2ynSS6NSzW7jorYZ1678"
+                  }
                 },
                 "function": {
                   "name": "submit",
@@ -287,6 +285,7 @@
               "choice": [
                 {
                   "type": "reasoning",
+                  "issuer": "deepseek",
                   "id": null,
                   "content": [
                     {
@@ -295,17 +294,14 @@
                         "text": "The user provided a text: \"Alice is a 25 year old developer.\" I need to extract structured data: name, age, profession.\n\nName: Alice\nAge: 25\nProfession: developer\n\nSubmit."
                       }
                     }
-                  ],
-                  "provider": "deepseek"
+                  ]
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_00_hnAM2ynSS6NSzW7jorYZ1678"
-                  },
-                  "provider": {
-                    "call_id": "call_00_hnAM2ynSS6NSzW7jorYZ1678"
+                    "provider": {
+                      "call_id": "call_00_hnAM2ynSS6NSzW7jorYZ1678"
+                    }
                   },
                   "function": {
                     "name": "submit",
@@ -390,6 +386,7 @@
           "bevy_ecs::hierarchy::ChildOf": 7,
           "rig_ecs::agent::content::parts::ContentPart": {
             "Reasoning": {
+              "issuer": "deepseek",
               "id": null,
               "content": [
                 {
@@ -398,8 +395,7 @@
                     "text": "The user provided a text: \"Alice is a 25 year old developer.\" I need to extract structured data: name, age, profession.\n\nName: Alice\nAge: 25\nProfession: developer\n\nSubmit."
                   }
                 }
-              ],
-              "provider": "deepseek"
+              ]
             }
           }
         },

@@ -106,11 +106,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_00_wf07vfvKnM3cr9STe6yJ8155"
-              },
-              "provider": {
-                "call_id": "call_00_wf07vfvKnM3cr9STe6yJ8155"
+                "provider": {
+                  "call_id": "call_00_wf07vfvKnM3cr9STe6yJ8155"
+                }
               },
               "function": {
                 "name": "final_result",

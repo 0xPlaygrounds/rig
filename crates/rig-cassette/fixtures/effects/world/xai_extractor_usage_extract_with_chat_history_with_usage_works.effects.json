@@ -120,24 +120,22 @@
           "choice": [
             {
               "type": "reasoning",
+              "issuer": "xai",
               "id": "rs_937fc0da-7da5-912f-a5e1-b9c203d20abd",
               "content": [
                 {
                   "type": "summary",
                   "content": "Extracting structured data from the provided address.\n\nIdentified the address components: street 123 Main St, city Springfield, state IL, and zip code 62701. Preparing to submit the structured data."
                 }
-              ],
-              "provider": "xai"
+              ]
             },
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call-ca18eae2-52f1-4b76-96f1-186c4fe2f711-0"
-              },
-              "provider": {
-                "call_id": "call-ca18eae2-52f1-4b76-96f1-186c4fe2f711-0",
-                "item_id": "fc_937fc0da-7da5-912f-a5e1-b9c203d20abd_0"
+                "provider": {
+                  "call_id": "call-ca18eae2-52f1-4b76-96f1-186c4fe2f711-0",
+                  "item_id": "fc_937fc0da-7da5-912f-a5e1-b9c203d20abd_0"
+                }
               },
               "function": {
                 "name": "submit",

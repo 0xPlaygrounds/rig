@@ -151,8 +151,8 @@ impl Wire for Chat {
         Descriptor::new(PROVIDER_NAME).model(self.model.as_str())
     }
 
-    fn encode(&self, mut request: CompletionRequest, mode: Mode) -> Result<Encoded, EncodeError> {
-        crate::message::retain_replayable_reasoning(&mut request.chat_history, &[PROVIDER_NAME]);
+    fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, EncodeError> {
+        let request = request.replayable_to(&[super::ISSUER])?;
         let mut body = OllamaCompletionRequest::try_from((self.model.as_str(), request))?;
         body.stream = mode == Mode::Streaming;
         crate::providers::internal::trace_json(

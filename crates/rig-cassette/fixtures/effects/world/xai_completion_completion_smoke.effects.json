@@ -75,14 +75,14 @@
           "choice": [
             {
               "type": "reasoning",
+              "issuer": "xai",
               "id": "rs_3e6e5491-75f1-9865-806f-a702d8c64dbe",
               "content": [
                 {
                   "type": "summary",
                   "content": "I need to explain Rust and why memory safety matters in one or two sentences."
                 }
-              ],
-              "provider": "xai"
+              ]
             },
             {
               "type": "text",

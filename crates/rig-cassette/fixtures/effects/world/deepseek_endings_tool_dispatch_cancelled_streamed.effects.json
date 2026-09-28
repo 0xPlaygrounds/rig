@@ -2,15 +2,95 @@
   "header": {
     "deliveries": [
       {
-        "batch": 5,
+        "batch": 6,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 16
+          "items": 2
         }
       },
       {
-        "batch": 5,
+        "batch": 7,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 8,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 9,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 10,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 11,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 12,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 13,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 14,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 15,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 16,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 16,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -132,11 +212,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_00_KXLDY4kwyoXncplZ29tW6381"
-              },
-              "provider": {
-                "call_id": "call_00_KXLDY4kwyoXncplZ29tW6381"
+                "provider": {
+                  "call_id": "call_00_KXLDY4kwyoXncplZ29tW6381"
+                }
               },
               "function": {
                 "name": "add",
@@ -306,11 +384,9 @@
           "block": {
             "type": "toolcall",
             "id": {
-              "origin": "explicit",
-              "id": "call_00_KXLDY4kwyoXncplZ29tW6381"
-            },
-            "provider": {
-              "call_id": "call_00_KXLDY4kwyoXncplZ29tW6381"
+              "provider": {
+                "call_id": "call_00_KXLDY4kwyoXncplZ29tW6381"
+              }
             },
             "function": {
               "name": "add",

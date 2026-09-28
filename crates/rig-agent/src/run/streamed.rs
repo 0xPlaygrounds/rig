@@ -14,10 +14,11 @@ use std::collections::{BTreeSet, HashMap};
 
 use serde::{Deserialize, Serialize};
 
+use rig_core::NonEmpty;
 use rig_core::completion::FinishReason;
 use rig_core::error::ProviderError;
 use rig_core::message::{
-    AssistantContent, Reasoning, ToolCall, ToolFunction, ToolResult, non_empty,
+    AssistantContent, Issuer, Reasoning, Sealed, ToolCall, ToolFunction, ToolName, ToolResult,
 };
 use rig_core::streaming::BlockId;
 
@@ -33,15 +34,16 @@ pub use rig_core::message::{canonical_streamed_choice, ordered_assistant_content
 /// [`ordered_assistant_content`], as an `Option` for slots where an empty
 /// assembly means "no message".
 pub fn ordered_streaming_assistant_content(
-    reasoning_items: impl IntoIterator<Item = Reasoning>,
+    reasoning_items: impl IntoIterator<Item = Sealed<Reasoning>>,
     text_items: impl IntoIterator<Item = AssistantContent>,
     trailing_items: impl IntoIterator<Item = AssistantContent>,
-) -> Option<Vec<AssistantContent>> {
-    non_empty(ordered_assistant_content(
+) -> Option<NonEmpty<AssistantContent>> {
+    NonEmpty::from_vec(ordered_assistant_content(
         reasoning_items,
         text_items,
         trailing_items,
     ))
+    .ok()
 }
 
 /// Detect unknown payloads containing assistant content that assembly would lose:
@@ -102,8 +104,8 @@ pub struct PartialStreamedTurn {
     /// Aggregated assistant text, when any text was streamed this turn.
     pub text: Option<String>,
     /// Accumulated reasoning, with any pending unsigned delta text assembled
-    /// into a block.
-    pub reasoning: Vec<Reasoning>,
+    /// into a block, sealed to the turn's issuer.
+    pub reasoning: Vec<Sealed<Reasoning>>,
     /// Tool calls already validated (or repaired) this turn.
     pub pending_tool_calls: Vec<ToolCall>,
 }
@@ -155,7 +157,6 @@ impl PartialStreamedTurn {
             .map(|tool_call| {
                 tool_result_message(
                     tool_call.id.clone(),
-                    tool_call.provider.clone(),
                     tool_call.function.name.clone(),
                     TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER.to_string(),
                 )
@@ -163,13 +164,12 @@ impl PartialStreamedTurn {
             .collect::<Vec<_>>();
         retry_results.push(tool_result_message(
             invalid_tool_call.id,
-            invalid_tool_call.provider,
             invalid_tool_call.function.name,
             feedback,
         ));
 
         let user_message = Message::User {
-            content: retry_results,
+            content: NonEmpty::from_vec(retry_results).ok()?,
         };
 
         Some((assistant_message, user_message))
@@ -193,7 +193,7 @@ pub struct StreamedTurn {
     /// `(tool_call_id, block_id)` pairs for this turn's tool calls,
     /// in emission order. Carried into the run state so a resumed process
     /// keeps the IDs consumers already saw in tool-call deltas.
-    pub block_ids: Vec<(rig_core::message::ToolCallId, BlockId)>,
+    pub block_ids: Vec<(rig_core::message::CallId, BlockId)>,
     /// Provider-reported terminal reason for this turn, when available.
     pub finish_reason: Option<FinishReason>,
 }
@@ -387,7 +387,7 @@ pub struct StreamedTurnAssembler {
     /// The ids of calls an [`StreamedResolution::Ignored`] dropped: they
     /// are still in the provider's own view of the turn (the stream's
     /// snapshot) and must not come back through it at [`Self::finish`].
-    ignored_calls: Vec<rig_core::message::ToolCallId>,
+    ignored_calls: Vec<rig_core::message::CallId>,
     /// Terminal reason from this turn's provider final record, retained so
     /// [`Self::finish`] can carry it onto the [`StreamedTurn`].
     finish_reason: Option<FinishReason>,
@@ -481,12 +481,13 @@ impl StreamedTurnAssembler {
     fn canonical_choice_with(
         pending_tool_calls: Vec<(ToolCall, BlockId)>,
         reasoning: Vec<Reasoning>,
+        issuer: &Issuer,
         provider_choice: &[AssistantContent],
     ) -> Vec<AssistantContent> {
         if !pending_tool_calls.is_empty() || !reasoning.is_empty() {
             let parts = reasoning
                 .into_iter()
-                .map(AssistantContent::Reasoning)
+                .map(|reasoning| AssistantContent::Reasoning(reasoning.sealed(issuer.clone())))
                 .chain(assistant_text_items_from_choice(provider_choice))
                 .chain(
                     pending_tool_calls
@@ -669,7 +670,9 @@ impl StreamedTurnAssembler {
                     },
                 block,
             } => {
-                if let Some(AssistantContent::Reasoning(reasoning)) = block {
+                if let Some(AssistantContent::Reasoning(reasoning)) = block
+                    && let Some(reasoning) = reasoning.open(reasoning.issuer())
+                {
                     self.ingest_completed_reasoning(reasoning, id, restatement.is_some());
                 } else if let Some(part) = self.reasoning_parts.iter_mut().rev().find(|part| {
                     part.matches_key(id) && matches!(part.state, ReasoningPartState::Pending(_))
@@ -684,7 +687,6 @@ impl StreamedTurnAssembler {
                         Reasoning::new(text).content
                     };
                     part.state = ReasoningPartState::Completed(Reasoning {
-                        provider: None,
                         id: part.provider_id.clone(),
                         content,
                     });
@@ -742,7 +744,10 @@ impl StreamedTurnAssembler {
                     self.delta_states.remove(block_id);
                     return Ok(Vec::new());
                 };
-                if !self.allowed_tool_names.contains(&tool_call.function.name) {
+                if !self
+                    .allowed_tool_names
+                    .contains(tool_call.function.name.as_str())
+                {
                     return Ok(self.surface_invalid_call(
                         tool_call.clone(),
                         block_id.clone(),
@@ -781,8 +786,13 @@ impl StreamedTurnAssembler {
                                 .get(&key)
                                 .map(|state| state.buffered_arguments.join(""))
                                 .unwrap_or_default();
+                            let Ok(tool_name) = ToolName::new(name.clone()) else {
+                                return Err(ProviderError::Response(format!(
+                                    "streamed tool call for block_id `{key}` named no tool"
+                                )));
+                            };
                             let tool_call =
-                                self.name_delta_diagnostic_tool_call(&key, name, &buffered_args);
+                                self.name_delta_diagnostic_tool_call(tool_name, &buffered_args);
                             return Ok(self.surface_invalid_call(
                                 tool_call,
                                 block_id.clone(),
@@ -872,7 +882,9 @@ impl StreamedTurnAssembler {
                     block_id,
                 },
             ) => {
-                tool_call.function.name.clone_from(tool_name);
+                if let Ok(tool_name) = ToolName::new(tool_name.clone()) {
+                    tool_call.function.name = tool_name;
+                }
                 self.pending_tool_calls.push((tool_call, block_id));
                 Vec::new()
             }
@@ -905,9 +917,8 @@ impl StreamedTurnAssembler {
                 Vec::new()
             }
             (StreamedResolution::Ignored, PendingInvalid::NameDelta { block_id }) => {
-                // Retain a tombstone so later deltas cannot buffer or resurrect this call.
-                self.ignored_calls
-                    .push(rig_core::message::ToolCallId::from_block(&block_id));
+                // Retain a tombstone so later deltas cannot buffer or resurrect
+                // this call; its end records the id it completes under.
                 let state = self.delta_states.entry(block_id).or_default();
                 state.buffered_arguments.clear();
                 state.name_validated = false;
@@ -932,19 +943,17 @@ impl StreamedTurnAssembler {
     }
 
     /// Snapshot of the turn so far, for diagnostics and rollback messages.
-    /// Its reasoning records `issuer` as in [`Self::finish`].
+    /// Its reasoning is sealed to `issuer` as in [`Self::finish`].
     pub fn partial_turn(
         &self,
         message_id: Option<String>,
         issuer: Option<&str>,
     ) -> PartialStreamedTurn {
+        let issuer = turn_issuer(issuer);
         let reasoning = self
             .assembled_reasoning()
             .into_iter()
-            .map(|reasoning| match (&reasoning.provider, issuer) {
-                (None, Some(issuer)) => reasoning.with_provider(issuer),
-                _ => reasoning,
-            })
+            .map(|reasoning| reasoning.sealed(issuer.clone()))
             .collect();
 
         PartialStreamedTurn {
@@ -962,9 +971,8 @@ impl StreamedTurnAssembler {
     /// Assemble the completed turn. `final_choice` is the provider's
     /// aggregated choice for the turn (the stream fold's snapshot) and
     /// `issuer` the service its reasoning came from (the fold's
-    /// reasoning issuer),
-    /// recorded on every reasoning part that names none. With no issuer the
-    /// reasoning keeps unknown provenance, which every request replays.
+    /// reasoning issuer), which every reasoning part is sealed to. With no
+    /// issuer the reasoning opens for no service, so it is never replayed.
     pub fn finish(
         mut self,
         message_id: Option<String>,
@@ -973,7 +981,7 @@ impl StreamedTurnAssembler {
     ) -> StreamedTurn {
         let reasoning = self.drain_reasoning();
         let pending_tool_calls = std::mem::take(&mut self.pending_tool_calls);
-        let block_ids: Vec<(rig_core::message::ToolCallId, BlockId)> = pending_tool_calls
+        let block_ids: Vec<(rig_core::message::CallId, BlockId)> = pending_tool_calls
             .iter()
             .map(|(tool_call, block_id)| (tool_call.id.clone(), block_id.clone()))
             .collect();
@@ -990,11 +998,14 @@ impl StreamedTurnAssembler {
             })
             .cloned()
             .collect();
-        let choice = Self::canonical_choice_with(pending_tool_calls, reasoning, &provider_choice);
-        let choice = match issuer {
-            Some(issuer) => rig_core::streaming::stamp_reasoning(choice, issuer),
-            None => choice,
-        };
+        let sealed_to = turn_issuer(issuer);
+        let choice = Self::canonical_choice_with(
+            pending_tool_calls,
+            reasoning,
+            &sealed_to,
+            &provider_choice,
+        );
+        let choice = rig_core::streaming::stamp_reasoning(choice, sealed_to.as_str());
 
         StreamedTurn {
             message_id,
@@ -1035,22 +1046,22 @@ impl StreamedTurnAssembler {
         &mut self,
         detail: &rig_core::error::MalformedToolInput,
     ) -> Vec<StreamedTurnEvent> {
-        let tool_call = ToolCall {
-            id: detail.id.clone(),
-            provider: detail.provider.clone(),
-            function: rig_core::message::ToolFunction {
-                name: detail.name.clone(),
+        let Ok(name) = ToolName::new(detail.name.clone()) else {
+            return Vec::new();
+        };
+        let tool_call = ToolCall::new(
+            detail.id.clone(),
+            rig_core::message::ToolFunction {
+                name,
                 arguments: serde_json::Value::Null,
             },
-            signature: None,
-            additional_params: None,
-        };
-        let block_id = detail
-            .provider
-            .as_ref()
-            .map(|provider| BlockId::wire(provider.call_id.as_str()))
-            .or_else(|| detail.id.generated().cloned())
-            .unwrap_or_else(|| BlockId::wire(detail.id.wire_hint().as_ref()));
+        );
+        let block_id = BlockId::wire(detail.id.wire().as_ref());
+        // A call rig issued the id for was assembled under a block key that
+        // is not its id: its unvalidated delta state is the one to clear.
+        if detail.id.is_local() {
+            self.delta_states.retain(|_, state| state.name_validated);
+        }
         // The accumulator's block is closed; any delta bookkeeping this
         // assembler kept for it must not trip the pending-delta check.
         self.delta_states.remove(&block_id);
@@ -1065,22 +1076,17 @@ impl StreamedTurnAssembler {
         )
     }
 
-    fn name_delta_diagnostic_tool_call(
-        &self,
-        key: &BlockId,
-        name: &str,
-        buffered_args: &str,
-    ) -> ToolCall {
+    fn name_delta_diagnostic_tool_call(&self, name: ToolName, buffered_args: &str) -> ToolCall {
         let diagnostic_args = if buffered_args.trim().is_empty() {
             serde_json::Value::Null
         } else {
             serde_json::from_str(buffered_args).unwrap_or(serde_json::Value::Null)
         };
-        // Provider identity is not known yet; use the block's deterministic ID
-        // to correlate diagnostics and rollback results without inventing a provider ID.
+        // The call has not completed, so no provider id names it: rig issues
+        // one to correlate diagnostics and rollback results.
         ToolCall::new(
-            rig_core::message::ToolCallId::from_block(key),
-            ToolFunction::new(name.to_string(), diagnostic_args),
+            rig_core::message::CallId::Local(rig_core::message::LocalCallId::new()),
+            ToolFunction::new(name, diagnostic_args),
         )
     }
 
@@ -1105,3 +1111,9 @@ impl StreamedTurnAssembler {
 
 #[cfg(test)]
 mod tests;
+
+/// The issuer a streamed turn's reasoning is sealed to: the one the stream
+/// named, else one no service accepts.
+fn turn_issuer(issuer: Option<&str>) -> Issuer {
+    Issuer::new(issuer.unwrap_or_default().to_owned())
+}

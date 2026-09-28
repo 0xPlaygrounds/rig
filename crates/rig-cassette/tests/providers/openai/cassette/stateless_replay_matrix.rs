@@ -96,13 +96,13 @@ fn provider_reply(response: &rig::completion::CompletionResponse) -> ProviderRes
 /// Two blocking turns, threading turn 1's normalized response back as history.
 async fn two_turn_conversation(client: OpenAiModels) -> (ProviderResponse, ProviderResponse) {
     let model = client.completion(openai::GPT_5_6_SOL);
-    let mut history = vec![Message::user(TURN_ONE)];
+    let mut history = rig::NonEmpty::new(Message::user(TURN_ONE));
     let first = model
         .call(history.clone())
         .await
         .expect("turn 1 should succeed");
     let first_reply = provider_reply(&first);
-    history.push(first.into());
+    history.extend(first.message());
     history.push(Message::user(TURN_TWO));
     let second = model.call(history).await.expect("turn 2 should succeed");
     (first_reply, provider_reply(&second))

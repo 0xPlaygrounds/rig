@@ -91,11 +91,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "toolu_01XFZcXvPmjr2KnzE9K4WJV5"
-              },
-              "provider": {
-                "call_id": "toolu_01XFZcXvPmjr2KnzE9K4WJV5"
+                "provider": {
+                  "call_id": "toolu_01XFZcXvPmjr2KnzE9K4WJV5"
+                }
               },
               "function": {
                 "name": "final_result",

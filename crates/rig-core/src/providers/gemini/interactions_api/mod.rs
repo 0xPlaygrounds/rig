@@ -25,6 +25,11 @@ pub use interactions_api_types::*;
 /// Gemini provider name used in normalized records and telemetry.
 pub(crate) const PROVIDER_NAME: &str = "gcp.gemini";
 
+/// The issuer of Gemini's reasoning, which is the only reasoning this wire
+/// replays.
+pub(crate) const ISSUER: crate::message::Issuer =
+    crate::message::Issuer::from_static(PROVIDER_NAME);
+
 /// Create interactions with `POST /v1beta/interactions`.
 /// Streaming mode sets `alt=sse` and `stream: true`; unary mode reads a whole resource.
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -62,10 +67,10 @@ impl crate::wire::Wire for Interactions {
 
     fn encode(
         &self,
-        mut request: CompletionRequest,
+        request: CompletionRequest,
         mode: crate::wire::Mode,
     ) -> Result<crate::wire::Encoded, EncodeError> {
-        crate::message::retain_replayable_reasoning(&mut request.chat_history, &[PROVIDER_NAME]);
+        let request = request.replayable_to(&[ISSUER])?;
         // `stream` is part of the request body on this wire, so the mode is
         // in the bytes as well as in the path.
         let streaming = matches!(mode, crate::wire::Mode::Streaming);
@@ -201,9 +206,6 @@ pub(crate) fn create_request_body(
 
     let mut history = Vec::new();
     history.extend(chat_history);
-    // functionResponse.name keys the replay: cross-provider ingested
-    // results arrive with an empty name and their call carries it.
-    crate::providers::internal::resolve_empty_tool_result_names(&mut history);
     let (history_system, history) = split_system_messages_from_history(history);
 
     let tool_ids = crate::providers::internal::tool_call_ids::ToolCallIds::new(&history)
@@ -1013,6 +1015,13 @@ pub mod interactions_api_types {
                 crate::completion::Message::Assistant { content, .. } => {
                     let contents = content
                         .into_iter()
+                        // Reasoning another service issued is not replayed.
+                        .filter(|part| match part {
+                            crate::message::AssistantContent::Reasoning(reasoning) => {
+                                reasoning.open(&super::ISSUER).is_some()
+                            }
+                            _ => true,
+                        })
                         .map(Content::try_from)
                         .collect::<Result<Vec<_>, _>>()?;
                     Ok(Self::split(contents, |content| Self::ModelOutput {
@@ -1495,7 +1504,7 @@ pub mod interactions_api_types {
                 }
                 message::UserContent::ToolResult(tool_result) => {
                     // The wire requires a call id even when the original provider issued none.
-                    let call_id = tool_result.wire_call_id().into_owned();
+                    let call_id = tool_result.call.wire().into_owned();
                     let name = tool_result.name;
 
                     let mut contents = tool_result.content.into_iter().collect::<Vec<_>>();
@@ -1533,7 +1542,7 @@ pub mod interactions_api_types {
                     };
 
                     Ok(Self::FunctionResult(FunctionResultContent {
-                        name: Some(name),
+                        name: Some(name.into()),
                         is_error: None,
                         result: Some(result),
                         call_id: Some(call_id),
@@ -1646,14 +1655,23 @@ pub mod interactions_api_types {
                     }))
                 }
                 message::AssistantContent::ToolCall(tool_call) => {
-                    let call_id = tool_call.wire_call_id().into_owned();
+                    let call_id = tool_call.id.wire().into_owned();
                     Ok(Self::FunctionCall(FunctionCallContent {
-                        name: Some(tool_call.function.name),
+                        name: Some(tool_call.function.name.into()),
                         arguments: Some(tool_call.function.arguments),
                         id: Some(call_id),
                     }))
                 }
-                message::AssistantContent::Reasoning(message::Reasoning { content, .. }) => {
+                message::AssistantContent::Reasoning(reasoning) => {
+                    let content = reasoning
+                        .open(&super::ISSUER)
+                        .ok_or_else(|| {
+                            message::MessageError::ConversionError(
+                                "Gemini cannot replay reasoning another service issued".to_owned(),
+                            )
+                        })?
+                        .content
+                        .clone();
                     // Preserve signature-only thoughts without empty summary items,
                     // which the API rejects.
                     let signature = content.iter().find_map(|part| match part {

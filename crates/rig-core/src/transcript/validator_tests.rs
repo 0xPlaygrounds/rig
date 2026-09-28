@@ -3,10 +3,9 @@ use crate::message::{ToolCall, ToolFunction, ToolResult};
 
 fn call(id: &str) -> AssistantContent {
     AssistantContent::ToolCall(ToolCall {
-        id: ToolCallId::new_or_minted(id, 0),
-        provider: None,
+        id: crate::message::CallId::from_wire(id),
         function: ToolFunction {
-            name: "add".into(),
+            name: crate::message::ToolName::new("add").expect("tool name"),
             arguments: serde_json::json!({}),
         },
         additional_params: None,
@@ -15,14 +14,16 @@ fn call(id: &str) -> AssistantContent {
 }
 fn result(id: &str) -> UserContent {
     UserContent::ToolResult(ToolResult {
-        call: ToolCallId::new_or_minted(id, 0),
-        provider: None,
-        name: "add".into(),
-        content: vec![ToolResultContent::text("3")],
+        call: crate::message::CallId::from_wire(id),
+        name: crate::message::ToolName::new("add").expect("tool name"),
+        content: crate::NonEmpty::new(ToolResultContent::text("3")),
     })
 }
 fn assistant(content: Vec<AssistantContent>) -> Message {
-    Message::Assistant { id: None, content }
+    Message::Assistant {
+        id: None,
+        content: crate::NonEmpty::from_vec(content).expect("non-empty"),
+    }
 }
 
 #[test]
@@ -31,7 +32,7 @@ fn canonical_transcripts_pass() {
         Message::user("hi"),
         assistant(vec![call("c1")]),
         Message::User {
-            content: vec![result("c1")],
+            content: crate::NonEmpty::new(result("c1")),
         },
         assistant(vec![AssistantContent::text("done")]),
         Message::user("thanks"),
@@ -62,7 +63,7 @@ fn unanswered_and_orphan_results_are_rejected() {
     let orphan = vec![
         Message::user("hi"),
         Message::User {
-            content: vec![result("ghost")],
+            content: crate::NonEmpty::new(result("ghost")),
         },
     ];
     assert!(matches!(
@@ -76,43 +77,37 @@ fn unanswered_and_orphan_results_are_rejected() {
     ));
 }
 
-/// Equal-looking IDs from separate namespaces answer only their own calls.
+/// A result answers only the call whose id it carries.
 #[test]
-fn typed_identity_transcripts_preserve_namespaces_and_completion_scope() {
-    let generated = ToolCallId::minted(0);
-    let explicit = ToolCallId::new("tool-0").expect("explicit ID");
-    let call_for = |id: ToolCallId| {
+fn a_result_answers_only_its_own_call() {
+    let (first, second) = (
+        crate::message::CallId::from_wire(""),
+        crate::message::CallId::from_wire(""),
+    );
+    let tool = crate::message::ToolName::new("add").expect("tool name");
+    let call_for = |id: crate::message::CallId| {
         AssistantContent::ToolCall(ToolCall::new(
             id,
-            ToolFunction::new("add".into(), serde_json::json!({})),
+            ToolFunction::new(tool.clone(), serde_json::json!({})),
         ))
     };
-    let result_for = |id: ToolCallId| {
-        UserContent::ToolResult(ToolResult {
-            call: id,
-            provider: None,
-            name: "add".into(),
-            content: vec![ToolResultContent::text("3")],
-        })
+    let result_for = |id: crate::message::CallId| {
+        UserContent::tool_result(id, tool.clone(), ToolResultContent::text("3"))
     };
     let history = vec![
-        assistant(vec![
-            call_for(generated.clone()),
-            call_for(explicit.clone()),
-        ]),
+        assistant(vec![call_for(first.clone()), call_for(second.clone())]),
         Message::User {
-            content: vec![result_for(explicit.clone()), result_for(generated.clone())],
-        },
-        assistant(vec![call_for(generated.clone())]),
-        Message::User {
-            content: vec![result_for(generated.clone())],
+            content: crate::NonEmpty::with_rest(
+                result_for(second.clone()),
+                [result_for(first.clone())],
+            ),
         },
     ];
     assert_eq!(validate_canonical(&history), Ok(()));
     let mismatched = vec![
-        assistant(vec![call_for(generated)]),
+        assistant(vec![call_for(first)]),
         Message::User {
-            content: vec![result_for(explicit)],
+            content: crate::NonEmpty::new(result_for(second)),
         },
     ];
     assert!(matches!(

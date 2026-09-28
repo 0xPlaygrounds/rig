@@ -758,7 +758,7 @@ fn completion_call_event() -> CompletionCallEvent<'static> {
 fn invalid_tool_call_context() -> InvalidToolCallContext {
     InvalidToolCallContext {
         tool_name: "unknown".into(),
-        tool_call_id: rig_core::message::ToolCallId::new("tc1"),
+        tool_call_id: Some(rig_core::message::CallId::from_wire("tc1")),
         block_id: Some(BlockId::wire("tc1")),
         args: Some("{}".into()),
         available_tools: vec!["add".into()],

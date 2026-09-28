@@ -52,7 +52,7 @@ fn history_tool_calls(history: &[Message]) -> Vec<ToolEvent> {
                 if let AssistantContent::ToolCall(tool_call) = item {
                     calls.push(ToolEvent {
                         message_index,
-                        name: tool_call.function.name.clone(),
+                        name: tool_call.function.name.clone().into(),
                         call_id: tool_call.id.to_string(),
                     });
                 }
@@ -70,7 +70,7 @@ fn history_tool_results(history: &[Message]) -> Vec<ToolEvent> {
                 if let UserContent::ToolResult(tool_result) = item {
                     results.push(ToolEvent {
                         message_index,
-                        name: tool_result.name.clone(),
+                        name: tool_result.name.clone().into(),
                         call_id: tool_result.call.to_string(),
                     });
                 }
@@ -319,7 +319,7 @@ async fn long_history_replay_nonstreaming() {
                     _ => None,
                 })
                 .expect("first turn should call lookup_harbor_label");
-            let call_id = tool_call.provider.as_ref().map_or_else(
+            let call_id = tool_call.id.provider().as_ref().map_or_else(
                 || tool_call.id.to_string(),
                 |provider| provider.call_id.clone(),
             );
@@ -340,18 +340,17 @@ async fn long_history_replay_nonstreaming() {
             .message(Message::user("Now look up the harbor label with the tool."))
             .message(Message::Assistant {
                 id: None,
-                content: vec![AssistantContent::tool_call_with_call_id(
+                content: rig_core::NonEmpty::new(AssistantContent::tool_call_with_call_id(
                     "history_tool_1",
                     call_id.clone(),
-                    AlphaSignal::NAME,
+                    rig_core::message::ToolName::new(AlphaSignal::NAME).expect("tool name"),
                     serde_json::json!({}),
-                )],
+                )),
             })
-            .message(Message::from(UserContent::tool_result_with_call_id(
-                "history_tool_1",
-                call_id,
-                AlphaSignal::NAME,
-                vec![rig::message::ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)],
+            .message(Message::from(UserContent::tool_result(
+                rig_core::message::CallId::from_dual_wire("history_tool_1", call_id),
+                rig_core::message::ToolName::new(AlphaSignal::NAME).expect("tool name"),
+                rig_core::NonEmpty::new(rig::message::ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)),
             )))
             .message(Message::assistant("The harbor label is crimson-harbor."))
             .tool(rig::tool::tool_definition(&AlphaSignal));

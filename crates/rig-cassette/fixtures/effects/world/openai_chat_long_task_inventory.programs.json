@@ -296,11 +296,9 @@
               {
                 "type": "toolcall",
                 "id": {
-                  "origin": "explicit",
-                  "id": "call_oe40Ca93Wz7VKrQfNIuO7BG4"
-                },
-                "provider": {
-                  "call_id": "call_oe40Ca93Wz7VKrQfNIuO7BG4"
+                  "provider": {
+                    "call_id": "call_oe40Ca93Wz7VKrQfNIuO7BG4"
+                  }
                 },
                 "function": {
                   "name": "task_operation",
@@ -349,11 +347,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_oe40Ca93Wz7VKrQfNIuO7BG4"
-                  },
-                  "provider": {
-                    "call_id": "call_oe40Ca93Wz7VKrQfNIuO7BG4"
+                    "provider": {
+                      "call_id": "call_oe40Ca93Wz7VKrQfNIuO7BG4"
+                    }
                   },
                   "function": {
                     "name": "task_operation",
@@ -437,11 +433,9 @@
           "rig_ecs::agent::ToolCallSlot": {
             "index": 0,
             "id": {
-              "origin": "explicit",
-              "id": "call_oe40Ca93Wz7VKrQfNIuO7BG4"
-            },
-            "provider": {
-              "call_id": "call_oe40Ca93Wz7VKrQfNIuO7BG4"
+              "provider": {
+                "call_id": "call_oe40Ca93Wz7VKrQfNIuO7BG4"
+              }
             },
             "name": "task_operation"
           },
@@ -486,11 +480,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolCall": {
               "id": {
-                "origin": "explicit",
-                "id": "call_oe40Ca93Wz7VKrQfNIuO7BG4"
-              },
-              "provider": {
-                "call_id": "call_oe40Ca93Wz7VKrQfNIuO7BG4"
+                "provider": {
+                  "call_id": "call_oe40Ca93Wz7VKrQfNIuO7BG4"
+                }
               },
               "function": {
                 "name": "task_operation",
@@ -515,11 +507,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolResult": {
               "call": {
-                "origin": "explicit",
-                "id": "call_oe40Ca93Wz7VKrQfNIuO7BG4"
-              },
-              "provider": {
-                "call_id": "call_oe40Ca93Wz7VKrQfNIuO7BG4"
+                "provider": {
+                  "call_id": "call_oe40Ca93Wz7VKrQfNIuO7BG4"
+                }
               },
               "name": "task_operation"
             }
@@ -549,11 +539,9 @@
               {
                 "type": "toolcall",
                 "id": {
-                  "origin": "explicit",
-                  "id": "call_DXFUt4ILPEGV2YVe9ciS2iGs"
-                },
-                "provider": {
-                  "call_id": "call_DXFUt4ILPEGV2YVe9ciS2iGs"
+                  "provider": {
+                    "call_id": "call_DXFUt4ILPEGV2YVe9ciS2iGs"
+                  }
                 },
                 "function": {
                   "name": "task_operation",
@@ -602,11 +590,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_DXFUt4ILPEGV2YVe9ciS2iGs"
-                  },
-                  "provider": {
-                    "call_id": "call_DXFUt4ILPEGV2YVe9ciS2iGs"
+                    "provider": {
+                      "call_id": "call_DXFUt4ILPEGV2YVe9ciS2iGs"
+                    }
                   },
                   "function": {
                     "name": "task_operation",
@@ -690,11 +676,9 @@
           "rig_ecs::agent::ToolCallSlot": {
             "index": 0,
             "id": {
-              "origin": "explicit",
-              "id": "call_DXFUt4ILPEGV2YVe9ciS2iGs"
-            },
-            "provider": {
-              "call_id": "call_DXFUt4ILPEGV2YVe9ciS2iGs"
+              "provider": {
+                "call_id": "call_DXFUt4ILPEGV2YVe9ciS2iGs"
+              }
             },
             "name": "task_operation"
           },
@@ -735,11 +719,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolCall": {
               "id": {
-                "origin": "explicit",
-                "id": "call_DXFUt4ILPEGV2YVe9ciS2iGs"
-              },
-              "provider": {
-                "call_id": "call_DXFUt4ILPEGV2YVe9ciS2iGs"
+                "provider": {
+                  "call_id": "call_DXFUt4ILPEGV2YVe9ciS2iGs"
+                }
               },
               "function": {
                 "name": "task_operation",
@@ -764,11 +746,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolResult": {
               "call": {
-                "origin": "explicit",
-                "id": "call_DXFUt4ILPEGV2YVe9ciS2iGs"
-              },
-              "provider": {
-                "call_id": "call_DXFUt4ILPEGV2YVe9ciS2iGs"
+                "provider": {
+                  "call_id": "call_DXFUt4ILPEGV2YVe9ciS2iGs"
+                }
               },
               "name": "task_operation"
             }
@@ -794,11 +774,9 @@
               {
                 "type": "toolcall",
                 "id": {
-                  "origin": "explicit",
-                  "id": "call_kV8MJ1JQ9MCRUdIIS7SqwBJU"
-                },
-                "provider": {
-                  "call_id": "call_kV8MJ1JQ9MCRUdIIS7SqwBJU"
+                  "provider": {
+                    "call_id": "call_kV8MJ1JQ9MCRUdIIS7SqwBJU"
+                  }
                 },
                 "function": {
                   "name": "task_operation",
@@ -847,11 +825,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_kV8MJ1JQ9MCRUdIIS7SqwBJU"
-                  },
-                  "provider": {
-                    "call_id": "call_kV8MJ1JQ9MCRUdIIS7SqwBJU"
+                    "provider": {
+                      "call_id": "call_kV8MJ1JQ9MCRUdIIS7SqwBJU"
+                    }
                   },
                   "function": {
                     "name": "task_operation",
@@ -935,11 +911,9 @@
           "rig_ecs::agent::ToolCallSlot": {
             "index": 0,
             "id": {
-              "origin": "explicit",
-              "id": "call_kV8MJ1JQ9MCRUdIIS7SqwBJU"
-            },
-            "provider": {
-              "call_id": "call_kV8MJ1JQ9MCRUdIIS7SqwBJU"
+              "provider": {
+                "call_id": "call_kV8MJ1JQ9MCRUdIIS7SqwBJU"
+              }
             },
             "name": "task_operation"
           },
@@ -980,11 +954,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolCall": {
               "id": {
-                "origin": "explicit",
-                "id": "call_kV8MJ1JQ9MCRUdIIS7SqwBJU"
-              },
-              "provider": {
-                "call_id": "call_kV8MJ1JQ9MCRUdIIS7SqwBJU"
+                "provider": {
+                  "call_id": "call_kV8MJ1JQ9MCRUdIIS7SqwBJU"
+                }
               },
               "function": {
                 "name": "task_operation",
@@ -1009,11 +981,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolResult": {
               "call": {
-                "origin": "explicit",
-                "id": "call_kV8MJ1JQ9MCRUdIIS7SqwBJU"
-              },
-              "provider": {
-                "call_id": "call_kV8MJ1JQ9MCRUdIIS7SqwBJU"
+                "provider": {
+                  "call_id": "call_kV8MJ1JQ9MCRUdIIS7SqwBJU"
+                }
               },
               "name": "task_operation"
             }
@@ -1039,11 +1009,9 @@
               {
                 "type": "toolcall",
                 "id": {
-                  "origin": "explicit",
-                  "id": "call_moczuS2Ep6c0QxANuZeiyqNl"
-                },
-                "provider": {
-                  "call_id": "call_moczuS2Ep6c0QxANuZeiyqNl"
+                  "provider": {
+                    "call_id": "call_moczuS2Ep6c0QxANuZeiyqNl"
+                  }
                 },
                 "function": {
                   "name": "task_operation",
@@ -1059,11 +1027,9 @@
               {
                 "type": "toolcall",
                 "id": {
-                  "origin": "explicit",
-                  "id": "call_EwY8sramIdPPvUEjDQTico0i"
-                },
-                "provider": {
-                  "call_id": "call_EwY8sramIdPPvUEjDQTico0i"
+                  "provider": {
+                    "call_id": "call_EwY8sramIdPPvUEjDQTico0i"
+                  }
                 },
                 "function": {
                   "name": "task_operation",
@@ -1112,11 +1078,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_moczuS2Ep6c0QxANuZeiyqNl"
-                  },
-                  "provider": {
-                    "call_id": "call_moczuS2Ep6c0QxANuZeiyqNl"
+                    "provider": {
+                      "call_id": "call_moczuS2Ep6c0QxANuZeiyqNl"
+                    }
                   },
                   "function": {
                     "name": "task_operation",
@@ -1132,11 +1096,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_EwY8sramIdPPvUEjDQTico0i"
-                  },
-                  "provider": {
-                    "call_id": "call_EwY8sramIdPPvUEjDQTico0i"
+                    "provider": {
+                      "call_id": "call_EwY8sramIdPPvUEjDQTico0i"
+                    }
                   },
                   "function": {
                     "name": "task_operation",
@@ -1228,11 +1190,9 @@
           "rig_ecs::agent::ToolCallSlot": {
             "index": 0,
             "id": {
-              "origin": "explicit",
-              "id": "call_moczuS2Ep6c0QxANuZeiyqNl"
-            },
-            "provider": {
-              "call_id": "call_moczuS2Ep6c0QxANuZeiyqNl"
+              "provider": {
+                "call_id": "call_moczuS2Ep6c0QxANuZeiyqNl"
+              }
             },
             "name": "task_operation"
           },
@@ -1264,11 +1224,9 @@
           "rig_ecs::agent::ToolCallSlot": {
             "index": 1,
             "id": {
-              "origin": "explicit",
-              "id": "call_EwY8sramIdPPvUEjDQTico0i"
-            },
-            "provider": {
-              "call_id": "call_EwY8sramIdPPvUEjDQTico0i"
+              "provider": {
+                "call_id": "call_EwY8sramIdPPvUEjDQTico0i"
+              }
             },
             "name": "task_operation"
           },
@@ -1306,11 +1264,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolCall": {
               "id": {
-                "origin": "explicit",
-                "id": "call_moczuS2Ep6c0QxANuZeiyqNl"
-              },
-              "provider": {
-                "call_id": "call_moczuS2Ep6c0QxANuZeiyqNl"
+                "provider": {
+                  "call_id": "call_moczuS2Ep6c0QxANuZeiyqNl"
+                }
               },
               "function": {
                 "name": "task_operation",
@@ -1330,11 +1286,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolCall": {
               "id": {
-                "origin": "explicit",
-                "id": "call_EwY8sramIdPPvUEjDQTico0i"
-              },
-              "provider": {
-                "call_id": "call_EwY8sramIdPPvUEjDQTico0i"
+                "provider": {
+                  "call_id": "call_EwY8sramIdPPvUEjDQTico0i"
+                }
               },
               "function": {
                 "name": "task_operation",
@@ -1359,11 +1313,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolResult": {
               "call": {
-                "origin": "explicit",
-                "id": "call_moczuS2Ep6c0QxANuZeiyqNl"
-              },
-              "provider": {
-                "call_id": "call_moczuS2Ep6c0QxANuZeiyqNl"
+                "provider": {
+                  "call_id": "call_moczuS2Ep6c0QxANuZeiyqNl"
+                }
               },
               "name": "task_operation"
             }
@@ -1384,11 +1336,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolResult": {
               "call": {
-                "origin": "explicit",
-                "id": "call_EwY8sramIdPPvUEjDQTico0i"
-              },
-              "provider": {
-                "call_id": "call_EwY8sramIdPPvUEjDQTico0i"
+                "provider": {
+                  "call_id": "call_EwY8sramIdPPvUEjDQTico0i"
+                }
               },
               "name": "task_operation"
             }
@@ -1411,11 +1361,9 @@
               {
                 "type": "toolcall",
                 "id": {
-                  "origin": "explicit",
-                  "id": "call_PF2AbKRXCv48UNDE6ZCOly18"
-                },
-                "provider": {
-                  "call_id": "call_PF2AbKRXCv48UNDE6ZCOly18"
+                  "provider": {
+                    "call_id": "call_PF2AbKRXCv48UNDE6ZCOly18"
+                  }
                 },
                 "function": {
                   "name": "task_operation",
@@ -1464,11 +1412,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_PF2AbKRXCv48UNDE6ZCOly18"
-                  },
-                  "provider": {
-                    "call_id": "call_PF2AbKRXCv48UNDE6ZCOly18"
+                    "provider": {
+                      "call_id": "call_PF2AbKRXCv48UNDE6ZCOly18"
+                    }
                   },
                   "function": {
                     "name": "task_operation",
@@ -1552,11 +1498,9 @@
           "rig_ecs::agent::ToolCallSlot": {
             "index": 0,
             "id": {
-              "origin": "explicit",
-              "id": "call_PF2AbKRXCv48UNDE6ZCOly18"
-            },
-            "provider": {
-              "call_id": "call_PF2AbKRXCv48UNDE6ZCOly18"
+              "provider": {
+                "call_id": "call_PF2AbKRXCv48UNDE6ZCOly18"
+              }
             },
             "name": "task_operation"
           },
@@ -1597,11 +1541,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolCall": {
               "id": {
-                "origin": "explicit",
-                "id": "call_PF2AbKRXCv48UNDE6ZCOly18"
-              },
-              "provider": {
-                "call_id": "call_PF2AbKRXCv48UNDE6ZCOly18"
+                "provider": {
+                  "call_id": "call_PF2AbKRXCv48UNDE6ZCOly18"
+                }
               },
               "function": {
                 "name": "task_operation",
@@ -1626,11 +1568,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolResult": {
               "call": {
-                "origin": "explicit",
-                "id": "call_PF2AbKRXCv48UNDE6ZCOly18"
-              },
-              "provider": {
-                "call_id": "call_PF2AbKRXCv48UNDE6ZCOly18"
+                "provider": {
+                  "call_id": "call_PF2AbKRXCv48UNDE6ZCOly18"
+                }
               },
               "name": "task_operation"
             }
@@ -1656,11 +1596,9 @@
               {
                 "type": "toolcall",
                 "id": {
-                  "origin": "explicit",
-                  "id": "call_AwemcEpduZpEEC3rLtFat8Qp"
-                },
-                "provider": {
-                  "call_id": "call_AwemcEpduZpEEC3rLtFat8Qp"
+                  "provider": {
+                    "call_id": "call_AwemcEpduZpEEC3rLtFat8Qp"
+                  }
                 },
                 "function": {
                   "name": "task_operation",
@@ -1709,11 +1647,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_AwemcEpduZpEEC3rLtFat8Qp"
-                  },
-                  "provider": {
-                    "call_id": "call_AwemcEpduZpEEC3rLtFat8Qp"
+                    "provider": {
+                      "call_id": "call_AwemcEpduZpEEC3rLtFat8Qp"
+                    }
                   },
                   "function": {
                     "name": "task_operation",
@@ -1797,11 +1733,9 @@
           "rig_ecs::agent::ToolCallSlot": {
             "index": 0,
             "id": {
-              "origin": "explicit",
-              "id": "call_AwemcEpduZpEEC3rLtFat8Qp"
-            },
-            "provider": {
-              "call_id": "call_AwemcEpduZpEEC3rLtFat8Qp"
+              "provider": {
+                "call_id": "call_AwemcEpduZpEEC3rLtFat8Qp"
+              }
             },
             "name": "task_operation"
           },
@@ -1842,11 +1776,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolCall": {
               "id": {
-                "origin": "explicit",
-                "id": "call_AwemcEpduZpEEC3rLtFat8Qp"
-              },
-              "provider": {
-                "call_id": "call_AwemcEpduZpEEC3rLtFat8Qp"
+                "provider": {
+                  "call_id": "call_AwemcEpduZpEEC3rLtFat8Qp"
+                }
               },
               "function": {
                 "name": "task_operation",
@@ -1871,11 +1803,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolResult": {
               "call": {
-                "origin": "explicit",
-                "id": "call_AwemcEpduZpEEC3rLtFat8Qp"
-              },
-              "provider": {
-                "call_id": "call_AwemcEpduZpEEC3rLtFat8Qp"
+                "provider": {
+                  "call_id": "call_AwemcEpduZpEEC3rLtFat8Qp"
+                }
               },
               "name": "task_operation"
             }
@@ -1901,11 +1831,9 @@
               {
                 "type": "toolcall",
                 "id": {
-                  "origin": "explicit",
-                  "id": "call_Ii1EI9MWe6xQRr0CF4bqqwjt"
-                },
-                "provider": {
-                  "call_id": "call_Ii1EI9MWe6xQRr0CF4bqqwjt"
+                  "provider": {
+                    "call_id": "call_Ii1EI9MWe6xQRr0CF4bqqwjt"
+                  }
                 },
                 "function": {
                   "name": "task_operation",
@@ -1921,11 +1849,9 @@
               {
                 "type": "toolcall",
                 "id": {
-                  "origin": "explicit",
-                  "id": "call_6dHN09L69p10Gmqp7QJJUsyT"
-                },
-                "provider": {
-                  "call_id": "call_6dHN09L69p10Gmqp7QJJUsyT"
+                  "provider": {
+                    "call_id": "call_6dHN09L69p10Gmqp7QJJUsyT"
+                  }
                 },
                 "function": {
                   "name": "task_operation",
@@ -1974,11 +1900,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_Ii1EI9MWe6xQRr0CF4bqqwjt"
-                  },
-                  "provider": {
-                    "call_id": "call_Ii1EI9MWe6xQRr0CF4bqqwjt"
+                    "provider": {
+                      "call_id": "call_Ii1EI9MWe6xQRr0CF4bqqwjt"
+                    }
                   },
                   "function": {
                     "name": "task_operation",
@@ -1994,11 +1918,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_6dHN09L69p10Gmqp7QJJUsyT"
-                  },
-                  "provider": {
-                    "call_id": "call_6dHN09L69p10Gmqp7QJJUsyT"
+                    "provider": {
+                      "call_id": "call_6dHN09L69p10Gmqp7QJJUsyT"
+                    }
                   },
                   "function": {
                     "name": "task_operation",
@@ -2090,11 +2012,9 @@
           "rig_ecs::agent::ToolCallSlot": {
             "index": 0,
             "id": {
-              "origin": "explicit",
-              "id": "call_Ii1EI9MWe6xQRr0CF4bqqwjt"
-            },
-            "provider": {
-              "call_id": "call_Ii1EI9MWe6xQRr0CF4bqqwjt"
+              "provider": {
+                "call_id": "call_Ii1EI9MWe6xQRr0CF4bqqwjt"
+              }
             },
             "name": "task_operation"
           },
@@ -2126,11 +2046,9 @@
           "rig_ecs::agent::ToolCallSlot": {
             "index": 1,
             "id": {
-              "origin": "explicit",
-              "id": "call_6dHN09L69p10Gmqp7QJJUsyT"
-            },
-            "provider": {
-              "call_id": "call_6dHN09L69p10Gmqp7QJJUsyT"
+              "provider": {
+                "call_id": "call_6dHN09L69p10Gmqp7QJJUsyT"
+              }
             },
             "name": "task_operation"
           },
@@ -2168,11 +2086,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolCall": {
               "id": {
-                "origin": "explicit",
-                "id": "call_Ii1EI9MWe6xQRr0CF4bqqwjt"
-              },
-              "provider": {
-                "call_id": "call_Ii1EI9MWe6xQRr0CF4bqqwjt"
+                "provider": {
+                  "call_id": "call_Ii1EI9MWe6xQRr0CF4bqqwjt"
+                }
               },
               "function": {
                 "name": "task_operation",
@@ -2192,11 +2108,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolCall": {
               "id": {
-                "origin": "explicit",
-                "id": "call_6dHN09L69p10Gmqp7QJJUsyT"
-              },
-              "provider": {
-                "call_id": "call_6dHN09L69p10Gmqp7QJJUsyT"
+                "provider": {
+                  "call_id": "call_6dHN09L69p10Gmqp7QJJUsyT"
+                }
               },
               "function": {
                 "name": "task_operation",
@@ -2221,11 +2135,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolResult": {
               "call": {
-                "origin": "explicit",
-                "id": "call_Ii1EI9MWe6xQRr0CF4bqqwjt"
-              },
-              "provider": {
-                "call_id": "call_Ii1EI9MWe6xQRr0CF4bqqwjt"
+                "provider": {
+                  "call_id": "call_Ii1EI9MWe6xQRr0CF4bqqwjt"
+                }
               },
               "name": "task_operation"
             }
@@ -2246,11 +2158,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolResult": {
               "call": {
-                "origin": "explicit",
-                "id": "call_6dHN09L69p10Gmqp7QJJUsyT"
-              },
-              "provider": {
-                "call_id": "call_6dHN09L69p10Gmqp7QJJUsyT"
+                "provider": {
+                  "call_id": "call_6dHN09L69p10Gmqp7QJJUsyT"
+                }
               },
               "name": "task_operation"
             }
@@ -2273,11 +2183,9 @@
               {
                 "type": "toolcall",
                 "id": {
-                  "origin": "explicit",
-                  "id": "call_MctRnElQ4yMFx674yS7e1OqX"
-                },
-                "provider": {
-                  "call_id": "call_MctRnElQ4yMFx674yS7e1OqX"
+                  "provider": {
+                    "call_id": "call_MctRnElQ4yMFx674yS7e1OqX"
+                  }
                 },
                 "function": {
                   "name": "task_operation",
@@ -2326,11 +2234,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_MctRnElQ4yMFx674yS7e1OqX"
-                  },
-                  "provider": {
-                    "call_id": "call_MctRnElQ4yMFx674yS7e1OqX"
+                    "provider": {
+                      "call_id": "call_MctRnElQ4yMFx674yS7e1OqX"
+                    }
                   },
                   "function": {
                     "name": "task_operation",
@@ -2414,11 +2320,9 @@
           "rig_ecs::agent::ToolCallSlot": {
             "index": 0,
             "id": {
-              "origin": "explicit",
-              "id": "call_MctRnElQ4yMFx674yS7e1OqX"
-            },
-            "provider": {
-              "call_id": "call_MctRnElQ4yMFx674yS7e1OqX"
+              "provider": {
+                "call_id": "call_MctRnElQ4yMFx674yS7e1OqX"
+              }
             },
             "name": "task_operation"
           },
@@ -2459,11 +2363,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolCall": {
               "id": {
-                "origin": "explicit",
-                "id": "call_MctRnElQ4yMFx674yS7e1OqX"
-              },
-              "provider": {
-                "call_id": "call_MctRnElQ4yMFx674yS7e1OqX"
+                "provider": {
+                  "call_id": "call_MctRnElQ4yMFx674yS7e1OqX"
+                }
               },
               "function": {
                 "name": "task_operation",
@@ -2488,11 +2390,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolResult": {
               "call": {
-                "origin": "explicit",
-                "id": "call_MctRnElQ4yMFx674yS7e1OqX"
-              },
-              "provider": {
-                "call_id": "call_MctRnElQ4yMFx674yS7e1OqX"
+                "provider": {
+                  "call_id": "call_MctRnElQ4yMFx674yS7e1OqX"
+                }
               },
               "name": "task_operation"
             }
@@ -2518,11 +2418,9 @@
               {
                 "type": "toolcall",
                 "id": {
-                  "origin": "explicit",
-                  "id": "call_MRZBU2n12ujwB3tkINL8xXlA"
-                },
-                "provider": {
-                  "call_id": "call_MRZBU2n12ujwB3tkINL8xXlA"
+                  "provider": {
+                    "call_id": "call_MRZBU2n12ujwB3tkINL8xXlA"
+                  }
                 },
                 "function": {
                   "name": "task_operation",
@@ -2571,11 +2469,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_MRZBU2n12ujwB3tkINL8xXlA"
-                  },
-                  "provider": {
-                    "call_id": "call_MRZBU2n12ujwB3tkINL8xXlA"
+                    "provider": {
+                      "call_id": "call_MRZBU2n12ujwB3tkINL8xXlA"
+                    }
                   },
                   "function": {
                     "name": "task_operation",
@@ -2659,11 +2555,9 @@
           "rig_ecs::agent::ToolCallSlot": {
             "index": 0,
             "id": {
-              "origin": "explicit",
-              "id": "call_MRZBU2n12ujwB3tkINL8xXlA"
-            },
-            "provider": {
-              "call_id": "call_MRZBU2n12ujwB3tkINL8xXlA"
+              "provider": {
+                "call_id": "call_MRZBU2n12ujwB3tkINL8xXlA"
+              }
             },
             "name": "task_operation"
           },
@@ -2704,11 +2598,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolCall": {
               "id": {
-                "origin": "explicit",
-                "id": "call_MRZBU2n12ujwB3tkINL8xXlA"
-              },
-              "provider": {
-                "call_id": "call_MRZBU2n12ujwB3tkINL8xXlA"
+                "provider": {
+                  "call_id": "call_MRZBU2n12ujwB3tkINL8xXlA"
+                }
               },
               "function": {
                 "name": "task_operation",
@@ -2733,11 +2625,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolResult": {
               "call": {
-                "origin": "explicit",
-                "id": "call_MRZBU2n12ujwB3tkINL8xXlA"
-              },
-              "provider": {
-                "call_id": "call_MRZBU2n12ujwB3tkINL8xXlA"
+                "provider": {
+                  "call_id": "call_MRZBU2n12ujwB3tkINL8xXlA"
+                }
               },
               "name": "task_operation"
             }
@@ -2763,11 +2653,9 @@
               {
                 "type": "toolcall",
                 "id": {
-                  "origin": "explicit",
-                  "id": "call_QK3OAJGslh2UJttHzuJ6BFfL"
-                },
-                "provider": {
-                  "call_id": "call_QK3OAJGslh2UJttHzuJ6BFfL"
+                  "provider": {
+                    "call_id": "call_QK3OAJGslh2UJttHzuJ6BFfL"
+                  }
                 },
                 "function": {
                   "name": "task_operation",
@@ -2783,11 +2671,9 @@
               {
                 "type": "toolcall",
                 "id": {
-                  "origin": "explicit",
-                  "id": "call_57uyrLINjyP2IGa0MqbDAIUp"
-                },
-                "provider": {
-                  "call_id": "call_57uyrLINjyP2IGa0MqbDAIUp"
+                  "provider": {
+                    "call_id": "call_57uyrLINjyP2IGa0MqbDAIUp"
+                  }
                 },
                 "function": {
                   "name": "task_operation",
@@ -2836,11 +2722,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_QK3OAJGslh2UJttHzuJ6BFfL"
-                  },
-                  "provider": {
-                    "call_id": "call_QK3OAJGslh2UJttHzuJ6BFfL"
+                    "provider": {
+                      "call_id": "call_QK3OAJGslh2UJttHzuJ6BFfL"
+                    }
                   },
                   "function": {
                     "name": "task_operation",
@@ -2856,11 +2740,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_57uyrLINjyP2IGa0MqbDAIUp"
-                  },
-                  "provider": {
-                    "call_id": "call_57uyrLINjyP2IGa0MqbDAIUp"
+                    "provider": {
+                      "call_id": "call_57uyrLINjyP2IGa0MqbDAIUp"
+                    }
                   },
                   "function": {
                     "name": "task_operation",
@@ -2952,11 +2834,9 @@
           "rig_ecs::agent::ToolCallSlot": {
             "index": 0,
             "id": {
-              "origin": "explicit",
-              "id": "call_QK3OAJGslh2UJttHzuJ6BFfL"
-            },
-            "provider": {
-              "call_id": "call_QK3OAJGslh2UJttHzuJ6BFfL"
+              "provider": {
+                "call_id": "call_QK3OAJGslh2UJttHzuJ6BFfL"
+              }
             },
             "name": "task_operation"
           },
@@ -2988,11 +2868,9 @@
           "rig_ecs::agent::ToolCallSlot": {
             "index": 1,
             "id": {
-              "origin": "explicit",
-              "id": "call_57uyrLINjyP2IGa0MqbDAIUp"
-            },
-            "provider": {
-              "call_id": "call_57uyrLINjyP2IGa0MqbDAIUp"
+              "provider": {
+                "call_id": "call_57uyrLINjyP2IGa0MqbDAIUp"
+              }
             },
             "name": "task_operation"
           },
@@ -3030,11 +2908,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolCall": {
               "id": {
-                "origin": "explicit",
-                "id": "call_QK3OAJGslh2UJttHzuJ6BFfL"
-              },
-              "provider": {
-                "call_id": "call_QK3OAJGslh2UJttHzuJ6BFfL"
+                "provider": {
+                  "call_id": "call_QK3OAJGslh2UJttHzuJ6BFfL"
+                }
               },
               "function": {
                 "name": "task_operation",
@@ -3054,11 +2930,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolCall": {
               "id": {
-                "origin": "explicit",
-                "id": "call_57uyrLINjyP2IGa0MqbDAIUp"
-              },
-              "provider": {
-                "call_id": "call_57uyrLINjyP2IGa0MqbDAIUp"
+                "provider": {
+                  "call_id": "call_57uyrLINjyP2IGa0MqbDAIUp"
+                }
               },
               "function": {
                 "name": "task_operation",
@@ -3083,11 +2957,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolResult": {
               "call": {
-                "origin": "explicit",
-                "id": "call_QK3OAJGslh2UJttHzuJ6BFfL"
-              },
-              "provider": {
-                "call_id": "call_QK3OAJGslh2UJttHzuJ6BFfL"
+                "provider": {
+                  "call_id": "call_QK3OAJGslh2UJttHzuJ6BFfL"
+                }
               },
               "name": "task_operation"
             }
@@ -3108,11 +2980,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolResult": {
               "call": {
-                "origin": "explicit",
-                "id": "call_57uyrLINjyP2IGa0MqbDAIUp"
-              },
-              "provider": {
-                "call_id": "call_57uyrLINjyP2IGa0MqbDAIUp"
+                "provider": {
+                  "call_id": "call_57uyrLINjyP2IGa0MqbDAIUp"
+                }
               },
               "name": "task_operation"
             }
@@ -3135,11 +3005,9 @@
               {
                 "type": "toolcall",
                 "id": {
-                  "origin": "explicit",
-                  "id": "call_i1CeZ44fsGU9v24ZOQr6AdtN"
-                },
-                "provider": {
-                  "call_id": "call_i1CeZ44fsGU9v24ZOQr6AdtN"
+                  "provider": {
+                    "call_id": "call_i1CeZ44fsGU9v24ZOQr6AdtN"
+                  }
                 },
                 "function": {
                   "name": "task_operation",
@@ -3188,11 +3056,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_i1CeZ44fsGU9v24ZOQr6AdtN"
-                  },
-                  "provider": {
-                    "call_id": "call_i1CeZ44fsGU9v24ZOQr6AdtN"
+                    "provider": {
+                      "call_id": "call_i1CeZ44fsGU9v24ZOQr6AdtN"
+                    }
                   },
                   "function": {
                     "name": "task_operation",
@@ -3276,11 +3142,9 @@
           "rig_ecs::agent::ToolCallSlot": {
             "index": 0,
             "id": {
-              "origin": "explicit",
-              "id": "call_i1CeZ44fsGU9v24ZOQr6AdtN"
-            },
-            "provider": {
-              "call_id": "call_i1CeZ44fsGU9v24ZOQr6AdtN"
+              "provider": {
+                "call_id": "call_i1CeZ44fsGU9v24ZOQr6AdtN"
+              }
             },
             "name": "task_operation"
           },
@@ -3319,11 +3183,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolCall": {
               "id": {
-                "origin": "explicit",
-                "id": "call_i1CeZ44fsGU9v24ZOQr6AdtN"
-              },
-              "provider": {
-                "call_id": "call_i1CeZ44fsGU9v24ZOQr6AdtN"
+                "provider": {
+                  "call_id": "call_i1CeZ44fsGU9v24ZOQr6AdtN"
+                }
               },
               "function": {
                 "name": "task_operation",
@@ -3348,11 +3210,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolResult": {
               "call": {
-                "origin": "explicit",
-                "id": "call_i1CeZ44fsGU9v24ZOQr6AdtN"
-              },
-              "provider": {
-                "call_id": "call_i1CeZ44fsGU9v24ZOQr6AdtN"
+                "provider": {
+                  "call_id": "call_i1CeZ44fsGU9v24ZOQr6AdtN"
+                }
               },
               "name": "task_operation"
             }
@@ -3524,11 +3384,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolCall": {
               "id": {
-                "origin": "explicit",
-                "id": "call_oe40Ca93Wz7VKrQfNIuO7BG4"
-              },
-              "provider": {
-                "call_id": "call_oe40Ca93Wz7VKrQfNIuO7BG4"
+                "provider": {
+                  "call_id": "call_oe40Ca93Wz7VKrQfNIuO7BG4"
+                }
               },
               "function": {
                 "name": "task_operation",
@@ -3553,11 +3411,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolResult": {
               "call": {
-                "origin": "explicit",
-                "id": "call_oe40Ca93Wz7VKrQfNIuO7BG4"
-              },
-              "provider": {
-                "call_id": "call_oe40Ca93Wz7VKrQfNIuO7BG4"
+                "provider": {
+                  "call_id": "call_oe40Ca93Wz7VKrQfNIuO7BG4"
+                }
               },
               "name": "task_operation"
             }
@@ -3590,11 +3446,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolCall": {
               "id": {
-                "origin": "explicit",
-                "id": "call_DXFUt4ILPEGV2YVe9ciS2iGs"
-              },
-              "provider": {
-                "call_id": "call_DXFUt4ILPEGV2YVe9ciS2iGs"
+                "provider": {
+                  "call_id": "call_DXFUt4ILPEGV2YVe9ciS2iGs"
+                }
               },
               "function": {
                 "name": "task_operation",
@@ -3619,11 +3473,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolResult": {
               "call": {
-                "origin": "explicit",
-                "id": "call_DXFUt4ILPEGV2YVe9ciS2iGs"
-              },
-              "provider": {
-                "call_id": "call_DXFUt4ILPEGV2YVe9ciS2iGs"
+                "provider": {
+                  "call_id": "call_DXFUt4ILPEGV2YVe9ciS2iGs"
+                }
               },
               "name": "task_operation"
             }
@@ -3652,11 +3504,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolCall": {
               "id": {
-                "origin": "explicit",
-                "id": "call_kV8MJ1JQ9MCRUdIIS7SqwBJU"
-              },
-              "provider": {
-                "call_id": "call_kV8MJ1JQ9MCRUdIIS7SqwBJU"
+                "provider": {
+                  "call_id": "call_kV8MJ1JQ9MCRUdIIS7SqwBJU"
+                }
               },
               "function": {
                 "name": "task_operation",
@@ -3681,11 +3531,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolResult": {
               "call": {
-                "origin": "explicit",
-                "id": "call_kV8MJ1JQ9MCRUdIIS7SqwBJU"
-              },
-              "provider": {
-                "call_id": "call_kV8MJ1JQ9MCRUdIIS7SqwBJU"
+                "provider": {
+                  "call_id": "call_kV8MJ1JQ9MCRUdIIS7SqwBJU"
+                }
               },
               "name": "task_operation"
             }
@@ -3714,11 +3562,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolCall": {
               "id": {
-                "origin": "explicit",
-                "id": "call_moczuS2Ep6c0QxANuZeiyqNl"
-              },
-              "provider": {
-                "call_id": "call_moczuS2Ep6c0QxANuZeiyqNl"
+                "provider": {
+                  "call_id": "call_moczuS2Ep6c0QxANuZeiyqNl"
+                }
               },
               "function": {
                 "name": "task_operation",
@@ -3738,11 +3584,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolCall": {
               "id": {
-                "origin": "explicit",
-                "id": "call_EwY8sramIdPPvUEjDQTico0i"
-              },
-              "provider": {
-                "call_id": "call_EwY8sramIdPPvUEjDQTico0i"
+                "provider": {
+                  "call_id": "call_EwY8sramIdPPvUEjDQTico0i"
+                }
               },
               "function": {
                 "name": "task_operation",
@@ -3767,11 +3611,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolResult": {
               "call": {
-                "origin": "explicit",
-                "id": "call_moczuS2Ep6c0QxANuZeiyqNl"
-              },
-              "provider": {
-                "call_id": "call_moczuS2Ep6c0QxANuZeiyqNl"
+                "provider": {
+                  "call_id": "call_moczuS2Ep6c0QxANuZeiyqNl"
+                }
               },
               "name": "task_operation"
             }
@@ -3791,11 +3633,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolResult": {
               "call": {
-                "origin": "explicit",
-                "id": "call_EwY8sramIdPPvUEjDQTico0i"
-              },
-              "provider": {
-                "call_id": "call_EwY8sramIdPPvUEjDQTico0i"
+                "provider": {
+                  "call_id": "call_EwY8sramIdPPvUEjDQTico0i"
+                }
               },
               "name": "task_operation"
             }
@@ -3821,11 +3661,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolCall": {
               "id": {
-                "origin": "explicit",
-                "id": "call_PF2AbKRXCv48UNDE6ZCOly18"
-              },
-              "provider": {
-                "call_id": "call_PF2AbKRXCv48UNDE6ZCOly18"
+                "provider": {
+                  "call_id": "call_PF2AbKRXCv48UNDE6ZCOly18"
+                }
               },
               "function": {
                 "name": "task_operation",
@@ -3850,11 +3688,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolResult": {
               "call": {
-                "origin": "explicit",
-                "id": "call_PF2AbKRXCv48UNDE6ZCOly18"
-              },
-              "provider": {
-                "call_id": "call_PF2AbKRXCv48UNDE6ZCOly18"
+                "provider": {
+                  "call_id": "call_PF2AbKRXCv48UNDE6ZCOly18"
+                }
               },
               "name": "task_operation"
             }
@@ -3883,11 +3719,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolCall": {
               "id": {
-                "origin": "explicit",
-                "id": "call_AwemcEpduZpEEC3rLtFat8Qp"
-              },
-              "provider": {
-                "call_id": "call_AwemcEpduZpEEC3rLtFat8Qp"
+                "provider": {
+                  "call_id": "call_AwemcEpduZpEEC3rLtFat8Qp"
+                }
               },
               "function": {
                 "name": "task_operation",
@@ -3912,11 +3746,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolResult": {
               "call": {
-                "origin": "explicit",
-                "id": "call_AwemcEpduZpEEC3rLtFat8Qp"
-              },
-              "provider": {
-                "call_id": "call_AwemcEpduZpEEC3rLtFat8Qp"
+                "provider": {
+                  "call_id": "call_AwemcEpduZpEEC3rLtFat8Qp"
+                }
               },
               "name": "task_operation"
             }
@@ -3945,11 +3777,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolCall": {
               "id": {
-                "origin": "explicit",
-                "id": "call_Ii1EI9MWe6xQRr0CF4bqqwjt"
-              },
-              "provider": {
-                "call_id": "call_Ii1EI9MWe6xQRr0CF4bqqwjt"
+                "provider": {
+                  "call_id": "call_Ii1EI9MWe6xQRr0CF4bqqwjt"
+                }
               },
               "function": {
                 "name": "task_operation",
@@ -3969,11 +3799,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolCall": {
               "id": {
-                "origin": "explicit",
-                "id": "call_6dHN09L69p10Gmqp7QJJUsyT"
-              },
-              "provider": {
-                "call_id": "call_6dHN09L69p10Gmqp7QJJUsyT"
+                "provider": {
+                  "call_id": "call_6dHN09L69p10Gmqp7QJJUsyT"
+                }
               },
               "function": {
                 "name": "task_operation",
@@ -3998,11 +3826,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolResult": {
               "call": {
-                "origin": "explicit",
-                "id": "call_Ii1EI9MWe6xQRr0CF4bqqwjt"
-              },
-              "provider": {
-                "call_id": "call_Ii1EI9MWe6xQRr0CF4bqqwjt"
+                "provider": {
+                  "call_id": "call_Ii1EI9MWe6xQRr0CF4bqqwjt"
+                }
               },
               "name": "task_operation"
             }
@@ -4022,11 +3848,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolResult": {
               "call": {
-                "origin": "explicit",
-                "id": "call_6dHN09L69p10Gmqp7QJJUsyT"
-              },
-              "provider": {
-                "call_id": "call_6dHN09L69p10Gmqp7QJJUsyT"
+                "provider": {
+                  "call_id": "call_6dHN09L69p10Gmqp7QJJUsyT"
+                }
               },
               "name": "task_operation"
             }
@@ -4052,11 +3876,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolCall": {
               "id": {
-                "origin": "explicit",
-                "id": "call_MctRnElQ4yMFx674yS7e1OqX"
-              },
-              "provider": {
-                "call_id": "call_MctRnElQ4yMFx674yS7e1OqX"
+                "provider": {
+                  "call_id": "call_MctRnElQ4yMFx674yS7e1OqX"
+                }
               },
               "function": {
                 "name": "task_operation",
@@ -4081,11 +3903,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolResult": {
               "call": {
-                "origin": "explicit",
-                "id": "call_MctRnElQ4yMFx674yS7e1OqX"
-              },
-              "provider": {
-                "call_id": "call_MctRnElQ4yMFx674yS7e1OqX"
+                "provider": {
+                  "call_id": "call_MctRnElQ4yMFx674yS7e1OqX"
+                }
               },
               "name": "task_operation"
             }
@@ -4114,11 +3934,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolCall": {
               "id": {
-                "origin": "explicit",
-                "id": "call_MRZBU2n12ujwB3tkINL8xXlA"
-              },
-              "provider": {
-                "call_id": "call_MRZBU2n12ujwB3tkINL8xXlA"
+                "provider": {
+                  "call_id": "call_MRZBU2n12ujwB3tkINL8xXlA"
+                }
               },
               "function": {
                 "name": "task_operation",
@@ -4143,11 +3961,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolResult": {
               "call": {
-                "origin": "explicit",
-                "id": "call_MRZBU2n12ujwB3tkINL8xXlA"
-              },
-              "provider": {
-                "call_id": "call_MRZBU2n12ujwB3tkINL8xXlA"
+                "provider": {
+                  "call_id": "call_MRZBU2n12ujwB3tkINL8xXlA"
+                }
               },
               "name": "task_operation"
             }
@@ -4176,11 +3992,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolCall": {
               "id": {
-                "origin": "explicit",
-                "id": "call_QK3OAJGslh2UJttHzuJ6BFfL"
-              },
-              "provider": {
-                "call_id": "call_QK3OAJGslh2UJttHzuJ6BFfL"
+                "provider": {
+                  "call_id": "call_QK3OAJGslh2UJttHzuJ6BFfL"
+                }
               },
               "function": {
                 "name": "task_operation",
@@ -4200,11 +4014,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolCall": {
               "id": {
-                "origin": "explicit",
-                "id": "call_57uyrLINjyP2IGa0MqbDAIUp"
-              },
-              "provider": {
-                "call_id": "call_57uyrLINjyP2IGa0MqbDAIUp"
+                "provider": {
+                  "call_id": "call_57uyrLINjyP2IGa0MqbDAIUp"
+                }
               },
               "function": {
                 "name": "task_operation",
@@ -4229,11 +4041,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolResult": {
               "call": {
-                "origin": "explicit",
-                "id": "call_QK3OAJGslh2UJttHzuJ6BFfL"
-              },
-              "provider": {
-                "call_id": "call_QK3OAJGslh2UJttHzuJ6BFfL"
+                "provider": {
+                  "call_id": "call_QK3OAJGslh2UJttHzuJ6BFfL"
+                }
               },
               "name": "task_operation"
             }
@@ -4253,11 +4063,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolResult": {
               "call": {
-                "origin": "explicit",
-                "id": "call_57uyrLINjyP2IGa0MqbDAIUp"
-              },
-              "provider": {
-                "call_id": "call_57uyrLINjyP2IGa0MqbDAIUp"
+                "provider": {
+                  "call_id": "call_57uyrLINjyP2IGa0MqbDAIUp"
+                }
               },
               "name": "task_operation"
             }
@@ -4283,11 +4091,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolCall": {
               "id": {
-                "origin": "explicit",
-                "id": "call_i1CeZ44fsGU9v24ZOQr6AdtN"
-              },
-              "provider": {
-                "call_id": "call_i1CeZ44fsGU9v24ZOQr6AdtN"
+                "provider": {
+                  "call_id": "call_i1CeZ44fsGU9v24ZOQr6AdtN"
+                }
               },
               "function": {
                 "name": "task_operation",
@@ -4312,11 +4118,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolResult": {
               "call": {
-                "origin": "explicit",
-                "id": "call_i1CeZ44fsGU9v24ZOQr6AdtN"
-              },
-              "provider": {
-                "call_id": "call_i1CeZ44fsGU9v24ZOQr6AdtN"
+                "provider": {
+                  "call_id": "call_i1CeZ44fsGU9v24ZOQr6AdtN"
+                }
               },
               "name": "task_operation"
             }

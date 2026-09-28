@@ -9,7 +9,7 @@
 use rig_core::{
     completion::{
         CompletionRequest, Document, ToolDefinition,
-        message::{AssistantContent, Message, ProviderCallId, ToolCallId, ToolChoice, UserContent},
+        message::{AssistantContent, CallId, Message, ToolChoice, ToolName, UserContent},
     },
     effect::{HandlerDescriptor, Outcome},
     error::{ErrorKind, ErrorReport},
@@ -216,7 +216,11 @@ pub struct RequestGraph<'a> {
 
 /// Construct a completion request from ordered graph inputs and resolved output
 /// policy. Non-tool descriptors are omitted; an invalid native schema is omitted.
-pub fn fold_request(graph: &RequestGraph<'_>) -> CompletionRequest {
+/// A graph with neither a preamble nor an utterance holds no conversation and
+/// is [`ContentError::Missing`](crate::agent::content::parts::ContentError::Missing).
+pub fn fold_request(
+    graph: &RequestGraph<'_>,
+) -> Result<CompletionRequest, crate::agent::content::parts::ContentError> {
     let mut chat_history: Vec<Message> = Vec::with_capacity(graph.utterances.len() + 2);
     let system = system_message(graph);
     if let Some(content) = system {
@@ -251,7 +255,9 @@ pub fn fold_request(graph: &RequestGraph<'_>) -> CompletionRequest {
         | (OutputKind::Auto | OutputKind::Tool | OutputKind::Prompted, _) => None,
     };
 
-    CompletionRequest {
+    let chat_history = rig_core::NonEmpty::from_vec(chat_history)
+        .map_err(|_| crate::agent::content::parts::ContentError::Missing)?;
+    Ok(CompletionRequest {
         model: None,
         chat_history,
         documents: graph.documents.clone(),
@@ -262,7 +268,7 @@ pub fn fold_request(graph: &RequestGraph<'_>) -> CompletionRequest {
         additional_params: graph.additional_params.cloned(),
         output_schema,
         record_telemetry_content: false,
-    }
+    })
 }
 
 /// The system message: the preamble with the output mode's augmentation,
@@ -319,9 +325,8 @@ pub fn tool_definition(descriptor: &HandlerDescriptor) -> Option<ToolDefinition>
 /// Returns a run failure for cancellation, unavailable handlers, a closed bus,
 /// or replay divergence.
 pub fn tool_result_part(
-    id: ToolCallId,
-    provider: Option<ProviderCallId>,
-    name: String,
+    id: CallId,
+    name: ToolName,
     outcome: &Result<Outcome, ErrorReport>,
 ) -> Result<(UserContent, ToolResultStatus), Failure> {
     if let Some(failure) = tool_failure(outcome) {
@@ -360,7 +365,7 @@ pub fn tool_result_part(
         ),
     };
     Ok((
-        tool_result_output(id, provider, name, result.output().clone()),
+        tool_result_output(id, name, result.output().clone()),
         status,
     ))
 }
@@ -451,15 +456,14 @@ pub fn tool_failure(outcome: &Result<Outcome, ErrorReport>) -> Option<Failure> {
 /// notice for every other call of `content`, in call order.
 pub fn invalid_peer_results(
     content: &[AssistantContent],
-    id: &ToolCallId,
+    id: &CallId,
     text: &str,
-) -> MessageParts {
+) -> Option<MessageParts> {
     let parts = content
         .iter()
         .filter_map(|part| match part {
             AssistantContent::ToolCall(call) => Some(tool_result_message(
                 call.id.clone(),
-                call.provider.clone(),
                 call.function.name.clone(),
                 if &call.id == id {
                     text.to_owned()
@@ -472,7 +476,7 @@ pub fn invalid_peer_results(
             | AssistantContent::Image(_) => None,
         })
         .collect();
-    MessageParts::User { content: parts }
+    MessageParts::user(parts).ok()
 }
 
 /// The turn as it stood when an invalid call surfaced mid-stream (CONTRACT
@@ -483,9 +487,9 @@ pub fn invalid_peer_results(
 pub fn partial_turn_at(
     content: &[AssistantContent],
     events: Option<&[rig_core::streaming::StreamEvent]>,
-    invalid_id: &ToolCallId,
+    invalid_id: &CallId,
     allowed_names: &[String],
-) -> (Vec<AssistantContent>, ToolCallId) {
+) -> (Vec<AssistantContent>, CallId) {
     use rig_core::{
         message::{ToolCall, ToolFunction},
         streaming::{BlockId, BlockKind, Delta, StreamEvent},
@@ -498,7 +502,7 @@ pub fn partial_turn_at(
         arguments: String,
         name_validated: bool,
         diagnostic: Option<ToolCall>,
-        completed_id: Option<ToolCallId>,
+        completed_id: Option<CallId>,
     }
     let mut blocks: Vec<Block> = Vec::new();
     for event in events {
@@ -522,10 +526,13 @@ pub fn partial_turn_at(
                 }
                 match delta {
                     Delta::ToolName { name } if !allowed_names.contains(name) => {
+                        let Ok(tool_name) = ToolName::new(name.clone()) else {
+                            continue;
+                        };
                         block.diagnostic = Some(ToolCall::new(
-                            ToolCallId::from_block(&block.id),
+                            CallId::from_wire(block.id.wire_str().unwrap_or_default()),
                             ToolFunction::new(
-                                name.clone(),
+                                tool_name,
                                 serde_json::from_str(&block.arguments)
                                     .unwrap_or(serde_json::Value::Null),
                             ),
@@ -611,7 +618,7 @@ pub fn answer_text(content: &[AssistantContent]) -> String {
 /// A user message of one text part.
 pub fn user_text(text: &str) -> Message {
     Message::User {
-        content: vec![UserContent::text(text)],
+        content: rig_core::NonEmpty::new(UserContent::text(text)),
     }
 }
 

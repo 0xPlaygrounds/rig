@@ -28,10 +28,7 @@
 //! the fixture holds the 200 beside the error, so a maintainer looking at
 //! this failure mode does not have to guess whether the server broke.
 
-use rig::message::{
-    AssistantContent, Message, ProviderCallId, ToolCallId, ToolResult, ToolResultContent,
-    UserContent,
-};
+use rig::message::{AssistantContent, CallId, Message, ToolResult, ToolResultContent, UserContent};
 use serde_json::{Value, json};
 
 use crate::cassettes::{
@@ -139,10 +136,14 @@ async fn consecutive_same_role_messages_are_sent_as_sent() {
                     CompletionRequest::new(format!("{NO_THINK}What was the second word I said?"))
                         .messages(vec![
                             Message::User {
-                                content: vec![UserContent::text("First word: heliotrope.")],
+                                content: rig_core::NonEmpty::new(UserContent::text(
+                                    "First word: heliotrope.",
+                                )),
                             },
                             Message::User {
-                                content: vec![UserContent::text("Second word: quicksilver.")],
+                                content: rig_core::NonEmpty::new(UserContent::text(
+                                    "Second word: quicksilver.",
+                                )),
                             },
                         ])
                         .max_tokens(256),
@@ -266,27 +267,29 @@ async fn a_very_long_tool_output_survives_the_round_trip() {
             let response = model
                 .call(
                     CompletionRequest::new(Message::User {
-                        content: vec![UserContent::ToolResult(ToolResult {
-                            call: ToolCallId::new_or_minted("call_long", 0),
-                            provider: ProviderCallId::new("call_long"),
-                            name: "dump".to_string(),
-                            content: vec![ToolResultContent::text(long_output)],
-                        })],
+                        content: rig_core::NonEmpty::new(UserContent::ToolResult(ToolResult {
+                            call: CallId::from_wire("call_long"),
+                            name: rig_core::message::ToolName::new("dump".to_string())
+                                .expect("tool name"),
+                            content: rig_core::NonEmpty::new(ToolResultContent::text(long_output)),
+                        })),
                     })
                     .preamble(
                         "The tool result ends with a code. Reply with only that code.".to_string(),
                     )
                     .messages(vec![
                         Message::User {
-                            content: vec![UserContent::text("What code does the dump end with?")],
+                            content: rig_core::NonEmpty::new(UserContent::text(
+                                "What code does the dump end with?",
+                            )),
                         },
                         Message::Assistant {
                             id: None,
-                            content: vec![AssistantContent::tool_call(
+                            content: rig_core::NonEmpty::new(AssistantContent::tool_call(
                                 "call_long",
-                                "dump",
+                                rig_core::message::ToolName::new("dump").expect("tool name"),
                                 json!({}),
-                            )],
+                            )),
                         },
                     ])
                     .max_tokens(256),
@@ -329,14 +332,18 @@ async fn a_system_message_plus_history_keeps_its_order() {
                     )
                     .messages(vec![
                         Message::User {
-                            content: vec![UserContent::text("Codeword one is heliotrope.")],
+                            content: rig_core::NonEmpty::new(UserContent::text(
+                                "Codeword one is heliotrope.",
+                            )),
                         },
                         Message::Assistant {
                             id: None,
-                            content: vec![AssistantContent::text("Noted.")],
+                            content: rig_core::NonEmpty::new(AssistantContent::text("Noted.")),
                         },
                         Message::User {
-                            content: vec![UserContent::text("Codeword two is quicksilver.")],
+                            content: rig_core::NonEmpty::new(UserContent::text(
+                                "Codeword two is quicksilver.",
+                            )),
                         },
                     ])
                     .max_tokens(256),

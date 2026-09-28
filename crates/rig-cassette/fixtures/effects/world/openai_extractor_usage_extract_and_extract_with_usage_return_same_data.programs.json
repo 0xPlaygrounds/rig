@@ -232,12 +232,10 @@
               {
                 "type": "toolcall",
                 "id": {
-                  "origin": "explicit",
-                  "id": "call_NUmt70xnH197ypLTCecU7ybS"
-                },
-                "provider": {
-                  "call_id": "call_NUmt70xnH197ypLTCecU7ybS",
-                  "item_id": "fc_0e0eb27a9caabdc9006ab39699007c87d0a3d7597a28251abf"
+                  "provider": {
+                    "call_id": "call_NUmt70xnH197ypLTCecU7ybS",
+                    "item_id": "fc_0e0eb27a9caabdc9006ab39699007c87d0a3d7597a28251abf"
+                  }
                 },
                 "function": {
                   "name": "submit",
@@ -273,12 +271,10 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_NUmt70xnH197ypLTCecU7ybS"
-                  },
-                  "provider": {
-                    "call_id": "call_NUmt70xnH197ypLTCecU7ybS",
-                    "item_id": "fc_0e0eb27a9caabdc9006ab39699007c87d0a3d7597a28251abf"
+                    "provider": {
+                      "call_id": "call_NUmt70xnH197ypLTCecU7ybS",
+                      "item_id": "fc_0e0eb27a9caabdc9006ab39699007c87d0a3d7597a28251abf"
+                    }
                   },
                   "function": {
                     "name": "submit",

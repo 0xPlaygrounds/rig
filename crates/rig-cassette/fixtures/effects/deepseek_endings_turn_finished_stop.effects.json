@@ -118,11 +118,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_00_U6KrCz0mfPyFbO7G32uy1070"
-              },
-              "provider": {
-                "call_id": "call_00_U6KrCz0mfPyFbO7G32uy1070"
+                "provider": {
+                  "call_id": "call_00_U6KrCz0mfPyFbO7G32uy1070"
+                }
               },
               "function": {
                 "name": "add",

@@ -120,11 +120,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_e1e77aa2e0fb4378b534fcde"
-              },
-              "provider": {
-                "call_id": "call_e1e77aa2e0fb4378b534fcde"
+                "provider": {
+                  "call_id": "call_e1e77aa2e0fb4378b534fcde"
+                }
               },
               "function": {
                 "name": "add",
@@ -255,11 +253,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_e1e77aa2e0fb4378b534fcde"
-                  },
-                  "provider": {
-                    "call_id": "call_e1e77aa2e0fb4378b534fcde"
+                    "provider": {
+                      "call_id": "call_e1e77aa2e0fb4378b534fcde"
+                    }
                   },
                   "function": {
                     "name": "add",
@@ -279,11 +275,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_e1e77aa2e0fb4378b534fcde"
-                  },
-                  "provider": {
-                    "call_id": "call_e1e77aa2e0fb4378b534fcde"
+                    "provider": {
+                      "call_id": "call_e1e77aa2e0fb4378b534fcde"
+                    }
                   },
                   "name": "add",
                   "content": [
@@ -336,6 +330,7 @@
           "choice": [
             {
               "type": "reasoning",
+              "issuer": "doubleword",
               "id": null,
               "content": [
                 {
@@ -344,8 +339,7 @@
                     "text": "Thinking Process:\n\n1.  **Analyze the Request:** The user wants me to use the `add` tool to add 17 and 25, and then reply with *just* the number (the result).\n2.  **Execute the Tool:** I need to call the `add` function with `x=17` and `y=25`.\n3.  **Process the Output:** The tool returned `42`.\n4.  **Format the Response:** The user explicitly requested \"just the number\".\n5.  **Final Output:** 42.\n\n*Self-Correction/Constraint Check:* The instruction says \"reply with just the number\". I should avoid any explanatory text.\n\n*Action:* Output \"42\".\n"
                   }
                 }
-              ],
-              "provider": "doubleword"
+              ]
             },
             {
               "type": "text",

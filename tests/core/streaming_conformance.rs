@@ -428,10 +428,10 @@ mod grammar_guards {
         // provider did not issue, and never leaves the id empty.
         for call in &calls {
             assert!(
-                call.id.is_generated(),
+                call.id.is_local(),
                 "id-less calls surface a minted durable id"
             );
-            assert!(call.provider.is_none(), "no provider id was issued");
+            assert!(call.id.provider().is_none(), "no provider id was issued");
         }
         assert_ne!(
             calls[0].id, calls[1].id,
@@ -570,7 +570,12 @@ async fn envelope_less_reasoning_deltas_are_superseded_without_duplication() {
     );
     let occurrences = reasoning
         .iter()
-        .flat_map(|item| item.content.iter())
+        .flat_map(|item| {
+            item.open(item.issuer())
+                .expect("reasoning opens")
+                .content
+                .iter()
+        })
         .filter(|content| match content {
             ReasoningContent::Summary(text) | ReasoningContent::Text { text, .. } => {
                 text.contains(summary)
@@ -702,10 +707,10 @@ mod interleaved_constant_id_reasoning {
             {
                 assert_eq!(tool_call.function.name, "get_weather");
                 assert!(
-                    tool_call.id.is_generated(),
+                    tool_call.id.is_local(),
                     "id-less calls surface a minted durable id"
                 );
-                assert_eq!(tool_call.provider, None, "no fabricated provider id");
+                assert_eq!(tool_call.id.provider(), None, "no fabricated provider id");
                 internal_ids.push(block_id.clone());
                 minted_ids.push(tool_call.id.clone());
                 cities.push(tool_call.function.arguments["city"].clone());
@@ -838,11 +843,12 @@ mod interleaved_constant_id_reasoning {
             {
                 assert_eq!(tool_call.function.name, "get_weather");
                 assert!(
-                    tool_call.id.is_generated(),
+                    tool_call.id.is_local(),
                     "id-less calls surface with a minted durable id"
                 );
                 assert_eq!(
-                    tool_call.provider, None,
+                    tool_call.id.provider(),
+                    None,
                     "no name-as-id provider-id fallback"
                 );
                 internal_ids.push(block_id.clone());

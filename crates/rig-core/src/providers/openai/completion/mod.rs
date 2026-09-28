@@ -574,7 +574,7 @@ impl TryFrom<message::ToolResult> for Message {
     fn try_from(value: message::ToolResult) -> Result<Self, Self::Error> {
         // Single-item conversion supplies a candidate. The full-request
         // builder applies occurrence-scoped IDs to both calls and results.
-        let tool_call_id = value.wire_call_id().into_owned();
+        let tool_call_id = value.call.wire().into_owned();
         let parts = value
             .content
             .into_iter()
@@ -819,7 +819,7 @@ impl TryFrom<message::UserContent> for UserContent {
 /// Convert user content into ordered user and tool-result messages.
 /// Group adjacent non-tool content. Return conversion errors for unsupported media.
 pub fn user_content_to_messages(
-    value: Vec<message::UserContent>,
+    value: impl IntoIterator<Item = message::UserContent>,
 ) -> Result<Vec<Message>, message::MessageError> {
     fn flush_user_content(messages: &mut Vec<Message>, pending: &mut Vec<UserContent>) {
         // Consecutive tool results must not introduce empty user messages.
@@ -855,8 +855,9 @@ pub fn user_content_to_messages(
 /// signatures; otherwise use display text. Return no message when text, calls,
 /// and structured details are all empty.
 pub fn assistant_content_to_messages(
-    value: Vec<message::AssistantContent>,
+    value: impl IntoIterator<Item = message::AssistantContent>,
     reasoning_details: bool,
+    issuers: &[message::Issuer],
 ) -> Result<Vec<Message>, message::MessageError> {
     let mut text_content = Vec::new();
     let mut tool_calls = Vec::new();
@@ -870,14 +871,23 @@ pub fn assistant_content_to_messages(
         match content {
             message::AssistantContent::Text(text) => text_content.push(text),
             message::AssistantContent::ToolCall(tool_call) => tool_calls.push(tool_call),
-            // Structured replay preserves signatures and encrypted payloads.
-            message::AssistantContent::Reasoning(reasoning)
-                if reasoning_details && !reasoning.content.is_empty() =>
-            {
+            // Reasoning another service issued is not replayed here.
+            message::AssistantContent::Reasoning(sealed) => {
+                let Some(reasoning) = sealed.open_for(issuers) else {
+                    continue;
+                };
+                if !reasoning_details || reasoning.content.is_empty() {
+                    let display = reasoning.display_text();
+                    if !display.is_empty() {
+                        reasoning_parts.push(display);
+                    }
+                    continue;
+                }
+                // Structured replay preserves signatures and encrypted payloads.
                 // A block the stream aggregated without a wire id carries the
                 // accumulator's shared "" identity; it replays as a null id,
                 // the shape the provider's own unary body uses.
-                let id = reasoning.id.filter(|id| !id.is_empty());
+                let id = reasoning.id.clone().filter(|id| !id.is_empty());
                 // `index` numbers the entries across the whole message, the
                 // way the provider numbers the array it sent.
                 let base = details.len();
@@ -912,12 +922,6 @@ pub fn assistant_content_to_messages(
                     }
                 });
                 details.extend(entries);
-            }
-            message::AssistantContent::Reasoning(reasoning) => {
-                let display = reasoning.display_text();
-                if !display.is_empty() {
-                    reasoning_parts.push(display);
-                }
             }
             message::AssistantContent::Image(_) => {
                 return Err(message::MessageError::ConversionError(
@@ -958,16 +962,15 @@ pub fn assistant_content_to_messages(
 impl TryFrom<message::Message> for Vec<Message> {
     type Error = message::MessageError;
 
-    /// The dialect-agnostic conversion. Structured reasoning replay is a
-    /// per-dialect capability this impl cannot see, so reasoning takes the
-    /// plain `reasoning_content` path; the wire's own conversion
-    /// ([`OpenAIRequestParams`]) passes the dialect's answer.
+    /// The dialect-agnostic conversion. It names no issuer, so no reasoning
+    /// opens and none is replayed; the wire's own conversion
+    /// ([`OpenAIRequestParams`]) passes the dialect's issuers and answer.
     fn try_from(message: message::Message) -> Result<Self, Self::Error> {
         match message {
             message::Message::System { content } => Ok(vec![Message::system(&content)]),
             message::Message::User { content } => user_content_to_messages(content),
             message::Message::Assistant { content, .. } => {
-                assistant_content_to_messages(content, false)
+                assistant_content_to_messages(content, false, &[])
             }
         }
     }
@@ -978,6 +981,7 @@ fn message_with_tool_ids(
     position: usize,
     ids: &crate::providers::internal::tool_call_ids::ToolCallIds,
     reasoning_details: bool,
+    issuers: &[message::Issuer],
 ) -> Result<Vec<Message>, message::MessageError> {
     let content_positions: Vec<_> = match &source {
         message::Message::Assistant { content, .. } => content
@@ -998,7 +1002,7 @@ fn message_with_tool_ids(
     };
     let mut converted: Vec<Message> = match source {
         message::Message::Assistant { content, .. } => {
-            assistant_content_to_messages(content, reasoning_details)?
+            assistant_content_to_messages(content, reasoning_details, issuers)?
         }
         source => source.try_into()?,
     };
@@ -1036,10 +1040,10 @@ impl From<message::ToolCall> for ToolCall {
     fn from(tool_call: message::ToolCall) -> Self {
         Self {
             // Use the same wire-handle selection as tool-result conversion.
-            id: tool_call.wire_call_id().into_owned(),
+            id: tool_call.id.wire().into_owned(),
             r#type: ToolType::default(),
             function: Function {
-                name: tool_call.function.name,
+                name: tool_call.function.name.into(),
                 arguments: tool_call.function.arguments,
             },
         }
@@ -1551,6 +1555,9 @@ pub struct OpenAIRequestParams {
     /// replays as the plain `reasoning_content` string, because a dialect
     /// that never sent the array does not accept it either.
     pub reasoning_details: bool,
+    /// The issuers whose reasoning the request replays; reasoning no issuer
+    /// here opens is left out.
+    pub issuers: Vec<message::Issuer>,
 }
 
 impl TryFrom<OpenAIRequestParams> for CompletionRequest {
@@ -1567,6 +1574,7 @@ impl TryFrom<OpenAIRequestParams> for CompletionRequest {
             response_format_with_tools,
             supports_tools,
             reasoning_details,
+            issuers,
         } = params;
         let chat_history = req.chat_history_with_documents();
 
@@ -1582,8 +1590,7 @@ impl TryFrom<OpenAIRequestParams> for CompletionRequest {
             ..
         } = req;
 
-        let mut partial_history = Vec::new();
-        partial_history.extend(chat_history);
+        let partial_history = chat_history.into_vec();
 
         let tool_ids =
             crate::providers::internal::tool_call_ids::ToolCallIds::new(&partial_history)
@@ -1595,7 +1602,7 @@ impl TryFrom<OpenAIRequestParams> for CompletionRequest {
                 .into_iter()
                 .enumerate()
                 .map(|(position, message)| {
-                    message_with_tool_ids(message, position, &tool_ids, reasoning_details)
+                    message_with_tool_ids(message, position, &tool_ids, reasoning_details, &issuers)
                 })
                 .collect::<Result<Vec<Vec<Message>>, _>>()?
                 .into_iter()

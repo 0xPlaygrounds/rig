@@ -635,19 +635,3 @@ async fn long_sequence_empty_stop() {
 // ---------------------------------------------------------------------------
 // 19: the adjacent request boundary
 // ---------------------------------------------------------------------------
-
-#[test]
-fn unit_empty_assistant_turn_cannot_be_replayed() {
-    // The adjacent boundary: an empty assistant turn normalizes fine, but the
-    // Anthropic wire rejects empty content, so rig refuses to send one back.
-    // Nothing here changed — pinned so widening the response-side carve-out is
-    // never mistaken for widening the request side too.
-    let empty_assistant = rig::message::Message::Assistant {
-        id: None,
-        content: Vec::new(),
-    };
-    assert!(
-        anthropic::completion::Message::try_from(empty_assistant).is_err(),
-        "an assistant turn with no content must not reach the wire"
-    );
-}

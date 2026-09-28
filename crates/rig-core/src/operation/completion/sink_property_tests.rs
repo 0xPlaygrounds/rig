@@ -486,8 +486,7 @@ fn a_report_of_empty_input_does_not_end_a_call_without_arguments() {
     out.push(Err(ProviderError::MalformedToolInput(
         crate::error::MalformedToolInput {
             name: "lookup".to_owned(),
-            id: crate::message::ToolCallId::from_block(&tool_key(0)),
-            provider: None,
+            id: crate::message::CallId::from_wire(""),
             raw: String::new(),
             error: "expected value".to_owned(),
         },
@@ -566,7 +565,9 @@ fn raw_event() -> impl Strategy<Value = Result<StreamEvent, ErrorReport>> {
                         signature,
                         wire_sent,
                     },
-                    block: carried.map(|text| AssistantContent::Reasoning(Reasoning::new(&text))),
+                    block: carried.map(|text| AssistantContent::Reasoning(
+                        Reasoning::new(&text).sealed(crate::message::Issuer::unstamped())
+                    )),
                 })
             ),
         (key.clone(), policy, any::<bool>()).prop_map(|(key, policy, carried)| Ok(
@@ -602,8 +603,11 @@ fn raw_event() -> impl Strategy<Value = Result<StreamEvent, ErrorReport>> {
 
 fn carried_tool_call(id: &BlockId) -> AssistantContent {
     AssistantContent::ToolCall(crate::message::ToolCall::new(
-        crate::message::ToolCallId::from_block(id),
-        crate::message::ToolFunction::new("carried".to_owned(), serde_json::json!({"c": 1})),
+        crate::message::CallId::from_wire(id.wire_str().unwrap_or_default()),
+        crate::message::ToolFunction::new(
+            crate::message::ToolName::new("carried".to_owned()).expect("tool name"),
+            serde_json::json!({"c": 1}),
+        ),
     ))
 }
 
@@ -699,7 +703,7 @@ proptest! {
             1 => (
                 reasoning_key(9),
                 BlockClose::Reasoning { reasoning: None, signature: None, wire_sent: false },
-                AssistantContent::Reasoning(Reasoning::new("carried")),
+                AssistantContent::Reasoning(Reasoning::new("carried").sealed(crate::message::Issuer::unstamped())),
             ),
             _ => (
                 tool_key(9),
@@ -838,7 +842,9 @@ fn a_truncated_relay_closes_its_open_blocks_at_its_end() {
             (text_key(0), AssistantContent::text("partial")),
             (
                 reasoning_key(0),
-                AssistantContent::Reasoning(Reasoning::new("half"))
+                AssistantContent::Reasoning(
+                    Reasoning::new("half").sealed(crate::message::Issuer::unstamped())
+                )
             ),
         ]
     );

@@ -120,11 +120,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_00_FLCMiJUEWAjDnpCExHh69376"
-              },
-              "provider": {
-                "call_id": "call_00_FLCMiJUEWAjDnpCExHh69376"
+                "provider": {
+                  "call_id": "call_00_FLCMiJUEWAjDnpCExHh69376"
+                }
               },
               "function": {
                 "name": "lookup_harbor_label",
@@ -136,11 +134,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_01_DkVQBpjN6ltxZvYN9DQ92244"
-              },
-              "provider": {
-                "call_id": "call_01_DkVQBpjN6ltxZvYN9DQ92244"
+                "provider": {
+                  "call_id": "call_01_DkVQBpjN6ltxZvYN9DQ92244"
+                }
               },
               "function": {
                 "name": "lookup_orchard_label",
@@ -290,11 +286,9 @@
           "block": {
             "type": "toolcall",
             "id": {
-              "origin": "explicit",
-              "id": "call_00_FLCMiJUEWAjDnpCExHh69376"
-            },
-            "provider": {
-              "call_id": "call_00_FLCMiJUEWAjDnpCExHh69376"
+              "provider": {
+                "call_id": "call_00_FLCMiJUEWAjDnpCExHh69376"
+              }
             },
             "function": {
               "name": "lookup_harbor_label",
@@ -315,11 +309,9 @@
           "block": {
             "type": "toolcall",
             "id": {
-              "origin": "explicit",
-              "id": "call_01_DkVQBpjN6ltxZvYN9DQ92244"
-            },
-            "provider": {
-              "call_id": "call_01_DkVQBpjN6ltxZvYN9DQ92244"
+              "provider": {
+                "call_id": "call_01_DkVQBpjN6ltxZvYN9DQ92244"
+              }
             },
             "function": {
               "name": "lookup_orchard_label",
@@ -457,11 +449,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_00_FLCMiJUEWAjDnpCExHh69376"
-                  },
-                  "provider": {
-                    "call_id": "call_00_FLCMiJUEWAjDnpCExHh69376"
+                    "provider": {
+                      "call_id": "call_00_FLCMiJUEWAjDnpCExHh69376"
+                    }
                   },
                   "function": {
                     "name": "lookup_harbor_label",
@@ -473,11 +463,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_01_DkVQBpjN6ltxZvYN9DQ92244"
-                  },
-                  "provider": {
-                    "call_id": "call_01_DkVQBpjN6ltxZvYN9DQ92244"
+                    "provider": {
+                      "call_id": "call_01_DkVQBpjN6ltxZvYN9DQ92244"
+                    }
                   },
                   "function": {
                     "name": "lookup_orchard_label",
@@ -494,11 +482,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_00_FLCMiJUEWAjDnpCExHh69376"
-                  },
-                  "provider": {
-                    "call_id": "call_00_FLCMiJUEWAjDnpCExHh69376"
+                    "provider": {
+                      "call_id": "call_00_FLCMiJUEWAjDnpCExHh69376"
+                    }
                   },
                   "name": "lookup_harbor_label",
                   "content": [
@@ -511,11 +497,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_01_DkVQBpjN6ltxZvYN9DQ92244"
-                  },
-                  "provider": {
-                    "call_id": "call_01_DkVQBpjN6ltxZvYN9DQ92244"
+                    "provider": {
+                      "call_id": "call_01_DkVQBpjN6ltxZvYN9DQ92244"
+                    }
                   },
                   "name": "lookup_orchard_label",
                   "content": [

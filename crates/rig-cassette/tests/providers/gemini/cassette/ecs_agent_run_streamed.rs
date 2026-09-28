@@ -306,7 +306,7 @@ async fn streamed_skip_abandons_the_turn_and_recovers() {
                         assert!(is_tool_result_user_message(prompt));
                     }
                     let retry = &turns[1].request.chat_history;
-                    let Message::User { content } = retry.last().expect("retry prompt") else {
+                    let Message::User { content } = retry.last() else {
                         panic!("tool results are a user message")
                     };
                     let result = content
@@ -316,8 +316,8 @@ async fn streamed_skip_abandons_the_turn_and_recovers() {
                             _ => None,
                         })
                         .expect("synthetic skip result");
-                    assert!(result.call.is_generated());
-                    assert!(result.provider.is_none());
+                    assert!(result.call.is_local());
+                    assert!(result.call.provider().is_none());
                     let texts = super::super::agent_run_support::user_content_tool_result_texts(
                         &UserContent::ToolResult(result.clone()),
                     );
@@ -381,7 +381,7 @@ async fn streamed_hand_driven_multi_turn_run_completes() {
         assert!(total.total_tokens.is_some_and(|n| n > 0));
         for event in turns.iter().flat_map(|turn| &turn.events) {
             if let StreamEvent::BlockEnd { id: BlockId::Wire(id), block: Some(AssistantContent::ToolCall(call)), .. } = event {
-                assert_eq!(call.provider.as_ref().map(|provider| provider.call_id.as_str()), Some(id.as_str()), "{call:?}");
+                assert_eq!(call.id.provider().as_ref().map(|provider| provider.call_id.as_str()), Some(id.as_str()), "{call:?}");
             }
         }
         let messages = history(&mut ecs, run);

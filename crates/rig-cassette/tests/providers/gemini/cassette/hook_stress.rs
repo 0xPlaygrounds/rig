@@ -819,7 +819,7 @@ async fn tool_call_turns_effect_log_is_the_golden_fixture() {
             }
             assert!(saw_final, "the stream must yield a FinalResponse");
             let log = agent.stamp(recorder.take());
-            let tool_ids: Vec<&rig::message::ToolCallId> = log
+            let tool_ids: Vec<&rig::message::CallId> = log
                 .records
                 .iter()
                 .filter_map(|record| match &record.outcome {
@@ -834,7 +834,7 @@ async fn tool_call_turns_effect_log_is_the_golden_fixture() {
                 .collect();
             assert!(!tool_ids.is_empty(), "the program calls tools");
             assert!(
-                tool_ids.iter().all(|id| id.is_generated()),
+                tool_ids.iter().all(|id| id.is_local()),
                 "every id-less wire call is named by its block: {tool_ids:?}"
             );
             crate::goldens::golden_effects("gemini_tool_call_turns", &log);

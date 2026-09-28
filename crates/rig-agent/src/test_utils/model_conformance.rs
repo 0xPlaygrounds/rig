@@ -381,17 +381,13 @@ fn validate_tool_correlation(
         match message {
             Message::Assistant { content, .. } => {
                 turn += 1;
-                calls.extend(content.iter().filter_map(|item| {
-                    match item {
-                        AssistantContent::ToolCall(call) => Some((
-                            turn,
-                            &call.id,
-                            call.provider
-                                .as_ref()
-                                .map(|provider| provider.call_id.as_str()),
-                        )),
-                        _ => None,
-                    }
+                calls.extend(content.iter().filter_map(|item| match item {
+                    AssistantContent::ToolCall(call) => Some((
+                        turn,
+                        &call.id,
+                        call.id.provider().map(|provider| provider.call_id.as_str()),
+                    )),
+                    _ => None,
                 }));
             }
             Message::User { content } => {
@@ -401,8 +397,8 @@ fn validate_tool_correlation(
                             turn,
                             &result.call,
                             result
-                                .provider
-                                .as_ref()
+                                .call
+                                .provider()
                                 .map(|provider| provider.call_id.as_str()),
                         )),
                         _ => None,

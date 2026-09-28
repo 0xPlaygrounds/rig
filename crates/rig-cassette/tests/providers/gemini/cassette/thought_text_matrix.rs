@@ -1358,7 +1358,7 @@ mod unit {
             matches!(
                 response.choice.first(),
                 Some(AssistantContent::Reasoning(reasoning))
-                    if matches!(reasoning.content.first(),
+                    if matches!(reasoning.open(reasoning.issuer()).expect("sealed reasoning").content.first(),
                         Some(ReasoningContent::Text { text, signature: None }) if text == "the chain")
             ),
             "the chain-of-thought block stays unsigned, got {:?}",
@@ -1406,7 +1406,7 @@ mod unit {
         assert!(matches!(
             response.choice.first(),
             Some(AssistantContent::Reasoning(reasoning))
-                if matches!(reasoning.content.first(),
+                if matches!(reasoning.open(reasoning.issuer()).expect("sealed reasoning").content.first(),
                     Some(ReasoningContent::Text { text, signature })
                         if text == "thinking" && signature.as_deref() == Some("sig-own"))
         ));

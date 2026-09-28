@@ -33,13 +33,13 @@ const STREAM_BODY: &str = concat!(
 fn recorded_request() -> CompletionRequest {
     CompletionRequest {
         model: None,
-        chat_history: vec![
+        chat_history: crate::NonEmpty::with_rest(
             crate::message::Message::system("You are a concise assistant. Answer directly."),
-            crate::message::Message::user(
+            [crate::message::Message::user(
                 "In one or two sentences, explain what Rust programming language is and why \
                  memory safety matters.",
-            ),
-        ],
+            )],
+        ),
         documents: Vec::new(),
         tools: Vec::new(),
         temperature: None,
@@ -163,7 +163,7 @@ async fn a_buffered_reply_splits_legacy_reasoning_out_of_its_content() {
         response.choice.iter().any(|block| matches!(
             block,
             AssistantContent::Reasoning(reasoning)
-                if reasoning.display_text() == "weighing it up"
+                if reasoning.value().display_text() == "weighing it up"
         )),
         "the reasoning must survive into history: {:?}",
         response.choice

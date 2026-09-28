@@ -2,7 +2,7 @@ use aws_sdk_bedrockruntime::types as aws_bedrock;
 use base64::{Engine, prelude::BASE64_STANDARD};
 
 use rig_core::error::ProviderError;
-use rig_core::message::{AssistantContent, Text};
+use rig_core::message::{AssistantContent, Issuer, Text, ToolName};
 
 use super::{
     converse_output::{ContentBlock, ReasoningContentBlock, StopReason, TokenUsage},
@@ -65,23 +65,33 @@ impl TryFrom<ContentBlock> for RigAssistantContent {
                 Ok(RigAssistantContent(AssistantContent::Text(Text::new(text))))
             }
             ContentBlock::ToolUse(call) => Ok(RigAssistantContent(
-                completion::AssistantContent::tool_call(&call.tool_use_id, &call.name, call.input),
+                completion::AssistantContent::tool_call(
+                    &call.tool_use_id,
+                    ToolName::new(call.name).map_err(|error| {
+                        ProviderError::Response(format!(
+                            "AWS Bedrock returned a tool call: {error}"
+                        ))
+                    })?,
+                    call.input,
+                ),
             )),
             ContentBlock::ReasoningContent(reasoning_block) => match reasoning_block {
                 ReasoningContentBlock::ReasoningText(reasoning_text) => {
                     Ok(RigAssistantContent(AssistantContent::Reasoning(
                         // The issuer depends on the model, which the Converse
-                        // output does not name: `completion_response` stamps it.
+                        // output does not name: the completion fold seals it.
                         rig_core::message::Reasoning::new_with_signature(
                             &reasoning_text.text,
                             reasoning_text.signature,
-                        ),
+                        )
+                        .sealed(PROVIDER_NAME),
                     )))
                 }
                 // Base64 preserves opaque redacted bytes for request replay.
                 ReasoningContentBlock::RedactedContent(blob) => {
                     Ok(RigAssistantContent(AssistantContent::Reasoning(
-                        rig_core::message::Reasoning::redacted(BASE64_STANDARD.encode(blob.inner)),
+                        rig_core::message::Reasoning::redacted(BASE64_STANDARD.encode(blob.inner))
+                            .sealed(PROVIDER_NAME),
                     )))
                 }
                 _ => Err(ProviderError::Provider(
@@ -101,13 +111,14 @@ impl RigAssistantContent {
     /// with a warning. Rejects images and unrepresentable signed reasoning.
     pub(crate) fn into_content_block(
         self,
+        issuer: &Issuer,
     ) -> Result<Option<aws_bedrock::ContentBlock>, ProviderError> {
         match self.0 {
             AssistantContent::Text(text) => Ok(Some(aws_bedrock::ContentBlock::Text(text.text))),
             AssistantContent::ToolCall(tool_call) => {
                 // Calls and results must use the same provider-issued identity,
                 // not a potentially different local assembly handle.
-                let tool_use_id = tool_call.wire_call_id().into_owned();
+                let tool_use_id = tool_call.id.wire().into_owned();
                 let doc: AwsDocument = tool_call.function.arguments.into();
                 Ok(Some(aws_bedrock::ContentBlock::ToolUse(
                     aws_bedrock::ToolUseBlock::builder()
@@ -118,7 +129,12 @@ impl RigAssistantContent {
                         .map_err(|e| ProviderError::Provider(e.to_string()))?,
                 )))
             }
-            AssistantContent::Reasoning(mut reasoning) => {
+            AssistantContent::Reasoning(reasoning) => {
+                // Reasoning another service issued is not replayed.
+                let Some(reasoning) = reasoning.open(issuer) else {
+                    return Ok(None);
+                };
+                let mut reasoning = reasoning.clone();
                 // Only Redacted payloads represent base64-encoded Converse bytes.
                 // Drop Encrypted payloads rather than reinterpret foreign ciphertext.
                 let foreign = reasoning

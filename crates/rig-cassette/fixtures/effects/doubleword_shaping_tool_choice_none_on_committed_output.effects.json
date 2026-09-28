@@ -143,11 +143,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_410b33107373434cbea5f9c5"
-              },
-              "provider": {
-                "call_id": "call_410b33107373434cbea5f9c5"
+                "provider": {
+                  "call_id": "call_410b33107373434cbea5f9c5"
+                }
               },
               "function": {
                 "name": "add",
@@ -278,11 +276,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_410b33107373434cbea5f9c5"
-                  },
-                  "provider": {
-                    "call_id": "call_410b33107373434cbea5f9c5"
+                    "provider": {
+                      "call_id": "call_410b33107373434cbea5f9c5"
+                    }
                   },
                   "function": {
                     "name": "add",
@@ -302,11 +298,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_410b33107373434cbea5f9c5"
-                  },
-                  "provider": {
-                    "call_id": "call_410b33107373434cbea5f9c5"
+                    "provider": {
+                      "call_id": "call_410b33107373434cbea5f9c5"
+                    }
                   },
                   "name": "add",
                   "content": [
@@ -383,11 +377,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_85766726112a4080a34e0ce4"
-              },
-              "provider": {
-                "call_id": "call_85766726112a4080a34e0ce4"
+                "provider": {
+                  "call_id": "call_85766726112a4080a34e0ce4"
+                }
               },
               "function": {
                 "name": "final_result",
@@ -493,11 +485,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_410b33107373434cbea5f9c5"
-                  },
-                  "provider": {
-                    "call_id": "call_410b33107373434cbea5f9c5"
+                    "provider": {
+                      "call_id": "call_410b33107373434cbea5f9c5"
+                    }
                   },
                   "function": {
                     "name": "add",
@@ -517,11 +507,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_410b33107373434cbea5f9c5"
-                  },
-                  "provider": {
-                    "call_id": "call_410b33107373434cbea5f9c5"
+                    "provider": {
+                      "call_id": "call_410b33107373434cbea5f9c5"
+                    }
                   },
                   "name": "add",
                   "content": [
@@ -540,11 +528,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_85766726112a4080a34e0ce4"
-                  },
-                  "provider": {
-                    "call_id": "call_85766726112a4080a34e0ce4"
+                    "provider": {
+                      "call_id": "call_85766726112a4080a34e0ce4"
+                    }
                   },
                   "function": {
                     "name": "final_result",
@@ -563,11 +549,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_85766726112a4080a34e0ce4"
-                  },
-                  "provider": {
-                    "call_id": "call_85766726112a4080a34e0ce4"
+                    "provider": {
+                      "call_id": "call_85766726112a4080a34e0ce4"
+                    }
                   },
                   "name": "final_result",
                   "content": [
@@ -644,11 +628,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_2792ce9038284c72bc1c560a"
-              },
-              "provider": {
-                "call_id": "call_2792ce9038284c72bc1c560a"
+                "provider": {
+                  "call_id": "call_2792ce9038284c72bc1c560a"
+                }
               },
               "function": {
                 "name": "final_result",

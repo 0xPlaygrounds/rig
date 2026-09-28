@@ -2,19 +2,11 @@
   "header": {
     "deliveries": [
       {
-        "batch": 5,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
         "batch": 6,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 1
         }
       },
       {
@@ -22,7 +14,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 5
+          "items": 1
         }
       },
       {
@@ -30,7 +22,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -46,18 +38,74 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 11,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
           "items": 2
         }
       },
       {
-        "batch": 10,
+        "batch": 12,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 13,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 14,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 15,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 16,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 17,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 17,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 15,
+        "batch": 23,
         "id": 1,
         "kind": {
           "delivery": "stream",
@@ -65,7 +113,7 @@
         }
       },
       {
-        "batch": 16,
+        "batch": 25,
         "id": 1,
         "kind": {
           "delivery": "stream",
@@ -73,7 +121,7 @@
         }
       },
       {
-        "batch": 16,
+        "batch": 25,
         "id": 1,
         "kind": {
           "delivery": "outcome"
@@ -195,11 +243,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_00_Dr3c4nP71cOaU3vCeFZ32198"
-              },
-              "provider": {
-                "call_id": "call_00_Dr3c4nP71cOaU3vCeFZ32198"
+                "provider": {
+                  "call_id": "call_00_Dr3c4nP71cOaU3vCeFZ32198"
+                }
               },
               "function": {
                 "name": "add",
@@ -369,11 +415,9 @@
           "block": {
             "type": "toolcall",
             "id": {
-              "origin": "explicit",
-              "id": "call_00_Dr3c4nP71cOaU3vCeFZ32198"
-            },
-            "provider": {
-              "call_id": "call_00_Dr3c4nP71cOaU3vCeFZ32198"
+              "provider": {
+                "call_id": "call_00_Dr3c4nP71cOaU3vCeFZ32198"
+              }
             },
             "function": {
               "name": "add",
@@ -452,11 +496,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_00_Dr3c4nP71cOaU3vCeFZ32198"
-                  },
-                  "provider": {
-                    "call_id": "call_00_Dr3c4nP71cOaU3vCeFZ32198"
+                    "provider": {
+                      "call_id": "call_00_Dr3c4nP71cOaU3vCeFZ32198"
+                    }
                   },
                   "function": {
                     "name": "add",
@@ -476,11 +518,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_00_Dr3c4nP71cOaU3vCeFZ32198"
-                  },
-                  "provider": {
-                    "call_id": "call_00_Dr3c4nP71cOaU3vCeFZ32198"
+                    "provider": {
+                      "call_id": "call_00_Dr3c4nP71cOaU3vCeFZ32198"
+                    }
                   },
                   "name": "add",
                   "content": [

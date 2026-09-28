@@ -117,6 +117,7 @@
           "choice": [
             {
               "type": "reasoning",
+              "issuer": "doubleword",
               "id": null,
               "content": [
                 {
@@ -125,17 +126,14 @@
                     "text": "The user wants me to add 17 and 25 using the add tool, and then reply with just the number. I need to call the add function with x=17 and y=25.\n"
                   }
                 }
-              ],
-              "provider": "doubleword"
+              ]
             },
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_ea77dbfa169343d99fcf1c60"
-              },
-              "provider": {
-                "call_id": "call_ea77dbfa169343d99fcf1c60"
+                "provider": {
+                  "call_id": "call_ea77dbfa169343d99fcf1c60"
+                }
               },
               "function": {
                 "name": "add",
@@ -568,6 +566,7 @@
           },
           "block": {
             "type": "reasoning",
+            "issuer": "doubleword",
             "id": null,
             "content": [
               {
@@ -606,11 +605,9 @@
           "block": {
             "type": "toolcall",
             "id": {
-              "origin": "explicit",
-              "id": "call_ea77dbfa169343d99fcf1c60"
-            },
-            "provider": {
-              "call_id": "call_ea77dbfa169343d99fcf1c60"
+              "provider": {
+                "call_id": "call_ea77dbfa169343d99fcf1c60"
+              }
             },
             "function": {
               "name": "add",
@@ -721,6 +718,7 @@
               "content": [
                 {
                   "type": "reasoning",
+                  "issuer": "doubleword",
                   "id": null,
                   "content": [
                     {
@@ -729,17 +727,14 @@
                         "text": "The user wants me to add 17 and 25 using the add tool, and then reply with just the number. I need to call the add function with x=17 and y=25.\n"
                       }
                     }
-                  ],
-                  "provider": "doubleword"
+                  ]
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_ea77dbfa169343d99fcf1c60"
-                  },
-                  "provider": {
-                    "call_id": "call_ea77dbfa169343d99fcf1c60"
+                    "provider": {
+                      "call_id": "call_ea77dbfa169343d99fcf1c60"
+                    }
                   },
                   "function": {
                     "name": "add",
@@ -759,11 +754,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_ea77dbfa169343d99fcf1c60"
-                  },
-                  "provider": {
-                    "call_id": "call_ea77dbfa169343d99fcf1c60"
+                    "provider": {
+                      "call_id": "call_ea77dbfa169343d99fcf1c60"
+                    }
                   },
                   "name": "add",
                   "content": [
@@ -816,6 +809,7 @@
           "choice": [
             {
               "type": "reasoning",
+              "issuer": "doubleword",
               "id": null,
               "content": [
                 {
@@ -824,8 +818,7 @@
                     "text": "The add tool returned 42, which is the correct sum of 17 and 25. The user asked me to reply with just the number, so I should respond with \"42\".\n"
                   }
                 }
-              ],
-              "provider": "doubleword"
+              ]
             },
             {
               "type": "text",
@@ -1236,6 +1229,7 @@
           },
           "block": {
             "type": "reasoning",
+            "issuer": "doubleword",
             "id": null,
             "content": [
               {

@@ -2,46 +2,6 @@
   "header": {
     "deliveries": [
       {
-        "batch": 13,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 14,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 15,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 16,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 17,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
         "batch": 18,
         "id": 0,
         "kind": {
@@ -70,7 +30,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 2
         }
       },
       {
@@ -86,7 +46,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 3
         }
       },
       {
@@ -94,7 +54,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -102,7 +62,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -110,7 +70,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 2
         }
       },
       {
@@ -134,7 +94,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -142,7 +102,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -166,7 +126,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -198,7 +158,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -230,7 +190,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 3
         }
       },
       {
@@ -246,7 +206,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 3
         }
       },
       {
@@ -262,11 +222,51 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
         "batch": 46,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 47,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 48,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 49,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 50,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 51,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -278,11 +278,27 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 53,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
           "items": 1
         }
       },
       {
-        "batch": 63,
+        "batch": 57,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 72,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -290,7 +306,7 @@
         }
       },
       {
-        "batch": 63,
+        "batch": 72,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -371,14 +387,14 @@
           "choice": [
             {
               "type": "reasoning",
+              "issuer": "openai",
               "id": "rs_0f8a29a984eb7c8b006ab2b480467487d086d05eda0e6c86f0",
               "content": [
                 {
                   "type": "encrypted",
                   "content": "gAAAAABqsrSBrB4PW4cT2FbqP1VMQQLVVB-dto2IYstKxGB60JpLjNYB2oMRYp-j9tWe1Hzdcd48eZasYirM91DfZ14JMopjtCjAcyo-jlmcXPc20KYSY349Xg4kcyS6apCxP1ZmmB46N6P15qYE4td5_JQS0wuiG3RcnkAzmR2kOiI6XzinBugJC7YkvWqto585FfP3Op4oxTUT2jSeFswEO3PRbAcr2tWvDbHVQUefouFOO6cYqQDj1fHKxk8UaFpDcuhgIaT1RnpA2r9Kq3cQmrDymJo__12EfV9T4LTKwwxOkXC79ywdtUPM0FtM_Jo40QdNs3kNzE_1qqIbuIWDLu1V_soqjC6iwsuBkxE-xc--JVsIQBX8fS1EITSXDcW1cYKr5uFscGq70Fwv9deaRWBgekdnwty1VaggX1ydkAMStqFcvzoaQZGxCJwtDfYgWhpF_aCTWO0LthMJap1mtOsgcBuUZu3Ay7ALQo3SaBly-4RIwSqowmLTt15YC7VOW-XwDBIXQ6Xy98oltamLkZ4KygkT02R3u7lHwDcCt3SNkPAo-Tc3obXwMePDXusT3hzyWHFEx--xcEi5iX4owbAwr8w79b14J9oxS5jjNOeWVXII_xkd0fke04Dlzhwdpsn3w7Vr3Gk6__ZIcYSLzwto-7FibIzq8fiN0daMRqye64C2bN68ITlM_JzrEG7Esx84qSBSQR9AEtXQkRYCU9Un6gNnLVt_QiZsYWDT4uDMKmEP12T2nJkMg3wmEL8XlX-h60d5jIz6RhFTdN5YCsckQGjRxg-I9QkHFDPduUGgb0Ja5rsZ6fcaOIDBcQm2YcbxdPV77l9_gMTel8WXrzRWXmW_mz_onTYOziy5lmViGeENhuF1Mmzwu8qy0B02t1bo39qv5k1c5qjyDiduMwOxSr19WninIDl-C--oZtWk2ggHTmywGhLOb9dfZook5SkALyNIquIvPvgE4RLE0PXpbMybR_anFbxN2EXcgLuswu7EVVvtqRiLxZqPELv_NK6IB3ik9JRhidR2vRzu-bmQJswe0ZcPPaP6YfBTdtGt1Z38ffvhVTQuigM7tIpHi9BLtV7qxj0uH4RoQgM-nK_-kzGkMF8AdkDJUB0MxzRl5FdU3tjFdFkXNZ1U4blSfOumr6mHZcZ9r_uohlGOQH0ViJp2cNL8NX5swLoRuU-x9cHiTVb4uzwhlkD8Q0BD7GUAtAzTxvqnIdsvW4uT_vpDoE--IRhJr-vGsNK1dtcYSLDnobQUh45JShSpxdqSKn7LbotKMrXQfjZTD0G2qa0BGelg-PwzjtWNxzMp7_TVIxid-esZ7_q3Mp3yxuFIl_0UYCfc_dfvF_f8ipuqdx_RJ3JBj-jlF6mqqod-XXpvSuQAL6tn_FiAfDeylC3AW5DMeLCWc73xcg9F61_EFGNSlmRLsfdLM_O-D8WNOjJ8ZZV99uNjHRx7POzazHi_h3sb5hBn9pAuu9r0L1UrvUb14NTdXJAgeGDbxNtLbRQoNHEkLeOmbEhWuE5cMxNRq4jAIXSY9tKmSVZxSSqGCI6_icb4hh9E0-PcBCpZuh5KkYAmDTAdZ8JpNnukRKu_1MyLG_X_4YpF5OGjvOc9OZ06MYn-nWtpE2CZhvAX-s06rn-Jdo8="
                 }
-              ],
-              "provider": "openai"
+              ]
             },
             {
               "type": "text",
@@ -451,6 +467,7 @@
           },
           "block": {
             "type": "reasoning",
+            "issuer": "openai",
             "id": "rs_0f8a29a984eb7c8b006ab2b480467487d086d05eda0e6c86f0",
             "content": [
               {

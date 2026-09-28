@@ -134,7 +134,11 @@ fn model_descriptor() -> HandlerDescriptor {
 
 /// A tool call the script makes.
 pub fn call(name: &str, arguments: serde_json::Value) -> AssistantContent {
-    AssistantContent::tool_call(format!("call-{name}"), name, arguments)
+    AssistantContent::tool_call(
+        format!("call-{name}"),
+        rig_core::message::ToolName::new(name).expect("tool name"),
+        arguments,
+    )
 }
 
 /// A tool: a name, a description, a parameter schema, and a pure function

@@ -119,6 +119,7 @@
           "choice": [
             {
               "type": "reasoning",
+              "issuer": "deepseek",
               "id": null,
               "content": [
                 {
@@ -127,17 +128,14 @@
                     "text": "We need answer. Need call add tool. Must then reply with just number. Let's call."
                   }
                 }
-              ],
-              "provider": "deepseek"
+              ]
             },
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_00_fkvEZ57qqR4YRa7bRAxj9853"
-              },
-              "provider": {
-                "call_id": "call_00_fkvEZ57qqR4YRa7bRAxj9853"
+                "provider": {
+                  "call_id": "call_00_fkvEZ57qqR4YRa7bRAxj9853"
+                }
               },
               "function": {
                 "name": "add",
@@ -364,6 +362,7 @@
           },
           "block": {
             "type": "reasoning",
+            "issuer": "deepseek",
             "id": null,
             "content": [
               {
@@ -498,11 +497,9 @@
           "block": {
             "type": "toolcall",
             "id": {
-              "origin": "explicit",
-              "id": "call_00_fkvEZ57qqR4YRa7bRAxj9853"
-            },
-            "provider": {
-              "call_id": "call_00_fkvEZ57qqR4YRa7bRAxj9853"
+              "provider": {
+                "call_id": "call_00_fkvEZ57qqR4YRa7bRAxj9853"
+              }
             },
             "function": {
               "name": "add",
@@ -607,6 +604,7 @@
               "content": [
                 {
                   "type": "reasoning",
+                  "issuer": "deepseek",
                   "id": null,
                   "content": [
                     {
@@ -615,17 +613,14 @@
                         "text": "We need answer. Need call add tool. Must then reply with just number. Let's call."
                       }
                     }
-                  ],
-                  "provider": "deepseek"
+                  ]
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_00_fkvEZ57qqR4YRa7bRAxj9853"
-                  },
-                  "provider": {
-                    "call_id": "call_00_fkvEZ57qqR4YRa7bRAxj9853"
+                    "provider": {
+                      "call_id": "call_00_fkvEZ57qqR4YRa7bRAxj9853"
+                    }
                   },
                   "function": {
                     "name": "add",
@@ -645,11 +640,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_00_fkvEZ57qqR4YRa7bRAxj9853"
-                  },
-                  "provider": {
-                    "call_id": "call_00_fkvEZ57qqR4YRa7bRAxj9853"
+                    "provider": {
+                      "call_id": "call_00_fkvEZ57qqR4YRa7bRAxj9853"
+                    }
                   },
                   "name": "add",
                   "content": [
@@ -704,6 +697,7 @@
           "choice": [
             {
               "type": "reasoning",
+              "issuer": "deepseek",
               "id": null,
               "content": [
                 {
@@ -712,8 +706,7 @@
                     "text": "42"
                   }
                 }
-              ],
-              "provider": "deepseek"
+              ]
             },
             {
               "type": "text",
@@ -782,6 +775,7 @@
           },
           "block": {
             "type": "reasoning",
+            "issuer": "deepseek",
             "id": null,
             "content": [
               {

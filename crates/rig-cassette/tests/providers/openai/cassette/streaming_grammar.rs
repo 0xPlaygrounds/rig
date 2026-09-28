@@ -74,7 +74,12 @@ async fn drain_stream(mut stream: rig::streaming::CompletionStream) -> StreamRun
                 block: Some(AssistantContent::Reasoning(reasoning)),
                 ..
             } => {
-                run.reasoning_blocks.push(reasoning);
+                run.reasoning_blocks.push(
+                    reasoning
+                        .open(reasoning.issuer())
+                        .cloned()
+                        .expect("reasoning opens"),
+                );
             }
             StreamEvent::BlockDelta {
                 delta: Delta::Reasoning { text: reasoning },
@@ -107,7 +112,13 @@ fn aggregated_reasoning_parts(choice: &[AssistantContent]) -> Vec<ReasoningConte
     choice
         .iter()
         .filter_map(|content| match content {
-            AssistantContent::Reasoning(reasoning) => Some(reasoning.content.clone()),
+            AssistantContent::Reasoning(reasoning) => Some(
+                reasoning
+                    .open(reasoning.issuer())
+                    .expect("sealed reasoning")
+                    .content
+                    .clone(),
+            ),
             _ => None,
         })
         .flatten()
@@ -375,7 +386,8 @@ async fn parallel_tool_calls_both_survive_aggregation() {
                 // IDs derived from the recorded turn, never minted literally.
                 assert_eq!(aggregated.id, streamed.id, "{name} id should aggregate");
                 assert_eq!(
-                    aggregated.provider, streamed.provider,
+                    aggregated.id.provider(),
+                    streamed.id.provider(),
                     "{name} provider ids should aggregate"
                 );
             }
@@ -420,13 +432,12 @@ async fn tool_call_then_followup_text_across_turns() {
 
             let assistant_message = Message::Assistant {
                 id: first.message_id.clone(),
-                content: vec![AssistantContent::ToolCall(tool_call.clone())],
+                content: rig_core::NonEmpty::new(AssistantContent::ToolCall(tool_call.clone())),
             };
-            let tool_result = Message::from(UserContent::tool_result_for(
+            let tool_result = Message::from(UserContent::tool_result(
                 tool_call.id.clone(),
-                tool_call.provider.clone(),
                 tool_call.function.name.clone(),
-                vec![ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)],
+                rig_core::NonEmpty::new(ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)),
             ));
             let followup_request = CompletionRequest::new(
                 "Now reply in one short sentence using the provided tool result. \
@@ -501,7 +512,7 @@ async fn three_turn_tool_session_replays_rs_ids_across_turns() {
                 .choice
                 .iter()
                 .filter_map(|content| match content {
-                    AssistantContent::Reasoning(reasoning) => reasoning.id.as_deref(),
+                    AssistantContent::Reasoning(reasoning) => reasoning.open(reasoning.issuer()).expect("sealed reasoning").id.as_deref(),
                     _ => None,
                 })
                 .collect();
@@ -534,14 +545,9 @@ async fn three_turn_tool_session_replays_rs_ids_across_turns() {
             // gate together with the tool result.
             let first_assistant = Message::Assistant {
                 id: first.message_id.clone(),
-                content: first.choice.clone(),
+                content: rig_core::NonEmpty::from_vec(first.choice.clone()).expect("non-empty"),
             };
-            let tool_result = Message::from(UserContent::tool_result_for(
-                tool_call.id.clone(),
-                tool_call.provider.clone(),
-                tool_call.function.name.clone(),
-                vec![ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)],
-            ));
+            let tool_result = Message::from(UserContent::tool_result(tool_call.id.clone(), tool_call.function.name.clone(), rig_core::NonEmpty::new(ToolResultContent::text(ALPHA_SIGNAL_OUTPUT))));
             let second_request = CompletionRequest::new(
                     "Answer in one short sentence that includes the exact tool output. \
                      Do not call any tools.",
@@ -569,7 +575,7 @@ async fn three_turn_tool_session_replays_rs_ids_across_turns() {
             // Turn 3: both prior assistant turns' rs_* items replay together.
             let second_assistant = Message::Assistant {
                 id: second.message_id.clone(),
-                content: second.choice.clone(),
+                content: rig_core::NonEmpty::from_vec(second.choice.clone()).expect("non-empty"),
             };
             let third_request = CompletionRequest::new(
                     "Repeat the exact tool output one more time, alone on a single line.",

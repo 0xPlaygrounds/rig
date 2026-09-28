@@ -56,7 +56,7 @@ fn params(cell: Cell) -> Value {
 fn request(cell: Cell, history: Vec<Message>) -> CompletionRequest {
     CompletionRequest {
         model: None,
-        chat_history: history,
+        chat_history: rig_core::NonEmpty::from_vec(history).expect("non-empty"),
         documents: vec![],
         tools: vec![],
         temperature: None,
@@ -114,7 +114,11 @@ where
         Message::user(QUESTION),
         Message::Assistant {
             id: None,
-            content: first.into_iter().collect(),
+            content: first
+                .into_iter()
+                .collect::<Vec<_>>()
+                .try_into()
+                .expect("non-empty"),
         },
         Message::user(FOLLOW_UP),
     ];

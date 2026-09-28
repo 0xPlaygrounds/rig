@@ -2,7 +2,15 @@
   "header": {
     "deliveries": [
       {
-        "batch": 12,
+        "batch": 11,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 16,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,33 +18,33 @@
         }
       },
       {
-        "batch": 13,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 19,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 19,
+        "batch": 16,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 20,
+        "batch": 17,
         "id": 1,
         "kind": {
           "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 28,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 4
+        }
+      },
+      {
+        "batch": 29,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
         }
       },
       {
@@ -44,7 +52,7 @@
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 6
+          "items": 2
         }
       },
       {
@@ -56,14 +64,6 @@
         }
       },
       {
-        "batch": 32,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
         "batch": 33,
         "id": 2,
         "kind": {
@@ -72,7 +72,7 @@
         }
       },
       {
-        "batch": 35,
+        "batch": 36,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -80,7 +80,7 @@
         }
       },
       {
-        "batch": 35,
+        "batch": 36,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -179,12 +179,10 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_UOd3iZBf85wctp3vi9EP1wci"
-              },
-              "provider": {
-                "call_id": "call_UOd3iZBf85wctp3vi9EP1wci",
-                "item_id": "fc_063e4e0521f2bc83006ab396a04fb887d0928c1f7258c0fe8a"
+                "provider": {
+                  "call_id": "call_UOd3iZBf85wctp3vi9EP1wci",
+                  "item_id": "fc_063e4e0521f2bc83006ab396a04fb887d0928c1f7258c0fe8a"
+                }
               },
               "function": {
                 "name": "lookup_harbor_label",
@@ -268,12 +266,10 @@
           "block": {
             "type": "toolcall",
             "id": {
-              "origin": "explicit",
-              "id": "call_UOd3iZBf85wctp3vi9EP1wci"
-            },
-            "provider": {
-              "call_id": "call_UOd3iZBf85wctp3vi9EP1wci",
-              "item_id": "fc_063e4e0521f2bc83006ab396a04fb887d0928c1f7258c0fe8a"
+              "provider": {
+                "call_id": "call_UOd3iZBf85wctp3vi9EP1wci",
+                "item_id": "fc_063e4e0521f2bc83006ab396a04fb887d0928c1f7258c0fe8a"
+              }
             },
             "function": {
               "name": "lookup_harbor_label",
@@ -377,12 +373,10 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_UOd3iZBf85wctp3vi9EP1wci"
-                  },
-                  "provider": {
-                    "call_id": "call_UOd3iZBf85wctp3vi9EP1wci",
-                    "item_id": "fc_063e4e0521f2bc83006ab396a04fb887d0928c1f7258c0fe8a"
+                    "provider": {
+                      "call_id": "call_UOd3iZBf85wctp3vi9EP1wci",
+                      "item_id": "fc_063e4e0521f2bc83006ab396a04fb887d0928c1f7258c0fe8a"
+                    }
                   },
                   "function": {
                     "name": "lookup_harbor_label",
@@ -399,12 +393,10 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_UOd3iZBf85wctp3vi9EP1wci"
-                  },
-                  "provider": {
-                    "call_id": "call_UOd3iZBf85wctp3vi9EP1wci",
-                    "item_id": "fc_063e4e0521f2bc83006ab396a04fb887d0928c1f7258c0fe8a"
+                    "provider": {
+                      "call_id": "call_UOd3iZBf85wctp3vi9EP1wci",
+                      "item_id": "fc_063e4e0521f2bc83006ab396a04fb887d0928c1f7258c0fe8a"
+                    }
                   },
                   "name": "lookup_harbor_label",
                   "content": [

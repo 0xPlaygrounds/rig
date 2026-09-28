@@ -266,11 +266,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "Q4w53jZxf"
-              },
-              "provider": {
-                "call_id": "Q4w53jZxf"
+                "provider": {
+                  "call_id": "Q4w53jZxf"
+                }
               },
               "function": {
                 "name": "lookup_harbor_label",
@@ -282,11 +280,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "J5as1PsS8"
-              },
-              "provider": {
-                "call_id": "J5as1PsS8"
+                "provider": {
+                  "call_id": "J5as1PsS8"
+                }
               },
               "function": {
                 "name": "lookup_orchard_label",
@@ -408,11 +404,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "Q4w53jZxf"
-                  },
-                  "provider": {
-                    "call_id": "Q4w53jZxf"
+                    "provider": {
+                      "call_id": "Q4w53jZxf"
+                    }
                   },
                   "function": {
                     "name": "lookup_harbor_label",
@@ -424,11 +418,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "J5as1PsS8"
-                  },
-                  "provider": {
-                    "call_id": "J5as1PsS8"
+                    "provider": {
+                      "call_id": "J5as1PsS8"
+                    }
                   },
                   "function": {
                     "name": "lookup_orchard_label",
@@ -445,11 +437,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "Q4w53jZxf"
-                  },
-                  "provider": {
-                    "call_id": "Q4w53jZxf"
+                    "provider": {
+                      "call_id": "Q4w53jZxf"
+                    }
                   },
                   "name": "lookup_harbor_label",
                   "content": [
@@ -462,11 +452,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "J5as1PsS8"
-                  },
-                  "provider": {
-                    "call_id": "J5as1PsS8"
+                    "provider": {
+                      "call_id": "J5as1PsS8"
+                    }
                   },
                   "name": "lookup_orchard_label",
                   "content": [

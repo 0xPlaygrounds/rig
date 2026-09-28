@@ -327,7 +327,12 @@ pub(super) async fn collect_raw_stream_outcome(
                 block: Some(AssistantContent::Reasoning(reasoning)),
                 ..
             }) => {
-                outcome.reasoning.push_str(&reasoning.display_text());
+                outcome.reasoning.push_str(
+                    &reasoning
+                        .open(reasoning.issuer())
+                        .expect("sealed reasoning")
+                        .display_text(),
+                );
                 note(&mut outcome.order, "reasoning");
             }
             Ok(StreamEvent::BlockDelta {

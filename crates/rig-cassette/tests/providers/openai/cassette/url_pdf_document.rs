@@ -25,12 +25,12 @@ async fn url_pdf_document_prompt() {
 
             let response = agent
                 .prompt(Message::User {
-                    content: vec![
+                    content: rig_core::NonEmpty::with_rest(
                         UserContent::document_url(PDF_URL, Some(DocumentMediaType::PDF)),
-                        UserContent::text(
+                        [UserContent::text(
                             "What is the title of this paper? Answer in one short sentence.",
-                        ),
-                    ],
+                        )],
+                    ),
                 })
                 .await
                 .expect("URL PDF document prompt should succeed")

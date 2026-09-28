@@ -92,12 +92,10 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_3JHEJHsuDmyF2BhOH9zYeFGK"
-              },
-              "provider": {
-                "call_id": "call_3JHEJHsuDmyF2BhOH9zYeFGK",
-                "item_id": "fc_0d89c97b8630415c006ab39668515c87d0bf35e59f1635f1a2"
+                "provider": {
+                  "call_id": "call_3JHEJHsuDmyF2BhOH9zYeFGK",
+                  "item_id": "fc_0d89c97b8630415c006ab39668515c87d0bf35e59f1635f1a2"
+                }
               },
               "function": {
                 "name": "checkpoint_large",
@@ -276,12 +274,10 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_3JHEJHsuDmyF2BhOH9zYeFGK"
-                  },
-                  "provider": {
-                    "call_id": "call_3JHEJHsuDmyF2BhOH9zYeFGK",
-                    "item_id": "fc_0d89c97b8630415c006ab39668515c87d0bf35e59f1635f1a2"
+                    "provider": {
+                      "call_id": "call_3JHEJHsuDmyF2BhOH9zYeFGK",
+                      "item_id": "fc_0d89c97b8630415c006ab39668515c87d0bf35e59f1635f1a2"
+                    }
                   },
                   "function": {
                     "name": "checkpoint_large",
@@ -298,12 +294,10 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_3JHEJHsuDmyF2BhOH9zYeFGK"
-                  },
-                  "provider": {
-                    "call_id": "call_3JHEJHsuDmyF2BhOH9zYeFGK",
-                    "item_id": "fc_0d89c97b8630415c006ab39668515c87d0bf35e59f1635f1a2"
+                    "provider": {
+                      "call_id": "call_3JHEJHsuDmyF2BhOH9zYeFGK",
+                      "item_id": "fc_0d89c97b8630415c006ab39668515c87d0bf35e59f1635f1a2"
+                    }
                   },
                   "name": "checkpoint_large",
                   "content": [

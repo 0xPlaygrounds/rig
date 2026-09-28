@@ -550,7 +550,7 @@ pub fn assert_valid_event_stream(
         let aggregated_reasoning_text: String = choice
             .iter()
             .filter_map(|content| match content {
-                AssistantContent::Reasoning(reasoning) => Some(reasoning.content.iter()),
+                AssistantContent::Reasoning(reasoning) => Some(reasoning.value().content.iter()),
                 _ => None,
             })
             .flatten()
@@ -668,7 +668,7 @@ impl DrainedStream {
         self.choice
             .iter()
             .filter_map(|content| match content {
-                AssistantContent::Reasoning(reasoning) => Some(reasoning),
+                AssistantContent::Reasoning(reasoning) => Some(reasoning.value()),
                 _ => None,
             })
             .collect()
@@ -1615,6 +1615,7 @@ fn assert_reasoning_tool_reasoning(
         .map(|content| match content {
             AssistantContent::Reasoning(reasoning) => {
                 let text: String = reasoning
+                    .value()
                     .content
                     .iter()
                     .filter_map(|content| match content {

@@ -41,6 +41,9 @@ const OLLAMA_API_BASE_URL: &str = "http://localhost:11434";
 /// telemetry spans for this provider.
 const PROVIDER_NAME: &str = "ollama";
 
+/// The issuer of Ollama's reasoning, which is the only reasoning it replays.
+const ISSUER: crate::message::Issuer = crate::message::Issuer::from_static(PROVIDER_NAME);
+
 /// The `all-minilm` embedding model.
 pub const ALL_MINILM: &str = "all-minilm";
 /// The `nomic-embed-text` embedding model.
@@ -214,9 +217,6 @@ impl TryFrom<(&str, CompletionRequest)> for OllamaCompletionRequest {
         }
         let mut partial_history = vec![];
         partial_history.extend(chat_history);
-        // Ollama tool messages are name-keyed: cross-provider ingested
-        // results arrive with an empty name and their call carries it.
-        crate::providers::internal::resolve_empty_tool_result_names(&mut partial_history);
 
         let mut full_history: Vec<Message> = Vec::new();
         full_history.extend(
@@ -673,10 +673,9 @@ impl TryFrom<crate::message::Message> for Vec<Message> {
                 for content in content {
                     match content {
                         crate::message::UserContent::ToolResult(crate::message::ToolResult {
+                            call,
                             name,
                             content,
-                            provider,
-                            ..
                         }) => {
                             let function_name = name;
                             if !pending_user_content.is_empty() {
@@ -701,9 +700,9 @@ impl TryFrom<crate::message::Message> for Vec<Message> {
                                 .collect::<Result<Vec<_>, _>>()?
                                 .join("\n");
                             messages.push(Message::ToolResult {
-                                name: function_name,
+                                name: function_name.into(),
                                 content,
-                                call_id: provider.map(|provider| provider.call_id),
+                                call_id: call.provider().map(|provider| provider.call_id.clone()),
                             });
                         }
                         content => pending_user_content.push(content),
@@ -730,6 +729,10 @@ impl TryFrom<crate::message::Message> for Vec<Message> {
                             tool_calls.push(tool_call);
                         }
                         crate::message::AssistantContent::Reasoning(reasoning) => {
+                            // Reasoning another service issued is not replayed.
+                            let Some(reasoning) = reasoning.open(&ISSUER) else {
+                                continue;
+                            };
                             let display = reasoning.display_text();
                             if !display.is_empty() {
                                 thinking = Some(display);
@@ -772,10 +775,13 @@ impl Message {
 impl From<crate::message::ToolCall> for ToolCall {
     fn from(tool_call: crate::message::ToolCall) -> Self {
         Self {
-            id: tool_call.provider.map(|provider| provider.call_id),
+            id: tool_call
+                .id
+                .provider()
+                .map(|provider| provider.call_id.clone()),
             r#type: ToolType::Function,
             function: Function {
-                name: tool_call.function.name,
+                name: tool_call.function.name.into(),
                 arguments: tool_call.function.arguments,
             },
         }

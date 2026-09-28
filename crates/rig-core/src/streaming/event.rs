@@ -157,7 +157,7 @@ pub struct ToolCallEnd {
     /// completed response. This does not supply provider provenance; provider
     /// handles remain in `tool_id` and `call_id`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub durable_id: Option<crate::message::ToolCallId>,
+    pub durable_id: Option<crate::message::CallId>,
     /// Provider-issued tool ID, including IDs received after the block opened.
     /// Represent absence as `None`, not an empty string.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -207,7 +207,7 @@ impl ToolCallEnd {
     }
 
     /// Preserve an existing local correlation handle through stream folding.
-    pub fn with_durable_id(mut self, id: crate::message::ToolCallId) -> Self {
+    pub fn with_durable_id(mut self, id: crate::message::CallId) -> Self {
         self.durable_id = Some(id);
         self
     }

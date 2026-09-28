@@ -118,11 +118,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_c70acdb180f94acb8f237050"
-              },
-              "provider": {
-                "call_id": "call_c70acdb180f94acb8f237050"
+                "provider": {
+                  "call_id": "call_c70acdb180f94acb8f237050"
+                }
               },
               "function": {
                 "name": "lookup_harbor_label",
@@ -134,11 +132,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_fcb4280b890b40bfab4f8328"
-              },
-              "provider": {
-                "call_id": "call_fcb4280b890b40bfab4f8328"
+                "provider": {
+                  "call_id": "call_fcb4280b890b40bfab4f8328"
+                }
               },
               "function": {
                 "name": "lookup_orchard_label",
@@ -235,11 +231,9 @@
           "block": {
             "type": "toolcall",
             "id": {
-              "origin": "explicit",
-              "id": "call_c70acdb180f94acb8f237050"
-            },
-            "provider": {
-              "call_id": "call_c70acdb180f94acb8f237050"
+              "provider": {
+                "call_id": "call_c70acdb180f94acb8f237050"
+              }
             },
             "function": {
               "name": "lookup_harbor_label",
@@ -260,11 +254,9 @@
           "block": {
             "type": "toolcall",
             "id": {
-              "origin": "explicit",
-              "id": "call_fcb4280b890b40bfab4f8328"
-            },
-            "provider": {
-              "call_id": "call_fcb4280b890b40bfab4f8328"
+              "provider": {
+                "call_id": "call_fcb4280b890b40bfab4f8328"
+              }
             },
             "function": {
               "name": "lookup_orchard_label",
@@ -397,11 +389,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_c70acdb180f94acb8f237050"
-                  },
-                  "provider": {
-                    "call_id": "call_c70acdb180f94acb8f237050"
+                    "provider": {
+                      "call_id": "call_c70acdb180f94acb8f237050"
+                    }
                   },
                   "function": {
                     "name": "lookup_harbor_label",
@@ -413,11 +403,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_fcb4280b890b40bfab4f8328"
-                  },
-                  "provider": {
-                    "call_id": "call_fcb4280b890b40bfab4f8328"
+                    "provider": {
+                      "call_id": "call_fcb4280b890b40bfab4f8328"
+                    }
                   },
                   "function": {
                     "name": "lookup_orchard_label",
@@ -434,11 +422,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_c70acdb180f94acb8f237050"
-                  },
-                  "provider": {
-                    "call_id": "call_c70acdb180f94acb8f237050"
+                    "provider": {
+                      "call_id": "call_c70acdb180f94acb8f237050"
+                    }
                   },
                   "name": "lookup_harbor_label",
                   "content": [
@@ -451,11 +437,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_fcb4280b890b40bfab4f8328"
-                  },
-                  "provider": {
-                    "call_id": "call_fcb4280b890b40bfab4f8328"
+                    "provider": {
+                      "call_id": "call_fcb4280b890b40bfab4f8328"
+                    }
                   },
                   "name": "lookup_orchard_label",
                   "content": [

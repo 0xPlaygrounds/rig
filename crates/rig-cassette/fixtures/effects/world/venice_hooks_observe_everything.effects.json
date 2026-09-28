@@ -181,11 +181,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "c5iKCVNlo"
-              },
-              "provider": {
-                "call_id": "c5iKCVNlo"
+                "provider": {
+                  "call_id": "c5iKCVNlo"
+                }
               },
               "function": {
                 "name": "add",
@@ -318,11 +316,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "c5iKCVNlo"
-                  },
-                  "provider": {
-                    "call_id": "c5iKCVNlo"
+                    "provider": {
+                      "call_id": "c5iKCVNlo"
+                    }
                   },
                   "function": {
                     "name": "add",
@@ -342,11 +338,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "c5iKCVNlo"
-                  },
-                  "provider": {
-                    "call_id": "c5iKCVNlo"
+                    "provider": {
+                      "call_id": "c5iKCVNlo"
+                    }
                   },
                   "name": "add",
                   "content": [
@@ -483,11 +477,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "c5iKCVNlo"
-                  },
-                  "provider": {
-                    "call_id": "c5iKCVNlo"
+                    "provider": {
+                      "call_id": "c5iKCVNlo"
+                    }
                   },
                   "function": {
                     "name": "add",
@@ -507,11 +499,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "c5iKCVNlo"
-                  },
-                  "provider": {
-                    "call_id": "c5iKCVNlo"
+                    "provider": {
+                      "call_id": "c5iKCVNlo"
+                    }
                   },
                   "name": "add",
                   "content": [

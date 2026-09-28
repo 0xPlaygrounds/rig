@@ -53,6 +53,10 @@ use std::convert::TryFrom;
 /// Provider name used in normalized responses, streams, and telemetry.
 pub const PROVIDER_NAME: &str = "gcp.gemini";
 
+/// The issuer of Gemini's reasoning, which is the only reasoning it replays.
+pub(crate) const ISSUER: crate::message::Issuer =
+    crate::message::Issuer::from_static(PROVIDER_NAME);
+
 /// Completion wire for unary `generateContent` and SSE `streamGenerateContent`.
 /// Both modes use [`GenerateContentDecoder`](super::streaming::GenerateContentDecoder).
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -100,8 +104,8 @@ impl Wire for GenerateContent {
             })
     }
 
-    fn encode(&self, mut request: CompletionRequest, mode: Mode) -> Result<Encoded, EncodeError> {
-        crate::message::retain_replayable_reasoning(&mut request.chat_history, &[PROVIDER_NAME]);
+    fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, EncodeError> {
+        let request = request.replayable_to(&[ISSUER])?;
         // The request may name a model of its own; the wire's is the default.
         let model = resolve_request_model(&self.model, &request);
         let mut body = create_request_body(request)?;
@@ -157,9 +161,6 @@ pub(crate) fn create_request_body(
 
     let mut full_history = Vec::new();
     full_history.extend(chat_history);
-    // functionResponse.name keys the replay: cross-provider ingested
-    // results arrive with an empty name and their call carries it.
-    crate::providers::internal::resolve_empty_tool_result_names(&mut full_history);
     let (history_system, full_history) = split_system_messages_from_history(full_history);
 
     let mut additional_params_payload = additional_params
@@ -629,6 +630,13 @@ pub mod gemini_api_types {
                     role: Some(Role::Model),
                     parts: content
                         .into_iter()
+                        // Reasoning another service issued is not replayed.
+                        .filter(|part| match part {
+                            message::AssistantContent::Reasoning(reasoning) => reasoning
+                                .open(&crate::providers::gemini::completion::ISSUER)
+                                .is_some(),
+                            _ => true,
+                        })
                         .map(std::convert::TryInto::try_into)
                         .collect::<Result<Vec<_>, _>>()?,
                 },
@@ -808,8 +816,7 @@ pub mod gemini_api_types {
                     additional_params: None,
                 }),
                 message::UserContent::ToolResult(message::ToolResult {
-                    call: _,
-                    provider,
+                    call,
                     name,
                     content,
                 }) => {
@@ -876,8 +883,8 @@ pub mod gemini_api_types {
                         thought: Some(false),
                         thought_signature: None,
                         part: PartKind::FunctionResponse(FunctionResponse {
-                            name: function_name,
-                            id: provider.map(|provider| provider.call_id),
+                            name: function_name.into(),
+                            id: call.provider().map(|provider| provider.call_id.clone()),
                             response: response_json,
                             parts: if parts.is_empty() { None } else { Some(parts) },
                         }),
@@ -1056,12 +1063,21 @@ pub mod gemini_api_types {
                 }
                 message::AssistantContent::Image(image) => image_to_part(image),
                 message::AssistantContent::ToolCall(tool_call) => Ok(tool_call.into()),
-                message::AssistantContent::Reasoning(reasoning) => Ok(Part {
-                    thought: Some(true),
-                    thought_signature: reasoning.first_signature().map(str::to_owned),
-                    part: PartKind::Text(reasoning.display_text()),
-                    additional_params: None,
-                }),
+                message::AssistantContent::Reasoning(reasoning) => {
+                    let reasoning = reasoning
+                        .open(&crate::providers::gemini::completion::ISSUER)
+                        .ok_or_else(|| {
+                            MessageError::ConversionError(
+                                "Gemini cannot replay reasoning another service issued".to_owned(),
+                            )
+                        })?;
+                    Ok(Part {
+                        thought: Some(true),
+                        thought_signature: reasoning.first_signature().map(str::to_owned),
+                        part: PartKind::Text(reasoning.display_text()),
+                        additional_params: None,
+                    })
+                }
             }
         }
     }
@@ -1072,11 +1088,14 @@ pub mod gemini_api_types {
                 thought: Some(false),
                 thought_signature: tool_call.signature,
                 part: PartKind::FunctionCall(FunctionCall {
-                    name: tool_call.function.name,
+                    name: tool_call.function.name.into(),
                     args: tool_call.function.arguments,
                     // Only a provider-issued id may travel back on the wire;
-                    // minted correlation handles stay internal.
-                    id: tool_call.provider.map(|provider| provider.call_id),
+                    // rig-issued ids stay internal.
+                    id: tool_call
+                        .id
+                        .provider()
+                        .map(|provider| provider.call_id.clone()),
                 }),
                 additional_params: None,
             }
@@ -1111,9 +1130,12 @@ pub mod gemini_api_types {
     impl From<message::ToolCall> for FunctionCall {
         fn from(tool_call: message::ToolCall) -> Self {
             Self {
-                name: tool_call.function.name,
+                name: tool_call.function.name.into(),
                 args: tool_call.function.arguments,
-                id: tool_call.provider.map(|provider| provider.call_id),
+                id: tool_call
+                    .id
+                    .provider()
+                    .map(|provider| provider.call_id.clone()),
             }
         }
     }

@@ -20,6 +20,10 @@ use crate::wire::{
 use serde::{Deserialize, Serialize};
 
 use super::completion::{CohereCompletionRequest, PROVIDER_NAME};
+use crate::message::Issuer;
+
+/// The issuer of Cohere's reasoning, which is the only reasoning it replays.
+pub(crate) const ISSUER: Issuer = Issuer::from_static(PROVIDER_NAME);
 use super::embeddings::{
     EmbeddingResponse as CohereEmbeddingResponse, ErrorEnvelope as CohereErrorEnvelope,
     ImageEmbeddingResponse as CohereImageEmbeddingResponse, image_data_url, validate_image,
@@ -126,8 +130,8 @@ impl Wire for Chat {
         Descriptor::new(PROVIDER_NAME).model(self.model.as_str())
     }
 
-    fn encode(&self, mut request: CompletionRequest, mode: Mode) -> Result<Encoded, EncodeError> {
-        crate::message::retain_replayable_reasoning(&mut request.chat_history, &[PROVIDER_NAME]);
+    fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, EncodeError> {
+        let request = request.replayable_to(&[ISSUER])?;
         let mut body = CohereCompletionRequest::try_from((self.model.as_str(), request))?;
         if mode == Mode::Streaming {
             body.additional_params = Some(json_utils::merge(

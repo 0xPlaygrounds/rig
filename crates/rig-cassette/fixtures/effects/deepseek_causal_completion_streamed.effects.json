@@ -109,11 +109,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_00_AhIRnBq4bGyDQaUTsu528361"
-              },
-              "provider": {
-                "call_id": "call_00_AhIRnBq4bGyDQaUTsu528361"
+                "provider": {
+                  "call_id": "call_00_AhIRnBq4bGyDQaUTsu528361"
+                }
               },
               "function": {
                 "name": "lookup",
@@ -298,11 +296,9 @@
           "block": {
             "type": "toolcall",
             "id": {
-              "origin": "explicit",
-              "id": "call_00_AhIRnBq4bGyDQaUTsu528361"
-            },
-            "provider": {
-              "call_id": "call_00_AhIRnBq4bGyDQaUTsu528361"
+              "provider": {
+                "call_id": "call_00_AhIRnBq4bGyDQaUTsu528361"
+              }
             },
             "function": {
               "name": "lookup",
@@ -488,11 +484,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_00_AhIRnBq4bGyDQaUTsu528361"
-                  },
-                  "provider": {
-                    "call_id": "call_00_AhIRnBq4bGyDQaUTsu528361"
+                    "provider": {
+                      "call_id": "call_00_AhIRnBq4bGyDQaUTsu528361"
+                    }
                   },
                   "function": {
                     "name": "lookup",
@@ -511,11 +505,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_00_AhIRnBq4bGyDQaUTsu528361"
-                  },
-                  "provider": {
-                    "call_id": "call_00_AhIRnBq4bGyDQaUTsu528361"
+                    "provider": {
+                      "call_id": "call_00_AhIRnBq4bGyDQaUTsu528361"
+                    }
                   },
                   "name": "lookup",
                   "content": [

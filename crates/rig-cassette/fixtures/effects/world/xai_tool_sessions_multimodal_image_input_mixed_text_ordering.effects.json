@@ -87,14 +87,14 @@
           "choice": [
             {
               "type": "reasoning",
+              "issuer": "xai",
               "id": "rs_f5f1208e-5cd6-9eae-b976-e9f087a15637",
               "content": [
                 {
                   "type": "summary",
                   "content": "This is an image-analysis cassette test."
                 }
-              ],
-              "provider": "xai"
+              ]
             },
             {
               "type": "text",

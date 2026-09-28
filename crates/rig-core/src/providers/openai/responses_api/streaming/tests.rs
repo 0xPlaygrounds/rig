@@ -942,9 +942,9 @@ async fn multi_block_reasoning_done_item_yields_one_part() {
         "one done item must complete exactly one reasoning part, got {completed_reasoning:?}"
     );
     let reasoning = completed_reasoning.first().expect("one part");
-    assert_eq!(reasoning.id.as_deref(), Some("rs_1"));
+    assert_eq!(reasoning.value().id.as_deref(), Some("rs_1"));
     assert_eq!(
-        reasoning.content,
+        reasoning.value().content,
         vec![
             ReasoningContent::Summary("step 1".to_string()),
             ReasoningContent::Summary("step 2".to_string()),
@@ -1005,8 +1005,14 @@ async fn response_failed_flushes_delivered_tool_calls_before_the_error() {
     // the terminal error.
     let (tool_call, err) = flushed_tool_call_then_error(&mut stream).await;
     // The correlator drives rig's id; the item id rides on `provider`.
-    assert_eq!(tool_call.id.explicit(), Some("call_123"));
-    let provider = tool_call.provider.as_ref().expect("provider ids are kept");
+    assert_eq!(
+        tool_call
+            .id
+            .provider()
+            .map(|provider| provider.call_id.as_str()),
+        Some("call_123")
+    );
+    let provider = tool_call.id.provider().expect("provider ids are kept");
     assert_eq!(provider.call_id, "call_123");
     assert_eq!(provider.item_id.as_deref(), Some("fc_123"));
     assert_eq!(tool_call.function.name, "example_tool");
@@ -1053,8 +1059,14 @@ async fn transport_error_flushes_delivered_tool_calls_before_the_error() {
     let mut stream = responses_stream(SequencedStreamingHttpClient::new(chunks)).await;
 
     let (tool_call, err) = flushed_tool_call_then_error(&mut stream).await;
-    assert_eq!(tool_call.id.explicit(), Some("call_123"));
-    let provider = tool_call.provider.as_ref().expect("provider ids are kept");
+    assert_eq!(
+        tool_call
+            .id
+            .provider()
+            .map(|provider| provider.call_id.as_str()),
+        Some("call_123")
+    );
+    let provider = tool_call.id.provider().expect("provider ids are kept");
     assert_eq!(provider.item_id.as_deref(), Some("fc_123"));
     assert_eq!(
         err.http_status,
@@ -1678,7 +1690,7 @@ async fn envelope_less_reasoning_deltas_are_superseded_by_their_done_item() {
     );
     let occurrences = reasoning
         .iter()
-        .flat_map(|item| item.content.iter())
+        .flat_map(|item| item.value().content.iter())
         .filter(|content| match content {
             ReasoningContent::Summary(text) | ReasoningContent::Text { text, .. } => {
                 text.contains("think")
@@ -1950,7 +1962,7 @@ async fn parallel_id_less_function_calls_assemble_distinctly() {
         .iter()
         .filter_map(|content| match content {
             crate::completion::AssistantContent::ToolCall(call) => Some((
-                call.function.name.clone(),
+                call.function.name.to_string(),
                 call.function.arguments.to_string(),
             )),
             _ => None,
@@ -2026,7 +2038,7 @@ async fn a_lost_done_frame_does_not_discard_a_provider_completed_call() {
     let call = calls[0];
     assert_eq!(call.function.name, "get_weather");
     assert_eq!(call.function.arguments, json!({"city": "Paris"}));
-    let provider = call.provider.as_ref().expect("the wire issued ids");
+    let provider = call.id.provider().expect("the wire issued ids");
     assert_eq!(provider.call_id, "call_abc");
     assert_eq!(provider.item_id.as_deref(), Some("fc_1"));
 }

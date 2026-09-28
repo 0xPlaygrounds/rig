@@ -118,11 +118,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "toolu_01MD7GQpN8r2YuBcUShqEtZp"
-              },
-              "provider": {
-                "call_id": "toolu_01MD7GQpN8r2YuBcUShqEtZp"
+                "provider": {
+                  "call_id": "toolu_01MD7GQpN8r2YuBcUShqEtZp"
+                }
               },
               "function": {
                 "name": "add",
@@ -231,11 +229,9 @@
           "block": {
             "type": "toolcall",
             "id": {
-              "origin": "explicit",
-              "id": "toolu_01MD7GQpN8r2YuBcUShqEtZp"
-            },
-            "provider": {
-              "call_id": "toolu_01MD7GQpN8r2YuBcUShqEtZp"
+              "provider": {
+                "call_id": "toolu_01MD7GQpN8r2YuBcUShqEtZp"
+              }
             },
             "function": {
               "name": "add",
@@ -334,11 +330,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "toolu_01MD7GQpN8r2YuBcUShqEtZp"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01MD7GQpN8r2YuBcUShqEtZp"
+                    "provider": {
+                      "call_id": "toolu_01MD7GQpN8r2YuBcUShqEtZp"
+                    }
                   },
                   "function": {
                     "name": "add",
@@ -358,11 +352,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "toolu_01MD7GQpN8r2YuBcUShqEtZp"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01MD7GQpN8r2YuBcUShqEtZp"
+                    "provider": {
+                      "call_id": "toolu_01MD7GQpN8r2YuBcUShqEtZp"
+                    }
                   },
                   "name": "add",
                   "content": [

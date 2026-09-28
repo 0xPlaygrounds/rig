@@ -14,11 +14,19 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 2
         }
       },
       {
-        "batch": 4,
+        "batch": 5,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 5,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -140,11 +148,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "T4ijcfncM"
-              },
-              "provider": {
-                "call_id": "T4ijcfncM"
+                "provider": {
+                  "call_id": "T4ijcfncM"
+                }
               },
               "function": {
                 "name": "add",
@@ -216,11 +222,9 @@
           "block": {
             "type": "toolcall",
             "id": {
-              "origin": "explicit",
-              "id": "T4ijcfncM"
-            },
-            "provider": {
-              "call_id": "T4ijcfncM"
+              "provider": {
+                "call_id": "T4ijcfncM"
+              }
             },
             "function": {
               "name": "add",

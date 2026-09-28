@@ -250,7 +250,7 @@ impl Wire for Echo {
 fn prompt() -> CompletionRequest {
     CompletionRequest {
         model: None,
-        chat_history: vec![crate::message::Message::user("say hi")],
+        chat_history: crate::NonEmpty::new(crate::message::Message::user("say hi")),
         documents: Vec::new(),
         tools: Vec::new(),
         temperature: None,

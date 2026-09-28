@@ -284,12 +284,10 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_ApXWuHMFtmZu0akncEGFHyjv"
-              },
-              "provider": {
-                "call_id": "call_ApXWuHMFtmZu0akncEGFHyjv",
-                "item_id": "fc_055590d5914fdcd2006ab39685b94087d0b3293370ca750686"
+                "provider": {
+                  "call_id": "call_ApXWuHMFtmZu0akncEGFHyjv",
+                  "item_id": "fc_055590d5914fdcd2006ab39685b94087d0b3293370ca750686"
+                }
               },
               "function": {
                 "name": "list_files",
@@ -527,12 +525,10 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_ApXWuHMFtmZu0akncEGFHyjv"
-                  },
-                  "provider": {
-                    "call_id": "call_ApXWuHMFtmZu0akncEGFHyjv",
-                    "item_id": "fc_055590d5914fdcd2006ab39685b94087d0b3293370ca750686"
+                    "provider": {
+                      "call_id": "call_ApXWuHMFtmZu0akncEGFHyjv",
+                      "item_id": "fc_055590d5914fdcd2006ab39685b94087d0b3293370ca750686"
+                    }
                   },
                   "function": {
                     "name": "list_files",
@@ -549,12 +545,10 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_ApXWuHMFtmZu0akncEGFHyjv"
-                  },
-                  "provider": {
-                    "call_id": "call_ApXWuHMFtmZu0akncEGFHyjv",
-                    "item_id": "fc_055590d5914fdcd2006ab39685b94087d0b3293370ca750686"
+                    "provider": {
+                      "call_id": "call_ApXWuHMFtmZu0akncEGFHyjv",
+                      "item_id": "fc_055590d5914fdcd2006ab39685b94087d0b3293370ca750686"
+                    }
                   },
                   "name": "list_files",
                   "content": [
@@ -642,12 +636,10 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_si82L4SkfRxXoDiEnl0ezgaH"
-              },
-              "provider": {
-                "call_id": "call_si82L4SkfRxXoDiEnl0ezgaH",
-                "item_id": "fc_055590d5914fdcd2006ab39686b64487d096a9cc7a9e0efeb9"
+                "provider": {
+                  "call_id": "call_si82L4SkfRxXoDiEnl0ezgaH",
+                  "item_id": "fc_055590d5914fdcd2006ab39686b64487d096a9cc7a9e0efeb9"
+                }
               },
               "function": {
                 "name": "read_file",
@@ -887,12 +879,10 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_ApXWuHMFtmZu0akncEGFHyjv"
-                  },
-                  "provider": {
-                    "call_id": "call_ApXWuHMFtmZu0akncEGFHyjv",
-                    "item_id": "fc_055590d5914fdcd2006ab39685b94087d0b3293370ca750686"
+                    "provider": {
+                      "call_id": "call_ApXWuHMFtmZu0akncEGFHyjv",
+                      "item_id": "fc_055590d5914fdcd2006ab39685b94087d0b3293370ca750686"
+                    }
                   },
                   "function": {
                     "name": "list_files",
@@ -909,12 +899,10 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_ApXWuHMFtmZu0akncEGFHyjv"
-                  },
-                  "provider": {
-                    "call_id": "call_ApXWuHMFtmZu0akncEGFHyjv",
-                    "item_id": "fc_055590d5914fdcd2006ab39685b94087d0b3293370ca750686"
+                    "provider": {
+                      "call_id": "call_ApXWuHMFtmZu0akncEGFHyjv",
+                      "item_id": "fc_055590d5914fdcd2006ab39685b94087d0b3293370ca750686"
+                    }
                   },
                   "name": "list_files",
                   "content": [
@@ -933,12 +921,10 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_si82L4SkfRxXoDiEnl0ezgaH"
-                  },
-                  "provider": {
-                    "call_id": "call_si82L4SkfRxXoDiEnl0ezgaH",
-                    "item_id": "fc_055590d5914fdcd2006ab39686b64487d096a9cc7a9e0efeb9"
+                    "provider": {
+                      "call_id": "call_si82L4SkfRxXoDiEnl0ezgaH",
+                      "item_id": "fc_055590d5914fdcd2006ab39686b64487d096a9cc7a9e0efeb9"
+                    }
                   },
                   "function": {
                     "name": "read_file",
@@ -957,12 +943,10 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_si82L4SkfRxXoDiEnl0ezgaH"
-                  },
-                  "provider": {
-                    "call_id": "call_si82L4SkfRxXoDiEnl0ezgaH",
-                    "item_id": "fc_055590d5914fdcd2006ab39686b64487d096a9cc7a9e0efeb9"
+                    "provider": {
+                      "call_id": "call_si82L4SkfRxXoDiEnl0ezgaH",
+                      "item_id": "fc_055590d5914fdcd2006ab39686b64487d096a9cc7a9e0efeb9"
+                    }
                   },
                   "name": "read_file",
                   "content": [
@@ -1050,12 +1034,10 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_W9mcjFM2lU6Zhp3NlNKyk5ZJ"
-              },
-              "provider": {
-                "call_id": "call_W9mcjFM2lU6Zhp3NlNKyk5ZJ",
-                "item_id": "fc_055590d5914fdcd2006ab39687a37887d0957c19f4016e7785"
+                "provider": {
+                  "call_id": "call_W9mcjFM2lU6Zhp3NlNKyk5ZJ",
+                  "item_id": "fc_055590d5914fdcd2006ab39687a37887d0957c19f4016e7785"
+                }
               },
               "function": {
                 "name": "read_file",
@@ -1295,12 +1277,10 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_ApXWuHMFtmZu0akncEGFHyjv"
-                  },
-                  "provider": {
-                    "call_id": "call_ApXWuHMFtmZu0akncEGFHyjv",
-                    "item_id": "fc_055590d5914fdcd2006ab39685b94087d0b3293370ca750686"
+                    "provider": {
+                      "call_id": "call_ApXWuHMFtmZu0akncEGFHyjv",
+                      "item_id": "fc_055590d5914fdcd2006ab39685b94087d0b3293370ca750686"
+                    }
                   },
                   "function": {
                     "name": "list_files",
@@ -1317,12 +1297,10 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_ApXWuHMFtmZu0akncEGFHyjv"
-                  },
-                  "provider": {
-                    "call_id": "call_ApXWuHMFtmZu0akncEGFHyjv",
-                    "item_id": "fc_055590d5914fdcd2006ab39685b94087d0b3293370ca750686"
+                    "provider": {
+                      "call_id": "call_ApXWuHMFtmZu0akncEGFHyjv",
+                      "item_id": "fc_055590d5914fdcd2006ab39685b94087d0b3293370ca750686"
+                    }
                   },
                   "name": "list_files",
                   "content": [
@@ -1341,12 +1319,10 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_si82L4SkfRxXoDiEnl0ezgaH"
-                  },
-                  "provider": {
-                    "call_id": "call_si82L4SkfRxXoDiEnl0ezgaH",
-                    "item_id": "fc_055590d5914fdcd2006ab39686b64487d096a9cc7a9e0efeb9"
+                    "provider": {
+                      "call_id": "call_si82L4SkfRxXoDiEnl0ezgaH",
+                      "item_id": "fc_055590d5914fdcd2006ab39686b64487d096a9cc7a9e0efeb9"
+                    }
                   },
                   "function": {
                     "name": "read_file",
@@ -1365,12 +1341,10 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_si82L4SkfRxXoDiEnl0ezgaH"
-                  },
-                  "provider": {
-                    "call_id": "call_si82L4SkfRxXoDiEnl0ezgaH",
-                    "item_id": "fc_055590d5914fdcd2006ab39686b64487d096a9cc7a9e0efeb9"
+                    "provider": {
+                      "call_id": "call_si82L4SkfRxXoDiEnl0ezgaH",
+                      "item_id": "fc_055590d5914fdcd2006ab39686b64487d096a9cc7a9e0efeb9"
+                    }
                   },
                   "name": "read_file",
                   "content": [
@@ -1389,12 +1363,10 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_W9mcjFM2lU6Zhp3NlNKyk5ZJ"
-                  },
-                  "provider": {
-                    "call_id": "call_W9mcjFM2lU6Zhp3NlNKyk5ZJ",
-                    "item_id": "fc_055590d5914fdcd2006ab39687a37887d0957c19f4016e7785"
+                    "provider": {
+                      "call_id": "call_W9mcjFM2lU6Zhp3NlNKyk5ZJ",
+                      "item_id": "fc_055590d5914fdcd2006ab39687a37887d0957c19f4016e7785"
+                    }
                   },
                   "function": {
                     "name": "read_file",
@@ -1413,12 +1385,10 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_W9mcjFM2lU6Zhp3NlNKyk5ZJ"
-                  },
-                  "provider": {
-                    "call_id": "call_W9mcjFM2lU6Zhp3NlNKyk5ZJ",
-                    "item_id": "fc_055590d5914fdcd2006ab39687a37887d0957c19f4016e7785"
+                    "provider": {
+                      "call_id": "call_W9mcjFM2lU6Zhp3NlNKyk5ZJ",
+                      "item_id": "fc_055590d5914fdcd2006ab39687a37887d0957c19f4016e7785"
+                    }
                   },
                   "name": "read_file",
                   "content": [
@@ -1506,12 +1476,10 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_3vNZEACl0HxtneWjWSFEIkr2"
-              },
-              "provider": {
-                "call_id": "call_3vNZEACl0HxtneWjWSFEIkr2",
-                "item_id": "fc_055590d5914fdcd2006ab3968898a887d09aa3a8a7c51911d1"
+                "provider": {
+                  "call_id": "call_3vNZEACl0HxtneWjWSFEIkr2",
+                  "item_id": "fc_055590d5914fdcd2006ab3968898a887d09aa3a8a7c51911d1"
+                }
               },
               "function": {
                 "name": "read_file",
@@ -1751,12 +1719,10 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_ApXWuHMFtmZu0akncEGFHyjv"
-                  },
-                  "provider": {
-                    "call_id": "call_ApXWuHMFtmZu0akncEGFHyjv",
-                    "item_id": "fc_055590d5914fdcd2006ab39685b94087d0b3293370ca750686"
+                    "provider": {
+                      "call_id": "call_ApXWuHMFtmZu0akncEGFHyjv",
+                      "item_id": "fc_055590d5914fdcd2006ab39685b94087d0b3293370ca750686"
+                    }
                   },
                   "function": {
                     "name": "list_files",
@@ -1773,12 +1739,10 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_ApXWuHMFtmZu0akncEGFHyjv"
-                  },
-                  "provider": {
-                    "call_id": "call_ApXWuHMFtmZu0akncEGFHyjv",
-                    "item_id": "fc_055590d5914fdcd2006ab39685b94087d0b3293370ca750686"
+                    "provider": {
+                      "call_id": "call_ApXWuHMFtmZu0akncEGFHyjv",
+                      "item_id": "fc_055590d5914fdcd2006ab39685b94087d0b3293370ca750686"
+                    }
                   },
                   "name": "list_files",
                   "content": [
@@ -1797,12 +1761,10 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_si82L4SkfRxXoDiEnl0ezgaH"
-                  },
-                  "provider": {
-                    "call_id": "call_si82L4SkfRxXoDiEnl0ezgaH",
-                    "item_id": "fc_055590d5914fdcd2006ab39686b64487d096a9cc7a9e0efeb9"
+                    "provider": {
+                      "call_id": "call_si82L4SkfRxXoDiEnl0ezgaH",
+                      "item_id": "fc_055590d5914fdcd2006ab39686b64487d096a9cc7a9e0efeb9"
+                    }
                   },
                   "function": {
                     "name": "read_file",
@@ -1821,12 +1783,10 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_si82L4SkfRxXoDiEnl0ezgaH"
-                  },
-                  "provider": {
-                    "call_id": "call_si82L4SkfRxXoDiEnl0ezgaH",
-                    "item_id": "fc_055590d5914fdcd2006ab39686b64487d096a9cc7a9e0efeb9"
+                    "provider": {
+                      "call_id": "call_si82L4SkfRxXoDiEnl0ezgaH",
+                      "item_id": "fc_055590d5914fdcd2006ab39686b64487d096a9cc7a9e0efeb9"
+                    }
                   },
                   "name": "read_file",
                   "content": [
@@ -1845,12 +1805,10 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_W9mcjFM2lU6Zhp3NlNKyk5ZJ"
-                  },
-                  "provider": {
-                    "call_id": "call_W9mcjFM2lU6Zhp3NlNKyk5ZJ",
-                    "item_id": "fc_055590d5914fdcd2006ab39687a37887d0957c19f4016e7785"
+                    "provider": {
+                      "call_id": "call_W9mcjFM2lU6Zhp3NlNKyk5ZJ",
+                      "item_id": "fc_055590d5914fdcd2006ab39687a37887d0957c19f4016e7785"
+                    }
                   },
                   "function": {
                     "name": "read_file",
@@ -1869,12 +1827,10 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_W9mcjFM2lU6Zhp3NlNKyk5ZJ"
-                  },
-                  "provider": {
-                    "call_id": "call_W9mcjFM2lU6Zhp3NlNKyk5ZJ",
-                    "item_id": "fc_055590d5914fdcd2006ab39687a37887d0957c19f4016e7785"
+                    "provider": {
+                      "call_id": "call_W9mcjFM2lU6Zhp3NlNKyk5ZJ",
+                      "item_id": "fc_055590d5914fdcd2006ab39687a37887d0957c19f4016e7785"
+                    }
                   },
                   "name": "read_file",
                   "content": [
@@ -1893,12 +1849,10 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_3vNZEACl0HxtneWjWSFEIkr2"
-                  },
-                  "provider": {
-                    "call_id": "call_3vNZEACl0HxtneWjWSFEIkr2",
-                    "item_id": "fc_055590d5914fdcd2006ab3968898a887d09aa3a8a7c51911d1"
+                    "provider": {
+                      "call_id": "call_3vNZEACl0HxtneWjWSFEIkr2",
+                      "item_id": "fc_055590d5914fdcd2006ab3968898a887d09aa3a8a7c51911d1"
+                    }
                   },
                   "function": {
                     "name": "read_file",
@@ -1917,12 +1871,10 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_3vNZEACl0HxtneWjWSFEIkr2"
-                  },
-                  "provider": {
-                    "call_id": "call_3vNZEACl0HxtneWjWSFEIkr2",
-                    "item_id": "fc_055590d5914fdcd2006ab3968898a887d09aa3a8a7c51911d1"
+                    "provider": {
+                      "call_id": "call_3vNZEACl0HxtneWjWSFEIkr2",
+                      "item_id": "fc_055590d5914fdcd2006ab3968898a887d09aa3a8a7c51911d1"
+                    }
                   },
                   "name": "read_file",
                   "content": [
@@ -2010,12 +1962,10 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_C6EAocemw0zKhy2Gfzahi6W9"
-              },
-              "provider": {
-                "call_id": "call_C6EAocemw0zKhy2Gfzahi6W9",
-                "item_id": "fc_055590d5914fdcd2006ab3968a258c87d0997aa02cb97404cc"
+                "provider": {
+                  "call_id": "call_C6EAocemw0zKhy2Gfzahi6W9",
+                  "item_id": "fc_055590d5914fdcd2006ab3968a258c87d0997aa02cb97404cc"
+                }
               },
               "function": {
                 "name": "run_tests",
@@ -2253,12 +2203,10 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_ApXWuHMFtmZu0akncEGFHyjv"
-                  },
-                  "provider": {
-                    "call_id": "call_ApXWuHMFtmZu0akncEGFHyjv",
-                    "item_id": "fc_055590d5914fdcd2006ab39685b94087d0b3293370ca750686"
+                    "provider": {
+                      "call_id": "call_ApXWuHMFtmZu0akncEGFHyjv",
+                      "item_id": "fc_055590d5914fdcd2006ab39685b94087d0b3293370ca750686"
+                    }
                   },
                   "function": {
                     "name": "list_files",
@@ -2275,12 +2223,10 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_ApXWuHMFtmZu0akncEGFHyjv"
-                  },
-                  "provider": {
-                    "call_id": "call_ApXWuHMFtmZu0akncEGFHyjv",
-                    "item_id": "fc_055590d5914fdcd2006ab39685b94087d0b3293370ca750686"
+                    "provider": {
+                      "call_id": "call_ApXWuHMFtmZu0akncEGFHyjv",
+                      "item_id": "fc_055590d5914fdcd2006ab39685b94087d0b3293370ca750686"
+                    }
                   },
                   "name": "list_files",
                   "content": [
@@ -2299,12 +2245,10 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_si82L4SkfRxXoDiEnl0ezgaH"
-                  },
-                  "provider": {
-                    "call_id": "call_si82L4SkfRxXoDiEnl0ezgaH",
-                    "item_id": "fc_055590d5914fdcd2006ab39686b64487d096a9cc7a9e0efeb9"
+                    "provider": {
+                      "call_id": "call_si82L4SkfRxXoDiEnl0ezgaH",
+                      "item_id": "fc_055590d5914fdcd2006ab39686b64487d096a9cc7a9e0efeb9"
+                    }
                   },
                   "function": {
                     "name": "read_file",
@@ -2323,12 +2267,10 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_si82L4SkfRxXoDiEnl0ezgaH"
-                  },
-                  "provider": {
-                    "call_id": "call_si82L4SkfRxXoDiEnl0ezgaH",
-                    "item_id": "fc_055590d5914fdcd2006ab39686b64487d096a9cc7a9e0efeb9"
+                    "provider": {
+                      "call_id": "call_si82L4SkfRxXoDiEnl0ezgaH",
+                      "item_id": "fc_055590d5914fdcd2006ab39686b64487d096a9cc7a9e0efeb9"
+                    }
                   },
                   "name": "read_file",
                   "content": [
@@ -2347,12 +2289,10 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_W9mcjFM2lU6Zhp3NlNKyk5ZJ"
-                  },
-                  "provider": {
-                    "call_id": "call_W9mcjFM2lU6Zhp3NlNKyk5ZJ",
-                    "item_id": "fc_055590d5914fdcd2006ab39687a37887d0957c19f4016e7785"
+                    "provider": {
+                      "call_id": "call_W9mcjFM2lU6Zhp3NlNKyk5ZJ",
+                      "item_id": "fc_055590d5914fdcd2006ab39687a37887d0957c19f4016e7785"
+                    }
                   },
                   "function": {
                     "name": "read_file",
@@ -2371,12 +2311,10 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_W9mcjFM2lU6Zhp3NlNKyk5ZJ"
-                  },
-                  "provider": {
-                    "call_id": "call_W9mcjFM2lU6Zhp3NlNKyk5ZJ",
-                    "item_id": "fc_055590d5914fdcd2006ab39687a37887d0957c19f4016e7785"
+                    "provider": {
+                      "call_id": "call_W9mcjFM2lU6Zhp3NlNKyk5ZJ",
+                      "item_id": "fc_055590d5914fdcd2006ab39687a37887d0957c19f4016e7785"
+                    }
                   },
                   "name": "read_file",
                   "content": [
@@ -2395,12 +2333,10 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_3vNZEACl0HxtneWjWSFEIkr2"
-                  },
-                  "provider": {
-                    "call_id": "call_3vNZEACl0HxtneWjWSFEIkr2",
-                    "item_id": "fc_055590d5914fdcd2006ab3968898a887d09aa3a8a7c51911d1"
+                    "provider": {
+                      "call_id": "call_3vNZEACl0HxtneWjWSFEIkr2",
+                      "item_id": "fc_055590d5914fdcd2006ab3968898a887d09aa3a8a7c51911d1"
+                    }
                   },
                   "function": {
                     "name": "read_file",
@@ -2419,12 +2355,10 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_3vNZEACl0HxtneWjWSFEIkr2"
-                  },
-                  "provider": {
-                    "call_id": "call_3vNZEACl0HxtneWjWSFEIkr2",
-                    "item_id": "fc_055590d5914fdcd2006ab3968898a887d09aa3a8a7c51911d1"
+                    "provider": {
+                      "call_id": "call_3vNZEACl0HxtneWjWSFEIkr2",
+                      "item_id": "fc_055590d5914fdcd2006ab3968898a887d09aa3a8a7c51911d1"
+                    }
                   },
                   "name": "read_file",
                   "content": [
@@ -2443,12 +2377,10 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_C6EAocemw0zKhy2Gfzahi6W9"
-                  },
-                  "provider": {
-                    "call_id": "call_C6EAocemw0zKhy2Gfzahi6W9",
-                    "item_id": "fc_055590d5914fdcd2006ab3968a258c87d0997aa02cb97404cc"
+                    "provider": {
+                      "call_id": "call_C6EAocemw0zKhy2Gfzahi6W9",
+                      "item_id": "fc_055590d5914fdcd2006ab3968a258c87d0997aa02cb97404cc"
+                    }
                   },
                   "function": {
                     "name": "run_tests",
@@ -2465,12 +2397,10 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_C6EAocemw0zKhy2Gfzahi6W9"
-                  },
-                  "provider": {
-                    "call_id": "call_C6EAocemw0zKhy2Gfzahi6W9",
-                    "item_id": "fc_055590d5914fdcd2006ab3968a258c87d0997aa02cb97404cc"
+                    "provider": {
+                      "call_id": "call_C6EAocemw0zKhy2Gfzahi6W9",
+                      "item_id": "fc_055590d5914fdcd2006ab3968a258c87d0997aa02cb97404cc"
+                    }
                   },
                   "name": "run_tests",
                   "content": [

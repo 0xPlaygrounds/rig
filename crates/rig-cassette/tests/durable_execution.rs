@@ -87,7 +87,10 @@ fn tool_call_turn(id: &str, tag: &str) -> MockTurn {
     MockTurn::from_contents([rig_core::message::AssistantContent::ToolCall(
         rig_core::message::ToolCall::from_wire(
             id,
-            rig_core::message::ToolFunction::new("tag".to_owned(), json!({"tag": tag})),
+            rig_core::message::ToolFunction::new(
+                rig_core::message::ToolName::new("tag".to_owned()).expect("tool name"),
+                json!({"tag": tag}),
+            ),
         ),
     )])
 }
@@ -107,11 +110,17 @@ fn two_calls_script() -> MockCompletionModel {
         MockTurn::from_contents([
             rig_core::message::AssistantContent::ToolCall(rig_core::message::ToolCall::from_wire(
                 "tc-1",
-                rig_core::message::ToolFunction::new("tag".to_owned(), json!({"tag": "left"})),
+                rig_core::message::ToolFunction::new(
+                    rig_core::message::ToolName::new("tag".to_owned()).expect("tool name"),
+                    json!({"tag": "left"}),
+                ),
             )),
             rig_core::message::AssistantContent::ToolCall(rig_core::message::ToolCall::from_wire(
                 "tc-2",
-                rig_core::message::ToolFunction::new("tag".to_owned(), json!({"tag": "right"})),
+                rig_core::message::ToolFunction::new(
+                    rig_core::message::ToolName::new("tag".to_owned()).expect("tool name"),
+                    json!({"tag": "right"}),
+                ),
             )),
         ]),
         MockTurn::text("both"),
@@ -246,7 +255,6 @@ async fn drive_until_tool(scenario: Scenario, tools_before_stop: usize) -> (Agen
                     tools_done += 1;
                     results.push(transcript::tool_result_output(
                         call.tool_call.id.clone(),
-                        call.tool_call.provider.clone(),
                         name,
                         answer.result.output().clone(),
                     ));

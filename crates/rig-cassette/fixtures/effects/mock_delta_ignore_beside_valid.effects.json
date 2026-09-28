@@ -112,11 +112,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call-1"
-              },
-              "provider": {
-                "call_id": "call-1"
+                "provider": {
+                  "call_id": "call-1"
+                }
               },
               "function": {
                 "name": "multiply",
@@ -131,11 +129,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call-2"
-              },
-              "provider": {
-                "call_id": "call-2"
+                "provider": {
+                  "call_id": "call-2"
+                }
               },
               "function": {
                 "name": "add",
@@ -209,11 +205,9 @@
           "block": {
             "type": "toolcall",
             "id": {
-              "origin": "explicit",
-              "id": "call-1"
-            },
-            "provider": {
-              "call_id": "call-1"
+              "provider": {
+                "call_id": "call-1"
+              }
             },
             "function": {
               "name": "multiply",
@@ -267,11 +261,9 @@
           "block": {
             "type": "toolcall",
             "id": {
-              "origin": "explicit",
-              "id": "call-2"
-            },
-            "provider": {
-              "call_id": "call-2"
+              "provider": {
+                "call_id": "call-2"
+              }
             },
             "function": {
               "name": "add",
@@ -359,11 +351,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call-2"
-                  },
-                  "provider": {
-                    "call_id": "call-2"
+                    "provider": {
+                      "call_id": "call-2"
+                    }
                   },
                   "function": {
                     "name": "add",
@@ -383,11 +373,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call-2"
-                  },
-                  "provider": {
-                    "call_id": "call-2"
+                    "provider": {
+                      "call_id": "call-2"
+                    }
                   },
                   "name": "add",
                   "content": [

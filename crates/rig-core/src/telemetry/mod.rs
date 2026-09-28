@@ -614,10 +614,10 @@ fn assistant_parts(content: &[AssistantContent]) -> Vec<TelemetryPart> {
             }],
             AssistantContent::ToolCall(tool_call) => vec![TelemetryPart::ToolCall {
                 id: Some(tool_call.id.to_string()),
-                name: tool_call.function.name.clone(),
+                name: tool_call.function.name.clone().into(),
                 arguments: tool_call.function.arguments.clone(),
             }],
-            AssistantContent::Reasoning(reasoning) => reasoning_parts(reasoning),
+            AssistantContent::Reasoning(reasoning) => reasoning_parts(reasoning.value()),
             AssistantContent::Image(image) => image_part(image).into_iter().collect(),
         })
         .collect()

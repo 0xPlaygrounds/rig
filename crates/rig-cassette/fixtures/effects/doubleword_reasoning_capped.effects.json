@@ -70,6 +70,7 @@
           "choice": [
             {
               "type": "reasoning",
+              "issuer": "doubleword",
               "id": null,
               "content": [
                 {
@@ -78,8 +79,7 @@
                     "text": "Thinking Process:\n\n1.  **Analyze the Request:**\n    *"
                   }
                 }
-              ],
-              "provider": "doubleword"
+              ]
             }
           ],
           "usage": {

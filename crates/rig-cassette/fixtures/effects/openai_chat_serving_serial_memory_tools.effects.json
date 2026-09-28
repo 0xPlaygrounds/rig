@@ -143,11 +143,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_IqjLJOzxqcpfbqzlBcDziKAJ"
-              },
-              "provider": {
-                "call_id": "call_IqjLJOzxqcpfbqzlBcDziKAJ"
+                "provider": {
+                  "call_id": "call_IqjLJOzxqcpfbqzlBcDziKAJ"
+                }
               },
               "function": {
                 "name": "add",
@@ -274,11 +272,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_IqjLJOzxqcpfbqzlBcDziKAJ"
-                  },
-                  "provider": {
-                    "call_id": "call_IqjLJOzxqcpfbqzlBcDziKAJ"
+                    "provider": {
+                      "call_id": "call_IqjLJOzxqcpfbqzlBcDziKAJ"
+                    }
                   },
                   "function": {
                     "name": "add",
@@ -298,11 +294,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_IqjLJOzxqcpfbqzlBcDziKAJ"
-                  },
-                  "provider": {
-                    "call_id": "call_IqjLJOzxqcpfbqzlBcDziKAJ"
+                    "provider": {
+                      "call_id": "call_IqjLJOzxqcpfbqzlBcDziKAJ"
+                    }
                   },
                   "name": "add",
                   "content": [
@@ -433,11 +427,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_IqjLJOzxqcpfbqzlBcDziKAJ"
-                  },
-                  "provider": {
-                    "call_id": "call_IqjLJOzxqcpfbqzlBcDziKAJ"
+                    "provider": {
+                      "call_id": "call_IqjLJOzxqcpfbqzlBcDziKAJ"
+                    }
                   },
                   "function": {
                     "name": "add",
@@ -457,11 +449,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_IqjLJOzxqcpfbqzlBcDziKAJ"
-                  },
-                  "provider": {
-                    "call_id": "call_IqjLJOzxqcpfbqzlBcDziKAJ"
+                    "provider": {
+                      "call_id": "call_IqjLJOzxqcpfbqzlBcDziKAJ"
+                    }
                   },
                   "name": "add",
                   "content": [

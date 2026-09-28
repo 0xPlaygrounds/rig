@@ -132,11 +132,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "9C7RdXWf3"
-              },
-              "provider": {
-                "call_id": "9C7RdXWf3"
+                "provider": {
+                  "call_id": "9C7RdXWf3"
+                }
               },
               "function": {
                 "name": "add",

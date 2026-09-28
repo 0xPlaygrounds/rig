@@ -51,9 +51,9 @@ fn cohere() -> CohereConfig {
 fn recorded_request() -> CompletionRequest {
     CompletionRequest {
         model: None,
-        chat_history: vec![crate::message::Message::user(
+        chat_history: crate::NonEmpty::new(crate::message::Message::user(
             "Write a detailed fifty-word description of the ocean.",
-        )],
+        )),
         documents: Vec::new(),
         tools: Vec::new(),
         temperature: None,

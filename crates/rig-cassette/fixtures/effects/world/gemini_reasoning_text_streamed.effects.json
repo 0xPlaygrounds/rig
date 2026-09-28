@@ -10,7 +10,7 @@
         }
       },
       {
-        "batch": 7,
+        "batch": 6,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -18,15 +18,23 @@
         }
       },
       {
-        "batch": 8,
+        "batch": 7,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
         "batch": 9,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 14,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -34,7 +42,7 @@
         }
       },
       {
-        "batch": 9,
+        "batch": 14,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -114,6 +122,7 @@
           "choice": [
             {
               "type": "reasoning",
+              "issuer": "gcp.gemini",
               "id": null,
               "content": [
                 {
@@ -122,8 +131,7 @@
                     "text": "**Defining Rust's Core**\n\nI've been drilling down on Rust. Right now, I am trying to define Rust. It's a systems programming language. I need to explain the concept concisely, in one or two sentences.\n\n\n"
                   }
                 }
-              ],
-              "provider": "gcp.gemini"
+              ]
             },
             {
               "type": "text",
@@ -194,6 +202,7 @@
           },
           "block": {
             "type": "reasoning",
+            "issuer": "gcp.gemini",
             "id": null,
             "content": [
               {

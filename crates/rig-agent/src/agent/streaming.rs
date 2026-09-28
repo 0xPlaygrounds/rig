@@ -541,7 +541,10 @@ pub async fn stream_to_stdout(
                 block: Some(AssistantContent::Reasoning(reasoning)),
                 ..
             })) => {
-                let reasoning = reasoning.display_text();
+                let reasoning = reasoning
+                    .open(reasoning.issuer())
+                    .map(|reasoning| reasoning.display_text())
+                    .unwrap_or_default();
                 print!("{reasoning}");
                 std::io::Write::flush(&mut std::io::stdout())?;
             }

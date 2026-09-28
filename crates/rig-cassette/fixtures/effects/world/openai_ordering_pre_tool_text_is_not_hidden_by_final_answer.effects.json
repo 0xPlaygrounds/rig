@@ -2,45 +2,53 @@
   "header": {
     "deliveries": [
       {
-        "batch": 1,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
         "batch": 2,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 4
+          "items": 5
         }
       },
       {
-        "batch": 2,
+        "batch": 3,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 3,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 3,
+        "batch": 4,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 4,
+        "batch": 6,
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 4
+          "items": 3
         }
       },
       {
-        "batch": 4,
+        "batch": 7,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 7,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -143,11 +151,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call"
-              },
-              "provider": {
-                "call_id": "call"
+                "provider": {
+                  "call_id": "call"
+                }
               },
               "function": {
                 "name": "lookup_harbor_label",
@@ -212,11 +218,9 @@
           "block": {
             "type": "toolcall",
             "id": {
-              "origin": "explicit",
-              "id": "call"
-            },
-            "provider": {
-              "call_id": "call"
+              "provider": {
+                "call_id": "call"
+              }
             },
             "function": {
               "name": "lookup_harbor_label",
@@ -318,11 +322,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call"
-                  },
-                  "provider": {
-                    "call_id": "call"
+                    "provider": {
+                      "call_id": "call"
+                    }
                   },
                   "function": {
                     "name": "lookup_harbor_label",
@@ -339,11 +341,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call"
-                  },
-                  "provider": {
-                    "call_id": "call"
+                    "provider": {
+                      "call_id": "call"
+                    }
                   },
                   "name": "lookup_harbor_label",
                   "content": [

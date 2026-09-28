@@ -145,6 +145,7 @@
           },
           "block": {
             "type": "reasoning",
+            "issuer": "openai",
             "id": "rs_03958106e2981c5e006ab2b298a27c87d0a875a706dcc2f118",
             "content": [
               {

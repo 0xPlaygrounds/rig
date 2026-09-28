@@ -118,11 +118,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "wJMG7Yoax"
-              },
-              "provider": {
-                "call_id": "wJMG7Yoax"
+                "provider": {
+                  "call_id": "wJMG7Yoax"
+                }
               },
               "function": {
                 "name": "add",

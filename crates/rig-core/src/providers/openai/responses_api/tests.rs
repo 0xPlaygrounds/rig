@@ -44,7 +44,7 @@ fn wire_request(
     wire: &wire::Responses,
     request: completion::CompletionRequest,
 ) -> CompletionRequest {
-    wire.responses_request(request, false)
+    wire.responses_request(request, vec![crate::message::Issuer::from("openai")], false)
         .expect("request should convert")
 }
 
@@ -104,13 +104,13 @@ fn output_text_extras_survive_generic_conversion_and_replay() {
     // `openai_responses`-annotated empty block still replays.
     let foreign = message::Message::Assistant {
         id: None,
-        content: vec![completion::AssistantContent::Text(message::Text {
+        content: crate::NonEmpty::new(completion::AssistantContent::Text(message::Text {
             text: String::new(),
             additional_params: message::AdditionalParams::try_from_value(json!({
                 "anthropic_content": {"type": "server_tool_use", "id": "srv_1"}
             }))
             .expect("object params"),
-        })],
+        })),
     };
     let items: Vec<InputItem> = foreign.try_into().expect("convert");
     assert!(
@@ -120,13 +120,13 @@ fn output_text_extras_survive_generic_conversion_and_replay() {
 
     let own_annotated_empty = |id: Option<String>| message::Message::Assistant {
         id,
-        content: vec![completion::AssistantContent::Text(message::Text {
+        content: crate::NonEmpty::new(completion::AssistantContent::Text(message::Text {
             text: String::new(),
             additional_params: message::AdditionalParams::try_from_value(json!({
                 OPENAI_RESPONSES_EXTRAS_KEY: {"annotations": ["kept"]}
             }))
             .expect("object params"),
-        })],
+        })),
     };
     // With a message id, the Assistant form carries the extras.
     let items: Vec<InputItem> = own_annotated_empty(Some("msg_1".to_string()))
@@ -192,32 +192,31 @@ fn weather_tool_definition() -> completion::ToolDefinition {
 
 fn rig_tool_result(content: message::ToolResultContent) -> message::Message {
     message::Message::User {
-        content: vec![message::UserContent::ToolResult(message::ToolResult {
-            call: message::ToolCallId::new_or_minted("call-id", 0),
-            provider: message::ProviderCallId::new("call-id")
-                .map(|provider| provider.with_item_id("result-id")),
-            name: "tool".to_string(),
-            content: vec![content],
-        })],
+        content: crate::NonEmpty::new(message::UserContent::ToolResult(message::ToolResult {
+            call: crate::message::CallId::from_dual_wire("result-id", "call-id"),
+            name: crate::message::ToolName::new("tool".to_string()).expect("tool name"),
+            content: crate::NonEmpty::new(content),
+        })),
     }
 }
 
 #[test]
 fn mixed_user_content_preserves_order_around_tool_results() {
     let input = message::Message::User {
-        content: vec![
+        content: crate::NonEmpty::with_rest(
             message::UserContent::text("before"),
-            message::UserContent::tool_result_with_call_id(
-                "result-id",
-                "call-id".to_string(),
-                "tool",
-                vec![message::ToolResultContent::text("tool output")],
-            ),
-            message::UserContent::text("after"),
-        ],
+            [
+                message::UserContent::tool_result(
+                    crate::message::CallId::from_dual_wire("result-id", "call-id".to_string()),
+                    crate::message::ToolName::new("tool").expect("tool name"),
+                    crate::NonEmpty::new(message::ToolResultContent::text("tool output")),
+                ),
+                message::UserContent::text("after"),
+            ],
+        ),
     };
 
-    let items = Vec::<InputItem>::try_from(input).expect("input item conversion");
+    let items = super::input_items(input, &["openai".into()]).expect("input item conversion");
 
     assert!(matches!(
         items.as_slice(),
@@ -277,15 +276,18 @@ async fn cross_provider_minted_reasoning_ids_are_not_serialized_upstream() {
     assert!(
         choice.iter().any(
             |content| matches!(content, message::AssistantContent::Reasoning(reasoning)
-                if reasoning.id.is_none())
+                if reasoning.value().id.is_none())
         ),
         "a minted stream identity must aggregate as an id-less reasoning part"
     );
 
-    let items = Vec::<InputItem>::try_from(crate::completion::Message::Assistant {
-        id: None,
-        content: choice,
-    })
+    let items = super::input_items(
+        crate::completion::Message::Assistant {
+            id: None,
+            content: crate::NonEmpty::from_vec(choice).expect("non-empty"),
+        },
+        &["openai".into()],
+    )
     .expect("history should convert");
     assert!(
         reasoning_input_items(&items).is_empty(),
@@ -293,17 +295,22 @@ async fn cross_provider_minted_reasoning_ids_are_not_serialized_upstream() {
     );
 
     // A wire-plausible id is provider-issued and must round-trip.
-    let items = Vec::<InputItem>::try_from(crate::completion::Message::Assistant {
-        id: None,
-        content: vec![message::AssistantContent::Reasoning(message::Reasoning {
-            provider: None,
-            id: Some("rs_0123".to_string()),
-            content: vec![message::ReasoningContent::Text {
-                text: "real item".to_string(),
-                signature: None,
-            }],
-        })],
-    })
+    let items = super::input_items(
+        crate::completion::Message::Assistant {
+            id: None,
+            content: crate::NonEmpty::new(message::AssistantContent::Reasoning(
+                message::Reasoning {
+                    id: Some("rs_0123".to_string()),
+                    content: vec![message::ReasoningContent::Text {
+                        text: "real item".to_string(),
+                        signature: None,
+                    }],
+                }
+                .sealed("openai"),
+            )),
+        },
+        &["openai".into()],
+    )
     .expect("history should convert");
     let reasoning = reasoning_input_items(&items);
     assert_eq!(reasoning.len(), 1);
@@ -353,15 +360,18 @@ async fn delta_only_stream_minted_output_ids_are_not_serialized_upstream() {
     assert!(
         drained.choice.iter().any(
             |content| matches!(content, message::AssistantContent::Reasoning(reasoning)
-                if reasoning.id.is_none())
+                if reasoning.value().id.is_none())
         ),
         "an id-less delta stream must aggregate as an id-less reasoning part"
     );
 
-    let items = Vec::<InputItem>::try_from(crate::completion::Message::Assistant {
-        id: None,
-        content: drained.choice,
-    })
+    let items = super::input_items(
+        crate::completion::Message::Assistant {
+            id: None,
+            content: crate::NonEmpty::from_vec(drained.choice).expect("non-empty"),
+        },
+        &["openai".into()],
+    )
     .expect("history should convert");
     assert!(
         reasoning_input_items(&items).is_empty(),
@@ -407,13 +417,11 @@ fn multiple_text_tool_result_blocks_preserve_order_as_rich_function_output() {
     ];
 
     let input = message::Message::User {
-        content: vec![message::UserContent::ToolResult(message::ToolResult {
-            call: message::ToolCallId::new_or_minted("call-id", 0),
-            provider: message::ProviderCallId::new("call-id")
-                .map(|provider| provider.with_item_id("result-id")),
-            name: "tool".to_string(),
-            content,
-        })],
+        content: crate::NonEmpty::new(message::UserContent::ToolResult(message::ToolResult {
+            call: crate::message::CallId::from_dual_wire("result-id", "call-id"),
+            name: crate::message::ToolName::new("tool".to_string()).expect("tool name"),
+            content: crate::NonEmpty::from_vec(content).expect("non-empty"),
+        })),
     };
 
     let expected = ToolResultOutput::Content(vec![
@@ -502,13 +510,11 @@ fn tool_result_images_and_text_preserve_order_as_rich_function_output() {
         message::ToolResultContent::json(json!({ "after": true })),
     ];
     let input = message::Message::User {
-        content: vec![message::UserContent::ToolResult(message::ToolResult {
-            call: message::ToolCallId::new_or_minted("call-id", 0),
-            provider: message::ProviderCallId::new("call-id")
-                .map(|provider| provider.with_item_id("result-id")),
-            name: "tool".to_string(),
-            content,
-        })],
+        content: crate::NonEmpty::new(message::UserContent::ToolResult(message::ToolResult {
+            call: crate::message::CallId::from_dual_wire("result-id", "call-id"),
+            name: crate::message::ToolName::new("tool".to_string()).expect("tool name"),
+            content: crate::NonEmpty::from_vec(content).expect("non-empty"),
+        })),
     };
 
     let assert_output = |output: &ToolResultOutput| {
@@ -566,7 +572,7 @@ fn tool_result_file_id_image_uses_the_native_wire_field() {
 fn weather_tool_request() -> completion::CompletionRequest {
     completion::CompletionRequest {
         model: None,
-        chat_history: vec![message::Message::user("what's the weather?")],
+        chat_history: crate::NonEmpty::new(message::Message::user("what's the weather?")),
         documents: Vec::new(),
         tools: vec![weather_tool_definition()],
         temperature: None,
@@ -735,10 +741,10 @@ fn responses_strict_function_tools_sanitize_schema() {
 fn request_with_preamble(preamble: &str) -> completion::CompletionRequest {
     completion::CompletionRequest {
         model: None,
-        chat_history: vec![
+        chat_history: crate::NonEmpty::with_rest(
             message::Message::system(preamble),
-            message::Message::user("Hello"),
-        ],
+            [message::Message::user("Hello")],
+        ),
         documents: Vec::new(),
         tools: Vec::new(),
         temperature: None,
@@ -753,7 +759,7 @@ fn request_with_preamble(preamble: &str) -> completion::CompletionRequest {
 fn system_only_request(system_text: &str) -> completion::CompletionRequest {
     completion::CompletionRequest {
         model: None,
-        chat_history: vec![completion::Message::system(system_text)],
+        chat_history: crate::NonEmpty::new(completion::Message::system(system_text)),
         documents: Vec::new(),
         tools: Vec::new(),
         temperature: None,
@@ -888,6 +894,7 @@ fn responses_wire_can_lift_all_system_messages_via_placement() {
 #[test]
 fn all_instructions_system_only_input_reports_non_system_requirement() {
     let err = CompletionRequest::try_from(ResponsesRequestParams {
+        issuers: vec![crate::message::Issuer::from("openai")],
         model: "gpt-4o-mini".to_string(),
         request: system_only_request("System only"),
         system_instructions_placement: SystemInstructionsPlacement::AllInstructions,
@@ -903,6 +910,7 @@ fn all_instructions_system_only_input_reports_non_system_requirement() {
 #[test]
 fn all_instructions_whitespace_only_system_input_reports_non_system_requirement() {
     let err = CompletionRequest::try_from(ResponsesRequestParams {
+        issuers: vec![crate::message::Issuer::from("openai")],
         model: "gpt-4o-mini".to_string(),
         request: system_only_request("   "),
         system_instructions_placement: SystemInstructionsPlacement::AllInstructions,
@@ -1205,12 +1213,14 @@ fn responses_request_keeps_documents_after_lifted_system_messages() {
 fn responses_direct_request_keeps_mid_conversation_system_messages_in_input() {
     let request = crate::completion::CompletionRequest {
         model: None,
-        chat_history: vec![
+        chat_history: crate::NonEmpty::with_rest(
             completion::Message::system("System prompt"),
-            completion::Message::assistant("Earlier assistant turn"),
-            completion::Message::system("Mid-conversation instruction"),
-            completion::Message::user("Prompt"),
-        ],
+            [
+                completion::Message::assistant("Earlier assistant turn"),
+                completion::Message::system("Mid-conversation instruction"),
+                completion::Message::user("Prompt"),
+            ],
+        ),
         documents: vec![test_document("doc1", "Document text.")],
         tools: vec![],
         temperature: None,
@@ -1942,13 +1952,13 @@ fn completion_response_does_not_duplicate_structured_reasoning() {
 fn idless_reasoning_only_is_skipped_without_empty_input_item() {
     let assistant = completion::Message::Assistant {
         id: None,
-        content: vec![message::AssistantContent::Reasoning(
-            message::Reasoning::new("provider reasoning"),
-        )],
+        content: crate::NonEmpty::new(message::AssistantContent::Reasoning(
+            message::Reasoning::new("provider reasoning").sealed("openai"),
+        )),
     };
 
-    let converted =
-        Vec::<InputItem>::try_from(assistant).expect("idless reasoning should degrade gracefully");
+    let converted = super::input_items(assistant, &["openai".into()])
+        .expect("idless reasoning should degrade gracefully");
 
     assert!(converted.is_empty());
 }
@@ -1957,14 +1967,16 @@ fn idless_reasoning_only_is_skipped_without_empty_input_item() {
 fn completion_history_idless_reasoning_plus_text_preserves_text_input_item() {
     let assistant = completion::Message::Assistant {
         id: Some("msg_123".to_string()),
-        content: vec![
-            message::AssistantContent::Reasoning(message::Reasoning::new("provider reasoning")),
-            message::AssistantContent::Text(Text::new("final answer")),
-        ],
+        content: crate::NonEmpty::with_rest(
+            message::AssistantContent::Reasoning(
+                message::Reasoning::new("provider reasoning").sealed("openai"),
+            ),
+            [message::AssistantContent::Text(Text::new("final answer"))],
+        ),
     };
 
-    let converted =
-        Vec::<InputItem>::try_from(assistant).expect("assistant history should convert");
+    let converted = super::input_items(assistant, &["openai".into()])
+        .expect("assistant history should convert");
 
     assert_eq!(converted.len(), 1);
     assert!(matches!(converted[0].role, Some(Role::Assistant)));
@@ -1981,11 +1993,11 @@ fn completion_history_idless_reasoning_plus_text_preserves_text_input_item() {
 fn assistant_text_without_idless_reasoning_replays_as_output_text() {
     let assistant = completion::Message::Assistant {
         id: Some("msg_123".to_string()),
-        content: vec![message::AssistantContent::Text(Text::new("final answer"))],
+        content: crate::NonEmpty::new(message::AssistantContent::Text(Text::new("final answer"))),
     };
 
-    let converted =
-        Vec::<InputItem>::try_from(assistant).expect("assistant history should convert");
+    let converted = super::input_items(assistant, &["openai".into()])
+        .expect("assistant history should convert");
 
     assert_eq!(converted.len(), 1);
     let InputContent::Message(Message::Assistant { content, .. }) = &converted[0].input else {
@@ -2004,14 +2016,14 @@ fn assistant_text_without_idless_reasoning_replays_as_output_text() {
 fn assistant_turn_with_several_text_parts_replays_as_one_message_item() {
     let assistant = completion::Message::Assistant {
         id: Some("msg_turn".to_string()),
-        content: vec![
+        content: crate::NonEmpty::with_rest(
             message::AssistantContent::Text(Text::new("first part")),
-            message::AssistantContent::Text(Text::new("second part")),
-        ],
+            [message::AssistantContent::Text(Text::new("second part"))],
+        ),
     };
 
-    let converted =
-        Vec::<InputItem>::try_from(assistant).expect("assistant history should convert");
+    let converted = super::input_items(assistant, &["openai".into()])
+        .expect("assistant history should convert");
 
     assert_eq!(converted.len(), 1, "{converted:?}");
     let InputContent::Message(Message::Assistant { content, id, .. }) = &converted[0].input else {
@@ -2034,11 +2046,11 @@ fn assistant_turn_with_several_text_parts_replays_as_one_message_item() {
 fn idless_completion_assistant_text_replays_as_easy_input_message() {
     let assistant = completion::Message::Assistant {
         id: None,
-        content: vec![message::AssistantContent::Text(Text::new("final answer"))],
+        content: crate::NonEmpty::new(message::AssistantContent::Text(Text::new("final answer"))),
     };
 
-    let converted =
-        Vec::<InputItem>::try_from(assistant).expect("assistant history should convert");
+    let converted = super::input_items(assistant, &["openai".into()])
+        .expect("assistant history should convert");
 
     assert_eq!(converted.len(), 1);
     assert!(matches!(converted[0].role, Some(Role::Assistant)));
@@ -2060,17 +2072,19 @@ fn idless_completion_assistant_text_replays_as_easy_input_message() {
 fn structured_reasoning_with_id_still_converts_to_input_item() {
     let assistant = completion::Message::Assistant {
         id: Some("msg_123".to_string()),
-        content: vec![message::AssistantContent::Reasoning(message::Reasoning {
-            provider: None,
-            id: Some("rs_123".to_string()),
-            content: vec![message::ReasoningContent::Summary(
-                "structured summary".to_string(),
-            )],
-        })],
+        content: crate::NonEmpty::new(message::AssistantContent::Reasoning(
+            message::Reasoning {
+                id: Some("rs_123".to_string()),
+                content: vec![message::ReasoningContent::Summary(
+                    "structured summary".to_string(),
+                )],
+            }
+            .sealed("openai"),
+        )),
     };
 
-    let converted =
-        Vec::<InputItem>::try_from(assistant).expect("structured reasoning should convert");
+    let converted = super::input_items(assistant, &["openai".into()])
+        .expect("structured reasoning should convert");
 
     assert_eq!(converted.len(), 1);
     assert!(converted[0].role.is_none());
@@ -2084,26 +2098,30 @@ fn structured_reasoning_with_id_still_converts_to_input_item() {
 fn assistant_reasoning_text_tool_call_convert_in_responses_replay_order() {
     let assistant = completion::Message::Assistant {
         id: Some("msg_123".to_string()),
-        content: vec![
-            message::AssistantContent::Reasoning(message::Reasoning {
-                provider: None,
-                id: Some("rs_123".to_string()),
-                content: vec![message::ReasoningContent::Summary(
-                    "structured summary".to_string(),
-                )],
-            }),
-            message::AssistantContent::Text(Text::new("final answer")),
-            message::AssistantContent::tool_call_with_call_id(
-                "fc_123",
-                "call_123".to_string(),
-                "lookup",
-                json!({"query": "rig"}),
+        content: crate::NonEmpty::with_rest(
+            message::AssistantContent::Reasoning(
+                message::Reasoning {
+                    id: Some("rs_123".to_string()),
+                    content: vec![message::ReasoningContent::Summary(
+                        "structured summary".to_string(),
+                    )],
+                }
+                .sealed("openai"),
             ),
-        ],
+            [
+                message::AssistantContent::Text(Text::new("final answer")),
+                message::AssistantContent::tool_call_with_call_id(
+                    "fc_123",
+                    "call_123".to_string(),
+                    crate::message::ToolName::new("lookup").expect("tool name"),
+                    json!({"query": "rig"}),
+                ),
+            ],
+        ),
     };
 
-    let converted =
-        Vec::<InputItem>::try_from(assistant).expect("assistant history should convert");
+    let converted = super::input_items(assistant, &["openai".into()])
+        .expect("assistant history should convert");
 
     assert_eq!(converted.len(), 3);
     assert!(converted[0].role.is_none());
@@ -2139,37 +2157,39 @@ fn assistant_reasoning_text_tool_call_convert_in_responses_replay_order() {
 fn mocked_second_turn_request_omits_unreplayable_reasoning() {
     let request = crate::completion::CompletionRequest {
         model: None,
-        chat_history: vec![
+        chat_history: crate::NonEmpty::with_rest(
             completion::Message::system("You are concise."),
-            completion::Message::User {
-                content: vec![message::UserContent::Text(Text::new(
-                    "Think briefly, then answer.",
-                ))],
-            },
-            completion::Message::Assistant {
-                id: Some("msg_123".to_string()),
-                content: vec![
-                    message::AssistantContent::Reasoning(message::Reasoning::new(
-                        "provider reasoning",
-                    )),
-                    message::AssistantContent::Text(Text::new("final answer")),
-                ],
-            },
-            completion::Message::Assistant {
-                id: None,
-                content: vec![
-                    message::AssistantContent::Reasoning(message::Reasoning::new(
-                        "provider reasoning only",
-                    )),
-                    message::AssistantContent::Text(Text::new("")),
-                ],
-            },
-            completion::Message::User {
-                content: vec![message::UserContent::Text(Text::new(
-                    "/no_think Reply with exactly: OK",
-                ))],
-            },
-        ],
+            [
+                completion::Message::User {
+                    content: crate::NonEmpty::new(message::UserContent::Text(Text::new(
+                        "Think briefly, then answer.",
+                    ))),
+                },
+                completion::Message::Assistant {
+                    id: Some("msg_123".to_string()),
+                    content: crate::NonEmpty::with_rest(
+                        message::AssistantContent::Reasoning(
+                            message::Reasoning::new("provider reasoning").sealed("openai"),
+                        ),
+                        [message::AssistantContent::Text(Text::new("final answer"))],
+                    ),
+                },
+                completion::Message::Assistant {
+                    id: None,
+                    content: crate::NonEmpty::with_rest(
+                        message::AssistantContent::Reasoning(
+                            message::Reasoning::new("provider reasoning only").sealed("openai"),
+                        ),
+                        [message::AssistantContent::Text(Text::new(""))],
+                    ),
+                },
+                completion::Message::User {
+                    content: crate::NonEmpty::new(message::UserContent::Text(Text::new(
+                        "/no_think Reply with exactly: OK",
+                    ))),
+                },
+            ],
+        ),
         documents: Vec::new(),
         tools: Vec::new(),
         temperature: None,
@@ -2242,11 +2262,11 @@ fn responses_usage_add_preserves_rhs_details_when_lhs_details_are_absent() {
 #[test]
 fn file_id_document_serializes_as_input_item_content() {
     let message = completion::Message::User {
-        content: vec![message::UserContent::Document(message::Document {
+        content: crate::NonEmpty::new(message::UserContent::Document(message::Document {
             data: DocumentSourceKind::FileId("file_abc".to_string()),
             media_type: None,
             additional_params: None,
-        })],
+        })),
     };
 
     let converted: Vec<InputItem> = message.try_into().expect("conversion should succeed");
@@ -2446,10 +2466,10 @@ fn output_reasoning_conversion_omits_empty_encrypted_content() {
     let completion::AssistantContent::Reasoning(reasoning) = &converted[0] else {
         panic!("expected reasoning output");
     };
-    assert_eq!(reasoning.id.as_deref(), Some("reasoning_1"));
-    assert_eq!(reasoning.content.len(), 1);
+    assert_eq!(reasoning.value().id.as_deref(), Some("reasoning_1"));
+    assert_eq!(reasoning.value().content.len(), 1);
     assert!(matches!(
-        reasoning.content.first(),
+        reasoning.value().content.first(),
         Some(message::ReasoningContent::Text { text, .. })
             if text == "visible reasoning"
     ));
@@ -2473,7 +2493,7 @@ fn output_reasoning_conversion_preserves_non_empty_encrypted_content() {
         panic!("expected reasoning output");
     };
     assert_eq!(
-        reasoning.content,
+        reasoning.value().content,
         vec![message::ReasoningContent::Encrypted(
             "ciphertext".to_string()
         )]
@@ -2579,10 +2599,10 @@ const PDF_URL: &str = "https://example.com/resume.pdf";
 
 fn url_pdf_message() -> message::Message {
     message::Message::User {
-        content: vec![message::UserContent::document_url(
+        content: crate::NonEmpty::new(message::UserContent::document_url(
             PDF_URL,
             Some(message::DocumentMediaType::PDF),
-        )],
+        )),
     }
 }
 
@@ -2633,7 +2653,7 @@ fn assert_url_only_input_file(input_file: &serde_json::Value) {
 
 #[test]
 fn url_pdf_via_input_item_path_omits_filename() {
-    let items = Vec::<InputItem>::try_from(url_pdf_message())
+    let items = super::input_items(url_pdf_message(), &["openai".into()])
         .expect("URL PDF should convert to input items");
     let json = serde_json::to_value(&items).expect("input items should serialize");
     assert_url_only_input_file(&sole_input_file(&json));
@@ -2643,7 +2663,7 @@ fn url_pdf_via_input_item_path_omits_filename() {
 fn url_pdf_in_full_completion_request_omits_filename() {
     let core_request = crate::completion::CompletionRequest {
         model: None,
-        chat_history: vec![url_pdf_message()],
+        chat_history: crate::NonEmpty::new(url_pdf_message()),
         documents: Vec::new(),
         tools: Vec::new(),
         temperature: None,
@@ -2663,15 +2683,15 @@ fn url_pdf_in_full_completion_request_omits_filename() {
 #[test]
 fn base64_pdf_via_input_item_path_keeps_filename() {
     let input = message::Message::User {
-        content: vec![message::UserContent::Document(message::Document {
+        content: crate::NonEmpty::new(message::UserContent::Document(message::Document {
             data: DocumentSourceKind::base64("dGVzdA=="),
             media_type: Some(message::DocumentMediaType::PDF),
             additional_params: None,
-        })],
+        })),
     };
 
-    let items =
-        Vec::<InputItem>::try_from(input).expect("base64 PDF should convert to input items");
+    let items = super::input_items(input, &["openai".into()])
+        .expect("base64 PDF should convert to input items");
     let json = serde_json::to_value(&items).expect("input items should serialize");
     let input_file = sole_input_file(&json);
 
@@ -2833,7 +2853,6 @@ fn a_signature_only_reasoning_item_round_trips_without_text() {
 #[test]
 fn the_last_text_signature_is_the_items() {
     let reasoning = crate::message::Reasoning {
-        provider: None,
         id: Some("rs_1".to_owned()),
         content: vec![
             crate::message::ReasoningContent::Text {
@@ -2863,19 +2882,22 @@ fn a_tool_result_named_by_the_call_id_pairs_with_the_call_s_call_id() {
     let Some(completion::AssistantContent::ToolCall(call)) = choice.first() else {
         panic!("the body's one output is a call: {choice:?}");
     };
-    let result = completion::Message::tool_result(call.wire_call_id(), "get_weather", "sunny");
+    let result =
+        completion::Message::tool_result(call.id.clone(), call.function.name.clone(), "sunny");
     let history = vec![
         completion::Message::user("Weather in Paris?"),
         completion::Message::Assistant {
             id: None,
-            content: choice.clone(),
+            content: crate::NonEmpty::from_vec(choice.clone()).expect("non-empty"),
         },
         result,
     ];
 
     let request = CompletionRequest::try_from((
         "gpt-4o-mini".to_string(),
-        crate::completion::CompletionRequest::from(history),
+        crate::completion::CompletionRequest::from(
+            crate::NonEmpty::from_vec(history).expect("non-empty"),
+        ),
     ))
     .expect("request conversion should succeed");
     let input = serde_json::to_value(&request).expect("request should serialize")["input"].clone();

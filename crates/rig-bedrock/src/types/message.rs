@@ -1,7 +1,8 @@
 use aws_sdk_bedrockruntime::types as aws_bedrock;
 
+use rig_core::NonEmpty;
 use rig_core::error::ProviderError;
-use rig_core::message::{AssistantContent, Message, UserContent};
+use rig_core::message::{AssistantContent, Issuer, Message, UserContent};
 
 use super::{
     assistant_content::RigAssistantContent,
@@ -11,11 +12,10 @@ use super::{
 
 pub struct RigMessage(pub Message);
 
-impl TryFrom<RigMessage> for aws_bedrock::Message {
-    type Error = ProviderError;
-
-    fn try_from(value: RigMessage) -> Result<Self, Self::Error> {
-        let result = match value.0 {
+impl RigMessage {
+    /// The Converse message, replaying the reasoning `issuer` issued.
+    pub(crate) fn into_aws(self, issuer: &Issuer) -> Result<aws_bedrock::Message, ProviderError> {
+        let result = match self.0 {
             Message::System { .. } => {
                 return Err(ProviderError::Provider(
                     "System messages must be sent via Bedrock system blocks".to_string(),
@@ -26,14 +26,14 @@ impl TryFrom<RigMessage> for aws_bedrock::Message {
                     .into_iter()
                     .map(|user_content| RigUserContent(user_content).try_into())
                     .collect::<Result<Vec<Vec<_>>, _>>()
-                    .map_err(|e| ProviderError::request(e))
+                    .map_err(ProviderError::request)
                     .map(|nested| nested.into_iter().flatten().collect())?;
 
                 aws_bedrock::Message::builder()
                     .role(aws_bedrock::ConversationRole::User)
                     .set_content(Some(message_content))
                     .build()
-                    .map_err(|e| ProviderError::request(e))?
+                    .map_err(ProviderError::request)?
             }
             Message::Assistant { content, .. } => aws_bedrock::Message::builder()
                 .role(aws_bedrock::ConversationRole::Assistant)
@@ -42,14 +42,14 @@ impl TryFrom<RigMessage> for aws_bedrock::Message {
                     // reasoning Bedrock cannot carry); errors still fail.
                     content
                         .into_iter()
-                        .map(|content| RigAssistantContent(content).into_content_block())
+                        .map(|content| RigAssistantContent(content).into_content_block(issuer))
                         .collect::<Result<Vec<Option<aws_bedrock::ContentBlock>>, _>>()?
                         .into_iter()
                         .flatten()
                         .collect(),
                 ))
                 .build()
-                .map_err(|e| ProviderError::request(e))?,
+                .map_err(ProviderError::request)?,
         };
         Ok(result)
     }
@@ -61,7 +61,7 @@ impl TryFrom<ConverseMessage> for RigMessage {
     fn try_from(message: ConverseMessage) -> Result<Self, Self::Error> {
         match message.role {
             ConversationRole::Assistant => {
-                let mut assistant_content = message
+                let assistant_content = message
                     .content
                     .into_iter()
                     .map(std::convert::TryInto::try_into)
@@ -70,8 +70,9 @@ impl TryFrom<ConverseMessage> for RigMessage {
                     .map(|rig_assistant_content| rig_assistant_content.0)
                     .collect::<Vec<AssistantContent>>();
 
-                rig_core::message::normalize_missing_tool_call_ids(&mut assistant_content);
-                let content = rig_core::message::require_non_empty_response(assistant_content)?;
+                let content = NonEmpty::from_vec(assistant_content).map_err(|_| {
+                    ProviderError::Response(rig_core::message::EMPTY_RESPONSE_ERROR.to_owned())
+                })?;
 
                 Ok(RigMessage(Message::Assistant { content, id: None }))
             }
@@ -85,7 +86,7 @@ impl TryFrom<ConverseMessage> for RigMessage {
                     .map(|user_content| user_content.0)
                     .collect::<Vec<UserContent>>();
 
-                let content = rig_core::message::require_non_empty(user_content, || {
+                let content = NonEmpty::from_vec(user_content).map_err(|_| {
                     ProviderError::Response(
                         "Bedrock returned a user message with no content".to_owned(),
                     )

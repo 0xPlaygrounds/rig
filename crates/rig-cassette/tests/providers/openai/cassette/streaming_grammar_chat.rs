@@ -149,7 +149,7 @@ async fn parallel_tool_calls_stay_distinct() {
                     "{name} id should aggregate"
                 );
                 assert!(
-                    streamed.provider.is_some(),
+                    streamed.id.provider().is_some(),
                     "{name} should carry the wire-issued call id"
                 );
                 assert!(

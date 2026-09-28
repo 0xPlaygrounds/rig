@@ -46,6 +46,7 @@ fn result_names(parts: &MessageParts, slots: &[ToolCallSlot]) -> Vec<String> {
             ),
             _ => None,
         })
+        .map(String::from)
         .collect()
 }
 

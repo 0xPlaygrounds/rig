@@ -15,6 +15,8 @@
 use serde::{Deserialize, Serialize};
 
 use crate::client::env::{self, EnvError};
+use crate::error::EncodeError;
+use crate::message::Issuer;
 use crate::wire::Secret;
 
 use super::responses_api::SystemInstructionsPlacement;
@@ -1213,17 +1215,21 @@ fn model_vendor(model: &str) -> &str {
     vendor.trim_start_matches('~')
 }
 
-/// Drop the reasoning in `request`'s history that no issuer a request to its
-/// model over `dialect` replays can interpret. The request's model override,
-/// when it names one, is the model replayed for; `model` otherwise.
+/// The issuers whose reasoning a request to its model over `dialect`
+/// replays, and the request as they read it
+/// ([`CompletionRequest::replayable_to`](crate::completion::CompletionRequest::replayable_to)).
+/// The request's model override, when it names one, is the model replayed
+/// for; `model` otherwise.
 pub(crate) fn scope_reasoning(
     dialect: &Dialect,
     model: &str,
-    request: &mut crate::completion::CompletionRequest,
-) {
-    let issuers = replay_issuers(dialect, request.model.as_deref().unwrap_or(model));
-    let issuers: Vec<&str> = issuers.iter().map(String::as_str).collect();
-    crate::message::retain_replayable_reasoning(&mut request.chat_history, &issuers);
+    request: crate::completion::CompletionRequest,
+) -> Result<(crate::completion::CompletionRequest, Vec<Issuer>), EncodeError> {
+    let issuers: Vec<Issuer> = replay_issuers(dialect, request.model.as_deref().unwrap_or(model))
+        .into_iter()
+        .map(Issuer::from)
+        .collect();
+    Ok((request.replayable_to(&issuers)?, issuers))
 }
 
 /// The reasoning issuers a request to `model` over `dialect` replays.

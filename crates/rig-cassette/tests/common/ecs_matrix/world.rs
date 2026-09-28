@@ -1245,6 +1245,7 @@ fn result_names(parts: &MessageParts, slots: &[rig_ecs::agent::ToolCallSlot]) ->
             ),
             _ => None,
         })
+        .map(String::from)
         .collect()
 }
 

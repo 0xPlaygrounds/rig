@@ -100,11 +100,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_00_HQuMoEyEzAHIim3UaTzI1490"
-              },
-              "provider": {
-                "call_id": "call_00_HQuMoEyEzAHIim3UaTzI1490"
+                "provider": {
+                  "call_id": "call_00_HQuMoEyEzAHIim3UaTzI1490"
+                }
               },
               "function": {
                 "name": "final_result",

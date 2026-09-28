@@ -288,12 +288,10 @@
           "block": {
             "type": "toolcall",
             "id": {
-              "origin": "explicit",
-              "id": "call_AuFxd1Vs7yR79tB3msYfeCb3"
-            },
-            "provider": {
-              "call_id": "call_AuFxd1Vs7yR79tB3msYfeCb3",
-              "item_id": "fc_0dd460aaf73c6856006ab396a05df887d09ce0241dc70fbf9f"
+              "provider": {
+                "call_id": "call_AuFxd1Vs7yR79tB3msYfeCb3",
+                "item_id": "fc_0dd460aaf73c6856006ab396a05df887d09ce0241dc70fbf9f"
+              }
             },
             "function": {
               "name": "subtract",
