@@ -689,3 +689,47 @@ async fn completed_turn_without_item_events_delivers_its_tool_call() {
         response.choice
     );
 }
+
+/// A frame that is no event fails its turn, and the rest of that turn is
+/// drained rather than read as the next turn.
+#[tokio::test]
+async fn a_frame_without_a_type_leaves_its_turn_to_be_drained() {
+    let script = Script::turns([
+        vec![
+            text_delta("msg_1", "one", 1),
+            "not an event".to_string(),
+            text_delta("msg_1", "stale", 3),
+            completed("resp_1", 4),
+        ],
+        vec![text_delta("msg_2", "two", 1), completed("resp_2", 2)],
+    ]);
+    let model = chaining(&script);
+    model.call("first").await.expect_err("a frame with no type");
+    let second = model.call("second").await.expect("second");
+    assert_eq!(texts(&second), ["two"]);
+    assert_eq!(raw_response(&second).id, "resp_2");
+    assert!(sent_json(&script, 1).get("previous_response_id").is_none());
+}
+
+/// A streamed terminal the decoder rejects (no `sequence_number`) fails the
+/// turn in the decoder, so its response is not continued.
+#[tokio::test]
+async fn a_streamed_terminal_the_decoder_rejects_is_not_chained() {
+    let terminal = serde_json::json!({
+        "type": "response.completed",
+        "response": serde_json::to_value(with_id("resp_1", ResponseStatus::Completed))
+            .expect("serializes"),
+    })
+    .to_string();
+    let script = Script::turns([
+        vec![text_delta("msg_1", "one", 1), terminal],
+        vec![completed("resp_2", 1)],
+    ]);
+    let model = chaining(&script);
+    model
+        .call("first")
+        .await
+        .expect_err("the decoder rejects the terminal");
+    model.call("second").await.expect("second");
+    assert!(sent_json(&script, 1).get("previous_response_id").is_none());
+}

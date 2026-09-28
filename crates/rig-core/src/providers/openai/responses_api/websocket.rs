@@ -291,14 +291,16 @@ impl ResponsesWebSocket {
     /// Chain each turn to the response the last completed or incomplete
     /// turn produced, unless its request names its own
     /// `previous_response_id`. For callers that send only the new input;
-    /// a caller that sends the whole conversation must not chain.
+    /// a caller that sends the whole conversation must not chain. A turn that
+    /// fails, or whose stream is dropped before its end, ends the chain.
     pub fn chaining(mut self) -> Self {
         self.chaining = true;
         self
     }
 
     /// The response the last completed or incomplete turn produced, until
-    /// a turn fails or [`Self::clear_chain`].
+    /// a turn fails or [`Self::clear_chain`]. A turn whose stream was dropped
+    /// ends the chain when the next turn drains it.
     pub async fn last_response_id(&self) -> Option<String> {
         self.session.lock().await.chain.previous_response_id.clone()
     }
@@ -402,6 +404,11 @@ fn turn(
                 }
                 Lifecycle::Fail(error) => {
                     session.dirty = false;
+                    drop(session);
+                    yield Err(error);
+                    return;
+                }
+                Lifecycle::Corrupt(error) => {
                     drop(session);
                     yield Err(error);
                     return;
@@ -571,6 +578,9 @@ enum Lifecycle {
     Last(Option<String>),
     /// The turn failed.
     Fail(ProviderError),
+    /// A frame that is no event: the turn fails, but the rest of its events
+    /// are still on their way, so the connection is left to drain them.
+    Corrupt(ProviderError),
 }
 
 /// The response chain across turns, the trailing `response.done` to skip,
@@ -622,6 +632,7 @@ impl Chain {
                 self.previous_response_id = None;
                 self.end_turn();
             }
+            Lifecycle::Corrupt(_) => self.previous_response_id = None,
         }
         lifecycle
     }
@@ -637,7 +648,7 @@ impl Chain {
             Ok(probe) => probe,
             // Every websocket event names its type: anything else is not
             // part of a turn, and must not end one as a whole body.
-            Err(error) => return Lifecycle::Fail(error.into()),
+            Err(error) => return Lifecycle::Corrupt(error.into()),
         };
         match probe.kind.as_str() {
             "response.created" | "response.queued" | "response.in_progress" => {
@@ -649,12 +660,11 @@ impl Chain {
             "response.completed" | "response.incomplete" => {
                 self.pending_done_response_id = probe.response_id();
                 match probe.status() {
+                    // Read as the decoder reads it: a terminal the decoder
+                    // rejects has no response to continue.
                     Some("completed" | "incomplete") | None => {
-                        match probe
-                            .response
-                            .map(serde_json::from_value::<CompletionResponse>)
-                        {
-                            Some(Ok(response)) => {
+                        match serde_json::from_str::<ResponseChunk>(text) {
+                            Ok(ResponseChunk { response, .. }) => {
                                 self.previous_response_id =
                                     Some(response.id.clone()).filter(|id| !id.is_empty());
                                 if self.streamed {
@@ -668,10 +678,9 @@ impl Chain {
                                     Err(error) => Lifecycle::Fail(error.into()),
                                 }
                             }
-                            // A body that does not decode reaches the decoder
-                            // as it arrived, which reports it; there is no
-                            // response to continue.
-                            Some(Err(_)) | None => {
+                            // A terminal that does not decode reaches the
+                            // decoder as it arrived, which reports it.
+                            Err(_) => {
                                 self.previous_response_id = None;
                                 Lifecycle::Last(None)
                             }

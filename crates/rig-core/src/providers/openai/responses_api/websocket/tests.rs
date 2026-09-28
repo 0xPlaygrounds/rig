@@ -469,7 +469,8 @@ fn a_malformed_terminal_is_the_last_frame_and_ends_the_chain() {
 }
 
 /// Every websocket event names its type; a frame that does not is no part
-/// of a turn and fails it rather than ending it as a whole body.
+/// of a turn and fails it rather than ending it as a whole body, leaving
+/// the rest of the turn to be drained.
 #[test]
 fn a_frame_without_a_type_fails_the_turn_and_the_chain() {
     let mut chain = Chain {
@@ -478,8 +479,11 @@ fn a_frame_without_a_type_fails_the_turn_and_the_chain() {
     };
     let body =
         serde_json::to_value(sample_response(ResponseStatus::Completed)).expect("serializes");
-    assert!(matches!(chain.read(&body.to_string()), Lifecycle::Fail(_)));
-    assert!(matches!(chain.read("not json"), Lifecycle::Fail(_)));
+    assert!(matches!(
+        chain.read(&body.to_string()),
+        Lifecycle::Corrupt(_)
+    ));
+    assert!(matches!(chain.read("not json"), Lifecycle::Corrupt(_)));
     assert_eq!(chain.previous_response_id, None);
 }
 
@@ -542,6 +546,7 @@ fn a_done_event_for_another_response_is_not_this_turns_end() {
     assert!(matches!(chain.read(&stray.to_string()), Lifecycle::Skip));
     let completed = json!({
         "type": "response.completed",
+        "sequence_number": 3,
         "response": serde_json::to_value(CompletionResponse {
             id: "resp_2".to_string(),
             ..sample_response(ResponseStatus::Completed)
