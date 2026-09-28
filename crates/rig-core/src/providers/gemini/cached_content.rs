@@ -1,19 +1,14 @@
-//! Gemini explicit context caching through the `cachedContents` resource.
-//! Upload content once and reuse its handle across requests. Storage is billed
-//! until the cache expires or is deleted.
+//! Gemini's `cachedContents` resource: create, read, list, extend and delete
+//! explicit caches. Storage is billed until a cache expires or is deleted.
+//! [`NewCachedContent`](super::NewCachedContent) and
+//! [`CachedPrefix`](super::CachedPrefix) describe what a cache holds.
 //!
-//! Requests using a cache must not supply their own system instruction, tools,
-//! or tool configuration. Cached function declarations require a caller-managed
-//! tool loop; provider-hosted tools execute on Gemini.
-//!
-//! ```no_run
-//! use rig_core::providers::gemini::cached_content::{CacheExpiry, NewCachedContent};
-//! use rig_core::providers::gemini::completion::GEMINI_2_5_FLASH;
+//! ```
+//! use rig_core::providers::gemini::CacheExpiry;
 //! use std::time::Duration;
 //!
-//! let corpus = NewCachedContent::new(GEMINI_2_5_FLASH)
-//!     .content("A reusable document corpus")
-//!     .expiry(CacheExpiry::ttl(Duration::from_secs(600)));
+//! let hour = CacheExpiry::ttl(Duration::from_secs(3600));
+//! # let _ = hour;
 //! ```
 
 use crate::wire::Flow;
@@ -21,7 +16,7 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
-use super::completion::gemini_api_types::{Content, Part, Role, Tool, ToolConfig};
+use super::api::{self, Recognized};
 use crate::error::EncodeError;
 use crate::error::ProviderError;
 use crate::operation;
@@ -70,168 +65,28 @@ pub enum CacheExpiry {
 }
 
 impl CacheExpiry {
+    /// Expire `ttl` after creation.
     pub fn ttl(ttl: Duration) -> Self {
         Self::Ttl(ttl)
     }
 
+    /// Expire at the RFC 3339 `timestamp`.
     pub fn expire_time(timestamp: impl Into<String>) -> Self {
         Self::ExpireTime(timestamp.into())
     }
 
     /// Gemini's duration encoding: fractional seconds with an `s` suffix.
-    fn ttl_string(ttl: Duration) -> String {
+    pub(crate) fn ttl_string(ttl: Duration) -> String {
         format!("{}.{:09}s", ttl.as_secs(), ttl.subsec_nanos())
     }
-}
-
-/// Content and configuration for creating a cache.
-/// Supply content or a system instruction before creation. The expiry builder
-/// keeps relative and absolute expiry mutually exclusive.
-#[derive(Debug, Default, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct NewCachedContent {
-    /// Fully qualified model name (`models/gemini-2.5-flash`). A request that
-    /// uses the cache must name the same model.
-    model: String,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    contents: Vec<Content>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    system_instruction: Option<Content>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    tools: Option<Vec<Tool>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    tool_config: Option<ToolConfig>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    display_name: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    ttl: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    expire_time: Option<String>,
-}
-
-impl NewCachedContent {
-    /// Start a cached content for `model`.
-    ///
-    /// Accepts either the bare id (`gemini-2.5-flash`) or the qualified name
-    /// (`models/gemini-2.5-flash`) and normalizes to the latter, which is what
-    /// the API returns and what a `generateContent` request must match.
-    pub fn new(model: impl AsRef<str>) -> Self {
-        Self {
-            model: qualify_model(model.as_ref()),
-            ..Default::default()
-        }
-    }
-
-    /// Append a user-role text content block.
-    pub fn content(mut self, text: impl Into<String>) -> Self {
-        self.contents.push(Content {
-            parts: vec![Part::from(text.into())],
-            role: Some(Role::User),
-        });
-        self
-    }
-
-    /// Append an already-built content block (multimodal payloads).
-    pub fn content_block(mut self, content: Content) -> Self {
-        self.contents.push(content);
-        self
-    }
-
-    pub fn system_instruction(mut self, text: impl Into<String>) -> Self {
-        self.system_instruction = Some(Content {
-            parts: vec![Part::from(text.into())],
-            role: Some(Role::Model),
-        });
-        self
-    }
-
-    /// Set the tools inherited by requests using this cache.
-    /// Requests must not supply their own tools. Cached function declarations
-    /// require a caller-managed tool loop; provider-hosted tools do not.
-    pub fn tools(mut self, tools: Vec<Tool>) -> Self {
-        self.tools = Some(tools);
-        self
-    }
-
-    /// Set the tool configuration inherited by requests using this cache.
-    /// Requests must not supply their own tool configuration. May be set
-    /// without a tool set.
-    pub fn tool_config(mut self, tool_config: ToolConfig) -> Self {
-        self.tool_config = Some(tool_config);
-        self
-    }
-
-    pub fn display_name(mut self, name: impl Into<String>) -> Self {
-        self.display_name = Some(name.into());
-        self
-    }
-
-    /// Set the expiry. Setting it twice replaces the previous value rather than
-    /// sending both, which the API rejects.
-    pub fn expiry(mut self, expiry: CacheExpiry) -> Self {
-        match expiry {
-            CacheExpiry::Ttl(ttl) => {
-                self.ttl = Some(CacheExpiry::ttl_string(ttl));
-                self.expire_time = None;
-            }
-            CacheExpiry::ExpireTime(at) => {
-                self.expire_time = Some(at);
-                self.ttl = None;
-            }
-        }
-        self
-    }
-
-    fn validate(&self) -> Result<(), EncodeError> {
-        if self.contents.is_empty() && self.system_instruction.is_none() {
-            return Err(EncodeError::request(
-                "a cached content needs contents or a system instruction; an empty cache would \
-                 bill for storage and cache nothing",
-            ));
-        }
-        Ok(())
-    }
-}
-
-/// Storage accounting Gemini reports for a cached content.
-#[derive(Clone, Debug, Default, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CachedContentUsage {
-    /// Tokens held by this cache. This is what storage is billed on, and it is
-    /// also the ceiling on what a request against the handle can read back.
-    #[serde(default)]
-    pub total_token_count: u64,
-}
-
-/// A cached content resource as Gemini reports it.
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CachedContent {
-    /// Server-assigned handle, `cachedContents/<id>`. This is what
-    /// [`super::completion::GenerateContent::with_cached_content`] takes.
-    pub name: String,
-    /// Qualified model this cache is bound to.
-    #[serde(default)]
-    pub model: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub display_name: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub create_time: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub update_time: Option<String>,
-    /// When this cache lapses. After it does, using the handle fails with
-    /// [`ProviderError::CacheExpired`].
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub expire_time: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub usage_metadata: Option<CachedContentUsage>,
 }
 
 /// One `cachedContents` verb: what [`operation::ContextCache`] sends.
 #[derive(Debug)]
 pub enum CachedContentRequest {
-    /// `POST /v1beta/cachedContents`; answers with the resource.
-    Create(NewCachedContent),
+    /// `POST /v1beta/cachedContents` with a rendered body; answers with the
+    /// resource.
+    Create(Box<api::CachedContent>),
     /// `GET /v1beta/cachedContents/<id>`; answers with the resource.
     Get(String),
     /// `GET /v1beta/cachedContents?pageSize=…`, after `page_token` when
@@ -247,28 +102,14 @@ pub enum CachedContentRequest {
     Delete(String),
 }
 
-/// One page of a `cachedContents` listing.
-#[derive(Clone, Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CachedContentPage {
-    /// Entries in arrival order, concatenated across pages when folded.
-    /// Required during deserialization to distinguish pages from resources.
-    pub cached_contents: Vec<CachedContent>,
-    /// The cursor naming the next page, when the listing has one. The
-    /// decoder takes it before the page reaches the fold, so a folded
-    /// reply's is always `None`.
-    #[serde(default)]
-    pub next_page_token: Option<String>,
-}
-
 /// A resource, listing page, or empty acknowledgement from `cachedContents`.
 /// Malformed bodies fail decoding rather than representing absent resources.
 #[derive(Clone, Debug, Default)]
 pub enum CachedContentReply {
     /// `create`, `get` and `update_expiry`: the resource.
-    Resource(CachedContent),
+    Resource(Box<api::CachedContent>),
     /// `list`: one page of the collection.
-    Page(CachedContentPage),
+    Page(api::ListCachedContentsResponse),
     /// An empty successful reply for deletion or an empty collection.
     /// Also the default for a fold that receives no replies.
     #[default]
@@ -278,9 +119,9 @@ pub enum CachedContentReply {
 impl CachedContentReply {
     /// Extract the resource returned by creation, lookup, or expiry update.
     /// Return a response error for a page or acknowledgement.
-    pub fn resource(self) -> Result<CachedContent, ProviderError> {
+    pub fn resource(self) -> Result<api::CachedContent, ProviderError> {
         match self {
-            Self::Resource(resource) => Ok(resource),
+            Self::Resource(resource) => Ok(*resource),
             other => Err(other.mismatch("one cached content")),
         }
     }
@@ -299,7 +140,7 @@ impl CachedContentReply {
 
     /// The entries of one listing page. An empty collection is answered
     /// with the empty object, which is [`Self::Acknowledged`].
-    pub fn entries(self) -> Result<Vec<CachedContent>, ProviderError> {
+    pub fn entries(self) -> Result<Vec<api::CachedContent>, ProviderError> {
         match self {
             Self::Page(page) => Ok(page.cached_contents),
             Self::Acknowledged => Ok(Vec::new()),
@@ -382,8 +223,8 @@ impl Wire for CachedContents {
     fn encode(&self, request: CachedContentRequest, _mode: Mode) -> Result<Encoded, EncodeError> {
         let request = match request {
             CachedContentRequest::Create(new) => {
-                new.validate()?;
                 http::Request::post(self.provider.uri(CACHED_CONTENTS_PATH))
+                    .header("Content-Type", "application/json")
                     .body(Body::Bytes(serde_json::to_vec(&new)?))?
             }
             CachedContentRequest::Get(name) => {
@@ -441,9 +282,10 @@ impl<'id> Decoder<'id, operation::ContextCache> for CachedContentsDecoder {
     }
 }
 
-/// One listing page, or a body that is not one.
+/// One listing page, or a body that is not one. A page names its entries.
 fn as_page(data: &str) -> WireEvent<CachedContentReply> {
-    classify_untyped_line::<CachedContentPage>(data.as_bytes()).map(CachedContentReply::Page)
+    classify_untyped_line::<Recognized<api::ListCachedContentsResponse>>(data.as_bytes())
+        .map(|Recognized(page)| CachedContentReply::Page(page))
 }
 
 /// Classify an empty object as a deletion acknowledgement; reject any fields.
@@ -456,9 +298,10 @@ fn as_acknowledgement(data: &str) -> WireEvent<CachedContentReply> {
         .map(|_| CachedContentReply::Acknowledged)
 }
 
-/// One cached content, or a body that is not one.
+/// One cached content, or a body that is not one. A resource names itself.
 fn as_resource(data: &str) -> WireEvent<CachedContentReply> {
-    classify_untyped_line::<CachedContent>(data.as_bytes()).map(CachedContentReply::Resource)
+    classify_untyped_line::<Recognized<api::CachedContent>>(data.as_bytes())
+        .map(|Recognized(resource)| CachedContentReply::Resource(Box::new(resource)))
 }
 
 /// Serialize the expiry patch with an update mask naming its only field.
@@ -471,15 +314,6 @@ fn expiry_patch(expiry: CacheExpiry) -> Result<(Vec<u8>, &'static str), EncodeEr
     Ok((serde_json::to_vec(&patch)?, field))
 }
 
-/// `models/x` from `x`, idempotently.
-fn qualify_model(model: &str) -> String {
-    if model.starts_with("models/") {
-        model.to_owned()
-    } else {
-        format!("models/{model}")
-    }
-}
-
 /// Build `/v1beta/cachedContents/<id>` from a bare id or prefixed handle.
 /// Reject empty ids and characters other than ASCII letters, digits, `-`, and
 /// `_` to prevent path traversal, query injection, or resource retargeting.
@@ -488,10 +322,7 @@ fn resource_path(name: &str) -> Result<String, EncodeError> {
     let is_id_char = |ch: char| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_');
     if id.is_empty() || !id.chars().all(is_id_char) {
         return Err(EncodeError::request(format!(
-            "`{name}` is not a cached content handle; expected `cachedContents/<id>` or a bare \
-                 `<id>` of letters, digits, `-` and `_`. The id is spliced into the request path, \
-                 where a `?`, `#` or `/` silently retargets the call at a different resource — \
-                 and this is the path that deletes"
+            "`{name}` is not a cached content handle `cachedContents/<id>`"
         )));
     }
     Ok(format!("{CACHED_CONTENTS_PATH}/{id}"))
@@ -499,9 +330,6 @@ fn resource_path(name: &str) -> Result<String, EncodeError> {
 
 #[cfg(test)]
 mod tests;
-
-#[cfg(test)]
-mod exhaustive_validation_tests;
 
 #[cfg(test)]
 mod status_triage_tests;

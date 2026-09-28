@@ -10,7 +10,7 @@
         }
       },
       {
-        "batch": 7,
+        "batch": 8,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -18,7 +18,7 @@
         }
       },
       {
-        "batch": 9,
+        "batch": 11,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -26,7 +26,7 @@
         }
       },
       {
-        "batch": 9,
+        "batch": 11,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -109,40 +109,40 @@
             {
               "type": "text",
               "text": "",
-              "additional_params": {
-                "gemini": {
-                  "thoughtSignature": "EvUDCvIDAWkUfROlgd/mYlfbt+RVTWiG7KCjN71UNayuGVQYQNrsyes7OwZFk4x7Z4Gnu2OA0Kk3D3UBOJFEgaRcNYygssjtsRu0RwbGvoU9KDRZ9SptIP9w2CRFNu9j7VMu+rotzwP3sr00umvvT8XxUjtLLEcaqY9EA1mWCaKFZINRZmHMht/+zV8JYGYeh15DRHZQZion9Zcm9ZB04jBE1QgFT8L8ARhRLZbzk9yywzXCPrOEBqa8g/MU4GNWym17muVK3EgFGS2J3bdWYiWoYGdPLRkTEhIURScpRCDjwMJnvzTmBpE94ynpt6zWKVrEyMPBGAPX29zemDmI5PM6O9Gx2e5rZVh3rDrOX5dwpJy496lvqAeARQL1GS31Xwpoz+bn+QYfJWVFeQCwaqqbtDuMIYqHJYn3Rt1/bnyWRtwMbCVa/H6TJlDU+WxwL6Sm6hOo4VTXfmNkc4mNH/wA3i4mwxkKj73YqVfVbnvuJa1j3UCmtPNM97Cigl/BTT8VLBE1tWTr7DQTcOEkpqKcqgPdw53kMtvm+8vJ/LZL98aST74E1PPVsoCG2ZYLRb1gdUKajTZyAyClxZDUvSWV+/4nn3oxhCemMMJA24IU8QPH03tU3VDNGdSkqXDPyhYqXnIvENnJ1IOp9BCNGDDrfa7MUOfo"
-                }
+              "signature": {
+                "issuer": "gcp.gemini",
+                "signature": "Eo0FCooFAWkUfRN7lRa58Deif5+vPFSQKDlihVarXVEYi6KESWJ4y2o7U2iIgRImOvKVoikt1W8Lnp4bQK0nZxVIlMnjY0KXxwpa698WcHiMcCKCQg7X+C4gKMsArE3zrho/dVRoT4tDLDAeU0x7e8gSmCqWmE2jw+dQCxGWrbTZCzpX4zaNu99j5JYkYRH97+3NSM66UuN4oUoF0PiT3QgUT0hsDK+5jGBMKOxLHAR0iwQHN/Hf2TXOCCx1SsjLnVX57Zt/gXrmDL5pyf5NPeTjE3W/zvKUKsp8LO48YH3KNOrQUGUwl6fZQbq94upl4s2sesKW+B5zObuwmvReWk7ddxrgZK20IaHXoki/+6G3wv2Qz2y6Cp7MGlAgVvCH+K5dawpJbGHaLMG4RvFuiqo8Zyd9D/D+imUFfeTlYS424VLVgwFpidvNjX8saB1ieE5Mjmznn8MOlHeaBtFmikNmzG8xvKRMLpRTTlEm6GL8NWA26JCvIXksULIZBfhuRl4rZUYimsk1n8Nbv6zUH0wVbm7RziZl2whbjp6YzbvjK9O5u7nNXarEHjADQuLEmWvVhebLyMPh8P5Rl0G9d4Qz4vRX9Ad4zzkJ/1NwVPxxrcpT0ekqYGxNXA4JcdoIeA0+X34V6b3pTtsoQ2lkRDtV3lS8R7qd1L0qhfkjf5OwUDGDw+s1HIOVTSNbvQYQkpgX7Kb8RpqzArGI+suxsm+trq9oJDBSacncO5fl9bvWvPUVRrHhjny9Cb5E59vGeFw7XOsEjNHZXEkNJPivbgPbr/JcXe97duQGuNxIr4RG3SWl9mkqMkvUoSDfHCW9INFVatvWi0fKd0gRr2V2p3awu3/fiUuvN7JUMVbWpQw="
               }
             }
           ],
           "usage": {
-            "input_tokens": 60,
-            "output_tokens": 18,
-            "total_tokens": 167,
-            "reasoning_tokens": 89
+            "input_tokens": 59,
+            "output_tokens": 154,
+            "total_tokens": 213,
+            "reasoning_tokens": 136
           },
           "message_id": null,
-          "response_id": "x62yasOCMcPXz7IP6fmsGQ",
+          "response_id": "XOi6ap76G7CeqtsP4aHDuQs",
           "finish_reason": "stop",
           "provider": "gcp.gemini",
           "model": "gemini-3-flash-preview",
           "raw": {
-            "usage_metadata": {
-              "promptTokenCount": 60,
+            "usageMetadata": {
               "candidatesTokenCount": 18,
-              "totalTokenCount": 167,
-              "thoughtsTokenCount": 89,
+              "promptTokenCount": 59,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
-                  "tokenCount": 60
+                  "tokenCount": 59
                 }
-              ]
+              ],
+              "serviceTier": "standard",
+              "thoughtsTokenCount": 136,
+              "totalTokenCount": 213
             },
-            "finish_reason": "STOP",
-            "model_version": "gemini-3-flash-preview",
-            "response_id": "x62yasOCMcPXz7IP6fmsGQ"
+            "finishReason": "STOP",
+            "modelVersion": "gemini-3-flash-preview",
+            "responseId": "XOi6ap76G7CeqtsP4aHDuQs"
           }
         }
       },
@@ -160,7 +160,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": "A glarb-glarb"
+            "text": "A glarb-glarb is an ancient farming tool from the planet J"
           }
         },
         {
@@ -168,7 +168,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": " is an ancient farming tool from the planet Jiro."
+            "text": "iro."
           }
         },
         {
@@ -198,10 +198,9 @@
             "content": {
               "type": "text",
               "text": "",
-              "additional_params": {
-                "gemini": {
-                  "thoughtSignature": "EvUDCvIDAWkUfROlgd/mYlfbt+RVTWiG7KCjN71UNayuGVQYQNrsyes7OwZFk4x7Z4Gnu2OA0Kk3D3UBOJFEgaRcNYygssjtsRu0RwbGvoU9KDRZ9SptIP9w2CRFNu9j7VMu+rotzwP3sr00umvvT8XxUjtLLEcaqY9EA1mWCaKFZINRZmHMht/+zV8JYGYeh15DRHZQZion9Zcm9ZB04jBE1QgFT8L8ARhRLZbzk9yywzXCPrOEBqa8g/MU4GNWym17muVK3EgFGS2J3bdWYiWoYGdPLRkTEhIURScpRCDjwMJnvzTmBpE94ynpt6zWKVrEyMPBGAPX29zemDmI5PM6O9Gx2e5rZVh3rDrOX5dwpJy496lvqAeARQL1GS31Xwpoz+bn+QYfJWVFeQCwaqqbtDuMIYqHJYn3Rt1/bnyWRtwMbCVa/H6TJlDU+WxwL6Sm6hOo4VTXfmNkc4mNH/wA3i4mwxkKj73YqVfVbnvuJa1j3UCmtPNM97Cigl/BTT8VLBE1tWTr7DQTcOEkpqKcqgPdw53kMtvm+8vJ/LZL98aST74E1PPVsoCG2ZYLRb1gdUKajTZyAyClxZDUvSWV+/4nn3oxhCemMMJA24IU8QPH03tU3VDNGdSkqXDPyhYqXnIvENnJ1IOp9BCNGDDrfa7MUOfo"
-                }
+              "signature": {
+                "issuer": "gcp.gemini",
+                "signature": "Eo0FCooFAWkUfRN7lRa58Deif5+vPFSQKDlihVarXVEYi6KESWJ4y2o7U2iIgRImOvKVoikt1W8Lnp4bQK0nZxVIlMnjY0KXxwpa698WcHiMcCKCQg7X+C4gKMsArE3zrho/dVRoT4tDLDAeU0x7e8gSmCqWmE2jw+dQCxGWrbTZCzpX4zaNu99j5JYkYRH97+3NSM66UuN4oUoF0PiT3QgUT0hsDK+5jGBMKOxLHAR0iwQHN/Hf2TXOCCx1SsjLnVX57Zt/gXrmDL5pyf5NPeTjE3W/zvKUKsp8LO48YH3KNOrQUGUwl6fZQbq94upl4s2sesKW+B5zObuwmvReWk7ddxrgZK20IaHXoki/+6G3wv2Qz2y6Cp7MGlAgVvCH+K5dawpJbGHaLMG4RvFuiqo8Zyd9D/D+imUFfeTlYS424VLVgwFpidvNjX8saB1ieE5Mjmznn8MOlHeaBtFmikNmzG8xvKRMLpRTTlEm6GL8NWA26JCvIXksULIZBfhuRl4rZUYimsk1n8Nbv6zUH0wVbm7RziZl2whbjp6YzbvjK9O5u7nNXarEHjADQuLEmWvVhebLyMPh8P5Rl0G9d4Qz4vRX9Ad4zzkJ/1NwVPxxrcpT0ekqYGxNXA4JcdoIeA0+X34V6b3pTtsoQ2lkRDtV3lS8R7qd1L0qhfkjf5OwUDGDw+s1HIOVTSNbvQYQkpgX7Kb8RpqzArGI+suxsm+trq9oJDBSacncO5fl9bvWvPUVRrHhjny9Cb5E59vGeFw7XOsEjNHZXEkNJPivbgPbr/JcXe97duQGuNxIr4RG3SWl9mkqMkvUoSDfHCW9INFVatvWi0fKd0gRr2V2p3awu3/fiUuvN7JUMVbWpQw="
               }
             }
           }

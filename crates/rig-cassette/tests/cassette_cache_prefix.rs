@@ -753,6 +753,9 @@ fn assert_identical(provider: &str, bodies: &[String]) {
 /// `CompletionRequest` -> wire conversion rather than a shared stand-in.
 macro_rules! determinism_test {
     ($name:ident, $provider:literal, |$http:ident| $build:block) => {
+        determinism_test!($name, $provider, |$http| $build, determinism_probe_request);
+    };
+    ($name:ident, $provider:literal, |$http:ident| $build:block, $request:path) => {
         #[tokio::test]
         async fn $name() {
             let mut bodies = Vec::with_capacity(DETERMINISM_RUNS);
@@ -761,7 +764,7 @@ macro_rules! determinism_test {
                 let model = $build;
                 // The response is intentionally unparseable; only the captured
                 // request matters, and it is captured before parsing.
-                let _ = model.call(determinism_probe_request()).await;
+                let _ = model.call($request()).await;
                 bodies.push(captured_body($provider, &$http));
             }
             assert_identical($provider, &bodies);
@@ -802,14 +805,35 @@ determinism_test!(
     }
 );
 
+/// The probe for Gemini, whose sampling knobs are model settings: the same
+/// request without `additional_params`, which Gemini refuses.
+fn gemini_determinism_probe_request() -> CompletionRequest {
+    CompletionRequest {
+        additional_params: None,
+        ..determinism_probe_request()
+    }
+}
+
 determinism_test!(
     gemini_request_serialization_is_deterministic,
     "gemini",
     |http| {
+        use rig::providers::gemini::api;
         rig::providers::gemini::GeminiConfig::new("test-key")
             .connect(http.clone())
             .completion(rig::providers::gemini::completion::GEMINI_2_5_FLASH)
-    }
+            .settings(api::RequestSettings {
+                generation_config: api::GenerationSettings {
+                    seed: Some(7),
+                    top_p: Some(0.5),
+                    frequency_penalty: Some(0.0),
+                    presence_penalty: Some(0.0),
+                    ..Default::default()
+                },
+                ..Default::default()
+            })
+    },
+    gemini_determinism_probe_request
 );
 
 determinism_test!(

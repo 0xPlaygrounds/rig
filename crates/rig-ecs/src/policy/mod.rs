@@ -473,7 +473,8 @@ pub fn invalid_peer_results(
             )),
             AssistantContent::Text(_)
             | AssistantContent::Reasoning(_)
-            | AssistantContent::Image(_) => None,
+            | AssistantContent::Image(_)
+            | AssistantContent::Native(_) => None,
         })
         .collect();
     MessageParts::user(parts).ok()
@@ -497,7 +498,8 @@ pub fn answer_text(content: &[AssistantContent]) -> String {
             AssistantContent::Text(text) => Some(text.text.as_str()),
             AssistantContent::Reasoning(_)
             | AssistantContent::Image(_)
-            | AssistantContent::ToolCall(_) => None,
+            | AssistantContent::ToolCall(_)
+            | AssistantContent::Native(_) => None,
         })
         .collect()
 }

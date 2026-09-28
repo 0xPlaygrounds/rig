@@ -603,8 +603,12 @@ fn user_message_from_content(
             }
             crate::message::UserContent::Image(crate::message::Image {
                 data: DocumentSourceKind::Base64(data),
+                detail,
                 ..
-            }) => images.push(data),
+            }) => {
+                crate::message::MediaDetail::require(detail, &[], "ollama")?;
+                images.push(data);
+            }
             crate::message::UserContent::Image(_) => {
                 return Err(crate::message::MessageError::ConversionError(
                     "Ollama images must be base64 encoded data".into(),
@@ -612,8 +616,12 @@ fn user_message_from_content(
             }
             crate::message::UserContent::Document(crate::message::Document {
                 data: DocumentSourceKind::Base64(data) | DocumentSourceKind::String(data),
+                detail,
                 ..
-            }) => texts.push(data),
+            }) => {
+                crate::message::MediaDetail::require(detail, &[], "ollama")?;
+                texts.push(data);
+            }
             crate::message::UserContent::Document(_) => {
                 return Err(crate::message::MessageError::ConversionError(
                     "Ollama documents must be string or base64 encoded data".into(),
@@ -731,6 +739,11 @@ impl TryFrom<crate::message::Message> for Vec<Message> {
                         crate::message::AssistantContent::Image(_) => {
                             return Err(crate::message::MessageError::ConversionError(
                                 "Ollama currently doesn't support images.".into(),
+                            ));
+                        }
+                        crate::message::AssistantContent::Native(native) => {
+                            return Err(crate::message::AssistantContent::foreign_native(
+                                &native, "ollama",
                             ));
                         }
                     }

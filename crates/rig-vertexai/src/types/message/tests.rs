@@ -154,7 +154,10 @@ fn test_assistant_tool_call_echoes_thought_signature() {
             serde_json::json!({"x": 5}),
         ),
     )
-    .with_signature(Some(BASE64.encode(raw)));
+    .with_signature(Some(rig_core::message::Signature::sealed(
+        crate::types::completion_response::PROVIDER_NAME,
+        BASE64.encode(raw),
+    )));
     let content: vertexai::model::Content = RigMessage(Message::Assistant {
         id: None,
         content: rig_core::NonEmpty::new(AssistantContent::ToolCall(tool_call)),
@@ -175,7 +178,10 @@ fn test_assistant_tool_call_malformed_signature_is_dropped_not_fatal() {
             serde_json::json!({"x": 5}),
         ),
     )
-    .with_signature(Some("!!! not base64 !!!".to_string()));
+    .with_signature(Some(rig_core::message::Signature::sealed(
+        crate::types::completion_response::PROVIDER_NAME,
+        "!!! not base64 !!!",
+    )));
     let content: vertexai::model::Content = RigMessage(Message::Assistant {
         id: None,
         content: rig_core::NonEmpty::new(AssistantContent::ToolCall(tool_call)),

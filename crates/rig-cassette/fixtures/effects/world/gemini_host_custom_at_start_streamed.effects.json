@@ -9,7 +9,7 @@
         }
       },
       {
-        "batch": 7,
+        "batch": 8,
         "id": 1,
         "kind": {
           "delivery": "stream",
@@ -133,40 +133,40 @@
             {
               "type": "text",
               "text": "",
-              "additional_params": {
-                "gemini": {
-                  "thoughtSignature": "EuACCt0CAWkUfRPY9afkIVxKRlZgDwU0pKqD4XxKOr1285oOJdGALuHH3C3M6Vhkbq+PC3vzZkHv3gz8EIzzVnsAG9GwHACa1OnRewHGtbf2PXLU3RXz/XsmY2fBgrShDFE1q9LOBgonO+5Bse75m+ZQ2El+shLWtnLK3UVDsieZPgcmN5HqmzednFYL4Ush078LMhtApB8dS2oeTcTWetUvLSxfMFGKwW4bKTOEEhtBVDvWpL/POefFjsR8BYNa6CSUYUOJDdJpMZQ52K9URKABOcpqlk/GkDWT9vQT8MuWe9uccXRM5KMhCtWviBQ62Nf+xtCj2whTXuaSYCbjPa+2SrSVuVcTzEnUBMzhPDw9AJGQAdOFdhUxFyO62OfH+ehw522kD8yPB6v71uWZHS7rEmMWWSudHKpgtHaj+SaqjculTCJERcqRPAN+Th8RHCkBK4QWoAEmJbyoKRAV3C2uuA=="
-                }
+              "signature": {
+                "issuer": "gcp.gemini",
+                "signature": "EuACCt0CAWkUfRNyIoWwhKgObm94lniZpENDFrgiNk16IYSp4A9wqt6iKn0t+BHQJhMwajm+P8GEQ91e9AArXdx740Ci3IsihXdpnS9hDzzQJVMvp+9qLQUJtNrQQNQ1nmYr2UlmoK+84OrTlPhyWlbGAICfoBVYMKeWEZEHfTFzUVjoKTVcHUyRZ/cZhjbq7hHuD4Ur81tD6zmAHq7BcUjdq1s5i0DXFT1vHNDYEkio7oKigoluYHbRNgFVQ/SUZRJmbd/ITTkfKYOg+CsWN/fkq7Fr0ZZQ9IFxSVtvLSzmTFOO41tbHohlBhkivkz/uq8K7F97sLgPTUxzvlQTbNJ76fQaWMeZeAQcE7htV0gw2tDKbwO4y6zyJhOC8qxX/9mOo/aTZkcOoKmUtVj+UOjiBjzUnQh0kfAkZkYvSSs3r8RZBBGDvOQqyPqZ2OV6F4NonZALpq5fIy+OuCfqhXJvSw=="
               }
             }
           ],
           "usage": {
-            "input_tokens": 19,
-            "output_tokens": 2,
-            "total_tokens": 76,
+            "input_tokens": 18,
+            "output_tokens": 57,
+            "total_tokens": 75,
             "reasoning_tokens": 55
           },
           "message_id": null,
-          "response_id": "Va2yao_REorUz7IP-pelgAU",
+          "response_id": "x-e6aoztFv66qtsPptyxgQo",
           "finish_reason": "stop",
           "provider": "gcp.gemini",
           "model": "gemini-3-flash-preview",
           "raw": {
-            "usage_metadata": {
-              "promptTokenCount": 19,
+            "usageMetadata": {
               "candidatesTokenCount": 2,
-              "totalTokenCount": 76,
-              "thoughtsTokenCount": 55,
+              "promptTokenCount": 18,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
-                  "tokenCount": 19
+                  "tokenCount": 18
                 }
-              ]
+              ],
+              "serviceTier": "standard",
+              "thoughtsTokenCount": 55,
+              "totalTokenCount": 75
             },
-            "finish_reason": "STOP",
-            "model_version": "gemini-3-flash-preview",
-            "response_id": "Va2yao_REorUz7IP-pelgAU"
+            "finishReason": "STOP",
+            "modelVersion": "gemini-3-flash-preview",
+            "responseId": "x-e6aoztFv66qtsPptyxgQo"
           }
         }
       },
@@ -214,10 +214,9 @@
             "content": {
               "type": "text",
               "text": "",
-              "additional_params": {
-                "gemini": {
-                  "thoughtSignature": "EuACCt0CAWkUfRPY9afkIVxKRlZgDwU0pKqD4XxKOr1285oOJdGALuHH3C3M6Vhkbq+PC3vzZkHv3gz8EIzzVnsAG9GwHACa1OnRewHGtbf2PXLU3RXz/XsmY2fBgrShDFE1q9LOBgonO+5Bse75m+ZQ2El+shLWtnLK3UVDsieZPgcmN5HqmzednFYL4Ush078LMhtApB8dS2oeTcTWetUvLSxfMFGKwW4bKTOEEhtBVDvWpL/POefFjsR8BYNa6CSUYUOJDdJpMZQ52K9URKABOcpqlk/GkDWT9vQT8MuWe9uccXRM5KMhCtWviBQ62Nf+xtCj2whTXuaSYCbjPa+2SrSVuVcTzEnUBMzhPDw9AJGQAdOFdhUxFyO62OfH+ehw522kD8yPB6v71uWZHS7rEmMWWSudHKpgtHaj+SaqjculTCJERcqRPAN+Th8RHCkBK4QWoAEmJbyoKRAV3C2uuA=="
-                }
+              "signature": {
+                "issuer": "gcp.gemini",
+                "signature": "EuACCt0CAWkUfRNyIoWwhKgObm94lniZpENDFrgiNk16IYSp4A9wqt6iKn0t+BHQJhMwajm+P8GEQ91e9AArXdx740Ci3IsihXdpnS9hDzzQJVMvp+9qLQUJtNrQQNQ1nmYr2UlmoK+84OrTlPhyWlbGAICfoBVYMKeWEZEHfTFzUVjoKTVcHUyRZ/cZhjbq7hHuD4Ur81tD6zmAHq7BcUjdq1s5i0DXFT1vHNDYEkio7oKigoluYHbRNgFVQ/SUZRJmbd/ITTkfKYOg+CsWN/fkq7Fr0ZZQ9IFxSVtvLSzmTFOO41tbHohlBhkivkz/uq8K7F97sLgPTUxzvlQTbNJ76fQaWMeZeAQcE7htV0gw2tDKbwO4y6zyJhOC8qxX/9mOo/aTZkcOoKmUtVj+UOjiBjzUnQh0kfAkZkYvSSs3r8RZBBGDvOQqyPqZ2OV6F4NonZALpq5fIy+OuCfqhXJvSw=="
               }
             }
           }

@@ -88,14 +88,16 @@ pub fn turn_delivered_no_answer(choice: &[AssistantContent]) -> bool {
         AssistantContent::Text(text) => !text.text.is_empty(),
         AssistantContent::ToolCall(_) => true,
         AssistantContent::Image(_) => true,
-        // The one exclusion: scratch work, not an answer.
-        AssistantContent::Reasoning(_) => false,
+        // Scratch work is not an answer, and neither is a provider's own
+        // part, such as hosted code.
+        AssistantContent::Reasoning(_) | AssistantContent::Native(_) => false,
     })
 }
 
 /// Groups streamed choices as reasoning, text, tool calls, then images,
 /// preserving order within each group. Choices without reasoning or tool calls
-/// retain their original order.
+/// retain their original order, and so does any choice with a native part:
+/// its parts return to their issuer in the position they arrived.
 pub fn canonical_streamed_choice(choice: Vec<AssistantContent>) -> Vec<AssistantContent> {
     let regroup = choice.iter().any(|part| {
         matches!(
@@ -103,7 +105,10 @@ pub fn canonical_streamed_choice(choice: Vec<AssistantContent>) -> Vec<Assistant
             AssistantContent::Reasoning(_) | AssistantContent::ToolCall(_)
         )
     });
-    if !regroup {
+    let native = choice
+        .iter()
+        .any(|part| matches!(part, AssistantContent::Native(_)));
+    if !regroup || native {
         return choice;
     }
     let mut reasoning = Vec::new();
@@ -115,7 +120,7 @@ pub fn canonical_streamed_choice(choice: Vec<AssistantContent>) -> Vec<Assistant
             AssistantContent::Reasoning(block) => reasoning.push(block),
             AssistantContent::Text(_) => text.push(part),
             AssistantContent::ToolCall(_) => calls.push(part),
-            AssistantContent::Image(_) => images.push(part),
+            AssistantContent::Image(_) | AssistantContent::Native(_) => images.push(part),
         }
     }
     ordered_assistant_content(reasoning, text, calls.into_iter().chain(images))
@@ -154,6 +159,87 @@ pub enum AssistantContent {
     Reasoning(Sealed<Reasoning>),
     /// Image content emitted by the assistant.
     Image(Image),
+    /// A part in its issuing API's own schema, replayed verbatim to its
+    /// issuer. Other providers reject it.
+    Native(Sealed<NativePart>),
+}
+
+/// An opaque signature, readable only by its issuer once [`Sealed`].
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct Signature {
+    /// The signature as the issuer sent it.
+    pub signature: String,
+}
+
+impl Signature {
+    /// `signature`, sealed to `issuer`.
+    pub fn sealed(issuer: impl Into<Issuer>, signature: impl Into<String>) -> Sealed<Self> {
+        Sealed::new(
+            issuer,
+            Self {
+                signature: signature.into(),
+            },
+        )
+    }
+}
+
+/// A content part kept in the schema of the API that issued it.
+///
+/// The part is held as the raw JSON text the API sent and serialized as that
+/// text, so a checkpoint re-sends it byte for byte whatever the build's
+/// `serde_json` features.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct NativePart {
+    /// The schema `part` follows, e.g. `gemini::api::PART_SCHEMA`.
+    pub schema: std::borrow::Cow<'static, str>,
+    /// The part as the API sent it.
+    #[serde(with = "raw_json_text")]
+    pub part: Box<serde_json::value::RawValue>,
+}
+
+impl NativePart {
+    /// A part following `schema`, stored as the JSON text of `part`.
+    pub fn new(
+        schema: impl Into<std::borrow::Cow<'static, str>>,
+        part: Box<serde_json::value::RawValue>,
+    ) -> Self {
+        Self {
+            schema: schema.into(),
+            part,
+        }
+    }
+
+    /// The part's JSON text.
+    pub fn json(&self) -> &str {
+        self.part.get()
+    }
+}
+
+impl PartialEq for NativePart {
+    fn eq(&self, other: &Self) -> bool {
+        self.schema == other.schema && self.part.get() == other.part.get()
+    }
+}
+
+/// Raw JSON serialized as a string: tagged enums buffer their fields, and a
+/// buffered map cannot become a `RawValue` again.
+mod raw_json_text {
+    use serde::{Deserialize, Deserializer, Serializer};
+    use serde_json::value::RawValue;
+
+    pub(super) fn serialize<S: Serializer>(
+        raw: &RawValue,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(raw.get())
+    }
+
+    pub(super) fn deserialize<'de, D: Deserializer<'de>>(
+        deserializer: D,
+    ) -> Result<Box<RawValue>, D::Error> {
+        let text = String::deserialize(deserializer)?;
+        RawValue::from_string(text).map_err(serde::de::Error::custom)
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
@@ -369,9 +455,10 @@ pub struct ToolCall {
     pub id: CallId,
     /// Function name and JSON arguments requested by the model.
     pub function: ToolFunction,
-    /// Opaque provider signature preserved for replay. Rig does not verify it.
+    /// Opaque provider signature preserved for replay, readable only by the
+    /// service that issued it. Rig does not verify it.
     #[serde(default)]
-    pub signature: Option<String>,
+    pub signature: Option<Sealed<Signature>>,
     /// Additional provider-specific parameters to be sent to the completion model provider
     #[serde(default)]
     pub additional_params: Option<serde_json::Value>,
@@ -414,7 +501,8 @@ impl ToolCall {
         }
     }
 
-    pub fn with_signature(mut self, signature: Option<String>) -> Self {
+    /// This call with `signature`.
+    pub fn with_signature(mut self, signature: Option<Sealed<Signature>>) -> Self {
         self.signature = signature;
         self
     }
@@ -703,6 +791,9 @@ where
 pub struct Text {
     /// Text content.
     pub text: String,
+    /// A signature the issuer attached to this text part, returned with it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub signature: Option<Sealed<Signature>>,
     /// Provider-specific text fields.
     #[serde(
         default,
@@ -717,6 +808,7 @@ impl Text {
     pub fn new(text: impl Into<String>) -> Self {
         Self {
             text: text.into(),
+            signature: None,
             additional_params: None,
         }
     }
@@ -742,9 +834,9 @@ pub struct Image {
     /// Image media type, if known.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub media_type: Option<ImageMediaType>,
-    /// Provider-specific image detail preference.
+    /// How much detail the provider should resolve, when it lets callers choose.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub detail: Option<ImageDetail>,
+    pub detail: Option<MediaDetail>,
     /// Provider-specific image fields.
     #[serde(
         default,
@@ -841,6 +933,9 @@ pub struct Video {
     /// Video media type, if known.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub media_type: Option<VideoMediaType>,
+    /// How much detail the provider should resolve, when it lets callers choose.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detail: Option<MediaDetail>,
     /// Provider-specific video fields.
     #[serde(
         default,
@@ -858,6 +953,9 @@ pub struct Document {
     /// Document media type, if known.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub media_type: Option<DocumentMediaType>,
+    /// How much detail the provider should resolve, when it lets callers choose.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detail: Option<MediaDetail>,
     /// Provider-specific document fields.
     #[serde(
         default,
@@ -952,12 +1050,20 @@ pub enum VideoMediaType {
     WEBM,
 }
 
-/// Describes the detail of the image content, which can be low, high, or auto (open-ai specific).
-#[derive(Default, Clone, Debug, Deserialize, Serialize, PartialEq)]
-#[serde(rename_all = "lowercase")]
-pub enum ImageDetail {
+/// How much detail a provider resolves in an image, video or document. A
+/// provider rejects a level it cannot express rather than pick another.
+#[derive(Default, Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum MediaDetail {
+    /// Fewest tokens per image, frame or page.
     Low,
+    /// Between low and high.
+    Medium,
+    /// Most detail the provider's standard levels offer.
     High,
+    /// More than high, where the provider offers it.
+    UltraHigh,
+    /// The provider's default.
     #[default]
     Auto,
 }
@@ -1046,7 +1152,7 @@ macro_rules! media_ctors {
         pub fn $name(
             data: impl Into<$data>,
             media_type: Option<ImageMediaType>,
-            detail: Option<ImageDetail>,
+            detail: Option<MediaDetail>,
         ) -> Self {
             Self::Image(Image {
                 data: DocumentSourceKind::$kind(data.into()),
@@ -1066,7 +1172,7 @@ macro_rules! media_ctors {
             Self::$variant($variant {
                 data: DocumentSourceKind::$kind(data.into()),
                 media_type,
-                additional_params: None,
+                ..Default::default()
             })
         }
         media_ctors! { $($rest)* }
@@ -1110,7 +1216,7 @@ impl UserContent {
         UserContent::Document(Document {
             data: DocumentSourceKind::string(&data),
             media_type,
-            additional_params: None,
+            ..Default::default()
         })
     }
 
@@ -1280,14 +1386,43 @@ impl_mime_type!(VideoMediaType {
     WEBM => "video/webm",
 });
 
-impl std::str::FromStr for ImageDetail {
+impl MediaDetail {
+    /// Refuse `detail` unless `provider` offers it: unset and [`Self::Auto`]
+    /// are always accepted.
+    pub fn require(
+        detail: Option<Self>,
+        supported: &[Self],
+        provider: &'static str,
+    ) -> Result<(), MessageError> {
+        match detail {
+            Some(detail) if detail != Self::Auto && !supported.contains(&detail) => {
+                Err(MessageError::UnsupportedMediaDetail { detail, provider })
+            }
+            _ => Ok(()),
+        }
+    }
+}
+
+impl AssistantContent {
+    /// The error a provider returns for a native part it cannot send.
+    pub fn foreign_native(native: &Sealed<NativePart>, provider: &'static str) -> MessageError {
+        MessageError::ForeignNative {
+            issuer: native.issuer().clone(),
+            provider,
+        }
+    }
+}
+
+impl std::str::FromStr for MediaDetail {
     type Err = ();
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
-            "low" => Ok(ImageDetail::Low),
-            "high" => Ok(ImageDetail::High),
-            "auto" => Ok(ImageDetail::Auto),
+            "low" => Ok(MediaDetail::Low),
+            "medium" => Ok(MediaDetail::Medium),
+            "high" => Ok(MediaDetail::High),
+            "ultra_high" => Ok(MediaDetail::UltraHigh),
+            "auto" => Ok(MediaDetail::Auto),
             _ => Err(()),
         }
     }
@@ -1300,6 +1435,7 @@ macro_rules! text_from {
             fn from(text: $src) -> Self {
                 Text {
                     text: text.into(),
+                    signature: None,
                     additional_params: None,
                 }
             }
@@ -1421,6 +1557,22 @@ pub enum ToolChoice {
 pub enum MessageError {
     #[error("Message conversion error: {0}")]
     ConversionError(String),
+    /// A native part only the issuing service reads reached another one.
+    #[error("{provider} cannot send a native part issued by `{issuer}`")]
+    ForeignNative {
+        /// The service that issued the part.
+        issuer: Issuer,
+        /// The provider encoding the request.
+        provider: &'static str,
+    },
+    /// A media detail level the provider has no setting for.
+    #[error("{provider} cannot express media detail {detail:?}")]
+    UnsupportedMediaDetail {
+        /// The requested level.
+        detail: MediaDetail,
+        /// The provider encoding the request.
+        provider: &'static str,
+    },
 }
 
 impl From<MessageError> for ProviderError {

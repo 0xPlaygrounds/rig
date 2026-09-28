@@ -9,10 +9,10 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"contents":[{"parts":[{"text":"Reply with the single word: ready.","thought":false}],"role":"user"}],"generationConfig":{"temperature":0.0},"safetySettings":null,"systemInstruction":{"parts":[{"text":"You are a concise assistant. Answer directly.","thought":false}],"role":"model"},"toolConfig":null}'
+  body: '{"contents":[{"parts":[{"text":"Reply with the single word: ready."}],"role":"user"}],"generationConfig":{"temperature":0.0},"systemInstruction":{"parts":[{"text":"You are a concise assistant. Answer directly."}]}}'
 then:
   status: 200
   header:
   - name: content-type
     value: application/json; charset=UTF-8
-  body: '{"candidates":[{"content":{"parts":[{"text":"ready.","thoughtSignature":"EoACCv0BAWkUfRMYquazQuC6x8xvm1YL4p7TQ1PgIaSxgeuniRiBqO/gGd/CtGpts9sCDUP7EkyGqizZ6R6K3ZfNI3fXTKxhxns9yZq6NZ63Lf5KST9XSyjwevbCna/2tL31wLVZiCn49ipT6na7R9GYy+LMJF+Mx8hDADmOS4Cl6um/gI7/JO5jl0DD+mpxoJwHrKUMEPFw7KrS7H7s1gC1lCVI0dhpc9Jvv7DWY2LNqaMZN4uj4FkC4vCCL6QI1XHqPxgac+VBuPb9V9MWqSW+5LsCDgXwdyhZyZWGUufU8s0dwwIHO3IDm8m2PhQIqe+8agrlAc6dXw7wfw6iO8iMpw=="}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-3-flash-preview","responseId":"U62yarzJLcXez7IPg6DYOA","usageMetadata":{"candidatesTokenCount":2,"promptTokenCount":19,"promptTokensDetails":[{"modality":"TEXT","tokenCount":19}],"serviceTier":"standard","thoughtsTokenCount":37,"totalTokenCount":58}}'
+  body: '{"candidates":[{"content":{"parts":[{"text":"ready.","thoughtSignature":"EoACCv0BAWkUfRMhvOmROgwMovK1oeTDzAxqNnShCUEm0A19LkcF+2xfUFuxsLV6xx21oQRw4Os3S+FaCFpt6n3MGT6cNS8tsB2XHB+jdY8dSoIRCtp5ftoFpsD5iihLSjdINOIgGSD3SP2S2oZU0EVtnjMjPWLbgBjKXbsYobxzN+lF4DDS/fMlFqjTUi1ouC27pRhFvtgAjoJOok+edI4OvXPe72wDobAlFGNPUaz6VXqtf3rS7IZnFtP3VbTn4GNqmLFiXvSXu85jj8JDK4ZXvRUycsC0WLFFuXF5FHjP7H+Vc+JLyh5YOmOBmhEDYYL6eRoniO88srCN/W9uTzDF5w=="}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-3-flash-preview","responseId":"xee6apexB8zzz7IPlPPa8Qk","usageMetadata":{"candidatesTokenCount":2,"promptTokenCount":18,"promptTokensDetails":[{"modality":"TEXT","tokenCount":18}],"serviceTier":"standard","thoughtsTokenCount":37,"totalTokenCount":57}}'

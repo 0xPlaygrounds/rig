@@ -106,11 +106,13 @@ impl TryFrom<RigMessage> for vertexai::model::Content {
                     })
                     .map(|assistant_content| match assistant_content {
                         AssistantContent::Text(text) => {
-                            let signature = rig_core::providers::gemini::text_signature_at(
-                                &text,
-                                crate::types::completion_response::VERTEX_TEXT_EXTRAS_KEY,
-                            )
-                            .map(str::to_owned);
+                            let signature = text
+                                .signature
+                                .as_ref()
+                                .and_then(|signature| {
+                                    signature.open(&crate::types::completion_response::ISSUER)
+                                })
+                                .map(|signature| signature.signature.clone());
                             let mut part = vertexai::model::Part::new().set_text(text.text);
                             // A signed answer part returns with its signature.
                             if let Some(signature) = signature {
@@ -144,7 +146,14 @@ impl TryFrom<RigMessage> for vertexai::model::Content {
 
                             // Restore signature bytes for replay; malformed base64
                             // is omitted with a warning rather than rejecting the turn.
-                            if let Some(signature) = &tool_call.signature {
+                            if let Some(signature) = tool_call
+                                .signature
+                                .as_ref()
+                                .and_then(|signature| {
+                                    signature.open(&crate::types::completion_response::ISSUER)
+                                })
+                                .map(|signature| &signature.signature)
+                            {
                                 match BASE64.decode(signature.as_bytes()) {
                                     Ok(bytes) => part = part.set_thought_signature(bytes),
                                     Err(err) => tracing::warn!(
@@ -182,6 +191,9 @@ impl TryFrom<RigMessage> for vertexai::model::Content {
                             }
 
                             Ok(part)
+                        }
+                        AssistantContent::Native(native) => {
+                            Err(AssistantContent::foreign_native(&native, "vertexai").into())
                         }
                     })
                     .collect();

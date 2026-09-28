@@ -38,7 +38,7 @@ pub(crate) fn complete(
     response.complete()
 }
 use rig_core::message::{
-    AssistantContent, DocumentSourceKind, ImageDetail, ImageMediaType, Text, ToolCall,
+    AssistantContent, DocumentSourceKind, ImageMediaType, MediaDetail, Text, ToolCall,
 };
 
 fn create_text_response(text: &str) -> vertexai::model::GenerateContentResponse {
@@ -115,7 +115,13 @@ fn test_tool_call_response_captures_thought_signature() {
         .unwrap();
     match response.choice.first() {
         Some(AssistantContent::ToolCall(tc)) => {
-            assert_eq!(tc.signature, Some(BASE64.encode(raw)));
+            assert_eq!(
+                tc.signature
+                    .as_ref()
+                    .and_then(|signature| signature.open(&super::ISSUER))
+                    .map(|signature| signature.signature.clone()),
+                Some(BASE64.encode(raw))
+            );
         }
         _ => panic!("Expected ToolCall"),
     }
@@ -223,7 +229,7 @@ fn inline_image_response_converts_raw_bytes_to_base64_with_mime_type() {
         Some(AssistantContent::Image(image)) => {
             assert_eq!(image.data, DocumentSourceKind::Base64(BASE64.encode(raw)));
             assert_eq!(image.media_type, Some(ImageMediaType::PNG));
-            assert_eq!(image.detail, Some(ImageDetail::default()));
+            assert_eq!(image.detail, Some(MediaDetail::default()));
         }
         _ => panic!("Expected Image"),
     }
@@ -529,7 +535,10 @@ fn answer_text_signature_is_kept_and_replayed_on_its_part() {
     };
     let encoded = BASE64.encode(raw);
     assert_eq!(
-        rig_core::providers::gemini::text_signature_at(text, super::VERTEX_TEXT_EXTRAS_KEY),
+        text.signature
+            .as_ref()
+            .and_then(|signature| signature.open(&super::ISSUER))
+            .map(|signature| signature.signature.as_str()),
         Some(encoded.as_str())
     );
 

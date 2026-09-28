@@ -269,6 +269,9 @@ impl RigAssistantContent {
             AssistantContent::Image(_) => Err(ProviderError::Provider(
                 "AWS Bedrock does not support image content in assistant messages".to_owned(),
             )),
+            AssistantContent::Native(native) => {
+                Err(AssistantContent::foreign_native(&native, "aws.bedrock").into())
+            }
         }
     }
 }

@@ -101,15 +101,7 @@ fn provider_encode_failures_classify_as_request_building() {
         .tool_choice(ToolChoice::Specific {
             function_names: vec!["f".into()],
         });
-    let unflattenable_schema = CompletionRequest::new("hi").tool(ToolDefinition {
-        name: "f".into(),
-        description: "d".into(),
-        parameters: json!({
-            "type": "object",
-            "$defs": 5,
-            "properties": {"a": {"$ref": "#/$defs/x"}},
-        }),
-    });
+    let untyped_settings = CompletionRequest::new("hi").additional_params(json!({"seed": 7}));
     let cases = [
         (
             "openai chat",
@@ -228,13 +220,13 @@ fn provider_encode_failures_classify_as_request_building() {
             "RequestError: invalid uri character",
         ),
         (
-            "gemini tool schema",
+            "gemini additional_params",
             failure(
                 GeminiConfig::new("k")
                     .completion("gemini-2.5-flash")
-                    .encode(unflattenable_schema, Mode::Unary),
+                    .encode(untyped_settings, Mode::Unary),
             ),
-            "RequestError: Tool 'f' could not be converted to a schema: $defs must be an object",
+            "RequestError: additional_params is not read by Gemini; use GenerateContent::settings",
         ),
         (
             "cohere embed",

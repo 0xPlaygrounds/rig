@@ -29,6 +29,7 @@ fn verifier_document() -> Document {
     let bytes =
         std::fs::read(VERIFIER_FIXTURE_PATH).expect("verifier fixture PDF should be readable");
     Document {
+        detail: None,
         data: DocumentSourceKind::base64(&BASE64_STANDARD.encode(bytes)),
         media_type: Some(DocumentMediaType::PDF),
         additional_params: None,

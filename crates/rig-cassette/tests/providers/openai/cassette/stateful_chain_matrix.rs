@@ -402,6 +402,7 @@ async fn file_id_chain() {
             let document = Message::User {
                 content: rig_core::NonEmpty::with_rest(
                     UserContent::Document(rig::message::Document {
+                        detail: None,
                         data: rig::message::DocumentSourceKind::file_id(&file_id),
                         media_type: Some(rig::message::DocumentMediaType::PDF),
                         additional_params: None,

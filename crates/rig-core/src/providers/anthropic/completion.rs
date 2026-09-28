@@ -798,6 +798,9 @@ fn anthropic_content_from_assistant_content(
         message::AssistantContent::Image(_) => Err(MessageError::ConversionError(
             "Anthropic currently doesn't support images.".to_string(),
         )),
+        message::AssistantContent::Native(native) => Err(
+            message::AssistantContent::foreign_native(&native, "anthropic"),
+        ),
         message::AssistantContent::ToolCall(tool_call) => Ok(vec![Content::ToolUse {
             // The wire requires a non-empty id: the provider-issued one when it
             // exists, else rig's minted handle.
@@ -901,8 +904,12 @@ impl Message {
                         cache_control: None,
                     }),
                     message::UserContent::Image(message::Image {
-                        data, media_type, ..
+                        data,
+                        media_type,
+                        detail,
+                        ..
                     }) => {
+                        message::MediaDetail::require(detail, &[], "anthropic")?;
                         let source = match data {
                             DocumentSourceKind::Base64(data) => {
                                 let media_type =
@@ -935,8 +942,10 @@ impl Message {
                     message::UserContent::Document(message::Document {
                         data,
                         media_type,
+                        detail,
                         additional_params,
                     }) => {
+                        message::MediaDetail::require(detail, &[], "anthropic")?;
                         let (title, context, citations) =
                             extract_anthropic_doc_params(additional_params)?;
 

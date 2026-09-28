@@ -140,7 +140,7 @@ fn rank(part: &AssistantContent) -> u8 {
         AssistantContent::Reasoning(_) => 0,
         AssistantContent::Text(_) => 1,
         AssistantContent::ToolCall(_) => 2,
-        AssistantContent::Image(_) => 3,
+        AssistantContent::Image(_) | AssistantContent::Native(_) => 3,
     }
 }
 
@@ -246,10 +246,7 @@ pub(crate) fn assert_log(cell: &Cell, wire: ThinkingWire, log: &EffectLog) {
                             .is_some())
                             || parts.iter().any(|part| match part {
                                 AssistantContent::ToolCall(call) => call.signature.is_some(),
-                                AssistantContent::Text(text) => {
-                                    rig_core::providers::gemini::text_thought_signature(text)
-                                        .is_some()
-                                }
+                                AssistantContent::Text(text) => text.signature.is_some(),
                                 _ => false,
                             }),
                         "{}: the Gemini signature is preserved",

@@ -578,7 +578,9 @@ impl CompletionRequest {
             .map(|content| Message::User { content })
     }
 
-    pub(crate) fn chat_history_with_documents(&self) -> NonEmpty<Message> {
+    /// The conversation as a provider sends it: the documents, as one user
+    /// message, after the leading system messages.
+    pub fn chat_history_with_documents(&self) -> NonEmpty<Message> {
         let mut chat_history = self.chat_history.clone();
         if let Some(documents) = self.normalized_documents() {
             insert_after_leading_system(&mut chat_history, documents);

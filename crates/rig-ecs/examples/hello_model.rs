@@ -114,7 +114,8 @@ fn text(outcome: &Result<Outcome, rig_core::error::ErrorReport>) -> String {
                 AssistantContent::Text(text) => Some(text.text.clone()),
                 AssistantContent::Reasoning(_)
                 | AssistantContent::Image(_)
-                | AssistantContent::ToolCall(_) => None,
+                | AssistantContent::ToolCall(_)
+                | AssistantContent::Native(_) => None,
             })
             .collect(),
         Ok(other) => format!("a {} answer", other.family()),

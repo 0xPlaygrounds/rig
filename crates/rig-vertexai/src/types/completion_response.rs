@@ -4,11 +4,11 @@ use google_cloud_aiplatform_v1 as vertexai;
 use rig_core::completion::Usage;
 use rig_core::error::ProviderError;
 use rig_core::message::{
-    AssistantContent, ImageDetail, ImageMediaType, MediaType, MimeType, Reasoning, Text, ToolCall,
-    ToolFunction,
+    AssistantContent, ImageMediaType, MediaDetail, MediaType, MimeType, Reasoning, Signature, Text,
+    ToolCall, ToolFunction,
 };
 use rig_core::operation::{Completion, Finish};
-use rig_core::providers::gemini::completion::gemini_api_types::map_google_finish_reason;
+use rig_core::providers::gemini::edge;
 use rig_core::wire::{Decoder, Flow, Out, WireEvent};
 
 /// Stable descriptor name reported on normalized Vertex AI responses.
@@ -17,11 +17,6 @@ pub const PROVIDER_NAME: &str = "vertexai";
 /// The issuer of Vertex's reasoning, the only reasoning this wire replays.
 pub(crate) const ISSUER: rig_core::message::Issuer =
     rig_core::message::Issuer::from_static(PROVIDER_NAME);
-
-/// The text-block `AdditionalParams` key holding Vertex AI extras for that
-/// text, today the `thoughtSignature` Vertex put on the answer part. Only the
-/// Vertex codec reads it, so the signature returns only to Vertex.
-pub const VERTEX_TEXT_EXTRAS_KEY: &str = "vertexai";
 
 /// Map Vertex AI's `finishReason` onto rig's normalized vocabulary.
 ///
@@ -38,7 +33,7 @@ pub fn map_finish_reason(
         .name()
         .map_or_else(|| reason.to_string(), ToOwned::to_owned);
 
-    map_google_finish_reason(&wire_name)
+    edge::finish_reason(&wire_name)
 }
 
 /// Decodes Vertex AI's whole `GenerateContent` reply into the events a
@@ -120,8 +115,11 @@ fn assistant_content(
                 })?;
             // Vertex sends no call id: rig issues one per call.
             assistant_contents.push(AssistantContent::ToolCall(
-                ToolCall::from_wire("", ToolFunction::new(name, args_json))
-                    .with_signature(signature),
+                ToolCall::from_wire("", ToolFunction::new(name, args_json)).with_signature(
+                    signature
+                        .clone()
+                        .map(|signature| Signature::sealed(PROVIDER_NAME, signature)),
+                ),
             ));
         } else if let Some(text) = part.text() {
             if part.thought {
@@ -131,13 +129,10 @@ fn assistant_content(
             } else {
                 // A signature on answer text returns on that text part.
                 assistant_contents.push(AssistantContent::Text(Text {
-                    text: text.clone(),
-                    additional_params: signature.clone().and_then(|signature| {
-                        rig_core::providers::gemini::text_signature_extras(
-                            VERTEX_TEXT_EXTRAS_KEY,
-                            signature,
-                        )
-                    }),
+                    signature: signature
+                        .clone()
+                        .map(|signature| Signature::sealed(PROVIDER_NAME, signature)),
+                    ..Text::new(text.clone())
                 }));
             }
         } else if let Some(inline_data) = part.inline_data() {
@@ -166,7 +161,7 @@ fn assistant_content(
                     assistant_contents.push(AssistantContent::image_base64(
                         BASE64.encode(&inline_data.data),
                         Some(media_type),
-                        Some(ImageDetail::default()),
+                        Some(MediaDetail::default()),
                     ));
                 }
                 Some(MediaType::Image(media_type)) => {
@@ -199,16 +194,15 @@ fn usage(response: &vertexai::model::GenerateContentResponse) -> Usage {
     response
         .usage_metadata
         .as_ref()
-        .map(|usage| Usage {
-            input_tokens: Some(usage.prompt_token_count as u64),
-            output_tokens: Some(usage.candidates_token_count as u64),
-            total_tokens: Some(usage.total_token_count as u64),
-            // Cached tokens are already included in prompt_token_count.
-            cached_input_tokens: Some(usage.cached_content_token_count as u64),
-            // Vertex reports no cache-write counter.
-            cache_creation_input_tokens: None,
-            tool_use_prompt_tokens: None,
-            reasoning_tokens: Some(usage.thoughts_token_count as u64),
+        .map(|usage| {
+            let count = |value: i32| u64::try_from(value).ok();
+            edge::usage(edge::Counts {
+                prompt: count(usage.prompt_token_count),
+                cached: count(usage.cached_content_token_count),
+                candidates: count(usage.candidates_token_count),
+                thoughts: count(usage.thoughts_token_count),
+                ..edge::Counts::default()
+            })
         })
         .unwrap_or_default()
 }

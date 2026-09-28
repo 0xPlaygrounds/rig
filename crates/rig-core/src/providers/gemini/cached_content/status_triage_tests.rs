@@ -11,6 +11,7 @@
 //! (`CacheExpired { .. } => recreate the cache`) fires on each.
 
 use super::*;
+use crate::providers::gemini::NewCachedContent;
 use crate::test_utils::{MockHttpResponse, SequencedHttpClient};
 
 /// A `cachedContents` resource handle whose transport answers the next

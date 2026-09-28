@@ -1,43 +1,17 @@
 use super::*;
 use crate::providers::gemini::{GeminiConfig, PROVIDER_NAME};
 
+/// The wire asks for exactly the dimensions it was given; nothing depends
+/// on the model's name.
 #[test]
-fn test_embedding_values_deserializes_without_empty_values_field() {
-    let values: gemini_api_types::EmbeddingValues =
-        serde_json::from_str("{}").expect("empty embedding values should deserialize");
-    assert!(values.values.is_empty());
-}
-
-#[test]
-fn test_model_default_ndims_lookup() {
-    assert_eq!(model_default_ndims(EMBEDDING_001), Some(3072));
-    assert_eq!(model_default_ndims(EMBEDDING_004), Some(768));
-    assert_eq!(model_default_ndims("unknown-model"), None);
-}
-
-/// `ndims` is what every document in the batch asks for, so the wire has to
-/// resolve it from the model identifier when the caller named none — the
-/// batch body carries `output_dimensionality` unconditionally.
-#[test]
-fn ndims_defaults_from_the_model_identifier() {
+fn ndims_is_the_callers() {
     let gemini = GeminiConfig::new("test_key");
-
-    assert_eq!(gemini.embedding(EMBEDDING_001, None).ndims, 3072);
-    assert_eq!(gemini.embedding(EMBEDDING_004, None).ndims, 768);
-    // A model this build has never heard of still gets a dimensionality.
-    assert_eq!(gemini.embedding("some-future-model", None).ndims, 768);
+    assert_eq!(gemini.embedding(EMBEDDING_001, 256).ndims, 256);
+    assert_eq!(gemini.embedding("some-future-model", 1024).ndims, 1024);
 }
 
-#[test]
-fn an_explicit_ndims_outranks_the_models_default() {
-    let gemini = GeminiConfig::new("test_key");
-
-    assert_eq!(gemini.embedding(EMBEDDING_001, Some(256)).ndims, 256);
-}
-
-/// `crates/rig-cassette/fixtures/cassettes/gemini/embeddings/derive_document_embeddings.yaml`'s
-/// request body, verbatim.
-const RECORDED_BATCH: &str = r#"{"requests":[{"content":{"parts":[{"text":"Hello, world!"}]},"model":"models/gemini-embedding-001","output_dimensionality":3072},{"content":{"parts":[{"text":"Goodbye, world!"}]},"model":"models/gemini-embedding-001","output_dimensionality":3072}]}"#;
+/// The batch body for two texts, under the mirror's field names.
+const RECORDED_BATCH: &str = r#"{"requests":[{"content":{"parts":[{"text":"Hello, world!"}]},"model":"models/gemini-embedding-001","outputDimensionality":3072},{"content":{"parts":[{"text":"Goodbye, world!"}]},"model":"models/gemini-embedding-001","outputDimensionality":3072}]}"#;
 
 /// `crates/rig-cassette/fixtures/cassettes/gemini/embedding_matrix/dimensions_request.yaml`'s reply
 /// body, verbatim: three 256-dimension vectors, the shortest recorded
@@ -54,9 +28,9 @@ fn recorded_documents() -> Vec<String> {
 }
 
 #[test]
-fn the_batch_request_is_the_recorded_one() {
+fn the_batch_request_asks_for_the_callers_dimensions() {
     let encoded = GeminiConfig::new("test-key")
-        .embedding(EMBEDDING_001, None)
+        .embedding(EMBEDDING_001, 3072)
         .encode(
             vec!["Hello, world!".to_owned(), "Goodbye, world!".to_owned()],
             Mode::Unary,
@@ -87,7 +61,7 @@ fn the_batch_request_is_the_recorded_one() {
 
 #[test]
 fn a_recorded_reply_folds_into_the_batchs_vectors_in_input_order() {
-    let wire = GeminiConfig::new("test-key").embedding(EMBEDDING_001, Some(256));
+    let wire = GeminiConfig::new("test-key").embedding(EMBEDDING_001, 256);
     let documents = recorded_documents();
     let response = crate::test_utils::decode_reply(
         &wire,

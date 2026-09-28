@@ -172,3 +172,24 @@ fn a_shared_fixture_lists_every_producer() {
         ]
     );
 }
+
+#[test]
+fn a_direct_session_owns_the_scenario_its_spec_or_const_names() {
+    let source = r#"
+        #[tokio::test]
+        async fn long_run() {
+            const SCENARIO: &str = "long/run";
+            let cassette =
+                ProviderCassette::start(root, "gemini", CassetteSpec::new(SCENARIO), BASE_URL).await;
+        }
+        async fn wrapper(scenario: &'static str) {
+            ProviderCassette::start(root, "gemini", scenario, BASE_URL).await;
+        }
+    "#;
+    assert_eq!(
+        owner_of(source, "long/run"),
+        Some(Owner::Test(
+            "llamacpp::cassette::tool_matrix::long_run".into()
+        ))
+    );
+}

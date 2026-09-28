@@ -33,6 +33,7 @@ async fn plaintext_document_prompt() {
         .build();
 
     let document = Document {
+        detail: None,
         data: DocumentSourceKind::String(rust_document()),
         media_type: Some(DocumentMediaType::TXT),
         additional_params: None,

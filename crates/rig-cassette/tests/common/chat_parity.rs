@@ -291,7 +291,9 @@ fn project_content(content: &AssistantContent) -> Value {
                     "item_id": item_id,
                     "name": call.function.name,
                     "arguments": call.function.arguments,
-                    "signature": call.signature,
+                    "signature": call.signature.as_ref().and_then(|signature| signature
+                        .open(signature.issuer())
+                        .map(|signature| signature.signature.clone())),
                     "additional_params": call.additional_params,
                 }
             })
@@ -316,6 +318,9 @@ fn project_content(content: &AssistantContent) -> Value {
             })
         }
         AssistantContent::Image(image) => json!({ "image": image }),
+        AssistantContent::Native(native) => json!({
+            "native": native.open(native.issuer()).map(|part| part.json().to_owned()),
+        }),
     }
 }
 

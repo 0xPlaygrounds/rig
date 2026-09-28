@@ -1,6 +1,6 @@
 {
   "header": {
-    "run_spec": 11434362773640407271,
+    "run_spec": 3937128390722542348,
     "handlers": [
       {
         "key": "golden/model:default",
@@ -57,14 +57,7 @@
           "temperature": 0.0,
           "max_tokens": 16,
           "tool_choice": null,
-          "additional_params": {
-            "generationConfig": {
-              "thinkingConfig": {
-                "includeThoughts": true,
-                "thinkingBudget": 128
-              }
-            }
-          },
+          "additional_params": null,
           "output_schema": null
         },
         "stream": false
@@ -88,12 +81,13 @@
             }
           ],
           "usage": {
-            "input_tokens": 29,
-            "total_tokens": 42,
+            "input_tokens": 28,
+            "output_tokens": 13,
+            "total_tokens": 41,
             "reasoning_tokens": 13
           },
           "message_id": null,
-          "response_id": "m3izas7GOPufz7IP8q3P6AU",
+          "response_id": "aum6arrLBOnRz7IPnPO0wQw",
           "finish_reason": "length",
           "provider": "gcp.gemini",
           "model": "gemini-3-flash-preview",
@@ -114,18 +108,18 @@
               }
             ],
             "modelVersion": "gemini-3-flash-preview",
-            "responseId": "m3izas7GOPufz7IP8q3P6AU",
+            "responseId": "aum6arrLBOnRz7IPnPO0wQw",
             "usageMetadata": {
-              "promptTokenCount": 29,
+              "promptTokenCount": 28,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
-                  "tokenCount": 29
+                  "tokenCount": 28
                 }
               ],
               "serviceTier": "standard",
               "thoughtsTokenCount": 13,
-              "totalTokenCount": 42
+              "totalTokenCount": 41
             }
           }
         }

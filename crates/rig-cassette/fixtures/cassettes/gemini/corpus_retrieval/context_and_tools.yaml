@@ -9,7 +9,7 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"requests":[{"content":{"parts":[{"text":"A flurbo is a green alien that lives on cold planets."}]},"model":"models/gemini-embedding-001","output_dimensionality":3072},{"content":{"parts":[{"text":"A glarb-glarb is an ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land."}]},"model":"models/gemini-embedding-001","output_dimensionality":3072},{"content":{"parts":[{"text":"A linglingdong is a term used by inhabitants of the far side of the moon to describe humans."}]},"model":"models/gemini-embedding-001","output_dimensionality":3072}]}'
+  body: '{"requests":[{"content":{"parts":[{"text":"A flurbo is a green alien that lives on cold planets."}]},"model":"models/gemini-embedding-001","outputDimensionality":3072},{"content":{"parts":[{"text":"A glarb-glarb is an ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land."}]},"model":"models/gemini-embedding-001","outputDimensionality":3072},{"content":{"parts":[{"text":"A linglingdong is a term used by inhabitants of the far side of the moon to describe humans."}]},"model":"models/gemini-embedding-001","outputDimensionality":3072}]}'
 then:
   status: 200
   header:
@@ -28,7 +28,7 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"requests":[{"content":{"parts":[{"text":"Add two numbers together to get their sum"}]},"model":"models/gemini-embedding-001","output_dimensionality":3072},{"content":{"parts":[{"text":"Subtract one number from another to get their difference"}]},"model":"models/gemini-embedding-001","output_dimensionality":3072}]}'
+  body: '{"requests":[{"content":{"parts":[{"text":"Add two numbers together to get their sum"}]},"model":"models/gemini-embedding-001","outputDimensionality":3072},{"content":{"parts":[{"text":"Subtract one number from another to get their difference"}]},"model":"models/gemini-embedding-001","outputDimensionality":3072}]}'
 then:
   status: 200
   header:
@@ -47,7 +47,7 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"requests":[{"content":{"parts":[{"text":"Subtract 8 from 50 with the subtract tool, then reply with just the number."}]},"model":"models/gemini-embedding-001","output_dimensionality":3072}]}'
+  body: '{"requests":[{"content":{"parts":[{"text":"Subtract 8 from 50 with the subtract tool, then reply with just the number."}]},"model":"models/gemini-embedding-001","outputDimensionality":3072}]}'
 then:
   status: 200
   header:
@@ -66,7 +66,7 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"requests":[{"content":{"parts":[{"text":"Subtract 8 from 50 with the subtract tool, then reply with just the number."}]},"model":"models/gemini-embedding-001","output_dimensionality":3072}]}'
+  body: '{"requests":[{"content":{"parts":[{"text":"Subtract 8 from 50 with the subtract tool, then reply with just the number."}]},"model":"models/gemini-embedding-001","outputDimensionality":3072}]}'
 then:
   status: 200
   header:
@@ -85,13 +85,13 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"contents":[{"parts":[{"text":"<file id: doc1>\n\"A glarb-glarb is an ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.\"\n</file>\n","thought":false}],"role":"user"},{"parts":[{"text":"Subtract 8 from 50 with the subtract tool, then reply with just the number.","thought":false}],"role":"user"}],"generationConfig":{"temperature":0.0},"safetySettings":null,"systemInstruction":{"parts":[{"text":"You are a calculator. You must use the provided tools for every arithmetic operation.","thought":false}],"role":"model"},"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Subtract y from x","name":"subtract","parameters":{"properties":{"x":{"type":"integer"},"y":{"type":"integer"}},"required":["x","y"],"type":"object"}}]}]}'
+  body: '{"contents":[{"parts":[{"text":"<file id: doc1>\n\"A glarb-glarb is an ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.\"\n</file>\n"}],"role":"user"},{"parts":[{"text":"Subtract 8 from 50 with the subtract tool, then reply with just the number."}],"role":"user"}],"generationConfig":{"temperature":0.0},"systemInstruction":{"parts":[{"text":"You are a calculator. You must use the provided tools for every arithmetic operation."}]},"tools":[{"functionDeclarations":[{"description":"Subtract y from x","name":"subtract","parametersJsonSchema":{"properties":{"x":{"type":"integer"},"y":{"type":"integer"}},"required":["x","y"],"type":"object"}}]}]}'
 then:
   status: 200
   header:
   - name: content-type
     value: application/json; charset=UTF-8
-  body: '{"candidates":[{"content":{"parts":[{"functionCall":{"args":{"x":50,"y":8},"name":"subtract"},"thoughtSignature":"CuUCAWkUfRNSSG3U94QR7DiwEisik3a8QgTqAdOQrjJt2XgWdTpPlLyCwXQUPXI//v0sAz/j587sTIkOvlIyoTVDsfFMVqjapfpgXTDkSZN4jaEVibM04/8SSXmY0bCFC8VcFaLQU0YYImuyOgBd/T1sgaGUBPDT93xaTu8tuOcmQxEQx6O+A5reuboabCYM9x1mPPnurPqMdwiamejEMwHftJQL2m/1GnrjvS+30spSxEY1LMu/YdLpmEq/CKsbTqmciHQHu86uj+6+sGBuo52c+NL299UIheelhXr+woqZfUTKe9/usVWDniuFu4mIPv2GAP1CnLKktivbT212iwDzMI3zQtn0UvjyplJNBTKsR8kiBXUt4DLXf2D4vy9tZXp5WhPss6P1lgy1C7eRbPS73YRiGbz2CSMhpjLSiKiAOm5r093xC0eh7FuGJQTri+zKGK2gg28XYihDJ3AzlnUYW7izs2Ak"}],"role":"model"},"finishMessage":"Model generated function call(s).","finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"4q2yapfdJISgz7IP9fTZEA","usageMetadata":{"candidatesTokenCount":19,"promptTokenCount":124,"promptTokensDetails":[{"modality":"TEXT","tokenCount":124}],"serviceTier":"standard","thoughtsTokenCount":95,"totalTokenCount":238}}'
+  body: '{"candidates":[{"content":{"parts":[{"functionCall":{"args":{"x":50,"y":8},"name":"subtract"},"thoughtSignature":"CpYCAWkUfRO/uU+N9V8sF2sl/Wija/kzrtfzZ1YbaB0W+HJjY1AEnkIuAVSwOhP0xEAAjulE4YizvuGWZVlFcwjdtkfu5i01yZ2WKMCLKNT9xhJ2MZOH6CXRTeDC5v4I3LpWg5crpT/6NSQOCUmPL3VZAdBldeadDsUnU7vYMf1DAGXPrYKhUHZqNUukztS0QKB2bjaKDX4TJthDfBsteSHkHd31oDyB2L7Z5BELzQEhfpYyVYNpBTehC+MJkKGtnCxEkMNuGZ11afIyYWis6OUa5C4AEHq9RA+bqLRIIG9iVJtmLsxyaIyDuoAmclnN4QN5WLO7Jgxj7buDi+5Rs2uOD0mitHc8Z1EPyfcOkJ9ZzzXyEfbC4MQ="}],"role":"model"},"finishMessage":"Model generated function call(s).","finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"2ei6auDLFfj5qtsPlImtsQs","usageMetadata":{"candidatesTokenCount":19,"promptTokenCount":123,"promptTokensDetails":[{"modality":"TEXT","tokenCount":123}],"serviceTier":"standard","thoughtsTokenCount":69,"totalTokenCount":211}}'
 ---
 when:
   path: /v1beta/models/gemini-embedding-001:batchEmbedContents
@@ -104,7 +104,7 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"requests":[{"content":{"parts":[{"text":"Subtract 8 from 50 with the subtract tool, then reply with just the number."}]},"model":"models/gemini-embedding-001","output_dimensionality":3072}]}'
+  body: '{"requests":[{"content":{"parts":[{"text":"Subtract 8 from 50 with the subtract tool, then reply with just the number."}]},"model":"models/gemini-embedding-001","outputDimensionality":3072}]}'
 then:
   status: 200
   header:
@@ -123,7 +123,7 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"requests":[{"content":{"parts":[{"text":"Subtract 8 from 50 with the subtract tool, then reply with just the number."}]},"model":"models/gemini-embedding-001","output_dimensionality":3072}]}'
+  body: '{"requests":[{"content":{"parts":[{"text":"Subtract 8 from 50 with the subtract tool, then reply with just the number."}]},"model":"models/gemini-embedding-001","outputDimensionality":3072}]}'
 then:
   status: 200
   header:
@@ -142,10 +142,10 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"contents":[{"parts":[{"text":"<file id: doc1>\n\"A glarb-glarb is an ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.\"\n</file>\n","thought":false}],"role":"user"},{"parts":[{"text":"Subtract 8 from 50 with the subtract tool, then reply with just the number.","thought":false}],"role":"user"},{"parts":[{"functionCall":{"args":{"x":50,"y":8},"name":"subtract"},"thought":false,"thoughtSignature":"CuUCAWkUfRNSSG3U94QR7DiwEisik3a8QgTqAdOQrjJt2XgWdTpPlLyCwXQUPXI//v0sAz/j587sTIkOvlIyoTVDsfFMVqjapfpgXTDkSZN4jaEVibM04/8SSXmY0bCFC8VcFaLQU0YYImuyOgBd/T1sgaGUBPDT93xaTu8tuOcmQxEQx6O+A5reuboabCYM9x1mPPnurPqMdwiamejEMwHftJQL2m/1GnrjvS+30spSxEY1LMu/YdLpmEq/CKsbTqmciHQHu86uj+6+sGBuo52c+NL299UIheelhXr+woqZfUTKe9/usVWDniuFu4mIPv2GAP1CnLKktivbT212iwDzMI3zQtn0UvjyplJNBTKsR8kiBXUt4DLXf2D4vy9tZXp5WhPss6P1lgy1C7eRbPS73YRiGbz2CSMhpjLSiKiAOm5r093xC0eh7FuGJQTri+zKGK2gg28XYihDJ3AzlnUYW7izs2Ak"}],"role":"model"},{"parts":[{"functionResponse":{"name":"subtract","response":{"result":42}},"thought":false}],"role":"user"}],"generationConfig":{"temperature":0.0},"safetySettings":null,"systemInstruction":{"parts":[{"text":"You are a calculator. You must use the provided tools for every arithmetic operation.","thought":false}],"role":"model"},"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Subtract y from x","name":"subtract","parameters":{"properties":{"x":{"type":"integer"},"y":{"type":"integer"}},"required":["x","y"],"type":"object"}}]}]}'
+  body: '{"contents":[{"parts":[{"text":"<file id: doc1>\n\"A glarb-glarb is an ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.\"\n</file>\n"}],"role":"user"},{"parts":[{"text":"Subtract 8 from 50 with the subtract tool, then reply with just the number."}],"role":"user"},{"parts":[{"functionCall":{"args":{"x":50,"y":8},"name":"subtract"},"thoughtSignature":"CpYCAWkUfRO/uU+N9V8sF2sl/Wija/kzrtfzZ1YbaB0W+HJjY1AEnkIuAVSwOhP0xEAAjulE4YizvuGWZVlFcwjdtkfu5i01yZ2WKMCLKNT9xhJ2MZOH6CXRTeDC5v4I3LpWg5crpT/6NSQOCUmPL3VZAdBldeadDsUnU7vYMf1DAGXPrYKhUHZqNUukztS0QKB2bjaKDX4TJthDfBsteSHkHd31oDyB2L7Z5BELzQEhfpYyVYNpBTehC+MJkKGtnCxEkMNuGZ11afIyYWis6OUa5C4AEHq9RA+bqLRIIG9iVJtmLsxyaIyDuoAmclnN4QN5WLO7Jgxj7buDi+5Rs2uOD0mitHc8Z1EPyfcOkJ9ZzzXyEfbC4MQ="}],"role":"model"},{"parts":[{"functionResponse":{"name":"subtract","response":{"result":42}}}],"role":"user"}],"generationConfig":{"temperature":0.0},"systemInstruction":{"parts":[{"text":"You are a calculator. You must use the provided tools for every arithmetic operation."}]},"tools":[{"functionDeclarations":[{"description":"Subtract y from x","name":"subtract","parametersJsonSchema":{"properties":{"x":{"type":"integer"},"y":{"type":"integer"}},"required":["x","y"],"type":"object"}}]}]}'
 then:
   status: 200
   header:
   - name: content-type
     value: application/json; charset=UTF-8
-  body: '{"candidates":[{"content":{"parts":[{"text":"42"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"462yarGcOJuhz7IPytCZEA","usageMetadata":{"candidatesTokenCount":2,"promptTokenCount":157,"promptTokensDetails":[{"modality":"TEXT","tokenCount":157}],"serviceTier":"standard","totalTokenCount":159}}'
+  body: '{"candidates":[{"content":{"parts":[{"text":"42"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"2ui6aqbRHrCeqtsP4aHDuQs","usageMetadata":{"candidatesTokenCount":2,"promptTokenCount":156,"promptTokensDetails":[{"modality":"TEXT","tokenCount":156}],"serviceTier":"standard","totalTokenCount":158}}'

@@ -33,6 +33,7 @@ fn thinking_tokens_survive_the_real_conversion() {
     assert_eq!(converted.usage.reasoning_tokens, Some(222));
     assert_eq!(converted.usage.cached_input_tokens, Some(9));
     assert_eq!(converted.usage.input_tokens, Some(14));
-    assert_eq!(converted.usage.output_tokens, Some(34));
+    // Thinking is billed as output: candidates plus thoughts.
+    assert_eq!(converted.usage.output_tokens, Some(34 + 222));
     assert_eq!(converted.usage.total_tokens, Some(270));
 }

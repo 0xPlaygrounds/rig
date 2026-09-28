@@ -84,21 +84,20 @@
             {
               "type": "text",
               "text": "The dominant non-background color is red.",
-              "additional_params": {
-                "gemini": {
-                  "thoughtSignature": "EtwCCtkCAWkUfRPdlbSgqDY07NTZ/qduu31SIKbNnwQE+Xl2cvN8lUc/j8Gij6E9wJhLwKxmJC72ouPfaPfq8HXOP/O7e7wpfpUJJwmUzN98rVkqeavxQRXB92g8WMdvEuMUcV1LDhV3HlqGibvieGzqSiEkFt8t4oIi/f6WAudy8UBi20QZsFvkdsFXpUk+cV69jARKWLFmik36tL+oHRD8jA9WchITqEB7yB3GMj57J3O5JelHBGtpCPqVS6fEQNYARE+qrZZthuuNTSyXo4Fcab57eiWk0OTV/o349jrMG4sVIwGfvewTd+/i4ikRQd+Hqknto2DrSaHx3UvlRQkDCrOA2OIfTRPiRUWUQ8IxGJ45vZ4o6FzRkj+a/zhCraf5cQfble3TQHyM4AkaqmXYyukISUyYQj5UK4ljQxRJsMyroA8AOpdmqyGgMaL61ZDlh4iRNQUcaikOyQEM"
-                }
+              "signature": {
+                "issuer": "gcp.gemini",
+                "signature": "ErEECq4EAWkUfRMdLg3RxMGpcG5mfk+fh4KC+hV1vAm/l2egeEvDdfPnU2C/Vb26fBFnwyUeYiwWMq453Rg10zh9fzuHzJGocktnfqpHnl1p0YEpzUTE+VAK8Cfd7lfE6bv/mEdXGuGl2EoFI+Bt3RzBrDOxxDFruozKgqGEjzVJ+Pw3WqS0iFEbt629ipnj78Z0/GR9fYXoxscX7AP8qSpUtBr/nRYAAEUc2V+dJEf+TfGWsrrrU71sI8N0dD3LE5UluK92Kzv/PT5kxu1XrCjtd88yLXO+EBaGdnSDFdpDHwAGU1ICQDkXvh/V5IAzUzUxG+HtR3t6F5KBWdfiz80/wmag6eVJD9jLpZHnbNaLNkZSTP6KkubDzKmBg+g8LnOvwykXIcXG5ODlVOd18vqUDvjVSLGjkK+48lumSRPqiuzWNsdDHo4Z7XZJl4vEt0RWgzKdTtReaEpmVTZdTiPetCn2ZxtlYJHC0Q7yMh49ItW9Fq1bzag8/AekUL7qEJNo0hfAV8yASBjgXWlmr2/r3I8VnnYRnoEtd2ChU7/NCMPLDVKwe8WinZjB6pa3NOl5VOufVd/pH+/XVaz78UeNRbaAsB2FpVp6X4jBUKBQF4b0CKJZa8fvQ1p1VGDLMrqUO7TLrjbDNe1CtTEl9rqGj0uig0TZ/atqo7ywASCnJiRj3MUq2juBPu5/sa6sqNOKDEW868Q0kBZ9LpjuDYj3zAwEfGIbpIkDVcbnB/OHa43y"
               }
             }
           ],
           "usage": {
-            "input_tokens": 1115,
-            "output_tokens": 9,
-            "total_tokens": 1177,
-            "reasoning_tokens": 53
+            "input_tokens": 1114,
+            "output_tokens": 115,
+            "total_tokens": 1229,
+            "reasoning_tokens": 106
           },
           "message_id": null,
-          "response_id": "q66yaqiBB9-eqtsP-7XRqAk",
+          "response_id": "k-i6arnYFvfgz7IP-M2riA0",
           "finish_reason": "stop",
           "provider": "gcp.gemini",
           "model": "gemini-3-flash-preview",
@@ -109,7 +108,7 @@
                   "parts": [
                     {
                       "text": "The dominant non-background color is red.",
-                      "thoughtSignature": "EtwCCtkCAWkUfRPdlbSgqDY07NTZ/qduu31SIKbNnwQE+Xl2cvN8lUc/j8Gij6E9wJhLwKxmJC72ouPfaPfq8HXOP/O7e7wpfpUJJwmUzN98rVkqeavxQRXB92g8WMdvEuMUcV1LDhV3HlqGibvieGzqSiEkFt8t4oIi/f6WAudy8UBi20QZsFvkdsFXpUk+cV69jARKWLFmik36tL+oHRD8jA9WchITqEB7yB3GMj57J3O5JelHBGtpCPqVS6fEQNYARE+qrZZthuuNTSyXo4Fcab57eiWk0OTV/o349jrMG4sVIwGfvewTd+/i4ikRQd+Hqknto2DrSaHx3UvlRQkDCrOA2OIfTRPiRUWUQ8IxGJ45vZ4o6FzRkj+a/zhCraf5cQfble3TQHyM4AkaqmXYyukISUyYQj5UK4ljQxRJsMyroA8AOpdmqyGgMaL61ZDlh4iRNQUcaikOyQEM"
+                      "thoughtSignature": "ErEECq4EAWkUfRMdLg3RxMGpcG5mfk+fh4KC+hV1vAm/l2egeEvDdfPnU2C/Vb26fBFnwyUeYiwWMq453Rg10zh9fzuHzJGocktnfqpHnl1p0YEpzUTE+VAK8Cfd7lfE6bv/mEdXGuGl2EoFI+Bt3RzBrDOxxDFruozKgqGEjzVJ+Pw3WqS0iFEbt629ipnj78Z0/GR9fYXoxscX7AP8qSpUtBr/nRYAAEUc2V+dJEf+TfGWsrrrU71sI8N0dD3LE5UluK92Kzv/PT5kxu1XrCjtd88yLXO+EBaGdnSDFdpDHwAGU1ICQDkXvh/V5IAzUzUxG+HtR3t6F5KBWdfiz80/wmag6eVJD9jLpZHnbNaLNkZSTP6KkubDzKmBg+g8LnOvwykXIcXG5ODlVOd18vqUDvjVSLGjkK+48lumSRPqiuzWNsdDHo4Z7XZJl4vEt0RWgzKdTtReaEpmVTZdTiPetCn2ZxtlYJHC0Q7yMh49ItW9Fq1bzag8/AekUL7qEJNo0hfAV8yASBjgXWlmr2/r3I8VnnYRnoEtd2ChU7/NCMPLDVKwe8WinZjB6pa3NOl5VOufVd/pH+/XVaz78UeNRbaAsB2FpVp6X4jBUKBQF4b0CKJZa8fvQ1p1VGDLMrqUO7TLrjbDNe1CtTEl9rqGj0uig0TZ/atqo7ywASCnJiRj3MUq2juBPu5/sa6sqNOKDEW868Q0kBZ9LpjuDYj3zAwEfGIbpIkDVcbnB/OHa43y"
                     }
                   ],
                   "role": "model"
@@ -119,10 +118,10 @@
               }
             ],
             "modelVersion": "gemini-3-flash-preview",
-            "responseId": "q66yaqiBB9-eqtsP-7XRqAk",
+            "responseId": "k-i6arnYFvfgz7IP-M2riA0",
             "usageMetadata": {
               "candidatesTokenCount": 9,
-              "promptTokenCount": 1115,
+              "promptTokenCount": 1114,
               "promptTokensDetails": [
                 {
                   "modality": "IMAGE",
@@ -130,12 +129,12 @@
                 },
                 {
                   "modality": "TEXT",
-                  "tokenCount": 26
+                  "tokenCount": 25
                 }
               ],
               "serviceTier": "standard",
-              "thoughtsTokenCount": 53,
-              "totalTokenCount": 1177
+              "thoughtsTokenCount": 106,
+              "totalTokenCount": 1229
             }
           }
         }

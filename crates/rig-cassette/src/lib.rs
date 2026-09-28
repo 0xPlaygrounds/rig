@@ -35,3 +35,6 @@ pub mod ecs;
 
 #[cfg(feature = "http")]
 pub mod http;
+
+#[cfg(feature = "http")]
+pub mod gemini;

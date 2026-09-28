@@ -1,14 +1,6 @@
 use super::*;
+use crate::providers::gemini::NewCachedContent;
 use crate::test_utils::{MockHttpResponse, SequencedHttpClient};
-
-#[test]
-fn model_is_qualified_idempotently() {
-    assert_eq!(qualify_model("gemini-2.5-flash"), "models/gemini-2.5-flash");
-    assert_eq!(
-        qualify_model("models/gemini-2.5-flash"),
-        "models/gemini-2.5-flash"
-    );
-}
 
 #[test]
 fn resource_path_accepts_a_bare_id_or_a_full_handle() {
@@ -121,14 +113,18 @@ fn ttl_serializes_in_geminis_duration_form() {
 /// carries both, so the builder must replace rather than accumulate.
 #[test]
 fn setting_expiry_twice_replaces_rather_than_sending_both() {
-    let request = NewCachedContent::new("gemini-2.5-flash")
+    let new = NewCachedContent::new("gemini-2.5-flash")
         .content("corpus")
         .expiry(CacheExpiry::ttl(Duration::from_secs(60)))
         .expiry(CacheExpiry::expire_time("2030-01-01T00:00:00Z"));
+    let request = new.clone().render().expect("renders");
     assert!(request.ttl.is_none());
     assert_eq!(request.expire_time.as_deref(), Some("2030-01-01T00:00:00Z"));
 
-    let request = request.expiry(CacheExpiry::ttl(Duration::from_secs(60)));
+    let request = new
+        .expiry(CacheExpiry::ttl(Duration::from_secs(60)))
+        .render()
+        .expect("renders");
     assert!(request.expire_time.is_none());
     assert!(request.ttl.is_some());
 }
@@ -137,7 +133,7 @@ fn setting_expiry_twice_replaces_rather_than_sending_both() {
 fn an_empty_cache_is_rejected_before_it_bills_for_storage() {
     let error = NewCachedContent::new("gemini-2.5-flash")
         .display_name("empty")
-        .validate()
+        .render()
         .expect_err("an empty cached content should be refused");
     let error = ProviderError::from(error);
     assert!(matches!(error, ProviderError::Request(_)), "{error:?}");
@@ -148,7 +144,9 @@ fn create_body_omits_unset_fields() {
     let body = serde_json::to_value(
         NewCachedContent::new("gemini-2.5-flash")
             .content("corpus")
-            .expiry(CacheExpiry::ttl(Duration::from_secs(600))),
+            .expiry(CacheExpiry::ttl(Duration::from_secs(600)))
+            .render()
+            .expect("renders"),
     )
     .expect("serialize");
     let object = body.as_object().expect("object");
@@ -214,7 +212,10 @@ async fn single_page_listing_is_unchanged() {
 
     let listed = caches.list().await.expect("listing should succeed");
 
-    let names: Vec<_> = listed.iter().map(|entry| entry.name.as_str()).collect();
+    let names: Vec<_> = listed
+        .iter()
+        .map(|entry| entry.name.as_deref().unwrap_or_default())
+        .collect();
     assert_eq!(names, ["cachedContents/a", "cachedContents/b"]);
     assert_eq!(http_client.remaining_responses(), 0);
 }
@@ -236,7 +237,10 @@ async fn pagination_stops_on_an_empty_cursor() {
     .await
     .expect("listing should terminate");
 
-    let names: Vec<_> = listed.iter().map(|entry| entry.name.as_str()).collect();
+    let names: Vec<_> = listed
+        .iter()
+        .map(|entry| entry.name.as_deref().unwrap_or_default())
+        .collect();
     assert_eq!(names, ["cachedContents/a"]);
     assert_eq!(http_client.remaining_responses(), 1);
 }
@@ -348,7 +352,7 @@ async fn the_bound_cache_follows_the_listing_cursor() {
     .expect("both pages decode");
     assert_eq!(
         all.iter()
-            .map(|cache| cache.name.as_str())
+            .map(|cache| cache.name.as_deref().unwrap_or_default())
             .collect::<Vec<_>>(),
         vec!["cachedContents/one", "cachedContents/two"]
     );

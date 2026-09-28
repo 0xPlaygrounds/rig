@@ -27,6 +27,8 @@ crate::reflect::opaque_reflect! {
     struct DocumentMediaReflect(Option<message::DocumentMediaType>): PartialEq;
     /// Reflected shared transport value `Option<message::AdditionalParams>`.
     struct PartParamsReflect(Option<message::AdditionalParams>): PartialEq;
-    /// Reflected shared transport value `Option<message::ImageDetail>`.
-    struct ImageDetailReflect(Option<message::ImageDetail>): PartialEq;
+    /// Reflected shared transport value `Option<message::MediaDetail>`.
+    struct MediaDetailReflect(Option<message::MediaDetail>): PartialEq;
+    /// Reflected shared transport value `message::Sealed<message::NativePart>`.
+    struct NativePartReflect(message::Sealed<message::NativePart>): PartialEq;
 }

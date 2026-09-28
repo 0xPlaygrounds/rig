@@ -114,7 +114,7 @@ impl TryFrom<DocumentBlock> for RigDocument {
         Ok(RigDocument(Document {
             data,
             media_type: Some(media_type),
-            additional_params: None,
+            ..Default::default()
         }))
     }
 }

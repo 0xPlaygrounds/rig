@@ -13,7 +13,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let transport = GeminiGrpc::from_env().map_err(|err| anyhow::anyhow!("{err}"))?;
 
     // Create agent with a single context prompt
-    let model = transport.completion("gemini-2.5-flash");
+    let model = transport.completion(rig_gemini_grpc::completion::GEMINI_3_8_FLASH);
     let agent = AgentBuilder::new(model)
         .preamble("Be creative and concise. Answer directly and clearly.")
         .temperature(0.5)

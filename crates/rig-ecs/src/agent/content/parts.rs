@@ -41,6 +41,10 @@ pub enum ContentPart {
         #[reflect(remote = super::reflect::ReasoningPartReflect)]
         message::Sealed<message::Reasoning>,
     ),
+    /// An assistant part in its issuing API's own schema, replayed verbatim.
+    Native(
+        #[reflect(remote = super::reflect::NativePartReflect)] message::Sealed<message::NativePart>,
+    ),
     /// A tool result whose children must be Text, Image or Json parts.
     ToolResult {
         /// The call answered by this result.
@@ -95,8 +99,8 @@ pub struct ImagePart {
     #[reflect(remote = super::reflect::PartParamsReflect)]
     pub additional_params: Option<message::AdditionalParams>,
     /// Provider rendering preference for this occurrence.
-    #[reflect(remote = super::reflect::ImageDetailReflect)]
-    pub detail: Option<message::ImageDetail>,
+    #[reflect(remote = super::reflect::MediaDetailReflect)]
+    pub detail: Option<message::MediaDetail>,
 }
 
 /// Audio metadata beside its shared source, held by [`ContentPart::Audio`].
@@ -123,6 +127,10 @@ pub struct VideoPart {
     /// This occurrence's provider-specific metadata.
     #[reflect(remote = super::reflect::PartParamsReflect)]
     pub additional_params: Option<message::AdditionalParams>,
+    /// Provider rendering preference for this occurrence.
+    #[reflect(remote = super::reflect::MediaDetailReflect)]
+    #[serde(default)]
+    pub detail: Option<message::MediaDetail>,
 }
 
 /// Document metadata beside its shared source, held by [`ContentPart::Document`].
@@ -136,6 +144,10 @@ pub struct DocumentPart {
     /// This occurrence's provider-specific metadata.
     #[reflect(remote = super::reflect::PartParamsReflect)]
     pub additional_params: Option<message::AdditionalParams>,
+    /// Provider rendering preference for this occurrence.
+    #[reflect(remote = super::reflect::MediaDetailReflect)]
+    #[serde(default)]
+    pub detail: Option<message::MediaDetail>,
 }
 
 /// Tool execution status attached to a [`ContentPart::ToolResult`].
@@ -233,11 +245,13 @@ fn user(
             source: assets.intern(value.data)?,
             media_type: value.media_type,
             additional_params: value.additional_params,
+            detail: value.detail,
         }),
         UserContent::Document(value) => ContentPart::Document(DocumentPart {
             source: assets.intern(value.data)?,
             media_type: value.media_type,
             additional_params: value.additional_params,
+            detail: value.detail,
         }),
         UserContent::ToolResult(value) => {
             children = value
@@ -286,6 +300,7 @@ fn prepare(
                         AssistantContent::Image(value) => ContentPart::Image(image(assets, value)?),
                         AssistantContent::ToolCall(value) => ContentPart::ToolCall(value),
                         AssistantContent::Reasoning(value) => ContentPart::Reasoning(value),
+                        AssistantContent::Native(value) => ContentPart::Native(value),
                     };
                     Ok((part, Vec::new()))
                 })
@@ -367,7 +382,7 @@ fn read_image(assets: &BinaryAssets, value: &ImagePart) -> Result<message::Image
     Ok(message::Image {
         data: assets.resolve(&value.source)?,
         media_type: value.media_type.clone(),
-        detail: value.detail.clone(),
+        detail: value.detail,
         additional_params: value.additional_params.clone(),
     })
 }
@@ -422,11 +437,13 @@ fn to_user<'a>(
         ContentPart::Video(value) => UserContent::Video(message::Video {
             data: assets.resolve(&value.source)?,
             media_type: value.media_type,
+            detail: value.detail,
             additional_params: value.additional_params,
         }),
         ContentPart::Document(value) => UserContent::Document(message::Document {
             data: assets.resolve(&value.source)?,
             media_type: value.media_type,
+            detail: value.detail,
             additional_params: value.additional_params,
         }),
         ContentPart::ToolResult { call, name } => UserContent::ToolResult(message::ToolResult {
@@ -599,6 +616,7 @@ fn read_message_from<'a>(
                         }
                         ContentPart::ToolCall(value) => AssistantContent::ToolCall(value),
                         ContentPart::Reasoning(value) => AssistantContent::Reasoning(value),
+                        ContentPart::Native(value) => AssistantContent::Native(value),
                         _ => return Err(ContentError::Shape),
                     })
                 })

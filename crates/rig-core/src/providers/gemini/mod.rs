@@ -1,35 +1,58 @@
-//! Gemini provider configuration and endpoint wires.
+//! Gemini's GenerateContent and Interactions APIs. Request and response
+//! bodies are Google's own schema, generated into [`api`]; the model's
+//! [`api::RequestSettings`] carry every option rig does not own, and parts rig
+//! has no type for are kept verbatim as native content.
 //!
 //! ```no_run
-//! use rig_core::providers::gemini;
+//! use rig_core::providers::gemini::{self, Gemini, api};
 //!
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! let provider = gemini::Gemini::from_env()?;
-//!
-//! let embeddings = provider.embedding(gemini::EMBEDDING_001, None);
+//! let model = Gemini::from_env()?
+//!     .completion(gemini::GEMINI_3_8_FLASH)
+//!     .settings(api::RequestSettings {
+//!         generation_config: api::GenerationSettings {
+//!             thinking_config: Some(api::ThinkingConfig {
+//!                 thinking_level: Some(api::ThinkingLevel::Low),
+//!                 ..Default::default()
+//!             }),
+//!             ..Default::default()
+//!         },
+//!         ..Default::default()
+//!     });
+//! # let _ = model;
 //! # Ok(())
 //! # }
 //! ```
-//!
-//! Pair a wire with a transport in a [`Model`](crate::driver::Model) to call it.
 
+pub mod api;
+pub mod batches;
 pub mod cached_content;
 pub mod completion;
+pub mod count_tokens;
+pub mod edge;
 pub mod embedding;
+pub mod files;
+pub mod generate_content;
 #[cfg(feature = "image")]
 #[cfg_attr(docsrs, doc(cfg(feature = "image")))]
 pub mod image_generation;
 pub mod interactions_api;
 pub mod model_listing;
+pub mod prefix;
 pub mod streaming;
 pub mod transcription;
 
 pub use crate::client::gemini::Gemini;
-pub use cached_content::{CacheExpiry, CachedContent, CachedContents, NewCachedContent};
-pub use embedding::{EMBEDDING_001, EMBEDDING_004};
+pub use cached_content::{CacheExpiry, CachedContents};
+pub use completion::{
+    GEMINI_2_0_FLASH, GEMINI_2_0_FLASH_LITE, GEMINI_2_5_FLASH, GEMINI_3_1_FLASH_LITE_PREVIEW,
+    GEMINI_3_8_FLASH, GEMINI_3_FLASH_PREVIEW, GenerateContent,
+};
+pub use embedding::{EMBEDDING_001, EMBEDDING_2};
 #[cfg(feature = "image")]
 pub use image_generation::GEMINI_2_5_FLASH_IMAGE;
 pub use model_listing::*;
+pub use prefix::{CachedPrefix, NewCachedContent};
 
 use crate::client::env::{self, EnvError};
 use crate::wire::Secret;
@@ -38,50 +61,15 @@ use crate::wire::Secret;
 /// telemetry spell it.
 pub use completion::PROVIDER_NAME;
 
+/// The issuer of everything Gemini seals: reasoning, signatures and native
+/// parts. Only Gemini's own wires open them.
+pub const ISSUER: crate::message::Issuer = crate::message::Issuer::from_static(PROVIDER_NAME);
+
 /// Where both Gemini surfaces live.
 pub const BASE_URL: &str = "https://generativelanguage.googleapis.com";
 
 /// The environment variable holding the API key.
 pub const API_KEY_ENV: &str = "GEMINI_API_KEY";
-
-/// The text-block `AdditionalParams` key containing a verbatim Gemini part.
-/// This preserves image data that the normalized block vocabulary cannot represent.
-pub const GEMINI_RAW_CONTENT_KEY: &str = "gemini_content";
-
-/// The text-block `AdditionalParams` key holding Gemini API extras for that
-/// text, today its `thoughtSignature`. Gemini may sign an answer text part,
-/// and a signature returns on the part that carried it, so it rides on the
-/// text rather than on reasoning. Only the Gemini API codecs (REST and gRPC)
-/// read it, which keeps the signature with its issuer.
-pub const GEMINI_TEXT_EXTRAS_KEY: &str = "gemini";
-
-const THOUGHT_SIGNATURE: &str = "thoughtSignature";
-
-/// The signature Gemini put on this answer text part, if any.
-pub fn text_thought_signature(text: &crate::message::Text) -> Option<&str> {
-    text_signature_at(text, GEMINI_TEXT_EXTRAS_KEY)
-}
-
-/// Extras recording `signature` for an answer text part under `extras_key`.
-pub fn text_signature_extras(
-    extras_key: &str,
-    signature: String,
-) -> Option<crate::message::AdditionalParams> {
-    crate::message::AdditionalParams::from_entries(Some((
-        extras_key,
-        serde_json::json!({ THOUGHT_SIGNATURE: signature }),
-    )))
-}
-
-/// The signature recorded on `text` under `extras_key`, for codecs of other
-/// Gemini-model services that keep their own key.
-pub fn text_signature_at<'a>(text: &'a crate::message::Text, extras_key: &str) -> Option<&'a str> {
-    text.additional_params
-        .as_ref()
-        .and_then(|params| params.wire_extras(extras_key))
-        .and_then(|extras| extras.get(THOUGHT_SIGNATURE))
-        .and_then(serde_json::Value::as_str)
-}
 
 /// The settings of Gemini's GenerateContent and Interactions APIs:
 /// serializable, and the key is never serialized. [`connect`](Self::connect)
@@ -144,12 +132,11 @@ impl GeminiConfig {
         interactions_api::Interactions::new(self.clone(), model)
     }
 
-    /// The `batchEmbedContents` embedding wire. `ndims` defaults from the
-    /// model identifier.
+    /// The `batchEmbedContents` embedding wire asking for `ndims` dimensions.
     pub(crate) fn embedding(
         &self,
         model: impl Into<String>,
-        ndims: Option<usize>,
+        ndims: usize,
     ) -> embedding::Embeddings {
         embedding::Embeddings::new(self.clone(), model, ndims)
     }
@@ -202,50 +189,3 @@ impl GeminiConfig {
 
 #[cfg(test)]
 mod tests;
-
-pub mod gemini_api_types {
-    use serde::{Deserialize, Serialize};
-
-    #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-    #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
-    pub enum ExecutionLanguage {
-        /// Unspecified language. This value should not be used.
-        LanguageUnspecified,
-        /// Python >= 3.10, with numpy and simply available.
-        Python,
-    }
-
-    /// Code generated and executed by the hosted CodeExecution tool.
-    /// Execution produces a corresponding [`CodeExecutionResult`].
-    #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
-    pub struct ExecutableCode {
-        /// Programming language of the code.
-        pub language: ExecutionLanguage,
-        /// The code to be executed.
-        pub code: String,
-    }
-    #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-    pub struct CodeExecutionResult {
-        /// Outcome of the code execution.
-        pub outcome: CodeExecutionOutcome,
-        /// Contains stdout when code execution is successful, stderr or other description otherwise.
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub output: Option<String>,
-    }
-
-    #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-    pub enum CodeExecutionOutcome {
-        /// Unspecified status. This value should not be used.
-        #[serde(rename = "OUTCOME_UNSPECIFIED")]
-        Unspecified,
-        /// Code execution completed successfully.
-        #[serde(rename = "OUTCOME_OK")]
-        Ok,
-        /// Code execution finished but with a failure. stderr should contain the reason.
-        #[serde(rename = "OUTCOME_FAILED")]
-        Failed,
-        /// Execution exceeded its deadline and was cancelled. Partial output may be present.
-        #[serde(rename = "OUTCOME_DEADLINE_EXCEEDED")]
-        DeadlineExceeded,
-    }
-}

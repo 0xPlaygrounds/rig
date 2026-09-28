@@ -28,14 +28,13 @@ export GEMINI_API_KEY=your_api_key_here
 
 ```rust
 use rig::prelude::*;
-use rig_gemini_grpc::Client;
+use rig_gemini_grpc::{GeminiGrpc, completion::GEMINI_3_8_FLASH};
 
 #[tokio::main]
-async fn main() -> Result<(), anyhow::Error> {
-    let client = Client::from_env();
+async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let transport = GeminiGrpc::from_env()?;
 
-    let agent = client
-        .agent("gemini-2.5-flash")
+    let agent = AgentBuilder::new(transport.completion(GEMINI_3_8_FLASH))
         .preamble("You are a helpful assistant.")
         .build();
 
@@ -45,6 +44,11 @@ async fn main() -> Result<(), anyhow::Error> {
     Ok(())
 }
 ```
+
+Requests and replies normalize through `rig_core::providers::gemini::edge`, the
+same layer the REST wires use: thought signatures return on the parts that
+carried them, tool schemas are sent as written, and parts rig has no type for
+(code execution, inline media) are kept as native content.
 
 ## Features
 

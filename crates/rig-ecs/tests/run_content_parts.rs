@@ -35,7 +35,7 @@ fn all_user_kinds_nested_results_and_metadata_round_trip() {
     let image = Image {
         data: DocumentSourceKind::Base64("Zg==".into()),
         media_type: Some(ImageMediaType::PNG),
-        detail: Some(ImageDetail::High),
+        detail: Some(MediaDetail::High),
         additional_params: AdditionalParams::from_entries([(
             "image_metadata",
             serde_json::json!(true),
@@ -57,6 +57,7 @@ fn all_user_kinds_nested_results_and_metadata_round_trip() {
                     )]),
                 }),
                 UserContent::Video(Video {
+                    detail: None,
                     data: DocumentSourceKind::Url("https://invalid.invalid/video".into()),
                     media_type: Some(VideoMediaType::MP4),
                     additional_params: AdditionalParams::from_entries([(
@@ -65,6 +66,7 @@ fn all_user_kinds_nested_results_and_metadata_round_trip() {
                     )]),
                 }),
                 UserContent::Document(Document {
+                    detail: None,
                     data: DocumentSourceKind::FileId("file-1".into()),
                     media_type: Some(DocumentMediaType::PDF),
                     additional_params: AdditionalParams::from_entries([(
@@ -116,14 +118,14 @@ fn all_user_kinds_nested_results_and_metadata_round_trip() {
 }
 
 #[test]
-fn assistant_signatures_reasoning_ids_and_images_round_trip() {
+fn assistant_signatures_reasoning_ids_images_and_native_parts_round_trip() {
     let call = ToolCall {
         id: CallId::from_dual_wire("item-1", "provider-call-1"),
         function: ToolFunction::new(
             rig_core::message::ToolName::new("lookup").expect("tool name"),
             serde_json::json!({"q":"query"}),
         ),
-        signature: Some("signed-call".into()),
+        signature: Some(rig_core::message::Signature::sealed("mock", "signed-call")),
         additional_params: Some(serde_json::json!({"opaque":"preserved"})),
     };
     let parts = MessageParts::Assistant {
@@ -153,6 +155,16 @@ fn assistant_signatures_reasoning_ids_and_images_round_trip() {
                     data: DocumentSourceKind::Raw(vec![1, 2, 3]),
                     ..Default::default()
                 }),
+                AssistantContent::Native(Sealed::new(
+                    "mock",
+                    NativePart::new(
+                        "test.Part",
+                        serde_json::value::RawValue::from_string(
+                            r#"{"z":1,"a":{"thoughtSignature":"c2ln"}}"#.to_owned(),
+                        )
+                        .unwrap(),
+                    ),
+                )),
             ],
         ),
     };

@@ -380,6 +380,11 @@ impl TryFrom<message::Message> for Vec<Message> {
                                 text_content.push(AssistantContent::Thinking { thinking });
                             }
                         }
+                        message::AssistantContent::Native(native) => {
+                            return Err(message::AssistantContent::foreign_native(
+                                &native, "cohere",
+                            ));
+                        }
                         message::AssistantContent::Image(_) => {
                             return Err(message::MessageError::ConversionError(
                                 "Cohere currently doesn't support images.".to_owned(),

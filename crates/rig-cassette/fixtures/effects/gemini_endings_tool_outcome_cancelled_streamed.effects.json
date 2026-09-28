@@ -120,7 +120,7 @@
               "type": "toolcall",
               "id": {
                 "provider": {
-                  "call_id": "call_243109"
+                  "call_id": "call_357431"
                 }
               },
               "function": {
@@ -130,37 +130,41 @@
                   "y": 25
                 }
               },
-              "signature": "EtICCs8CAWkUfROdXS0ZGFI7Jq3V35FIz9UxbSbJ6Jw42yHDMoG7Z6Kc4MfXP1w9E9wZCXqhTk95sJjg1B/4T8+C+onhWNp0NcOD6OV54OE5LE3Zwh7b6g9ycgxdnTG0433TCoST7oQQ5wgKE6sEw7kU5qG0p8lCbg3bHRqVIvvjbR7wAqKXXl4dLrbTJjtQuTvj3Q1oPThslg7xgOVz/15kZXzB6TvHpm2b2e4htyeXST9pcBwsJEei3QY//monleobXalTrutGdAqWNG2SGPs92MQW/lC2cD7x9NniQu7PnEAj7Ndj3XPBjYUUSWHMDwgCtWlJoAsTp10jXy63xmGtMsaHkzisepOyX/53OriUlLMkXBgdTPsnAn2n1jSBei3hKCsLA9XVyT4/QNWldnxNVDU4FLxUQdieGhqMXDSniJNqfcGbDllG6I6Su/TS0mPfZs0=",
+              "signature": {
+                "issuer": "gcp.gemini",
+                "signature": "EtICCs8CAWkUfROorMnXJXKRvJ1AMkLi0PMaaFCnXwW1Jyy/FNNiurEHoG1Nn+1qBX/G4PBJYrca78BG2yw5JVmBbAUHtNqL2UyG9O6MJ/OodTTlpgPgWRoZ6UpibA8hT9ISJ267odBzspBoU7qGqGIO9u/BYqFOWKLsxMYpty+saPLYOdet4JzhRSe0KZh+KdpACgnORNXyd8tsP5LPeOZL9asoPeUEiliNKkT/LQtJxTB5KsEdQLNr22XUEUSySkFH1X4NKzHXPqNcvwmwI3Cw/lts0bxYODwdgfShTQfcecoHFk6fpuLR9M4MI0OnlAjJclNCqB97xgbKHVk1/StliHlD0br+UabFQiR6cxiz9K04hwbzihAr48ehMA/pNuX55hgY0/f5VYCkLVClResYFGf8fh9AACodnYBKlB2Yrd9AFtHcoO7smmaL1SJoK1pS0e0="
+              },
               "additional_params": null
             }
           ],
           "usage": {
-            "input_tokens": 120,
-            "output_tokens": 18,
-            "total_tokens": 198,
+            "input_tokens": 119,
+            "output_tokens": 78,
+            "total_tokens": 197,
             "reasoning_tokens": 60
           },
           "message_id": null,
-          "response_id": "TayyarEGhYua2Q-9s4SwCQ",
+          "response_id": "t-a6auOpO6akmtkPmuC6kQ4",
           "finish_reason": "tool_calls",
           "provider": "gcp.gemini",
           "model": "gemini-3-flash-preview",
           "raw": {
-            "usage_metadata": {
-              "promptTokenCount": 120,
+            "usageMetadata": {
               "candidatesTokenCount": 18,
-              "totalTokenCount": 198,
-              "thoughtsTokenCount": 60,
+              "promptTokenCount": 119,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
-                  "tokenCount": 120
+                  "tokenCount": 119
                 }
-              ]
+              ],
+              "serviceTier": "standard",
+              "thoughtsTokenCount": 60,
+              "totalTokenCount": 197
             },
-            "finish_reason": "STOP",
-            "model_version": "gemini-3-flash-preview",
-            "response_id": "TayyarEGhYua2Q-9s4SwCQ"
+            "finishReason": "STOP",
+            "modelVersion": "gemini-3-flash-preview",
+            "responseId": "t-a6auOpO6akmtkPmuC6kQ4"
           }
         }
       },
@@ -190,7 +194,7 @@
               "type": "toolcall",
               "id": {
                 "provider": {
-                  "call_id": "call_243109"
+                  "call_id": "call_357431"
                 }
               },
               "function": {
@@ -200,7 +204,10 @@
                   "y": 25
                 }
               },
-              "signature": "EtICCs8CAWkUfROdXS0ZGFI7Jq3V35FIz9UxbSbJ6Jw42yHDMoG7Z6Kc4MfXP1w9E9wZCXqhTk95sJjg1B/4T8+C+onhWNp0NcOD6OV54OE5LE3Zwh7b6g9ycgxdnTG0433TCoST7oQQ5wgKE6sEw7kU5qG0p8lCbg3bHRqVIvvjbR7wAqKXXl4dLrbTJjtQuTvj3Q1oPThslg7xgOVz/15kZXzB6TvHpm2b2e4htyeXST9pcBwsJEei3QY//monleobXalTrutGdAqWNG2SGPs92MQW/lC2cD7x9NniQu7PnEAj7Ndj3XPBjYUUSWHMDwgCtWlJoAsTp10jXy63xmGtMsaHkzisepOyX/53OriUlLMkXBgdTPsnAn2n1jSBei3hKCsLA9XVyT4/QNWldnxNVDU4FLxUQdieGhqMXDSniJNqfcGbDllG6I6Su/TS0mPfZs0=",
+              "signature": {
+                "issuer": "gcp.gemini",
+                "signature": "EtICCs8CAWkUfROorMnXJXKRvJ1AMkLi0PMaaFCnXwW1Jyy/FNNiurEHoG1Nn+1qBX/G4PBJYrca78BG2yw5JVmBbAUHtNqL2UyG9O6MJ/OodTTlpgPgWRoZ6UpibA8hT9ISJ267odBzspBoU7qGqGIO9u/BYqFOWKLsxMYpty+saPLYOdet4JzhRSe0KZh+KdpACgnORNXyd8tsP5LPeOZL9asoPeUEiliNKkT/LQtJxTB5KsEdQLNr22XUEUSySkFH1X4NKzHXPqNcvwmwI3Cw/lts0bxYODwdgfShTQfcecoHFk6fpuLR9M4MI0OnlAjJclNCqB97xgbKHVk1/StliHlD0br+UabFQiR6cxiz9K04hwbzihAr48ehMA/pNuX55hgY0/f5VYCkLVClResYFGf8fh9AACodnYBKlB2Yrd9AFtHcoO7smmaL1SJoK1pS0e0="
+              },
               "additional_params": null
             }
           }

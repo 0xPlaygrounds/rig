@@ -2,15 +2,17 @@
 //!
 //! ```no_run
 //! use rig_core::Model;
-//! use rig_gemini_grpc::{GeminiGrpc, completion::{GEMINI_2_5_FLASH, GenerateContent}};
+//! use rig_gemini_grpc::{GeminiGrpc, completion::{GEMINI_3_8_FLASH, GenerateContent}};
 //!
 //! # async fn example() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-//! let model = GeminiGrpc::new("API_KEY").await?.completion(GEMINI_2_5_FLASH);
+//! let model = GeminiGrpc::new("API_KEY").await?.completion(GEMINI_3_8_FLASH);
 //! # let _ = model;
 //! # Ok(())
 //! # }
 //! ```
 
+/// `gemini-3.8-flash` completion model
+pub const GEMINI_3_8_FLASH: &str = rig_core::providers::gemini::GEMINI_3_8_FLASH;
 /// `gemini-2.5-flash` completion model
 pub const GEMINI_2_5_FLASH: &str = "gemini-2.5-flash";
 /// `gemini-2.0-flash-lite` completion model
@@ -24,12 +26,10 @@ use rig_core::completion::{self, CompletionRequest};
 use rig_core::driver::{Exchange, Opened, Opening, Transport};
 use rig_core::error::EncodeError;
 use rig_core::error::ProviderError;
-use rig_core::message::{self, MimeType};
+use rig_core::message;
 use rig_core::operation::Completion;
-use rig_core::providers::gemini::completion::gemini_api_types::{
-    Schema as GeminiSchema, map_google_finish_reason, tool_parameters_to_schema,
-};
-use rig_core::providers::gemini::text_thought_signature;
+use rig_core::providers::gemini::api;
+use rig_core::providers::gemini::edge::{self, Source, Unit};
 use rig_core::wire::{Descriptor, Mode, Wire};
 use std::convert::TryFrom;
 
@@ -123,7 +123,7 @@ pub const PROVIDER_NAME: &str = "gemini-grpc";
 /// The issuer this transport's reasoning records: the Gemini API service,
 /// which also serves the REST transport, so thought signatures move between
 /// the two.
-pub const REASONING_ISSUER: &str = rig_core::providers::gemini::completion::PROVIDER_NAME;
+pub const REASONING_ISSUER: &str = rig_core::providers::gemini::PROVIDER_NAME;
 
 /// [`REASONING_ISSUER`], the only issuer whose reasoning this wire replays.
 const ISSUER: message::Issuer = message::Issuer::from_static(REASONING_ISSUER);
@@ -143,7 +143,7 @@ pub fn map_finish_reason(reason: i32) -> Option<completion::FinishReason> {
         )));
     };
 
-    map_google_finish_reason(reason.as_str_name())
+    edge::finish_reason(reason.as_str_name())
 }
 
 /// Returns a response error for malformed calls, unexpected calls, or exceeded
@@ -158,11 +158,7 @@ pub fn tool_protocol_finish_reason_error(
     let reason = Wire::try_from(reason).ok()?;
     match reason {
         Wire::MalformedFunctionCall | Wire::UnexpectedToolCall | Wire::TooManyToolCalls => {
-            let message = finish_message.unwrap_or("no finish message provided");
-            Some(ProviderError::Response(format!(
-                "Gemini stopped with finish_reason={}: {message}",
-                reason.as_str_name()
-            )))
+            edge::tool_protocol_error(reason.as_str_name(), finish_message)
         }
         _ => None,
     }
@@ -221,41 +217,58 @@ pub(crate) fn create_grpc_request(
     model: &str,
     completion_request: CompletionRequest,
 ) -> Result<GenerateContentRequest, EncodeError> {
+    if completion_request.additional_params.is_some() {
+        return Err(EncodeError::request(
+            "additional_params is not read by Gemini gRPC",
+        ));
+    }
+    let chat_history = completion_request.chat_history_with_documents();
     let CompletionRequest {
-        model: _,
-        chat_history,
-        documents: _,
         tools,
         temperature,
         max_tokens,
-        tool_choice: _,
-        additional_params: _,
-        output_schema: _,
-        record_telemetry_content: _,
+        ..
     } = completion_request;
 
-    let (history_system, chat_history) =
-        split_system_messages_from_history(chat_history.into_vec());
-    let mut contents = Vec::new();
-
-    for msg in chat_history {
-        contents.push(rig_message_to_grpc_content(msg)?);
-    }
-
     let mut system_parts = Vec::new();
-    for content in history_system {
-        if !content.is_empty() {
-            system_parts.push(text_part(content));
+    let mut contents = Vec::new();
+    for message in chat_history {
+        match message {
+            message::Message::System { content } => {
+                if !content.is_empty() {
+                    system_parts.push(text_part(content));
+                }
+            }
+            message::Message::User { content } => {
+                let parts = content
+                    .into_iter()
+                    .map(|content| unit_part(edge::user_unit(content)?))
+                    .collect::<Result<Vec<_>, _>>()?;
+                contents.push(proto::Content {
+                    parts,
+                    role: "user".to_string(),
+                });
+            }
+            message::Message::Assistant { content, .. } => {
+                let mut parts = Vec::new();
+                for content in content {
+                    for unit in edge::assistant_units(content, &ISSUER)? {
+                        parts.push(unit_part(unit)?);
+                    }
+                }
+                if !parts.is_empty() {
+                    contents.push(proto::Content {
+                        parts,
+                        role: "model".to_string(),
+                    });
+                }
+            }
         }
     }
-    let system_instruction = if system_parts.is_empty() {
-        None
-    } else {
-        Some(proto::Content {
-            parts: system_parts,
-            role: "model".to_string(),
-        })
-    };
+    let system_instruction = (!system_parts.is_empty()).then(|| proto::Content {
+        parts: system_parts,
+        role: String::new(),
+    });
 
     let generation_config = if temperature.is_some() || max_tokens.is_some() {
         Some(proto::GenerationConfig {
@@ -267,25 +280,24 @@ pub(crate) fn create_grpc_request(
         None
     };
 
-    let tools = if !tools.is_empty() {
+    let tools = if tools.is_empty() {
+        Vec::new()
+    } else {
+        // The schema goes as written, in `parameters_json_schema`.
         let function_declarations = tools
             .into_iter()
-            .map(|tool| {
-                Ok(proto::FunctionDeclaration {
-                    name: tool.name,
-                    description: tool.description,
-                    parameters: tool_parameters_to_proto_schema(&tool.parameters)?,
-                    ..Default::default()
-                })
+            .map(|tool| proto::FunctionDeclaration {
+                name: tool.name,
+                description: tool.description,
+                parameters_json_schema: (!tool.parameters.is_null())
+                    .then(|| json_to_prost_value(tool.parameters)),
+                ..Default::default()
             })
-            .collect::<Result<Vec<_>, EncodeError>>()?;
-
+            .collect();
         vec![proto::Tool {
             function_declarations,
             code_execution: None,
         }]
-    } else {
-        vec![]
     };
 
     Ok(GenerateContentRequest {
@@ -300,179 +312,120 @@ pub(crate) fn create_grpc_request(
     })
 }
 
-fn rig_message_to_grpc_content(msg: message::Message) -> Result<proto::Content, EncodeError> {
-    match msg {
-        message::Message::System { .. } => Err(EncodeError::request(
-            "System messages must be sent via Gemini gRPC system_instruction",
-        )),
-        message::Message::User { content } => {
-            let parts = content
-                .into_iter()
-                .map(rig_user_content_to_grpc_part)
-                .collect::<Result<Vec<_>, _>>()?;
-
-            Ok(proto::Content {
-                parts,
-                role: "user".to_string(),
-            })
-        }
-        message::Message::Assistant { content, .. } => {
-            let parts = content
-                .into_iter()
-                // Reasoning another service issued is not replayed.
-                .filter(|part| match part {
-                    message::AssistantContent::Reasoning(reasoning) => {
-                        reasoning.open(&ISSUER).is_some()
-                    }
-                    _ => true,
-                })
-                .map(rig_assistant_content_to_grpc_part)
-                .collect::<Result<Vec<_>, _>>()?;
-
-            Ok(proto::Content {
-                parts,
-                role: "model".to_string(),
-            })
-        }
-    }
-}
-
-use rig_core::providers::gemini::completion::split_system_messages_from_history;
-
-fn rig_user_content_to_grpc_part(
-    content: message::UserContent,
-) -> Result<proto::Part, EncodeError> {
-    match content {
-        message::UserContent::Text(message::Text { text, .. }) => Ok(text_part(text)),
-        message::UserContent::ToolResult(result) => {
-            let mut values = result
-                .content
-                .into_iter()
-                .map(|content| match content {
-                    message::ToolResultContent::Text(t) => Ok(serde_json::Value::String(t.text)),
-                    message::ToolResultContent::Json { value } => Ok(value),
-                    message::ToolResultContent::Image(_) => Err(EncodeError::request(
-                        "Gemini gRPC does not support images in tool results",
-                    )),
-                })
-                .collect::<Result<Vec<_>, _>>()?;
-            let result_value = if values.len() == 1 {
-                values.remove(0)
-            } else {
-                serde_json::Value::Array(values)
-            };
-
-            let response_struct =
-                json_to_prost_struct(serde_json::json!({ "result": result_value }))?;
-
-            // Replay the function name and only provider-issued IDs; local
-            // correlation handles must not reach the wire.
-            Ok(data_part(proto::part::Data::FunctionResponse(
-                proto::FunctionResponse {
-                    name: result.name.into(),
-                    response: Some(response_struct),
-                    id: result
-                        .call
-                        .provider()
-                        .map(|provider| provider.call_id.clone())
-                        .unwrap_or_default(),
-                },
-            )))
-        }
-        message::UserContent::Image(img) => {
-            let Some(media_type) = img.media_type else {
+/// The protobuf part for one edge unit.
+fn unit_part(unit: Unit) -> Result<proto::Part, EncodeError> {
+    Ok(match unit {
+        Unit::Text { text, signature } => proto::Part {
+            thought_signature: decode_optional_base64(signature)?,
+            ..text_part(text)
+        },
+        Unit::Thought { text, signature } => proto::Part {
+            data: Some(proto::part::Data::Text(text)),
+            thought: true,
+            thought_signature: decode_optional_base64(signature)?,
+            part_metadata: None,
+        },
+        Unit::Call {
+            id,
+            name,
+            args,
+            signature,
+        } => proto::Part {
+            thought_signature: decode_optional_base64(signature)?,
+            ..data_part(proto::part::Data::FunctionCall(proto::FunctionCall {
+                name,
+                args: Some(json_to_prost_struct(serde_json::Value::Object(args))?),
+                id: id.unwrap_or_default(),
+            }))
+        },
+        Unit::Result {
+            id,
+            name,
+            response,
+            media,
+        } => {
+            if !media.is_empty() {
                 return Err(EncodeError::request(
-                    "Media type for image is required for Gemini",
+                    "Gemini gRPC does not support media in tool results",
                 ));
-            };
-
-            match media_type {
-                message::ImageMediaType::JPEG
-                | message::ImageMediaType::PNG
-                | message::ImageMediaType::WEBP
-                | message::ImageMediaType::HEIC
-                | message::ImageMediaType::HEIF => {}
-                _ => {
-                    return Err(EncodeError::request(format!(
-                        "Unsupported image media type {media_type:?}"
-                    )));
-                }
             }
-
-            let mime_type = media_type.to_mime_type().to_string();
-
-            let data = match img.data {
-                message::DocumentSourceKind::Url(file_uri) => {
-                    return Ok(data_part(proto::part::Data::FileData(proto::FileData {
-                        mime_type,
-                        file_uri,
-                    })));
-                }
-                message::DocumentSourceKind::Raw(bytes) => bytes,
-                message::DocumentSourceKind::Base64(data)
-                | message::DocumentSourceKind::String(data) => decode_base64_bytes(&data)?,
-                message::DocumentSourceKind::Unknown => {
-                    return Err(EncodeError::request("Image content has no body"));
-                }
-                _ => {
-                    return Err(EncodeError::request("Unsupported document source kind"));
-                }
-            };
-
-            Ok(data_part(proto::part::Data::InlineData(proto::Blob {
-                mime_type,
-                data,
-            })))
+            data_part(proto::part::Data::FunctionResponse(
+                proto::FunctionResponse {
+                    name,
+                    response: Some(json_to_prost_struct(serde_json::Value::Object(
+                        response.unwrap_or_default(),
+                    ))?),
+                    id: id.unwrap_or_default(),
+                },
+            ))
         }
-        _ => Err(EncodeError::request("Unsupported user content type")),
-    }
+        Unit::Media(media) => {
+            let mime_type = media
+                .mime_type
+                .ok_or_else(|| EncodeError::request("Gemini gRPC media needs a media type"))?;
+            match media.source {
+                Source::Inline(data) => data_part(proto::part::Data::InlineData(proto::Blob {
+                    mime_type,
+                    data: decode_base64_bytes(&data)?,
+                })),
+                Source::Uri(file_uri) => data_part(proto::part::Data::FileData(proto::FileData {
+                    mime_type,
+                    file_uri,
+                })),
+            }
+        }
+        Unit::Native(native) => native_part(native)?,
+    })
 }
 
-fn rig_assistant_content_to_grpc_part(
-    content: message::AssistantContent,
-) -> Result<proto::Part, EncodeError> {
-    match content {
-        message::AssistantContent::Text(text) => Ok(proto::Part {
-            thought_signature: decode_optional_base64(
-                text_thought_signature(&text).map(str::to_owned),
-            )?,
-            ..text_part(text.text)
-        }),
-        message::AssistantContent::ToolCall(tool_call) => {
-            let args = json_to_prost_struct(tool_call.function.arguments)?;
-
-            Ok(proto::Part {
-                thought_signature: decode_optional_base64(tool_call.signature)?,
-                ..data_part(proto::part::Data::FunctionCall(proto::FunctionCall {
-                    name: tool_call.function.name.into(),
-                    args: Some(args),
-                    // Only a provider-issued id may travel back on the
-                    // wire; rig-issued ids stay internal.
-                    id: tool_call
-                        .id
-                        .provider()
-                        .map(|provider| provider.call_id.clone())
-                        .unwrap_or_default(),
-                }))
-            })
-        }
-        message::AssistantContent::Reasoning(reasoning) => {
-            let reasoning = reasoning.open(&ISSUER).ok_or_else(|| {
-                EncodeError::request("Gemini cannot replay reasoning another service issued")
-            })?;
-            Ok(proto::Part {
-                data: Some(proto::part::Data::Text(reasoning.display_text())),
-                thought: true,
-                thought_signature: decode_optional_base64(
-                    reasoning
-                        .first_signature()
-                        .map(std::string::ToString::to_string),
-                )?,
-                part_metadata: None,
-            })
-        }
-        _ => Err(EncodeError::request("Unsupported assistant content type")),
+/// The protobuf part for a native GenerateContent part. The gRPC schema
+/// carries fewer part kinds than REST; one it cannot carry is refused.
+fn native_part(native: message::NativePart) -> Result<proto::Part, EncodeError> {
+    if native.schema != api::PART_SCHEMA {
+        return Err(EncodeError::request(format!(
+            "a native `{}` part cannot be sent over Gemini gRPC",
+            native.schema
+        )));
     }
+    let part: api::Part = serde_json::from_str(native.json())?;
+    let signature = decode_optional_base64(part.thought_signature.clone())?;
+    let data = if let Some(code) = part.executable_code {
+        proto::part::Data::ExecutableCode(proto::ExecutableCode {
+            language: code
+                .language
+                .map(|language| language.as_str().to_owned())
+                .unwrap_or_default(),
+            code: code.code.unwrap_or_default(),
+        })
+    } else if let Some(result) = part.code_execution_result {
+        proto::part::Data::CodeExecutionResult(proto::CodeExecutionResult {
+            outcome: result
+                .outcome
+                .map(|outcome| outcome.as_str().to_owned())
+                .unwrap_or_default(),
+            output: result.output.unwrap_or_default(),
+        })
+    } else if let Some(blob) = part.inline_data {
+        proto::part::Data::InlineData(proto::Blob {
+            mime_type: blob.mime_type.unwrap_or_default(),
+            data: decode_base64_bytes(blob.data.as_deref().unwrap_or_default())?,
+        })
+    } else if let Some(file) = part.file_data {
+        proto::part::Data::FileData(proto::FileData {
+            mime_type: file.mime_type.unwrap_or_default(),
+            file_uri: file.file_uri.unwrap_or_default(),
+        })
+    } else {
+        return Err(EncodeError::request(
+            "Gemini gRPC cannot carry this native part",
+        ));
+    };
+    Ok(proto::Part {
+        data: Some(data),
+        thought: part.thought.unwrap_or(false),
+        thought_signature: signature,
+        part_metadata: None,
+    })
 }
 
 fn decode_base64_bytes(input: &str) -> Result<Vec<u8>, EncodeError> {
@@ -510,19 +463,17 @@ fn decode_optional_base64(sig: Option<String>) -> Result<Vec<u8>, EncodeError> {
     decode_base64_bytes(&sig)
 }
 
-/// Map Gemini's `UsageMetadata` onto rig's normalized `Usage`.
-///
-/// Tool-use, reasoning, and cache-write token counts remain `None`.
+/// Rig's usage for Gemini's counts, by the edge's one rule.
 pub(crate) fn map_usage(usage: Option<&proto::UsageMetadata>) -> completion::Usage {
     usage
-        .map(|usage| completion::Usage {
-            input_tokens: Some(usage.prompt_token_count as u64),
-            output_tokens: Some(usage.candidates_token_count as u64),
-            total_tokens: Some(usage.total_token_count as u64),
-            cached_input_tokens: Some(usage.cached_content_token_count as u64),
-            cache_creation_input_tokens: None,
-            tool_use_prompt_tokens: None,
-            reasoning_tokens: None,
+        .map(|usage| {
+            let count = |value: i32| u64::try_from(value).ok();
+            edge::usage(edge::Counts {
+                prompt: count(usage.prompt_token_count),
+                cached: count(usage.cached_content_token_count),
+                candidates: count(usage.candidates_token_count),
+                ..edge::Counts::default()
+            })
         })
         .unwrap_or_default()
 }
@@ -549,7 +500,7 @@ fn json_to_prost_struct(value: serde_json::Value) -> Result<proto::Struct, Encod
     }
 }
 
-fn json_to_prost_value(value: serde_json::Value) -> proto::Value {
+pub(crate) fn json_to_prost_value(value: serde_json::Value) -> proto::Value {
     match value {
         serde_json::Value::Null => proto::Value {
             kind: Some(proto::value::Kind::NullValue(
@@ -602,47 +553,6 @@ fn prost_value_to_json(v: &proto::Value) -> serde_json::Value {
         Some(proto::value::Kind::ListValue(list)) => {
             serde_json::Value::Array(list.values.iter().map(prost_value_to_json).collect())
         }
-    }
-}
-
-/// Converts tool parameters to protobuf schema through the shared Gemini conversion.
-/// Empty object schemas map to `None`.
-fn tool_parameters_to_proto_schema(
-    value: &serde_json::Value,
-) -> Result<Option<proto::Schema>, EncodeError> {
-    tool_parameters_to_schema(value.clone()).map(|schema| schema.map(gemini_schema_to_proto_schema))
-}
-
-fn gemini_schema_to_proto_schema(schema: GeminiSchema) -> proto::Schema {
-    proto::Schema {
-        r#type: json_type_to_proto_type(&schema.r#type) as i32,
-        format: schema.format.unwrap_or_default(),
-        description: schema.description.unwrap_or_default(),
-        nullable: schema.nullable.unwrap_or(false),
-        r#enum: schema.r#enum.unwrap_or_default(),
-        items: schema
-            .items
-            .map(|items| Box::new(gemini_schema_to_proto_schema(*items))),
-        properties: schema
-            .properties
-            .unwrap_or_default()
-            .into_iter()
-            .map(|(name, schema)| (name, gemini_schema_to_proto_schema(schema)))
-            .collect(),
-        required: schema.required.unwrap_or_default(),
-    }
-}
-
-fn json_type_to_proto_type(t: &str) -> proto::Type {
-    match t {
-        "string" => proto::Type::String,
-        "number" => proto::Type::Number,
-        "integer" => proto::Type::Integer,
-        "boolean" => proto::Type::Boolean,
-        "array" => proto::Type::Array,
-        "object" => proto::Type::Object,
-        "null" => proto::Type::Null,
-        _ => proto::Type::Unspecified,
     }
 }
 

@@ -698,6 +698,7 @@ fn opus_4_8_preserves_system_message_after_assistant_server_tool_result() {
                 id: None,
                 content: crate::NonEmpty::with_rest(
                     message::AssistantContent::Text(message::Text {
+                        signature: None,
                         text: String::new(),
                         additional_params: crate::message::AdditionalParams::try_from_value(
                             json!({
@@ -714,6 +715,7 @@ fn opus_4_8_preserves_system_message_after_assistant_server_tool_result() {
                         .expect("object params"),
                     }),
                     [message::AssistantContent::Text(message::Text {
+                        signature: None,
                         text: String::new(),
                         additional_params: crate::message::AdditionalParams::try_from_value(
                             json!({
@@ -774,6 +776,7 @@ fn foreign_annotated_empty_text_produces_no_anthropic_block() {
     // rejects empty text blocks and foreign extras cannot reach this
     // wire — while sibling content converts unaffected.
     let foreign_annotated_empty = message::AssistantContent::Text(message::Text {
+        signature: None,
         text: String::new(),
         additional_params: message::AdditionalParams::try_from_value(json!({
             "openai_responses": {"annotations": [{"type": "url_citation"}]}
@@ -809,6 +812,7 @@ fn opus_4_8_preserves_system_message_after_assistant_server_tool_use() {
             message::Message::Assistant {
                 id: None,
                 content: crate::NonEmpty::new(message::AssistantContent::Text(message::Text {
+                    signature: None,
                     text: String::new(),
                     additional_params: crate::message::AdditionalParams::try_from_value(json!({
                         ANTHROPIC_RAW_CONTENT_KEY: {
@@ -2373,6 +2377,7 @@ fn test_file_id_rig_to_anthropic_conversion() {
 
     let rig_message = msg::Message::User {
         content: crate::NonEmpty::new(msg::UserContent::Document(msg::Document {
+            detail: None,
             data: DocumentSourceKind::FileId("file_abc".to_string()),
             media_type: None,
             additional_params: None,
@@ -2431,6 +2436,7 @@ fn test_unsupported_document_type_returns_error() {
 
     let rig_message = msg::Message::User {
         content: crate::NonEmpty::new(msg::UserContent::Document(msg::Document {
+            detail: None,
             data: DocumentSourceKind::String("data".into()),
             media_type: Some(msg::DocumentMediaType::HTML),
             additional_params: None,
@@ -2452,6 +2458,7 @@ fn test_plaintext_document_url_source_returns_error() {
 
     let rig_message = msg::Message::User {
         content: crate::NonEmpty::new(msg::UserContent::Document(msg::Document {
+            detail: None,
             data: DocumentSourceKind::Url("https://example.com/doc.txt".into()),
             media_type: Some(msg::DocumentMediaType::TXT),
             additional_params: None,
@@ -3322,6 +3329,7 @@ fn content_block_location_citation_roundtrips() {
 #[test]
 fn anthropic_citations_extracts_from_additional_params() {
     let text = message::Text {
+        signature: None,
         text: "the grass is green".into(),
         additional_params: crate::message::AdditionalParams::try_from_value(json!({
             "citations": [{
@@ -3349,6 +3357,7 @@ fn assistant_text_citations_survive_anthropic_request_conversion() {
     let assistant = message::Message::Assistant {
         id: None,
         content: crate::NonEmpty::new(message::AssistantContent::Text(message::Text {
+            signature: None,
             text: "the grass is green".into(),
             additional_params: crate::message::AdditionalParams::try_from_value(json!({
                 "citations": [{
@@ -3387,6 +3396,7 @@ fn assistant_text_citations_survive_anthropic_request_conversion() {
 #[test]
 fn assistant_text_invalid_known_citations_are_rejected_for_anthropic_request_conversion() {
     let text = message::AssistantContent::Text(message::Text {
+        signature: None,
         text: "bad citation".into(),
         additional_params: crate::message::AdditionalParams::try_from_value(json!({
             "citations": [{
@@ -3408,6 +3418,7 @@ fn assistant_text_invalid_known_citations_are_rejected_for_anthropic_request_con
 #[test]
 fn document_additional_params_forward_to_anthropic_document() {
     let doc = message::UserContent::Document(message::Document {
+        detail: None,
         data: message::DocumentSourceKind::String("Hello world.".into()),
         media_type: Some(message::DocumentMediaType::TXT),
         additional_params: crate::message::AdditionalParams::try_from_value(json!({

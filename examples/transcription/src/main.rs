@@ -40,7 +40,7 @@ async fn whisper(file_path: &str) -> Result<(), anyhow::Error> {
 
 async fn gemini(file_path: &str) -> Result<(), anyhow::Error> {
     let gemini = Gemini::from_env()?;
-    let model = gemini.transcription(gemini::completion::GEMINI_3_FLASH_PREVIEW);
+    let model = gemini.transcription(gemini::GEMINI_3_8_FLASH);
     let response = model
         .call(TranscriptionRequestBuilder::from_file(file_path)?.build())
         .await?;

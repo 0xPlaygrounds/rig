@@ -9,6 +9,7 @@
 //! the grid missing from this file reuses a recording the corpus already
 //! had, whose producer stays where it is.
 
+use rig::providers::gemini::api;
 use rig::providers::gemini::completion::{GEMINI_3_1_FLASH_LITE_PREVIEW, GEMINI_3_FLASH_PREVIEW};
 use rig_test_support::cassette_models::GeminiModels;
 
@@ -251,8 +252,8 @@ crate::matrix::case_matrix! {
     reasoning_off: ("reasoning_matrix/off", reasoning_off_12);
 }
 
-// Reasoning matrix: the named thinking model, with the shared knob.
-fn reasoning_wire(
+/// The reasoning matrix: the named thinking model, its thinking in its settings.
+pub(super) fn reasoning_wire(
     client: &GeminiModels,
 ) -> Wire<
     rig::Model<
@@ -262,7 +263,19 @@ fn reasoning_wire(
 > {
     Wire {
         thinking: cells::ThinkingWire::Gemini,
-        model: client.completion("gemini-3-flash-preview"),
+        model: client
+            .completion("gemini-3-flash-preview")
+            .settings(api::RequestSettings {
+                generation_config: api::GenerationSettings {
+                    thinking_config: Some(api::ThinkingConfig {
+                        include_thoughts: Some(true),
+                        thinking_budget: Some(128),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+                ..Default::default()
+            }),
         route: None,
         temperature: Some(0.0),
         additional_params: None,

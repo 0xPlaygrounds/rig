@@ -17,6 +17,9 @@ pub enum ScenarioError {
 
 /// Collect recorded scenarios, excluding ignored functions and matrix rows.
 /// Direct calls retain support for literal `CassetteSpec` builder expressions.
+/// A direct `ProviderCassette::start` registers its scenario when the spec
+/// names a literal or a string `const` of the same file; one whose spec is a
+/// parameter is a wrapper, and its callers register.
 pub fn cassette_scenarios(
     source: &str,
     wrapper_names: &[&'static str],
@@ -46,8 +49,11 @@ pub fn cassette_scenario_sites(
     wrapper_names: &[&'static str],
 ) -> Result<Vec<ScenarioSite>, ScenarioError> {
     let syntax = syn::parse_file(source)?;
+    let mut consts = ConstVisitor::default();
+    consts.visit_file(&syntax);
     let mut visitor = CassetteScenarioVisitor {
         wrapper_names,
+        consts: consts.values,
         scenarios: Vec::new(),
         failures: Vec::new(),
     };
@@ -131,8 +137,28 @@ fn spec_declarations(expr: &Expr) -> Vec<String> {
     }
 }
 
+/// String `const` items anywhere in a file, by name.
+#[derive(Default)]
+struct ConstVisitor {
+    values: Vec<(String, String)>,
+}
+
+impl<'ast> Visit<'ast> for ConstVisitor {
+    fn visit_item_const(&mut self, node: &'ast syn::ItemConst) {
+        if let Expr::Lit(ExprLit {
+            lit: Lit::Str(value),
+            ..
+        }) = node.expr.as_ref()
+        {
+            self.values.push((node.ident.to_string(), value.value()));
+        }
+        visit::visit_item_const(self, node);
+    }
+}
+
 struct CassetteScenarioVisitor<'a> {
     wrapper_names: &'a [&'static str],
+    consts: Vec<(String, String)>,
     scenarios: Vec<ScenarioSite>,
     failures: Vec<String>,
 }
@@ -282,6 +308,16 @@ impl<'ast, 'a> Visit<'ast> for CassetteScenarioVisitor<'a> {
     }
 
     fn visit_expr_call(&mut self, node: &'ast ExprCall) {
+        if is_path_call(node, "ProviderCassette", "start")
+            && let Some(spec) = node.args.iter().nth(2)
+            && let Some(scenario) = self.direct_scenario(spec)
+        {
+            self.scenarios.push(ScenarioSite {
+                scenario,
+                wrapper: "ProviderCassette::start".to_owned(),
+                declared: spec_declarations(spec),
+            });
+        }
         if let Some(wrapper_name) = cassette_wrapper_name(node)
             && self.wrapper_names.contains(&wrapper_name.as_str())
         {
@@ -303,6 +339,29 @@ impl<'ast, 'a> Visit<'ast> for CassetteScenarioVisitor<'a> {
         }
 
         visit::visit_expr_call(self, node);
+    }
+}
+
+impl CassetteScenarioVisitor<'_> {
+    /// The scenario a direct session's spec names, through a file `const`.
+    fn direct_scenario(&self, spec: &Expr) -> Option<String> {
+        let name = match spec {
+            Expr::Call(call) if is_cassette_spec_new(call) => call.args.first()?,
+            Expr::MethodCall(method_call) => return self.direct_scenario(&method_call.receiver),
+            Expr::Paren(paren) => return self.direct_scenario(&paren.expr),
+            other => other,
+        };
+        if let Some(scenario) = cassette_scenario_value(name) {
+            return Some(scenario);
+        }
+        let Expr::Path(path) = name else {
+            return None;
+        };
+        let ident = path.path.get_ident()?.to_string();
+        self.consts
+            .iter()
+            .find(|(name, _)| *name == ident)
+            .map(|(_, value)| value.clone())
     }
 }
 
@@ -330,6 +389,10 @@ fn cassette_scenario_value(expr: &Expr) -> Option<String> {
 }
 
 fn is_cassette_spec_new(call: &ExprCall) -> bool {
+    is_path_call(call, "CassetteSpec", "new")
+}
+
+fn is_path_call(call: &ExprCall, receiver_name: &str, method_name: &str) -> bool {
     let Expr::Path(path) = call.func.as_ref() else {
         return false;
     };
@@ -338,7 +401,7 @@ fn is_cassette_spec_new(call: &ExprCall) -> bool {
     matches!(
         (segments.next(), segments.next()),
         (Some(method), Some(receiver))
-            if method.ident == "new" && receiver.ident == "CassetteSpec"
+            if method.ident == method_name && receiver.ident == receiver_name
     )
 }
 

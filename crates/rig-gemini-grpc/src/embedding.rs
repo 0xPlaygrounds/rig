@@ -2,17 +2,17 @@
 //!
 //! ```no_run
 //! use rig_core::Model;
-//! use rig_gemini_grpc::{GeminiGrpc, embedding::{EMBEDDING_004, Embeddings}};
+//! use rig_gemini_grpc::{GeminiGrpc, embedding::{EMBEDDING_001, Embeddings}};
 //!
 //! # async fn example() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-//! let model = GeminiGrpc::new("API_KEY").await?.embedding(EMBEDDING_004, None);
+//! let model = GeminiGrpc::new("API_KEY").await?.embedding(EMBEDDING_001, 768);
 //! # let _ = model;
 //! # Ok(())
 //! # }
 //! ```
 
-/// `text-embedding-004` embedding model
-pub const EMBEDDING_004: &str = "text-embedding-004";
+/// `gemini-embedding-001` embedding model
+pub const EMBEDDING_001: &str = rig_core::providers::gemini::EMBEDDING_001;
 
 use rig_core::driver::{Exchange, Opened, Opening, Transport};
 use rig_core::embeddings;
@@ -31,10 +31,11 @@ pub struct Embeddings {
 }
 
 impl Embeddings {
-    pub fn new(model: impl Into<String>, dims: Option<usize>) -> Self {
+    /// The wire for `model`, asking for `ndims` output dimensions.
+    pub fn new(model: impl Into<String>, ndims: usize) -> Self {
         Self {
             model: model.into(),
-            ndims: dims.unwrap_or(768), // Default embedding size for text-embedding-004
+            ndims,
         }
     }
 }

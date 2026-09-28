@@ -2,9 +2,7 @@ use anyhow::Result;
 use futures::StreamExt;
 use rig::completion::CompletionRequest;
 use rig::providers::gemini::Gemini;
-use rig::providers::gemini::interactions_api::{
-    AgentConfig, Content, Interaction, InteractionStatus, Step, ThinkingSummaries,
-};
+use rig::providers::gemini::interactions_api::api::{self, Interaction, InteractionStatus};
 use rig::streaming::{Item, StreamEvent};
 use serde_json::json;
 use std::time::Duration;
@@ -28,65 +26,30 @@ fn deep_research_agent() -> String {
         .unwrap_or_else(|| DEFAULT_DEEP_RESEARCH_AGENT.to_string())
 }
 
-/// The Deep Research request.
-///
-/// The Interactions wire reads the fields rig does not model from
-/// `additional_params`, so `agent`, `background` and `agent_config` ride there;
-/// `stream` is not among them, because the wire takes that from whether the
-/// caller asked for `completion` or `stream`.
-fn deep_research_request(
-    agent: impl Into<String>,
-    prompt: impl Into<String>,
-    stream: bool,
-) -> Result<CompletionRequest> {
-    // Deep Research is selected by `agent`, which suppresses `model` in the
-    // outgoing body — matching the official Gemini Deep Research examples.
-    let mut params = serde_json::Map::from_iter([
-        ("agent".to_owned(), json!(agent.into())),
-        ("background".to_owned(), json!(true)),
-    ]);
-
-    if stream {
-        // The Gemini docs recommend enabling thinking summaries for Deep
-        // Research streams; otherwise a stream may only include final text.
-        params.insert(
-            "agent_config".to_owned(),
-            serde_json::to_value(AgentConfig::DeepResearch {
-                thinking_summaries: Some(ThinkingSummaries::Auto),
-            })?,
-        );
+/// The Deep Research settings: `agent` replaces the model in the request body,
+/// and the run goes on in the background.
+fn deep_research_settings(agent: &str, stream: bool) -> api::RequestSettings {
+    api::RequestSettings {
+        agent: Some(agent.to_owned()),
+        background: Some(true),
+        // The Gemini docs recommend thinking summaries for Deep Research
+        // streams; otherwise a stream may only include final text.
+        agent_config: stream
+            .then(|| json!({"type": "deep-research", "thinking_summaries": "auto"})),
+        ..Default::default()
     }
-
-    Ok(CompletionRequest::new(prompt.into()).additional_params(serde_json::Value::Object(params)))
-}
-
-fn extract_text(contents: &[Content]) -> String {
-    contents
-        .iter()
-        .filter_map(|content| match content {
-            Content::Text(text) => Some(text.text.clone()),
-            _ => None,
-        })
-        .collect::<Vec<_>>()
-        .join("\n")
-}
-
-fn last_model_output_text(steps: &[Step]) -> Option<String> {
-    steps.iter().rev().find_map(|step| match step {
-        Step::ModelOutput { content } => {
-            let text = extract_text(content);
-            (!text.is_empty()).then_some(text)
-        }
-        _ => None,
-    })
 }
 
 fn print_interaction_result(interaction: &Interaction) {
     match interaction.status.as_ref() {
-        Some(InteractionStatus::Completed) => match last_model_output_text(&interaction.steps) {
-            Some(text) => println!("{text}"),
-            None => println!("No text output returned."),
-        },
+        Some(InteractionStatus::Completed) => {
+            let text = interaction.text();
+            if text.is_empty() {
+                println!("No text output returned.");
+            } else {
+                println!("{text}");
+            }
+        }
         Some(status) => println!("Research ended with status: {status:?}"),
         None => println!("Research ended without a status."),
     }
@@ -147,28 +110,18 @@ fn handle_stream_item(state: &mut StreamState, item: Item<StreamEvent>) {
 }
 
 /// The finished stream's response carries the interaction id rig normalizes
-/// and, under `interaction` in its `raw`, Gemini's own document for the
-/// finished run.
+/// and, as its `raw`, Gemini's own document for the finished run.
 fn finish_research(state: &mut StreamState, response: rig::completion::CompletionResponse) {
     if let Some(response_id) = response.response_id.as_deref() {
         state.interaction_id = Some(response_id.to_owned());
     }
-    state.interaction = response
-        .raw
-        .get("interaction")
-        .cloned()
-        .and_then(|interaction| serde_json::from_value(interaction).ok());
+    state.interaction = serde_json::from_value(response.raw).ok();
 
     println!("\nResearch complete.");
-    if !state.saw_text {
-        match state
-            .interaction
-            .as_ref()
-            .and_then(|interaction| last_model_output_text(&interaction.steps))
-        {
-            Some(text) => println!("{text}"),
-            None => println!("No text output returned."),
-        }
+    if !state.saw_text
+        && let Some(interaction) = &state.interaction
+    {
+        print_interaction_result(interaction);
     }
     state.is_complete = true;
 }
@@ -183,9 +136,11 @@ async fn main() -> Result<()> {
     let agent = deep_research_agent();
     let gemini = Gemini::from_env()?;
 
-    let request = deep_research_request(agent.clone(), DEFAULT_PROMPT, use_streaming)?;
+    let request = CompletionRequest::new(DEFAULT_PROMPT);
     // The wire that opens an interaction, built once for either surface.
-    let interactions = gemini.interactions(agent.as_str());
+    let interactions = gemini
+        .interactions(agent.as_str())
+        .settings(deep_research_settings(&agent, use_streaming));
 
     if use_streaming {
         println!("== Deep Research (streaming) ==");

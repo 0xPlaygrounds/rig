@@ -12,10 +12,7 @@ use rig::agent::{
 use rig::message::ToolResultContent;
 use rig::message::{AssistantContent, Reasoning};
 use rig::prelude::*;
-use rig::providers::gemini::{
-    Gemini,
-    completion::gemini_api_types::{AdditionalParameters, GenerationConfig, ThinkingConfig},
-};
+use rig::providers::gemini::{Gemini, api};
 use rig::streaming::Item;
 use rig::streaming::{StreamEvent, StreamedUserContent};
 use rig::tool::Tool;
@@ -26,7 +23,7 @@ use std::env;
 use std::sync::{Arc, Mutex};
 
 const GEMINI_CANARY_MODEL: &str = "gemini-3.1-pro-preview";
-const THINKING_BUDGET: u32 = 1024 * 16;
+const THINKING_BUDGET: i32 = 1024 * 16;
 const CANARY_MAX_TURNS: usize = 8;
 const DEFAULT_CANARY_ATTEMPTS: usize = 2;
 const CANARY_ATTEMPTS_ENV: &str = "RIG_GEMINI_DEFAULT_API_CANARY_ATTEMPTS";
@@ -210,20 +207,18 @@ impl WorkspaceStreamObservation {
     }
 }
 
-fn gemini_canary_additional_params() -> Result<serde_json::Value, serde_json::Error> {
-    let additional_params = AdditionalParameters {
-        generation_config: Some(GenerationConfig {
-            thinking_config: Some(ThinkingConfig {
+fn gemini_canary_settings() -> api::RequestSettings {
+    api::RequestSettings {
+        generation_config: api::GenerationSettings {
+            thinking_config: Some(api::ThinkingConfig {
                 include_thoughts: Some(true),
                 thinking_budget: Some(THINKING_BUDGET),
-                thinking_level: None,
+                ..Default::default()
             }),
             ..Default::default()
-        }),
-        additional_params: None,
-    };
-
-    serde_json::to_value(&additional_params)
+        },
+        ..Default::default()
+    }
 }
 
 async fn consume_workspace_like_stream(
@@ -341,14 +336,17 @@ async fn run_workspace_canary_attempt(
 ) -> Result<WorkspaceStreamObservation, String> {
     let client = Gemini::from_env().map_err(|error| error.to_string())?;
     let agent_name = format!("workspace-default-api-canary-{attempt}");
-    let agent = AgentBuilder::new(client.completion(GEMINI_CANARY_MODEL))
-        .name(&agent_name)
-        .preamble(WORKSPACE_STYLE_PREAMBLE)
-        .additional_params(gemini_canary_additional_params().map_err(|error| error.to_string())?)
-        .tool(JavaScript)
-        .default_max_turns(CANARY_MAX_TURNS)
-        .temperature(0.0)
-        .build();
+    let agent = AgentBuilder::new(
+        client
+            .completion(GEMINI_CANARY_MODEL)
+            .settings(gemini_canary_settings()),
+    )
+    .name(&agent_name)
+    .preamble(WORKSPACE_STYLE_PREAMBLE)
+    .tool(JavaScript)
+    .default_max_turns(CANARY_MAX_TURNS)
+    .temperature(0.0)
+    .build();
     let repair_hook = DefaultApiRepairHook::default();
 
     let stream = agent

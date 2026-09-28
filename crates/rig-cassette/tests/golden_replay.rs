@@ -30,7 +30,7 @@
 //! | `anthropic_memory_conversation` | `tests/providers/anthropic/cassette/agent.rs` `memory_conversation_effect_log_is_the_golden_fixture` |
 //! | `anthropic_streaming_with_events` | `tests/providers/anthropic/cassette/streaming_tools.rs` `streaming_tools_effect_log_is_the_golden_fixture` |
 //! | `anthropic_concurrent_tools_serial` | `tests/providers/anthropic/cassette/streaming_tools.rs` `concurrent_tools_serial_effect_log_is_the_golden_fixture` |
-//! | `gemini_tool_call_turns` | `tests/providers/gemini/cassette/hook_stress.rs` `tool_call_turns_effect_log_is_the_golden_fixture` |
+//! | `gemini_tool_call_turns` | `tests/providers/gemini/cassette/corpus_serving.rs` `tool_call_turns_effect_log_is_the_golden_fixture` |
 //! | `mock_invalid_tool_call_recovery` | `tests/core/golden_recovery.rs` `invalid_tool_call_recovery_effect_log_is_the_golden_fixture` |
 //! | `anthropic_tool_call_turn` | `tests/providers/anthropic/cassette/effect_corpus.rs` `tool_call_turn_effect_log_is_the_golden_fixture` |
 //! | `anthropic_cancelled_stream` | `tests/providers/anthropic/cassette/effect_corpus.rs` `cancelled_stream_effect_log_is_the_golden_fixture` |

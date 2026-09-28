@@ -105,13 +105,9 @@ impl GeminiGrpc {
         Model::new(GenerateContent::new(model), self.clone())
     }
 
-    /// The embedding model for `model`, `dims` wide when set.
-    pub fn embedding(
-        &self,
-        model: impl Into<String>,
-        dims: Option<usize>,
-    ) -> Model<Embeddings, Self> {
-        Model::new(Embeddings::new(model, dims), self.clone())
+    /// The embedding model for `model`, `ndims` wide.
+    pub fn embedding(&self, model: impl Into<String>, ndims: usize) -> Model<Embeddings, Self> {
+        Model::new(Embeddings::new(model, ndims), self.clone())
     }
 
     /// Create a new Google Gemini gRPC client from the `GEMINI_API_KEY` environment variable.

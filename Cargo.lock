@@ -4909,6 +4909,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "gemini_frozen_api"
+version = "0.42.0"
+dependencies = [
+ "base64 0.22.1",
+ "futures",
+ "rig",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "gemini_nanobanana_image_generation"
 version = "0.42.0"
 dependencies = [

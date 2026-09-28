@@ -2,14 +2,6 @@
   "header": {
     "deliveries": [
       {
-        "batch": 6,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
         "batch": 7,
         "id": 0,
         "kind": {
@@ -18,11 +10,11 @@
         }
       },
       {
-        "batch": 9,
+        "batch": 8,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -34,7 +26,15 @@
         }
       },
       {
-        "batch": 16,
+        "batch": 11,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 19,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -42,7 +42,7 @@
         }
       },
       {
-        "batch": 17,
+        "batch": 19,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -71,7 +71,7 @@
         "required": {
           "golden/model:default": "completion"
         },
-        "policy": 17966294319988093956
+        "policy": 1048347559488473673
       }
     }
   },
@@ -104,14 +104,7 @@
           "temperature": 0.0,
           "max_tokens": 4096,
           "tool_choice": null,
-          "additional_params": {
-            "generationConfig": {
-              "thinkingConfig": {
-                "includeThoughts": true,
-                "thinkingBudget": 128
-              }
-            }
-          },
+          "additional_params": null,
           "output_schema": null
         },
         "stream": true
@@ -128,7 +121,7 @@
                 {
                   "type": "text",
                   "content": {
-                    "text": "**Defining Rust's Core**\n\nI've been drilling down on Rust. Right now, I am trying to define Rust. It's a systems programming language. I need to explain the concept concisely, in one or two sentences.\n\n\n"
+                    "text": "**Defining Rust's Core**\n\nI'm now focusing on defining the essence of Rust. I see it as a systems programming language, which, I hope is a concise answer. I'm exploring its key features.\n\n\n"
                   }
                 }
               ]
@@ -140,40 +133,40 @@
             {
               "type": "text",
               "text": "",
-              "additional_params": {
-                "gemini": {
-                  "thoughtSignature": "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"
-                }
+              "signature": {
+                "issuer": "gcp.gemini",
+                "signature": "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"
               }
             }
           ],
           "usage": {
-            "input_tokens": 29,
-            "output_tokens": 53,
-            "total_tokens": 334,
+            "input_tokens": 28,
+            "output_tokens": 305,
+            "total_tokens": 333,
             "reasoning_tokens": 252
           },
           "message_id": null,
-          "response_id": "1K-yasWvFpnUz7IPnMSvGA",
+          "response_id": "cem6asPOArnUz7IPl7fw8Q0",
           "finish_reason": "stop",
           "provider": "gcp.gemini",
           "model": "gemini-3-flash-preview",
           "raw": {
-            "usage_metadata": {
-              "promptTokenCount": 29,
+            "usageMetadata": {
               "candidatesTokenCount": 53,
-              "totalTokenCount": 334,
-              "thoughtsTokenCount": 252,
+              "promptTokenCount": 28,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
-                  "tokenCount": 29
+                  "tokenCount": 28
                 }
-              ]
+              ],
+              "serviceTier": "standard",
+              "thoughtsTokenCount": 252,
+              "totalTokenCount": 333
             },
-            "finish_reason": "STOP",
-            "model_version": "gemini-3-flash-preview",
-            "response_id": "1K-yasWvFpnUz7IPnMSvGA"
+            "finishReason": "STOP",
+            "modelVersion": "gemini-3-flash-preview",
+            "responseId": "cem6asPOArnUz7IPl7fw8Q0"
           }
         }
       },
@@ -191,7 +184,7 @@
           "value": {
             "event": "reasoning",
             "part": 0,
-            "text": "**Defining Rust's Core**\n\nI've been drilling down on Rust. Right now, I am trying to define Rust. It's a systems programming language. I need to explain the concept concisely, in one or two sentences.\n\n\n"
+            "text": "**Defining Rust's Core**\n\nI'm now focusing on defining the essence of Rust. I see it as a systems programming language, which, I hope is a concise answer. I'm exploring its key features.\n\n\n"
           }
         },
         {
@@ -253,10 +246,9 @@
             "content": {
               "type": "text",
               "text": "",
-              "additional_params": {
-                "gemini": {
-                  "thoughtSignature": "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"
-                }
+              "signature": {
+                "issuer": "gcp.gemini",
+                "signature": "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"
               }
             }
           }
@@ -274,7 +266,7 @@
                 {
                   "type": "text",
                   "content": {
-                    "text": "**Defining Rust's Core**\n\nI've been drilling down on Rust. Right now, I am trying to define Rust. It's a systems programming language. I need to explain the concept concisely, in one or two sentences.\n\n\n"
+                    "text": "**Defining Rust's Core**\n\nI'm now focusing on defining the essence of Rust. I see it as a systems programming language, which, I hope is a concise answer. I'm exploring its key features.\n\n\n"
                   }
                 }
               ]

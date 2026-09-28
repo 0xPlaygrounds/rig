@@ -1541,6 +1541,7 @@ fn assert_reasoning_tool_reasoning(
             }
             AssistantContent::Text(text) => format!("text:{}", text.text),
             AssistantContent::Image(_) => "image".to_string(),
+            AssistantContent::Native(_) => "native".to_string(),
         })
         .collect();
     let expected = vec![
@@ -2204,9 +2205,8 @@ pub mod fixtures {
         fn driver() -> WireDriver {
             byte_driver("gemini", |transport| {
                 crate::driver::Model::new(
-                    crate::providers::gemini::GeminiConfig::new("test-key").completion(
-                        crate::providers::gemini::completion::GEMINI_2_5_PRO_PREVIEW_06_05,
-                    ),
+                    crate::providers::gemini::GeminiConfig::new("test-key")
+                        .completion(crate::providers::gemini::GEMINI_3_8_FLASH),
                     transport,
                 )
             })

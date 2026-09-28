@@ -367,6 +367,7 @@ fn openrouter_refuses_a_document_that_is_only_a_file_id() {
         let mut request = prompt("read this");
         request.chat_history = crate::NonEmpty::new(Message::User {
             content: crate::NonEmpty::new(UserContent::Document(Document {
+                detail: None,
                 data: DocumentSourceKind::FileId("file-abc".to_owned()),
                 media_type: None,
                 additional_params: None,
@@ -955,6 +956,7 @@ fn the_mistral_body_rebuilds_content_as_its_own_chunks() {
     let refused = encode(vec![
         UserContent::text("watch"),
         UserContent::Video(crate::message::Video {
+            detail: None,
             data: crate::message::DocumentSourceKind::Url("https://x.invalid/a.mp4".to_owned()),
             media_type: None,
             additional_params: None,
@@ -969,6 +971,7 @@ fn the_mistral_body_rebuilds_content_as_its_own_chunks() {
     // A document with inline bytes becomes `document_url`, carrying its name
     // in Mistral's own optional field.
     let body = encode(vec![UserContent::Document(Document {
+        detail: None,
         data: crate::message::DocumentSourceKind::Base64("ZGF0YQ==".to_owned()),
         media_type: Some(DocumentMediaType::PDF),
         additional_params: None,

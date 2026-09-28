@@ -150,7 +150,7 @@
               "type": "toolcall",
               "id": {
                 "provider": {
-                  "call_id": "call_235426"
+                  "call_id": "call_327083"
                 }
               },
               "function": {
@@ -160,17 +160,20 @@
                   "y": 25
                 }
               },
-              "signature": "EnEKbwFpFH0T90nYSa/hufiIwzSOZqSWkmamuoVzIOXOJOU0XxGBH2jDcmwfKFO78jjuANei/mMERHc+l1TaTpUtgpdy1JA6xacya7cTPVUf2cjhKP8NgzjQobJ6QoQg//78E5uFQD9HoyGc71B3/EkFnQ==",
+              "signature": {
+                "issuer": "gcp.gemini",
+                "signature": "EnMKcQFpFH0Tfe2YvFhvvUgsgcZD1ZUsmy0+Nb3PXGYm/pcvJdN3HHG1u0V1z+JCvxN4VyWJhUTvdPvO7caVXJh03VZzswyl/6xSw8qbSkjT7Z0QCq0COsR8Vr9mbBmJ0PqOY+zxL4NTRzqZqyGgBKxxzbfm"
+              },
               "additional_params": null
             }
           ],
           "usage": {
-            "input_tokens": 120,
+            "input_tokens": 119,
             "output_tokens": 18,
-            "total_tokens": 138
+            "total_tokens": 137
           },
           "message_id": null,
-          "response_id": "y62yatKaG4Wtz7IP257smQY",
+          "response_id": "Yei6aomVGILrz7IP2JTc6AM",
           "finish_reason": "tool_calls",
           "provider": "gcp.gemini",
           "model": "gemini-3.1-flash-lite",
@@ -185,10 +188,10 @@
                           "x": 17,
                           "y": 25
                         },
-                        "id": "call_235426",
+                        "id": "call_327083",
                         "name": "add"
                       },
-                      "thoughtSignature": "EnEKbwFpFH0T90nYSa/hufiIwzSOZqSWkmamuoVzIOXOJOU0XxGBH2jDcmwfKFO78jjuANei/mMERHc+l1TaTpUtgpdy1JA6xacya7cTPVUf2cjhKP8NgzjQobJ6QoQg//78E5uFQD9HoyGc71B3/EkFnQ=="
+                      "thoughtSignature": "EnMKcQFpFH0Tfe2YvFhvvUgsgcZD1ZUsmy0+Nb3PXGYm/pcvJdN3HHG1u0V1z+JCvxN4VyWJhUTvdPvO7caVXJh03VZzswyl/6xSw8qbSkjT7Z0QCq0COsR8Vr9mbBmJ0PqOY+zxL4NTRzqZqyGgBKxxzbfm"
                     }
                   ],
                   "role": "model"
@@ -199,18 +202,18 @@
               }
             ],
             "modelVersion": "gemini-3.1-flash-lite",
-            "responseId": "y62yatKaG4Wtz7IP257smQY",
+            "responseId": "Yei6aomVGILrz7IP2JTc6AM",
             "usageMetadata": {
               "candidatesTokenCount": 18,
-              "promptTokenCount": 120,
+              "promptTokenCount": 119,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
-                  "tokenCount": 120
+                  "tokenCount": 119
                 }
               ],
               "serviceTier": "standard",
-              "totalTokenCount": 138
+              "totalTokenCount": 137
             }
           }
         }
@@ -272,7 +275,7 @@
                   "type": "toolcall",
                   "id": {
                     "provider": {
-                      "call_id": "call_235426"
+                      "call_id": "call_327083"
                     }
                   },
                   "function": {
@@ -282,7 +285,10 @@
                       "y": 25
                     }
                   },
-                  "signature": "EnEKbwFpFH0T90nYSa/hufiIwzSOZqSWkmamuoVzIOXOJOU0XxGBH2jDcmwfKFO78jjuANei/mMERHc+l1TaTpUtgpdy1JA6xacya7cTPVUf2cjhKP8NgzjQobJ6QoQg//78E5uFQD9HoyGc71B3/EkFnQ==",
+                  "signature": {
+                    "issuer": "gcp.gemini",
+                    "signature": "EnMKcQFpFH0Tfe2YvFhvvUgsgcZD1ZUsmy0+Nb3PXGYm/pcvJdN3HHG1u0V1z+JCvxN4VyWJhUTvdPvO7caVXJh03VZzswyl/6xSw8qbSkjT7Z0QCq0COsR8Vr9mbBmJ0PqOY+zxL4NTRzqZqyGgBKxxzbfm"
+                  },
                   "additional_params": null
                 }
               ]
@@ -294,7 +300,7 @@
                   "type": "toolresult",
                   "call": {
                     "provider": {
-                      "call_id": "call_235426"
+                      "call_id": "call_327083"
                     }
                   },
                   "name": "add",
@@ -347,20 +353,19 @@
             {
               "type": "text",
               "text": "42",
-              "additional_params": {
-                "gemini": {
-                  "thoughtSignature": "EnEKbwFpFH0TFdziIX+maqU88GLX+ycLwGcBisi9mHQ/fyAGYYyd+ama4w7Cs4uqk/n7GewQUddFwzNlIbEZrGw7cHKoFlcSnPzSXPZUTu5dNw3ADrHYHFEE0SGRRUHi5MVupqQIlwFeww0ryDFMlGS1ow=="
-                }
+              "signature": {
+                "issuer": "gcp.gemini",
+                "signature": "EnMKcQFpFH0TNlkTxHEImsh04J1WC2+IB7c9J7xasQE1iK45/l/4261kON0dPLGcfcizrtR4A/zQQvmMqng1Nq8PbCJMecCTOi0RZyUerbW8Ick8flk9RO+61D4Bmb7jYxIjmz0rX+wVt7c+75S+970s25Ev"
               }
             }
           ],
           "usage": {
-            "input_tokens": 149,
+            "input_tokens": 148,
             "output_tokens": 2,
-            "total_tokens": 151
+            "total_tokens": 150
           },
           "message_id": null,
-          "response_id": "zK2yar_8IqfOz7IPm4z6IA",
+          "response_id": "Yei6apTEO8zzz7IPlPPa8Qk",
           "finish_reason": "stop",
           "provider": "gcp.gemini",
           "model": "gemini-3.1-flash-lite",
@@ -371,7 +376,7 @@
                   "parts": [
                     {
                       "text": "42",
-                      "thoughtSignature": "EnEKbwFpFH0TFdziIX+maqU88GLX+ycLwGcBisi9mHQ/fyAGYYyd+ama4w7Cs4uqk/n7GewQUddFwzNlIbEZrGw7cHKoFlcSnPzSXPZUTu5dNw3ADrHYHFEE0SGRRUHi5MVupqQIlwFeww0ryDFMlGS1ow=="
+                      "thoughtSignature": "EnMKcQFpFH0TNlkTxHEImsh04J1WC2+IB7c9J7xasQE1iK45/l/4261kON0dPLGcfcizrtR4A/zQQvmMqng1Nq8PbCJMecCTOi0RZyUerbW8Ick8flk9RO+61D4Bmb7jYxIjmz0rX+wVt7c+75S+970s25Ev"
                     }
                   ],
                   "role": "model"
@@ -381,18 +386,18 @@
               }
             ],
             "modelVersion": "gemini-3.1-flash-lite",
-            "responseId": "zK2yar_8IqfOz7IPm4z6IA",
+            "responseId": "Yei6apTEO8zzz7IPlPPa8Qk",
             "usageMetadata": {
               "candidatesTokenCount": 2,
-              "promptTokenCount": 149,
+              "promptTokenCount": 148,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
-                  "tokenCount": 149
+                  "tokenCount": 148
                 }
               ],
               "serviceTier": "standard",
-              "totalTokenCount": 151
+              "totalTokenCount": 150
             }
           }
         }

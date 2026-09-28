@@ -1665,6 +1665,7 @@ fn compatible_response_decodes_reasoning_content_beside_text() {
 #[test]
 fn pdf_base64_document_serializes_as_file_content_part() {
     let doc = message::UserContent::Document(message::Document {
+        detail: None,
         data: DocumentSourceKind::Base64("JVBERi0xLjQK".into()),
         media_type: Some(message::DocumentMediaType::PDF),
         additional_params: None,
@@ -1684,6 +1685,7 @@ fn pdf_base64_document_serializes_as_file_content_part() {
 #[test]
 fn file_id_document_serializes_as_file_content_part() {
     let doc = message::UserContent::Document(message::Document {
+        detail: None,
         data: DocumentSourceKind::FileId("file_abc".into()),
         media_type: None,
         additional_params: None,
@@ -1710,7 +1712,7 @@ fn base64_image_without_detail_defaults_to_auto() {
     };
 
     assert_eq!(image_url.url, "data:image/png;base64,iVBORw0KGgo=");
-    assert_eq!(image_url.detail, Some(ImageDetail::Auto));
+    assert_eq!(image_url.detail, Some(crate::message::MediaDetail::Auto));
 }
 
 // Regression guard: callers passing markdown/plain text wrapped in
@@ -1718,6 +1720,7 @@ fn base64_image_without_detail_defaults_to_auto() {
 #[test]
 fn non_pdf_document_still_serializes_as_text() {
     let doc = message::UserContent::Document(message::Document {
+        detail: None,
         data: DocumentSourceKind::String("# Markdown".into()),
         media_type: None,
         additional_params: None,
@@ -1732,6 +1735,7 @@ fn non_pdf_document_still_serializes_as_text() {
 #[test]
 fn pdf_url_document_returns_conversion_error() {
     let doc = message::UserContent::Document(message::Document {
+        detail: None,
         data: DocumentSourceKind::Url("https://example.com/x.pdf".into()),
         media_type: Some(message::DocumentMediaType::PDF),
         additional_params: None,
@@ -1746,6 +1750,7 @@ fn pdf_url_document_returns_conversion_error() {
 #[test]
 fn pdf_raw_document_returns_conversion_error() {
     let doc = message::UserContent::Document(message::Document {
+        detail: None,
         data: DocumentSourceKind::Raw(b"%PDF-1.4\n".to_vec()),
         media_type: Some(message::DocumentMediaType::PDF),
         additional_params: None,
@@ -1775,6 +1780,7 @@ fn file_user_content_deserializes_from_wire_json() {
 #[test]
 fn document_file_id_serializes_as_a_file_part() {
     let doc = message::Document {
+        detail: None,
         data: DocumentSourceKind::FileId("file_abc".to_string()),
         media_type: None,
         additional_params: None,
@@ -1798,6 +1804,7 @@ fn mixed_text_and_pdf_user_message_produces_two_content_parts() {
         content: crate::NonEmpty::with_rest(
             message::UserContent::text("What is in this PDF?"),
             [message::UserContent::Document(message::Document {
+                detail: None,
                 data: DocumentSourceKind::Base64("JVBERi0K".into()),
                 media_type: Some(message::DocumentMediaType::PDF),
                 additional_params: None,

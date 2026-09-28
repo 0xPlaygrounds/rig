@@ -135,6 +135,7 @@ where
 
 fn file_id_document(file_id: &str) -> Document {
     Document {
+        detail: None,
         data: DocumentSourceKind::file_id(file_id),
         media_type: Some(DocumentMediaType::PDF),
         additional_params: None,
@@ -145,6 +146,7 @@ fn file_id_document(file_id: &str) -> Document {
 /// the shape a file reference ingested from Anthropic's own wire has.
 fn provider_file_content_as_generic_document(file_id: &str) -> RigUserContent {
     RigUserContent::Document(Document {
+        detail: None,
         data: DocumentSourceKind::file_id(file_id),
         media_type: None,
         additional_params: None,

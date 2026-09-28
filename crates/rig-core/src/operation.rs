@@ -19,6 +19,7 @@ use crate::wire::{Fold, Operation, Reply};
 
 mod cached_content;
 pub(crate) mod completion;
+mod gemini;
 mod listing;
 mod modality;
 mod verify;
@@ -27,6 +28,7 @@ pub use cached_content::{CachedContentFold, ContextCache};
 pub use completion::{
     CallFragment, CallPart, Completion, Finish, IfMalformed, ReasoningPart, Seal, TextPart, Turn,
 };
+pub use gemini::{BatchJobs, FileStore, TokenCount};
 pub use listing::{ModelListing, ModelPage};
 #[cfg(feature = "audio")]
 pub use modality::AudioGeneration;

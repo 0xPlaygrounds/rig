@@ -157,12 +157,12 @@
             }
           ],
           "usage": {
-            "input_tokens": 144,
+            "input_tokens": 151,
             "output_tokens": 45,
-            "total_tokens": 189
+            "total_tokens": 196
           },
           "message_id": null,
-          "response_id": "n3izaqH-JeSi6dkPv4mNmQk",
+          "response_id": "hei6avTCL8uiqtsP8JOYiQk",
           "finish_reason": "tool_calls",
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash-lite",
@@ -204,18 +204,18 @@
               }
             ],
             "modelVersion": "gemini-2.5-flash-lite",
-            "responseId": "n3izaqH-JeSi6dkPv4mNmQk",
+            "responseId": "hei6avTCL8uiqtsP8JOYiQk",
             "usageMetadata": {
               "candidatesTokenCount": 45,
-              "promptTokenCount": 144,
+              "promptTokenCount": 151,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
-                  "tokenCount": 144
+                  "tokenCount": 151
                 }
               ],
               "serviceTier": "standard",
-              "totalTokenCount": 189
+              "totalTokenCount": 196
             }
           }
         }
@@ -458,12 +458,12 @@
             }
           ],
           "usage": {
-            "input_tokens": 240,
+            "input_tokens": 247,
             "output_tokens": 3,
-            "total_tokens": 243
+            "total_tokens": 250
           },
           "message_id": null,
-          "response_id": "n3izat_IO__jqtsP0Yzr8AY",
+          "response_id": "hui6aqqMDIDpqtsPzt7kuQM",
           "finish_reason": "stop",
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash-lite",
@@ -483,18 +483,18 @@
               }
             ],
             "modelVersion": "gemini-2.5-flash-lite",
-            "responseId": "n3izat_IO__jqtsP0Yzr8AY",
+            "responseId": "hui6aqqMDIDpqtsPzt7kuQM",
             "usageMetadata": {
               "candidatesTokenCount": 3,
-              "promptTokenCount": 240,
+              "promptTokenCount": 247,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
-                  "tokenCount": 240
+                  "tokenCount": 247
                 }
               ],
               "serviceTier": "standard",
-              "totalTokenCount": 243
+              "totalTokenCount": 250
             }
           }
         }
