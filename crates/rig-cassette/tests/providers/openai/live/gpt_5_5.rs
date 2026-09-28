@@ -422,6 +422,7 @@ async fn responses_websocket_smoke() -> anyhow::Result<()> {
     use futures::StreamExt;
     use rig::streaming::{Item, StreamEvent};
 
+    super::websocket::install_tls_provider();
     let client = OpenAiModels::from_env().expect("config should build from env");
     let model = client.responses(openai::GPT_5_5);
     let socket = model.responses_websocket().connect().await?;
