@@ -1,5 +1,5 @@
-//! Server events for the websocket transport spikes: the same shapes the
-//! session tests script.
+//! Server events for the websocket transport tests: the Responses events a
+//! turn carries, and the same frames over HTTP SSE for comparison.
 
 #![allow(dead_code)]
 

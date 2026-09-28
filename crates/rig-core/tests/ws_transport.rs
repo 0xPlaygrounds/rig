@@ -5,8 +5,8 @@
 //! `response.done` filter, the queue, dropped turns, and what a connection
 //! does after a fatal event. None of that involves a socket, so the
 //! transport takes a [`WebSocketConnection`](rig_core::ws_client::WebSocketConnection)
-//! and the script supplies the frames. `ws_transport_conformance` drives a
-//! real socket.
+//! and the script supplies the frames. `streaming_conformance_websocket`
+//! drives a real socket.
 
 #![cfg(feature = "websocket")]
 #![allow(clippy::expect_used, clippy::indexing_slicing, clippy::panic)]
@@ -319,11 +319,13 @@ async fn malformed_event_mid_turn_leaves_its_rest_out_of_the_next_turn() {
         ],
         vec![text_delta("msg_2", "two", 1), completed("resp_2", 2)],
     ]);
-    let model = model(&script);
+    let model = chaining(&script);
     model.call("first").await.expect_err("malformed delta");
     let second = model.call("second").await.expect("second");
     assert_eq!(texts(&second), ["two"]);
     assert_eq!(raw_response(&second).id, "resp_2");
+    // The first turn failed, so its response is not continued.
+    assert!(sent_json(&script, 1).get("previous_response_id").is_none());
 }
 
 #[tokio::test]
@@ -585,8 +587,12 @@ async fn dropped_stream_is_drained_before_the_next_turn() {
     let second = model.call("second").await.expect("second");
     assert_eq!(texts(&second), ["two"]);
     assert_eq!(raw_response(&second).id, "resp_2");
-    // Draining read the dropped turn's end, so the chain continues.
-    assert_eq!(sent_json(&script, 1)["previous_response_id"], "resp_1");
+    // The caller never saw the dropped turn's response: nothing continues it.
+    assert!(
+        sent_json(&script, 1).get("previous_response_id").is_none(),
+        "{}",
+        script.sent()[1]
+    );
 }
 
 #[tokio::test]

@@ -398,8 +398,7 @@ fn a_completed_event_after_no_items_is_lowered_to_its_body() {
 fn content_events_are_frames_for_the_decoder() {
     let mut chain = Chain {
         previous_response_id: Some("resp_before".to_string()),
-        pending_done_response_id: None,
-        streamed: false,
+        ..Chain::default()
     };
     for payload in [
         json!({
@@ -447,30 +446,120 @@ fn content_events_are_frames_for_the_decoder() {
             "{payload}"
         );
     }
-    assert!(matches!(chain.read("not json"), Lifecycle::Frame));
     assert_eq!(chain.previous_response_id.as_deref(), Some("resp_before"));
 }
 
-/// A terminal whose body is missing still ends the turn: the decoder then
-/// reports it as corrupt, and the connection stays in step.
+/// A terminal whose body does not decode still ends the turn: the decoder
+/// then reports it, the connection stays in step, and nothing is chained.
 #[test]
 fn a_malformed_terminal_is_the_last_frame_and_ends_the_chain() {
     let mut chain = Chain {
         previous_response_id: Some("resp_before".to_string()),
-        pending_done_response_id: None,
-        streamed: false,
+        ..Chain::default()
     };
-    let payload = json!({ "type": "response.completed" }).to_string();
-    assert!(matches!(chain.read(&payload), Lifecycle::Last(None)));
+    let payload = json!({ "type": "response.completed", "response": { "id": "resp_bad" } });
+    assert!(matches!(
+        chain.read(&payload.to_string()),
+        Lifecycle::Last(None)
+    ));
     assert_eq!(chain.previous_response_id, None);
+    let bodiless = json!({ "type": "response.completed" }).to_string();
+    assert!(matches!(chain.read(&bodiless), Lifecycle::Last(None)));
+    assert_eq!(chain.previous_response_id, None);
+}
+
+/// Every websocket event names its type; a frame that does not is no part
+/// of a turn and fails it rather than ending it as a whole body.
+#[test]
+fn a_frame_without_a_type_fails_the_turn_and_the_chain() {
+    let mut chain = Chain {
+        previous_response_id: Some("resp_before".to_string()),
+        ..Chain::default()
+    };
+    let body =
+        serde_json::to_value(sample_response(ResponseStatus::Completed)).expect("serializes");
+    assert!(matches!(chain.read(&body.to_string()), Lifecycle::Fail(_)));
+    assert!(matches!(chain.read("not json"), Lifecycle::Fail(_)));
+    assert_eq!(chain.previous_response_id, None);
+}
+
+/// A `response.completed` whose response failed fails the turn, and the
+/// failed response is never chained.
+#[test]
+fn a_completed_event_with_a_failed_response_ends_the_chain() {
+    let mut chain = Chain {
+        previous_response_id: Some("resp_before".to_string()),
+        ..Chain::default()
+    };
+    let payload = json!({
+        "type": "response.completed",
+        "response": serde_json::to_value(sample_response(ResponseStatus::Failed))
+            .expect("serializes"),
+    });
+    assert!(matches!(
+        chain.read(&payload.to_string()),
+        Lifecycle::Fail(_)
+    ));
+    assert_eq!(chain.previous_response_id, None);
+}
+
+/// A `response.done` for a response still in progress ends the turn in
+/// failure, and ends the chain.
+#[test]
+fn a_done_event_still_in_progress_ends_the_chain() {
+    let mut chain = Chain {
+        previous_response_id: Some("resp_before".to_string()),
+        ..Chain::default()
+    };
+    let payload = json!({
+        "type": "response.done",
+        "response": serde_json::to_value(sample_response(ResponseStatus::InProgress))
+            .expect("serializes"),
+    });
+    assert!(matches!(
+        chain.read(&payload.to_string()),
+        Lifecycle::Fail(_)
+    ));
+    assert_eq!(chain.previous_response_id, None);
+}
+
+/// Once a turn has named its response, a `response.done` for another one
+/// belongs to another turn, even after the trailer filter was cleared.
+#[test]
+fn a_done_event_for_another_response_is_not_this_turns_end() {
+    let mut chain = Chain::default();
+    let created = json!({
+        "type": "response.created",
+        "sequence_number": 0,
+        "response": { "id": "resp_2", "status": "in_progress" },
+    });
+    assert!(matches!(chain.read(&created.to_string()), Lifecycle::Frame));
+    let stray = json!({
+        "type": "response.done",
+        "response": serde_json::to_value(sample_response(ResponseStatus::Completed))
+            .expect("serializes"),
+    });
+    assert!(matches!(chain.read(&stray.to_string()), Lifecycle::Skip));
+    let completed = json!({
+        "type": "response.completed",
+        "response": serde_json::to_value(CompletionResponse {
+            id: "resp_2".to_string(),
+            ..sample_response(ResponseStatus::Completed)
+        })
+        .expect("serializes"),
+    });
+    assert!(matches!(
+        chain.read(&completed.to_string()),
+        Lifecycle::Last(_)
+    ));
+    assert_eq!(chain.previous_response_id.as_deref(), Some("resp_2"));
 }
 
 #[test]
 fn a_failed_event_ends_the_turn_and_the_chain() {
     let mut chain = Chain {
         previous_response_id: Some("resp_before".to_string()),
-        pending_done_response_id: None,
-        streamed: false,
+        ..Chain::default()
     };
     let payload = json!({
         "type": "response.failed",

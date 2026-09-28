@@ -13,8 +13,9 @@
 //! | no `struct`/`enum` parameter bounded by `HttpClientExt` or defaulted to `DynHttpClient` | the transport parameter returning |
 //! | no `Transport` impl | a provider owning how its payloads are sent |
 //!
-//! `openai/responses_api/websocket.rs` is exempt because a session spans many
-//! turns over one connection rather than a single exchange. The credential
+//! `openai/responses_api/websocket.rs` is exempt because it holds the websocket
+//! transport beside its wire: a connection spans many turns rather than a
+//! single exchange. The credential
 //! exchanges named in [`CREDENTIAL_EXCHANGES`] are exempt from the `async` rules
 //! only.
 //!
@@ -30,11 +31,11 @@ use quote::ToTokens;
 use syn::visit::{self, Visit};
 use syn::{Expr, File, ImplItemFn, ItemEnum, ItemFn, ItemImpl, ItemStruct};
 
-/// Files holding a session rather than a request/response exchange, currently
-/// only the Responses websocket.
+/// Files holding a connection that spans turns rather than a request/response
+/// exchange, currently only the Responses websocket.
 ///
-/// A session is exempt from the transport rule as well as the `async` ones
-/// because it owns the socket it runs over.
+/// Such a file is exempt from the transport rule as well as the `async` ones
+/// because it owns the socket its transport runs over.
 const SESSION_EXCEPTIONS: &[&str] = &["openai/responses_api/websocket.rs"];
 
 /// Files performing credential exchanges, which poll device flows, refresh

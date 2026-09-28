@@ -204,10 +204,17 @@ const DEFAULT_DRAIN_TIMEOUT: Duration = Duration::from_secs(30);
 /// One WebSocket-mode connection as a [`Transport`] for [`ResponsesSocket`].
 ///
 /// Clones share the connection, which carries one turn at a time: a turn
-/// sent while another is in flight waits for it. A turn whose stream was
-/// dropped before its end is read to its end, within the drain timeout,
-/// before the next turn is sent. A timeout, a transport failure or the peer
-/// closing fails the connection, and later turns fail.
+/// sent while another is in flight waits for it, in no guaranteed order, so
+/// a chaining caller awaits each turn before sending the next. A stream
+/// holds the connection until its turn ends; the task holding a half-read
+/// stream must not await another turn, [`Self::close`],
+/// [`Self::last_response_id`] or [`Self::clear_chain`] before it is read or
+/// dropped.
+///
+/// A turn whose stream was dropped before its end is read to its end, within
+/// the drain timeout, before the next turn is sent; past it the connection
+/// fails. A timeout, a transport failure or the peer closing also fails the
+/// connection, and later turns fail: there is no reconnect.
 #[derive(Clone)]
 pub struct ResponsesWebSocket {
     session: Arc<futures::lock::Mutex<Session>>,
@@ -240,7 +247,9 @@ struct Session {
 
 impl ResponsesWebSocket {
     /// A transport over an open, authenticated connection, with no event
-    /// timeout, the default drain timeout, and no chaining.
+    /// timeout, the default drain timeout, and no chaining. Its credentials
+    /// never passed through rig, so observations cannot scrub them; the
+    /// builder's `connect_with` does.
     pub fn from_connection(connection: BoxedWebSocketConnection) -> Self {
         Self {
             session: Arc::new(futures::lock::Mutex::new(Session {
@@ -272,7 +281,8 @@ impl ResponsesWebSocket {
     }
 
     /// Fail the connection when reading a dropped turn to its end takes
-    /// longer than `timeout`.
+    /// longer than `timeout`. A dropped turn that outlives it, such as long
+    /// reasoning, costs the connection.
     pub fn drain_timeout(mut self, timeout: Duration) -> Self {
         self.drain_timeout = timeout;
         self
@@ -321,6 +331,7 @@ impl Transport<ResponsesSocket> for ResponsesWebSocket {
         let timeouts = (self.event_timeout, self.drain_timeout);
         let chaining = self.chaining;
         let observation = exchange.observation;
+        let route = payload.route;
         Opening::new(async move {
             // Turns queue here: the connection carries one at a time.
             let mut session = session.lock_owned().await;
@@ -347,7 +358,8 @@ impl Transport<ResponsesSocket> for ResponsesWebSocket {
                     Opened::new(turn(session, timeouts.0, slot.clone()))
                 }
                 Err(error) => Opened::failed(error),
-            };
+            }
+            .with_route(route);
             opened.slot = slot;
             Ok(opened)
         })
@@ -424,7 +436,10 @@ impl Session {
         (event_timeout, drain_timeout): (Option<Duration>, Duration),
         slot: Option<&AdapterSlot>,
     ) -> Result<(), ProviderError> {
-        self.ensure_open()?;
+        if let Err(error) = self.ensure_open() {
+            transport_failed(slot);
+            return Err(error);
+        }
         if self.dirty {
             self.drain(event_timeout, drain_timeout, slot).await?;
         }
@@ -432,11 +447,16 @@ impl Session {
         if chaining && chained.is_none() {
             chained.clone_from(&self.chain.previous_response_id);
         }
+        crate::providers::internal::trace_json(
+            crate::providers::internal::LogTarget::Completions,
+            "OpenAI websocket request",
+            &payload,
+        );
         let text = serde_json::to_string(&payload)?;
         // Set before the write: a write cut off midway may still have
         // reached the provider, whose reply must not reach the next turn.
         self.dirty = true;
-        self.chain.streamed = false;
+        self.chain.end_turn();
         if let Err(error) = self.socket.send(Frame::Text(text)).await {
             self.mark_failed();
             transport_failed(slot);
@@ -464,6 +484,9 @@ impl Session {
         match drained {
             Ok(Ok(())) => {
                 self.dirty = false;
+                // The caller never saw the dropped turn's response, so a
+                // chained turn must not continue it.
+                self.chain.previous_response_id = None;
                 Ok(())
             }
             Ok(Err(error)) => Err(error),
@@ -551,11 +574,13 @@ enum Lifecycle {
 }
 
 /// The response chain across turns, the trailing `response.done` to skip,
-/// and whether the turn in flight has streamed any output item.
+/// and what the turn in flight has shown: its response and whether it
+/// streamed any output item.
 #[derive(Debug, Default)]
 struct Chain {
     previous_response_id: Option<String>,
     pending_done_response_id: Option<String>,
+    current_response_id: Option<String>,
     streamed: bool,
 }
 
@@ -585,69 +610,99 @@ impl Probe {
 
 impl Chain {
     /// Read one server event by its type: update the chain and say what the
-    /// event is for the turn. Content is left to the decoder.
+    /// event is for the turn. Content is left to the decoder. Only a turn
+    /// that ended in a response the transport could read continues the
+    /// chain; any failure ends it.
     fn read(&mut self, text: &str) -> Lifecycle {
         let lifecycle = self.lifecycle(text);
-        if !matches!(lifecycle, Lifecycle::Frame | Lifecycle::Skip) {
-            self.streamed = false;
+        match lifecycle {
+            Lifecycle::Frame | Lifecycle::Skip => {}
+            Lifecycle::Last(_) => self.end_turn(),
+            Lifecycle::Fail(_) => {
+                self.previous_response_id = None;
+                self.end_turn();
+            }
         }
         lifecycle
     }
 
+    /// Forget what the turn in flight streamed and which response it is.
+    fn end_turn(&mut self) {
+        self.streamed = false;
+        self.current_response_id = None;
+    }
+
     fn lifecycle(&mut self, text: &str) -> Lifecycle {
-        let Ok(probe) = serde_json::from_str::<Probe>(text) else {
-            return Lifecycle::Frame;
+        let probe = match serde_json::from_str::<Probe>(text) {
+            Ok(probe) => probe,
+            // Every websocket event names its type: anything else is not
+            // part of a turn, and must not end one as a whole body.
+            Err(error) => return Lifecycle::Fail(error.into()),
         };
         match probe.kind.as_str() {
+            "response.created" | "response.queued" | "response.in_progress" => {
+                if let Some(id) = probe.response_id() {
+                    self.current_response_id = Some(id);
+                }
+                Lifecycle::Frame
+            }
             "response.completed" | "response.incomplete" => {
-                self.previous_response_id = probe.response_id();
                 self.pending_done_response_id = probe.response_id();
                 match probe.status() {
-                    Some("completed" | "incomplete") | None if self.streamed => {
-                        Lifecycle::Last(None)
+                    Some("completed" | "incomplete") | None => {
+                        match probe
+                            .response
+                            .map(serde_json::from_value::<CompletionResponse>)
+                        {
+                            Some(Ok(response)) => {
+                                self.previous_response_id =
+                                    Some(response.id.clone()).filter(|id| !id.is_empty());
+                                if self.streamed {
+                                    return Lifecycle::Last(None);
+                                }
+                                // A turn that streamed no item states its
+                                // output only in the terminal body: the
+                                // decoder reads that body whole.
+                                match serde_json::to_string(&response) {
+                                    Ok(body) => Lifecycle::Last(Some(body)),
+                                    Err(error) => Lifecycle::Fail(error.into()),
+                                }
+                            }
+                            // A body that does not decode reaches the decoder
+                            // as it arrived, which reports it; there is no
+                            // response to continue.
+                            Some(Err(_)) | None => {
+                                self.previous_response_id = None;
+                                Lifecycle::Last(None)
+                            }
+                        }
                     }
-                    // A turn that streamed no item states its output only in
-                    // the terminal body: the decoder reads that body whole.
-                    Some("completed" | "incomplete") | None => match probe
-                        .response
-                        .map(serde_json::from_value::<CompletionResponse>)
-                    {
-                        Some(Ok(response)) => match serde_json::to_string(&response) {
-                            Ok(body) => Lifecycle::Last(Some(body)),
-                            Err(error) => Lifecycle::Fail(error.into()),
-                        },
-                        // A body that does not decode reaches the decoder
-                        // as it arrived, which reports it.
-                        Some(Err(_)) | None => Lifecycle::Last(None),
-                    },
                     Some(_) => Lifecycle::Fail(terminal_failure(&probe)),
                 }
             }
             "response.failed" => {
-                self.previous_response_id = None;
                 self.pending_done_response_id = probe.response_id();
                 Lifecycle::Fail(terminal_failure(&probe))
             }
-            "error" => {
-                self.previous_response_id = None;
-                self.pending_done_response_id = None;
-                match serde_json::from_str::<ResponsesWebSocketErrorEvent>(text) {
-                    Ok(error) => Lifecycle::Fail(provider_error_from_event(&error)),
-                    Err(error) => Lifecycle::Fail(error.into()),
-                }
-            }
+            "error" => match serde_json::from_str::<ResponsesWebSocketErrorEvent>(text) {
+                Ok(error) => Lifecycle::Fail(provider_error_from_event(&error)),
+                Err(error) => Lifecycle::Fail(error.into()),
+            },
             "response.done" => {
                 let id = probe.response_id();
                 if id.is_some() && self.pending_done_response_id == id {
                     self.pending_done_response_id = None;
                     return Lifecycle::Skip;
                 }
-                self.pending_done_response_id = None;
-                match probe.status() {
-                    Some("completed" | "incomplete") => self.previous_response_id = id,
-                    Some("in_progress" | "queued") | None => {}
-                    Some(_) => self.previous_response_id = None,
+                // A `response.done` for a response other than the one this
+                // turn opened belongs to another turn.
+                if id.is_some()
+                    && self.current_response_id.is_some()
+                    && self.current_response_id != id
+                {
+                    return Lifecycle::Skip;
                 }
+                self.pending_done_response_id = None;
                 let body = probe
                     .response
                     .clone()
@@ -657,6 +712,8 @@ impl Chain {
                 // would; otherwise the decoder reads it whole.
                 match body.map(terminal_response_result) {
                     Some(Ok(response)) => {
+                        self.previous_response_id =
+                            Some(response.id.clone()).filter(|id| !id.is_empty());
                         let lowered = if self.streamed {
                             let kind = match response.status {
                                 ResponseStatus::Incomplete => ResponseChunkKind::ResponseIncomplete,
@@ -684,10 +741,12 @@ impl Chain {
                 }
             }
             _ => {
-                if matches!(
-                    classify_responses_frame(text),
-                    WireEvent::Known(StreamingCompletionChunk::Delta(_))
-                ) {
+                if !self.streamed
+                    && matches!(
+                        classify_responses_frame(text),
+                        WireEvent::Known(StreamingCompletionChunk::Delta(_))
+                    )
+                {
                     self.streamed = true;
                 }
                 Lifecycle::Frame
