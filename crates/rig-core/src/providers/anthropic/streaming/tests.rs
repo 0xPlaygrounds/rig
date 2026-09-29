@@ -1246,6 +1246,57 @@ fn per_ttl_cache_creation_split_carries_from_message_start_to_terminal() {
     assert_eq!(native.usage.cache_creation_input_tokens, Some(9702));
 }
 
+/// A terminal `message_delta` carrying only the output count (Anthropic's
+/// older shape, and Messages gateways) keeps `message_start`'s cache
+/// counters, so input still counts the cached prefix: 10 uncached, 6 read
+/// and 4 written.
+#[test]
+fn cache_usage_from_message_start_survives_output_only_terminal_delta() {
+    let decoded = decode([
+        classified(
+            r#"{"type":"message_start","message":{"id":"msg_1","role":"assistant","content":[],"model":"claude-sonnet-4-6","stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":10,"output_tokens":0,"cache_creation_input_tokens":4,"cache_read_input_tokens":6,"cache_creation":{"ephemeral_1h_input_tokens":3,"ephemeral_5m_input_tokens":1}}}}"#,
+        ),
+        classified(
+            r#"{"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"output_tokens":3}}"#,
+        ),
+    ]);
+    let response = decoded.outcome.expect("the message_delta ends the reply");
+    assert_eq!(response.usage.input_tokens, Some(10 + 6 + 4));
+    assert_eq!(response.usage.cache_creation_input_tokens, Some(4));
+    assert_eq!(response.usage.cached_input_tokens, Some(6));
+    assert_eq!(response.usage.output_tokens, Some(3));
+    assert_eq!(response.usage.total_tokens, Some(23));
+    let native: StreamingCompletionResponse =
+        serde_json::from_value(response.raw).expect("raw must be the native terminal");
+    assert_eq!(native.usage.cache_creation_input_tokens, Some(4));
+    assert_eq!(native.usage.cache_read_input_tokens, Some(6));
+    assert_eq!(
+        native
+            .usage
+            .cache_creation
+            .map(|cache| cache.ephemeral_1h_input_tokens),
+        Some(3)
+    );
+}
+
+/// An explicit terminal zero is authoritative over `message_start`'s counts.
+#[test]
+fn terminal_cache_usage_zero_overrides_message_start() {
+    let decoded = decode([
+        classified(
+            r#"{"type":"message_start","message":{"id":"msg_1","role":"assistant","content":[],"model":"claude-sonnet-4-6","stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":10,"output_tokens":0,"cache_creation_input_tokens":4,"cache_read_input_tokens":6}}}"#,
+        ),
+        classified(
+            r#"{"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"output_tokens":3,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}}"#,
+        ),
+    ]);
+    let response = decoded.outcome.expect("the message_delta ends the reply");
+    assert_eq!(response.usage.cache_creation_input_tokens, Some(0));
+    assert_eq!(response.usage.cached_input_tokens, Some(0));
+    assert_eq!(response.usage.input_tokens, Some(10));
+    assert_eq!(response.usage.total_tokens, Some(13));
+}
+
 /// A `content_block_delta` whose `delta` omits `type` is malformed, not
 /// novel: silently skipping it would turn a compat gateway's untagged
 /// text delta into a successful *empty* completion. It classifies
@@ -1343,40 +1394,6 @@ fn terminal_record_normalizes_stop_reason_usage_and_metadata() {
     assert_eq!(response.usage.output_tokens, Some(5));
     assert_eq!(response.usage.cached_input_tokens, Some(2));
     assert_eq!(response.usage.total_tokens, Some(10));
-}
-
-/// A terminal `message_delta` carrying only the output count, as Anthropic's
-/// older shape and some Messages gateways send it, keeps `message_start`'s
-/// cache counters, so input still counts the cached prefix.
-#[test]
-fn terminal_record_keeps_message_start_cache_counters() {
-    let decoded = decode([
-        classified(&format!(
-            r#"{{"type":"message_start","message":{{"id":"msg_1","role":"assistant","content":[],"model":"{CLAUDE_OPUS_4_8}","stop_reason":null,"stop_sequence":null,"usage":{{"input_tokens":3,"cache_read_input_tokens":2000,"cache_creation_input_tokens":100,"output_tokens":0}}}}}}"#
-        )),
-        StreamingEvent::ContentBlockDelta {
-            index: 0,
-            delta: ContentDelta::TextDelta {
-                text: "hi".to_string(),
-            },
-        },
-        message_delta(
-            "end_turn",
-            PartialUsage {
-                output_tokens: 5,
-                input_tokens: None,
-                cache_creation_input_tokens: None,
-                cache_creation: None,
-                cache_read_input_tokens: None,
-                output_tokens_details: None,
-            },
-        ),
-    ]);
-    let response = decoded.outcome.expect("the reply ended");
-    assert_eq!(response.usage.input_tokens, Some(3 + 2000 + 100));
-    assert_eq!(response.usage.cached_input_tokens, Some(2000));
-    assert_eq!(response.usage.cache_creation_input_tokens, Some(100));
-    assert_eq!(response.usage.total_tokens, Some(3 + 2000 + 100 + 5));
 }
 
 #[test]
