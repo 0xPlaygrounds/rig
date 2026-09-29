@@ -395,7 +395,10 @@ pub fn compare(
                 later: "<dropped: the later request is shorter>".to_owned(),
             });
         };
-        if earlier_level != later_level || earlier_block != later_block {
+        if earlier_level != later_level
+            || (earlier_block != later_block
+                && !finished_turn_lost_its_signatures(earlier_block, later_block, later, index))
+        {
             return Some(Violation {
                 scenario: scenario.to_owned(),
                 pair,
@@ -407,6 +410,55 @@ pub fn compare(
         }
     }
     None
+}
+
+/// Whether a Gemini content changed only because Gemini's current-turn thought
+/// replay (`ThoughtReplay::CurrentTurn`) stopped re-sending the signatures of
+/// a turn the model has finished.
+///
+/// That is the only change the rule accepts: `later` is `earlier` with every
+/// `thoughtSignature` removed from its parts, and the later request carries a
+/// new user message after it, so the turn it belongs to is over. Any other
+/// difference, or a signature dropped from the current turn, is still a moved
+/// prefix. The explicit caches that mode rolls are cut at user-turn
+/// boundaries and hold the stripped form, so no cache is busted by it.
+fn finished_turn_lost_its_signatures(
+    earlier: &str,
+    later: &str,
+    later_blocks: &[PrefixBlock],
+    index: usize,
+) -> bool {
+    let (Ok(mut earlier), Ok(later)) = (
+        serde_json::from_str::<Value>(earlier),
+        serde_json::from_str::<Value>(later),
+    ) else {
+        return false;
+    };
+    let Some(parts) = earlier.get_mut("parts").and_then(Value::as_array_mut) else {
+        return false;
+    };
+    let mut removed = false;
+    for part in parts {
+        if let Some(part) = part.as_object_mut() {
+            removed |= part.remove("thoughtSignature").is_some();
+        }
+    }
+    let user_text_follows = later_blocks
+        .iter()
+        .skip(index + 1)
+        .filter(|(level, _)| *level == "contents")
+        .filter_map(|(_, block)| serde_json::from_str::<Value>(block).ok())
+        .any(|content| {
+            let parts = content.get("parts").and_then(Value::as_array);
+            content.get("role").and_then(Value::as_str) == Some("user")
+                && parts.is_some_and(|parts| parts.iter().any(|part| part.get("text").is_some()))
+                && !parts.is_some_and(|parts| {
+                    parts
+                        .iter()
+                        .any(|part| part.get("functionResponse").is_some())
+                })
+        });
+    removed && earlier == later && user_text_follows
 }
 
 /// Limit a diagnostic block to 220 Unicode characters followed by an ellipsis.
