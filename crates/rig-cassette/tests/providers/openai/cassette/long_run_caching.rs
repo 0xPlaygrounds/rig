@@ -41,7 +41,7 @@ const RATES: CacheRates = CacheRates {
 const OUTPUT_PRICE: f64 = 10.0;
 /// What every cached run asserts.
 const LIMITS: Limits = Limits {
-    min_saving: 0.60,
+    min_saving: Some(0.60),
     min_call_share: Some(0.70),
     max_writes_share: Some(0.25),
 };
@@ -77,6 +77,7 @@ fn check(wire: CacheWire, scenario: &str, limits: Option<Limits>, log: &RunLog) 
         output_price: OUTPUT_PRICE,
         limits,
         drops_signatures: false,
+        conversation: None,
     };
     cache_longrun::check(&run, log, None);
 }

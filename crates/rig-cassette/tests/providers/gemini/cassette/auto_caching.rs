@@ -161,7 +161,7 @@ fn book(clock: &CassetteClock, policy: AutoCache) -> CacheBook {
 /// the first cache read on, its per-call floor.
 fn limits(min_saving: f64, min_call_share: Option<f64>) -> Option<Limits> {
     Some(Limits {
-        min_saving,
+        min_saving: Some(min_saving),
         min_call_share,
         max_writes_share: Some(MAX_CREATED_SHARE),
     })
@@ -184,6 +184,7 @@ fn check(
         output_price: OUTPUT_PRICE,
         limits,
         drops_signatures,
+        conversation: None,
     };
     cache_longrun::check(&run, log, resources)
 }

@@ -100,16 +100,19 @@ async fn complex_arguments_preserve_nested_unicode_and_escapes() -> Result<(), S
 
 #[tokio::test]
 async fn extraction_contract_requires_fields_and_usage() -> Result<(), ScenarioError> {
-    let report = structured_extraction(MockCompletionModel::from_turns([MockTurn::tool_call(
-        "submit_call",
-        "submit",
-        serde_json::json!({
-            "first_name": "Ada",
-            "last_name": "Lovelace",
-            "job": "mathematician"
-        }),
+    let report = structured_extraction(
+        MockCompletionModel::from_turns([MockTurn::tool_call(
+            "submit_call",
+            "submit",
+            serde_json::json!({
+                "first_name": "Ada",
+                "last_name": "Lovelace",
+                "job": "mathematician"
+            }),
+        )
+        .with_usage(usage(20, 5))]),
+        None,
     )
-    .with_usage(usage(20, 5))]))
     .await?;
     fixture_contract(report.prompt_tokens == 20, "extraction input usage")?;
     fixture_contract(report.generated_tokens == 5, "extraction output usage")?;

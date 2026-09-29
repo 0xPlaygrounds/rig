@@ -49,6 +49,7 @@ const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
             "with_openai_audio_cassette",
             "with_openai_websocket_cassette",
             "with_openai_long_run_cassette",
+            "with_openai_model_session_cassette",
         ],
     },
     ProviderCassetteSuite {
@@ -75,6 +76,7 @@ const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
         wrapper_names: &[
             "with_anthropic_cassette",
             "with_anthropic_long_run_cassette",
+            "with_anthropic_model_session_cassette",
             "with_anthropic_lifecycle_cassette",
             "with_anthropic_turn_metadata_cassette",
             "with_anthropic_cassette_result",

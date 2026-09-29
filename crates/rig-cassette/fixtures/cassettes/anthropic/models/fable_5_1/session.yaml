@@ -1,0 +1,233 @@
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"max_tokens":384,"messages":[{"content":[{"text":"Hello, my name is Ada Lovelace and I work as a mathematician.","type":"text"}],"role":"user"}],"model":"claude-fable-5-1","output_config":{"format":{"schema":{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,"properties":{"first_name":{"type":"string"},"job":{"type":"string"},"last_name":{"type":"string"}},"required":["first_name","last_name","job"],"title":"ExtractedPerson","type":"object"},"type":"json_schema"}},"system":[{"text":"You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                \n\nThe `submit` tool is not available for this model. Reply with only the JSON object you would have passed to it.","type":"text"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: request-id
+    value: req_011CfYLXqreNfJeqKYJpwjw8
+  body: '{"container":null,"content":[{"text":"{\"first_name\":\"Ada\",\"last_name\":\"Lovelace\",\"job\":\"mathematician\"}","type":"text"}],"diagnostics":null,"id":"msg_011CfYLXrKRsQisWhh3YmxtW","model":"claude-fable-5-1","role":"assistant","stop_details":null,"stop_reason":"end_turn","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":458,"output_tokens":33,"output_tokens_details":{"thinking_tokens":0},"service_tier":"standard"}}'
+---
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"max_tokens":128000,"messages":[{"content":[{"text":"Use add to calculate 19 + 23. Return answer=42 and a short optional explanation.","type":"text"}],"role":"user"}],"model":"claude-fable-5-1","system":[{"text":"Use add for arithmetic, then finish by calling the structured output tool exactly once.\n\nWhen you have gathered enough information to answer, call the `final_result` tool exactly once with your final answer. Its arguments are the structured result and must satisfy the required schema. Do not return the final answer as plain text.","type":"text"}],"tools":[{"description":"Add two integers a and b.","input_schema":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"a":{"format":"int64","type":"integer"},"b":{"format":"int64","type":"integer"}},"required":["a","b"],"title":"BinOpArgs","type":"object"},"name":"add"},{"description":"Call this tool exactly once with your final answer when you are done. Its arguments are the structured result and must satisfy the output schema.","input_schema":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"answer":{"format":"int64","type":"integer"},"explanation":{"type":["string","null"]}},"required":["answer"],"title":"ArithmeticResult","type":"object"},"name":"final_result"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: request-id
+    value: req_011CfYLYDcqVMxn8vkJvkKB6
+  body: '{"container":null,"content":[{"caller":{"type":"direct"},"id":"toolu_01Q6rodfGt7FwjRbBfQjJ7ub","input":{"a":19,"b":23},"name":"add","type":"tool_use"}],"diagnostics":null,"id":"msg_011CfYLYELzbnXqzGjH2uwsM","model":"claude-fable-5-1","role":"assistant","stop_details":null,"stop_reason":"tool_use","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":725,"output_tokens":66,"output_tokens_details":{"thinking_tokens":0},"service_tier":"standard"}}'
+---
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"max_tokens":128000,"messages":[{"content":[{"text":"Use add to calculate 19 + 23. Return answer=42 and a short optional explanation.","type":"text"}],"role":"user"},{"content":[{"id":"toolu_01Q6rodfGt7FwjRbBfQjJ7ub","input":{"a":19,"b":23},"name":"add","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"42","type":"text"}],"tool_use_id":"toolu_01Q6rodfGt7FwjRbBfQjJ7ub","type":"tool_result"}],"role":"user"}],"model":"claude-fable-5-1","system":[{"text":"Use add for arithmetic, then finish by calling the structured output tool exactly once.\n\nWhen you have gathered enough information to answer, call the `final_result` tool exactly once with your final answer. Its arguments are the structured result and must satisfy the required schema. Do not return the final answer as plain text.","type":"text"}],"tools":[{"description":"Add two integers a and b.","input_schema":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"a":{"format":"int64","type":"integer"},"b":{"format":"int64","type":"integer"}},"required":["a","b"],"title":"BinOpArgs","type":"object"},"name":"add"},{"description":"Call this tool exactly once with your final answer when you are done. Its arguments are the structured result and must satisfy the output schema.","input_schema":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"answer":{"format":"int64","type":"integer"},"explanation":{"type":["string","null"]}},"required":["answer"],"title":"ArithmeticResult","type":"object"},"name":"final_result"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: request-id
+    value: req_011CfYLYPiJmgYDeMLmHuqdM
+  body: '{"container":null,"content":[{"caller":{"type":"direct"},"id":"toolu_017tfLQsFActTfdD32NjjJEy","input":{"answer":42,"explanation":"19 + 23 = 42, computed using the add tool."},"name":"final_result","type":"tool_use"}],"diagnostics":null,"id":"msg_011CfYLYQEZwDAab1YvbSUw5","model":"claude-fable-5-1","role":"assistant","stop_details":null,"stop_reason":"tool_use","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":797,"output_tokens":88,"output_tokens_details":{"thinking_tokens":0},"service_tier":"standard"}}'
+---
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"max_tokens":128000,"messages":[{"content":[{"text":"Use add to calculate 19 + 23. Return answer=42 and a short optional explanation.","type":"text"}],"role":"user"}],"model":"claude-fable-5-1","stream":true,"system":[{"text":"Use add for arithmetic, then finish by calling the structured output tool exactly once.\n\nWhen you have gathered enough information to answer, call the `final_result` tool exactly once with your final answer. Its arguments are the structured result and must satisfy the required schema. Do not return the final answer as plain text.","type":"text"}],"tool_choice":{"type":"auto"},"tools":[{"description":"Add two integers a and b.","input_schema":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"a":{"format":"int64","type":"integer"},"b":{"format":"int64","type":"integer"}},"required":["a","b"],"title":"BinOpArgs","type":"object"},"name":"add"},{"description":"Call this tool exactly once with your final answer when you are done. Its arguments are the structured result and must satisfy the output schema.","input_schema":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"answer":{"format":"int64","type":"integer"},"explanation":{"type":["string","null"]}},"required":["answer"],"title":"ArithmeticResult","type":"object"},"name":"final_result"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  - name: request-id
+    value: req_011CfYLYYxRnyNPuXWfsc3u8
+  body: |+
+    event: message_start
+    data: {"message":{"container":null,"content":[],"diagnostics":null,"id":"msg_011CfYLYZRi3PEeHDAJxV6MW","model":"claude-fable-5-1","role":"assistant","stop_details":null,"stop_reason":null,"stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":725,"output_tokens":17,"service_tier":"standard"}},"type":"message_start"}
+
+    event: content_block_start
+    data: {"content_block":{"caller":{"type":"direct"},"id":"toolu_01ES5WwGTTUYAmi4u7P5xCV3","input":{},"name":"add","type":"tool_use"},"index":0,"type":"content_block_start"}
+
+    event: ping
+    data: {"type":"ping"}
+
+    event: content_block_delta
+    data: {"delta":{"partial_json":"","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"partial_json":"{\"a\": 1","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"partial_json":"9","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"partial_json":", \"b\": ","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"partial_json":"23}","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_stop
+    data: {"index":0,"type":"content_block_stop"}
+
+    event: message_delta
+    data: {"delta":{"container":null,"stop_details":null,"stop_reason":"tool_use","stop_sequence":null},"type":"message_delta","usage":{"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"input_tokens":725,"output_tokens":66,"output_tokens_details":{"thinking_tokens":0}}}
+
+    event: message_stop
+    data: {"type":"message_stop"}
+
+---
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"max_tokens":128000,"messages":[{"content":[{"text":"Use add to calculate 19 + 23. Return answer=42 and a short optional explanation.","type":"text"}],"role":"user"},{"content":[{"id":"toolu_01ES5WwGTTUYAmi4u7P5xCV3","input":{"a":19,"b":23},"name":"add","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"42","type":"text"}],"tool_use_id":"toolu_01ES5WwGTTUYAmi4u7P5xCV3","type":"tool_result"}],"role":"user"}],"model":"claude-fable-5-1","stream":true,"system":[{"text":"Use add for arithmetic, then finish by calling the structured output tool exactly once.\n\nWhen you have gathered enough information to answer, call the `final_result` tool exactly once with your final answer. Its arguments are the structured result and must satisfy the required schema. Do not return the final answer as plain text.","type":"text"}],"tool_choice":{"type":"auto"},"tools":[{"description":"Add two integers a and b.","input_schema":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"a":{"format":"int64","type":"integer"},"b":{"format":"int64","type":"integer"}},"required":["a","b"],"title":"BinOpArgs","type":"object"},"name":"add"},{"description":"Call this tool exactly once with your final answer when you are done. Its arguments are the structured result and must satisfy the output schema.","input_schema":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"answer":{"format":"int64","type":"integer"},"explanation":{"type":["string","null"]}},"required":["answer"],"title":"ArithmeticResult","type":"object"},"name":"final_result"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  - name: request-id
+    value: req_011CfYLYidqkNRh85SxgC62M
+  body: |+
+    event: message_start
+    data: {"message":{"container":null,"content":[],"diagnostics":null,"id":"msg_011CfYLYj4ejUjc6pExE4Xcu","model":"claude-fable-5-1","role":"assistant","stop_details":null,"stop_reason":null,"stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":797,"output_tokens":17,"service_tier":"standard"}},"type":"message_start"}
+
+    event: content_block_start
+    data: {"content_block":{"caller":{"type":"direct"},"id":"toolu_01XRKH9sVC27yjxgvWLGUpN1","input":{},"name":"final_result","type":"tool_use"},"index":0,"type":"content_block_start"}
+
+    event: ping
+    data: {"type":"ping"}
+
+    event: content_block_delta
+    data: {"delta":{"partial_json":"","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"partial_json":"{\"answe","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"partial_json":"r\": 42","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"partial_json":", \"expl","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"partial_json":"anation","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"partial_json":"\": \"19 ","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"partial_json":"+ 23 = ","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"partial_json":"42, com","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"partial_json":"puted w","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"partial_json":"ith the","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"partial_json":" add to","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"partial_json":"ol.\"}","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_stop
+    data: {"index":0,"type":"content_block_stop"}
+
+    event: message_delta
+    data: {"delta":{"container":null,"stop_details":null,"stop_reason":"tool_use","stop_sequence":null},"type":"message_delta","usage":{"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"input_tokens":797,"output_tokens":88,"output_tokens_details":{"thinking_tokens":0}}}
+
+    event: message_stop
+    data: {"type":"message_stop"}
+
+---
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"max_tokens":64,"messages":[{"content":[{"text":"Answer with only the number 4. Do not call a function.","type":"text"}],"role":"user"}],"model":"claude-fable-5-1","tool_choice":{"type":"none"},"tools":[{"description":"Return the supplied integer using alpha.","input_schema":{"properties":{"value":{"type":"integer"}},"required":["value"],"type":"object"},"name":"alpha"},{"description":"Return the supplied integer using beta.","input_schema":{"properties":{"value":{"type":"integer"}},"required":["value"],"type":"object"},"name":"beta"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: request-id
+    value: req_011CfYLYr74E6pDfbb2km8C2
+  body: '{"container":null,"content":[{"text":"4","type":"text"}],"diagnostics":null,"id":"msg_011CfYLYrXrG1BHaJy9LV5kA","model":"claude-fable-5-1","role":"assistant","stop_details":null,"stop_reason":"end_turn","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":459,"output_tokens":3,"output_tokens_details":{"thinking_tokens":0},"service_tier":"standard"}}'
+---
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"max_tokens":96,"messages":[{"content":[{"text":"Call alpha with value 7.","type":"text"}],"role":"user"}],"model":"claude-fable-5-1","tool_choice":{"type":"any"},"tools":[{"description":"Return the supplied integer using alpha.","input_schema":{"properties":{"value":{"type":"integer"}},"required":["value"],"type":"object"},"name":"alpha"},{"description":"Return the supplied integer using beta.","input_schema":{"properties":{"value":{"type":"integer"}},"required":["value"],"type":"object"},"name":"beta"}]}'
+then:
+  status: 400
+  header:
+  - name: content-type
+    value: application/json
+  - name: request-id
+    value: req_011CfYLZ1ysfd7tJmMAob5MQ
+  body: '{"error":{"message":"tool_choice: type \"tool\" and \"any\" are not supported for this model.","type":"invalid_request_error"},"request_id":"req_011CfYLZ1ysfd7tJmMAob5MQ","type":"error"}'

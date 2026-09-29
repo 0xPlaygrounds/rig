@@ -5,114 +5,23 @@ use rig::message::{
     Document, DocumentMediaType, DocumentSourceKind, Message, Text, UserContent as RigUserContent,
 };
 use rig::providers::anthropic;
-use rig::providers::anthropic::completion::{
-    ANTHROPIC_VERSION_2023_06_01, Message as AnthropicMessage,
-};
-use serde::Deserialize;
+use rig::providers::anthropic::completion::Message as AnthropicMessage;
 use serde_json::Value;
 use std::future::Future;
 use std::panic::{AssertUnwindSafe, resume_unwind};
 
-use super::super::support::with_anthropic_files_cassette;
+use super::super::support::{
+    ANTHROPIC_FILES_BETA, delete_uploaded_file, upload_pdf_for_file_id_test,
+    with_anthropic_files_cassette,
+};
 use crate::support::{assert_nonempty_response, collect_stream_final_response};
 
-const ANTHROPIC_FILES_BETA: &str = "files-api-2025-04-14";
 const DOCUMENT_PREAMBLE: &str =
     "Answer using only the attached PDF. Keep answers short and return exact visible tokens.";
-const VERIFIER_FIXTURE_PATH: &str = concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../../tests/data/file-id-verifiers.pdf"
-);
-const VERIFIER_FIXTURE_FILENAME: &str = "rig-file-id-verifiers.pdf";
 const PAGE_ONE_VERIFIER: &str = "rig-file-id-page-one-verifier-3a91";
 const PAGE_TWO_VERIFIER: &str = "rig-file-id-page-two-verifier-8c27";
 const PAGE_THREE_VERIFIER: &str = "rig-file-id-page-three-verifier-f54e";
 const PAGE_VERIFIERS: [&str; 3] = [PAGE_ONE_VERIFIER, PAGE_TWO_VERIFIER, PAGE_THREE_VERIFIER];
-
-#[derive(Debug, Deserialize)]
-struct UploadedFile {
-    id: String,
-    #[serde(rename = "type")]
-    file_type: String,
-    filename: String,
-    mime_type: String,
-    size_bytes: u64,
-    downloadable: bool,
-}
-
-async fn upload_pdf_for_file_id_test(base_url: &str, api_key: &str) -> UploadedFile {
-    let bytes = tokio::fs::read(VERIFIER_FIXTURE_PATH)
-        .await
-        .expect("verifier fixture PDF should be readable");
-    let file_part = reqwest::multipart::Part::bytes(bytes)
-        .file_name(VERIFIER_FIXTURE_FILENAME)
-        .mime_str("application/pdf")
-        .expect("verifier fixture PDF MIME should be valid");
-    let form = reqwest::multipart::Form::new().part("file", file_part);
-
-    let response = reqwest::Client::new()
-        .post(format!("{base_url}/v1/files"))
-        .header("x-api-key", api_key)
-        .header("anthropic-version", ANTHROPIC_VERSION_2023_06_01)
-        .header("anthropic-beta", ANTHROPIC_FILES_BETA)
-        .multipart(form)
-        .send()
-        .await
-        .expect("file upload request should be sent");
-
-    let status = response.status();
-    let body = response
-        .text()
-        .await
-        .expect("file upload response body should be readable");
-    assert!(
-        status.is_success(),
-        "file upload failed with {status}: {body}"
-    );
-
-    let uploaded: UploadedFile =
-        serde_json::from_str(&body).expect("file upload response should deserialize");
-    assert_uploaded_file_metadata(&uploaded);
-    uploaded
-}
-
-fn assert_uploaded_file_metadata(uploaded: &UploadedFile) {
-    assert!(
-        uploaded.id.starts_with("file_"),
-        "expected Anthropic file id to start with file_, got {}",
-        uploaded.id
-    );
-    assert_eq!(uploaded.file_type, "file");
-    assert_eq!(uploaded.filename, VERIFIER_FIXTURE_FILENAME);
-    assert_eq!(uploaded.mime_type, "application/pdf");
-    assert!(
-        uploaded.size_bytes > 0,
-        "uploaded file size should be nonzero"
-    );
-    assert!(
-        !uploaded.downloadable,
-        "user-uploaded Anthropic file should not be downloadable"
-    );
-}
-
-async fn delete_uploaded_file(base_url: &str, api_key: &str, file_id: &str) {
-    let response = reqwest::Client::new()
-        .delete(format!("{base_url}/v1/files/{file_id}"))
-        .header("x-api-key", api_key)
-        .header("anthropic-version", ANTHROPIC_VERSION_2023_06_01)
-        .header("anthropic-beta", ANTHROPIC_FILES_BETA)
-        .send()
-        .await;
-
-    if let Ok(response) = response
-        && !response.status().is_success()
-    {
-        eprintln!(
-            "cleanup failed for uploaded Anthropic file {file_id}: {}",
-            response.status()
-        );
-    }
-}
 
 async fn with_uploaded_pdf<F, Fut>(base_url: &str, api_key: &str, test_body: F)
 where

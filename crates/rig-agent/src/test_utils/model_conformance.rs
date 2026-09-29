@@ -1006,9 +1006,8 @@ where
     let add_calls = Arc::new(AtomicUsize::new(0));
     let subtract_calls = Arc::new(AtomicUsize::new(0));
     let started = Instant::now();
-    let agent = configure(AgentBuilder::new(model))
+    let agent = configure(AgentBuilder::new(model).temperature(0.0))
         .preamble(FORCE_TOOLS_PREAMBLE)
-        .temperature(0.0)
         .tool(CountingAdd(add_calls.clone()))
         .tool(CountingSubtract(subtract_calls.clone()))
         .default_max_turns(3)
@@ -1094,9 +1093,8 @@ where
     const SCENARIO: &str = "zero_argument_tool";
     let calls = Arc::new(AtomicUsize::new(0));
     let started = Instant::now();
-    let agent = configure(AgentBuilder::new(model))
+    let agent = configure(AgentBuilder::new(model).temperature(0.0))
         .preamble("You must use the provided tools. Report tool outputs exactly as returned.")
-        .temperature(0.0)
         .tool(PingTool(calls.clone()))
         .default_max_turns(2)
         .build();
@@ -1138,9 +1136,8 @@ where
     let started = Instant::now();
     let motto_calls = Arc::new(AtomicUsize::new(0));
     let config_calls = Arc::new(AtomicUsize::new(0));
-    let agent = configure(AgentBuilder::new(model))
+    let agent = configure(AgentBuilder::new(model).temperature(0.0))
         .preamble("You must use the provided tools before answering.")
-        .temperature(0.0)
         .tool(MottoTool(motto_calls.clone()))
         .tool(ConfigTool(config_calls.clone()))
         .default_max_turns(3)
@@ -1189,6 +1186,29 @@ where
     T: rig_core::driver::Transport<W>,
     F: FnOnce(AgentBuilder<NoToolConfig>) -> AgentBuilder<NoToolConfig>,
 {
+    complex_tool_arguments_with_prompt(model, configure, COMPLEX_ARGUMENTS_PROMPT).await
+}
+
+/// The prompt [`complex_tool_arguments`] sends. It spells the values in their
+/// JSON-escaped form, which a model may copy literally, backslashes included.
+pub const COMPLEX_ARGUMENTS_PROMPT: &str = "Call store_profile with profile.name exactly `Zoë \\\"Z\\\"`, profile.tags exactly [`rust`, `東京`], mode `careful`, note containing the two lines `line one` and `line two` separated by a newline, and quote exactly `path C:\\\\tmp and \\\"quoted\\\"`. Then confirm it was stored.";
+
+/// The same values as [`COMPLEX_ARGUMENTS_PROMPT`], spelled as raw text
+/// between markers, for a model that copies escapes literally.
+pub const COMPLEX_ARGUMENTS_RAW_PROMPT: &str = "Call store_profile once. Each value below is raw text between <<< and >>>, with no escaping: profile.name <<<Zoë \"Z\">>>, profile.tags <<<rust>>> and <<<東京>>>, mode <<<careful>>>, note the two lines <<<line one>>> and <<<line two>>> joined by one newline, and quote <<<path C:\\tmp and \"quoted\">>>. Then confirm it was stored.";
+
+/// [`complex_tool_arguments`] with the user prompt given: the same tool, the
+/// same expected arguments, the same checks.
+pub async fn complex_tool_arguments_with_prompt<W, T, F>(
+    model: rig_core::driver::Model<W, T>,
+    configure: F,
+    prompt: &str,
+) -> Result<ScenarioReport, ScenarioError>
+where
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
+    T: rig_core::driver::Transport<W>,
+    F: FnOnce(AgentBuilder<NoToolConfig>) -> AgentBuilder<NoToolConfig>,
+{
     const SCENARIO: &str = "complex_tool_arguments";
     let expected = ComplexArgs {
         profile: ComplexProfile {
@@ -1202,21 +1222,15 @@ where
     let calls = Arc::new(AtomicUsize::new(0));
     let captured = Arc::new(Mutex::new(None));
     let started = Instant::now();
-    let agent = configure(AgentBuilder::new(model))
+    let agent = configure(AgentBuilder::new(model).temperature(0.0))
         .preamble("Use store_profile exactly once with every value supplied by the user.")
-        .temperature(0.0)
         .tool(CaptureComplexTool {
             calls: calls.clone(),
             captured: captured.clone(),
         })
         .default_max_turns(3)
         .build();
-    let response = agent
-        .prompt(
-            "Call store_profile with profile.name exactly `Zoë \\\"Z\\\"`, profile.tags exactly [`rust`, `東京`], mode `careful`, note containing the two lines `line one` and `line two` separated by a newline, and quote exactly `path C:\\\\tmp and \\\"quoted\\\"`. Then confirm it was stored.",
-        )
-        .max_turns(3)
-        .await?;
+    let response = agent.prompt(prompt).max_turns(3).await?;
     let observed = lock_recover(&captured).clone();
     if calls.load(Ordering::SeqCst) != 1 || observed.as_ref() != Some(&expected) {
         return Err(ScenarioError::contract(
@@ -1234,20 +1248,24 @@ where
 
 /// Runs the same deterministic text request through buffered and raw streaming
 /// completion surfaces and validates equivalent visible content and usage.
-pub async fn buffered_streaming_text_parity<W, T>(
+pub async fn buffered_streaming_text_parity<W, T, A>(
     model: rig_core::driver::Model<W, T>,
+    adjust: A,
 ) -> Result<ScenarioReport, ScenarioError>
 where
     W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
     T: rig_core::driver::Transport<W>,
+    A: Fn(CompletionRequest) -> CompletionRequest,
 {
     const SCENARIO: &str = "buffered_streaming_text_parity";
     const PROMPT: &str = "Answer with exactly the single word Paris.";
     let started = Instant::now();
     let request = || {
-        CompletionRequest::new(PROMPT)
-            .temperature(0.0)
-            .max_tokens(32)
+        adjust(
+            CompletionRequest::new(PROMPT)
+                .temperature(0.0)
+                .max_tokens(32),
+        )
     };
     let buffered = model.call(request()).await?;
     let buffered_text = buffered
@@ -1307,6 +1325,7 @@ where
 /// fields and accumulated usage.
 pub async fn structured_extraction<W, T>(
     model: rig_core::driver::Model<W, T>,
+    additional_params: Option<serde_json::Value>,
 ) -> Result<ScenarioReport, ScenarioError>
 where
     W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
@@ -1315,12 +1334,13 @@ where
     const SCENARIO: &str = "structured_extraction";
     const INPUT: &str = "Hello, my name is Ada Lovelace and I work as a mathematician.";
     let started = Instant::now();
-    let response = crate::extractor::ExtractorBuilder::<ExtractedPerson>::new(model)
+    let mut builder = crate::extractor::ExtractorBuilder::<ExtractedPerson>::new(model)
         .max_tokens(384)
-        .retries(0)
-        .build()
-        .extract(INPUT)
-        .await?;
+        .retries(0);
+    if let Some(params) = additional_params {
+        builder = builder.additional_params(params);
+    }
+    let response = builder.build().extract(INPUT).await?;
     validate_extraction_fields(
         SCENARIO,
         response.output.first_name.as_deref(),
@@ -1386,17 +1406,32 @@ where
     T: rig_core::driver::Transport<W>,
     F: FnOnce(AgentBuilder<NoToolConfig>) -> AgentBuilder<NoToolConfig>,
 {
+    invalid_tool_recovery_with_choice(model, configure, ToolChoice::Required).await
+}
+
+/// [`invalid_tool_recovery`] with the agent's tool choice given, for a model
+/// that rejects a forced choice (`ToolChoice::Auto`; the prompt still asks for
+/// the call).
+pub async fn invalid_tool_recovery_with_choice<W, T, F>(
+    model: rig_core::driver::Model<W, T>,
+    configure: F,
+    tool_choice: ToolChoice,
+) -> Result<ScenarioReport, ScenarioError>
+where
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
+    T: rig_core::driver::Transport<W>,
+    F: FnOnce(AgentBuilder<NoToolConfig>) -> AgentBuilder<NoToolConfig>,
+{
     const SCENARIO: &str = "invalid_tool_recovery";
     const PROMPT: &str = "Call the add tool exactly once with x=2 and y=3. Do not call sum.";
     let started = Instant::now();
     let add_calls = Arc::new(AtomicUsize::new(0));
     let sum_calls = Arc::new(AtomicUsize::new(0));
-    let agent = configure(AgentBuilder::new(model))
+    let agent = configure(AgentBuilder::new(model).temperature(0.0))
         .preamble(FORCE_TOOLS_PREAMBLE)
-        .temperature(0.0)
         .tool(CountingAdd(add_calls.clone()))
         .tool(CountingSum(sum_calls.clone()))
-        .tool_choice(ToolChoice::Required)
+        .tool_choice(tool_choice)
         .build();
     #[derive(Clone)]
     struct CaptureTurn(Arc<Mutex<Option<ModelTurn>>>);
@@ -1579,14 +1614,29 @@ where
     T: rig_core::driver::Transport<W>,
     F: FnOnce(AgentBuilder<NoToolConfig>) -> AgentBuilder<NoToolConfig>,
 {
+    hook_rewrites_and_request_patch_with_choice(model, configure, ToolChoice::Required).await
+}
+
+/// [`hook_rewrites_and_request_patch`] with the first-turn patch's tool
+/// choice given, for a model that rejects a forced choice (`ToolChoice::Auto`:
+/// the patch still narrows the active tools on turn one only).
+pub async fn hook_rewrites_and_request_patch_with_choice<W, T, F>(
+    model: rig_core::driver::Model<W, T>,
+    configure: F,
+    first_turn_choice: ToolChoice,
+) -> Result<ScenarioReport, ScenarioError>
+where
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
+    T: rig_core::driver::Transport<W>,
+    F: FnOnce(AgentBuilder<NoToolConfig>) -> AgentBuilder<NoToolConfig>,
+{
     const SCENARIO: &str = "hook_rewrites_and_request_patch";
     let started = Instant::now();
     let calls = Arc::new(AtomicUsize::new(0));
     let observed = ObserveArguments::default();
     let observed_probe = observed.clone();
-    let agent = configure(AgentBuilder::new(model))
+    let agent = configure(AgentBuilder::new(model).temperature(0.0))
         .preamble("Use add for arithmetic and report only the tool result.")
-        .temperature(0.0)
         .tool(CountingAdd(calls.clone()))
         .default_max_turns(3)
         .build();
@@ -1596,7 +1646,7 @@ where
         .add_hook(FirstTurnPatch(
             RequestPatch::new()
                 .active_tools([CountingAdd::NAME])
-                .tool_choice(ToolChoice::Required),
+                .tool_choice(first_turn_choice),
         ))
         .add_hook(RewriteArgument {
             key: "x",
@@ -1657,9 +1707,8 @@ where
     const REASON: &str = "portable result veto";
     let started = Instant::now();
     let cancelled_calls = Arc::new(AtomicUsize::new(0));
-    let cancelled_agent = configure(AgentBuilder::new(model.clone()))
+    let cancelled_agent = configure(AgentBuilder::new(model.clone()).temperature(0.0))
         .preamble("Use add for arithmetic; never calculate by hand.")
-        .temperature(0.0)
         .tool(CountingAdd(cancelled_calls.clone()))
         .build();
     let cancelled = match cancelled_agent
@@ -1679,9 +1728,8 @@ where
     validate_cancelled_failure(&cancelled, REASON, CountingAdd::NAME)?;
 
     let max_turn_calls = Arc::new(AtomicUsize::new(0));
-    let max_turn_agent = configure(AgentBuilder::new(model))
+    let max_turn_agent = configure(AgentBuilder::new(model).temperature(0.0))
         .preamble("Use add for arithmetic; never calculate by hand.")
-        .temperature(0.0)
         .tool(CountingAdd(max_turn_calls.clone()))
         .build();
     let max_turn = match max_turn_agent
@@ -1931,12 +1979,14 @@ where
 }
 
 /// Runs all portable tool-choice modes directly against a completion model.
-pub async fn tool_choice_modes<W, T>(
+pub async fn tool_choice_modes<W, T, A>(
     model: rig_core::driver::Model<W, T>,
+    adjust: A,
 ) -> Result<ScenarioReport, ScenarioError>
 where
     W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
     T: rig_core::driver::Transport<W>,
+    A: Fn(CompletionRequest) -> CompletionRequest,
 {
     let definition = |name: &str| ToolDefinition {
         name: name.to_string(),
@@ -1950,13 +2000,13 @@ where
     let tools = vec![definition("alpha"), definition("beta")];
     let started = Instant::now();
     let none = model
-        .call(
+        .call(adjust(
             CompletionRequest::new("Answer with only the number 4. Do not call a function.")
                 .tools(tools.clone())
                 .tool_choice(ToolChoice::None)
                 .temperature(0.0)
                 .max_tokens(64),
-        )
+        ))
         .await?;
     if none
         .choice
@@ -1970,13 +2020,13 @@ where
     }
 
     let required = model
-        .call(
+        .call(adjust(
             CompletionRequest::new("Call alpha with value 7.")
                 .tools(tools.clone())
                 .tool_choice(ToolChoice::Required)
                 .temperature(0.0)
                 .max_tokens(96),
-        )
+        ))
         .await?;
     let required_calls = required
         .choice
@@ -1991,7 +2041,7 @@ where
     }
 
     let specific = model
-        .call(
+        .call(adjust(
             CompletionRequest::new("Call beta with value 9.")
                 .tools(tools)
                 .tool_choice(ToolChoice::Specific {
@@ -1999,7 +2049,7 @@ where
                 })
                 .temperature(0.0)
                 .max_tokens(96),
-        )
+        ))
         .await?;
     let specific_calls = specific
         .choice

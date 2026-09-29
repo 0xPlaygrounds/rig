@@ -56,9 +56,6 @@ pub const GPT_5_6_LUNA: &str = "gpt-5.6-luna";
 /// `gpt-5.5` completion model
 pub const GPT_5_5: &str = "gpt-5.5";
 
-/// `gpt-5.5-pro` completion model
-pub const GPT_5_5_PRO: &str = "gpt-5.5-pro";
-
 /// `gpt-5.4` completion model
 pub const GPT_5_4: &str = "gpt-5.4";
 
@@ -67,9 +64,6 @@ pub const GPT_5_4_MINI: &str = "gpt-5.4-mini";
 
 /// `gpt-5.4-nano` completion model
 pub const GPT_5_4_NANO: &str = "gpt-5.4-nano";
-
-/// `gpt-5.4-pro` completion model
-pub const GPT_5_4_PRO: &str = "gpt-5.4-pro";
 
 /// `gpt-5.2` completion model
 pub const GPT_5_2: &str = "gpt-5.2";

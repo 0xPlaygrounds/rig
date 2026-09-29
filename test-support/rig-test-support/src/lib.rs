@@ -19,6 +19,7 @@ pub mod goldens;
 pub mod history_survival;
 pub mod matrix;
 pub mod matrix_registry;
+pub mod model_session;
 pub mod raw_capture;
 pub mod reasoning;
 pub mod rebased;

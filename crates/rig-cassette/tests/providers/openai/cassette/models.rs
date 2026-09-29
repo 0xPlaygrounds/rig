@@ -68,3 +68,13 @@ async fn list_models_rejected_key_reports_api_error_with_context() {
     )
     .await;
 }
+
+// One recorded session per model: `rig_test_support::model_session`.
+mod gpt_5_2_pro;
+mod gpt_5_4;
+mod gpt_5_4_mini;
+mod gpt_5_4_nano;
+mod gpt_6_1_sol;
+mod gpt_6_astra;
+mod gpt_6_luna;
+mod gpt_6_sol;

@@ -1983,34 +1983,70 @@ pub(super) fn resolve_top_level_cache_control(
     }
 }
 
+/// Split `history` into the top-level `system` field and `messages`.
+///
+/// On a model that takes mid-conversation system messages, one in a position
+/// Anthropic rejects (after an assistant turn, or before a user turn) moves to
+/// the next valid slot: right after the next user turn that ends the array or
+/// precedes an assistant turn. Hoisting it into `system` instead would change
+/// the prompt prefix, which misses the cache from the first token and, on
+/// models that bind thinking blocks to their conversation, turns every earlier
+/// thinking block into a 400. It is hoisted only when no such slot exists.
 pub(super) fn split_system_messages_from_history(
     history: &[message::Message],
     preserve_mid_conversation_system_messages: bool,
 ) -> (Vec<SystemContent>, Vec<message::Message>) {
     let mut system = Vec::new();
     let mut remaining = Vec::new();
+    let mut deferred: Vec<String> = Vec::new();
 
     for (index, message) in history.iter().enumerate() {
         match message {
             message::Message::System { content } => {
-                if !content.is_empty() {
-                    if preserve_mid_conversation_system_messages
-                        && is_valid_mid_conversation_system_message(history, index)
-                    {
+                if content.is_empty() {
+                    continue;
+                }
+                if preserve_mid_conversation_system_messages {
+                    if is_valid_mid_conversation_system_message(history, index) {
                         remaining.push(message.clone());
-                    } else {
-                        system.push(SystemContent::Text {
-                            text: content.clone(),
-                            cache_control: None,
-                        });
+                        continue;
+                    }
+                    if index > 0 && next_system_message_slot(history, index).is_some() {
+                        deferred.push(content.clone());
+                        continue;
                     }
                 }
+                system.push(SystemContent::Text {
+                    text: content.clone(),
+                    cache_control: None,
+                });
             }
-            other => remaining.push(other.clone()),
+            other => {
+                remaining.push(other.clone());
+                if !deferred.is_empty() && is_system_message_slot(history, index) {
+                    remaining.push(message::Message::System {
+                        content: std::mem::take(&mut deferred).join("\n\n"),
+                    });
+                }
+            }
         }
     }
 
     (system, remaining)
+}
+
+/// The first index after `index` a misplaced system message can follow.
+fn next_system_message_slot(history: &[message::Message], index: usize) -> Option<usize> {
+    (index + 1..history.len()).find(|&slot| is_system_message_slot(history, slot))
+}
+
+/// Whether a system message may sit right after `history[index]`: it is a
+/// user turn, and what follows is the end of the array or an assistant turn.
+fn is_system_message_slot(history: &[message::Message], index: usize) -> bool {
+    matches!(history.get(index), Some(message::Message::User { .. }))
+        && history
+            .get(index + 1)
+            .is_none_or(|message| matches!(message, message::Message::Assistant { .. }))
 }
 
 fn is_valid_mid_conversation_system_message(history: &[message::Message], index: usize) -> bool {

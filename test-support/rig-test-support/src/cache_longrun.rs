@@ -127,10 +127,11 @@ const BACKOFF: [u64; 3] = [2, 5, 10];
 pub async fn chat(
     agent: &Agent,
     clock: &CassetteClock,
-    prompt: String,
+    prompt: impl Into<Message>,
     history: &mut Vec<Message>,
     log: &mut RunLog,
 ) {
+    let prompt: Message = prompt.into();
     let mut waits = BACKOFF.iter();
     loop {
         let error = match agent.chat(prompt.clone(), history).await {
@@ -168,11 +169,12 @@ fn streaming_status(error: &StreamingError) -> Option<http::StatusCode> {
 pub async fn chat_streamed(
     agent: &Agent,
     clock: &CassetteClock,
-    prompt: String,
+    prompt: impl Into<Message>,
     history: &mut Vec<Message>,
     log: &mut RunLog,
 ) {
     use futures::StreamExt;
+    let prompt: Message = prompt.into();
     let mut waits = BACKOFF.iter();
     loop {
         let mut stream = agent
@@ -604,9 +606,9 @@ pub fn load(wire: CacheWire, scenario: &str) -> Recording {
 /// A run's asserted limits.
 #[derive(Clone, Copy, Debug, Serialize)]
 pub struct Limits {
-    /// The least input saving over the run, counting writes, reads and
+    /// The least input saving over the run, if the run asserts one, counting writes, reads and
     /// storage at the provider's rates.
-    pub min_saving: f64,
+    pub min_saving: Option<f64>,
     /// The least cached share of every call from its conversation's first
     /// cache read on; also asserts no call after that read reads nothing.
     /// `None` for a run that deliberately goes uncached mid-run.
@@ -632,6 +634,9 @@ pub struct LongRun<'a> {
     /// Gemini: finished turns may lose their thought signatures
     /// (current-turn replay), so a conversation may change there.
     pub drops_signatures: bool,
+    /// Only the conversation whose first user message contains this text,
+    /// for a fixture that records other conversations beside it.
+    pub conversation: Option<&'a str>,
 }
 
 /// Whole-run figures, printed as the run's `CACHE_LONGRUN` line.
@@ -997,7 +1002,12 @@ pub fn check(
     log: &RunLog,
     resources: Option<CacheCost>,
 ) -> (Recording, Figures) {
-    let recording = load(run.wire, run.scenario);
+    let mut recording = load(run.wire, run.scenario);
+    if let Some(marker) = run.conversation {
+        recording
+            .calls
+            .retain(|call| call.conversation.contains(marker));
+    }
     let resources = resources.unwrap_or_default();
     let figures = figures(run, &recording, resources, log.retries);
     println!(
@@ -1025,13 +1035,14 @@ pub fn check(
         CacheWire::Anthropic => {}
     }
     if let Some(limits) = run.limits {
-        assert!(
-            figures.input_saving >= limits.min_saving,
-            "{}: input saving {:.3} (limit {:.3})",
-            figures.run,
-            figures.input_saving,
-            limits.min_saving
-        );
+        if let Some(min_saving) = limits.min_saving {
+            assert!(
+                figures.input_saving >= min_saving,
+                "{}: input saving {:.3} (limit {min_saving:.3})",
+                figures.run,
+                figures.input_saving,
+            );
+        }
         if let Some(floor) = limits.min_call_share {
             assert_no_collapse(&recording);
             assert_call_share(&recording, floor);

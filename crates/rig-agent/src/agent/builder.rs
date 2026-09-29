@@ -247,6 +247,14 @@ impl<ToolState> AgentBuilder<ToolState> {
         self
     }
 
+    /// Remove the sampling temperature, for test scenarios run against
+    /// models that reject it.
+    #[cfg(any(test, feature = "test-utils"))]
+    pub(crate) fn clear_temperature(mut self) -> Self {
+        self.config.temperature = None;
+        self
+    }
+
     /// Set the output-token cap.
     pub fn max_tokens(mut self, max_tokens: u64) -> Self {
         self.config.max_tokens = Some(max_tokens);
