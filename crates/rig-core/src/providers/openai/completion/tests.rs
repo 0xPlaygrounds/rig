@@ -1009,6 +1009,9 @@ fn request_body_moves_nothing_but_the_cap() {
 /// the live endpoint: the reasoning models reject the legacy field, and
 /// everything else — including OpenAI's own older models and any
 /// compatible server's model names — still gets the bytes it always got.
+/// Reading a family off a model name is definitory, not observed, so the
+/// new model IDs are table rows here; their recorded sessions show the
+/// spelling on the wire.
 #[test]
 fn modern_output_cap_covers_exactly_the_reasoning_families() {
     for model in [
@@ -1018,6 +1021,14 @@ fn modern_output_cap_covers_exactly_the_reasoning_families() {
         "gpt-5-nano",
         "gpt-5-2025-08-07",
         "gpt-6",
+        GPT_6_ASTRA,
+        GPT_6_1_SOL,
+        GPT_6_SOL,
+        GPT_6_LUNA,
+        GPT_5_4,
+        GPT_5_4_MINI,
+        GPT_5_4_NANO,
+        GPT_5_2_PRO,
         "o1",
         "o1-mini",
         "o3",

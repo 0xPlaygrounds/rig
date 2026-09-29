@@ -208,6 +208,35 @@ where
     }
 }
 
+/// One model's recorded session
+/// (`crates/rig-cassette/fixtures/cassettes/openai/models/<model>/`): both
+/// routes' models and the session's clock.
+pub(super) async fn with_openai_model_session_cassette<F, Fut>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) -> rig_test_support::model_session::Session
+where
+    F: FnOnce(OpenAiCassette, crate::cassettes::CassetteClock) -> Fut,
+    Fut: Future<Output = rig_test_support::model_session::Session>,
+{
+    let spec = spec.into();
+    let (cassette, openai) = openai_cassette(spec).await;
+    let result = AssertUnwindSafe(test_body(openai, cassette.clock()))
+        .catch_unwind()
+        .await;
+    crate::cassettes::checkpoint_attempt(&cassette, "openai", spec.scenario()).await;
+    match result {
+        Ok(session) => {
+            cassette.finish_after_test(Ok(())).await;
+            session
+        }
+        Err(payload) => {
+            cassette.finish_after_test(Err(payload)).await;
+            unreachable!("finishing a failed session resumes its panic")
+        }
+    }
+}
+
 /// Per-bug wrapper for the model-turn termination-metadata matrix
 /// (`crates/rig-cassette/fixtures/cassettes/openai/turn_termination_matrix/`), rig#2184.
 pub(super) async fn with_openai_turn_metadata_cassette<F, Fut>(

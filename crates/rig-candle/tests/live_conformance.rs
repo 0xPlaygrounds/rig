@@ -103,7 +103,7 @@ async fn pinned_qwen3_model_contract() -> Result<(), Box<dyn std::error::Error +
 
     let text_parity = tokio::time::timeout(
         Duration::from_secs(600),
-        buffered_streaming_text_parity(loaded_model.clone()),
+        buffered_streaming_text_parity(loaded_model.clone(), |request| request),
     )
     .await??;
     print_report(&text_parity);
@@ -195,7 +195,7 @@ async fn pinned_qwen3_model_contract() -> Result<(), Box<dyn std::error::Error +
 
     let extraction = tokio::time::timeout(
         Duration::from_secs(900),
-        structured_extraction(loaded_model.clone()),
+        structured_extraction(loaded_model.clone(), None),
     )
     .await??;
     print_report(&extraction);
@@ -238,7 +238,7 @@ async fn pinned_qwen3_model_contract() -> Result<(), Box<dyn std::error::Error +
 
     let choices = tokio::time::timeout(
         Duration::from_secs(900),
-        rig_agent::test_utils::tool_choice_modes(model()?),
+        rig_agent::test_utils::tool_choice_modes(model()?, |request| request),
     )
     .await??;
     print_report(&choices);

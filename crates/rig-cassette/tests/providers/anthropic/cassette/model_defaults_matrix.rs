@@ -29,6 +29,12 @@
 //! | 5 | `haiku_4_5_defaults_to_64k` | claude-haiku-4-5 | 64000 (control) | — |
 //! | 6 | `opus_5_preserves_mid_conversation_system_role` | claude-opus-5 | 128000 | kept in `messages` |
 //! | 7 | `sonnet_5_hoists_mid_conversation_system_role` | claude-sonnet-5 | 128000 | hoisted to `system` |
+//! | 8 | `opus_5_5_preserves_mid_conversation_system_role` | claude-opus-5-5 | 128000 | kept in `messages` |
+//! | 9 | `sonnet_5_5_preserves_mid_conversation_system_role` | claude-sonnet-5-5 | 128000 | kept in `messages` |
+//!
+//! Sonnet 5.5 is the case a prefix rule gets wrong: Anthropic documents
+//! mid-conversation system messages for it but not for Sonnet 5, and its ID
+//! starts with Sonnet 5's.
 //!
 //! The table itself is definitory and unit-tested beside the implementation
 //! (`current_model_default_max_tokens_match_anthropic_limits` in
@@ -37,7 +43,8 @@
 
 use rig::completion::Message;
 use rig::providers::anthropic::completion::{
-    CLAUDE_FABLE_5_1, CLAUDE_HAIKU_4_5, CLAUDE_OPUS_5, CLAUDE_SONNET_4_6, CLAUDE_SONNET_5,
+    CLAUDE_FABLE_5_1, CLAUDE_HAIKU_4_5, CLAUDE_OPUS_5, CLAUDE_OPUS_5_5, CLAUDE_SONNET_4_6,
+    CLAUDE_SONNET_5, CLAUDE_SONNET_5_5,
 };
 use rig_test_support::cassette_models::AnthropicModels;
 use serde_json::Value;
@@ -232,6 +239,40 @@ async fn sonnet_5_hoists_mid_conversation_system_role() {
     );
     assert_recorded_system_role_hoisted(
         "model_defaults_matrix/sonnet_5_hoists_mid_conversation_system_role",
+    );
+}
+
+#[tokio::test]
+async fn opus_5_5_preserves_mid_conversation_system_role() {
+    with_anthropic_cassette(
+        "model_defaults_matrix/opus_5_5_preserves_mid_conversation_system_role",
+        |client| async move { assert_mid_conversation_system_turn(client, CLAUDE_OPUS_5_5).await },
+    )
+    .await;
+    assert_recorded_max_tokens(
+        "model_defaults_matrix/opus_5_5_preserves_mid_conversation_system_role",
+        128_000,
+    );
+    assert_recorded_system_role_in_messages(
+        "model_defaults_matrix/opus_5_5_preserves_mid_conversation_system_role",
+    );
+}
+
+#[tokio::test]
+async fn sonnet_5_5_preserves_mid_conversation_system_role() {
+    with_anthropic_cassette(
+        "model_defaults_matrix/sonnet_5_5_preserves_mid_conversation_system_role",
+        |client| async move {
+            assert_mid_conversation_system_turn(client, CLAUDE_SONNET_5_5).await
+        },
+    )
+    .await;
+    assert_recorded_max_tokens(
+        "model_defaults_matrix/sonnet_5_5_preserves_mid_conversation_system_role",
+        128_000,
+    );
+    assert_recorded_system_role_in_messages(
+        "model_defaults_matrix/sonnet_5_5_preserves_mid_conversation_system_role",
     );
 }
 

@@ -28,7 +28,7 @@ use serde::{Deserialize, Serialize};
 
 use super::completion::{
     AnthropicCompletionRequest, AnthropicRequestParams, CacheTtl, ToolDefinition,
-    default_max_tokens_for_model, sanitize_strict_tool_schema,
+    default_max_tokens_for_model, rejects_forced_tool_choice, sanitize_strict_tool_schema,
 };
 use super::streaming::MessagesDecoder;
 
@@ -504,7 +504,9 @@ impl Wire for Messages {
         Descriptor::new(self.provider.dialect.name)
             .model(self.model.as_str())
             .capabilities(Capabilities::completion(
-                ProviderCapabilities::default().with_native_output_tool_composition(true),
+                ProviderCapabilities::default()
+                    .with_native_output_tool_composition(true)
+                    .with_forced_tool_choice_rejected(rejects_forced_tool_choice(&self.model)),
             ))
     }
 

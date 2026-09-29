@@ -63,3 +63,8 @@ async fn list_models_rejected_key_reports_api_error_with_context() {
     )
     .await;
 }
+
+// One recorded session per model: `rig_test_support::model_session`.
+mod fable_5_1;
+mod opus_5_5;
+mod sonnet_5_5;

@@ -664,13 +664,16 @@ fn opus_4_8_hoists_leading_system_message_when_documents_are_present() {
 
     let value = serde_json::to_value(request).unwrap();
     assert_eq!(value["system"][0]["text"], "Global history instruction.");
-    assert_eq!(value["system"][1]["text"], "Mid-conversation instruction.");
+    assert_eq!(value["system"].as_array().map(Vec::len), Some(1));
 
+    // The misplaced mid-conversation instruction moves after the next user
+    // turn instead of into `system`.
     let messages = value["messages"].as_array().unwrap();
-    assert_eq!(messages.len(), 3);
+    assert_eq!(messages.len(), 4);
     assert_eq!(messages[0]["role"], "user");
     assert_eq!(messages[1]["role"], "assistant");
     assert_eq!(messages[2]["role"], "user");
+    assert_eq!(messages[3]["role"], "system");
     assert!(
         messages[0].to_string().contains("<file id: doc>"),
         "document message should follow top-level system: {messages:?}"
@@ -683,10 +686,12 @@ fn opus_4_8_hoists_leading_system_message_when_documents_are_present() {
         1,
         "document message should appear exactly once: {messages:?}"
     );
-    assert!(
+    assert_eq!(
         messages
             .iter()
-            .all(|message| message["role"].as_str() != Some("system"))
+            .filter(|message| message["role"].as_str() == Some("system"))
+            .count(),
+        1
     );
 }
 
@@ -857,9 +862,35 @@ fn opus_4_8_preserves_system_message_after_assistant_server_tool_use() {
     assert_eq!(messages[2]["role"], "assistant");
 }
 
+/// Encode a history for a model that keeps mid-conversation system messages
+/// and return the wire's `system` and `messages` as JSON.
+fn encode_mid_conversation_history(
+    model: &str,
+    history: Vec<message::Message>,
+) -> serde_json::Value {
+    let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+        issuers: &[crate::message::Issuer::from_static("anthropic")],
+        model,
+        request: completion_request_with_history(history, None),
+        prompt_caching: false,
+        automatic_caching: false,
+        automatic_caching_ttl: None,
+        static_prefix_cache_ttl: None,
+    })
+    .unwrap();
+    serde_json::to_value(request).unwrap()
+}
+
+/// A misplaced system message moves after the next user turn instead of into
+/// `system`, so the prompt prefix a cache or a bound thinking block depends on
+/// stays the same. Offline because the position rule's every branch is shown
+/// here; the recorded proof is the model sessions' mid-conversation phase
+/// (`anthropic/models/<model>/session.yaml`), whose system message sits after
+/// an assistant turn and before the user's question.
 #[test]
-fn opus_4_8_hoists_system_message_in_invalid_mid_conversation_position() {
-    let request = completion_request_with_history(
+fn opus_4_8_moves_a_misplaced_system_message_after_the_next_user_turn() {
+    let value = encode_mid_conversation_history(
+        CLAUDE_OPUS_4_8,
         vec![
             message::Message::user("Review this code."),
             message::Message::System {
@@ -867,30 +898,60 @@ fn opus_4_8_hoists_system_message_in_invalid_mid_conversation_position() {
             },
             message::Message::user("Now review this other file."),
         ],
-        None,
     );
 
-    let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
-        issuers: &[crate::message::Issuer::from_static("anthropic")],
-        model: CLAUDE_OPUS_4_8,
-        request,
-        prompt_caching: false,
-        automatic_caching: false,
-        automatic_caching_ttl: None,
-        static_prefix_cache_ttl: None,
-    })
-    .unwrap();
-
-    let value = serde_json::to_value(request).unwrap();
-    assert_eq!(
-        value["system"][0]["text"],
-        "From now on, require explicit type annotations."
-    );
-
+    assert!(value.get("system").is_none(), "{value}");
     let messages = value["messages"].as_array().unwrap();
-    assert_eq!(messages.len(), 2);
+    assert_eq!(messages.len(), 3);
     assert_eq!(messages[0]["role"], "user");
     assert_eq!(messages[1]["role"], "user");
+    assert_eq!(messages[2]["role"], "system");
+}
+
+/// The agent-loop placement: a system message between an assistant's
+/// `tool_use` and its `tool_result` moves after the tool results, where
+/// Anthropic documents it, and a trailing one after an assistant turn (no user
+/// turn follows) is still hoisted. Offline for the reason above.
+#[test]
+fn sonnet_5_5_defers_a_system_message_past_tool_results() {
+    let lookup = || message::ToolName::new("lookup").expect("tool name");
+    let tool_call = message::Message::Assistant {
+        id: None,
+        content: crate::NonEmpty::new(message::AssistantContent::tool_call(
+            "toolu_1",
+            lookup(),
+            json!({}),
+        )),
+    };
+    let tool_result =
+        message::Message::tool_result(message::CallId::from_wire("toolu_1"), lookup(), "ok");
+    let value = encode_mid_conversation_history(
+        CLAUDE_SONNET_5_5,
+        vec![
+            message::Message::user("Look it up."),
+            tool_call,
+            message::Message::system("Answer in Spanish."),
+            tool_result,
+        ],
+    );
+    assert!(value.get("system").is_none(), "{value}");
+    let roles: Vec<_> = value["messages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|message| message["role"].clone())
+        .collect();
+    assert_eq!(roles, ["user", "assistant", "user", "system"]);
+
+    let value = encode_mid_conversation_history(
+        CLAUDE_SONNET_5_5,
+        vec![
+            message::Message::user("Look it up."),
+            message::Message::assistant("Done."),
+            message::Message::system("Answer in Spanish."),
+        ],
+    );
+    assert_eq!(value["system"][0]["text"], "Answer in Spanish.");
 }
 
 #[test]

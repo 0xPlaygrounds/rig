@@ -16,8 +16,21 @@ use crate::{
 use serde::{Deserialize, Serialize};
 use std::{convert::Infallible, str::FromStr};
 
-/// `claude-fable-5-1` completion model
+/// Claude Fable 5.1, API ID `claude-fable-5-1`: 128K default `max_tokens`,
+/// mid-conversation system messages kept in `messages`. It rejects a forced
+/// tool choice, so the extractor uses native structured output instead of
+/// forcing its `submit` tool.
 pub const CLAUDE_FABLE_5_1: &str = "claude-fable-5-1";
+/// Claude Opus 5.5, API ID `claude-opus-5-5`: 128K default `max_tokens`,
+/// mid-conversation system messages kept in `messages`. It rejects a forced
+/// tool choice, so the extractor uses native structured output instead of
+/// forcing its `submit` tool.
+pub const CLAUDE_OPUS_5_5: &str = "claude-opus-5-5";
+/// Claude Sonnet 5.5, API ID `claude-sonnet-5-5`: 128K default `max_tokens`,
+/// mid-conversation system messages kept in `messages` (unlike Claude
+/// Sonnet 5). It rejects a forced tool choice, so the extractor uses native
+/// structured output instead of forcing its `submit` tool.
+pub const CLAUDE_SONNET_5_5: &str = "claude-sonnet-5-5";
 /// `claude-fable-5` completion model
 pub const CLAUDE_FABLE_5: &str = "claude-fable-5";
 /// `claude-opus-5` completion model
@@ -1047,17 +1060,43 @@ impl Message {
     }
 }
 
-/// Return the published synchronous output limit for a recognized model prefix.
+/// Whether `model` is `id` or one of its dated snapshots (`<id>-YYYYMMDD`),
+/// and not a later model whose ID merely starts with `id`.
+pub(super) fn is_model(model: &str, id: &str) -> bool {
+    model
+        .strip_prefix(id)
+        .is_some_and(|rest| rest.is_empty() || rest.starts_with("-20"))
+}
+
+/// Models whose published synchronous output limit is 128K tokens.
+const OUTPUT_128K: [&str; 10] = [
+    CLAUDE_FABLE_5_1,
+    CLAUDE_FABLE_5,
+    CLAUDE_OPUS_5_5,
+    CLAUDE_OPUS_5,
+    CLAUDE_SONNET_5_5,
+    CLAUDE_SONNET_5,
+    CLAUDE_OPUS_4_8,
+    CLAUDE_OPUS_4_7,
+    CLAUDE_OPUS_4_6,
+    CLAUDE_SONNET_4_6,
+];
+
+/// Models that accept `role: "system"` inside `messages`, per Anthropic's
+/// mid-conversation system messages page. Claude Sonnet 5 does not.
+const MID_CONVERSATION_SYSTEM: [&str; 6] = [
+    CLAUDE_FABLE_5_1,
+    CLAUDE_FABLE_5,
+    CLAUDE_OPUS_5_5,
+    CLAUDE_OPUS_5,
+    CLAUDE_SONNET_5_5,
+    CLAUDE_OPUS_4_8,
+];
+
+/// Return the published synchronous output limit for a recognized model.
 /// Unknown models require an explicit `max_tokens` value.
 pub(super) fn default_max_tokens_for_model(model: &str) -> Option<u64> {
-    if model.starts_with("claude-fable-5")
-        || model.starts_with("claude-opus-5")
-        || model.starts_with("claude-sonnet-5")
-        || model.starts_with("claude-opus-4-8")
-        || model.starts_with("claude-opus-4-7")
-        || model.starts_with("claude-opus-4-6")
-        || model.starts_with("claude-sonnet-4-6")
-    {
+    if OUTPUT_128K.iter().any(|id| is_model(model, id)) {
         Some(128_000)
     } else if model.starts_with("claude-opus-4")
         || model.starts_with("claude-sonnet-4")
@@ -1069,12 +1108,21 @@ pub(super) fn default_max_tokens_for_model(model: &str) -> Option<u64> {
     }
 }
 
-/// Per Anthropic's mid-conversation system messages docs: Fable 5.x, Opus 4.8 and
-/// Opus 5 accept `role: "system"` inside `messages`; Sonnet 5 does not.
+/// Models that answer a forced `tool_choice` (`any` or `tool`) with a 400, per
+/// their what's-new pages.
+const REJECTS_FORCED_TOOL_CHOICE: [&str; 3] =
+    [CLAUDE_OPUS_5_5, CLAUDE_SONNET_5_5, CLAUDE_FABLE_5_1];
+
+/// Whether `model` rejects a forced tool choice.
+pub(super) fn rejects_forced_tool_choice(model: &str) -> bool {
+    REJECTS_FORCED_TOOL_CHOICE
+        .iter()
+        .any(|id| is_model(model, id))
+}
+
+/// Whether `model` accepts `role: "system"` inside `messages`.
 pub(super) fn supports_mid_conversation_system_messages(model: &str) -> bool {
-    model.starts_with(CLAUDE_FABLE_5)
-        || model.starts_with(CLAUDE_OPUS_5)
-        || model.starts_with(CLAUDE_OPUS_4_8)
+    MID_CONVERSATION_SYSTEM.iter().any(|id| is_model(model, id))
 }
 
 #[derive(Default, Debug, Serialize, Deserialize)]
@@ -1944,34 +1992,70 @@ pub(super) fn resolve_top_level_cache_control(
     }
 }
 
+/// Split `history` into the top-level `system` field and `messages`.
+///
+/// On a model that takes mid-conversation system messages, one in a position
+/// Anthropic rejects (after an assistant turn, or before a user turn) moves to
+/// the next valid slot: right after the next user turn that ends the array or
+/// precedes an assistant turn. Hoisting it into `system` instead would change
+/// the prompt prefix, which misses the cache from the first token and, on
+/// models that bind thinking blocks to their conversation, turns every earlier
+/// thinking block into a 400. It is hoisted only when no such slot exists.
 pub(super) fn split_system_messages_from_history(
     history: &[message::Message],
     preserve_mid_conversation_system_messages: bool,
 ) -> (Vec<SystemContent>, Vec<message::Message>) {
     let mut system = Vec::new();
     let mut remaining = Vec::new();
+    let mut deferred: Vec<String> = Vec::new();
 
     for (index, message) in history.iter().enumerate() {
         match message {
             message::Message::System { content } => {
-                if !content.is_empty() {
-                    if preserve_mid_conversation_system_messages
-                        && is_valid_mid_conversation_system_message(history, index)
-                    {
+                if content.is_empty() {
+                    continue;
+                }
+                if preserve_mid_conversation_system_messages {
+                    if is_valid_mid_conversation_system_message(history, index) {
                         remaining.push(message.clone());
-                    } else {
-                        system.push(SystemContent::Text {
-                            text: content.clone(),
-                            cache_control: None,
-                        });
+                        continue;
+                    }
+                    if index > 0 && next_system_message_slot(history, index).is_some() {
+                        deferred.push(content.clone());
+                        continue;
                     }
                 }
+                system.push(SystemContent::Text {
+                    text: content.clone(),
+                    cache_control: None,
+                });
             }
-            other => remaining.push(other.clone()),
+            other => {
+                remaining.push(other.clone());
+                if !deferred.is_empty() && is_system_message_slot(history, index) {
+                    remaining.push(message::Message::System {
+                        content: std::mem::take(&mut deferred).join("\n\n"),
+                    });
+                }
+            }
         }
     }
 
     (system, remaining)
+}
+
+/// The first index after `index` a misplaced system message can follow.
+fn next_system_message_slot(history: &[message::Message], index: usize) -> Option<usize> {
+    (index + 1..history.len()).find(|&slot| is_system_message_slot(history, slot))
+}
+
+/// Whether a system message may sit right after `history[index]`: it is a
+/// user turn, and what follows is the end of the array or an assistant turn.
+fn is_system_message_slot(history: &[message::Message], index: usize) -> bool {
+    matches!(history.get(index), Some(message::Message::User { .. }))
+        && history
+            .get(index + 1)
+            .is_none_or(|message| matches!(message, message::Message::Assistant { .. }))
 }
 
 fn is_valid_mid_conversation_system_message(history: &[message::Message], index: usize) -> bool {

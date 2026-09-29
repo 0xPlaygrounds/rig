@@ -191,11 +191,13 @@ fn streaming_request_keeps_documents_after_leading_system_messages() {
         .expect("streaming request body should build");
 
     assert_eq!(body["system"][0]["text"], "System prompt");
-    assert_eq!(body["system"][1]["text"], "Mid-conversation instruction");
+    assert_eq!(body["system"].as_array().map(Vec::len), Some(1));
     let messages = body["messages"]
         .as_array()
         .expect("messages should be array");
-    assert_eq!(messages.len(), 3);
+    // The misplaced mid-conversation instruction follows the user turn.
+    assert_eq!(messages.len(), 4);
+    assert_eq!(messages[3]["role"], "system");
     assert_eq!(messages[0]["role"], "user");
     assert!(
         messages[0].to_string().contains("<file id: doc1>"),

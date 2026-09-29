@@ -107,10 +107,16 @@ pub(crate) async fn build_prepared_completion_request(
     spec.output_tool_description
         .clone_from(&runner.output_tool_description);
     spec.augment_output_preamble = runner.augment_output_preamble;
+    let capabilities = model.capabilities();
+    let committed_output_tool = if unforce_output_tool(runner, &capabilities, &mut spec) {
+        None
+    } else {
+        committed_output_tool
+    };
 
     let prepared = crate::run::prepare::prepare_request(
         &spec,
-        &model.capabilities(),
+        &capabilities,
         chat_history,
         tool_snapshot.take_definitions(),
         committed_output_tool,
@@ -146,6 +152,47 @@ pub(crate) async fn build_prepared_completion_request(
         output_tool_name,
         max_tokens,
     })
+}
+
+/// Rig's own structured-output flow (the extractor) forces its output tool.
+/// For a model that rejects a forced tool choice, drop that force: use native
+/// structured output where the wire composes it with tools, else keep the
+/// output tool at `auto`, and say so in the preamble either way. A caller's
+/// own forced choice outside that flow is left alone. Returns whether the
+/// output tool was replaced by native output.
+fn unforce_output_tool(
+    runner: &crate::agent::AgentRunner,
+    capabilities: &rig_core::completion::ProviderCapabilities,
+    spec: &mut crate::run::spec::RunSpec,
+) -> bool {
+    let Some(name) = runner.output_tool_name.as_deref() else {
+        return false;
+    };
+    let forced = matches!(
+        spec.tool_choice,
+        Some(ToolChoice::Required | ToolChoice::Specific { .. })
+    );
+    if !capabilities.rejects_forced_tool_choice || !forced || spec.output_schema.is_none() {
+        return false;
+    }
+    spec.tool_choice = None;
+    let native = capabilities.composes_native_output_with_tools;
+    let line = if native {
+        format!(
+            "The `{name}` tool is not available for this model. Reply with only the JSON \
+             object you would have passed to it."
+        )
+    } else {
+        format!("Call the `{name}` tool with your answer instead of replying in text.")
+    };
+    spec.preamble = Some(match spec.preamble.take() {
+        Some(preamble) => format!("{preamble}\n\n{line}"),
+        None => line,
+    });
+    if native {
+        spec.output_mode = OutputMode::Native;
+    }
+    native
 }
 
 /// Configured model, request settings, hooks, memory, and tool registry for runs.

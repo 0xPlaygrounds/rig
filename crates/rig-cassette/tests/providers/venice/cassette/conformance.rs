@@ -113,7 +113,7 @@ async fn streaming_structured_output_after_tool() {
 #[tokio::test]
 async fn structured_extraction_roundtrip() {
     with_venice_cassette("conformance/structured_extraction", |client| async move {
-        structured_extraction(client.completion(DEFAULT_MODEL))
+        structured_extraction(client.completion(DEFAULT_MODEL), None)
             .await
             .expect("structured extraction should succeed");
     })
@@ -123,7 +123,7 @@ async fn structured_extraction_roundtrip() {
 #[tokio::test]
 async fn tool_choice_modes_roundtrip() {
     with_venice_cassette("conformance/tool_choice_modes", |client| async move {
-        tool_choice_modes(client.completion(TOOL_MODEL))
+        tool_choice_modes(client.completion(TOOL_MODEL), |request| request)
             .await
             .expect("tool choice modes should succeed");
     })
