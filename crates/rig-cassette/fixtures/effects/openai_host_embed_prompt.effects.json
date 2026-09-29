@@ -3207,6 +3207,7 @@
             "output_tokens": 3,
             "total_tokens": 31,
             "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
           "message_id": "msg_01372c9d33b010e1006ab395fc45f487d0a1ead8d9cb4b215d",

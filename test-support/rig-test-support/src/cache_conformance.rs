@@ -59,47 +59,25 @@ use rig_agent::completion::ToolDefinition;
 
 use rig_agent::completion::Usage;
 
+use rig_core::completion::CacheCost;
+
 use rig_core::message::Message;
 
 use rig_core::message::UserContent;
 
 use crate::cache_prefix;
 
-/// How a provider reports cached tokens relative to its input-token counter.
+/// How a provider reports cached tokens relative to its input-token counter,
+/// the rule apps price with too (`rig_core::completion::CacheCost`).
 ///
 /// This is the single most likely place to ship a vacuous assertion: divide
 /// turn 2's cache read by the wrong turn-1 denominator and
-/// [`assert_hit_ratio`] either always passes or always fails. Each variant
-/// below cites the mapping code it was derived from.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum CacheAccounting {
-    /// Cache reads and writes are reported *alongside* `input_tokens`, not
-    /// inside it, so the prompt total is the sum of all three.
-    ///
-    /// Anthropic: `anthropic_usage_totals` computes
-    /// `total = input + cached + cache_creation + output`
-    /// (`crates/rig-core/src/providers/anthropic/completion.rs`, and the doc
-    /// comment above it says so explicitly).
-    Alongside,
-    /// `cached_input_tokens` is a *subset* of `input_tokens`, so the prompt
-    /// total is `input_tokens` on its own.
-    ///
-    /// * OpenAI chat completions: `prompt_tokens_details.cached_tokens` is a
-    ///   breakdown of `prompt_tokens`
-    ///   (`crates/rig-core/src/providers/openai/completion/mod.rs`, normalized
-    ///   through `providers::internal::completion_usage`).
-    /// * OpenAI Responses: `input_tokens_details.cached_tokens` inside
-    ///   `input_tokens` (`.../openai/responses_api/mod.rs`).
-    /// * Cohere: the field's own doc reads "Subset of `tokens.input_tokens`"
-    ///   (`.../cohere/completion.rs`).
-    /// * DeepSeek: `prompt_cache_hit_tokens + prompt_cache_miss_tokens` partition
-    ///   `prompt_tokens` (`.../deepseek.rs`).
-    /// * Gemini: `cachedContentTokenCount` is a breakdown of
-    ///   `promptTokenCount` (`.../gemini/completion.rs`).
-    /// * OpenRouter, Mistral, and every `openai::Usage` reuser (groq, xai,
-    ///   venice, doubleword, perplexity): same OpenAI-compatible shape.
-    Subset,
-}
+/// [`assert_hit_ratio`] either always passes or always fails. Anthropic
+/// reports reads and writes *alongside* `input_tokens`
+/// (`anthropic_usage_totals`, `crates/rig-core/src/providers/anthropic/completion.rs`);
+/// OpenAI chat and Responses, Cohere, DeepSeek, Gemini, OpenRouter, Mistral
+/// and every `openai::Usage` reuser report them as a *subset* of it.
+pub use rig_core::completion::CacheAccounting;
 
 /// What a provider's prompt cache can do, and what its numbers mean.
 ///
@@ -158,17 +136,14 @@ impl CacheSupport {
     /// # Panics
     /// When `usage.input_tokens` is `None`.
     pub fn prompt_tokens(&self, usage: &Usage) -> u64 {
-        let Some(input) = usage.input_tokens else {
+        if usage.input_tokens.is_none() {
             panic!(
                 "[{}] the usage mapping reported no input tokens ({usage:?}); a cache ratio over \
                  unreported usage is undefined",
                 self.provider
             );
-        };
-        match self.accounting {
-            CacheAccounting::Alongside => input + cached_reads(usage) + cached_writes(usage),
-            CacheAccounting::Subset => input,
         }
+        CacheCost::from_usage(usage, self.accounting).prompt_tokens()
     }
 }
 

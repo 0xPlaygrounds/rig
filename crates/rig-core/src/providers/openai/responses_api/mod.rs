@@ -913,6 +913,10 @@ impl From<&ResponsesUsage> for crate::completion::Usage {
                 .input_tokens_details
                 .as_ref()
                 .map(|details| details.cached_tokens),
+            cache_creation_input_tokens: usage
+                .input_tokens_details
+                .as_ref()
+                .and_then(|details| details.cache_write_tokens),
             reasoning_tokens: usage
                 .output_tokens_details
                 .as_ref()
@@ -961,6 +965,10 @@ impl Add for ResponsesUsage {
 pub struct InputTokensDetails {
     /// Cached tokens from OpenAI
     pub cached_tokens: u64,
+    /// Input tokens written to the prompt cache, part of `input_tokens`.
+    /// Absent when the model does not report cache writes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_write_tokens: Option<u64>,
 }
 
 impl Add for InputTokensDetails {
@@ -968,6 +976,10 @@ impl Add for InputTokensDetails {
     fn add(self, rhs: Self) -> Self::Output {
         Self {
             cached_tokens: self.cached_tokens + rhs.cached_tokens,
+            cache_write_tokens: add_optional_details(
+                self.cache_write_tokens,
+                rhs.cache_write_tokens,
+            ),
         }
     }
 }

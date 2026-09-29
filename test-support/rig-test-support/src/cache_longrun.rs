@@ -16,11 +16,9 @@ use std::time::Duration;
 
 use rig_agent::agent::{Agent, MultiTurnStreamItem, StreamingError};
 use rig_cassette::http::CassetteClock;
-use rig_core::completion::{Message, Usage};
+use rig_core::completion::{CacheAccounting, CacheCost, CacheRates, Message, Usage};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-
-use crate::cache_conformance::CacheAccounting;
 
 /// The support handbook every long-run support chat uses as its preamble.
 pub const SUPPORT_PREAMBLE: &str = include_str!("cache_longrun/support_preamble.md");
@@ -565,61 +563,6 @@ pub fn load(wire: CacheWire, scenario: &str) -> Recording {
 }
 
 // ---------------------------------------------------------------------------
-// Pricing.
-
-/// Prices for one model and tier, in USD per 1M tokens.
-#[derive(Clone, Copy, Debug, Serialize)]
-pub struct CacheRates {
-    /// Uncached input.
-    pub input: f64,
-    /// A cached read.
-    pub cached_read: f64,
-    /// A cache write (Anthropic, OpenAI) or cache creation (Gemini).
-    pub cache_write: f64,
-    /// Storage per token-hour (Gemini caches).
-    pub storage_per_hour: f64,
-}
-
-/// A run's input tokens by how they are billed.
-#[derive(Clone, Copy, Debug, Default)]
-struct Billed {
-    uncached: u64,
-    reads: u64,
-    writes: u64,
-    storage_token_hours: f64,
-}
-
-impl Billed {
-    fn of(usage: &Usage, accounting: CacheAccounting) -> Self {
-        let input = usage.input_tokens.unwrap_or(0);
-        let reads = usage.cached_input_tokens.unwrap_or(0);
-        let writes = usage.cache_creation_input_tokens.unwrap_or(0);
-        let uncached = match accounting {
-            CacheAccounting::Alongside => input,
-            CacheAccounting::Subset => input.saturating_sub(reads + writes),
-        };
-        Self {
-            uncached,
-            reads,
-            writes,
-            storage_token_hours: 0.0,
-        }
-    }
-
-    fn prompt(&self) -> u64 {
-        self.uncached + self.reads + self.writes
-    }
-
-    fn usd(&self, rates: &CacheRates) -> f64 {
-        (self.uncached as f64 * rates.input
-            + self.reads as f64 * rates.cached_read
-            + self.writes as f64 * rates.cache_write
-            + self.storage_token_hours * rates.storage_per_hour)
-            / 1e6
-    }
-}
-
-// ---------------------------------------------------------------------------
 // Figures and checks.
 
 /// A run's asserted limits.
@@ -730,14 +673,14 @@ fn clock_span(provider: &str, scenario: &str) -> Option<u64> {
 
 /// Per call: the prompt tokens a perfect cache could have served, which is
 /// the conversation's previous prompt, capped at this one.
-fn cacheable(recording: &Recording, billed: &[Billed]) -> Vec<u64> {
+fn cacheable(recording: &Recording, billed: &[CacheCost]) -> Vec<u64> {
     let mut previous: HashMap<&str, u64> = HashMap::new();
     recording
         .calls
         .iter()
         .zip(billed)
         .map(|(call, billed)| {
-            let prompt = billed.prompt();
+            let prompt = billed.prompt_tokens();
             previous
                 .insert(call.conversation.as_str(), prompt)
                 .map_or(0, |earlier| earlier.min(prompt))
@@ -747,29 +690,34 @@ fn cacheable(recording: &Recording, billed: &[Billed]) -> Vec<u64> {
 
 /// Compute the run's figures. `resources` is what the provider's cache
 /// resources cost beside the calls (Gemini: creation and storage).
-fn figures(run: &LongRun<'_>, recording: &Recording, resources: Billed, retries: usize) -> Figures {
+fn figures(
+    run: &LongRun<'_>,
+    recording: &Recording,
+    resources: CacheCost,
+    retries: usize,
+) -> Figures {
     let accounting = run.wire.accounting();
-    let billed: Vec<Billed> = recording
+    let billed: Vec<CacheCost> = recording
         .calls
         .iter()
-        .map(|call| Billed::of(&call.usage, accounting))
+        .map(|call| CacheCost::from_usage(&call.usage, accounting))
         .collect();
-    let mut total = resources;
-    for call in &billed {
-        total.uncached += call.uncached;
-        total.reads += call.reads;
-        total.writes += call.writes;
-    }
-    let prompt = total.prompt() - resources.writes;
+    let calls: CacheCost = billed.iter().copied().sum();
+    let total = calls + resources;
+    let prompt = calls.prompt_tokens();
     let share = |part: u64, whole: u64| part as f64 / whole.max(1) as f64;
 
-    let hits_after_first = billed.iter().skip(1).filter(|call| call.reads > 0).count();
+    let hits_after_first = billed
+        .iter()
+        .skip(1)
+        .filter(|call| call.cache_reads > 0)
+        .count();
     let warm_up_calls = billed
         .iter()
-        .position(|call| call.reads > 0)
+        .position(|call| call.cache_reads > 0)
         .unwrap_or(billed.len());
     let min_call_share = after_first_read(recording, &billed)
-        .map(|(_, call)| share(call.reads, call.prompt()))
+        .map(|(_, call)| share(call.cache_reads, call.prompt_tokens()))
         .fold(None, |least: Option<f64>, share| {
             Some(least.map_or(share, |least| least.min(share)))
         })
@@ -804,8 +752,9 @@ fn figures(run: &LongRun<'_>, recording: &Recording, resources: Billed, retries:
         .iter()
         .map(|call| call.usage.output_tokens.unwrap_or(0))
         .sum();
+    // Uncached, the run would have sent its calls' prompts and nothing else.
     let usd_with_caching = total.usd(&run.rates);
-    let usd_uncached = prompt as f64 * run.rates.input / 1e6;
+    let usd_uncached = calls.uncached_usd(&run.rates);
     let provider = run.wire.provider();
     Figures {
         run: format!("{provider}/{}", run.scenario),
@@ -816,9 +765,9 @@ fn figures(run: &LongRun<'_>, recording: &Recording, resources: Billed, retries:
         retries,
         recording_seconds: clock_span(provider, run.scenario),
         prompt,
-        cached: total.reads,
-        writes: total.writes,
-        cached_share: share(total.reads, prompt),
+        cached: total.cache_reads,
+        writes: total.cache_writes,
+        cached_share: share(total.cache_reads, prompt),
         hit_rate: share(
             hits_after_first as u64,
             billed.len().saturating_sub(1) as u64,
@@ -826,8 +775,8 @@ fn figures(run: &LongRun<'_>, recording: &Recording, resources: Billed, retries:
         warm_up_calls,
         min_call_share,
         cacheable,
-        cache_accuracy: share(total.reads, cacheable),
-        writes_share: share(total.writes, prompt),
+        cache_accuracy: share(total.cache_reads, cacheable),
+        writes_share: share(total.cache_writes, prompt),
         caches_created,
         reads,
         storage_token_hours: total.storage_token_hours,
@@ -845,8 +794,8 @@ fn figures(run: &LongRun<'_>, recording: &Recording, resources: Billed, retries:
 /// Every call from its conversation's first cache read on, with its billing.
 fn after_first_read<'a>(
     recording: &'a Recording,
-    billed: &'a [Billed],
-) -> impl Iterator<Item = (&'a Call, &'a Billed)> {
+    billed: &'a [CacheCost],
+) -> impl Iterator<Item = (&'a Call, &'a CacheCost)> {
     let mut reading: Vec<&str> = Vec::new();
     recording
         .calls
@@ -856,7 +805,7 @@ fn after_first_read<'a>(
             if reading.contains(&call.conversation.as_str()) {
                 return true;
             }
-            if billed.reads > 0 {
+            if billed.cache_reads > 0 {
                 reading.push(call.conversation.as_str());
                 return true;
             }
@@ -866,23 +815,18 @@ fn after_first_read<'a>(
 
 /// Read the run back, compute and print its figures, and run every shared
 /// check that applies to its wire. `resources` is the cost of the provider's
-/// cache resources beside the calls: Gemini's caches created (tokens) and
-/// their storage (token-hours).
+/// cache resources beside the calls (Gemini's `CacheReport`: creation and
+/// storage).
 ///
 /// # Panics
 /// When a check fails.
 pub fn check(
     run: &LongRun<'_>,
     log: &RunLog,
-    resources: Option<(u64, f64)>,
+    resources: Option<CacheCost>,
 ) -> (Recording, Figures) {
     let recording = load(run.wire, run.scenario);
-    let resources =
-        resources.map_or_else(Billed::default, |(writes, storage_token_hours)| Billed {
-            writes,
-            storage_token_hours,
-            ..Billed::default()
-        });
+    let resources = resources.unwrap_or_default();
     let figures = figures(run, &recording, resources, log.retries);
     println!(
         "CACHE_LONGRUN {} {}",
@@ -896,7 +840,7 @@ pub fn check(
             assert_gemini_integrity(&recording, run.drops_signatures);
             let created: u64 = recording.created.iter().map(|created| created.tokens).sum();
             assert_eq!(
-                created, resources.writes,
+                created, resources.cache_writes,
                 "the caches the recording created and the tokens priced as creation differ"
             );
             assert_gemini_economics(&recording, &figures);
@@ -987,14 +931,14 @@ fn assert_usage_matches_wire(recording: &Recording, log: &RunLog) {
 /// After a conversation's first cache read, no call of it reads nothing: a
 /// zero there is a prefix that moved.
 fn assert_no_collapse(recording: &Recording) {
-    let billed: Vec<Billed> = recording
+    let billed: Vec<CacheCost> = recording
         .calls
         .iter()
-        .map(|call| Billed::of(&call.usage, recording.wire.accounting()))
+        .map(|call| CacheCost::from_usage(&call.usage, recording.wire.accounting()))
         .collect();
     for (call, billed) in after_first_read(recording, &billed) {
         assert!(
-            billed.reads > 0,
+            billed.cache_reads > 0,
             "interaction {}: read no cached tokens after its conversation's first read \
              (the prefix moved)",
             call.index
@@ -1005,17 +949,17 @@ fn assert_no_collapse(recording: &Recording) {
 /// Every call from its conversation's first cache read on covers at least
 /// `floor` of its prompt tokens.
 fn assert_call_share(recording: &Recording, accounting: CacheAccounting, floor: f64) {
-    let billed: Vec<Billed> = recording
+    let billed: Vec<CacheCost> = recording
         .calls
         .iter()
-        .map(|call| Billed::of(&call.usage, accounting))
+        .map(|call| CacheCost::from_usage(&call.usage, accounting))
         .collect();
     assert!(
-        billed.iter().any(|call| call.reads > 0),
+        billed.iter().any(|call| call.cache_reads > 0),
         "no call ever read a cache"
     );
     for (call, billed) in after_first_read(recording, &billed) {
-        let covered = billed.reads as f64 / billed.prompt().max(1) as f64;
+        let covered = billed.cache_reads as f64 / billed.prompt_tokens().max(1) as f64;
         assert!(
             covered >= floor,
             "interaction {} covered {:.0}% of its prompt (limit {:.0}%)",

@@ -148,6 +148,7 @@
             "output_tokens": 84,
             "total_tokens": 188,
             "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
           "message_id": null,
@@ -427,6 +428,7 @@
             "output_tokens": 5,
             "total_tokens": 204,
             "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
           "message_id": "msg_06a126f4190c95f9006ab2b39b469c87d08ca3cd0577bf03de",

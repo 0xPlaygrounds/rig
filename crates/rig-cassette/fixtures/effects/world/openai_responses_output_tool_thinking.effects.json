@@ -145,6 +145,7 @@
             "output_tokens": 330,
             "total_tokens": 473,
             "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
             "reasoning_tokens": 128
           },
           "message_id": null,

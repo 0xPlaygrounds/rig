@@ -17,15 +17,15 @@ use std::collections::HashMap;
 use std::time::Duration;
 
 use rig::agent::Agent;
-use rig::completion::Message;
+use rig::completion::{CacheCost, CacheRates, Message};
 use rig::providers::gemini::{
     AutoCache, CacheBook, CacheEvent, CacheReport, Gemini, Lease, ThoughtReplay,
 };
 use rig::tool::Tool;
 use rig::{AgentBuilder, AgentRun};
 use rig_test_support::cache_longrun::{
-    self, CacheRates, CacheWire, Created, Interaction, Limits, LongRun, LookupOrder, Recording,
-    RunLog, SUPPORT_PREAMBLE, chat, chat_streamed, question,
+    self, CacheWire, Created, Interaction, Limits, LongRun, LookupOrder, Recording, RunLog,
+    SUPPORT_PREAMBLE, chat, chat_streamed, question,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -167,21 +167,12 @@ fn limits(min_saving: f64, min_call_share: Option<f64>) -> Option<Limits> {
     })
 }
 
-/// What a book's caches cost beside the calls: tokens created and storage
-/// token-hours.
-fn book_cost(report: &CacheReport) -> (u64, f64) {
-    (
-        report.created.iter().map(|created| created.tokens).sum(),
-        report.token_hours,
-    )
-}
-
-/// Read the run back and run the shared checks, pricing `resources` (from
-/// [`book_cost`]) beside the calls.
+/// Read the run back and run the shared checks, pricing the book's caches
+/// (`resources`) beside the calls.
 fn check(
     scenario: &str,
     log: &RunLog,
-    resources: Option<(u64, f64)>,
+    resources: Option<CacheCost>,
     limits: Option<Limits>,
     drops_signatures: bool,
 ) -> (Recording, cache_longrun::Figures) {
@@ -295,7 +286,7 @@ async fn support_chat_100_current_turn() {
     let (_, figures) = check(
         SCENARIO,
         &log,
-        Some(book_cost(&report)),
+        Some(CacheCost::from(&report)),
         limits(0.65, Some(0.50)),
         true,
     );
@@ -315,7 +306,7 @@ async fn support_chat_100_auto() {
     let (recording, figures) = check(
         SCENARIO,
         &log,
-        Some(book_cost(&report)),
+        Some(CacheCost::from(&report)),
         limits(0.30, Some(0.50)),
         false,
     );
@@ -335,7 +326,7 @@ async fn support_chat_100_streamed() {
     let (recording, figures) = check(
         SCENARIO,
         &log,
-        Some(book_cost(&report)),
+        Some(CacheCost::from(&report)),
         limits(0.65, Some(0.50)),
         true,
     );
@@ -435,11 +426,16 @@ async fn support_chat_100_resume() {
     .await;
     // Creation counts both processes' caches; storage only the second
     // book's, which counts restored caches from the restore.
-    let (created, token_hours) = book_cost(&report);
     let (recording, figures) = check(
         SCENARIO,
         &log,
-        Some((pre_created + created, token_hours)),
+        Some(
+            CacheCost::from(&report)
+                + CacheCost {
+                    cache_writes: pre_created,
+                    ..CacheCost::default()
+                },
+        ),
         limits(0.65, Some(0.50)),
         true,
     );
@@ -515,7 +511,7 @@ async fn support_chat_100_compaction() {
     let (recording, _) = check(
         SCENARIO,
         &log,
-        Some(book_cost(&report)),
+        Some(CacheCost::from(&report)),
         limits(0.50, Some(0.50)),
         true,
     );
@@ -612,7 +608,7 @@ async fn agent_loop_large_results() {
     let (_, figures) = check(
         SCENARIO,
         &log,
-        Some(book_cost(&report)),
+        Some(CacheCost::from(&report)),
         limits(0.60, None),
         false,
     );
@@ -705,7 +701,7 @@ async fn subagents_shared_prefix() {
     let (recording, _) = check(
         SCENARIO,
         &log,
-        Some(book_cost(&report)),
+        Some(CacheCost::from(&report)),
         limits(0.60, Some(0.50)),
         false,
     );
@@ -767,7 +763,7 @@ async fn lifecycle() {
     let (recording, _) = check(
         SCENARIO,
         &log,
-        Some(book_cost(&report)),
+        Some(CacheCost::from(&report)),
         limits(0.0, None),
         false,
     );
