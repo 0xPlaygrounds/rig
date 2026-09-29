@@ -16,11 +16,20 @@ use crate::{
 use serde::{Deserialize, Serialize};
 use std::{convert::Infallible, str::FromStr};
 
-/// `claude-fable-5-1` completion model
+/// Claude Fable 5.1, API ID `claude-fable-5-1`: 128K default `max_tokens`,
+/// mid-conversation system messages kept in `messages`. It rejects a forced
+/// tool choice, so the extractor uses native structured output instead of
+/// forcing its `submit` tool.
 pub const CLAUDE_FABLE_5_1: &str = "claude-fable-5-1";
-/// `claude-opus-5-5` completion model
+/// Claude Opus 5.5, API ID `claude-opus-5-5`: 128K default `max_tokens`,
+/// mid-conversation system messages kept in `messages`. It rejects a forced
+/// tool choice, so the extractor uses native structured output instead of
+/// forcing its `submit` tool.
 pub const CLAUDE_OPUS_5_5: &str = "claude-opus-5-5";
-/// `claude-sonnet-5-5` completion model
+/// Claude Sonnet 5.5, API ID `claude-sonnet-5-5`: 128K default `max_tokens`,
+/// mid-conversation system messages kept in `messages` (unlike Claude
+/// Sonnet 5). It rejects a forced tool choice, so the extractor uses native
+/// structured output instead of forcing its `submit` tool.
 pub const CLAUDE_SONNET_5_5: &str = "claude-sonnet-5-5";
 /// `claude-fable-5` completion model
 pub const CLAUDE_FABLE_5: &str = "claude-fable-5";

@@ -29,16 +29,28 @@ where
     content.serialize(serializer)
 }
 
-/// `gpt-6-astra` completion model
+/// GPT-6 Astra, API ID `gpt-6-astra`: a reasoning model. Chat Completions
+/// takes its function tools only at `reasoning_effort: "none"`, which it does
+/// not support, so a Chat request with tools (the extractor's included) is
+/// refused before it is sent: use the Responses wire.
 pub const GPT_6_ASTRA: &str = "gpt-6-astra";
 
-/// `gpt-6.1-sol` completion model
+/// GPT-6.1 Sol, API ID `gpt-6.1-sol`: a reasoning model. Chat Completions
+/// takes its function tools only at `reasoning_effort: "none"`, which it does
+/// not support, so a Chat request with tools (the extractor's included) is
+/// refused before it is sent: use the Responses wire.
 pub const GPT_6_1_SOL: &str = "gpt-6.1-sol";
 
-/// `gpt-6-sol` completion model
+/// GPT-6 Sol, API ID `gpt-6-sol`: a reasoning model. Chat Completions takes
+/// its function tools only at `reasoning_effort: "none"`: a Chat request with
+/// tools is refused before it is sent unless `additional_params` carries
+/// `"reasoning_effort": "none"`. Responses takes them at any effort.
 pub const GPT_6_SOL: &str = "gpt-6-sol";
 
-/// `gpt-6-luna` completion model
+/// GPT-6 Luna, API ID `gpt-6-luna`: a reasoning model. Chat Completions takes
+/// its function tools only at `reasoning_effort: "none"`: a Chat request with
+/// tools is refused before it is sent unless `additional_params` carries
+/// `"reasoning_effort": "none"`. Responses takes them at any effort.
 pub const GPT_6_LUNA: &str = "gpt-6-luna";
 
 /// `gpt-5.6` completion model (alias that routes to GPT-5.6 Sol)
@@ -56,19 +68,20 @@ pub const GPT_5_6_LUNA: &str = "gpt-5.6-luna";
 /// `gpt-5.5` completion model
 pub const GPT_5_5: &str = "gpt-5.5";
 
-/// `gpt-5.4` completion model
+/// GPT-5.4, API ID `gpt-5.4`: a reasoning model.
 pub const GPT_5_4: &str = "gpt-5.4";
 
-/// `gpt-5.4-mini` completion model
+/// GPT-5.4 mini, API ID `gpt-5.4-mini`: a reasoning model.
 pub const GPT_5_4_MINI: &str = "gpt-5.4-mini";
 
-/// `gpt-5.4-nano` completion model
+/// GPT-5.4 nano, API ID `gpt-5.4-nano`: a reasoning model.
 pub const GPT_5_4_NANO: &str = "gpt-5.4-nano";
 
 /// `gpt-5.2` completion model
 pub const GPT_5_2: &str = "gpt-5.2";
 
-/// `gpt-5.2-pro` completion model
+/// GPT-5.2 Pro, API ID `gpt-5.2-pro`: a reasoning model served on the
+/// Responses API only, without structured outputs.
 pub const GPT_5_2_PRO: &str = "gpt-5.2-pro";
 
 /// `gpt-5.1` completion model
