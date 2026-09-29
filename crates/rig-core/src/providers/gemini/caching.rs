@@ -1,6 +1,6 @@
 //! Automatic explicit caching for long Gemini runs.
 //!
-//! [`Caching`] is a transport that wraps another. Every `generateContent`
+//! [`Caching`](super::Caching) is a transport that wraps another. Every `generateContent`
 //! and `streamGenerateContent` request passes through it with its encoded
 //! body, and a shared [`CacheBook`] decides what the request reads from a
 //! cache and when a new cache is worth creating:
