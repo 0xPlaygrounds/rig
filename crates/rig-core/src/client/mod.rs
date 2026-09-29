@@ -17,6 +17,7 @@ pub(crate) mod cohere;
 pub(crate) mod copilot;
 pub mod env;
 pub(crate) mod gemini;
+pub(crate) mod gemini_caching;
 pub(crate) mod macros;
 pub(crate) mod ollama;
 pub(crate) mod openai;

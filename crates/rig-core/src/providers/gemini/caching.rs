@@ -85,15 +85,9 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
-use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use serde_json::value::RawValue;
 use sha2::{Digest, Sha256};
-
-use super::completion::{GenerateContent, ThoughtReplay};
-use crate::driver::{Exchange, Model, Opened, Opening, Transport};
-use crate::error::ProviderError;
-use crate::wire::{Body, Encoded, Framing, Mode, WireFrame};
 
 /// Unix seconds.
 pub type Clock = Arc<dyn Fn() -> u64 + Send + Sync>;
@@ -293,8 +287,8 @@ struct Life {
 }
 
 #[derive(Default)]
-struct Book {
-    leases: HashMap<String, Lease>,
+pub(crate) struct Book {
+    pub(crate) leases: HashMap<String, Lease>,
     lives: BTreeMap<String, Life>,
     /// For each prefix, the conversations seen on it, by their first content.
     lineages: HashMap<String, HashSet<String>>,
@@ -312,10 +306,11 @@ struct Book {
 #[derive(Clone)]
 pub struct CacheBook {
     inner: Arc<Mutex<Book>>,
-    create: Arc<futures::lock::Mutex<()>>,
+    /// Serializes cache creation, so a prefix is created once.
+    pub(crate) create: Arc<futures::lock::Mutex<()>>,
     policy: AutoCache,
     clock: Clock,
-    display_prefix: Arc<str>,
+    pub(crate) display_prefix: Arc<str>,
 }
 
 impl std::fmt::Debug for CacheBook {
@@ -357,11 +352,11 @@ impl CacheBook {
         self.policy
     }
 
-    fn book(&self) -> std::sync::MutexGuard<'_, Book> {
+    pub(crate) fn book(&self) -> std::sync::MutexGuard<'_, Book> {
         self.inner.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
-    fn now(&self) -> u64 {
+    pub(crate) fn now(&self) -> u64 {
         (self.clock)()
     }
 
@@ -394,54 +389,6 @@ impl CacheBook {
         }
     }
 
-    /// Keep each lease only if Google still has a cache under its name whose
-    /// display name ends with the lease's digest. Returns how many survived.
-    pub async fn prove<T>(&self, caches: &Model<super::CachedContents, T>) -> usize
-    where
-        T: Transport<super::CachedContents>,
-    {
-        let mut survived = 0;
-        for lease in self.leases() {
-            let alive = match caches.get(&lease.name).await {
-                Ok(resource) => resource
-                    .display_name
-                    .as_deref()
-                    .is_some_and(|name| name.ends_with(short_digest(&lease.digest))),
-                Err(_) => false,
-            };
-            if alive {
-                survived += 1;
-            } else {
-                let now = self.now();
-                let mut book = self.book();
-                book.leases.remove(&lease.digest);
-                end_life(&mut book, &lease.name, now);
-                book.events.push(CacheEvent::Lost {
-                    name: lease.name.clone(),
-                    at: now,
-                });
-                book.report.lost.push(lease.name);
-            }
-        }
-        survived
-    }
-
-    /// Delete every cache the book still holds. A cache already gone (403)
-    /// counts as deleted.
-    pub async fn close<T>(&self, caches: &Model<super::CachedContents, T>)
-    where
-        T: Transport<super::CachedContents>,
-    {
-        for lease in self.leases() {
-            let result = caches.delete(&lease.name).await;
-            let gone = matches!(result, Ok(()) | Err(ProviderError::CacheExpired { .. }));
-            if !gone {
-                tracing::warn!(target: "gemini.cache", name = %lease.name, "cache delete failed");
-            }
-            self.retired(&lease);
-        }
-    }
-
     /// What the caches did and cost so far.
     pub fn report(&self) -> CacheReport {
         let now = self.now();
@@ -460,7 +407,7 @@ impl CacheBook {
         report
     }
 
-    fn retired(&self, lease: &Lease) {
+    pub(crate) fn retired(&self, lease: &Lease) {
         let now = self.now();
         let mut book = self.book();
         book.leases.remove(&lease.digest);
@@ -473,7 +420,7 @@ impl CacheBook {
         tracing::info!(target: "gemini.cache.retired", name = %lease.name);
     }
 
-    fn lost(&self, lease: &Lease) {
+    pub(crate) fn lost(&self, lease: &Lease) {
         let now = self.now();
         let mut book = self.book();
         book.leases.remove(&lease.digest);
@@ -487,7 +434,7 @@ impl CacheBook {
     }
 }
 
-fn end_life(book: &mut Book, name: &str, now: u64) {
+pub(crate) fn end_life(book: &mut Book, name: &str, now: u64) {
     if let Some(life) = book.lives.get_mut(name)
         && life.ended.is_none()
     {
@@ -495,7 +442,7 @@ fn end_life(book: &mut Book, name: &str, now: u64) {
     }
 }
 
-fn short_digest(digest: &str) -> &str {
+pub(crate) fn short_digest(digest: &str) -> &str {
     digest.get(..40).unwrap_or(digest)
 }
 
@@ -505,16 +452,16 @@ fn short_digest(digest: &str) -> &str {
 const PREFIX_KEYS: [&str; 3] = ["systemInstruction", "tools", "toolConfig"];
 
 /// A `generateContent` body, its contents kept as their exact bytes.
-struct Parsed {
+pub(crate) struct Parsed {
     /// Every other top-level field, in order, as exact bytes.
-    rest: Vec<(String, Box<RawValue>)>,
+    pub(crate) rest: Vec<(String, Box<RawValue>)>,
     /// `systemInstruction`, `tools` and `toolConfig`, when present and not null.
-    prefix: [Option<Box<RawValue>>; 3],
-    contents: Vec<Box<RawValue>>,
-    has_cached_content: bool,
+    pub(crate) prefix: [Option<Box<RawValue>>; 3],
+    pub(crate) contents: Vec<Box<RawValue>>,
+    pub(crate) has_cached_content: bool,
 }
 
-fn parse(bytes: &[u8]) -> Option<Parsed> {
+pub(crate) fn parse(bytes: &[u8]) -> Option<Parsed> {
     let fields: serde_json::Map<String, serde_json::Value> = serde_json::from_slice(bytes).ok()?;
     // Parse again as raw values so every part keeps its bytes; the first
     // pass only fixes the key order, which `RawValue` maps do not keep.
@@ -554,7 +501,7 @@ fn hex(bytes: &[u8]) -> String {
 }
 
 /// `d[k]`: the digest of the model, the prefix and `contents[..k]`.
-fn digests(model: &str, parsed: &Parsed) -> Vec<String> {
+pub(crate) fn digests(model: &str, parsed: &Parsed) -> Vec<String> {
     let mut hasher = Sha256::new();
     hasher.update(model.as_bytes());
     for field in &parsed.prefix {
@@ -597,7 +544,7 @@ fn estimate(json: &str) -> u64 {
 }
 
 /// Whether a content is the user's text: a new user turn, not a tool result.
-fn is_user_text(raw: &RawValue) -> bool {
+pub(crate) fn is_user_text(raw: &RawValue) -> bool {
     #[derive(Deserialize)]
     struct Content {
         role: Option<String>,
@@ -615,7 +562,7 @@ fn is_user_text(raw: &RawValue) -> bool {
 }
 
 /// The body that reads `lease` instead of what it holds.
-fn stripped(parsed: &Parsed, lease: &Lease) -> Option<Vec<u8>> {
+pub(crate) fn stripped(parsed: &Parsed, lease: &Lease) -> Option<Vec<u8>> {
     let mut out: Vec<(String, &RawValue)> = Vec::new();
     let name = serde_json::value::to_raw_value(&lease.name).ok()?;
     let contents = serde_json::value::to_raw_value(&parsed.contents.get(lease.covers..)?).ok()?;
@@ -641,7 +588,7 @@ fn stripped(parsed: &Parsed, lease: &Lease) -> Option<Vec<u8>> {
 
 /// The `cachedContents` create body for the first `covers` contents, from
 /// the request's own bytes.
-fn cache_body(
+pub(crate) fn cache_body(
     model: &str,
     parsed: &Parsed,
     covers: usize,
@@ -679,28 +626,34 @@ fn cache_body(
 // The plan.
 
 /// What one request reads, creates, retires and extends.
-struct Plan {
-    read: Option<Lease>,
-    create: Option<Create>,
-    retire: Vec<Lease>,
-    extend: Option<(Lease, u64)>,
-    line: String,
-    coverable: u64,
+pub(crate) struct Plan {
+    pub(crate) read: Option<Lease>,
+    pub(crate) create: Option<Create>,
+    pub(crate) retire: Vec<Lease>,
+    pub(crate) extend: Option<(Lease, u64)>,
+    pub(crate) line: String,
+    pub(crate) coverable: u64,
 }
 
-struct Create {
-    covers: usize,
-    digest: String,
-    ttl_secs: u64,
+pub(crate) struct Create {
+    pub(crate) covers: usize,
+    pub(crate) digest: String,
+    pub(crate) ttl_secs: u64,
     /// Uncalibrated bytes/4 estimate of what the cache holds.
     estimate: u64,
     /// The calibrated estimate the plan used.
     expected: u64,
-    replaces: Option<Lease>,
+    pub(crate) replaces: Option<Lease>,
 }
 
 impl CacheBook {
-    fn plan(&self, model: &str, d: &[String], parsed: &Parsed, roll_allowed: bool) -> Plan {
+    pub(crate) fn plan(
+        &self,
+        model: &str,
+        d: &[String],
+        parsed: &Parsed,
+        roll_allowed: bool,
+    ) -> Plan {
         let p = self.policy;
         let now = self.now();
         let n = parsed.contents.len();
@@ -852,7 +805,7 @@ impl CacheBook {
     }
 
     /// Account for one reply's usage on `line`.
-    fn observe(&self, line: &str, read: Option<&str>, coverable: u64, cached: u64) {
+    pub(crate) fn observe(&self, line: &str, read: Option<&str>, coverable: u64, cached: u64) {
         let p = self.policy;
         let mut book = self.book();
         if let Some(name) = read {
@@ -873,7 +826,7 @@ impl CacheBook {
         entry.premium += missed * (1.0 - p.cached_ratio);
     }
 
-    fn created(
+    pub(crate) fn created(
         &self,
         from_line: &str,
         create: &Create,
@@ -938,7 +891,13 @@ impl CacheBook {
         lease
     }
 
-    fn create_failed(&self, line: &str, coverable: u64, status: Option<u16>, message: String) {
+    pub(crate) fn create_failed(
+        &self,
+        line: &str,
+        coverable: u64,
+        status: Option<u16>,
+        message: String,
+    ) {
         let now = self.now();
         let mut book = self.book();
         if let Some(entry) = book.lines.get_mut(line) {
@@ -951,7 +910,7 @@ impl CacheBook {
         });
     }
 
-    fn extended(&self, lease: &Lease, ttl_secs: u64) {
+    pub(crate) fn extended(&self, lease: &Lease, ttl_secs: u64) {
         let now = self.now();
         let expires_at = now + ttl_secs;
         let mut book = self.book();
@@ -969,7 +928,7 @@ impl CacheBook {
         tracing::info!(target: "gemini.cache.extended", name = %lease.name, expires_at);
     }
 
-    fn touched(&self, lease: &Lease) {
+    pub(crate) fn touched(&self, lease: &Lease) {
         let now = self.now();
         let mut book = self.book();
         let gap = book
@@ -980,380 +939,5 @@ impl CacheBook {
             life.last_read = now;
             life.line_gap = life.line_gap.max(gap);
         }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// The transport.
-
-/// A transport that caches GenerateContent requests through `inner`, as
-/// its [`CacheBook`] decides. Build it with [`Model::caching`].
-#[derive(Clone)]
-pub struct Caching<T> {
-    inner: T,
-    config: super::GeminiConfig,
-    book: CacheBook,
-    thought_replay: ThoughtReplay,
-}
-
-impl<T> std::fmt::Debug for Caching<T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Caching")
-            .field("book", &self.book)
-            .field("thought_replay", &self.thought_replay)
-            .finish_non_exhaustive()
-    }
-}
-
-impl<T> Model<GenerateContent, T> {
-    /// This model, reading and creating explicit caches as `book` decides.
-    /// See [the module docs](self).
-    pub fn caching(self, book: &CacheBook) -> Model<GenerateContent, Caching<T>> {
-        let caching = Caching {
-            inner: self.transport,
-            config: self.wire.provider.clone(),
-            book: book.clone(),
-            thought_replay: self.wire.thought_replay,
-        };
-        Model::new(self.wire, caching)
-    }
-}
-
-fn model_of(path: &str) -> Option<String> {
-    let rest = path.split("/models/").nth(1)?;
-    let (model, verb) = rest.split_once(':')?;
-    let verb = verb.split('?').next()?;
-    matches!(verb, "generateContent" | "streamGenerateContent").then(|| model.to_owned())
-}
-
-/// `payload` with `bytes` as its body.
-fn with_body(payload: &Encoded, bytes: Vec<u8>) -> Result<Encoded, ProviderError> {
-    let mut builder = http::Request::builder()
-        .method(payload.request.method().clone())
-        .uri(payload.request.uri().clone());
-    for (name, value) in payload.request.headers() {
-        builder = builder.header(name, value);
-    }
-    let request = builder
-        .body(Body::Bytes(bytes))
-        .map_err(|error| ProviderError::request(error.to_string()))?;
-    Ok(Encoded {
-        request,
-        framing: payload.framing,
-        request_id_header: payload.request_id_header,
-        relaxed_content_type: payload.relaxed_content_type,
-        route: payload.route,
-        project: payload.project,
-        analysis_only: payload.analysis_only,
-    })
-}
-
-/// A `cachedContents` reply: its status (when it failed) and its body.
-struct Reply {
-    status: Option<u16>,
-    body: String,
-    error: Option<String>,
-}
-
-impl<T> Caching<T>
-where
-    T: Transport<GenerateContent>,
-{
-    /// Send one `cachedContents` request through the inner transport.
-    async fn resource(&self, method: http::Method, path: &str, body: Option<Vec<u8>>) -> Reply {
-        let request = http::Request::builder()
-            .method(method)
-            .uri(self.config.uri(path))
-            .header("Content-Type", "application/json")
-            .body(Body::Bytes(body.unwrap_or_default()));
-        let request = match request {
-            Ok(request) => request,
-            Err(error) => {
-                return Reply {
-                    status: None,
-                    body: String::new(),
-                    error: Some(error.to_string()),
-                };
-            }
-        };
-        let exchange = Exchange {
-            mode: Mode::Unary,
-            observation: None,
-        };
-        let opened = match self
-            .inner
-            .send(Encoded::new(request, Framing::Whole), exchange)
-            .await
-        {
-            Ok(opened) => opened,
-            Err(error) => {
-                return Reply {
-                    status: error.provider_response_status().map(|s| s.as_u16()),
-                    body: String::new(),
-                    error: Some(error.to_string()),
-                };
-            }
-        };
-        let mut frames = opened.frames;
-        let mut body = String::new();
-        while let Some(frame) = frames.next().await {
-            match frame {
-                Ok(frame) => body.push_str(&frame.as_str()),
-                Err(error) => {
-                    return Reply {
-                        status: error
-                            .provider_response_status()
-                            .map(|status| status.as_u16()),
-                        body: error
-                            .provider_response_body()
-                            .unwrap_or_default()
-                            .to_owned(),
-                        error: Some(error.to_string()),
-                    };
-                }
-            }
-        }
-        Reply {
-            status: None,
-            body,
-            error: None,
-        }
-    }
-
-    async fn delete(&self, lease: &Lease) {
-        let reply = self
-            .resource(
-                http::Method::DELETE,
-                &format!("/v1beta/{}", lease.name),
-                None,
-            )
-            .await;
-        if reply.error.is_some() && reply.status != Some(403) && reply.status != Some(404) {
-            tracing::warn!(target: "gemini.cache", name = %lease.name, error = ?reply.error, "cache delete failed");
-        }
-        self.book.retired(lease);
-    }
-
-    async fn extend(&self, lease: &Lease, ttl_secs: u64) {
-        let body = format!("{{\"ttl\":\"{ttl_secs}s\"}}").into_bytes();
-        let reply = self
-            .resource(
-                http::Method::PATCH,
-                &format!("/v1beta/{}?updateMask=ttl", lease.name),
-                Some(body),
-            )
-            .await;
-        if reply.error.is_none() {
-            self.book.extended(lease, ttl_secs);
-        }
-    }
-
-    /// Create the cache `create` describes, unless one already exists for
-    /// its digest. Returns the lease to read.
-    async fn create(
-        &self,
-        model: &str,
-        parsed: &Parsed,
-        create: &Create,
-        line: &str,
-        coverable: u64,
-    ) -> Option<Lease> {
-        let _single = self.book.create.lock().await;
-        if let Some(existing) = self.book.book().leases.get(&create.digest).cloned() {
-            return Some(existing);
-        }
-        let display_name = format!(
-            "{}{}",
-            self.book.display_prefix,
-            short_digest(&create.digest)
-        );
-        let body = cache_body(model, parsed, create.covers, &display_name, create.ttl_secs)?;
-        let reply = self
-            .resource(http::Method::POST, "/v1beta/cachedContents", Some(body))
-            .await;
-        if reply.error.is_some() {
-            let message = serde_json::from_str::<serde_json::Value>(&reply.body)
-                .ok()
-                .and_then(|value| {
-                    value
-                        .pointer("/error/message")
-                        .and_then(serde_json::Value::as_str)
-                        .map(str::to_owned)
-                })
-                .or(reply.error)
-                .unwrap_or_default();
-            self.book
-                .create_failed(line, coverable, reply.status, message);
-            return None;
-        }
-        #[derive(Deserialize)]
-        #[serde(rename_all = "camelCase")]
-        struct Resource {
-            name: String,
-            #[serde(default)]
-            usage_metadata: Option<Usage>,
-        }
-        #[derive(Deserialize)]
-        #[serde(rename_all = "camelCase")]
-        struct Usage {
-            #[serde(default)]
-            total_token_count: u64,
-        }
-        let resource: Resource = serde_json::from_str(&reply.body).ok()?;
-        let tokens = resource
-            .usage_metadata
-            .map_or(0, |usage| usage.total_token_count);
-        Some(
-            self.book
-                .created(line, create, resource.name, tokens, model),
-        )
-    }
-}
-
-/// The final `cachedContentTokenCount` a reply frame reports, when the frame
-/// ends the reply.
-fn final_cached(frame: &WireFrame) -> Option<u64> {
-    #[derive(Deserialize)]
-    #[serde(rename_all = "camelCase")]
-    struct Usage {
-        #[serde(default)]
-        cached_content_token_count: u64,
-    }
-    #[derive(Deserialize)]
-    #[serde(rename_all = "camelCase")]
-    struct Candidate {
-        finish_reason: Option<String>,
-    }
-    #[derive(Deserialize)]
-    #[serde(rename_all = "camelCase")]
-    struct Reply {
-        usage_metadata: Option<Usage>,
-        #[serde(default)]
-        candidates: Vec<Candidate>,
-    }
-    let reply: Reply = serde_json::from_str(&frame.as_str()).ok()?;
-    let finished = reply
-        .candidates
-        .iter()
-        .any(|candidate| candidate.finish_reason.is_some());
-    finished.then_some(reply.usage_metadata?.cached_content_token_count)
-}
-
-impl<T> Transport<GenerateContent> for Caching<T>
-where
-    T: Transport<GenerateContent>,
-{
-    fn send(&self, payload: Encoded, exchange: Exchange) -> Opening<WireFrame> {
-        let this = self.clone();
-        Opening::new(async move {
-            let Exchange { mode, observation } = exchange;
-            let path = payload.request.uri().path().to_owned();
-            let bytes = match payload.request.body() {
-                Body::Bytes(bytes) => Some(bytes.clone()),
-                Body::Multipart(_) => None,
-            };
-            let parsed = bytes.as_deref().and_then(parse);
-            let (Some(bytes), Some(model), Some(parsed)) = (bytes, model_of(&path), parsed) else {
-                return this
-                    .inner
-                    .send(payload, Exchange { mode, observation })
-                    .await;
-            };
-            if parsed.has_cached_content {
-                return this
-                    .inner
-                    .send(payload, Exchange { mode, observation })
-                    .await;
-            }
-
-            let d = digests(&model, &parsed);
-            let roll_allowed = match this.thought_replay {
-                ThoughtReplay::All => true,
-                ThoughtReplay::CurrentTurn => {
-                    parsed.contents.last().is_some_and(|c| is_user_text(c))
-                }
-            };
-            let plan = this.book.plan(&model, &d, &parsed, roll_allowed);
-            for idle in &plan.retire {
-                this.delete(idle).await;
-            }
-            let mut read = plan.read.clone();
-            let mut line = plan.line.clone();
-            if let Some(create) = &plan.create
-                && let Some(lease) = this
-                    .create(&model, &parsed, create, &plan.line, plan.coverable)
-                    .await
-            {
-                if let Some(replaced) = &create.replaces
-                    && replaced.name != lease.name
-                {
-                    this.delete(replaced).await;
-                }
-                if lease.covers > 0 {
-                    line = lease.digest.clone();
-                }
-                read = Some(lease);
-            }
-            if let Some((lease, ttl_secs)) = &plan.extend
-                && read.as_ref().is_some_and(|read| read.name == lease.name)
-            {
-                this.extend(lease, *ttl_secs).await;
-            }
-
-            let sent = match &read {
-                Some(lease) => match stripped(&parsed, lease) {
-                    Some(body) => with_body(&payload, body)?,
-                    None => {
-                        read = None;
-                        with_body(&payload, bytes.clone())?
-                    }
-                },
-                None => with_body(&payload, bytes.clone())?,
-            };
-            let mut opened: Opened<WireFrame> = this
-                .inner
-                .send(
-                    sent,
-                    Exchange {
-                        mode,
-                        observation: observation.clone(),
-                    },
-                )
-                .await?;
-            if let Some(lease) = read.clone() {
-                let first = opened.frames.next().await;
-                let forbidden = matches!(
-                    &first,
-                    Some(Err(error)) if error.provider_response_status() == Some(http::StatusCode::FORBIDDEN)
-                );
-                if forbidden {
-                    // Deleted elsewhere or expired early: forget it and send inline, once.
-                    this.book.lost(&lease);
-                    read = None;
-                    opened = this
-                        .inner
-                        .send(with_body(&payload, bytes)?, Exchange { mode, observation })
-                        .await?;
-                } else {
-                    this.book.touched(&lease);
-                    let rest =
-                        std::mem::replace(&mut opened.frames, Box::pin(futures::stream::empty()));
-                    opened.frames = Box::pin(futures::stream::iter(first).chain(rest));
-                }
-            }
-
-            let book = this.book.clone();
-            let read_name = read.map(|lease| lease.name);
-            let coverable = plan.coverable;
-            Ok(opened.map_frames(move |frames| {
-                frames.inspect(move |frame| {
-                    if let Ok(frame) = frame
-                        && let Some(cached) = final_cached(frame)
-                    {
-                        book.observe(&line, read_name.as_deref(), coverable, cached);
-                    }
-                })
-            }))
-        })
     }
 }

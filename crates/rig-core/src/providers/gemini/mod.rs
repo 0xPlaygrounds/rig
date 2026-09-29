@@ -26,10 +26,9 @@ pub mod streaming;
 pub mod transcription;
 
 pub use crate::client::gemini::Gemini;
+pub use crate::client::gemini_caching::Caching;
 pub use cached_content::{CacheExpiry, CachedContent, CachedContents, NewCachedContent};
-pub use caching::{
-    AutoCache, CacheBook, CacheEvent, CacheReport, Caching, Clock, CreatedCache, Lease,
-};
+pub use caching::{AutoCache, CacheBook, CacheEvent, CacheReport, Clock, CreatedCache, Lease};
 pub use completion::ThoughtReplay;
 pub use embedding::{EMBEDDING_001, EMBEDDING_004};
 #[cfg(feature = "image")]
