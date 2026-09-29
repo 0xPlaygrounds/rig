@@ -2961,16 +2961,18 @@ impl rig_core::driver::Transport<rig_core::driver::Local<rig_core::operation::Em
         texts: Vec<String>,
         _exchange: rig_core::driver::Exchange,
     ) -> rig_core::driver::Opening<rig_core::driver::Step<rig_core::operation::Embedding>> {
-        let response = rig_core::embeddings::EmbeddingResponse::new(
-            texts
-                .into_iter()
-                .map(|text| Embedding {
-                    document: text,
-                    vec: vec![1.0, 0.0],
-                })
-                .collect(),
-            "mock",
-        );
+        let response = rig_core::embeddings::EmbeddingResponse {
+            provider: "mock".into(),
+            ..rig_core::embeddings::EmbeddingResponse::new(
+                texts
+                    .into_iter()
+                    .map(|text| Embedding {
+                        document: text,
+                        vec: vec![1.0, 0.0],
+                    })
+                    .collect(),
+            )
+        };
         rig_core::driver::Opening::ready(rig_core::driver::Opened::new(futures::stream::iter([
             Ok(rig_core::driver::Step::End(response)),
         ])))

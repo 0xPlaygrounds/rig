@@ -521,7 +521,10 @@ impl rig::driver::Transport<rig::driver::Local<rig::operation::Embedding>> for M
                 }
             })
             .collect();
-        let response = rig::embeddings::EmbeddingResponse::new(embeddings, "mock");
+        let response = rig::embeddings::EmbeddingResponse {
+            provider: "mock".into(),
+            ..rig::embeddings::EmbeddingResponse::new(embeddings)
+        };
         rig::driver::Opening::ready(rig::driver::Opened::new(futures::stream::iter([Ok(
             rig::driver::Step::End(response),
         )])))

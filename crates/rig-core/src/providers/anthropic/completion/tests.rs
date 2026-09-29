@@ -2622,7 +2622,6 @@ fn empty_end_turn_response_normalizes_to_an_empty_choice() {
         role: "assistant".to_string(),
         stop_reason: Some("end_turn".to_string()),
         stop_sequence: None,
-        provider_request_id: None,
         usage: Usage {
             input_tokens: 7,
             cache_read_input_tokens: None,
@@ -2662,7 +2661,6 @@ fn empty_response_with(
         role: "assistant".to_string(),
         stop_reason: stop_reason.map(str::to_string),
         stop_sequence: stop_sequence.map(str::to_string),
-        provider_request_id: None,
         usage: Usage {
             input_tokens: 7,
             cache_read_input_tokens: None,
@@ -2770,7 +2768,6 @@ fn end_turn_with_a_tool_call_is_reconciled_to_tool_calls() {
         role: "assistant".to_string(),
         stop_reason: Some("end_turn".to_string()),
         stop_sequence: None,
-        provider_request_id: None,
         usage: Usage {
             input_tokens: 7,
             cache_read_input_tokens: None,

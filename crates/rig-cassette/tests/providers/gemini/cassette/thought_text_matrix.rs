@@ -1225,9 +1225,7 @@ mod unit {
             "model",
         );
 
-        let transcription = response
-            .normalize("gcp.gemini")
-            .expect("transcription should convert");
+        let transcription = response.normalize().expect("transcription should convert");
         assert_eq!(
             transcription.text,
             "The sun was setting slowly, casting long shadows across the empty field.",
@@ -1243,7 +1241,7 @@ mod unit {
     fn transcription_rejects_a_thought_only_candidate() {
         let response = response_with(vec![thought_part("Let me listen again...")], "model");
         assert_transcription_response_error(
-            response.normalize("gcp.gemini"),
+            response.normalize(),
             "a thought-only candidate has no transcript",
         );
     }
@@ -1270,7 +1268,7 @@ mod unit {
     fn transcription_keeps_an_empty_visible_text_part() {
         let response = response_with(vec![thought_part("hmm"), text_part("")], "model");
         let transcription = response
-            .normalize("gcp.gemini")
+            .normalize()
             .expect("an empty visible text part is still a (blank) transcript");
         assert_eq!(transcription.text, "");
     }
@@ -1292,7 +1290,7 @@ mod unit {
         }))
         .expect("recorded-shape payload should deserialize");
         assert_transcription_response_error(
-            response.normalize("gcp.gemini"),
+            response.normalize(),
             "a candidate with no parts at all has no transcript",
         );
     }
@@ -1307,7 +1305,7 @@ mod unit {
             "model",
         );
         assert_transcription_response_error(
-            response.normalize("gcp.gemini"),
+            response.normalize(),
             "a candidate with no text part has no transcript",
         );
     }

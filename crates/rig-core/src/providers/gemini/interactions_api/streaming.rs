@@ -310,15 +310,14 @@ impl<'id> Decoder<'id, Completion> for InteractionsDecoder<'id> {
                 let finish_reason = interaction
                     .and_then(|interaction| interaction.status.as_ref())
                     .map(map_interaction_status);
-                let response_id = interaction
-                    .map(|interaction| interaction.id.clone())
-                    .filter(|id| !id.is_empty());
-                return Ok(out.end(
-                    Finish::new(usage)
-                        .with_optional_reason(finish_reason)
-                        .with_optional_response_id(response_id)
-                        .with_optional_model(native.model_version),
-                ));
+                let response_id = interaction.map(|interaction| interaction.id.clone());
+                return Ok(out.end(Finish {
+                    usage,
+                    reason: finish_reason,
+                    response_id,
+                    model: native.model_version,
+                    ..Finish::default()
+                }));
             }
             event @ InteractionSseEvent::Error { .. } => {
                 // Preserve modeled error fields without inventing an HTTP

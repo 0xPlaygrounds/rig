@@ -15,7 +15,7 @@
 //! # Ok(())
 //! # }
 //! ```
-use crate::completion::{ResponseIdentity, Usage};
+use crate::completion::Usage;
 use crate::error::ProviderError;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -48,39 +48,27 @@ pub struct ImageGenerationResponse {
 }
 
 impl ImageGenerationResponse {
-    /// Create a response from its required parts; optional metadata starts
-    /// unset and is filled in with the `with_*` helpers.
-    pub fn new(image: Vec<u8>, provider: impl Into<String>) -> Self {
+    /// A response carrying `image`. The driver writes the provider, the
+    /// transport request id and the reply document; decoders set what the
+    /// provider reported.
+    pub fn new(image: Vec<u8>) -> Self {
         Self {
             image,
             usage: Usage::default(),
-            provider: provider.into(),
+            provider: String::new(),
             model: None,
             response_id: None,
             provider_request_id: None,
             raw: serde_json::Value::Null,
         }
     }
-
-    /// This response's identity metadata as one [`ResponseIdentity`] carrier.
-    /// `message_id` is always `None`: nothing here is replayed as an
-    /// assistant message.
-    pub fn identity(&self) -> ResponseIdentity {
-        ResponseIdentity {
-            message_id: None,
-            response_id: self.response_id.clone(),
-            provider_request_id: self.provider_request_id.clone(),
-        }
-    }
 }
 
-crate::provider_response::modality_response_metadata_setters!(ImageGenerationResponse);
-
-/// Normalizes provider image payloads, attributing the response to the supplied
-/// provider name.
+/// Normalizes provider image payloads. The driver writes the provider, request
+/// id and `raw` afterwards.
 pub trait NormalizeImageGenerationResponse {
-    /// Normalize this payload, attributing it to `provider`.
-    fn normalize(self, provider: &str) -> Result<ImageGenerationResponse, ProviderError>;
+    /// Normalize this payload.
+    fn normalize(self) -> Result<ImageGenerationResponse, ProviderError>;
 }
 
 pub struct ImageGenerationRequest {

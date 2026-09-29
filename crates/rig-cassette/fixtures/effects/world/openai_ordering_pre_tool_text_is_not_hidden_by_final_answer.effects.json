@@ -24,7 +24,7 @@
         }
       },
       {
-        "batch": 5,
+        "batch": 4,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -157,8 +157,7 @@
             "usage": {},
             "message_id": null,
             "response_id": null,
-            "model": null,
-            "provider_request_id": null
+            "model": null
           }
         }
       },
@@ -361,8 +360,7 @@
             "usage": {},
             "message_id": null,
             "response_id": null,
-            "model": null,
-            "provider_request_id": null
+            "model": null
           }
         }
       },

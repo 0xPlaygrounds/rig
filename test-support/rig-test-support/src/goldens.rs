@@ -1503,7 +1503,10 @@ impl rig_core::driver::Transport<rig_core::driver::Local<rig_core::operation::Re
             })
             .collect();
         results.sort_by(|left, right| right.relevance_score.total_cmp(&left.relevance_score));
-        let mut response = rig_core::rerank::RerankResponse::new(results, "mock");
+        let mut response = rig_core::rerank::RerankResponse {
+            provider: "mock".into(),
+            ..rig_core::rerank::RerankResponse::new(results)
+        };
         response.model = Some("mock-rerank".to_owned());
         rig_core::driver::Opening::ready(rig_core::driver::Opened::new(futures::stream::iter([
             Ok(rig_core::driver::Step::End(response)),

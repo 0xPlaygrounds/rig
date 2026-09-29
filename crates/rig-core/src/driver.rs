@@ -150,9 +150,10 @@ impl<F: WasmCompatSend + 'static> Opened<F> {
         Self::new(futures::stream::once(async move { Err(error) }))
     }
 
-    /// The provider's transport request id, when the reply carried one.
+    /// The provider's transport request id, when the reply carried one. An
+    /// empty id is no id.
     pub fn with_request_id(mut self, request_id: Option<String>) -> Self {
-        self.request_id = request_id;
+        self.request_id = crate::provider_response::reported(request_id);
         self
     }
 

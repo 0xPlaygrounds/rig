@@ -34,11 +34,12 @@ async fn finish_folds_the_parts_with_the_providers_end() {
     let mut stream = stream_of(vec![
         MockStreamEvent::text("Hello"),
         MockStreamEvent::text(" world"),
-        MockStreamEvent::FinalResponse(
-            Finish::new(usage(7))
-                .with_reason(FinishReason::Stop)
-                .with_optional_provider_request_id(Some("req-1".to_owned())),
-        ),
+        MockStreamEvent::RequestId("req-1".to_owned()),
+        MockStreamEvent::FinalResponse(Finish {
+            usage: usage(7),
+            reason: Some(FinishReason::Stop),
+            ..Finish::default()
+        }),
     ]);
     let items = items_of(&mut stream).await;
     assert!(items.iter().all(Result::is_ok), "{items:?}");
@@ -168,9 +169,11 @@ async fn the_choice_is_in_the_order_its_parts_started() {
 async fn a_stop_that_carried_a_tool_call_is_reported_as_tool_calls() {
     let mut stream = stream_of(vec![
         MockStreamEvent::tool_call("call_1", "lookup", serde_json::json!({})),
-        MockStreamEvent::FinalResponse(
-            Finish::new(Usage::default()).with_reason(FinishReason::Stop),
-        ),
+        MockStreamEvent::FinalResponse(Finish {
+            usage: Usage::default(),
+            reason: Some(FinishReason::Stop),
+            ..Finish::default()
+        }),
     ]);
     let _ = items_of(&mut stream).await;
     let response = stream.finish().await.expect("the reply ended");
@@ -224,4 +227,27 @@ async fn a_relayed_error_keeps_its_kind() {
         panic!("the error is relayed: {items:?}");
     };
     assert_eq!(error.kind(), ErrorKind::Provider);
+}
+
+/// An empty id is no id, whether the transport or the provider's end
+/// reported it.
+#[tokio::test]
+async fn an_empty_id_is_no_id() {
+    let mut stream = stream_of(vec![
+        MockStreamEvent::text("Hello"),
+        MockStreamEvent::RequestId(String::new()),
+        MockStreamEvent::FinalResponse(Finish {
+            message_id: Some(String::new()),
+            response_id: Some(String::new()),
+            model: Some(String::new()),
+            ..Finish::default()
+        }),
+    ]);
+    let items = items_of(&mut stream).await;
+    assert!(items.iter().all(Result::is_ok), "{items:?}");
+    let response = stream.finish().await.expect("the reply ended");
+    assert_eq!(response.provider_request_id, None);
+    assert_eq!(response.message_id, None);
+    assert_eq!(response.response_id, None);
+    assert_eq!(response.model, None);
 }

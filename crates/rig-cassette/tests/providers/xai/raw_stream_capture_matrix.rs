@@ -155,10 +155,6 @@ async fn stream_raw_round_trips_terminal_type() {
         raw["usage"]["output_tokens"].as_u64(),
         "the typed view's usage is the capture's usage"
     );
-    assert_eq!(
-        typed.provider_request_id, None,
-        "the transport id is stamped on the normalized terminal, not the native record"
-    );
 
     let response = recorded_completed_response(SCENARIO);
     assert_terminal_reproduces_event(&terminal, &response);

@@ -60,10 +60,6 @@ pub struct StreamingCompletionResponse {
     /// The model identifier reported by the terminal response event.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
-    /// Transport request ID, if supplied by the caller.
-    /// The driver stamps connection headers onto the normalized final record instead.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub provider_request_id: Option<String>,
 }
 
 impl StreamingCompletionResponse {
@@ -72,7 +68,6 @@ impl StreamingCompletionResponse {
     pub fn new(usage: Option<ResponsesUsage>) -> Self {
         Self {
             usage,
-            provider_request_id: None,
             reasoning_metadata: None,
             reasoning_context: None,
             status: None,
@@ -106,12 +101,13 @@ fn finish_of(
         .status
         .as_ref()
         .and_then(|status| super::map_finish_reason(status, response.incomplete_details.as_ref()));
-    let finish = Finish::new(crate::completion::Usage::from(&response))
-        .with_optional_reason(finish_reason)
-        .with_optional_message_id(response.message_id)
-        .with_optional_response_id(response.response_id)
-        .with_optional_provider_request_id(response.provider_request_id)
-        .with_optional_model(response.model);
+    let finish = Finish {
+        usage: crate::completion::Usage::from(&response),
+        reason: finish_reason,
+        message_id: response.message_id,
+        response_id: response.response_id,
+        model: response.model,
+    };
     (finish, issuer)
 }
 

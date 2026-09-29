@@ -45,13 +45,16 @@ impl Transport<MockScript> for Scripted {
             Ok(answer) => answer,
             Err(error) => return Opening::failed(error),
         };
-        let response = CompletionResponse::new(
-            vec![answer],
-            usage(self.total_tokens),
-            self.provider,
-            serde_json::Value::Null,
-        )
-        .with_message_id(format!("{}-message", self.provider));
+        let response = {
+            let mut response = CompletionResponse::new(
+                vec![answer],
+                usage(self.total_tokens),
+                self.provider,
+                serde_json::Value::Null,
+            );
+            response.message_id = Some(format!("{}-message", self.provider));
+            response
+        };
         Opening::ready(Opened::new(stream::iter([Ok(MockFrame::Response(
             Box::new(response),
         ))])))

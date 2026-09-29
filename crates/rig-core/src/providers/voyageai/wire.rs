@@ -212,12 +212,6 @@ impl<'id> Decoder<'id, Embedding> for EmbeddingsDecoder {
         reply: Self::Event,
         out: Out<'id, Embedding>,
     ) -> Result<Flow, ProviderError> {
-        let raw = match serde_json::to_value(&reply) {
-            Ok(raw) => raw,
-            Err(error) => {
-                return Err(error.into());
-            }
-        };
         // Voyage reports one count; every token of an embedding is input.
         let usage = crate::completion::Usage {
             input_tokens: Some(reply.usage.total_tokens as u64),
@@ -234,12 +228,11 @@ impl<'id> Decoder<'id, Embedding> for EmbeddingsDecoder {
                 vec: embedding.embedding,
             })
             .collect();
-        Ok(out.end(
-            crate::embeddings::EmbeddingResponse::new(vectors, PROVIDER_NAME)
-                .with_model(reply.model)
-                .with_usage(usage)
-                .with_raw(raw),
-        ))
+        Ok(out.end(crate::embeddings::EmbeddingResponse {
+            model: Some(reply.model),
+            usage,
+            ..crate::embeddings::EmbeddingResponse::new(vectors)
+        }))
     }
 }
 
@@ -376,12 +369,6 @@ impl<'id> Decoder<'id, RerankOp> for RerankDecoder {
                 return Err(ProviderError::from_provider_body(body));
             }
         };
-        let raw = match serde_json::to_value(&reply) {
-            Ok(raw) => raw,
-            Err(error) => {
-                return Err(error.into());
-            }
-        };
         // Voyage reports one count; every token of a rerank is input.
         let usage = crate::completion::Usage {
             input_tokens: Some(reply.usage.total_tokens as u64),
@@ -397,12 +384,11 @@ impl<'id> Decoder<'id, RerankOp> for RerankDecoder {
                 relevance_score: result.relevance_score,
             })
             .collect();
-        Ok(out.end(
-            RerankResponse::new(results, PROVIDER_NAME)
-                .with_model(reply.model)
-                .with_usage(usage)
-                .with_raw(raw),
-        ))
+        Ok(out.end(RerankResponse {
+            model: Some(reply.model),
+            usage,
+            ..RerankResponse::new(results)
+        }))
     }
 }
 

@@ -7,9 +7,12 @@
 //!
 //! ```
 //! use rig_core::operation::Finish;
-//! use rig_core::completion::{FinishReason, Usage};
+//! use rig_core::completion::FinishReason;
 //!
-//! let finish = Finish::new(Usage::default()).with_reason(FinishReason::Stop);
+//! let finish = Finish {
+//!     reason: Some(FinishReason::Stop),
+//!     ..Finish::default()
+//! };
 //! assert_eq!(finish.reason, Some(FinishReason::Stop));
 //! ```
 
@@ -93,33 +96,7 @@ pub struct Finish {
     pub response_id: Option<String>,
     /// The model the provider reports.
     pub model: Option<String>,
-    /// The provider's request id when the reply itself carries one; the
-    /// transport's header fills a gap.
-    pub provider_request_id: Option<String>,
 }
-
-impl Finish {
-    /// An end reporting `usage`; the other fields start unset.
-    pub fn new(usage: Usage) -> Self {
-        Self {
-            usage,
-            ..Self::default()
-        }
-    }
-
-    /// Attach why the model stopped.
-    pub fn with_reason(self, reason: FinishReason) -> Self {
-        self.with_optional_reason(Some(reason))
-    }
-
-    /// Attach why the model stopped, when the provider said.
-    pub fn with_optional_reason(mut self, reason: Option<FinishReason>) -> Self {
-        self.reason = reason;
-        self
-    }
-}
-
-crate::provider_response::response_metadata_setters!(Finish);
 
 /// The completion fold. The driver and the bus writer build it; no other
 /// code can feed one.
@@ -746,16 +723,16 @@ impl Turn {
             message_id,
             response_id,
             model,
-            provider_request_id,
         } = end;
-        CompletionResponse::new(choice, usage, reply.provider, reply.raw)
-            // A message id the decoder recorded outranks the end's.
-            .with_optional_message_id(self.message_id.clone().or(message_id))
-            .with_optional_response_id(response_id)
-            // The reply's own id wins; the transport's header fills a gap.
-            .with_optional_provider_request_id(provider_request_id.or(reply.provider_request_id))
-            .with_optional_finish_reason(reason)
-            .with_optional_model(model)
+        use crate::provider_response::reported;
+        let mut response = CompletionResponse::new(choice, usage, reply.provider, reply.raw)
+            .with_optional_finish_reason(reason);
+        // A message id the decoder recorded outranks the end's.
+        response.message_id = reported(self.message_id.clone().or(message_id));
+        response.response_id = reported(response_id);
+        response.model = reported(model);
+        response.provider_request_id = reported(reply.provider_request_id);
+        response
     }
 }
 

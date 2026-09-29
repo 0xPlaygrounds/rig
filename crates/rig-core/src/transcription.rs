@@ -12,7 +12,7 @@
 //! # Ok(())
 //! # }
 //! ```
-use crate::completion::{ResponseIdentity, Usage};
+use crate::completion::Usage;
 use crate::error::ProviderError;
 use crate::json_utils;
 use serde::{Deserialize, Serialize};
@@ -48,39 +48,27 @@ pub struct TranscriptionResponse {
 }
 
 impl TranscriptionResponse {
-    /// Create a response from its required parts; optional metadata starts
-    /// unset and is filled in with the `with_*` helpers.
-    pub fn new(text: impl Into<String>, provider: impl Into<String>) -> Self {
+    /// A response carrying `text`. The driver writes the provider, the
+    /// transport request id and the reply document; decoders set what the
+    /// provider reported.
+    pub fn new(text: impl Into<String>) -> Self {
         Self {
             text: text.into(),
             usage: Usage::default(),
-            provider: provider.into(),
+            provider: String::new(),
             model: None,
             response_id: None,
             provider_request_id: None,
             raw: serde_json::Value::Null,
         }
     }
-
-    /// This response's identity metadata as one [`ResponseIdentity`] carrier.
-    /// Transcriptions are never replayed as assistant messages, so
-    /// `message_id` is always `None`.
-    pub fn identity(&self) -> ResponseIdentity {
-        ResponseIdentity {
-            message_id: None,
-            response_id: self.response_id.clone(),
-            provider_request_id: self.provider_request_id.clone(),
-        }
-    }
 }
 
-crate::provider_response::modality_response_metadata_setters!(TranscriptionResponse);
-
-/// Converts provider payloads into normalized transcription responses.
-/// Implementations must attribute the response to the supplied provider name.
+/// Converts provider payloads into normalized transcription responses. The
+/// driver writes the provider, request id and `raw` afterwards.
 pub trait NormalizeTranscriptionResponse {
-    /// Normalize this payload, attributing it to `provider`.
-    fn normalize(self, provider: &str) -> Result<TranscriptionResponse, ProviderError>;
+    /// Normalize this payload.
+    fn normalize(self) -> Result<TranscriptionResponse, ProviderError>;
 }
 
 /// Struct representing a general transcription request that can be sent to a transcription model provider.

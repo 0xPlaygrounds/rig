@@ -345,9 +345,12 @@ impl From<&StreamingCompletionResponse> for Usage {
 fn finish_of(response: StreamingCompletionResponse) -> Finish {
     // Ollama's `/api/chat` stream assigns no message identifier, so the
     // normalized `message_id` stays unset.
-    Finish::new(Usage::from(&response))
-        .with_optional_reason(response.done_reason.as_deref().map(map_done_reason))
-        .with_model(response.model)
+    Finish {
+        usage: Usage::from(&response),
+        reason: response.done_reason.as_deref().map(map_done_reason),
+        model: Some(response.model),
+        ..Finish::default()
+    }
 }
 
 /// Decode `/api/chat` records, one whole reply or a stream of lines. Only a

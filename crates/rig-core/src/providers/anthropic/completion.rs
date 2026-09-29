@@ -49,10 +49,6 @@ pub struct CompletionResponse {
     pub stop_reason: Option<String>,
     pub stop_sequence: Option<String>,
     pub usage: Usage,
-    /// Transport request id from the `request-id` response header, attached by
-    /// the request driver. Absent when the provider reports no header.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub provider_request_id: Option<String>,
 }
 
 /// Normalize a Messages `stop_reason`, preserving unrecognized values verbatim.

@@ -88,7 +88,6 @@ async fn raw_round_trips_responses_type() {
     // The transport id is not part of the reply document, so the capture
     // never carries it — it lives on the normalized response only.
     assert!(raw.get("provider_request_id").is_none());
-    assert_eq!(typed.provider_request_id, None);
     assert!(response.provider_request_id.is_some());
 
     let (_, response_body) = recorded_json_turn(PROVIDER, SCENARIO);

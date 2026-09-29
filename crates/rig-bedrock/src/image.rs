@@ -121,6 +121,6 @@ impl<'id> Decoder<'id, ImageGeneration, Vec<u8>> for ImagesDecoder {
         let response = serde_json::from_str::<TextToImageResponse>(&body)
             .map_err(|error| ProviderError::Response(error.to_string()))?;
         out.raw(serde_json::to_value(&response)?);
-        Ok(out.end(response.normalize(PROVIDER_NAME)?))
+        Ok(out.end(response.normalize()?))
     }
 }

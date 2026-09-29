@@ -75,10 +75,7 @@ pub struct TranscriptionInputTokenDetails {
 }
 
 impl NormalizeTranscriptionResponse for TranscriptionResponse {
-    fn normalize(
-        self,
-        provider: &str,
-    ) -> Result<transcription::TranscriptionResponse, ProviderError> {
+    fn normalize(self) -> Result<transcription::TranscriptionResponse, ProviderError> {
         let usage = match &self.usage {
             Some(TranscriptionUsage::Tokens {
                 input_tokens,
@@ -97,7 +94,10 @@ impl NormalizeTranscriptionResponse for TranscriptionResponse {
             | Some(TranscriptionUsage::Other(_))
             | None => Usage::default(),
         };
-        Ok(transcription::TranscriptionResponse::new(self.text, provider).with_usage(usage))
+        Ok(transcription::TranscriptionResponse {
+            usage,
+            ..transcription::TranscriptionResponse::new(self.text)
+        })
     }
 }
 

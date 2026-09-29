@@ -260,13 +260,13 @@ impl MockTurn {
     fn into_completion_response(self) -> Result<CompletionResponse, ProviderError> {
         let raw = self.raw()?;
         let response = self.response.map_err(MockError::into_completion_error)?;
-        Ok(
+        let mut completion =
             CompletionResponse::new(response.choice, response.usage, MOCK_PROVIDER, raw)
-                .with_optional_message_id(response.message_id)
-                .with_optional_response_id(response.response_id)
-                .with_optional_provider_request_id(response.provider_request_id)
-                .with_optional_finish_reason(response.finish_reason),
-        )
+                .with_optional_finish_reason(response.finish_reason);
+        completion.message_id = response.message_id;
+        completion.response_id = response.response_id;
+        completion.provider_request_id = response.provider_request_id;
+        Ok(completion)
     }
 }
 
@@ -480,11 +480,13 @@ impl Transport<MockScript> for MockRuntime {
                 match turn.into_completion_response() {
                     Ok(response) => {
                         let document = response.raw.clone();
+                        let request_id = response.provider_request_id.clone();
                         Opening::ready(
                             Opened::new(futures::stream::iter([Ok(MockFrame::Response(
                                 Box::new(response),
                             ))]))
-                            .with_document(document),
+                            .with_document(document)
+                            .with_request_id(request_id),
                         )
                     }
                     Err(error) => Opening::ready(Opened::failed(error)),
@@ -496,9 +498,18 @@ impl Transport<MockScript> for MockRuntime {
                         "mock completion model has no scripted streaming turn".to_string(),
                     ));
                 };
-                Opening::ready(Opened::new(futures::stream::iter(
-                    turn.into_iter().map(|event| Ok(MockFrame::Event(event))),
-                )))
+                let request_id = turn.iter().find_map(|event| match event {
+                    MockStreamEvent::RequestId(id) => Some(id.clone()),
+                    _ => None,
+                });
+                Opening::ready(
+                    Opened::new(futures::stream::iter(
+                        turn.into_iter()
+                            .filter(|event| !matches!(event, MockStreamEvent::RequestId(_)))
+                            .map(|event| Ok(MockFrame::Event(event))),
+                    ))
+                    .with_request_id(request_id),
+                )
             }
         }
     }

@@ -259,12 +259,13 @@ impl<'id> Decoder<'id, Completion> for GenerateContentDecoder<'id> {
         };
         out.raw(serde_json::to_value(&native)?);
         let finish_reason = native.finish_reason.as_ref().and_then(map_finish_reason);
-        Ok(out.end(
-            Finish::new(usage)
-                .with_optional_reason(finish_reason)
-                .with_optional_response_id(native.response_id)
-                .with_optional_model(native.model_version),
-        ))
+        Ok(out.end(Finish {
+            usage,
+            reason: finish_reason,
+            response_id: native.response_id,
+            model: native.model_version,
+            ..Finish::default()
+        }))
     }
 }
 

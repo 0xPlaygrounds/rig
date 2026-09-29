@@ -11,7 +11,7 @@
 //! # }
 //! ```
 
-use crate::completion::{ResponseIdentity, Usage};
+use crate::completion::Usage;
 use crate::error::ProviderError;
 use serde::{Deserialize, Serialize};
 
@@ -70,33 +70,21 @@ pub struct EmbeddingResponse {
 }
 
 impl EmbeddingResponse {
-    /// Create a response from its required parts; optional metadata starts
-    /// unset and is filled in with the `with_*` helpers.
-    pub fn new(embeddings: Vec<Embedding>, provider: impl Into<String>) -> Self {
+    /// A response carrying `embeddings`. The driver writes the provider, the
+    /// transport request id and the reply document; decoders set what the
+    /// provider reported.
+    pub fn new(embeddings: Vec<Embedding>) -> Self {
         Self {
             embeddings,
             usage: Usage::default(),
-            provider: provider.into(),
+            provider: String::new(),
             model: None,
             response_id: None,
             provider_request_id: None,
             raw: serde_json::Value::Null,
         }
     }
-
-    /// This response's identity metadata as one [`ResponseIdentity`] carrier.
-    /// `message_id` is always `None`: nothing here is replayed as an
-    /// assistant message.
-    pub fn identity(&self) -> ResponseIdentity {
-        ResponseIdentity {
-            message_id: None,
-            response_id: self.response_id.clone(),
-            provider_request_id: self.provider_request_id.clone(),
-        }
-    }
 }
-
-crate::provider_response::modality_response_metadata_setters!(EmbeddingResponse);
 
 /// Image embeddings and normalized provider metadata.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -125,33 +113,21 @@ pub struct ImageEmbeddingResponse {
 }
 
 impl ImageEmbeddingResponse {
-    /// Create a response from its required parts; optional metadata starts
-    /// unset and is filled in with the `with_*` helpers.
-    pub fn new(embeddings: Vec<Embedding>, provider: impl Into<String>) -> Self {
+    /// A response carrying `embeddings`. The driver writes the provider, the
+    /// transport request id and the reply document; decoders set what the
+    /// provider reported.
+    pub fn new(embeddings: Vec<Embedding>) -> Self {
         Self {
             embeddings,
             usage: Usage::default(),
-            provider: provider.into(),
+            provider: String::new(),
             model: None,
             response_id: None,
             provider_request_id: None,
             raw: serde_json::Value::Null,
         }
     }
-
-    /// This response's identity metadata as one [`ResponseIdentity`] carrier.
-    /// `message_id` is always `None`: nothing here is replayed as an
-    /// assistant message.
-    pub fn identity(&self) -> ResponseIdentity {
-        ResponseIdentity {
-            message_id: None,
-            response_id: self.response_id.clone(),
-            provider_request_id: self.provider_request_id.clone(),
-        }
-    }
 }
-
-crate::provider_response::modality_response_metadata_setters!(ImageEmbeddingResponse);
 
 /// A document identifier and its vector. Equality compares only the document,
 /// not vector values.

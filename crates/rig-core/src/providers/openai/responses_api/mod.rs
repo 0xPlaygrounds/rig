@@ -1346,9 +1346,6 @@ pub struct CompletionResponse {
     /// Provider-specific top-level reasoning content returned by some
     /// OpenAI-compatible Responses implementations.
     pub provider_reasoning: Option<String>,
-    /// Transport request ID from the `x-request-id` header, stamped by the driver.
-    /// Body deserialization leaves it `None`; serialization omits it.
-    pub provider_request_id: Option<String>,
     /// The complete object-shaped top-level reasoning metadata returned by the provider.
     ///
     /// Unknown fields, unknown values, and null-valued members inside the object
@@ -1499,7 +1496,6 @@ impl<'de> Deserialize<'de> for CompletionResponse {
             max_output_tokens: response.max_output_tokens,
             model: response.model,
             provider_reasoning,
-            provider_request_id: None,
             reasoning_metadata,
             reasoning_context,
             usage: response.usage,

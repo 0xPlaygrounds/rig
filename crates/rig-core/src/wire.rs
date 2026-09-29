@@ -543,7 +543,10 @@ impl<'id, Op: Operation> Out<'id, Op> {
         Flow::Ended(Ended(()))
     }
 
-    /// Record the reply's provider document: a completion's `raw`.
+    /// Record the reply's provider document, the response's `raw`, for any
+    /// operation. A whole JSON body the transport reported outranks it, and
+    /// a `raw` the decoder writes onto its response is replaced: a decoder
+    /// whose reply is not one JSON document records it here.
     pub fn raw(&mut self, raw: serde_json::Value) {
         self.lock().raw = Some(raw);
     }

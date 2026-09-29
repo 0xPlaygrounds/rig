@@ -563,7 +563,10 @@ impl Serve for BatchedStream {
                         writer
                             .finish(
                                 "batched",
-                                rig_core::operation::Finish::new(Usage::default()),
+                                rig_core::operation::Finish {
+                                    usage: Usage::default(),
+                                    ..rig_core::operation::Finish::default()
+                                },
                             )
                             .await
                             .unwrap();

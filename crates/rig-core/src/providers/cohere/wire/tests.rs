@@ -287,3 +287,23 @@ async fn a_single_image_embed_captures_the_bare_document() {
         serde_json::from_value(response.raw.clone()).expect("raw is Cohere's own answer");
     assert_eq!(page.id.as_deref(), Some("img-0.5"));
 }
+
+/// `raw` is the whole reply body, so a field the reply type does not model
+/// survives in it.
+#[tokio::test]
+async fn an_embedding_reply_keeps_its_whole_body_as_raw() {
+    let body = r#"{"id":"b2e4b0f7-0000-0000-0000-000000000000","texts":["first","second"],"embeddings":[[0.5,-0.25],[0.125,0.0]],"meta":{"api_version":{"version":"1"},"billed_units":{"input_tokens":7,"search_units":0,"classifications":0,"images":0}},"unmodeled":"kept"}"#;
+    let response = crate::driver::Model::new(
+        cohere().embedding("embed-v4.0", None),
+        RecordingHttpClient::new(body),
+    )
+    .call(vec!["first".to_owned(), "second".to_owned()])
+    .await
+    .expect("the reply decodes");
+
+    assert_eq!(
+        response.raw,
+        serde_json::from_str::<serde_json::Value>(body).expect("the body is JSON")
+    );
+    assert_eq!(response.raw["unmodeled"], "kept");
+}

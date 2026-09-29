@@ -71,16 +71,13 @@ impl<'id> Decoder<'id, Completion, vertexai::model::GenerateContentResponse> for
             .candidates
             .first()
             .and_then(|candidate| map_finish_reason(&candidate.finish_reason));
-        Ok(out.end(
-            Finish::new(usage(&response))
-                .with_optional_reason(finish_reason)
-                .with_optional_model(
-                    Some(response.model_version.clone()).filter(|model| !model.is_empty()),
-                )
-                .with_optional_response_id(
-                    Some(response.response_id.clone()).filter(|id| !id.is_empty()),
-                ),
-        ))
+        Ok(out.end(Finish {
+            usage: usage(&response),
+            reason: finish_reason,
+            model: Some(response.model_version.clone()),
+            response_id: Some(response.response_id.clone()),
+            ..Finish::default()
+        }))
     }
 }
 

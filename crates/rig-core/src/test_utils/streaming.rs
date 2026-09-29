@@ -17,7 +17,10 @@ pub const MOCK_PROVIDER: &str = "mock";
 
 /// The end the mock model's reply finishes with, carrying `usage`.
 pub fn mock_final(usage: Usage) -> Finish {
-    Finish::new(usage)
+    Finish {
+        usage,
+        ..Finish::default()
+    }
 }
 
 /// Convert a fixture JSON value into canonical params: `null`/`{}` mean
@@ -78,6 +81,11 @@ pub enum MockStreamEvent {
     MessageId(String),
     /// Provider-native output item that Rig does not model.
     Unknown(serde_json::Value),
+    /// The transport request id of this turn. The mock transport reports
+    /// it, as a real transport reports a response header; the decoder never
+    /// sees it. Its position in the turn does not matter; when a turn
+    /// scripts more than one, the first wins.
+    RequestId(String),
     /// The provider's end of the reply.
     FinalResponse(Finish),
     /// A failure, which ends the reply.
@@ -403,6 +411,7 @@ impl<'id> MockDecoder<'id> {
             }
             MockStreamEvent::MessageId(id) => out.message_id(id),
             MockStreamEvent::Unknown(value) => out.unknown(value.into()),
+            MockStreamEvent::RequestId(_) => {}
             MockStreamEvent::FinalResponse(finish) => {
                 self.close_text(&mut out);
                 for (id, part) in std::mem::take(&mut self.reasoning) {
@@ -435,13 +444,13 @@ impl<'id> MockDecoder<'id> {
             out.message_id(message_id);
         }
         out.raw(response.raw.clone());
-        Ok(out.end(
-            Finish::new(response.usage)
-                .with_optional_reason(response.finish_reason())
-                .with_optional_response_id(response.response_id.clone())
-                .with_optional_model(response.model.clone())
-                .with_optional_provider_request_id(response.provider_request_id.clone()),
-        ))
+        Ok(out.end(Finish {
+            usage: response.usage,
+            reason: response.finish_reason(),
+            message_id: None,
+            response_id: response.response_id.clone(),
+            model: response.model.clone(),
+        }))
     }
 }
 

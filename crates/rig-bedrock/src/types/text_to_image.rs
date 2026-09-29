@@ -98,10 +98,7 @@ pub struct TextToImageResponse {
 }
 
 impl NormalizeImageGenerationResponse for TextToImageResponse {
-    fn normalize(
-        self,
-        provider: &str,
-    ) -> Result<image_generation::ImageGenerationResponse, ProviderError> {
+    fn normalize(self) -> Result<image_generation::ImageGenerationResponse, ProviderError> {
         if let Some(error) = self.error {
             return Err(ProviderError::Response(error));
         }
@@ -114,9 +111,7 @@ impl NormalizeImageGenerationResponse for TextToImageResponse {
                 .decode(image)
                 .map_err(|err| ProviderError::Response(err.to_string()))?;
 
-            return Ok(image_generation::ImageGenerationResponse::new(
-                data, provider,
-            ));
+            return Ok(image_generation::ImageGenerationResponse::new(data));
         }
 
         Err(ProviderError::Response(

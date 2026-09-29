@@ -62,10 +62,13 @@ impl Serve for FinishingName {
             writer
                 .finish(
                     "boundary",
-                    rig_core::operation::Finish::new(ProviderUsage {
-                        total_tokens: Some(7),
-                        ..ProviderUsage::default()
-                    }),
+                    rig_core::operation::Finish {
+                        usage: ProviderUsage {
+                            total_tokens: Some(7),
+                            ..ProviderUsage::default()
+                        },
+                        ..rig_core::operation::Finish::default()
+                    },
                 )
                 .await
                 .expect("stream open");

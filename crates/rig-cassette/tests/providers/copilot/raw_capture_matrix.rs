@@ -301,10 +301,10 @@ async fn responses_raw_round_trips_provider_type() {
         raw.get("api").is_none(),
         "raw is the route's own reply document, not a rig-tagged envelope"
     );
-    let typed = responses_api::CompletionResponse::deserialize(raw)
+    responses_api::CompletionResponse::deserialize(raw)
         .expect("raw must read back as the Responses route's own response type");
     assert!(
-        typed.provider_request_id.is_none(),
+        raw.get("provider_request_id").is_none(),
         "the transport request id is a reply header, so the document never carries it"
     );
     assert_eq!(response.provider, COPILOT_PROVIDER);

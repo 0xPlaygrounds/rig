@@ -319,3 +319,23 @@ fn an_embedding_wire_reports_the_models_published_width() {
         "a family whose width varies by size takes the caller's"
     );
 }
+
+/// `raw` is the whole reply body, so a field the reply type does not model
+/// survives in it.
+#[tokio::test]
+async fn an_embedding_reply_keeps_its_whole_body_as_raw() {
+    let body = r#"{"model":"all-minilm","embeddings":[[0.5,-0.25],[0.125,0.0]],"prompt_eval_count":6,"unmodeled":"kept"}"#;
+    let response = crate::driver::Model::new(
+        OllamaConfig::new().embedding("all-minilm", None),
+        RecordingHttpClient::new(body),
+    )
+    .call(vec!["first".to_owned(), "second".to_owned()])
+    .await
+    .expect("the reply decodes");
+
+    assert_eq!(
+        response.raw,
+        serde_json::from_str::<serde_json::Value>(body).expect("the body is JSON")
+    );
+    assert_eq!(response.raw["unmodeled"], "kept");
+}

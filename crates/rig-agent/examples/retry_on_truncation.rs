@@ -62,7 +62,11 @@ impl Transport<MockScript> for Budgeted {
         let (text, reason) = answer_under(request.max_tokens);
         let events = [
             MockStreamEvent::text(text),
-            MockStreamEvent::FinalResponse(Finish::new(Usage::default()).with_reason(reason)),
+            MockStreamEvent::FinalResponse(Finish {
+                usage: Usage::default(),
+                reason: Some(reason),
+                ..Finish::default()
+            }),
         ];
         Opening::ready(Opened::new(stream::iter(
             events.map(|event| Ok(MockFrame::Event(event))),

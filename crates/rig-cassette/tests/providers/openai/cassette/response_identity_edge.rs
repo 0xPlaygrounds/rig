@@ -200,7 +200,7 @@ async fn raw_and_normalized_views_agree_on_identity() {
                 "raw and normalized views describe the same interaction"
             );
             assert!(
-                reply.provider_request_id.is_none(),
+                response.raw.get("provider_request_id").is_none(),
                 "the transport id is an `x-request-id` header, not a body field"
             );
         },

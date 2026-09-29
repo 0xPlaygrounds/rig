@@ -473,10 +473,6 @@ fn assert_responses_views_agree(
         Some(usage.output_tokens),
         "{scenario}: output tokens"
     );
-    assert_eq!(
-        reply.provider_request_id, None,
-        "{scenario}: wire deserialization never fills the transport id"
-    );
     assert!(
         response.raw.get("provider_request_id").is_none(),
         "{scenario}: the transport id is a header, so the reply document has none"

@@ -69,23 +69,26 @@ fn tool_call_choice() -> Vec<AssistantContent> {
 
 #[test]
 fn normalized_response_round_trips_through_serde() {
-    let response = CompletionResponse::new(
-        vec![AssistantContent::text("hello")],
-        Usage {
-            input_tokens: Some(3),
-            output_tokens: Some(2),
-            total_tokens: Some(5),
-            cached_input_tokens: Some(1),
-            cache_creation_input_tokens: Some(0),
-            tool_use_prompt_tokens: Some(0),
-            reasoning_tokens: Some(1),
-        },
-        "example",
-        serde_json::json!({}),
-    )
-    .with_message_id("msg_123")
-    .with_finish_reason(FinishReason::Stop)
-    .with_model("provider-model-v2");
+    let response = {
+        let mut response = CompletionResponse::new(
+            vec![AssistantContent::text("hello")],
+            Usage {
+                input_tokens: Some(3),
+                output_tokens: Some(2),
+                total_tokens: Some(5),
+                cached_input_tokens: Some(1),
+                cache_creation_input_tokens: Some(0),
+                tool_use_prompt_tokens: Some(0),
+                reasoning_tokens: Some(1),
+            },
+            "example",
+            serde_json::json!({}),
+        )
+        .with_finish_reason(FinishReason::Stop);
+        response.message_id = Some("msg_123".into());
+        response.model = Some("provider-model-v2".into());
+        response
+    };
 
     let encoded = serde_json::to_value(&response).expect("serialize response");
     let decoded =
@@ -300,13 +303,16 @@ fn normalized_response_raw_round_trips_through_serde_mirror() {
         "system_fingerprint": "fp_abc",
         "choices": [{"finish_reason": "stop"}]
     });
-    let response = CompletionResponse::new(
-        vec![AssistantContent::text("hello")],
-        Usage::default(),
-        "example",
-        payload.clone(),
-    )
-    .with_response_id("chatcmpl-1");
+    let response = {
+        let mut response = CompletionResponse::new(
+            vec![AssistantContent::text("hello")],
+            Usage::default(),
+            "example",
+            payload.clone(),
+        );
+        response.response_id = Some("chatcmpl-1".into());
+        response
+    };
 
     let encoded = serde_json::to_value(&response).expect("serialize response");
     assert_eq!(encoded["raw"], payload);

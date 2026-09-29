@@ -108,9 +108,11 @@ impl<'id> Decoder<'id, Completion, Frame> for VendorDecoder<'id> {
                         out.close_call(part)?;
                     }
                 }
-                return Ok(
-                    out.end(Finish::new(Usage::default()).with_reason(FinishReason::ToolCalls))
-                );
+                return Ok(out.end(Finish {
+                    usage: Usage::default(),
+                    reason: Some(FinishReason::ToolCalls),
+                    ..Finish::default()
+                }));
             }
         }
         Ok(Flow::More)

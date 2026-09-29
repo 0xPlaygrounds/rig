@@ -154,8 +154,7 @@
             "usage": {},
             "message_id": null,
             "response_id": null,
-            "model": null,
-            "provider_request_id": null
+            "model": null
           }
         }
       },
@@ -381,8 +380,7 @@
             "usage": {},
             "message_id": null,
             "response_id": null,
-            "model": null,
-            "provider_request_id": null
+            "model": null
           }
         }
       },

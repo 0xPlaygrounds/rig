@@ -147,7 +147,7 @@ impl Transport<Local<Embedding>> for Fastembed {
                             vec: vector.into_iter().map(f64::from).collect(),
                         })
                         .collect();
-                    embeddings::EmbeddingResponse::new(embeddings, "fastembed")
+                    embeddings::EmbeddingResponse::new(embeddings)
                 })
                 .map_err(|err| ProviderError::Provider(err.to_string()));
             // A failed embed fails the reply, as a transport failure does.

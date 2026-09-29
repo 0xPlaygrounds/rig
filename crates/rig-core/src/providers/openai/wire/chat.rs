@@ -1224,9 +1224,6 @@ impl<'id> ChatDecoder<'id> {
             finish_reason: self.final_finish_reason.take(),
             response_id: self.response_id.take(),
             model: self.response_model.take(),
-            // The transport's request id; the decoder never sees connection
-            // headers.
-            provider_request_id: None,
             logprobs: self.logprobs.take().map(Into::into),
             additional_params: self.additional_params.take(),
         };

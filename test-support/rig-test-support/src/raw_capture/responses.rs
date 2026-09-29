@@ -186,10 +186,6 @@ pub fn assert_native_matches_normalized(
         ),
         "{context}: the normalized counters are the native ones"
     );
-    assert_eq!(
-        native.provider_request_id, None,
-        "{context}: a reply document has no slot for a response header"
-    );
     let message = native
         .output
         .iter()

@@ -217,10 +217,6 @@ pub fn assert_terminal_round_trips(terminal: &CompletionResponse) -> Terminal {
         terminal.usage,
         "the normalized usage is that accounting, normalized"
     );
-    assert_eq!(
-        typed.provider_request_id, None,
-        "the transport id is stamped on the normalized terminal, not the native record"
-    );
     typed
 }
 

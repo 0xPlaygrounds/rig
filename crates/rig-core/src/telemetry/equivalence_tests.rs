@@ -225,9 +225,12 @@ fn cases() -> Vec<Value> {
             let request = CompletionRequest::new("hi")
                 .preamble("sys")
                 .record_content_telemetry(true);
-            let end = Finish::new(usage())
-                .with_message_id("msg_1")
-                .with_model("resp_model");
+            let end = Finish {
+                usage: usage(),
+                message_id: Some("msg_1".into()),
+                model: Some("resp_model".into()),
+                ..Finish::default()
+            };
             let fold = crate::test_utils::fold_for(&request, &Scripted(end.clone()), Mode::Unary);
             fold.finish(end, reply())
                 .expect("the fold records its response");
@@ -238,10 +241,13 @@ fn cases() -> Vec<Value> {
         &mut out,
         || {
             let request = CompletionRequest::new("hi").model("override");
-            let end = Finish::new(usage())
-                .with_response_id("resp_1")
-                .with_message_id("msg_1")
-                .with_model("m2");
+            let end = Finish {
+                usage: usage(),
+                response_id: Some("resp_1".into()),
+                message_id: Some("msg_1".into()),
+                model: Some("m2".into()),
+                ..Finish::default()
+            };
             // The streamed call's span records the response it finishes with.
             let mut stream = Model::new(Scripted(end.clone()), Scripted(end))
                 .stream(request)
@@ -255,10 +261,13 @@ fn cases() -> Vec<Value> {
     run("embedding operation span+record", &mut out, || {
         let wire = Local::<Embedding>::new("prov").with_id("model");
         let fold = crate::test_utils::fold_for(&Vec::new(), &wire, Mode::Unary);
-        let response = EmbeddingResponse::new(vec![], "prov")
-            .with_response_id("emb_id")
-            .with_model("emb_model")
-            .with_usage(usage());
+        let response = EmbeddingResponse {
+            provider: "prov".into(),
+            response_id: Some("emb_id".into()),
+            model: Some("emb_model".into()),
+            usage: usage(),
+            ..EmbeddingResponse::new(vec![])
+        };
         fold.finish(response, reply())
             .expect("the fold records its response");
     });
@@ -269,10 +278,13 @@ fn cases() -> Vec<Value> {
         };
         let wire = Local::<Rerank>::new("prov").with_id("model");
         let fold = crate::test_utils::fold_for(&request, &wire, Mode::Unary);
-        let response = RerankResponse::new(vec![], "prov")
-            .with_response_id("rr_id")
-            .with_model("rr_model")
-            .with_usage(usage());
+        let response = RerankResponse {
+            provider: "prov".into(),
+            response_id: Some("rr_id".into()),
+            model: Some("rr_model".into()),
+            usage: usage(),
+            ..RerankResponse::new(vec![])
+        };
         fold.finish(response, reply())
             .expect("the fold records its response");
     });
@@ -287,9 +299,12 @@ fn cases() -> Vec<Value> {
         };
         let wire = Local::<Transcription>::new("prov").with_id("model");
         let fold = crate::test_utils::fold_for(&request, &wire, Mode::Unary);
-        let response = TranscriptionResponse::new("text", "prov")
-            .with_response_id("tr_id")
-            .with_usage(usage());
+        let response = TranscriptionResponse {
+            provider: "prov".into(),
+            response_id: Some("tr_id".into()),
+            usage: usage(),
+            ..TranscriptionResponse::new("text")
+        };
         fold.finish(response, reply())
             .expect("the fold records its response");
     });

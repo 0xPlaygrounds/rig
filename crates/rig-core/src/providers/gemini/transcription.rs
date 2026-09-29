@@ -156,15 +156,12 @@ impl<'id> Decoder<'id, Transcription> for TranscriptionsDecoder {
         event: Self::Event,
         out: Out<'id, Transcription>,
     ) -> Result<Flow, ProviderError> {
-        Ok(out.end(event.normalize(super::PROVIDER_NAME)?))
+        Ok(out.end(event.normalize()?))
     }
 }
 
 impl NormalizeTranscriptionResponse for GenerateContentResponse {
-    fn normalize(
-        self,
-        provider: &str,
-    ) -> Result<transcription::TranscriptionResponse, ProviderError> {
+    fn normalize(self) -> Result<transcription::TranscriptionResponse, ProviderError> {
         let candidate = self
             .candidates
             .first()
@@ -190,10 +187,12 @@ impl NormalizeTranscriptionResponse for GenerateContentResponse {
             .map(Usage::from)
             .unwrap_or_default();
 
-        Ok(transcription::TranscriptionResponse::new(text, provider)
-            .with_optional_model(self.model_version)
-            .with_response_id(self.response_id)
-            .with_usage(usage))
+        Ok(transcription::TranscriptionResponse {
+            model: self.model_version,
+            response_id: Some(self.response_id),
+            usage,
+            ..transcription::TranscriptionResponse::new(text)
+        })
     }
 }
 
