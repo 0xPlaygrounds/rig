@@ -43,12 +43,37 @@ use rig_test_support::history_survival::{
 /// `(cassette path suffix, token kind, reason)`. The reason must cite the
 /// provider behavior; an entry that stops matching a real loss is reported
 /// as stale so exemptions cannot outlive the behavior they excuse.
-const SURVIVAL_EXEMPT: &[(&str, &str, &str)] = &[(
-    "anthropic/response_identity_edge/repaired_invalid_call_keeps_call_identity.yaml",
-    "tool_call_id",
-    "the cell's repair hook renames the call from `sum_values` to `add` by design, \
-     so the id returns on a call whose name no longer anchors it",
-)];
+const SURVIVAL_EXEMPT: &[(&str, &str, &str)] = &[
+    (
+        "anthropic/response_identity_edge/repaired_invalid_call_keeps_call_identity.yaml",
+        "tool_call_id",
+        "the cell's repair hook renames the call from `sum_values` to `add` by design, \
+         so the id returns on a call whose name no longer anchors it",
+    ),
+    (
+        "gemini/auto_caching/support_chat_100_current_turn.yaml",
+        "thought_signature",
+        "the run opts into ThoughtReplay::CurrentTurn, which stops re-sending a turn's \
+         signatures once the next user message arrives (Gemini accepts that and stops \
+         billing the turn's thoughts again); the test asserts that dropped signatures \
+         are the only change to a finished turn",
+    ),
+    (
+        "gemini/auto_caching/support_chat_100_streamed.yaml",
+        "thought_signature",
+        "the same opt-in current-turn thought replay, streamed",
+    ),
+    (
+        "gemini/auto_caching/support_chat_100_resume.yaml",
+        "thought_signature",
+        "the same opt-in current-turn thought replay, across a checkpoint and resume",
+    ),
+    (
+        "gemini/auto_caching/support_chat_100_compaction.yaml",
+        "thought_signature",
+        "the same opt-in current-turn thought replay, with a compaction at turn 51",
+    ),
+];
 
 /// Scenarios whose recorded requests deliberately carry unpaired calls.
 const PAIRING_EXEMPT: &[(&str, &str)] = &[];
@@ -87,11 +112,35 @@ struct Exchange {
     response: String,
 }
 
+/// Every recorded exchange with a JSON request body, in order. A Gemini
+/// request that reads an explicit cache this cassette created is spliced with
+/// the body that created it (`cache_prefix::splice_cached_content`), so the
+/// checks see the whole conversation it stands for rather than the tail it
+/// sent.
 fn exchanges(contents: &str) -> Vec<Exchange> {
+    let mut caches: std::collections::HashMap<String, Value> = std::collections::HashMap::new();
     serde_yaml::Deserializer::from_str(contents)
         .filter_map(|document| RecordedInteraction::deserialize(document).ok())
         .filter_map(|interaction| {
             let request = serde_json::from_str::<Value>(&interaction.when.body?).ok()?;
+            if interaction.when.path.ends_with("/cachedContents")
+                && let Some(name) = interaction
+                    .then
+                    .body
+                    .as_deref()
+                    .and_then(|body| serde_json::from_str::<Value>(body).ok())
+                    .and_then(|reply| reply.get("name")?.as_str().map(str::to_owned))
+            {
+                caches.insert(name, request.clone());
+            }
+            let request = request
+                .get("cachedContent")
+                .and_then(Value::as_str)
+                .and_then(|name| caches.get(name))
+                .and_then(|cache| {
+                    rig_test_support::cache_prefix::splice_cached_content(&request, cache)
+                })
+                .unwrap_or(request);
             Some(Exchange {
                 dialect: Dialect::from_path(&interaction.when.path),
                 request,

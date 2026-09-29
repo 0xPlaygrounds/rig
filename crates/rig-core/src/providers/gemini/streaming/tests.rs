@@ -463,7 +463,8 @@ fn test_partial_usage_token_calculation() {
     };
 
     let token_usage = crate::completion::Usage::from(&usage);
-    assert_eq!(token_usage.input_tokens, Some(40));
+    // Input is the prompt plus the hosted-tool prompt.
+    assert_eq!(token_usage.input_tokens, Some(52));
     assert_eq!(token_usage.cached_input_tokens, Some(20));
     assert_eq!(token_usage.output_tokens, Some(30));
     assert_eq!(token_usage.reasoning_tokens, Some(10));
@@ -613,7 +614,8 @@ fn test_partial_usage_serde_roundtrip_with_all_optional_fields() {
     ));
 
     let token_usage = crate::completion::Usage::from(&usage);
-    assert_eq!(token_usage.input_tokens, Some(100));
+    // Input is the prompt plus the hosted-tool prompt.
+    assert_eq!(token_usage.input_tokens, Some(112));
     assert_eq!(token_usage.cached_input_tokens, Some(25));
     assert_eq!(token_usage.output_tokens, Some(50));
     assert_eq!(token_usage.reasoning_tokens, Some(15));

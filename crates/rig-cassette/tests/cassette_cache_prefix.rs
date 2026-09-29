@@ -199,6 +199,14 @@ const MAX_UNMODELED_FRACTION: f64 = 0.95;
 #[derive(Deserialize)]
 struct RecordedInteraction {
     when: RecordedRequest,
+    #[serde(default)]
+    then: Option<RecordedResponse>,
+}
+
+#[derive(Deserialize)]
+struct RecordedResponse {
+    #[serde(default)]
+    body: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -228,12 +236,34 @@ fn cassette_files(dir: &Path, found: &mut Vec<PathBuf>) {
 }
 
 /// Ordered `(path, body)` for every recorded request in one cassette.
+///
+/// A Gemini request that reads an explicit cache this cassette created is
+/// spliced with the body that created it (see
+/// [`cache_prefix::splice_cached_content`]), so it is compared as the whole
+/// conversation it stands for.
 fn recorded_requests(contents: &str) -> Vec<(String, Value)> {
+    let mut caches: std::collections::HashMap<String, Value> = std::collections::HashMap::new();
     serde_yaml::Deserializer::from_str(contents)
         .filter_map(|document| RecordedInteraction::deserialize(document).ok())
         .filter_map(|interaction| {
             let body = interaction.when.body?;
             let json = serde_json::from_str::<Value>(&body).ok()?;
+            if interaction.when.path.ends_with("/cachedContents") {
+                let name = interaction
+                    .then
+                    .and_then(|then| then.body)
+                    .and_then(|body| serde_json::from_str::<Value>(&body).ok())
+                    .and_then(|reply| reply.get("name")?.as_str().map(str::to_owned));
+                if let Some(name) = name {
+                    caches.insert(name, json.clone());
+                }
+            }
+            let json = json
+                .get("cachedContent")
+                .and_then(Value::as_str)
+                .and_then(|name| caches.get(name))
+                .and_then(|cache| cache_prefix::splice_cached_content(&json, cache))
+                .unwrap_or(json);
             Some((interaction.when.path, json))
         })
         .collect()

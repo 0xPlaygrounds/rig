@@ -109,7 +109,7 @@
             }
           ],
           "usage": {
-            "input_tokens": 25,
+            "input_tokens": 100,
             "output_tokens": 30,
             "total_tokens": 164,
             "tool_use_prompt_tokens": 75,

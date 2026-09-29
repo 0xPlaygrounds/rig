@@ -146,6 +146,7 @@ const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
             "with_gemini_interactions_cassette",
             "with_gemini_stream_terminal_cassette",
             "with_gemini_thought_text_cassette",
+            "with_gemini_auto_caching_cassette",
         ],
     },
     ProviderCassetteSuite {

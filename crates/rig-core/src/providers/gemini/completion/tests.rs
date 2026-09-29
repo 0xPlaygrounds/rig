@@ -501,7 +501,8 @@ async fn test_completion_response_usage_preserves_cached_and_reasoning_tokens() 
     )
     .await;
 
-    assert_eq!(converted.usage.input_tokens, Some(40));
+    // Input is the prompt plus the hosted-tool prompt.
+    assert_eq!(converted.usage.input_tokens, Some(52));
     assert_eq!(converted.usage.cached_input_tokens, Some(20));
     assert_eq!(converted.usage.output_tokens, Some(30));
     assert_eq!(converted.usage.reasoning_tokens, Some(10));

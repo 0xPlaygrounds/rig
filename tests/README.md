@@ -236,6 +236,25 @@ why the bytes are not obtainable live. Scripted fault families need no marker:
 they borrow frames from another scenario's fixture and never open a recording
 session of their own.
 
+#### Time in cassette tests
+
+Code whose requests depend on time (a cache that expires, a TTL chosen from
+the gaps between calls) sends different bodies when time differs, and replay
+matches bodies byte for byte. Give such code the session's clock,
+`ProviderCassette::clock()`, instead of the system clock:
+
+- **Recording** reads wall time and saves every reading, in order, beside the
+  fixture as `<fixture>.clock.json`.
+- **Replay** returns the same readings in the same order. It panics when the
+  code asks for more readings than were recorded, and `finish` panics when it
+  asks for fewer: either way the code reads time differently from its
+  recording, so re-record.
+
+A test that needs a real pause calls `ProviderCassette::pause(duration)`. It
+sleeps only while recording, returns at once on replay, and refuses anything
+over `MAX_PAUSE` (60 s): no cassette test waits longer, and no replayed test
+sleeps at all.
+
 ChatGPT record mode additionally needs `CHATGPT_ACCESS_TOKEN=... CHATGPT_ACCOUNT_ID=...`.
 
 Bedrock cassette replay does not require AWS credentials. Bedrock record mode uses the AWS
@@ -455,6 +474,18 @@ Practical consequences for anyone touching these fixtures:
 - `below_minimum_does_not_cache` is the cell that gives every other cell's
   padding its meaning. If it ever starts caching, the documented 1,024-token
   minimum is wrong and every probe's padding needs revisiting.
+
+**Automatic caching** (`gemini::caching`, fixtures under
+`gemini/auto_caching/`) is recorded as long runs: 100-turn support chats
+(about 200 calls each), a 60-call tool loop, four sub-agents and a lifecycle
+run. Their cache book reads the session's recorded clock, so each fixture has
+a `.clock.json` beside it. Besides each run's own thresholds, every run that
+uses a book asserts on its recorded traffic that no request re-sends what its
+cache holds, that cache plus request tail is the conversation byte for byte,
+that every created cache is deleted, that every replaced cache was read at
+least three times, and that cache creation stays under 15% of prompt tokens.
+A test turn retries a Google 5xx or 429 up to three times with a record-only
+pause, so the recording keeps the failed attempts and replay matches.
 
 ## Live Provider Tests
 
