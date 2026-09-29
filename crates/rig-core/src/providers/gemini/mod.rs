@@ -26,6 +26,7 @@ pub mod transcription;
 
 pub use crate::client::gemini::Gemini;
 pub use cached_content::{CacheExpiry, CachedContent, CachedContents, NewCachedContent};
+pub use completion::ThoughtReplay;
 pub use embedding::{EMBEDDING_001, EMBEDDING_004};
 #[cfg(feature = "image")]
 pub use image_generation::GEMINI_2_5_FLASH_IMAGE;

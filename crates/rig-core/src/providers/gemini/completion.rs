@@ -68,6 +68,34 @@ pub struct GenerateContent {
     /// Handle of a `cachedContents` resource every request reads its prefix
     /// from. See [`Self::with_cached_content`].
     pub cached_content: Option<String>,
+    /// Which thought signatures requests re-send. See [`ThoughtReplay`].
+    #[serde(default)]
+    pub thought_replay: ThoughtReplay,
+}
+
+/// Which earlier thought signatures a request re-sends.
+///
+/// On Gemini 3, every thought signature a request carries is expanded back
+/// into the reasoning it came from, and that reasoning is billed again as
+/// input on every later call. No explicit cache holds it. Measured on
+/// gemini-3.8-flash: a history whose earlier turns carried their signatures
+/// cost 6,708 prompt tokens; the same history without them cost 2,681, and
+/// Gemini answered normally. Over a 30-turn chat, dropping them cut input by
+/// 42%, and by 83% together with automatic caching.
+///
+/// Google's thinking guide says to send thought signatures back exactly as
+/// received. [`ThoughtReplay::CurrentTurn`] departs from that for turns the
+/// model has finished; its effect on answer quality is unmeasured. Hence
+/// [`ThoughtReplay::All`] is the default.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum ThoughtReplay {
+    /// Re-send every signature, as Google's guidance asks.
+    #[default]
+    All,
+    /// Re-send only the signatures at or after the newest user message: the
+    /// current turn, whose function calls Gemini validates. Parts before it
+    /// go out without their signature. The history itself is unchanged.
+    CurrentTurn,
 }
 
 impl GenerateContent {
@@ -77,7 +105,14 @@ impl GenerateContent {
             provider,
             model: model.into(),
             cached_content: None,
+            thought_replay: ThoughtReplay::All,
         }
+    }
+
+    /// Re-send thought signatures as `replay` says. See [`ThoughtReplay`].
+    pub fn thought_replay(mut self, replay: ThoughtReplay) -> Self {
+        self.thought_replay = replay;
+        self
     }
 
     /// Use an explicit `cachedContents/<id>` handle as every request's prefix.
@@ -86,6 +121,45 @@ impl GenerateContent {
     pub fn with_cached_content(mut self, name: impl Into<String>) -> Self {
         self.cached_content = Some(name.into());
         self
+    }
+}
+
+impl<T> crate::driver::Model<GenerateContent, T> {
+    /// This model, re-sending thought signatures as `replay` says. See
+    /// [`ThoughtReplay`]. Call it before [`caching`](Self::caching), which
+    /// reads it.
+    pub fn thought_replay(mut self, replay: ThoughtReplay) -> Self {
+        self.wire.thought_replay = replay;
+        self
+    }
+}
+
+/// Remove thought signatures from every part before the newest user text
+/// content: the turns the model has finished. Only the signature keys go;
+/// every other field is unchanged.
+fn drop_finished_signatures(contents: &mut [Content]) {
+    let current = contents.iter().rposition(|content| {
+        content.role == Some(Role::User)
+            && content
+                .parts
+                .iter()
+                .any(|part| matches!(part.part, PartKind::Text(_)))
+            && !content
+                .parts
+                .iter()
+                .any(|part| matches!(part.part, PartKind::FunctionResponse(_)))
+    });
+    let Some(current) = current else {
+        return;
+    };
+    for content in contents.iter_mut().take(current) {
+        for part in &mut content.parts {
+            part.thought_signature = None;
+            if let Some(Value::Object(extra)) = &mut part.additional_params {
+                extra.remove("thoughtSignature");
+                extra.remove("thought_signature");
+            }
+        }
     }
 }
 
@@ -111,6 +185,9 @@ impl Wire for GenerateContent {
         let mut body = create_request_body(request)?;
         if let Some(name) = self.cached_content.as_deref() {
             body.with_cached_content(name)?;
+        }
+        if self.thought_replay == ThoughtReplay::CurrentTurn {
+            drop_finished_signatures(&mut body.contents);
         }
         let (path, framing, target) = match mode {
             Mode::Unary => (
