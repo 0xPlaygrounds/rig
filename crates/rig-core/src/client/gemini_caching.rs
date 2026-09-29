@@ -14,7 +14,8 @@ use crate::providers::gemini::caching::{
     stripped,
 };
 use crate::providers::gemini::completion::{GenerateContent, ThoughtReplay};
-use crate::wire::{Body, Encoded, Framing, Mode, WireFrame};
+use crate::providers::internal::wire::classify_untyped_line;
+use crate::wire::{Body, Encoded, Framing, Mode, WireEvent, WireFrame};
 
 impl CacheBook {
     /// Keep each lease only if Google still has a cache under its name whose
@@ -201,7 +202,8 @@ where
             )
             .await;
         if reply.error.is_some() && reply.status != Some(403) && reply.status != Some(404) {
-            tracing::warn!(target: "gemini.cache", name = %lease.name, error = ?reply.error, "cache delete failed");
+            let status = reply.status.unwrap_or_default();
+            tracing::warn!(target: "gemini.cache", name = %lease.name, status, "cache delete failed");
         }
         self.book.retired(lease);
     }
@@ -244,14 +246,16 @@ where
             .resource(http::Method::POST, "/v1beta/cachedContents", Some(body))
             .await;
         if reply.error.is_some() {
-            let message = serde_json::from_str::<serde_json::Value>(&reply.body)
-                .ok()
-                .and_then(|value| {
-                    value
-                        .pointer("/error/message")
-                        .and_then(serde_json::Value::as_str)
-                        .map(str::to_owned)
-                })
+            #[derive(Deserialize)]
+            struct Envelope {
+                error: ErrorBody,
+            }
+            #[derive(Deserialize)]
+            struct ErrorBody {
+                message: String,
+            }
+            let message = known(classify_untyped_line::<Envelope>(reply.body.as_bytes()))
+                .map(|envelope| envelope.error.message)
                 .or(reply.error)
                 .unwrap_or_default();
             self.book
@@ -271,7 +275,7 @@ where
             #[serde(default)]
             total_token_count: u64,
         }
-        let resource: Resource = serde_json::from_str(&reply.body).ok()?;
+        let resource = known(classify_untyped_line::<Resource>(reply.body.as_bytes()))?;
         let tokens = resource
             .usage_metadata
             .map_or(0, |usage| usage.total_token_count);
@@ -279,6 +283,14 @@ where
             self.book
                 .created(line, create, resource.name, tokens, model),
         )
+    }
+}
+
+/// The decoded value of a classified payload, when it decoded.
+fn known<T>(event: WireEvent<T>) -> Option<T> {
+    match event {
+        WireEvent::Known(value) => Some(value),
+        _ => None,
     }
 }
 
@@ -303,7 +315,7 @@ fn final_cached(frame: &WireFrame) -> Option<u64> {
         #[serde(default)]
         candidates: Vec<Candidate>,
     }
-    let reply: Reply = serde_json::from_str(&frame.as_str()).ok()?;
+    let reply = known(classify_untyped_line::<Reply>(frame.as_str().as_bytes()))?;
     let finished = reply
         .candidates
         .iter()
