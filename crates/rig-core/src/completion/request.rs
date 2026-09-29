@@ -390,26 +390,27 @@ impl From<CompletionResponseRepr> for CompletionResponse {
 /// `Some(0)`. Serialized as the same keys, absent when `None`.
 #[derive(Debug, Default, PartialEq, Eq, Clone, Copy, Serialize, Deserialize)]
 pub struct Usage {
-    /// The number of input ("prompt") tokens used in a given request.
+    /// Every input token of the request: uncached, read from a cache,
+    /// written to a cache, and any prompt a provider's hosted tools added.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub input_tokens: Option<u64>,
-    /// The number of output ("completion") tokens used in a given request.
+    /// Every output token, reasoning included.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub output_tokens: Option<u64>,
-    /// We store this separately as some providers may only report one number
+    /// `input_tokens + output_tokens`; absent unless both are reported.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub total_tokens: Option<u64>,
-    /// The number of input tokens read from a provider-managed cache
+    /// The part of `input_tokens` read from a provider-managed cache.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cached_input_tokens: Option<u64>,
-    /// The number of input tokens written to a provider-managed cache
+    /// The part of `input_tokens` written to a provider-managed cache.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cache_creation_input_tokens: Option<u64>,
-    /// The number of tool-use prompt tokens used in a given request.
+    /// The part of `input_tokens` a provider's hosted tools added to the prompt.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tool_use_prompt_tokens: Option<u64>,
-    /// The number of tokens spent on internal reasoning / "thoughts" by reasoning-capable
-    /// models (e.g. Gemini thinking, Anthropic extended thinking, OpenAI o-series).
+    /// The part of `output_tokens` spent on internal reasoning ("thinking",
+    /// "thoughts").
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reasoning_tokens: Option<u64>,
 }

@@ -294,13 +294,9 @@ async fn streaming_final_metadata_exposes_model_version() {
 /// Replays a cassette recorded long before this assertion existed, which is what
 /// makes it a genuine regression cell: the recorded wire reports
 /// `total_input_tokens: 14`, `total_output_tokens: 34`, `total_tokens: 270` and
-/// `total_thought_tokens: 222`. Rig's `InteractionUsage` had three fields, so
-/// the 222 thinking tokens — the *majority* of the spend — were dropped on the
-/// floor, and the normalized triple could not explain its own total. The wire
-/// also carries `total_cached_tokens`, which meant `cached_input_tokens` was
-/// structurally zero on this surface no matter what Gemini reported.
-///
-/// On `origin/main` this fails with `reasoning_tokens == 0`.
+/// `total_thought_tokens: 222`, thinking beside output. Rig's output counts the
+/// thinking, so input plus output is the provider's own total. The wire also
+/// carries `total_cached_tokens`, which `cached_input_tokens` reports.
 #[tokio::test]
 async fn interactions_usage_surfaces_thinking_and_cached_tokens() {
     super::super::support::with_gemini_interactions_cassette(
@@ -320,21 +316,32 @@ async fn interactions_usage_surfaces_thinking_and_cached_tokens() {
                 .await
                 .expect("completion should succeed");
             let usage = response.usage;
+            let recorded_total = response
+                .raw
+                .pointer("/usage/total_tokens")
+                .and_then(serde_json::Value::as_u64);
 
             assert!(
                 usage.reasoning_tokens.is_some_and(|n| n > 0),
                 "the recorded interaction reports total_thought_tokens; dropping it loses the \
                  largest component of the spend. got {usage:?}"
             );
+            assert!(
+                usage.reasoning_tokens <= usage.output_tokens,
+                "output includes the thinking the wire reports beside it: {usage:?}"
+            );
+            assert!(
+                recorded_total.is_some(),
+                "the recorded interaction reports a total"
+            );
             assert_eq!(
-                Some(
-                    usage.input_tokens.unwrap_or(0)
-                        + usage.output_tokens.unwrap_or(0)
-                        + usage.reasoning_tokens.unwrap_or(0)
-                ),
+                usage.total_tokens, recorded_total,
+                "input plus output is the provider's own total: {usage:?}"
+            );
+            assert_eq!(
+                Some(usage.input_tokens.unwrap_or(0) + usage.output_tokens.unwrap_or(0)),
                 usage.total_tokens,
-                "on this surface thinking is reported beside input/output, so the components \
-                 should account for the provider's own total: {usage:?}"
+                "the total is input plus output: {usage:?}"
             );
         },
     )

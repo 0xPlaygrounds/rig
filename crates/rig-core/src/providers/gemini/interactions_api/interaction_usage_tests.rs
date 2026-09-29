@@ -3,9 +3,8 @@ use crate::completion::Usage;
 
 /// Shape taken verbatim from a committed cassette
 /// (`crates/rig-cassette/fixtures/cassettes/gemini/interactions_api/basic_interaction_returns_id.yaml`).
-/// Note that input + output is 48 while the provider's own total is 270 —
-/// the missing 222 is thinking, reported beside the pair rather than inside
-/// it.
+/// The API reports the 222 thinking tokens beside input and output (14 + 34),
+/// and its own total, 270, counts all three.
 fn recorded() -> InteractionUsage {
     serde_json::from_value(serde_json::json!({
         "total_input_tokens": 14,
@@ -18,19 +17,21 @@ fn recorded() -> InteractionUsage {
     .expect("recorded usage should deserialize")
 }
 
-/// Before this mapping existed, `reasoning_tokens` was 0 here and the
-/// normalized triple could not explain its own total.
+/// Thinking is output, so input plus output is the provider's own total.
 #[test]
 fn thinking_tokens_survive_the_interactions_mapping() {
     let usage = Usage::from(&recorded());
     assert_eq!(usage.input_tokens, Some(14));
-    assert_eq!(usage.output_tokens, Some(34));
+    assert_eq!(usage.output_tokens, Some(34 + 222));
     assert_eq!(usage.total_tokens, Some(270));
     assert_eq!(usage.reasoning_tokens, Some(222));
     assert_eq!(
         usage.total_tokens,
-        Some(14 + 34 + 222),
-        "the components should account for the provider's total"
+        usage
+            .input_tokens
+            .zip(usage.output_tokens)
+            .map(|(input, output)| input + output),
+        "the total is input plus output"
     );
 }
 
@@ -44,15 +45,18 @@ fn cached_tokens_survive_the_interactions_mapping() {
     assert_eq!(Usage::from(&wire).cached_input_tokens, Some(9_000));
 }
 
+/// Tool-use tokens are input.
 #[test]
 fn tool_use_tokens_survive_the_interactions_mapping() {
     let mut wire = recorded();
     wire.total_tool_use_tokens = Some(77);
-    assert_eq!(Usage::from(&wire).tool_use_prompt_tokens, Some(77));
+    let usage = Usage::from(&wire);
+    assert_eq!(usage.tool_use_prompt_tokens, Some(77));
+    assert_eq!(usage.input_tokens, Some(14 + 77));
 }
 
-/// With no provider total, the fallback must count every component. Summing
-/// only input+output understated the total by the whole thinking spend.
+/// The total is input plus output, with or without a provider total, so it
+/// counts every component: thinking and tool use included.
 #[test]
 fn the_total_fallback_counts_thinking_and_tool_use() {
     let mut wire = recorded();

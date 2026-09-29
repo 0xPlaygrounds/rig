@@ -186,8 +186,7 @@
             "output_tokens": 2,
             "total_tokens": 36,
             "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "reasoning_tokens": 0
+            "cache_creation_input_tokens": 0
           },
           "rig_ecs::agent::UsesModel": 1,
           "rig_ecs::bus::effect::Scope": "golden/run#0"
@@ -268,8 +267,7 @@
                 "output_tokens": 2,
                 "total_tokens": 36,
                 "cached_input_tokens": 0,
-                "cache_creation_input_tokens": 0,
-                "reasoning_tokens": 0
+                "cache_creation_input_tokens": 0
               },
               "message_id": null,
               "response_id": "resp_7c728c8b-cb0b-40b7-ad9c-44f403900dba",

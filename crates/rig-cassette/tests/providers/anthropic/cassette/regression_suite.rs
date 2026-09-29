@@ -81,26 +81,25 @@ async fn natural_stop_surfaces_as_stop() {
     .await;
 }
 
-/// A5 — Regression: on a cache-hit turn, `input_tokens` is the **uncached
-/// remainder**, not the prompt size.
+/// A5 — Regression: on a cache-hit turn, rig's `input_tokens` is the **prompt
+/// size**: Anthropic's uncached remainder plus the cache reads and writes it
+/// reports beside it.
 ///
-/// `anthropic/streaming.rs` filters `input_tokens` on the terminal
+/// `anthropic/streaming.rs` filters the wire's `input_tokens` on the terminal
 /// `message_delta` with `> 0`, and its comment states plainly that this is a
 /// *heuristic, not an invariant*: with prompt caching, a turn whose prefix is
 /// fully cached legitimately bills few (or zero) uncached input tokens while the
-/// real prompt size sits in `cache_read_input_tokens`. The comment then warns
-/// against extending the `> 0` filter to `message_start` or the cache fields,
-/// where a genuine zero would be discarded.
+/// real prompt size sits in `cache_read_input_tokens`.
 ///
-/// Nothing pinned that semantic. This records a cached streamed turn and asserts
-/// the relationship the comment depends on — cached tokens dominate, and
-/// `input_tokens` is much smaller than the true prompt — so a future change that
-/// treated `input_tokens` as "the prompt size" has something to fail against.
+/// This records a cached streamed turn and asserts both halves: rig's input
+/// covers the cache counters, and the cached prefix dominates the uncached
+/// remainder, so a change that reported the remainder as the prompt size, or
+/// dropped the cache from it, has something to fail against.
 ///
 /// Deliberately asserts the *relationship*, not a literal: the exact split is
 /// Anthropic's to choose and a re-record must not turn this into a tautology.
 #[tokio::test]
-async fn cache_hit_turn_reports_uncached_remainder_not_prompt_size() {
+async fn cache_hit_turn_reports_the_prompt_size_with_its_cached_prefix() {
     with_anthropic_cassette(
         "regression/cache_hit_zero_uncached_input",
         |client| async move {
@@ -142,12 +141,20 @@ async fn cache_hit_turn_reports_uncached_remainder_not_prompt_size() {
                  about cache-hit accounting; usage: {:?}",
                 second.usage
             );
+            let input = second.usage.input_tokens.unwrap_or(0);
+            let cached = second.usage.cached_input_tokens.unwrap_or(0);
+            let written = second.usage.cache_creation_input_tokens.unwrap_or(0);
             assert!(
-                second.usage.cached_input_tokens > second.usage.input_tokens,
+                cached + written <= input,
+                "`input_tokens` is the prompt size, cache reads and writes included; \
+                 usage: {:?}",
+                second.usage
+            );
+            assert!(
+                cached > input - cached - written,
                 "on a cache-hit turn the cached prefix must dominate the uncached \
-                 remainder — `input_tokens` is NOT the prompt size, which is exactly \
-                 why the `> 0` filter in anthropic/streaming.rs is documented as a \
-                 heuristic rather than an invariant; usage: {:?}",
+                 remainder, which is why the `> 0` filter in anthropic/streaming.rs is \
+                 documented as a heuristic rather than an invariant; usage: {:?}",
                 second.usage
             );
         },

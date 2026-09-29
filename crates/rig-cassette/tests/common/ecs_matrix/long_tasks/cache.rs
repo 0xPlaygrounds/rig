@@ -33,32 +33,28 @@ pub(crate) fn assert_usage(thinking: ThinkingWire, log: &EffectLog) -> Value {
                 .expect("Gemini usage"),
             _ => response.raw.get("usage").expect("wire usage"),
         };
-        let output_field = match thinking {
-            ThinkingWire::OpenAiChat | ThinkingWire::DeepSeek => "completion_tokens",
-            ThinkingWire::Gemini => "candidatesTokenCount",
-            _ => "output_tokens",
+        let count = |field: &str| raw_usage.get(field).and_then(Value::as_u64);
+        // Output includes reasoning: Gemini counts thoughts beside its
+        // candidates, and omits a zero count.
+        let output = match thinking {
+            ThinkingWire::OpenAiChat | ThinkingWire::DeepSeek => count("completion_tokens"),
+            ThinkingWire::Gemini => Some(
+                count("candidatesTokenCount").unwrap_or(0)
+                    + count("thoughtsTokenCount").unwrap_or(0),
+            ),
+            _ => count("output_tokens"),
         };
-        assert_eq!(
-            usage.output_tokens,
-            raw_usage.get(output_field).and_then(Value::as_u64),
-            "output usage decoded once"
-        );
+        assert_eq!(usage.output_tokens, output, "output usage decoded once");
         let total = match thinking {
-            ThinkingWire::Anthropic => raw
-                .0
-                .zip(usage.output_tokens)
-                .map(|(input, output)| input + raw.1.unwrap_or(0) + raw.2.unwrap_or(0) + output),
-            ThinkingWire::Gemini => raw_usage.get("totalTokenCount").and_then(Value::as_u64),
-            _ => raw_usage.get("total_tokens").and_then(Value::as_u64),
+            ThinkingWire::Anthropic => raw.0.zip(output).map(|(input, output)| input + output),
+            ThinkingWire::Gemini => count("totalTokenCount"),
+            _ => count("total_tokens"),
         };
-        assert_eq!(
-            usage.total_tokens, total,
-            "provider-specific total accounting"
-        );
-        if !matches!(thinking, ThinkingWire::Anthropic)
-            && let (Some(input), Some(cached)) = (usage.input_tokens, usage.cached_input_tokens)
-        {
-            assert!(cached <= input, "inclusive cache accounting");
+        assert_eq!(usage.total_tokens, total, "total is input plus output");
+        if let Some(input) = usage.input_tokens {
+            let cache = usage.cached_input_tokens.unwrap_or(0)
+                + usage.cache_creation_input_tokens.unwrap_or(0);
+            assert!(cache <= input, "input includes cache reads and writes");
         }
         rows.push(json!({"scope": record.scope, "id": record.id, "usage": usage}));
         usages.push(usage);

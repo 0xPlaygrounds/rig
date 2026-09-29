@@ -393,6 +393,9 @@ pub const DOUBLEWORD: Dialect = Dialect {
             refuse_zero_width: Some("to be greater than zero"),
             ..EmbeddingQuirks::openai()
         },
+        // Qwen3.5 replies report more reasoning tokens than completion
+        // tokens, while `total_tokens` counts only the completion.
+        reasoning_within_completion: false,
         ..Quirks::openai()
     },
     ..Dialect::gateway(

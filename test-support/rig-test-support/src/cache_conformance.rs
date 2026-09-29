@@ -72,11 +72,9 @@ use crate::cache_prefix;
 ///
 /// This is the single most likely place to ship a vacuous assertion: divide
 /// turn 2's cache read by the wrong turn-1 denominator and
-/// [`assert_hit_ratio`] either always passes or always fails. Anthropic
-/// reports reads and writes *alongside* `input_tokens`
-/// (`anthropic_usage_totals`, `crates/rig-core/src/providers/anthropic/completion.rs`);
-/// OpenAI chat and Responses, Cohere, DeepSeek, Gemini, OpenRouter, Mistral
-/// and every `openai::Usage` reuser report them as a *subset* of it.
+/// [`assert_hit_ratio`] either always passes or always fails. Every
+/// provider's `Usage` counts reads and writes as a *subset* of
+/// `input_tokens`, including Anthropic's, whose wire reports them beside it.
 pub use rig_core::completion::CacheAccounting;
 
 /// What a provider's prompt cache can do, and what its numbers mean.

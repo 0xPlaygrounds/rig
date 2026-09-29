@@ -86,14 +86,15 @@ fn make_usage(input: i32, output: i32, total: i32) -> aws_bedrock::TokenUsage {
         .unwrap()
 }
 
-/// A unary call reports the Converse usage, cache counters included, and
-/// reports none when the reply carried none.
+/// A unary call reports the Converse usage with cache reads and writes
+/// counted in input, as Bedrock's `totalTokens` counts them, and reports
+/// none when the reply carried none.
 #[test]
 fn a_unary_call_reports_the_converse_usage() {
     let usage = aws_bedrock::TokenUsage::builder()
         .input_tokens(100)
         .output_tokens(50)
-        .total_tokens(150)
+        .total_tokens(160)
         .cache_read_input_tokens(7)
         .cache_write_input_tokens(3)
         .build()
@@ -106,9 +107,9 @@ fn a_unary_call_reports_the_converse_usage() {
     assert_eq!(
         response.usage,
         completion::Usage {
-            input_tokens: Some(100),
+            input_tokens: Some(110),
             output_tokens: Some(50),
-            total_tokens: Some(150),
+            total_tokens: Some(160),
             cached_input_tokens: Some(7),
             cache_creation_input_tokens: Some(3),
             ..Default::default()

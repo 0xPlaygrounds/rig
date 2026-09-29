@@ -80,7 +80,7 @@
           ],
           "usage": {
             "input_tokens": 33,
-            "output_tokens": 7,
+            "output_tokens": 30,
             "total_tokens": 63,
             "reasoning_tokens": 23
           },

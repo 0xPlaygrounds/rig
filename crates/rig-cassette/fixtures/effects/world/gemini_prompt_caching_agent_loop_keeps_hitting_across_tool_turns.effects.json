@@ -157,7 +157,7 @@
           ],
           "usage": {
             "input_tokens": 4463,
-            "output_tokens": 17,
+            "output_tokens": 121,
             "total_tokens": 4584,
             "reasoning_tokens": 104
           },
@@ -342,7 +342,7 @@
           ],
           "usage": {
             "input_tokens": 4511,
-            "output_tokens": 17,
+            "output_tokens": 45,
             "total_tokens": 4556,
             "reasoning_tokens": 28
           },
@@ -560,7 +560,7 @@
           ],
           "usage": {
             "input_tokens": 4559,
-            "output_tokens": 3,
+            "output_tokens": 35,
             "total_tokens": 4594,
             "cached_input_tokens": 3634,
             "reasoning_tokens": 32

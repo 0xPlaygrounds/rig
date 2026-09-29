@@ -237,12 +237,10 @@ impl CacheWire {
         }
     }
 
-    /// How the provider counts cached tokens against its input counter.
+    /// How rig's `Usage` counts cached tokens against input: inside it, on
+    /// every wire.
     pub fn accounting(self) -> CacheAccounting {
-        match self {
-            Self::Anthropic => CacheAccounting::Alongside,
-            Self::Gemini | Self::OpenAiChat | Self::OpenAiResponses => CacheAccounting::Subset,
-        }
+        CacheAccounting::Subset
     }
 
     /// Whether `path` is a completion call on this wire.
@@ -294,7 +292,8 @@ impl CacheWire {
                 }),
             // A stream's `message_start` carries the input counters and its
             // `message_delta` the final output (and repeats the cache
-            // counters); later frames win.
+            // counters); later frames win. Anthropic counts cache reads and
+            // writes beside `input_tokens`; rig's input includes them.
             Self::Anthropic => {
                 let mut found = false;
                 let mut usage = Usage::default();
@@ -319,6 +318,11 @@ impl CacheWire {
                     );
                     pick("output_tokens", &mut usage.output_tokens);
                 }
+                usage.input_tokens = usage.input_tokens.map(|uncached| {
+                    uncached
+                        + usage.cached_input_tokens.unwrap_or(0)
+                        + usage.cache_creation_input_tokens.unwrap_or(0)
+                });
                 found.then_some((usage, 0))
             }
             Self::OpenAiChat => frames

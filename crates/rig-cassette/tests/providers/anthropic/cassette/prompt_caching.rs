@@ -1568,9 +1568,10 @@ fn cache_padding(repetitions: usize) -> String {
 // other eleven providers use, so Anthropic's numbers are read the same way as
 // everyone else's and the denominator is written down rather than assumed.
 //
-// Anthropic is the one provider in the matrix that reports cache tokens
-// *alongside* `input_tokens` instead of inside it, and the one that needs
-// explicit `cache_control` breakpoints — both of which the descriptor states.
+// Anthropic's wire counts cache tokens beside `input_tokens`; rig's `Usage`
+// counts them inside it, as on every provider. Anthropic is the one provider
+// in the matrix that needs explicit `cache_control` breakpoints, which the
+// descriptor states.
 
 use crate::cache_conformance::{
     AGENT_CACHE_PROMPT, CacheAccounting, CacheProbe, CacheProbeLookupTool, CacheSupport,
@@ -1579,15 +1580,11 @@ use crate::cache_conformance::{
     run_cache_probe_streaming,
 };
 
-/// See [`CacheAccounting::Alongside`]: `anthropic_usage_totals` computes
-/// `total = input + cached + cache_creation + output`, so turn 1's billed prompt
-/// is the sum of the three input counters, not `input_tokens` on its own.
-/// Dividing by `input_tokens` alone would make the ratio look enormous on a warm
-/// turn (where `input_tokens` is only the uncached tail) and the assertion
-/// vacuous.
+/// Rig's `input_tokens` for Anthropic includes cache reads and writes, so turn
+/// 1's billed prompt is `input_tokens`.
 pub(super) const ANTHROPIC_CACHE_SUPPORT: CacheSupport = CacheSupport {
     provider: "anthropic",
-    accounting: CacheAccounting::Alongside,
+    accounting: CacheAccounting::Subset,
     explicit_breakpoints: true,
     reports_writes: true,
     // Anthropic's documented minimum is 1,024 tokens for Sonnet- and Opus-class

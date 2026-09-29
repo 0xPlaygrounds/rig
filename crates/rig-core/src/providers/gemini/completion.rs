@@ -1363,21 +1363,29 @@ pub mod gemini_api_types {
         ProvisionedThroughput,
     }
 
+    /// Input is the prompt plus the tool-use prompt, output is the candidates
+    /// plus the thoughts, and the total is their sum, which is Gemini's
+    /// `totalTokenCount`. A count Gemini leaves out is zero: its JSON omits
+    /// zero counts, so a reply that only thought carries no candidates count.
     impl From<&UsageMetadata> for crate::completion::Usage {
         fn from(value: &UsageMetadata) -> crate::completion::Usage {
             let count = |count: i32| count as u64;
-            // Input is every token the request put in front of the model:
-            // the prompt plus the prompt Gemini's own hosted tools added
-            // (`toolUsePromptTokenCount`). Cached tokens are counted against
-            // both, so without the tool-use part they could exceed input.
+            // Cached tokens are counted against the prompt and the tool-use
+            // prompt, so without the tool-use part they could exceed input.
             let tool_use = value.tool_use_prompt_token_count.map_or(0, count);
+            let input = count(value.prompt_token_count).saturating_add(tool_use);
+            let thoughts = value.thoughts_token_count.map_or(0, count);
+            let output = value
+                .candidates_token_count
+                .map_or(0, count)
+                .saturating_add(thoughts);
             crate::completion::Usage {
-                input_tokens: Some(count(value.prompt_token_count).saturating_add(tool_use)),
-                output_tokens: value.candidates_token_count.map(count),
+                input_tokens: Some(input),
+                output_tokens: Some(output),
                 cached_input_tokens: value.cached_content_token_count.map(count),
                 reasoning_tokens: value.thoughts_token_count.map(count),
                 tool_use_prompt_tokens: value.tool_use_prompt_token_count.map(count),
-                total_tokens: Some(count(value.total_token_count)),
+                total_tokens: Some(input.saturating_add(output)),
                 cache_creation_input_tokens: None,
             }
         }

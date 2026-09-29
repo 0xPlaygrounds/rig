@@ -11,12 +11,11 @@ use super::Usage;
 /// [`Usage::input_tokens`].
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum CacheAccounting {
-    /// Cache reads and writes are reported beside `input_tokens`, so the
-    /// prompt is the sum of all three. Anthropic reports this way.
+    /// Cache reads and writes are counted beside `input_tokens`, so the
+    /// prompt is the sum of all three. No provider's [`Usage`] counts this way.
     Alongside,
     /// Cache reads and writes are part of `input_tokens`, so the prompt is
-    /// `input_tokens` alone. OpenAI, Gemini and the OpenAI-compatible
-    /// providers report this way.
+    /// `input_tokens` alone. Every provider's [`Usage`] counts this way.
     Subset,
 }
 
@@ -65,12 +64,12 @@ pub struct CacheRates {
 ///         .sum()
 /// };
 ///
-/// // Anthropic reports cache reads and writes beside input.
-/// let anthropic = run(CacheAccounting::Alongside);
+/// // Anthropic's cache reads and writes are part of input.
+/// let anthropic = run(CacheAccounting::Subset);
 /// let opus = CacheRates { input: 4.0, cached_read: 0.2, cache_write: 5.0, storage_per_hour: 0.0 };
 /// println!("${:.3}, {:.1}% saved", anthropic.usd(&opus), anthropic.saving(&opus) * 100.0);
 ///
-/// // OpenAI reports them inside input.
+/// // So are OpenAI's.
 /// let openai = run(CacheAccounting::Subset);
 /// let sol = CacheRates { input: 2.0, cached_read: 0.2, cache_write: 2.5, storage_per_hour: 0.0 };
 /// println!("${:.3}, {:.1}% saved", openai.usd(&sol), openai.saving(&sol) * 100.0);

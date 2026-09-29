@@ -272,7 +272,6 @@ pub(crate) fn assert_log(cell: &Cell, wire: ThinkingWire, log: &EffectLog) {
                     | ThinkingWire::OpenAiResponses
                     | ThinkingWire::Gemini
                     | ThinkingWire::DeepSeek
-                    | ThinkingWire::Doubleword
             )
         {
             assert!(
@@ -280,6 +279,14 @@ pub(crate) fn assert_log(cell: &Cell, wire: ThinkingWire, log: &EffectLog) {
                 "{}: reasoning usage: {:?}",
                 cell.name,
                 response.usage
+            );
+        }
+        if matches!(wire, ThinkingWire::Doubleword) {
+            assert_eq!(
+                response.usage.reasoning_tokens, None,
+                "{}: Doubleword's reasoning count is not part of its completion count, so it \
+                 is unreported",
+                cell.name
             );
         }
         if !thinking {
@@ -415,7 +422,12 @@ pub(crate) fn assert_history(cell: &Cell, log: &EffectLog, history: &[Message]) 
     );
 }
 
-pub(crate) fn assert_witness(cell: &Cell, log: &EffectLog, trace: &ObservationLog) {
+pub(crate) fn assert_witness(
+    cell: &Cell,
+    wire: ThinkingWire,
+    log: &EffectLog,
+    trace: &ObservationLog,
+) {
     if cell.reasoning.is_none() {
         return;
     }
@@ -456,8 +468,15 @@ pub(crate) fn assert_witness(cell: &Cell, log: &EffectLog, trace: &ObservationLo
         }
     }
     for (response, reported) in completions(log).iter().zip(reported) {
+        // Doubleword's reasoning counter is not part of its completion count,
+        // so rig leaves it unreported.
+        let expected = if matches!(wire, ThinkingWire::Doubleword) {
+            None
+        } else {
+            reported
+        };
         assert_eq!(
-            response.usage.reasoning_tokens, reported,
+            response.usage.reasoning_tokens, expected,
             "{}: record usage equals the provider's witnessed counter",
             cell.name
         );

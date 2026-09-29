@@ -1338,7 +1338,8 @@ fn terminal_record_normalizes_stop_reason_usage_and_metadata() {
         response.finish_reason(),
         Some(crate::completion::FinishReason::Length)
     );
-    assert_eq!(response.usage.input_tokens, Some(3));
+    // Input counts the cache read Anthropic reports beside `input_tokens`.
+    assert_eq!(response.usage.input_tokens, Some(5));
     assert_eq!(response.usage.output_tokens, Some(5));
     assert_eq!(response.usage.cached_input_tokens, Some(2));
     assert_eq!(response.usage.total_tokens, Some(10));

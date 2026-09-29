@@ -366,6 +366,8 @@ fn terminal_frame() -> proto::GenerateContentResponse {
             candidates_token_count: 2,
             total_token_count: 5,
             cached_content_token_count: 0,
+            tool_use_prompt_token_count: 0,
+            thoughts_token_count: 0,
         }),
         model_version: "gemini-2.5-flash".to_string(),
         response_id: "resp-grpc-stream".to_string(),

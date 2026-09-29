@@ -884,27 +884,27 @@ pub mod interactions_api_types {
         pub total_tool_use_tokens: Option<u64>,
     }
 
+    /// Input is `total_input_tokens` plus the tool-use tokens, output is
+    /// `total_output_tokens` plus the thought tokens, which the API counts
+    /// beside them, and the total is input plus output. Without a base input
+    /// or output count, that side and the total stay absent.
     impl From<&InteractionUsage> for Usage {
         fn from(value: &InteractionUsage) -> Usage {
-            // Thinking and tool-use tokens are separate from input and output.
-            // Derive a fallback only when both base counts exist; reported totals take precedence.
-            let derived_total =
-                value
-                    .total_input_tokens
-                    .zip(value.total_output_tokens)
-                    .map(|(input, output)| {
-                        input
-                            + output
-                            + value.total_thought_tokens.unwrap_or(0)
-                            + value.total_tool_use_tokens.unwrap_or(0)
-                    });
+            let input_tokens = value
+                .total_input_tokens
+                .map(|input| input + value.total_tool_use_tokens.unwrap_or(0));
+            let output_tokens = value
+                .total_output_tokens
+                .map(|output| output + value.total_thought_tokens.unwrap_or(0));
             Usage {
-                input_tokens: value.total_input_tokens,
-                output_tokens: value.total_output_tokens,
+                input_tokens,
+                output_tokens,
                 cached_input_tokens: value.total_cached_tokens,
                 reasoning_tokens: value.total_thought_tokens,
                 tool_use_prompt_tokens: value.total_tool_use_tokens,
-                total_tokens: value.total_tokens.or(derived_total),
+                total_tokens: input_tokens
+                    .zip(output_tokens)
+                    .map(|(input, output)| input + output),
                 cache_creation_input_tokens: None,
             }
         }

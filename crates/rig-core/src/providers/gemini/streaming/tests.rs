@@ -449,7 +449,7 @@ fn test_deserialize_stream_response_with_empty_parts() {
 #[test]
 fn test_partial_usage_token_calculation() {
     let usage = UsageMetadata {
-        total_token_count: 100,
+        total_token_count: 92,
         cached_content_token_count: Some(20),
         candidates_token_count: Some(30),
         thoughts_token_count: Some(10),
@@ -463,13 +463,14 @@ fn test_partial_usage_token_calculation() {
     };
 
     let token_usage = crate::completion::Usage::from(&usage);
-    // Input is the prompt plus the hosted-tool prompt.
+    // Input is the prompt plus the hosted-tool prompt, output the candidates
+    // plus the thoughts, and the total their sum, as `totalTokenCount` is.
     assert_eq!(token_usage.input_tokens, Some(52));
     assert_eq!(token_usage.cached_input_tokens, Some(20));
-    assert_eq!(token_usage.output_tokens, Some(30));
+    assert_eq!(token_usage.output_tokens, Some(40));
     assert_eq!(token_usage.reasoning_tokens, Some(10));
     assert_eq!(token_usage.tool_use_prompt_tokens, Some(12));
-    assert_eq!(token_usage.total_tokens, Some(100));
+    assert_eq!(token_usage.total_tokens, Some(92));
 }
 
 #[test]
@@ -578,7 +579,7 @@ fn test_partial_usage_serde_roundtrip_with_all_optional_fields() {
         "cachedContentTokenCount": 25,
         "candidatesTokenCount": 50,
         "thoughtsTokenCount": 15,
-        "totalTokenCount": 190,
+        "totalTokenCount": 177,
         "promptTokensDetails": [
             { "modality": "TEXT", "tokenCount": 80 },
             { "modality": "IMAGE", "tokenCount": 20 }
@@ -601,7 +602,7 @@ fn test_partial_usage_serde_roundtrip_with_all_optional_fields() {
     assert_eq!(usage.cached_content_token_count, Some(25));
     assert_eq!(usage.candidates_token_count, Some(50));
     assert_eq!(usage.thoughts_token_count, Some(15));
-    assert_eq!(usage.total_token_count, 190);
+    assert_eq!(usage.total_token_count, 177);
     assert!(usage.prompt_tokens_details.is_some());
     assert_eq!(usage.prompt_tokens_details.as_ref().unwrap().len(), 2);
     assert!(usage.cache_tokens_details.is_some());
@@ -614,13 +615,14 @@ fn test_partial_usage_serde_roundtrip_with_all_optional_fields() {
     ));
 
     let token_usage = crate::completion::Usage::from(&usage);
-    // Input is the prompt plus the hosted-tool prompt.
+    // Input is the prompt plus the hosted-tool prompt, output the candidates
+    // plus the thoughts, and the total their sum, as `totalTokenCount` is.
     assert_eq!(token_usage.input_tokens, Some(112));
     assert_eq!(token_usage.cached_input_tokens, Some(25));
-    assert_eq!(token_usage.output_tokens, Some(50));
+    assert_eq!(token_usage.output_tokens, Some(65));
     assert_eq!(token_usage.reasoning_tokens, Some(15));
     assert_eq!(token_usage.tool_use_prompt_tokens, Some(12));
-    assert_eq!(token_usage.total_tokens, Some(190));
+    assert_eq!(token_usage.total_tokens, Some(177));
 }
 
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]

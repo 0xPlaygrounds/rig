@@ -515,6 +515,8 @@ fn generate_content_response_round_trips_through_serde_json_value() {
             candidates_token_count: 20,
             total_token_count: 30,
             cached_content_token_count: 4,
+            tool_use_prompt_token_count: 0,
+            thoughts_token_count: 0,
         }),
         model_version: "gemini-2.5-flash".to_string(),
         response_id: "resp-grpc-1".to_string(),
@@ -813,4 +815,52 @@ fn an_unflattenable_tool_schema_is_a_request_failure() {
     let error = ProviderError::from(error);
     assert!(matches!(error, ProviderError::Request(_)), "{error:?}");
     assert_eq!(error.to_string(), "RequestError: $defs must be an object");
+}
+
+/// The usage mapping's arithmetic, through the real unary conversion.
+/// rig-gemini-grpc has no cassette harness (its gRPC transport is not
+/// recorded), so the mapping from the protobuf fields is pinned here.
+///
+/// Thoughts are output, the tool-use prompt is input, and the total is input
+/// plus output, which is Gemini's `total_token_count`: 100 + 75 + 30 + 34 = 239.
+#[test]
+fn usage_counts_thoughts_as_output_and_the_tool_use_prompt_as_input() {
+    let response = GenerateContentResponse {
+        candidates: vec![proto::Candidate {
+            content: Some(proto::Content {
+                parts: vec![proto::Part {
+                    data: Some(proto::part::Data::Text("hi".to_string())),
+                    ..Default::default()
+                }],
+                role: "model".to_string(),
+            }),
+            finish_reason: proto::candidate::FinishReason::Stop as i32,
+            ..Default::default()
+        }],
+        usage_metadata: Some(proto::UsageMetadata {
+            prompt_token_count: 100,
+            candidates_token_count: 30,
+            total_token_count: 239,
+            cached_content_token_count: 40,
+            tool_use_prompt_token_count: 75,
+            thoughts_token_count: 34,
+        }),
+        ..Default::default()
+    };
+
+    let usage = complete(response)
+        .expect("a response with content converts")
+        .usage;
+    assert_eq!(
+        usage,
+        completion::Usage {
+            input_tokens: Some(175),
+            output_tokens: Some(64),
+            total_tokens: Some(239),
+            cached_input_tokens: Some(40),
+            cache_creation_input_tokens: None,
+            tool_use_prompt_tokens: Some(75),
+            reasoning_tokens: Some(34),
+        }
+    );
 }

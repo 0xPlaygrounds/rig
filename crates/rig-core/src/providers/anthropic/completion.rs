@@ -70,8 +70,11 @@ pub(crate) fn map_finish_reason(stop_reason: &str) -> completion::FinishReason {
     }
 }
 
+/// Anthropic's `usage`, as sent. `input_tokens` counts only the input after
+/// the last cache breakpoint; cache reads and writes are counted beside it.
 #[derive(Clone, Copy, Debug, Deserialize, Serialize)]
 pub struct Usage {
+    /// Input tokens neither read from nor written to a cache.
     pub input_tokens: u64,
     pub cache_read_input_tokens: Option<u64>,
     pub cache_creation_input_tokens: Option<u64>,
@@ -111,7 +114,7 @@ impl std::fmt::Display for Usage {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "Input tokens: {}\nCache read input tokens: {}\nCache creation input tokens: {}\nOutput tokens: {}",
+            "Uncached input tokens: {}\nCache read input tokens: {}\nCache creation input tokens: {}\nOutput tokens: {}",
             self.input_tokens,
             self.cache_read_input_tokens
                 .map_or_else(|| "n/a".to_string(), |token| token.to_string()),
@@ -122,9 +125,10 @@ impl std::fmt::Display for Usage {
     }
 }
 
-/// Normalize usage, summing input, output, cache-read, and cache-write tokens.
-/// Thinking tokens are already included in output and are not added again.
-/// Without an input count, leave the total absent.
+/// Normalize usage: input is the uncached input plus cache reads and writes,
+/// which Anthropic counts beside it, and the total is input plus output.
+/// Thinking tokens are already included in output. Without an uncached input
+/// count, input and the total stay absent.
 pub(super) fn anthropic_usage_totals(
     input_tokens: Option<u64>,
     output_tokens: u64,
@@ -132,15 +136,15 @@ pub(super) fn anthropic_usage_totals(
     cache_creation: Option<u64>,
     output_tokens_details: Option<OutputTokensDetails>,
 ) -> crate::completion::Usage {
+    let input_tokens = input_tokens
+        .map(|uncached| uncached + cache_read.unwrap_or(0) + cache_creation.unwrap_or(0));
     crate::completion::Usage {
         input_tokens,
         output_tokens: Some(output_tokens),
         cached_input_tokens: cache_read,
         cache_creation_input_tokens: cache_creation,
         reasoning_tokens: output_tokens_details.map(|details| details.thinking_tokens),
-        total_tokens: input_tokens.map(|input| {
-            input + cache_read.unwrap_or(0) + cache_creation.unwrap_or(0) + output_tokens
-        }),
+        total_tokens: input_tokens.map(|input| input + output_tokens),
         tool_use_prompt_tokens: None,
     }
 }
