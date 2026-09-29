@@ -194,10 +194,10 @@ fn assistant_content(
     rig_core::message::require_non_empty_response(assistant_contents)
 }
 
-/// Vertex's token counts in rig's usage record. Input is the prompt plus the
-/// tool-use prompt, output is the candidates plus the thoughts, and the total
-/// is their sum, which is Vertex's `totalTokenCount`. Vertex reports the
-/// tool-use prompt only per modality, so its count is the breakdown's sum.
+/// Rig's input is the prompt plus the tool-use prompt, its output the
+/// candidates plus the thoughts, and its total their sum, which is Vertex's
+/// `totalTokenCount`. Vertex reports the tool-use prompt only per modality, so
+/// its count is the breakdown's sum.
 fn usage(response: &vertexai::model::GenerateContentResponse) -> Usage {
     response
         .usage_metadata

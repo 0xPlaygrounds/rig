@@ -884,10 +884,9 @@ pub mod interactions_api_types {
         pub total_tool_use_tokens: Option<u64>,
     }
 
-    /// Input is `total_input_tokens` plus the tool-use tokens, output is
-    /// `total_output_tokens` plus the thought tokens, which the API counts
-    /// beside them, and the total is input plus output. Without a base input
-    /// or output count, that side and the total stay absent.
+    /// Rig's input is `total_input_tokens` plus the tool-use tokens, its
+    /// output `total_output_tokens` plus the thought tokens, and its total
+    /// their sum; without a base count, that side and the total stay absent.
     impl From<&InteractionUsage> for Usage {
         fn from(value: &InteractionUsage) -> Usage {
             let input_tokens = value

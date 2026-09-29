@@ -70,8 +70,9 @@ pub(crate) fn map_finish_reason(stop_reason: &str) -> completion::FinishReason {
     }
 }
 
-/// Anthropic's `usage`, as sent. `input_tokens` counts only the input after
-/// the last cache breakpoint; cache reads and writes are counted beside it.
+/// Anthropic's `usage`, as sent: `input_tokens` excludes the cache reads and
+/// writes counted beside it, which rig's [`Usage`](crate::completion::Usage)
+/// counts in its input.
 #[derive(Clone, Copy, Debug, Deserialize, Serialize)]
 pub struct Usage {
     /// Input tokens neither read from nor written to a cache.
@@ -125,10 +126,9 @@ impl std::fmt::Display for Usage {
     }
 }
 
-/// Normalize usage: input is the uncached input plus cache reads and writes,
-/// which Anthropic counts beside it, and the total is input plus output.
-/// Thinking tokens are already included in output. Without an uncached input
-/// count, input and the total stay absent.
+/// Rig's input is Anthropic's `input_tokens` plus its cache reads and writes,
+/// its output `output_tokens` (thinking included), and its total their sum;
+/// without an uncached input count, input and the total stay absent.
 pub(super) fn anthropic_usage_totals(
     input_tokens: Option<u64>,
     output_tokens: u64,

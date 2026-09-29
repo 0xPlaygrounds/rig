@@ -513,8 +513,8 @@ fn decode_optional_base64(sig: Option<String>) -> Result<Vec<u8>, EncodeError> {
 /// Map Gemini's `UsageMetadata` onto rig's normalized `Usage`.
 ///
 /// Tool-use, reasoning, and cache-write token counts remain `None`.
-/// Input is the prompt plus the tool-use prompt, output is the candidates
-/// plus the thoughts, and the total is their sum, which is Gemini's
+/// Rig's input is the prompt plus the tool-use prompt, its output the
+/// candidates plus the thoughts, and its total their sum, which is Gemini's
 /// `total_token_count`.
 pub(crate) fn map_usage(usage: Option<&proto::UsageMetadata>) -> completion::Usage {
     usage

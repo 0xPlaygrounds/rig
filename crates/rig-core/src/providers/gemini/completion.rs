@@ -1363,10 +1363,10 @@ pub mod gemini_api_types {
         ProvisionedThroughput,
     }
 
-    /// Input is the prompt plus the tool-use prompt, output is the candidates
-    /// plus the thoughts, and the total is their sum, which is Gemini's
-    /// `totalTokenCount`. A count Gemini leaves out is zero: its JSON omits
-    /// zero counts, so a reply that only thought carries no candidates count.
+    /// Rig's input is the prompt plus the tool-use prompt, its output the
+    /// candidates plus the thoughts, and its total their sum, which is
+    /// `totalTokenCount`. A count Gemini leaves out is zero, as its JSON omits
+    /// zeros (a reply that only thought carries no candidates count).
     impl From<&UsageMetadata> for crate::completion::Usage {
         fn from(value: &UsageMetadata) -> crate::completion::Usage {
             let count = |count: i32| count as u64;

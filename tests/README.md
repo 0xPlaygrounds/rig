@@ -388,11 +388,11 @@ rather than another copy of the assertion logic.
 
 The assertion that carries the weight is `assert_hit_ratio`. `cached_input_tokens > 0` passes
 just as happily when 200 of 40,000 prefix tokens are cached as when 39,800 are; the ratio is
-taken against turn 1's billed prompt. **The denominator differs per provider and getting it
-backwards makes the assertion vacuous**, so it is derived in `CacheAccounting` from each
-provider's own usage mapping: Anthropic reports cache tokens *alongside* `input_tokens`, while
-OpenAI, Gemini, Cohere, DeepSeek, Mistral, OpenRouter and every `openai::Usage` reuser report
-them *inside* it.
+taken against turn 1's billed prompt. **Getting the denominator wrong makes the assertion
+vacuous**, and it is one rule on every provider: `CacheSupport::input_tokens`, turn 1's
+`input_tokens`, which counts cache reads and writes as `Usage`'s rustdoc
+(`rig_core::completion::Usage`) states. `tests/cassette_usage_census.rs` enforces that
+contract on every recorded call of every provider.
 
 Growth is asserted as a ratio, not a monotonic token count: providers cache in coarse blocks, so
 the absolute figure drifts a few tokens as block boundaries re-align (Gemini was measured going
@@ -426,10 +426,10 @@ with caching off as the baseline.
   and 10 s and count the retries.
 - One reader per wire, `CacheWire::{Gemini, Anthropic, OpenAiChat, OpenAiResponses}`. For each
   recorded call it gives rig's `Usage` as the wire reported it (input, cached reads, cache
-  writes, output), the conversation the call continues, the OpenAI `prompt_cache_key`, and for
-  Gemini the cache the call reads and every `cachedContents` resource created. Prompt tokens
-  follow the provider's `CacheAccounting`: Anthropic reports reads and writes beside
-  `input_tokens`, the others inside it.
+  writes, output and total), the conversation the call continues, the OpenAI
+  `prompt_cache_key`, and for Gemini the cache the call reads and every `cachedContents`
+  resource created. Prompt tokens are `input_tokens` on every wire, as `Usage`'s rustdoc
+  states.
 - The figures, printed as one `CACHE_LONGRUN <provider>/<scenario> {json}` line per run so a PR
   table is generated rather than transcribed: calls, fixture bytes, retries, prompt tokens,
   cached reads, cache writes, cached share, hit rate (calls after the first that read anything),
@@ -438,10 +438,11 @@ with caching off as the baseline.
   reads fell short of that, writes over prompt tokens, input dollars with and without caching
   through `rig_core::completion::CacheCost` at the provider's rates, and the same for the first
   30 turns alone, to set beside the baseline.
-- The checks `check` runs on every run: rig's `Usage` matches the wire on every call; the input
-  saving, counting every write, read and stored token-hour, is at least the run's floor; from
-  each conversation's first read on, every call is cached above the run's floor and none reads
-  nothing (the prefix-move signature); cache writes stay under the run's cap.
+- The checks `check` runs on every run: rig's `Usage` matches the wire on every call (input,
+  cached reads, cache writes, output and total); the input saving, counting every write, read
+  and stored token-hour, is at least the run's floor; from each conversation's first read on,
+  every call is cached above the run's floor and none reads nothing (the prefix-move
+  signature); cache writes stay under the run's cap.
 
 "Not faked" means something different per provider, and each run asserts its own form:
 
@@ -455,8 +456,8 @@ with caching off as the baseline.
   tokens.
 
 To add a provider, give `CacheWire` a variant with its reader (the call path, the usage fields,
-the first user message, the accounting), add a `with_<provider>_long_run_cassette` wrapper and
-register it with the cassette-safety scan, and record one 100-turn fixture and its baseline.
+the first user message), add a `with_<provider>_long_run_cassette` wrapper and register it
+with the cassette-safety scan, and record one 100-turn fixture and its baseline.
 Rates come from the provider's price page, quoted with the date. Thresholds are placeholders
 until a first recording confirms them; never loosen one to make a recording pass. Record with:
 
