@@ -1,16 +1,17 @@
 //! Native MCP calls, metadata preservation, and dynamic tool conversion.
 //!
 //! ```
-//! use rig_rmcp::{McpMeta, Meta};
+//! use rig_rmcp::{McpMeta, RequestMetaObject};
 //!
-//! let metadata = McpMeta(Meta::default());
+//! let metadata = McpMeta(RequestMetaObject::default());
 //! ```
 
 use std::sync::Arc;
 use std::time::Duration;
 
 use rmcp::model::{
-    CallToolRequest, CallToolResult, ClientRequest, ContentBlock, ResourceContents, ServerResult,
+    CallToolRequest, CallToolResult, ClientRequest, ContentBlock, ResourceContents, ResultType,
+    ServerResult,
 };
 use rmcp::service::PeerRequestOptions;
 
@@ -20,20 +21,22 @@ use rig_core::tool::{
 };
 use rig_core::wasm_compat::WasmBoxedFuture;
 
-/// Re-export of [`rmcp::model::Meta`]: wrap one in [`McpMeta`] and place it
-/// in the per-call [`ToolContext`] to have MCP tools forward it as the
-/// request's `_meta`.
-pub use rmcp::model::Meta;
+/// Re-exports of MCP's two `_meta` shapes. Wrap a [`RequestMetaObject`] in
+/// [`McpMeta`] and place it in the per-call [`ToolContext`] to have MCP tools
+/// forward it as the request's `_meta`; a response's `_meta` is preserved as a
+/// [`MetaObject`] inside [`McpResponseMeta`].
+pub use rmcp::model::{MetaObject, RequestMetaObject};
 
 /// The request `_meta` a caller places in the [`ToolContext`] for an MCP
 /// tool, forwarded as the call's `_meta` (SEP-1319). A newtype because the
-/// context stores values under declared keys and `rmcp::model::Meta` is
-/// not this crate's to implement [`ContextValue`] for.
+/// context stores values under declared keys and
+/// `rmcp::model::RequestMetaObject` is not this crate's to implement
+/// [`ContextValue`] for.
 #[derive(
     Debug, Clone, Default, PartialEq, rig_core::serde::Serialize, rig_core::serde::Deserialize,
 )]
 #[serde(crate = "rig_core::serde", transparent)]
-pub struct McpMeta(pub Meta);
+pub struct McpMeta(pub RequestMetaObject);
 
 impl ContextValue for McpMeta {
     const KEY: &'static str = "rmcp.meta";
@@ -55,7 +58,7 @@ impl ContextValue for McpStructuredContent {
     Debug, Clone, Default, PartialEq, rig_core::serde::Serialize, rig_core::serde::Deserialize,
 )]
 #[serde(crate = "rig_core::serde", transparent)]
-pub struct McpResponseMeta(pub Meta);
+pub struct McpResponseMeta(pub MetaObject);
 
 impl ContextValue for McpResponseMeta {
     const KEY: &'static str = "rmcp.response_meta";
@@ -190,7 +193,23 @@ pub(crate) async fn call_mcp_tool(
     .await?;
 
     match response {
-        ServerResult::CallToolResult(result) => Ok(result),
+        // The `resultType` guard closes an untagged-union hole: `ServerResult`
+        // tries `CallToolResult` before SEP-2322's `InputRequiredResult`, and
+        // `CallToolResult`'s lenient deserializer captures any payload carrying
+        // `_meta` — so an input-required response can land in this variant as
+        // an empty result labelled `"input_required"`. Rig dispatches over the
+        // low-level request API rather than `RunningService::call_tool`'s
+        // retrying helper, so it cannot drive multi round-trip rounds; reject
+        // every non-complete outcome (input-required, task, unknown) instead of
+        // reporting a silent empty success.
+        ServerResult::CallToolResult(result)
+            if result
+                .result_type
+                .as_ref()
+                .is_none_or(ResultType::is_complete) =>
+        {
+            Ok(result)
+        }
         _ => Err(rmcp::ServiceError::UnexpectedResponse),
     }
 }
@@ -270,7 +289,7 @@ impl McpTool {
     pub fn execute_mcp(
         &self,
         args: String,
-        meta: Option<rmcp::model::Meta>,
+        meta: Option<RequestMetaObject>,
     ) -> WasmBoxedFuture<'_, Result<CallToolResult, ToolExecutionError>> {
         let name = self.definition.name.clone();
 
@@ -475,7 +494,7 @@ pub fn preserve_mcp_result(
 /// bound to the MCP transport so registries can retire it on disconnect.
 ///
 /// Per call: [`McpMeta`] in the [`ToolContext`] supplies request `_meta`, and the
-/// response's `structuredContent`, response `Meta`, and raw [`CallToolResult`]
+/// response's `structuredContent`, response [`MetaObject`], and raw [`CallToolResult`]
 /// are published to the context's result map ([`preserve_mcp_result`]). A tool
 /// that reports `is_error` becomes a failed call whose error carries the tool's
 /// output.

@@ -9,10 +9,10 @@
 //!
 //! ```
 //! use rig_core::tool::ToolContext;
-//! use rig_rmcp::{McpMeta, Meta};
+//! use rig_rmcp::{McpMeta, RequestMetaObject};
 //!
 //! let mut context = ToolContext::new();
-//! context.insert(McpMeta(Meta::default()))?;
+//! context.insert(McpMeta(RequestMetaObject::default()))?;
 //! # Ok::<(), rig_core::tool::ToolContextError>(())
 //! ```
 
@@ -28,13 +28,15 @@
     )
 )]
 
-// rmcp requires Send + Sync handlers even with local futures, while Rig's
-// WASM tool registry does not provide those bounds.
+// rmcp has no client transport that builds for WASM, and its transport traits
+// require `Send` futures that browser futures cannot provide.
 #[cfg(target_family = "wasm")]
 compile_error!(
-    "the `rmcp` feature is native-only: rmcp's `ClientHandler` requires \
-     `Send + Sync` unconditionally (its `local` feature relaxes only futures), \
-     which rig's wasm tool registry cannot satisfy. Disable `rmcp` for wasm targets."
+    "the `rmcp` feature is native-only: rmcp ships no wasm-capable client \
+     transport (its streamable-HTTP client calls reqwest APIs that do not \
+     exist on wasm; every other transport is native by construction or \
+     blocked by rmcp's unconditional `Send` bounds). Disable `rmcp` for \
+     wasm targets."
 );
 
 #[cfg(not(target_family = "wasm"))]
