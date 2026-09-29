@@ -12,7 +12,6 @@ pub(super) fn folded_choice(output: Vec<Output>) -> Vec<completion::AssistantCon
     let response = CompletionResponse {
         id: "resp_1".to_string(),
         object: ResponseObject::Response,
-        provider_request_id: None,
         created_at: 0,
         status: ResponseStatus::Completed,
         error: None,
@@ -2714,10 +2713,7 @@ fn base64_pdf_via_input_item_path_keeps_filename() {
 
 /// Raw-capture test: the reply document, driven end to end over a mock
 /// transport that hands back a Responses body *and* an `x-request-id`
-/// response header. The Responses raw type carries the transport id
-/// (`CompletionResponse::provider_request_id`, stamped by the driver), but
-/// its manual `Serialize` mirrors the wire body and deliberately never
-/// emits that id, so the captured value is the body as parsed — the
+/// response header. The captured value is the body as parsed; the
 /// transport id lives on the normalized response, beside the capture, not
 /// inside it. `with_error_response_headers` with `200 OK` is the one unary
 /// double that carries response headers.
@@ -2763,10 +2759,8 @@ mod raw_capture {
     /// that type and re-serializes to the identical value — and folding
     /// that capture again (with the header id reattached, since the
     /// capture is body only) reproduces every normalized field. Also
-    /// reads `service_tier` off the capture, and pins that the capture
-    /// mirrors the wire body: the transport id the driver stamped onto the
-    /// raw type is not part of it, so a value deserialized from `raw`
-    /// reports `None` there while the normalized response beside it still
+    /// reads `service_tier` off the capture, and pins that the transport id
+    /// is not part of the capture while the normalized response beside it
     /// carries the header.
     #[tokio::test]
     async fn completion_captures_raw_that_round_trips_into_the_wire_type() {
@@ -2796,7 +2790,6 @@ mod raw_capture {
         ));
         assert_eq!(raw["service_tier"], "default");
         assert!(raw.get("provider_request_id").is_none());
-        assert_eq!(typed.provider_request_id, None);
 
         let mut refolded = wire::fold_body(crate::providers::openai::wire::OPENAI.name, typed)
             .expect("re-fold the capture");

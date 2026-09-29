@@ -74,8 +74,8 @@ impl<'id> Decoder<'id, Completion, vertexai::model::GenerateContentResponse> for
         Ok(out.end(Finish {
             usage: usage(&response),
             reason: finish_reason,
-            model: Some(response.model_version.clone()).filter(|model| !model.is_empty()),
-            response_id: Some(response.response_id.clone()).filter(|id| !id.is_empty()),
+            model: Some(response.model_version.clone()),
+            response_id: Some(response.response_id.clone()),
             ..Finish::default()
         }))
     }

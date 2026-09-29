@@ -64,8 +64,8 @@ impl TranscriptionResponse {
     }
 }
 
-/// Converts provider payloads into normalized transcription responses.
-/// Implementations must attribute the response to the supplied provider name.
+/// Converts provider payloads into normalized transcription responses. The
+/// driver writes the provider, request id and `raw` afterwards.
 pub trait NormalizeTranscriptionResponse {
     /// Normalize this payload.
     fn normalize(self) -> Result<TranscriptionResponse, ProviderError>;

@@ -263,11 +263,9 @@ async fn responses_stream_raw_terminal_round_trips_provider_type() {
 
     let terminal = captured.take();
     let raw = &terminal.raw;
-    let typed = responses::assert_terminal_round_trips(&terminal);
-    // Copilot's recorded Responses stream reports no transport id either, so
-    // the native record and the normalized terminal agree on its absence —
-    // the claim this cell made before the round trip became shared.
-    assert_eq!(typed.provider_request_id, terminal.provider_request_id);
+    responses::assert_terminal_round_trips(&terminal);
+    // Copilot's recorded Responses stream reports no transport id.
+    assert_eq!(terminal.provider_request_id, None);
 
     let recorded_terminal = recorded_responses_terminal(scenario);
     assert_eq!(

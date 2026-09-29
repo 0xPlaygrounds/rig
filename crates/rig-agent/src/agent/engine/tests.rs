@@ -35,6 +35,7 @@ use rig_core::error::ProviderError;
 use rig_core::message::{
     AssistantContent, ToolCall as MessageToolCall, ToolChoice, ToolFunction, UserContent,
 };
+use rig_core::operation::Finish;
 use rig_core::vector_store::{
     VectorSearchRequest, VectorStoreError, VectorStoreIndex, request::Filter,
 };
@@ -8637,9 +8638,10 @@ async fn model_turn_finished_reports_termination_and_effective_max_tokens_stream
     let probe = TerminationProbe::default();
     let model = MockCompletionModel::from_stream_turns([[
         MockStreamEvent::Text("a partial ans".to_string()),
-        MockStreamEvent::FinalResponse(
-            mock_final(Usage::default()).with_reason(FinishReason::Length),
-        ),
+        MockStreamEvent::FinalResponse(Finish {
+            reason: Some(FinishReason::Length),
+            ..mock_final(Usage::default())
+        }),
     ]]);
 
     let mut stream = AgentBuilder::new(model.clone())
@@ -8720,9 +8722,10 @@ async fn model_turn_finished_reports_tool_calls_for_a_mislabelled_streamed_tool_
     let model = MockCompletionModel::from_stream_turns([
         vec![
             MockStreamEvent::tool_call("call-1", "add", json!({ "x": 1, "y": 2 })),
-            MockStreamEvent::FinalResponse(
-                mock_final(Usage::default()).with_reason(FinishReason::Stop),
-            ),
+            MockStreamEvent::FinalResponse(Finish {
+                reason: Some(FinishReason::Stop),
+                ..mock_final(Usage::default())
+            }),
         ],
         vec![
             MockStreamEvent::Text("3".to_string()),
@@ -8789,15 +8792,17 @@ async fn streaming_retry_reports_the_second_attempts_own_effective_max_tokens() 
     let model = MockCompletionModel::from_stream_turns([
         [
             MockStreamEvent::Text("rejected".to_string()),
-            MockStreamEvent::FinalResponse(
-                mock_final(Usage::default()).with_reason(FinishReason::Length),
-            ),
+            MockStreamEvent::FinalResponse(Finish {
+                reason: Some(FinishReason::Length),
+                ..mock_final(Usage::default())
+            }),
         ],
         [
             MockStreamEvent::Text("accepted".to_string()),
-            MockStreamEvent::FinalResponse(
-                mock_final(Usage::default()).with_reason(FinishReason::Stop),
-            ),
+            MockStreamEvent::FinalResponse(Finish {
+                reason: Some(FinishReason::Stop),
+                ..mock_final(Usage::default())
+            }),
         ],
     ]);
 

@@ -228,3 +228,26 @@ async fn a_relayed_error_keeps_its_kind() {
     };
     assert_eq!(error.kind(), ErrorKind::Provider);
 }
+
+/// An empty id is no id, whether the transport or the provider's end
+/// reported it.
+#[tokio::test]
+async fn an_empty_id_is_no_id() {
+    let mut stream = stream_of(vec![
+        MockStreamEvent::text("Hello"),
+        MockStreamEvent::RequestId(String::new()),
+        MockStreamEvent::FinalResponse(Finish {
+            message_id: Some(String::new()),
+            response_id: Some(String::new()),
+            model: Some(String::new()),
+            ..Finish::default()
+        }),
+    ]);
+    let items = items_of(&mut stream).await;
+    assert!(items.iter().all(Result::is_ok), "{items:?}");
+    let response = stream.finish().await.expect("the reply ended");
+    assert_eq!(response.provider_request_id, None);
+    assert_eq!(response.message_id, None);
+    assert_eq!(response.response_id, None);
+    assert_eq!(response.model, None);
+}

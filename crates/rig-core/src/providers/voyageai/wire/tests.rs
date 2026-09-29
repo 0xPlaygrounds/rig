@@ -197,3 +197,23 @@ fn a_serialized_config_carries_no_key_material() {
         );
     }
 }
+
+/// `raw` is the whole reply body, so a field the reply type does not model
+/// survives in it.
+#[tokio::test]
+async fn an_embedding_reply_keeps_its_whole_body_as_raw() {
+    let body = r#"{"object":"list","data":[{"object":"embedding","embedding":[0.5,-0.25],"index":0},{"object":"embedding","embedding":[0.125,0.0],"index":1}],"model":"voyage-3.5","usage":{"total_tokens":9},"unmodeled":"kept"}"#;
+    let response = crate::driver::Model::new(
+        voyage().embedding("voyage-3.5", None),
+        RecordingHttpClient::new(body),
+    )
+    .call(vec!["first".to_owned(), "second".to_owned()])
+    .await
+    .expect("the reply decodes");
+
+    assert_eq!(
+        response.raw,
+        serde_json::from_str::<serde_json::Value>(body).expect("the body is JSON")
+    );
+    assert_eq!(response.raw["unmodeled"], "kept");
+}

@@ -64,8 +64,8 @@ impl ImageGenerationResponse {
     }
 }
 
-/// Normalizes provider image payloads, attributing the response to the supplied
-/// provider name.
+/// Normalizes provider image payloads. The driver writes the provider, request
+/// id and `raw` afterwards.
 pub trait NormalizeImageGenerationResponse {
     /// Normalize this payload.
     fn normalize(self) -> Result<ImageGenerationResponse, ProviderError>;

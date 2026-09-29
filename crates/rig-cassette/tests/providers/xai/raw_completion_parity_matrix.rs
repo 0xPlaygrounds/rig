@@ -146,14 +146,8 @@ async fn raw_completion_carries_request_id_on_the_type() {
     );
 
     let mirrored = &response.raw;
-    let reply = responses_api::CompletionResponse::deserialize(mirrored)
+    responses_api::CompletionResponse::deserialize(mirrored)
         .expect("`raw` is the serialized Responses CompletionResponse");
-    // The reply document therefore *does* lack the id on this family — it is
-    // the one field the capture cannot carry.
-    assert_eq!(
-        reply.provider_request_id, None,
-        "a reply document has no header to report: {mirrored}"
-    );
     // The captured document is the reply body and never invents a field for a
     // header, which is exactly why the normalized response keeps the id
     // beside `raw` rather than inside it.

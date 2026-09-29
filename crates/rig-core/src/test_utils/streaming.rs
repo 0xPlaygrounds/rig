@@ -17,7 +17,10 @@ pub const MOCK_PROVIDER: &str = "mock";
 
 /// The end the mock model's reply finishes with, carrying `usage`.
 pub fn mock_final(usage: Usage) -> Finish {
-    Finish::new(usage)
+    Finish {
+        usage,
+        ..Finish::default()
+    }
 }
 
 /// Convert a fixture JSON value into canonical params: `null`/`{}` mean
@@ -80,7 +83,8 @@ pub enum MockStreamEvent {
     Unknown(serde_json::Value),
     /// The transport request id of this turn. The mock transport reports
     /// it, as a real transport reports a response header; the decoder never
-    /// sees it.
+    /// sees it. Its position in the turn does not matter; when a turn
+    /// scripts more than one, the first wins.
     RequestId(String),
     /// The provider's end of the reply.
     FinalResponse(Finish),

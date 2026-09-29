@@ -230,9 +230,8 @@ pub struct ResponseIdentity {
 
 impl CompletionResponse {
     /// Create a response from its required parts; optional metadata starts
-    /// unset. `raw` is the
-    /// provider's own document for this response, serialized; see
-    /// [`Self::raw`].
+    /// unset. `raw` is the provider's own document for this response,
+    /// serialized; see [`Self::raw`].
     pub fn new(
         choice: Vec<AssistantContent>,
         usage: Usage,

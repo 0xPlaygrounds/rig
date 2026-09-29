@@ -408,8 +408,6 @@ impl<'id> Decoder<'id, ImageEmbedding> for ImageEmbeddingsDecoder {
             document: String::new(),
             vec: vector.iter().filter_map(|n| n.as_f64()).collect(),
         };
-        // The driver captures all batch reply bodies; setting raw here would
-        // let the fold retain only the first page's metadata.
         Ok(out.end(crate::embeddings::ImageEmbeddingResponse {
             usage,
             response_id: reply.id,

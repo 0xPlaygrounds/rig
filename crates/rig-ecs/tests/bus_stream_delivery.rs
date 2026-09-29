@@ -466,7 +466,13 @@ impl Serve for RetryingStream {
                 .unwrap();
             if !first {
                 writer
-                    .finish("mock", rig_core::operation::Finish::new(Usage::default()))
+                    .finish(
+                        "mock",
+                        rig_core::operation::Finish {
+                            usage: Usage::default(),
+                            ..rig_core::operation::Finish::default()
+                        },
+                    )
                     .await
                     .unwrap();
             }

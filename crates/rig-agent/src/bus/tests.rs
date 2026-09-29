@@ -1718,7 +1718,10 @@ async fn a_stream_written_through_the_writer_is_well_formed() {
                 let _ = out
                     .finish(
                         "writer",
-                        rig_core::operation::Finish::new(rig_core::completion::Usage::default()),
+                        rig_core::operation::Finish {
+                            usage: rig_core::completion::Usage::default(),
+                            ..rig_core::operation::Finish::default()
+                        },
                     )
                     .await;
             })

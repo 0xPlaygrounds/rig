@@ -1403,7 +1403,10 @@ fn gated_tool_model(started: Arc<Notify>, release: Arc<Notify>) -> FakeModel {
             }
             Mode::Streaming => replied(vec![
                 MockStreamEvent::text("unused"),
-                MockStreamEvent::FinalResponse(Finish::new(usage(1))),
+                MockStreamEvent::FinalResponse(Finish {
+                    usage: usage(1),
+                    ..Finish::default()
+                }),
             ]),
         })
     })

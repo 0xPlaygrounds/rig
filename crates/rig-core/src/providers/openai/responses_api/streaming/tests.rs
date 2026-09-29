@@ -195,7 +195,6 @@ fn sample_response(status: ResponseStatus) -> CompletionResponse {
     CompletionResponse {
         id: "resp_123".to_string(),
         object: ResponseObject::Response,
-        provider_request_id: None,
         created_at: 0,
         status,
         error: None,

@@ -300,10 +300,6 @@ async fn responses_stream_raw_round_trips_typed() {
         completed["usage"]["output_tokens"].as_u64(),
         "{SCENARIO}: terminal output tokens"
     );
-    assert_eq!(
-        typed.provider_request_id, None,
-        "{SCENARIO}: the native record never carries the transport id"
-    );
 }
 
 #[tokio::test]

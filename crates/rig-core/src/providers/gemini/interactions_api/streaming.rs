@@ -310,9 +310,7 @@ impl<'id> Decoder<'id, Completion> for InteractionsDecoder<'id> {
                 let finish_reason = interaction
                     .and_then(|interaction| interaction.status.as_ref())
                     .map(map_interaction_status);
-                let response_id = interaction
-                    .map(|interaction| interaction.id.clone())
-                    .filter(|id| !id.is_empty());
+                let response_id = interaction.map(|interaction| interaction.id.clone());
                 return Ok(out.end(Finish {
                     usage,
                     reason: finish_reason,

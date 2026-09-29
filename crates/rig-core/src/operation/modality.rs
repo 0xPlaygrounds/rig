@@ -306,3 +306,6 @@ impl Fold<ImageEmbedding> for Embedded {
         Ok(response)
     }
 }
+
+#[cfg(test)]
+mod tests;

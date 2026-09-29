@@ -298,7 +298,7 @@ fn assert_raw_view_agrees(response: &RigCompletionResponse, reported: &Reported)
         reported.usage.output_tokens
     );
     assert!(
-        typed.provider_request_id.is_none(),
+        response.raw.get("provider_request_id").is_none(),
         "the transport id is a header, not part of the reply document"
     );
     assert!(

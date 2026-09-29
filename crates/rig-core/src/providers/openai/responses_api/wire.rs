@@ -267,7 +267,7 @@ pub(crate) fn fold_body(
     let reply = Reply {
         provider: provider.to_owned(),
         raw: serde_json::to_value(&response)?,
-        provider_request_id: response.provider_request_id.clone(),
+        provider_request_id: None,
     };
     let body = serde_json::to_string(&response)?;
     let wire = Responses::new(

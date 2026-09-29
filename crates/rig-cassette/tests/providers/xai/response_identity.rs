@@ -130,8 +130,8 @@ async fn raw_and_normalized_views_agree_on_identity() {
                 response.response_id.as_deref(),
                 "raw and normalized views describe the same interaction"
             );
-            assert_eq!(
-                raw_view.provider_request_id, None,
+            assert!(
+                response.raw.get("provider_request_id").is_none(),
                 "the mirrored wire body carries no response header"
             );
         },

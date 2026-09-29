@@ -176,7 +176,13 @@ impl Serve for MockModel {
                         if sent >= cap {
                             out.raw(serde_json::json!({ "provider": "mock" }));
                             guard.finished = out
-                                .finish("mock", rig_core::operation::Finish::new(Usage::default()))
+                                .finish(
+                                    "mock",
+                                    rig_core::operation::Finish {
+                                        usage: Usage::default(),
+                                        ..rig_core::operation::Finish::default()
+                                    },
+                                )
                                 .await
                                 .is_ok();
                             return;

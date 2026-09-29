@@ -95,7 +95,15 @@ impl Serve for BrowserModel {
                         }
                     }
                     out.raw(serde_json::json!({ "provider": "browser" }));
-                    let _ = out.finish("browser", Finish::new(Usage::default())).await;
+                    let _ = out
+                        .finish(
+                            "browser",
+                            Finish {
+                                usage: Usage::default(),
+                                ..Finish::default()
+                            },
+                        )
+                        .await;
                 })
             }
             other => Reply::Outcome(Err(ErrorReport::new(
@@ -348,7 +356,13 @@ fn a_local_writer_keeps_post_final_work_alive_until_resume_or_cancellation() {
         let mut stream = Reply::written(move |mut writer| async move {
             writer.raw(serde_json::json!({ "provider": "local" }));
             writer
-                .finish("local", Finish::new(Usage::default()))
+                .finish(
+                    "local",
+                    Finish {
+                        usage: Usage::default(),
+                        ..Finish::default()
+                    },
+                )
                 .await
                 .unwrap();
             wait.await.unwrap();

@@ -7,9 +7,12 @@
 //!
 //! ```
 //! use rig_core::operation::Finish;
-//! use rig_core::completion::{FinishReason, Usage};
+//! use rig_core::completion::FinishReason;
 //!
-//! let finish = Finish::new(Usage::default()).with_reason(FinishReason::Stop);
+//! let finish = Finish {
+//!     reason: Some(FinishReason::Stop),
+//!     ..Finish::default()
+//! };
 //! assert_eq!(finish.reason, Some(FinishReason::Stop));
 //! ```
 
@@ -93,27 +96,6 @@ pub struct Finish {
     pub response_id: Option<String>,
     /// The model the provider reports.
     pub model: Option<String>,
-}
-
-impl Finish {
-    /// An end reporting `usage`; the other fields start unset.
-    pub fn new(usage: Usage) -> Self {
-        Self {
-            usage,
-            ..Self::default()
-        }
-    }
-
-    /// Attach why the model stopped.
-    pub fn with_reason(self, reason: FinishReason) -> Self {
-        self.with_optional_reason(Some(reason))
-    }
-
-    /// Attach why the model stopped, when the provider said.
-    pub fn with_optional_reason(mut self, reason: Option<FinishReason>) -> Self {
-        self.reason = reason;
-        self
-    }
 }
 
 /// The completion fold. The driver and the bus writer build it; no other

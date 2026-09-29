@@ -119,8 +119,8 @@ impl<'id> rig_core::wire::Decoder<'id, Completion, proto::GenerateContentRespons
         Ok(out.end(Finish {
             usage: super::completion::map_usage(last.usage_metadata.as_ref()),
             reason: finish_reason,
-            response_id: Some(last.response_id).filter(|id| !id.is_empty()),
-            model: Some(last.model_version).filter(|model| !model.is_empty()),
+            response_id: Some(last.response_id),
+            model: Some(last.model_version),
             ..Finish::default()
         }))
     }
