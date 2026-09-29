@@ -55,6 +55,7 @@ mod cassette {
     mod history_survival_matrix;
     mod image;
     mod lifecycle_matrix;
+    mod long_run_caching;
     mod malformed_tool_args_matrix;
     mod messages_behaviors;
     mod messages_sessions;

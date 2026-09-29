@@ -177,6 +177,37 @@ where
     cassette.finish_after_test(result).await;
 }
 
+/// Long-run caching recordings
+/// (`crates/rig-cassette/fixtures/cassettes/openai/long_run_caching/`). The
+/// body gets both routes' models and the session's clock, whose record-only
+/// pause spaces a retried turn; it returns whatever the test asserts on after
+/// the session is finished.
+pub(super) async fn with_openai_long_run_cassette<F, Fut, R>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) -> R
+where
+    F: FnOnce(OpenAiCassette, crate::cassettes::CassetteClock) -> Fut,
+    Fut: Future<Output = R>,
+{
+    let spec = spec.into();
+    let (cassette, openai) = openai_cassette(spec).await;
+    let result = AssertUnwindSafe(test_body(openai, cassette.clock()))
+        .catch_unwind()
+        .await;
+    crate::cassettes::checkpoint_attempt(&cassette, "openai", spec.scenario()).await;
+    match result {
+        Ok(value) => {
+            cassette.finish_after_test(Ok(())).await;
+            value
+        }
+        Err(payload) => {
+            cassette.finish_after_test(Err(payload)).await;
+            unreachable!("finishing a failed session resumes its panic")
+        }
+    }
+}
+
 /// Per-bug wrapper for the model-turn termination-metadata matrix
 /// (`crates/rig-cassette/fixtures/cassettes/openai/turn_termination_matrix/`), rig#2184.
 pub(super) async fn with_openai_turn_metadata_cassette<F, Fut>(

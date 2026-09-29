@@ -363,18 +363,42 @@ impl CacheWire {
         }
     }
 
-    /// The request's first user message, which names its conversation.
-    fn first_user_message(self, body: &Value) -> Option<String> {
+    /// The request's (or a Gemini cache's) messages.
+    fn messages(self, body: &Value) -> &[Value] {
         let messages = match self {
             Self::Gemini => body.get("contents"),
             Self::Anthropic | Self::OpenAiChat => body.get("messages"),
             Self::OpenAiResponses => body.get("input"),
-        }?;
+        };
         messages
-            .as_array()?
+            .and_then(Value::as_array)
+            .map_or(&[], Vec::as_slice)
+    }
+
+    /// The request's first user message, which names its conversation.
+    fn first_user_message(self, body: &Value) -> Option<String> {
+        self.messages(body)
             .iter()
             .find(|message| message.get("role").and_then(Value::as_str) == Some("user"))
             .map(Value::to_string)
+    }
+
+    /// How many customer messages the request carries: its turn number.
+    fn user_turns(self, body: &Value) -> usize {
+        self.messages(body)
+            .iter()
+            .filter(|message| match self {
+                Self::Gemini => is_user_text(message),
+                Self::Anthropic => {
+                    message["role"] == "user"
+                        && (message["content"].is_string()
+                            || message["content"].as_array().is_some_and(|blocks| {
+                                blocks.iter().any(|block| block["type"] == "text")
+                            }))
+                }
+                Self::OpenAiChat | Self::OpenAiResponses => message["role"] == "user",
+            })
+            .count()
     }
 }
 
@@ -443,6 +467,8 @@ pub struct Call {
     pub thoughts: u64,
     /// The conversation it continues: its first user message, or its cache's.
     pub conversation: String,
+    /// The customer messages its conversation holds so far: its turn.
+    pub turn: usize,
     /// The Gemini cache it reads (`cachedContent`).
     pub cache: Option<String>,
     /// The OpenAI `prompt_cache_key` it sends.
@@ -514,12 +540,15 @@ pub fn load(wire: CacheWire, scenario: &str) -> Recording {
                 .get("cachedContent")
                 .and_then(Value::as_str)
                 .map(str::to_owned);
-            let conversation = cache
+            let read = cache
                 .as_ref()
-                .and_then(|name| created.iter().find(|created| &created.name == name))
+                .and_then(|name| created.iter().find(|created| &created.name == name));
+            let conversation = read
                 .and_then(|created| wire.first_user_message(&created.body))
                 .or_else(|| wire.first_user_message(&body))
                 .unwrap_or_default();
+            let turn =
+                read.map_or(0, |created| wire.user_turns(&created.body)) + wire.user_turns(&body);
             let (usage, thoughts) = wire
                 .usage(&interaction.response)
                 .unwrap_or_else(|| panic!("interaction {index}: a successful call reports usage"));
@@ -528,6 +557,7 @@ pub fn load(wire: CacheWire, scenario: &str) -> Recording {
                 usage,
                 thoughts,
                 conversation,
+                turn,
                 cache,
                 cache_key: body
                     .get("prompt_cache_key")
@@ -628,10 +658,13 @@ pub struct Figures {
     /// The smallest cached share of any call from its conversation's first read on.
     pub min_call_share: f64,
     /// What a perfect cache could have served: each call's prompt tokens up
-    /// to its conversation's previous prompt (none for a conversation's first call).
+    /// to its conversation's previous prompt (a conversation's first call:
+    /// what it read).
     pub cacheable: u64,
     /// Cached reads over cacheable tokens.
     pub cache_accuracy: f64,
+    /// Where the reads fell short of cacheable tokens.
+    pub shortfall: Shortfall,
     /// Writes over prompt tokens.
     pub writes_share: f64,
     /// Gemini: caches created.
@@ -657,6 +690,81 @@ pub struct Figures {
     pub rates: CacheRates,
     /// The asserted limits.
     pub limits: Option<Limits>,
+    /// The first [`BASELINE_TURNS`] turns alone, for a run longer than that.
+    pub first_turns: Option<Window>,
+}
+
+/// Where a run's cache reads fell short of what a perfect cache could have
+/// served, call by call within each conversation.
+#[derive(Debug, Default, Serialize)]
+pub struct Shortfall {
+    /// Cacheable tokens not read before the conversation's first read.
+    pub warm_up: u64,
+    /// Cacheable tokens not read from the conversation's first read on.
+    pub after_first_read: u64,
+    /// Calls from the first read on that read exactly what the
+    /// conversation's previous call read, more than [`CLOSING_TOKENS`] short
+    /// of their cacheable tokens: the cache stayed at an older prefix.
+    pub stalled_calls: usize,
+    /// Calls from the first read on that read less than the conversation's
+    /// previous call: a prefix that moved, or a cache that expired or was
+    /// evicted.
+    pub dropped_calls: usize,
+}
+
+/// Tokens after a request's last block that its cache write does not hold
+/// (measured: 2 to 4 on Anthropic and OpenAI), so a call reading its
+/// predecessor's prefix that much short has not stalled.
+pub const CLOSING_TOKENS: u64 = 8;
+
+fn shortfall(recording: &Recording, billed: &[CacheCost], cacheable: &[u64]) -> Shortfall {
+    let mut short = Shortfall::default();
+    // Per conversation: the previous call's reads, once it has read.
+    let mut previous: HashMap<&str, u64> = HashMap::new();
+    for ((call, billed), cacheable) in recording.calls.iter().zip(billed).zip(cacheable) {
+        let reads = billed.cache_reads;
+        let missed = cacheable.saturating_sub(reads);
+        match previous.get(call.conversation.as_str()).copied() {
+            None if reads == 0 => short.warm_up += missed,
+            None => short.after_first_read += missed,
+            Some(before) => {
+                short.after_first_read += missed;
+                if missed > CLOSING_TOKENS && reads == before {
+                    short.stalled_calls += 1;
+                } else if reads < before {
+                    short.dropped_calls += 1;
+                }
+            }
+        }
+        if reads > 0 || previous.contains_key(call.conversation.as_str()) {
+            previous.insert(call.conversation.as_str(), reads);
+        }
+    }
+    short
+}
+
+/// How many turns a baseline runs, and so the window of a longer run set
+/// beside it.
+pub const BASELINE_TURNS: usize = 30;
+
+/// A run's first turns, priced like the whole run. Gemini storage is left
+/// out: the book reports it for the run, not per turn.
+#[derive(Debug, Serialize)]
+pub struct Window {
+    /// Turns covered.
+    pub turns: usize,
+    /// Successful calls in them.
+    pub calls: usize,
+    /// Prompt tokens.
+    pub prompt: u64,
+    /// Cached reads over prompt tokens.
+    pub cached_share: f64,
+    /// 1 - input $ with caching / input $ uncached.
+    pub input_saving: f64,
+    /// Input $ as billed.
+    pub usd_with_caching: f64,
+    /// Input $ had every prompt token been uncached.
+    pub usd_uncached: f64,
 }
 
 fn clock_span(provider: &str, scenario: &str) -> Option<u64> {
@@ -672,7 +780,10 @@ fn clock_span(provider: &str, scenario: &str) -> Option<u64> {
 }
 
 /// Per call: the prompt tokens a perfect cache could have served, which is
-/// the conversation's previous prompt, capped at this one.
+/// the conversation's previous prompt, capped at this one. A conversation's
+/// first call counts what it read: only a cache written before the run can
+/// serve it, and its newest content cannot be told from its prefix without
+/// a tokenizer.
 fn cacheable(recording: &Recording, billed: &[CacheCost]) -> Vec<u64> {
     let mut previous: HashMap<&str, u64> = HashMap::new();
     recording
@@ -683,9 +794,55 @@ fn cacheable(recording: &Recording, billed: &[CacheCost]) -> Vec<u64> {
             let prompt = billed.prompt_tokens();
             previous
                 .insert(call.conversation.as_str(), prompt)
-                .map_or(0, |earlier| earlier.min(prompt))
+                .map_or(billed.cache_reads, |earlier| earlier.min(prompt))
         })
         .collect()
+}
+
+/// The calls of turns `1..=turns`: what the run's first turns cost, to set
+/// beside a baseline of that many turns.
+fn window(
+    run: &LongRun<'_>,
+    recording: &Recording,
+    billed: &[CacheCost],
+    turns: usize,
+) -> Option<Window> {
+    if recording.calls.iter().all(|call| call.turn <= turns) {
+        return None;
+    }
+    // Up to the first call past the window: a compacted conversation counts
+    // its turns again from one.
+    let inside: Vec<(&Call, &CacheCost)> = recording
+        .calls
+        .iter()
+        .zip(billed)
+        .take_while(|(call, _)| call.turn <= turns)
+        .collect();
+    let last = inside.last().map_or(0, |(call, _)| call.index);
+    let calls: CacheCost = inside.iter().map(|(_, billed)| **billed).sum();
+    // Gemini caches created by then; their storage is not split by time.
+    let created: u64 = recording
+        .created
+        .iter()
+        .filter(|created| created.index < last)
+        .map(|created| created.tokens)
+        .sum();
+    let total = calls
+        + CacheCost {
+            cache_writes: created,
+            ..CacheCost::default()
+        };
+    let usd_with_caching = total.usd(&run.rates);
+    let usd_uncached = calls.uncached_usd(&run.rates);
+    Some(Window {
+        turns,
+        calls: inside.len(),
+        prompt: calls.prompt_tokens(),
+        cached_share: total.cache_reads as f64 / calls.prompt_tokens().max(1) as f64,
+        input_saving: 1.0 - usd_with_caching / usd_uncached.max(f64::MIN_POSITIVE),
+        usd_with_caching,
+        usd_uncached,
+    })
 }
 
 /// Compute the run's figures. `resources` is what the provider's cache
@@ -722,7 +879,8 @@ fn figures(
             Some(least.map_or(share, |least| least.min(share)))
         })
         .unwrap_or(0.0);
-    let cacheable: u64 = cacheable(recording, &billed).iter().sum();
+    let per_call = cacheable(recording, &billed);
+    let cacheable: u64 = per_call.iter().sum();
 
     let (caches_created, reads) = if run.wire == CacheWire::Gemini {
         let mut reads = BTreeMap::new();
@@ -776,6 +934,7 @@ fn figures(
         min_call_share,
         cacheable,
         cache_accuracy: share(total.cache_reads, cacheable),
+        shortfall: shortfall(recording, &billed, &per_call),
         writes_share: share(total.cache_writes, prompt),
         caches_created,
         reads,
@@ -788,6 +947,7 @@ fn figures(
         usd_output: output_tokens as f64 * run.output_price / 1e6,
         rates: run.rates,
         limits: run.limits,
+        first_turns: window(run, recording, &billed, BASELINE_TURNS),
     }
 }
 
@@ -811,6 +971,13 @@ fn after_first_read<'a>(
             }
             false
         })
+}
+
+/// Print one limit a run asserts beyond its [`Limits`], as a
+/// `CACHE_LONGRUN_LIMIT <provider>/<scenario> <limit>` line, so a table of
+/// thresholds is generated from the tests.
+pub fn print_limit(figures: &Figures, limit: &str) {
+    println!("CACHE_LONGRUN_LIMIT {} {limit}", figures.run);
 }
 
 /// Read the run back, compute and print its figures, and run every shared

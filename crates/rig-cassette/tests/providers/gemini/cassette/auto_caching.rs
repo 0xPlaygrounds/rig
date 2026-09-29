@@ -230,11 +230,16 @@ fn assert_reads_whole(recording: &Recording) {
 }
 
 fn assert_caches_at_most(figures: &cache_longrun::Figures, most: usize) {
+    cache_longrun::print_limit(figures, &format!("at most {most} caches"));
     let created = figures.caches_created.unwrap_or(0);
     assert!(created <= most, "{created} caches (limit {most})");
 }
 
 fn assert_cached_share_at_least(figures: &cache_longrun::Figures, least: f64) {
+    cache_longrun::print_limit(
+        figures,
+        &format!("cached share at least {:.0}%", least * 100.0),
+    );
     assert!(
         figures.cached_share >= least,
         "cached share {:.3} (limit {least:.2})",
@@ -311,6 +316,7 @@ async fn support_chat_100_auto() {
         false,
     );
     print_estimates(SCENARIO, &events);
+    cache_longrun::print_limit(&figures, "every read takes the whole cache");
     assert_reads_whole(&recording);
     assert_caches_at_most(&figures, MAX_CACHES_100_TURNS);
 }
@@ -331,6 +337,7 @@ async fn support_chat_100_streamed() {
         true,
     );
     print_estimates(SCENARIO, &events);
+    cache_longrun::print_limit(&figures, "every call streams");
     assert!(
         recording
             .calls
@@ -440,6 +447,10 @@ async fn support_chat_100_resume() {
         true,
     );
     print_estimates(SCENARIO, &events);
+    cache_longrun::print_limit(
+        &figures,
+        "the first call after the resume reads a pre-checkpoint cache",
+    );
 
     // The first call after the resume reads a pre-checkpoint cache, and no
     // cache was created between the checkpoint and that call.
@@ -508,7 +519,7 @@ async fn support_chat_100_compaction() {
         },
     )
     .await;
-    let (recording, _) = check(
+    let (recording, figures) = check(
         SCENARIO,
         &log,
         Some(CacheCost::from(&report)),
@@ -516,6 +527,10 @@ async fn support_chat_100_compaction() {
         true,
     );
     print_estimates(SCENARIO, &events);
+    cache_longrun::print_limit(
+        &figures,
+        "no stale read after compaction, old cache retired",
+    );
 
     // The first call after compaction reads no cache made before it, and the
     // pre-compaction cache is retired before the run's close.
@@ -613,6 +628,7 @@ async fn agent_loop_large_results() {
         false,
     );
     print_estimates(SCENARIO, &events);
+    cache_longrun::print_limit(&figures, "at least 60 calls");
     assert!(figures.calls >= 60, "a long loop: {} calls", figures.calls);
     assert_caches_at_most(&figures, 3);
     assert_cached_share_at_least(&figures, 0.60);
@@ -698,7 +714,7 @@ async fn subagents_shared_prefix() {
         },
     )
     .await;
-    let (recording, _) = check(
+    let (recording, figures) = check(
         SCENARIO,
         &log,
         Some(CacheCost::from(&report)),
@@ -706,6 +722,7 @@ async fn subagents_shared_prefix() {
         false,
     );
     print_estimates(SCENARIO, &events);
+    cache_longrun::print_limit(&figures, "shared prefix created exactly once");
     let prefix_caches = recording
         .created
         .iter()
@@ -760,7 +777,7 @@ async fn lifecycle() {
         .await;
     // Caches expire and are deleted mid-run by design, so no per-call floor;
     // caching must still never cost more than sending everything inline.
-    let (recording, _) = check(
+    let (recording, figures) = check(
         SCENARIO,
         &log,
         Some(CacheCost::from(&report)),
@@ -768,6 +785,10 @@ async fn lifecycle() {
         false,
     );
     print_estimates(SCENARIO, &events);
+    cache_longrun::print_limit(
+        &figures,
+        "refused, expired and deleted caches handled (a)-(d)",
+    );
     println!(
         "AUTO_CACHING_EVENTS {SCENARIO} {}",
         serde_json::to_string(&events).unwrap_or_default()
@@ -859,7 +880,8 @@ async fn support_chat_30_baseline() {
         },
     )
     .await;
-    let (recording, _) = check(SCENARIO, &log, None, None, false);
+    let (recording, figures) = check(SCENARIO, &log, None, None, false);
+    cache_longrun::print_limit(&figures, "no cache created or read");
     assert!(
         recording.created.is_empty(),
         "the baseline creates no cache"
