@@ -61283,6 +61283,118 @@
       }
     }
   },
+  "openai_compatible/dual_reasoning_keys_tool_roundtrip.yaml#0": {
+    "mode": "unary",
+    "choice": [
+      {
+        "reasoning": {
+          "id": null,
+          "issuer": "openai",
+          "content": [
+            {
+              "text": "The user wants Tokyo's current weather, so I will call get_weather for Tokyo, Japan.",
+              "signature": null
+            }
+          ]
+        }
+      },
+      {
+        "tool_call": {
+          "id": "call_dual_1",
+          "item_id": null,
+          "name": "get_weather",
+          "arguments": {
+            "city": "Tokyo, Japan"
+          },
+          "signature": null,
+          "additional_params": null
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 12,
+      "output_tokens": 8,
+      "total_tokens": 20
+    },
+    "message_id": null,
+    "response_id": "gen_dual_1",
+    "finish_reason": "tool_calls",
+    "model": "gateway-relayed-reasoning-model",
+    "provider_request_id": null,
+    "raw": {
+      "choices": [
+        {
+          "finish_reason": "tool_calls",
+          "index": 0,
+          "message": {
+            "content": null,
+            "reasoning": "Calling get_weather for Tokyo.",
+            "reasoning_content": "The user wants Tokyo's current weather, so I will call get_weather for Tokyo, Japan.",
+            "role": "assistant",
+            "tool_calls": [
+              {
+                "function": {
+                  "arguments": "{\"city\":\"Tokyo, Japan\"}",
+                  "name": "get_weather"
+                },
+                "id": "call_dual_1",
+                "type": "function"
+              }
+            ]
+          }
+        }
+      ],
+      "created": 0,
+      "id": "gen_dual_1",
+      "model": "gateway-relayed-reasoning-model",
+      "object": "chat.completion",
+      "usage": {
+        "completion_tokens": 8,
+        "prompt_tokens": 12,
+        "total_tokens": 20
+      }
+    }
+  },
+  "openai_compatible/dual_reasoning_keys_tool_roundtrip.yaml#1": {
+    "mode": "unary",
+    "choice": [
+      {
+        "text": "Tokyo, Japan is sunny at 72F (22C). Pack sunscreen; an umbrella is not needed.",
+        "additional_params": null
+      }
+    ],
+    "usage": {
+      "input_tokens": 25,
+      "output_tokens": 18,
+      "total_tokens": 43
+    },
+    "message_id": null,
+    "response_id": "gen_dual_2",
+    "finish_reason": "stop",
+    "model": "gateway-relayed-reasoning-model",
+    "provider_request_id": null,
+    "raw": {
+      "choices": [
+        {
+          "finish_reason": "stop",
+          "index": 0,
+          "message": {
+            "content": "Tokyo, Japan is sunny at 72F (22C). Pack sunscreen; an umbrella is not needed.",
+            "role": "assistant"
+          }
+        }
+      ],
+      "created": 0,
+      "id": "gen_dual_2",
+      "model": "gateway-relayed-reasoning-model",
+      "object": "chat.completion",
+      "usage": {
+        "completion_tokens": 18,
+        "prompt_tokens": 25,
+        "total_tokens": 43
+      }
+    }
+  },
   "portability_matrix/chat_from_anthropic.yaml#0": {
     "mode": "unary",
     "choice": [
