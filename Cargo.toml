@@ -236,7 +236,8 @@ glob = "0.3"
 google-cloud-auth = "1"
 google-cloud-gax = "1"
 # 1.7: `ThinkingLevel`, `ImageConfig`, `FunctionResponse{Blob,FileData}`.
-google-cloud-aiplatform-v1 = { version = "1.7", default-features = false, features = [
+# 1.8: `generate_content_response::UsageMetadata::tool_use_prompt_tokens_details`.
+google-cloud-aiplatform-v1 = { version = "1.8", default-features = false, features = [
     "prediction-service",
 ] }
 http = "1"
