@@ -20,8 +20,18 @@ pub enum CacheAccounting {
     Subset,
 }
 
-/// Prices of one model and tier, in USD per 1M tokens. The caller supplies
-/// them from the provider's price list; rig has none built in.
+/// Prices of one model and tier, in USD per 1M tokens (storage: per 1M
+/// token-hours). The caller supplies them from the provider's price list;
+/// rig has none built in. A provider without a separate write price bills
+/// writes at `input`; one without storage leaves `storage_per_hour` at zero.
+///
+/// ```no_run
+/// use rig_core::completion::CacheRates;
+///
+/// // A 5-minute cache write at 1.25 times the input price, reads at a tenth.
+/// let rates = CacheRates { input: 3.0, cached_read: 0.3, cache_write: 3.75, storage_per_hour: 0.0 };
+/// # let _ = rates;
+/// ```
 #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct CacheRates {
     /// Uncached input.
@@ -38,6 +48,38 @@ pub struct CacheRates {
 /// token-hours its cache resources were stored. Sum the costs of a run's
 /// calls (and of any cache resources beside them) and price the total with
 /// [`CacheCost::usd`].
+///
+/// The same run priced on each provider, with the caller's rates from the
+/// provider's price list:
+///
+/// ```no_run
+/// use rig_core::completion::{CacheAccounting, CacheCost, CacheRates, Usage};
+/// use rig_core::providers::gemini::{AutoCache, CacheBook};
+///
+/// # let calls: Vec<Usage> = Vec::new();
+/// # let book = CacheBook::new(AutoCache::default());
+/// let run = |accounting| -> CacheCost {
+///     calls
+///         .iter()
+///         .map(|usage| CacheCost::from_usage(usage, accounting))
+///         .sum()
+/// };
+///
+/// // Anthropic reports cache reads and writes beside input.
+/// let anthropic = run(CacheAccounting::Alongside);
+/// let opus = CacheRates { input: 4.0, cached_read: 0.2, cache_write: 5.0, storage_per_hour: 0.0 };
+/// println!("${:.3}, {:.1}% saved", anthropic.usd(&opus), anthropic.saving(&opus) * 100.0);
+///
+/// // OpenAI reports them inside input.
+/// let openai = run(CacheAccounting::Subset);
+/// let sol = CacheRates { input: 2.0, cached_read: 0.2, cache_write: 2.5, storage_per_hour: 0.0 };
+/// println!("${:.3}, {:.1}% saved", openai.usd(&sol), openai.saving(&sol) * 100.0);
+///
+/// // Gemini: the calls, plus the cache book's creation and storage.
+/// let gemini = run(CacheAccounting::Subset) + CacheCost::from(&book.report());
+/// let flash = CacheRates { input: 0.75, cached_read: 0.075, cache_write: 0.75, storage_per_hour: 0.5 };
+/// println!("${:.3}", gemini.usd(&flash));
+/// ```
 #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct CacheCost {
     /// Input billed at the uncached price.
