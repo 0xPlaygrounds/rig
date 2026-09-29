@@ -724,14 +724,14 @@ impl Turn {
             response_id,
             model,
         } = end;
-        let reported = |id: Option<String>| id.filter(|id| !id.is_empty());
+        use crate::provider_response::reported;
         let mut response = CompletionResponse::new(choice, usage, reply.provider, reply.raw)
             .with_optional_finish_reason(reason);
         // A message id the decoder recorded outranks the end's.
         response.message_id = reported(self.message_id.clone().or(message_id));
         response.response_id = reported(response_id);
         response.model = reported(model);
-        response.provider_request_id = reply.provider_request_id;
+        response.provider_request_id = reported(reply.provider_request_id);
         response
     }
 }

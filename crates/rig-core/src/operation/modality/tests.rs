@@ -64,6 +64,17 @@ fn a_fact_the_transport_did_not_report_stays_unset() {
 }
 
 #[test]
+fn an_empty_request_id_the_reply_carries_is_no_id() {
+    let empty = Reply {
+        provider_request_id: Some(String::new()),
+        ..reply()
+    };
+    let response = rerank(decoded_rerank(), empty);
+
+    assert_eq!(response.provider_request_id, None);
+}
+
+#[test]
 fn an_embedding_fold_writes_the_drivers_facts() {
     let fold = crate::test_utils::fold_for(
         &vec!["doc".to_owned()],

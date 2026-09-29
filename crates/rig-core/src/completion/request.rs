@@ -372,13 +372,13 @@ impl From<CompletionResponseRepr> for CompletionResponse {
             model,
             raw,
         } = repr;
-        let present = |id: Option<String>| id.filter(|id| !id.is_empty());
+        use crate::provider_response::reported;
         let mut response =
             Self::new(choice, usage, provider, raw).with_optional_finish_reason(finish_reason);
-        response.message_id = present(message_id);
-        response.response_id = present(response_id);
-        response.provider_request_id = present(provider_request_id);
-        response.model = present(model);
+        response.message_id = reported(message_id);
+        response.response_id = reported(response_id);
+        response.provider_request_id = reported(provider_request_id);
+        response.model = reported(model);
         response
     }
 }

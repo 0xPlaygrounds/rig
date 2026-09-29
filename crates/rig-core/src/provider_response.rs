@@ -219,6 +219,11 @@ pub fn body_code(body: &str) -> Option<String> {
     })
 }
 
+/// An id or model name as a response carries it: an empty one is none.
+pub(crate) fn reported(id: Option<String>) -> Option<String> {
+    id.filter(|id| !id.is_empty())
+}
+
 /// Parses an optional response body as JSON.
 ///
 /// Returns:

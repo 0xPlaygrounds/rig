@@ -265,6 +265,35 @@ fn response_reemission_preserves_local_tool_ids_without_provider_provenance() {
     );
 }
 
+/// A writer relaying a provider's reply reports its request id and document
+/// in place of a transport; an empty id is no id.
+#[test]
+fn a_writer_reports_the_request_id_and_document_of_the_reply_it_relays() {
+    let finished = |request_id: &'static str| {
+        let items: Vec<_> = block_on(
+            Reply::written(move |mut writer| async move {
+                writer.request_id(request_id);
+                writer.raw(serde_json::json!({"id": "body"}));
+                writer
+                    .finish("relay", Finish::default())
+                    .await
+                    .expect("open");
+            })
+            .into_stream()
+            .collect(),
+        );
+        let Some(Ok(Relayed::Done(done))) = items.into_iter().last() else {
+            panic!("the response ends the stream");
+        };
+        done
+    };
+    let response = finished("req-1");
+    assert_eq!(response.provider, "relay");
+    assert_eq!(response.provider_request_id.as_deref(), Some("req-1"));
+    assert_eq!(response.raw, serde_json::json!({"id": "body"}));
+    assert_eq!(finished("").provider_request_id, None);
+}
+
 #[test]
 fn writer_execution_outlives_its_final_until_the_owned_future_finishes() {
     let (release, wait) = futures::channel::oneshot::channel::<()>();

@@ -35,6 +35,7 @@ pub struct StreamWriter {
     text: Option<usize>,
     reasoning: Option<usize>,
     raw: serde_json::Value,
+    request_id: Option<String>,
 }
 
 impl Reply {
@@ -55,6 +56,7 @@ impl Reply {
             text: None,
             reasoning: None,
             raw: serde_json::Value::Null,
+            request_id: None,
         };
         let mut writing = Some(Box::pin(write(writer)));
         Self::Stream(Box::pin(futures::stream::poll_fn(move |cx| {
@@ -137,6 +139,13 @@ impl StreamWriter {
         self.raw = raw;
     }
 
+    /// The provider's transport request id, the response's
+    /// `provider_request_id`: what a writer relaying a provider's reply
+    /// reports in place of a transport. An empty id is no id.
+    pub fn request_id(&mut self, request_id: impl Into<String>) {
+        self.request_id = Some(request_id.into());
+    }
+
     /// An in-band error: the consumer's last item.
     pub async fn error(&mut self, report: ErrorReport) -> Result<(), SinkClosed> {
         self.flush().await.map_err(|_| SinkClosed)?;
@@ -158,7 +167,7 @@ impl StreamWriter {
         let reply = WireReply {
             provider: provider.into(),
             raw: std::mem::take(&mut self.raw),
-            provider_request_id: None,
+            provider_request_id: self.request_id.take(),
         };
         let turn = std::mem::replace(&mut self.turn, Turn::new(""));
         let item = match turn.finish(finish, reply) {
