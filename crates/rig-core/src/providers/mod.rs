@@ -29,6 +29,7 @@ pub mod mistral;
 pub mod moonshot;
 pub mod ollama;
 pub mod openai;
+pub mod opencode;
 pub mod openrouter;
 pub mod perplexity;
 pub mod registry;

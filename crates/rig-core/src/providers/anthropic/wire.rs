@@ -63,6 +63,8 @@ pub struct Quirks {
     /// Whether the provider implements Anthropic's constrained tool schemas.
     /// A gateway that does not leaves Rig-generated tools unchanged.
     pub strict_tool_schemas: bool,
+    /// Whether `GET /v1/models` validates the configured credential.
+    pub supports_verification: bool,
 }
 
 impl Quirks {
@@ -71,6 +73,7 @@ impl Quirks {
         Self {
             max_tokens: MaxTokens::ByModel,
             strict_tool_schemas: true,
+            supports_verification: true,
         }
     }
 
@@ -79,6 +82,7 @@ impl Quirks {
         Self {
             max_tokens: MaxTokens::Fixed(4096),
             strict_tool_schemas: false,
+            supports_verification: true,
         }
     }
 }
@@ -103,7 +107,15 @@ pub const ANTHROPIC: Dialect = Dialect {
 };
 
 /// Registered Messages-format dialects in declaration order.
-const ALL: &[&Dialect] = &[&ANTHROPIC, &ZAI, &MINIMAX, &MOONSHOT, &XIAOMIMIMO];
+const ALL: &[&Dialect] = &[
+    &ANTHROPIC,
+    &ZAI,
+    &MINIMAX,
+    &MOONSHOT,
+    &XIAOMIMIMO,
+    &OPENCODE_ZEN,
+    &OPENCODE_GO,
+];
 
 /// Every Messages-format dialect this build knows, in declaration order.
 pub fn all() -> impl Iterator<Item = &'static Dialect> {
@@ -195,6 +207,34 @@ pub const XIAOMIMIMO: Dialect = compatible(
     "XIAOMI_MIMO_API_KEY",
     Some("XIAOMI_MIMO_ANTHROPIC_API_BASE"),
 );
+
+/// OpenCode Zen's Messages-format endpoint.
+pub const OPENCODE_ZEN: Dialect = Dialect {
+    quirks: Quirks {
+        supports_verification: false,
+        ..Quirks::gateway()
+    },
+    ..compatible(
+        "opencode",
+        "https://opencode.ai/zen",
+        "OPENCODE_API_KEY",
+        Some("OPENCODE_BASE_URL"),
+    )
+};
+
+/// OpenCode Go's Messages-format endpoint.
+pub const OPENCODE_GO: Dialect = Dialect {
+    quirks: Quirks {
+        supports_verification: false,
+        ..Quirks::gateway()
+    },
+    ..compatible(
+        "opencode-go",
+        "https://opencode.ai/zen/go",
+        "OPENCODE_GO_API_KEY",
+        Some("OPENCODE_GO_BASE_URL"),
+    )
+};
 
 /// The settings of a Messages-format provider: serializable, and the
 /// credential is never serialized. [`connect`](Self::connect) puts it on a
@@ -602,12 +642,13 @@ pub struct ModelsPage {
 #[derive(Debug, Deserialize)]
 struct ModelEntry {
     id: String,
-    display_name: String,
+    display_name: Option<String>,
 }
 
 impl From<ModelEntry> for ModelInfo {
     fn from(entry: ModelEntry) -> Self {
-        ModelInfo::new(entry.id, entry.display_name)
+        let display_name = entry.display_name.unwrap_or_else(|| entry.id.clone());
+        ModelInfo::new(entry.id, display_name)
     }
 }
 
@@ -656,6 +697,12 @@ impl Wire for Verify {
     }
 
     fn encode(&self, _request: (), _mode: Mode) -> Result<Encoded, EncodeError> {
+        if !self.provider.dialect.quirks.supports_verification {
+            return Err(EncodeError::request(format!(
+                "{} offers no endpoint that checks a credential without consuming tokens",
+                self.provider.dialect.name
+            )));
+        }
         let request = self
             .provider
             .headers(http::Request::get(format!(

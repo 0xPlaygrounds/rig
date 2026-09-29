@@ -47,6 +47,8 @@ pub(crate) const OPENAI_DIALECTS: &[&openai::wire::Dialect] = &[
     &openai::wire::LLAMACPP,
     &openai::wire::MISTRAL,
     &openai::wire::OPENROUTER,
+    &openai::wire::OPENCODE_ZEN,
+    &openai::wire::OPENCODE_GO,
     &openai::wire::VENICE,
     &openai::wire::DOUBLEWORD,
     &openai::wire::ZAI,

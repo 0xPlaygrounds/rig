@@ -85,6 +85,7 @@ Rig supports the following LLM providers out of the box:
 - Moonshot
 - Ollama
 - OpenAI
+- OpenCode Zen and Go (Chat Completions, Responses, and Messages)
 - OpenRouter
 - Perplexity
 - Together
