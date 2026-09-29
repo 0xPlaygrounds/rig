@@ -263,13 +263,15 @@ fn test_bedrock_usage_creation() {
     assert_eq!(usage.total_tokens, 150);
 }
 
+/// The streamed terminal usage counts cache reads and writes in input, as
+/// Bedrock's `totalTokens` does.
 #[test]
 fn test_bedrock_streaming_response_with_usage() {
     let response = BedrockStreamingResponse {
         usage: Some(TokenUsage {
             input_tokens: 200,
             output_tokens: 75,
-            total_tokens: 275,
+            total_tokens: 325,
             cache_read_input_tokens: Some(40),
             cache_write_input_tokens: Some(10),
         }),
@@ -280,9 +282,9 @@ fn test_bedrock_streaming_response_with_usage() {
     assert_eq!(
         rig_core::completion::Usage::from(&response),
         rig_core::completion::Usage {
-            input_tokens: Some(200),
+            input_tokens: Some(250),
             output_tokens: Some(75),
-            total_tokens: Some(275),
+            total_tokens: Some(325),
             cached_input_tokens: Some(40),
             cache_creation_input_tokens: Some(10),
             tool_use_prompt_tokens: None,
@@ -309,7 +311,7 @@ fn test_streaming_response_normalizes_usage() {
         usage: Some(TokenUsage {
             input_tokens: 448,
             output_tokens: 68,
-            total_tokens: 516,
+            total_tokens: 616,
             cache_read_input_tokens: Some(80),
             cache_write_input_tokens: Some(20),
         }),
@@ -317,13 +319,14 @@ fn test_streaming_response_normalizes_usage() {
         provider_request_id: None,
     };
 
-    // The streaming response normalizes into rig's usage record.
+    // The streaming response normalizes into rig's usage record: input
+    // counts the cache reads and writes Bedrock reports beside it.
     assert_eq!(
         rig_core::completion::Usage::from(&response),
         rig_core::completion::Usage {
-            input_tokens: Some(448),
+            input_tokens: Some(548),
             output_tokens: Some(68),
-            total_tokens: Some(516),
+            total_tokens: Some(616),
             cached_input_tokens: Some(80),
             cache_creation_input_tokens: Some(20),
             tool_use_prompt_tokens: None,

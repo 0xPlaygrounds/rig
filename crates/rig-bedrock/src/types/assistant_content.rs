@@ -10,15 +10,20 @@ use super::{
 };
 use rig_core::completion;
 
-/// Normalize Bedrock token counts into rig's usage record. Shared by the
+/// Rig's input is Bedrock's `inputTokens` plus its cache reads and writes,
+/// and its total input plus output, which is `totalTokens`. Shared by the
 /// unary response path and the streaming terminal record.
 pub(crate) fn normalize_usage(usage: &TokenUsage) -> completion::Usage {
+    let cache_read = usage.cache_read_input_tokens.map(|n| n as u64);
+    let cache_write = usage.cache_write_input_tokens.map(|n| n as u64);
+    let input = usage.input_tokens as u64 + cache_read.unwrap_or(0) + cache_write.unwrap_or(0);
+    let output = usage.output_tokens as u64;
     completion::Usage {
-        input_tokens: Some(usage.input_tokens as u64),
-        output_tokens: Some(usage.output_tokens as u64),
-        total_tokens: Some(usage.total_tokens as u64),
-        cached_input_tokens: usage.cache_read_input_tokens.map(|n| n as u64),
-        cache_creation_input_tokens: usage.cache_write_input_tokens.map(|n| n as u64),
+        input_tokens: Some(input),
+        output_tokens: Some(output),
+        total_tokens: Some(input + output),
+        cached_input_tokens: cache_read,
+        cache_creation_input_tokens: cache_write,
         tool_use_prompt_tokens: None,
         reasoning_tokens: None,
     }

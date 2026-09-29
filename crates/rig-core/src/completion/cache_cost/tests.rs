@@ -21,11 +21,11 @@ fn usage(input: u64, cached: Option<u64>, written: Option<u64>) -> Usage {
     }
 }
 
-/// Reads and writes beside input add to the prompt. Pure arithmetic, so
-/// not a cassette test.
+/// Reads and writes are part of input and are taken out of the uncached
+/// part. Pure arithmetic, so not a cassette test.
 #[test]
-fn alongside_adds_reads_and_writes_to_input() {
-    let cost = CacheCost::from_usage(&usage(10, Some(900), Some(90)), CacheAccounting::Alongside);
+fn takes_reads_and_writes_out_of_input() {
+    let cost = CacheCost::from_usage(&usage(1_000, Some(900), Some(90)));
     assert_eq!(
         cost,
         CacheCost {
@@ -38,23 +38,14 @@ fn alongside_adds_reads_and_writes_to_input() {
     assert_eq!(cost.prompt_tokens(), 1_000);
 }
 
-/// Reads and writes inside input are taken out of the uncached part. Pure
-/// arithmetic, so not a cassette test.
-#[test]
-fn subset_takes_reads_and_writes_out_of_input() {
-    let cost = CacheCost::from_usage(&usage(1_000, Some(900), Some(90)), CacheAccounting::Subset);
-    assert_eq!(cost.uncached_input, 10);
-    assert_eq!(cost.prompt_tokens(), 1_000);
-}
-
 /// Absent counters are zero, and counters above input never underflow. Pure
 /// arithmetic, so not a cassette test.
 #[test]
 fn absent_and_inconsistent_counters() {
-    let cost = CacheCost::from_usage(&Usage::default(), CacheAccounting::Subset);
+    let cost = CacheCost::from_usage(&Usage::default());
     assert_eq!(cost, CacheCost::default());
     assert!(cost.saving(&RATES).abs() < f64::EPSILON);
-    let cost = CacheCost::from_usage(&usage(100, Some(200), None), CacheAccounting::Subset);
+    let cost = CacheCost::from_usage(&usage(100, Some(200), None));
     assert_eq!(cost.uncached_input, 0);
 }
 
@@ -81,8 +72,8 @@ fn prices_every_part_at_its_rate() {
 #[test]
 fn sums_a_run() {
     let calls = [
-        CacheCost::from_usage(&usage(10, Some(0), Some(990)), CacheAccounting::Alongside),
-        CacheCost::from_usage(&usage(10, Some(990), Some(50)), CacheAccounting::Alongside),
+        CacheCost::from_usage(&usage(1_000, Some(0), Some(990))),
+        CacheCost::from_usage(&usage(1_050, Some(990), Some(50))),
     ];
     let storage = CacheCost {
         storage_token_hours: 2.5,

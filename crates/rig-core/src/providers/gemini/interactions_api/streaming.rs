@@ -45,10 +45,13 @@ pub enum InteractionsEvent {
 }
 
 /// Classify a tagged SSE event, falling back to whole-resource classification
-/// through [`wire::classify_or`].
+/// through [`wire::classify_or_untagged`]. Only an untagged frame falls back:
+/// a frame carrying `event_type` that fails its typed decode stays corrupt,
+/// rather than passing for a whole interaction and ending the reply.
 fn classify_interactions_frame(data: &str) -> WireEvent<InteractionsEvent> {
-    wire::classify_or(
+    wire::classify_or_untagged(
         data,
+        "event_type",
         |data| classify_interaction_frame(data).map(InteractionsEvent::Sse),
         |data| {
             wire::classify_marker_keyed_frame::<Interaction>(data, INTERACTION_MARKER_KEYS)

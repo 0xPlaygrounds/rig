@@ -1219,6 +1219,10 @@ impl<'id> ChatDecoder<'id> {
         {
             out.issued_by(super::upstream_reasoning_issuer(self.provider, model));
         }
+        let usage = self
+            .final_usage
+            .as_ref()
+            .map(|usage| usage.to_normalized_for(&self.quirks));
         let native = StreamingCompletionResponse {
             usage: self.final_usage.take(),
             finish_reason: self.final_finish_reason.take(),
@@ -1230,7 +1234,9 @@ impl<'id> ChatDecoder<'id> {
         if streamed {
             out.raw(serde_json::to_value(&native)?);
         }
-        Ok(out.end(native.into_finish()))
+        let mut finish = native.into_finish();
+        finish.usage = usage.unwrap_or_default();
+        Ok(out.end(finish))
     }
 
     /// The stream ended: flush the calls the provider delivered, then end

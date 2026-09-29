@@ -22,7 +22,7 @@ use rig::providers::venice;
 use rig_test_support::cassette_models::OpenAiModels;
 
 use crate::cache_conformance::{
-    AGENT_CACHE_PROMPT, CacheAccounting, CacheProbe, CacheProbeLookupTool, CacheSupport,
+    AGENT_CACHE_PROMPT, CacheProbe, CacheProbeLookupTool, CacheSupport,
     assert_agent_growth_still_hits, assert_breakpoints_match_support, assert_cache_conformance,
     assert_cache_key_stable, assert_prefix_stable, observation_from_completion_calls,
     report_and_assert_live, run_cache_probe, run_cache_probe_streaming,
@@ -40,7 +40,6 @@ const VENICE_KEYED_SUPPORT: CacheSupport = CacheSupport {
 
 pub(super) const VENICE_CACHE_SUPPORT: CacheSupport = CacheSupport {
     provider: "venice",
-    accounting: CacheAccounting::Subset,
     explicit_breakpoints: false,
     reports_writes: false,
     min_cacheable_tokens: 1024,

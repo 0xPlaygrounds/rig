@@ -191,21 +191,34 @@ fn assistant_content(
     rig_core::message::require_non_empty_response(assistant_contents)
 }
 
-/// Vertex's token counts in rig's usage record.
+/// Rig's input is the prompt plus the tool-use prompt, its output the
+/// candidates plus the thoughts, and its total their sum, which is Vertex's
+/// `totalTokenCount`. Vertex reports the tool-use prompt only per modality, so
+/// its count is the breakdown's sum.
 fn usage(response: &vertexai::model::GenerateContentResponse) -> Usage {
     response
         .usage_metadata
         .as_ref()
-        .map(|usage| Usage {
-            input_tokens: Some(usage.prompt_token_count as u64),
-            output_tokens: Some(usage.candidates_token_count as u64),
-            total_tokens: Some(usage.total_token_count as u64),
-            // Cached tokens are already included in prompt_token_count.
-            cached_input_tokens: Some(usage.cached_content_token_count as u64),
-            // Vertex reports no cache-write counter.
-            cache_creation_input_tokens: None,
-            tool_use_prompt_tokens: None,
-            reasoning_tokens: Some(usage.thoughts_token_count as u64),
+        .map(|usage| {
+            let count = |count: i32| count as u64;
+            let tool_use: u64 = usage
+                .tool_use_prompt_tokens_details
+                .iter()
+                .map(|modality| count(modality.token_count))
+                .sum();
+            let input = count(usage.prompt_token_count) + tool_use;
+            let output = count(usage.candidates_token_count) + count(usage.thoughts_token_count);
+            Usage {
+                input_tokens: Some(input),
+                output_tokens: Some(output),
+                total_tokens: Some(input + output),
+                // Cached tokens are already included in prompt_token_count.
+                cached_input_tokens: Some(count(usage.cached_content_token_count)),
+                // Vertex reports no cache-write counter.
+                cache_creation_input_tokens: None,
+                tool_use_prompt_tokens: Some(tool_use),
+                reasoning_tokens: Some(count(usage.thoughts_token_count)),
+            }
         })
         .unwrap_or_default()
 }

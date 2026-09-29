@@ -17,8 +17,8 @@
 use rig::providers::doubleword;
 
 use crate::cache_conformance::{
-    AGENT_CACHE_PROMPT, CacheAccounting, CacheProbe, CacheProbeLookupTool, CacheSupport,
-    assert_cache_conformance, assert_prefix_stable, run_cache_probe, run_cache_probe_streaming,
+    AGENT_CACHE_PROMPT, CacheProbe, CacheProbeLookupTool, CacheSupport, assert_cache_conformance,
+    assert_prefix_stable, run_cache_probe, run_cache_probe_streaming,
 };
 
 use super::super::support::with_doubleword_prompt_caching_cassette;
@@ -27,7 +27,6 @@ const CACHE_MODEL: &str = doubleword::QWEN3_5_9B;
 
 const DOUBLEWORD_CACHE_SUPPORT: CacheSupport = CacheSupport {
     provider: "doubleword",
-    accounting: CacheAccounting::Subset,
     explicit_breakpoints: false,
     reports_writes: false,
     min_cacheable_tokens: 1024,

@@ -99,7 +99,7 @@
           ],
           "usage": {
             "input_tokens": 99,
-            "output_tokens": 25,
+            "output_tokens": 60,
             "total_tokens": 159,
             "tool_use_prompt_tokens": 79,
             "reasoning_tokens": 35
@@ -232,7 +232,7 @@
           ],
           "usage": {
             "input_tokens": 133,
-            "output_tokens": 23,
+            "output_tokens": 64,
             "total_tokens": 197,
             "tool_use_prompt_tokens": 94,
             "reasoning_tokens": 41

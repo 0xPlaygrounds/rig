@@ -512,17 +512,26 @@ fn decode_optional_base64(sig: Option<String>) -> Result<Vec<u8>, EncodeError> {
 
 /// Map Gemini's `UsageMetadata` onto rig's normalized `Usage`.
 ///
-/// Tool-use, reasoning, and cache-write token counts remain `None`.
+/// Rig's input is the prompt plus the tool-use prompt, its output the
+/// candidates plus the thoughts, and its total their sum, which is Gemini's
+/// `total_token_count`. Proto3 cannot tell an unsent count from zero, so the
+/// tool-use and reasoning counts are always reported; Gemini reports no
+/// cache-write count, which stays `None`.
 pub(crate) fn map_usage(usage: Option<&proto::UsageMetadata>) -> completion::Usage {
     usage
-        .map(|usage| completion::Usage {
-            input_tokens: Some(usage.prompt_token_count as u64),
-            output_tokens: Some(usage.candidates_token_count as u64),
-            total_tokens: Some(usage.total_token_count as u64),
-            cached_input_tokens: Some(usage.cached_content_token_count as u64),
-            cache_creation_input_tokens: None,
-            tool_use_prompt_tokens: None,
-            reasoning_tokens: None,
+        .map(|usage| {
+            let count = |count: i32| count as u64;
+            let input = count(usage.prompt_token_count) + count(usage.tool_use_prompt_token_count);
+            let output = count(usage.candidates_token_count) + count(usage.thoughts_token_count);
+            completion::Usage {
+                input_tokens: Some(input),
+                output_tokens: Some(output),
+                total_tokens: Some(input + output),
+                cached_input_tokens: Some(count(usage.cached_content_token_count)),
+                cache_creation_input_tokens: None,
+                tool_use_prompt_tokens: Some(count(usage.tool_use_prompt_token_count)),
+                reasoning_tokens: Some(count(usage.thoughts_token_count)),
+            }
         })
         .unwrap_or_default()
 }

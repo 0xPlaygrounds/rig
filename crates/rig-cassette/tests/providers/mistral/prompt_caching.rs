@@ -46,8 +46,8 @@
 use rig::providers::mistral;
 
 use crate::cache_conformance::{
-    CacheAccounting, CacheProbe, CacheSupport, assert_cache_read_is_surfaced, assert_prefix_stable,
-    run_cache_probe, run_cache_probe_streaming,
+    CacheProbe, CacheSupport, assert_cache_read_is_surfaced, assert_prefix_stable, run_cache_probe,
+    run_cache_probe_streaming,
 };
 
 use super::support::with_mistral_prompt_caching_cassette;
@@ -56,7 +56,6 @@ const CACHE_MODEL: &str = mistral::MISTRAL_LARGE;
 
 const MISTRAL_CACHE_SUPPORT: CacheSupport = CacheSupport {
     provider: "mistral",
-    accounting: CacheAccounting::Subset,
     explicit_breakpoints: false,
     reports_writes: false,
     min_cacheable_tokens: 1024,

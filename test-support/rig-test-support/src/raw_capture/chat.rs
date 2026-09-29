@@ -212,10 +212,12 @@ pub fn assert_terminal_round_trips(terminal: &CompletionResponse) -> Terminal {
         .usage
         .as_ref()
         .expect("the terminal record carries the reply's accounting");
+    let dialect = openai::wire::by_name(&terminal.provider)
+        .expect("the terminal names a registered chat dialect");
     assert_eq!(
-        usage.to_normalized(),
+        usage.to_normalized_for(&dialect.quirks),
         terminal.usage,
-        "the normalized usage is that accounting, normalized"
+        "the normalized usage is that accounting, normalized for its dialect"
     );
     typed
 }

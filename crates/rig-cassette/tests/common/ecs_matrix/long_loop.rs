@@ -797,10 +797,12 @@ fn usage(record: &EffectRecord) -> Option<&Usage> {
 }
 
 /// The wire's own report of a completion's prompt-side usage, read off the
-/// record's raw payload: `(input, cached_input, cache_creation)` in the
+/// record's raw payload: `(input, cached_input, cache_creation)` from the
 /// dialect's own fields, `None` where the dialect has no such field or the
-/// wire omitted it. Usage is what the adapter parsed *from* this payload,
-/// so the two must agree on every record.
+/// wire omitted it. Input is every prompt token, as rig counts it: Anthropic's
+/// cache reads and writes, which it reports beside `input_tokens`, and
+/// Gemini's tool-use prompt are part of it. Usage is what the adapter parsed
+/// *from* this payload, so the two must agree on every record.
 pub(crate) fn raw_usage(
     thinking: ThinkingWire,
     record: &EffectRecord,
@@ -817,10 +819,13 @@ pub(crate) fn raw_usage(
                 usage.is_object(),
                 "the Anthropic record keeps its usage: {raw}"
             );
+            let cached = count(&usage["cache_read_input_tokens"]);
+            let created = count(&usage["cache_creation_input_tokens"]);
             (
-                count(&usage["input_tokens"]),
-                count(&usage["cache_read_input_tokens"]),
-                count(&usage["cache_creation_input_tokens"]),
+                count(&usage["input_tokens"])
+                    .map(|uncached| uncached + cached.unwrap_or(0) + created.unwrap_or(0)),
+                cached,
+                created,
             )
         }
         ThinkingWire::OpenAiChat => {
@@ -867,24 +872,14 @@ pub(crate) fn raw_usage(
                 "the Gemini record keeps its usage: {raw}"
             );
             (
-                count(&usage["promptTokenCount"]),
+                count(&usage["promptTokenCount"])
+                    .map(|prompt| prompt + count(&usage["toolUsePromptTokenCount"]).unwrap_or(0)),
                 count(&usage["cachedContentTokenCount"]),
                 None,
             )
         }
         other => panic!("no long-loop column on the {other:?} wire"),
     }
-}
-
-/// The wire's prompt tokens, for the usage table (row 7), by the dialect's
-/// `CacheAccounting`.
-fn prompt_tokens(thinking: ThinkingWire, usage: &Usage) -> u64 {
-    // Anthropic reports reads and writes *beside* `input_tokens`.
-    let accounting = match thinking {
-        ThinkingWire::Anthropic => rig_core::completion::CacheAccounting::Alongside,
-        _ => rig_core::completion::CacheAccounting::Subset,
-    };
-    rig_core::completion::CacheCost::from_usage(usage, accounting).prompt_tokens()
 }
 
 /// The shape a cell's record must have.
@@ -1081,7 +1076,8 @@ pub(crate) fn assert_log(cell: &Cell, thinking: ThinkingWire, log: &EffectLog) {
             "{}: turn {n}'s usage is the wire's report",
             cell.name
         );
-        let prompt = prompt_tokens(thinking, usage);
+        // The prompt is `input_tokens`, cache reads and writes included.
+        let prompt = usage.input_tokens.unwrap_or(0);
         assert!(prompt > 0, "{}: turn {n} billed prompt tokens", cell.name);
         assert!(
             prompt >= last_prompt,
@@ -1526,8 +1522,8 @@ pub(crate) fn assert_log(cell: &Cell, thinking: ThinkingWire, log: &EffectLog) {
 }
 
 /// One answered completion's usage, as row 7's table holds it: `prompt` is
-/// the wire's prompt-token denominator ([`prompt_tokens`]), the rest the
-/// adapter's `Usage` (asserted equal to the wire's raw report in
+/// the prompt-token denominator (`input_tokens`, cache included), the rest
+/// the adapter's `Usage` (asserted equal to the wire's raw report in
 /// `assert_log` step 3, which is what makes these rows an oracle).
 #[derive(Clone, Copy, Debug, Serialize)]
 struct UsageRow {

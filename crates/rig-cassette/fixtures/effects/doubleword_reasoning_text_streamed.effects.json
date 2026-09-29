@@ -89,8 +89,7 @@
             "output_tokens": 735,
             "total_tokens": 777,
             "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "reasoning_tokens": 853
+            "cache_creation_input_tokens": 0
           },
           "message_id": null,
           "response_id": "gen-1790146056-gLZV0daeKyRXjGI6CHCF",

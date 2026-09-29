@@ -238,7 +238,7 @@
           "rig_ecs::agent::StreamRequested": false,
           "rig_ecs::agent::Usage": {
             "input_tokens": 1115,
-            "output_tokens": 9,
+            "output_tokens": 62,
             "total_tokens": 1177,
             "reasoning_tokens": 53
           },
@@ -370,7 +370,7 @@
               ],
               "usage": {
                 "input_tokens": 1115,
-                "output_tokens": 9,
+                "output_tokens": 62,
                 "total_tokens": 1177,
                 "reasoning_tokens": 53
               },

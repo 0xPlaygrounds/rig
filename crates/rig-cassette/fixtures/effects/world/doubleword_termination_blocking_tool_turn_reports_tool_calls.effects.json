@@ -161,8 +161,7 @@
             "output_tokens": 35,
             "total_tokens": 352,
             "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "reasoning_tokens": 0
+            "cache_creation_input_tokens": 0
           },
           "message_id": null,
           "response_id": "resp_46b1b26c-bb72-45a3-9bcb-a27639110e23",
@@ -361,8 +360,7 @@
             "output_tokens": 8,
             "total_tokens": 378,
             "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "reasoning_tokens": 0
+            "cache_creation_input_tokens": 0
           },
           "message_id": null,
           "response_id": "resp_d069c531-905b-44e3-82d2-7d0e9be3cc2c",

@@ -147,7 +147,7 @@
           ],
           "usage": {
             "input_tokens": 102,
-            "output_tokens": 20,
+            "output_tokens": 95,
             "total_tokens": 197,
             "cached_input_tokens": 0,
             "tool_use_prompt_tokens": 0,

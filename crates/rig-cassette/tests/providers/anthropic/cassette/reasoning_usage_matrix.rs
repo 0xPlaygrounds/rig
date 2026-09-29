@@ -198,15 +198,16 @@ impl Observed {
             reasoning <= output,
             "{scenario}: thinking is a breakdown of output_tokens ({reasoning} > {output})",
         );
+        let input = usage.input_tokens.unwrap_or(0);
+        assert!(
+            usage.cached_input_tokens.unwrap_or(0) + usage.cache_creation_input_tokens.unwrap_or(0)
+                <= input,
+            "{scenario}: input includes the cache reads and writes: {usage:?}",
+        );
         assert_eq!(
             usage.total_tokens,
-            Some(
-                usage.input_tokens.unwrap_or(0)
-                    + usage.cached_input_tokens.unwrap_or(0)
-                    + usage.cache_creation_input_tokens.unwrap_or(0)
-                    + output
-            ),
-            "{scenario}: reasoning tokens must not be added into the total",
+            Some(input + output),
+            "{scenario}: the total is input plus output, reasoning not added again",
         );
     }
 

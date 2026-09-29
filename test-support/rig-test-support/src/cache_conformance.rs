@@ -59,25 +59,11 @@ use rig_agent::completion::ToolDefinition;
 
 use rig_agent::completion::Usage;
 
-use rig_core::completion::CacheCost;
-
 use rig_core::message::Message;
 
 use rig_core::message::UserContent;
 
 use crate::cache_prefix;
-
-/// How a provider reports cached tokens relative to its input-token counter,
-/// the rule apps price with too (`rig_core::completion::CacheCost`).
-///
-/// This is the single most likely place to ship a vacuous assertion: divide
-/// turn 2's cache read by the wrong turn-1 denominator and
-/// [`assert_hit_ratio`] either always passes or always fails. Anthropic
-/// reports reads and writes *alongside* `input_tokens`
-/// (`anthropic_usage_totals`, `crates/rig-core/src/providers/anthropic/completion.rs`);
-/// OpenAI chat and Responses, Cohere, DeepSeek, Gemini, OpenRouter, Mistral
-/// and every `openai::Usage` reuser report them as a *subset* of it.
-pub use rig_core::completion::CacheAccounting;
 
 /// What a provider's prompt cache can do, and what its numbers mean.
 ///
@@ -87,8 +73,6 @@ pub use rig_core::completion::CacheAccounting;
 pub struct CacheSupport {
     /// Label used in every assertion message.
     pub provider: &'static str,
-    /// See [`CacheAccounting`].
-    pub accounting: CacheAccounting,
     /// Whether the provider reports cache *writes* at all.
     ///
     /// Anthropic and OpenRouter populate `cache_creation_input_tokens`; every
@@ -126,24 +110,24 @@ pub struct CacheSupport {
 }
 
 impl CacheSupport {
-    /// The prompt tokens the provider billed for a turn, however it reports them.
+    /// The prompt tokens the provider billed for a turn: `Usage::input_tokens`,
+    /// which counts cache reads and writes on every provider.
     ///
-    /// This is [`assert_hit_ratio`]'s denominator. See [`CacheAccounting`].
-    /// A turn whose usage mapping reported no input tokens has no denominator:
-    /// that is a mapping bug, not a cache miss, and fails here by name. An
-    /// absent cache counter is nothing cached.
+    /// This is [`assert_hit_ratio`]'s denominator. A turn whose usage mapping
+    /// reported no input tokens has no denominator: that is a mapping bug, not
+    /// a cache miss, and fails here by name.
     ///
     /// # Panics
     /// When `usage.input_tokens` is `None`.
-    pub fn prompt_tokens(&self, usage: &Usage) -> u64 {
-        if usage.input_tokens.is_none() {
+    pub fn input_tokens(&self, usage: &Usage) -> u64 {
+        let Some(input) = usage.input_tokens else {
             panic!(
                 "[{}] the usage mapping reported no input tokens ({usage:?}); a cache ratio over \
                  unreported usage is undefined",
                 self.provider
             );
-        }
-        CacheCost::from_usage(usage, self.accounting).prompt_tokens()
+        };
+        input
     }
 }
 
@@ -385,7 +369,7 @@ impl CacheObservation {
                 format!(
                     "  turn {}: prompt={} input={:?} cached={:?} created={:?} output={:?} total={:?}",
                     index + 1,
-                    support.prompt_tokens(usage),
+                    support.input_tokens(usage),
                     usage.input_tokens,
                     usage.cached_input_tokens,
                     usage.cache_creation_input_tokens,
@@ -576,12 +560,12 @@ pub fn assert_warms(observation: &CacheObservation, support: &CacheSupport, cont
     }
 
     assert!(
-        support.prompt_tokens(turn) as usize >= support.min_cacheable_tokens,
+        support.input_tokens(turn) as usize >= support.min_cacheable_tokens,
         "[{}] {context}: turn 1 billed only {} prompt tokens, below this provider's documented \
          {}-token cacheable minimum — the probe is under-padded and the fixture would pin a miss \
          no matter what rig does.\n{}",
         support.provider,
-        support.prompt_tokens(turn),
+        support.input_tokens(turn),
         support.min_cacheable_tokens,
         observation.report(support)
     );
@@ -610,7 +594,7 @@ pub fn assert_hit_ratio(observation: &CacheObservation, support: &CacheSupport, 
     let warm = observation.turn(0, support);
     let hit = observation.turn(1, support);
 
-    let denominator = support.prompt_tokens(warm);
+    let denominator = support.input_tokens(warm);
     assert!(
         denominator > 0,
         "[{}] {context}: turn 1 billed zero prompt tokens, so a hit ratio is undefined — the \
@@ -655,7 +639,7 @@ pub fn assert_growth_still_hits(
     context: &str,
 ) {
     let grown = observation.turn(2, support);
-    let denominator = support.prompt_tokens(grown);
+    let denominator = support.input_tokens(grown);
     assert!(
         denominator > 0,
         "[{}] {context}: turn 3 billed zero prompt tokens, so its hit ratio is undefined.\n{}",
@@ -966,7 +950,7 @@ pub fn assert_agent_growth_still_hits(
 
     let mut ever_hit = false;
     for (index, usage) in observation.turns.iter().enumerate() {
-        let denominator = support.prompt_tokens(usage);
+        let denominator = support.input_tokens(usage);
         let ratio = if denominator == 0 {
             0.0
         } else {
@@ -1032,7 +1016,7 @@ pub fn assert_no_meaningful_prefix_cache(
     assert_probe_is_padded_enough(observation, support, context);
 
     for (index, usage) in observation.turns.iter().enumerate() {
-        let turn_denominator = support.prompt_tokens(usage);
+        let turn_denominator = support.input_tokens(usage);
         let ratio = if turn_denominator == 0 {
             0.0
         } else {
@@ -1087,7 +1071,7 @@ pub fn assert_cache_warms_over_turns(
         .turns
         .iter()
         .map(|usage| {
-            let denominator = support.prompt_tokens(usage);
+            let denominator = support.input_tokens(usage);
             if denominator == 0 {
                 0.0
             } else {
@@ -1139,7 +1123,7 @@ fn assert_probe_is_padded_enough(
     support: &CacheSupport,
     context: &str,
 ) {
-    let denominator = support.prompt_tokens(observation.turn(0, support));
+    let denominator = support.input_tokens(observation.turn(0, support));
     assert!(
         denominator > 0,
         "[{}] {context}: turn 1 billed zero prompt tokens, so nothing can be concluded.\n{}",
@@ -1184,7 +1168,7 @@ pub fn assert_cache_read_is_surfaced(
         .turns
         .iter()
         .map(|usage| {
-            let denominator = support.prompt_tokens(usage);
+            let denominator = support.input_tokens(usage);
             if denominator == 0 {
                 0.0
             } else {
@@ -1220,7 +1204,7 @@ pub fn report_and_assert_live(
     let warm = observation.turn(0, support);
     let hit = observation.turn(1, support);
     let grown = observation.turn(2, support);
-    let denominator = support.prompt_tokens(warm);
+    let denominator = support.input_tokens(warm);
     let ratio = if denominator == 0 {
         0.0
     } else {

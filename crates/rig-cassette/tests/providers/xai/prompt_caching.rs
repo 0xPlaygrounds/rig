@@ -35,7 +35,7 @@ use rig::providers::xai;
 use rig_test_support::cassette_models::OpenAiModels;
 
 use crate::cache_conformance::{
-    CacheAccounting, CacheProbe, CacheSupport, assert_cache_conformance, assert_prefix_stable,
+    CacheProbe, CacheSupport, assert_cache_conformance, assert_prefix_stable,
     report_and_assert_live, run_cache_probe, run_cache_probe_streaming,
 };
 
@@ -45,7 +45,6 @@ const CACHE_MODEL: &str = xai::GROK_3_MINI;
 
 const XAI_CACHE_SUPPORT: CacheSupport = CacheSupport {
     provider: "xai",
-    accounting: CacheAccounting::Subset,
     explicit_breakpoints: false,
     reports_writes: false,
     min_cacheable_tokens: 1024,

@@ -226,6 +226,10 @@ pub struct MessagesDecoder<'id> {
     /// Per-TTL cache-write breakdown from `message_start`; the terminal
     /// `message_delta` usage omits it.
     cache_creation: Option<super::completion::CacheCreation>,
+    /// Cache reads and writes from `message_start`, for a terminal
+    /// `message_delta` that does not repeat them: rig's input counts them.
+    cache_read_input_tokens: Option<u64>,
+    cache_creation_input_tokens: Option<u64>,
     message_id: Option<String>,
     response_model: Option<String>,
 }
@@ -246,6 +250,8 @@ impl MessagesDecoder<'_> {
             server_tool_uses: HashMap::new(),
             input_tokens: 0,
             cache_creation: None,
+            cache_read_input_tokens: None,
+            cache_creation_input_tokens: None,
             message_id: None,
             response_model: None,
         }
@@ -562,6 +568,8 @@ impl<'id> Decoder<'id, Completion> for MessagesDecoder<'id> {
                     self.input_tokens = message.usage.input_tokens;
                     self.cache_creation
                         .clone_from(&message.usage.cache_creation);
+                    self.cache_read_input_tokens = message.usage.cache_read_input_tokens;
+                    self.cache_creation_input_tokens = message.usage.cache_creation_input_tokens;
                     self.message_id = Some(message.id.clone());
                     self.response_model = Some(message.model.clone());
                 }
@@ -581,9 +589,15 @@ impl<'id> Decoder<'id, Completion> for MessagesDecoder<'id> {
                         .input_tokens
                         .filter(|tokens| *tokens > 0)
                         .or_else(|| usize::try_from(self.input_tokens).ok()),
-                    cache_creation_input_tokens: usage.cache_creation_input_tokens,
+                    // A terminal frame that omits the cache counters keeps
+                    // `message_start`'s, so input still counts the cache.
+                    cache_creation_input_tokens: usage
+                        .cache_creation_input_tokens
+                        .or(self.cache_creation_input_tokens),
                     cache_creation: usage.cache_creation.or(self.cache_creation),
-                    cache_read_input_tokens: usage.cache_read_input_tokens,
+                    cache_read_input_tokens: usage
+                        .cache_read_input_tokens
+                        .or(self.cache_read_input_tokens),
                     // The terminal frame owns the output count and its breakdown.
                     output_tokens_details: usage.output_tokens_details,
                 };

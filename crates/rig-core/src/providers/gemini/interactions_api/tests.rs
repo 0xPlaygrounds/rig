@@ -1290,8 +1290,9 @@ async fn the_unary_resource_and_a_streamed_turn_fold_to_the_same_shape() {
     // The turn's own facts, from the resource the reply carried.
     assert_eq!(buffered.response_id.as_deref(), Some("v1_REDACTED_1"));
     assert_eq!(buffered.model.as_deref(), Some("gemini-3-flash-preview"));
-    assert_eq!(buffered.usage.output_tokens, Some(34));
-    assert_eq!(streamed.usage.output_tokens, Some(32));
+    // Output counts the thoughts the API reports beside it.
+    assert_eq!(buffered.usage.output_tokens, Some(34 + 222));
+    assert_eq!(streamed.usage.output_tokens, Some(32 + 806));
     assert_eq!(buffered.finish_reason(), streamed.finish_reason());
     assert_eq!(
         buffered.choice.last(),

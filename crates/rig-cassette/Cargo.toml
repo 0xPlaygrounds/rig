@@ -227,3 +227,7 @@ required-features = ["http"]
 [[test]]
 name = "chat_parity"
 required-features = ["http"]
+
+[[test]]
+name = "cassette_usage_census"
+required-features = ["http"]

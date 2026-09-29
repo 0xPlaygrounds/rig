@@ -144,6 +144,8 @@ fn usage(prompt: i32, candidates: i32, total: i32) -> proto::UsageMetadata {
         candidates_token_count: candidates,
         total_token_count: total,
         cached_content_token_count: 0,
+        tool_use_prompt_token_count: 0,
+        thoughts_token_count: 0,
     }
 }
 

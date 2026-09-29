@@ -103,8 +103,7 @@
             "output_tokens": 37,
             "total_tokens": 76,
             "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "reasoning_tokens": 0
+            "cache_creation_input_tokens": 0
           },
           "message_id": null,
           "response_id": "resp_f95d5e25-c9a5-4a6f-bf2e-d77ab22bf993",

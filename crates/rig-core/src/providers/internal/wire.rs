@@ -184,6 +184,29 @@ pub fn classify_or<T>(
     }
 }
 
+/// [`classify_or`] for a wire whose events carry `tag`: only a frame without
+/// the tag falls back to `then`. A tagged frame that fails its typed decode
+/// stays corrupt, rather than passing for the fallback's shape.
+pub fn classify_or_untagged<T>(
+    data: &str,
+    tag: &str,
+    first: impl Fn(&str) -> WireEvent<T>,
+    then: impl Fn(&str) -> WireEvent<T>,
+) -> WireEvent<T> {
+    classify_or(data, first, |data| {
+        let tagged = matches!(
+            scan_discriminators(data, &[tag], false),
+            Ok(DiscriminatorScan::Object(found)) if found.iter().any(|key| key.present)
+        );
+        if tagged {
+            // `classify_or` keeps the typed decode's error for this.
+            unknown_with_value(data, tag.to_owned())
+        } else {
+            then(data)
+        }
+    })
+}
+
 /// Discriminator presence and first string values collected in one JSON scan.
 enum DiscriminatorScan {
     /// Presence and first string value for each requested top-level key.

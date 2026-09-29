@@ -96,7 +96,7 @@
           ],
           "usage": {
             "input_tokens": 26,
-            "output_tokens": 47,
+            "output_tokens": 76,
             "total_tokens": 102,
             "reasoning_tokens": 29
           },
