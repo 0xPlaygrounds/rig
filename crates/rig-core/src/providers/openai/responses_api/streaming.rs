@@ -310,10 +310,19 @@ pub struct ResponsesDecoder<'id> {
     /// The terminal restates the whole turn's output, so its message text
     /// is published only where no delta delivered it.
     delta_text_items: std::collections::HashSet<String>,
-    /// Output slots with delivered text. Slot tracking prevents duplicate terminal
-    /// text when a gateway changes item IDs between deltas and restatements.
-    delta_text_slots: std::collections::HashSet<u64>,
+    /// Output slots with delivered text and each delta's credited item ID.
+    /// `None` identifies anonymous text. Slots prevent repeated terminal text
+    /// when a gateway changes item IDs between deltas and restatements.
+    delta_text_slots: std::collections::HashMap<u64, Option<String>>,
     unattributed_text_delta: bool,
+    /// Covered output slots and the ID their first metadata snapshot carried.
+    /// `None` requires slot-based deduplication even if a later snapshot has an ID.
+    text_params_slots: std::collections::HashMap<u64, Option<String>>,
+    /// Covered message IDs and their delta aliases, independent of output position.
+    text_params_items: std::collections::HashSet<String>,
+    /// Done-snapshot metadata awaiting text published from the terminal body.
+    pending_text_params:
+        std::collections::HashMap<u64, (String, Option<crate::message::AdditionalParams>)>,
     /// The reasoning part of each output slot, fixed by its first fragment.
     reasoning: std::collections::HashMap<u64, ReasoningPart<'id>>,
 }
@@ -331,8 +340,11 @@ impl<'id> ResponsesDecoder<'id> {
             current_text_item: None,
             anonymous_text: None,
             delta_text_items: std::collections::HashSet::new(),
-            delta_text_slots: std::collections::HashSet::new(),
+            delta_text_slots: std::collections::HashMap::new(),
             unattributed_text_delta: false,
+            text_params_slots: std::collections::HashMap::new(),
+            text_params_items: std::collections::HashSet::new(),
+            pending_text_params: std::collections::HashMap::new(),
             reasoning: std::collections::HashMap::new(),
         }
     }
@@ -413,12 +425,12 @@ impl<'id> ResponsesDecoder<'id> {
     /// text part is current and is credited to that item, and with no part
     /// current there is nothing to attribute it to at all.
     fn note_text_delta(&mut self, output_index: u64, item_id: Option<&str>) {
-        self.delta_text_slots.insert(output_index);
-        match item_id
+        let item_id = item_id
             .filter(|id| !id.is_empty())
             .map(str::to_owned)
-            .or_else(|| self.current_text_item.clone())
-        {
+            .or_else(|| self.current_text_item.clone());
+        self.delta_text_slots.insert(output_index, item_id.clone());
+        match item_id {
             Some(id) => {
                 self.delta_text_items.insert(id);
             }
@@ -435,7 +447,7 @@ impl<'id> ResponsesDecoder<'id> {
     /// one turn's text twice.
     fn delta_delivered_text(&self, output_index: u64, item_id: &str) -> bool {
         self.unattributed_text_delta
-            || self.delta_text_slots.contains(&output_index)
+            || self.delta_text_slots.contains_key(&output_index)
             || self.delta_text_items.contains(item_id)
     }
 
@@ -452,13 +464,105 @@ impl<'id> ResponsesDecoder<'id> {
             self.note_text_delta(output_index, Some(&message.id));
         }
         for content in message.content.iter().cloned() {
-            let mut text = super::text_block(content);
-            super::stamp_phase(&mut text, message.phase.as_deref());
+            let text = super::text_block(content);
             let part = self.text_part(Some(&message.id), out);
             out.push_text(part, &text.text);
-            if let Some(additional_params) = text.additional_params {
-                out.text_params(part, additional_params);
+        }
+        let pending_index = (!message.id.is_empty())
+            .then(|| {
+                self.pending_text_params
+                    .iter()
+                    .find_map(|(index, (id, _))| (id == &message.id).then_some(*index))
+            })
+            .flatten()
+            .or_else(|| {
+                self.pending_text_params
+                    .get(&output_index)
+                    .filter(|(id, _)| id.is_empty() || message.id.is_empty())
+                    .map(|_| output_index)
+            });
+        if let Some((_, params)) =
+            pending_index.and_then(|index| self.pending_text_params.remove(&index))
+        {
+            if let Some(params) = params {
+                let part = self.text_part(Some(&message.id), out);
+                out.text_params(part, params);
             }
+        } else {
+            self.attach_message_params(output_index, message, out);
+        }
+    }
+
+    /// Merge the first message snapshot's extras into its text draft.
+    /// Defer metadata until terminal publication when no text draft exists.
+    fn attach_message_params(
+        &mut self,
+        output_index: u64,
+        message: &super::OutputMessage,
+        out: &mut Out<'id, Completion>,
+    ) {
+        let item_id = if !message.id.is_empty() && self.texts.contains_key(&message.id) {
+            message.id.clone()
+        } else {
+            self.delta_text_slots
+                .get(&output_index)
+                .and_then(Option::as_deref)
+                .unwrap_or(&message.id)
+                .to_owned()
+        };
+        // Arrays append when merged, so even an empty snapshot covers the item.
+        let id_covered = if message.id.is_empty() {
+            if !item_id.is_empty() {
+                self.text_params_items.insert(item_id.clone());
+            }
+            false
+        } else {
+            !self.text_params_items.insert(message.id.clone())
+                || (!item_id.is_empty()
+                    && item_id != message.id
+                    && !self.text_params_items.insert(item_id.clone()))
+        };
+        let slot_covered = if message.id.is_empty() {
+            self.text_params_slots.contains_key(&output_index)
+        } else {
+            self.text_params_slots
+                .get(&output_index)
+                .is_some_and(Option::is_none)
+        };
+        if id_covered || slot_covered {
+            return;
+        }
+        self.text_params_slots
+            .entry(output_index)
+            .or_insert_with(|| (!message.id.is_empty()).then(|| message.id.clone()));
+        let mut params: Option<crate::message::AdditionalParams> = None;
+        for content in message.content.iter().cloned() {
+            let mut text = super::text_block(content);
+            super::stamp_phase(&mut text, message.phase.as_deref());
+            if let Some(incoming) = text.additional_params {
+                match &mut params {
+                    Some(params) => params.merge(incoming),
+                    slot @ None => *slot = Some(incoming),
+                }
+            }
+        }
+        let part = self.texts.get(&item_id).or_else(|| {
+            (self
+                .delta_text_slots
+                .get(&output_index)
+                .is_some_and(Option::is_none)
+                || self.unattributed_text_delta)
+                .then_some(self.anonymous_text.as_ref())
+                .flatten()
+        });
+        if let Some(part) = part {
+            if let Some(params) = params {
+                out.text_params(part, params);
+            }
+        } else {
+            // Snapshot-only messages keep their text's terminal-time position.
+            self.pending_text_params
+                .insert(output_index, (message.id.clone(), params));
         }
     }
 
@@ -477,10 +581,11 @@ impl<'id> ResponsesDecoder<'id> {
             let Output::Message(message) = item else {
                 continue;
             };
-            if message.content.is_empty() || self.delta_delivered_text(output_index, &message.id) {
-                continue;
+            if self.delta_delivered_text(output_index, &message.id) {
+                self.attach_message_params(output_index, message, out);
+            } else if !message.content.is_empty() {
+                self.publish_message_text(output_index, message, out);
             }
-            self.publish_message_text(output_index, message, out);
         }
     }
 
@@ -636,6 +741,7 @@ impl<'id> ResponsesDecoder<'id> {
                 }
             }
             Output::Message(message) => {
+                self.attach_message_params(output_index, &message, out);
                 if !message.id.is_empty() {
                     out.message_id(message.id);
                 }

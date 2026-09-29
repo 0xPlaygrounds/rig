@@ -2301,8 +2301,8 @@ fn assistant_text_replay_message(
 }
 
 /// Responses-owned extras in [`Text::additional_params`](crate::message::Text).
-/// Buffered output captures these fields for replay; streaming annotation events
-/// are not captured.
+/// Whole replies and streamed message snapshots capture these fields for replay.
+/// Annotation events remain raw stream items.
 pub(crate) const OPENAI_RESPONSES_EXTRAS_KEY: &str = "openai_responses";
 
 /// Key inside the [`OPENAI_RESPONSES_EXTRAS_KEY`] object that carries the

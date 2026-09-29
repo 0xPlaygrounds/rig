@@ -28,6 +28,8 @@ mod reasoning_tool_roundtrip;
 mod request_hook;
 mod request_identity_matrix;
 mod response_identity;
+#[path = "cassette/responses_citations.rs"]
+mod responses_citations;
 mod session_matrix;
 mod stateful_chain_matrix;
 mod streaming;

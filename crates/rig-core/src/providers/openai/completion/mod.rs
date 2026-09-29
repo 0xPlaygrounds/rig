@@ -184,39 +184,29 @@ pub enum Message {
     },
     // Gemini-backed OpenAI-compatible gateways (e.g. OpenRouter) can answer
     // with `role: "model"`; accept it on deserialization.
-    #[serde(alias = "model")]
+    #[serde(alias = "model", deserialize_with = "deserialize_assistant")]
     Assistant {
         #[serde(
-            default,
-            deserialize_with = "json_utils::string_or_vec",
             skip_serializing_if = "Vec::is_empty",
             serialize_with = "serialize_assistant_content_vec"
         )]
         content: Vec<AssistantContent>,
         // OpenAI-compatible providers expose hidden reasoning on this non-standard
         // field, and some require it to be echoed back on assistant tool-call turns.
-        // Serialized as `reasoning_content` (llama.cpp/DeepSeek dialect); the
-        // `reasoning` alias accepts OpenRouter responses.
-        #[serde(
-            skip_serializing_if = "Option::is_none",
-            rename = "reasoning_content",
-            alias = "reasoning"
-        )]
+        // Serialized as `reasoning_content` (llama.cpp/DeepSeek dialect).
+        // Both response keys are decoded independently with the streaming precedence.
+        #[serde(skip_serializing_if = "Option::is_none", rename = "reasoning_content")]
         reasoning: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
         refusal: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
         name: Option<String>,
-        #[serde(
-            default,
-            deserialize_with = "json_utils::null_or_default",
-            skip_serializing_if = "Vec::is_empty"
-        )]
+        #[serde(skip_serializing_if = "Vec::is_empty")]
         tool_calls: Vec<ToolCall>,
         /// Structured reasoning blocks used by OpenAI-compatible providers
         /// such as OpenRouter. Empty (and omitted from the wire) for
         /// providers that do not emit or accept them.
-        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        #[serde(skip_serializing_if = "Vec::is_empty")]
         reasoning_details: Vec<ReasoningDetails>,
     },
     #[serde(rename = "tool")]
@@ -233,6 +223,44 @@ impl Message {
             name: None,
         }
     }
+}
+
+type AssistantFields = (
+    Vec<AssistantContent>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Vec<ToolCall>,
+    Vec<ReasoningDetails>,
+);
+
+fn deserialize_assistant<'de, D>(deserializer: D) -> Result<AssistantFields, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    struct Fields {
+        #[serde(default, deserialize_with = "json_utils::string_or_vec")]
+        content: Vec<AssistantContent>,
+        reasoning_content: Option<String>,
+        reasoning: Option<String>,
+        refusal: Option<String>,
+        name: Option<String>,
+        #[serde(default, deserialize_with = "json_utils::null_or_default")]
+        tool_calls: Vec<ToolCall>,
+        #[serde(default)]
+        reasoning_details: Vec<ReasoningDetails>,
+    }
+
+    let fields = Fields::deserialize(deserializer)?;
+    Ok((
+        fields.content,
+        fields.reasoning_content.or(fields.reasoning),
+        fields.refusal,
+        fields.name,
+        fields.tool_calls,
+        fields.reasoning_details,
+    ))
 }
 
 fn history_contains_tool_result(messages: &[Message]) -> bool {

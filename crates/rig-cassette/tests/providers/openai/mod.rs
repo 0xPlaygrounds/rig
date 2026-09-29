@@ -77,6 +77,7 @@ mod cassette {
     mod raw_capture_matrix;
     mod raw_completion_parity_matrix;
     mod raw_stream_capture_matrix;
+    mod reasoning_keys;
     mod reasoning_roundtrip;
     mod reasoning_tool_roundtrip;
     mod refusal_matrix;
@@ -89,6 +90,7 @@ mod cassette {
     mod response_retry;
     mod response_schema;
     mod responses_behaviors;
+    mod responses_citations;
     mod responses_input_item;
     mod responses_sessions;
     mod responses_tool_args;

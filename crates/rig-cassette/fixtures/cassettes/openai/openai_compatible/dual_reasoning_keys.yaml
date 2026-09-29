@@ -1,0 +1,16 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":"Look up Tokyo weather.","role":"user"}],"model":"local-dual-key-model"}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"message":{"content":null,"reasoning":"fallback reasoning","reasoning_content":"preferred reasoning","role":"assistant","tool_calls":[{"function":{"arguments":"{\"city\":\"Tokyo\"}","name":"lookup"},"id":"call_local_1","type":"function"}]}}],"created":0,"id":"chatcmpl_local_1","model":"local-dual-key-model","object":"chat.completion","usage":{"completion_tokens":5,"prompt_tokens":5,"total_tokens":10}}'

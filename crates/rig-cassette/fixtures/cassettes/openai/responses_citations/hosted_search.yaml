@@ -1,0 +1,151 @@
+when:
+  path: /v1/responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"content":[{"text":"Use web search to find the Rust programming language''s official website. Reply with one short sentence and a source citation.","type":"input_text"}],"role":"user","type":"message"}],"max_output_tokens":512,"model":"gpt-4.1-mini","store":false,"stream":true,"tools":[{"type":"web_search"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  - name: x-request-id
+    value: req_9ee94b2e438e429cafac7fe9faea7bc4
+  body: |+
+    event: response.created
+    data: {"response":{"access_programs":null,"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_0b9ebb43bf24fcd8016abc42dd323487d085aeab8e4cd4b092","incomplete_details":null,"instructions":null,"max_output_tokens":512,"max_tool_calls":null,"metadata":{},"model":"gpt-4.1-mini-2025-04-14","moderation":null,"object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"context":null,"effort":null,"summary":null},"safety_identifier":null,"service_tier":"auto","status":"in_progress","store":false,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[{"return_token_budget":"default","search_content_types":["text"],"search_context_size":"medium","type":"web_search","user_location":{"city":null,"country":"US","region":null,"timezone":null,"type":"approximate"}}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":null,"user":null},"sequence_number":0,"type":"response.created"}
+
+    event: response.in_progress
+    data: {"response":{"access_programs":null,"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_0b9ebb43bf24fcd8016abc42dd323487d085aeab8e4cd4b092","incomplete_details":null,"instructions":null,"max_output_tokens":512,"max_tool_calls":null,"metadata":{},"model":"gpt-4.1-mini-2025-04-14","moderation":null,"object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"context":null,"effort":null,"summary":null},"safety_identifier":null,"service_tier":"auto","status":"in_progress","store":false,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[{"return_token_budget":"default","search_content_types":["text"],"search_context_size":"medium","type":"web_search","user_location":{"city":null,"country":"US","region":null,"timezone":null,"type":"approximate"}}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":null,"user":null},"sequence_number":1,"type":"response.in_progress"}
+
+    event: response.output_item.added
+    data: {"item":{"action":{"type":"search"},"id":"ws_0b9ebb43bf24fcd8016abc42df768087d0a763618a06935861","status":"in_progress","type":"web_search_call"},"output_index":0,"sequence_number":2,"type":"response.output_item.added"}
+
+    event: response.web_search_call.in_progress
+    data: {"item_id":"ws_0b9ebb43bf24fcd8016abc42df768087d0a763618a06935861","output_index":0,"sequence_number":3,"type":"response.web_search_call.in_progress"}
+
+    event: response.web_search_call.searching
+    data: {"item_id":"ws_0b9ebb43bf24fcd8016abc42df768087d0a763618a06935861","output_index":0,"sequence_number":4,"type":"response.web_search_call.searching"}
+
+    event: response.web_search_call.completed
+    data: {"item_id":"ws_0b9ebb43bf24fcd8016abc42df768087d0a763618a06935861","output_index":0,"sequence_number":5,"type":"response.web_search_call.completed"}
+
+    event: response.output_item.done
+    data: {"item":{"action":{"queries":["Rust programming language official website"],"query":"Rust programming language official website","type":"search"},"id":"ws_0b9ebb43bf24fcd8016abc42df768087d0a763618a06935861","status":"completed","type":"web_search_call"},"output_index":0,"sequence_number":6,"type":"response.output_item.done"}
+
+    event: response.output_item.added
+    data: {"item":{"content":[],"id":"msg_0b9ebb43bf24fcd8016abc42e0db0c87d0b78a0df8b85fcc6b","role":"assistant","status":"in_progress","type":"message"},"output_index":1,"sequence_number":7,"type":"response.output_item.added"}
+
+    event: response.content_part.added
+    data: {"content_index":0,"item_id":"msg_0b9ebb43bf24fcd8016abc42e0db0c87d0b78a0df8b85fcc6b","output_index":1,"part":{"annotations":[],"logprobs":[],"text":"","type":"output_text"},"sequence_number":8,"type":"response.content_part.added"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"The","item_id":"msg_0b9ebb43bf24fcd8016abc42e0db0c87d0b78a0df8b85fcc6b","logprobs":[],"obfuscation":"qzeY4xR7dK7C7","output_index":1,"sequence_number":9,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" official","item_id":"msg_0b9ebb43bf24fcd8016abc42e0db0c87d0b78a0df8b85fcc6b","logprobs":[],"obfuscation":"rGpvfpE","output_index":1,"sequence_number":10,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" website","item_id":"msg_0b9ebb43bf24fcd8016abc42e0db0c87d0b78a0df8b85fcc6b","logprobs":[],"obfuscation":"oxii4k26","output_index":1,"sequence_number":11,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" for","item_id":"msg_0b9ebb43bf24fcd8016abc42e0db0c87d0b78a0df8b85fcc6b","logprobs":[],"obfuscation":"Jkgchx90b9z9","output_index":1,"sequence_number":12,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" the","item_id":"msg_0b9ebb43bf24fcd8016abc42e0db0c87d0b78a0df8b85fcc6b","logprobs":[],"obfuscation":"Gv2HfOkbl2G7","output_index":1,"sequence_number":13,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" Rust","item_id":"msg_0b9ebb43bf24fcd8016abc42e0db0c87d0b78a0df8b85fcc6b","logprobs":[],"obfuscation":"f7lKzFHrJu3","output_index":1,"sequence_number":14,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" programming","item_id":"msg_0b9ebb43bf24fcd8016abc42e0db0c87d0b78a0df8b85fcc6b","logprobs":[],"obfuscation":"9NWX","output_index":1,"sequence_number":15,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" language","item_id":"msg_0b9ebb43bf24fcd8016abc42e0db0c87d0b78a0df8b85fcc6b","logprobs":[],"obfuscation":"elSBOEB","output_index":1,"sequence_number":16,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" is","item_id":"msg_0b9ebb43bf24fcd8016abc42e0db0c87d0b78a0df8b85fcc6b","logprobs":[],"obfuscation":"jb2XbLmuUYjzo","output_index":1,"sequence_number":17,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" [","item_id":"msg_0b9ebb43bf24fcd8016abc42e0db0c87d0b78a0df8b85fcc6b","logprobs":[],"obfuscation":"QuR7uenKshouW0","output_index":1,"sequence_number":18,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"rust","item_id":"msg_0b9ebb43bf24fcd8016abc42e0db0c87d0b78a0df8b85fcc6b","logprobs":[],"obfuscation":"6j1UMHOtPI7j","output_index":1,"sequence_number":19,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"-lang","item_id":"msg_0b9ebb43bf24fcd8016abc42e0db0c87d0b78a0df8b85fcc6b","logprobs":[],"obfuscation":"zVIloNl0PaR","output_index":1,"sequence_number":20,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":".org","item_id":"msg_0b9ebb43bf24fcd8016abc42e0db0c87d0b78a0df8b85fcc6b","logprobs":[],"obfuscation":"ymK9ixsudUFp","output_index":1,"sequence_number":21,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"](","item_id":"msg_0b9ebb43bf24fcd8016abc42e0db0c87d0b78a0df8b85fcc6b","logprobs":[],"obfuscation":"sO0PAO7uLP9DOH","output_index":1,"sequence_number":22,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"https","item_id":"msg_0b9ebb43bf24fcd8016abc42e0db0c87d0b78a0df8b85fcc6b","logprobs":[],"obfuscation":"xxEllHJKDHS","output_index":1,"sequence_number":23,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"://","item_id":"msg_0b9ebb43bf24fcd8016abc42e0db0c87d0b78a0df8b85fcc6b","logprobs":[],"obfuscation":"mydHgCUALyGNY","output_index":1,"sequence_number":24,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"rust","item_id":"msg_0b9ebb43bf24fcd8016abc42e0db0c87d0b78a0df8b85fcc6b","logprobs":[],"obfuscation":"VZ3FWmefG2xQ","output_index":1,"sequence_number":25,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"-lang","item_id":"msg_0b9ebb43bf24fcd8016abc42e0db0c87d0b78a0df8b85fcc6b","logprobs":[],"obfuscation":"vNPedLUJifa","output_index":1,"sequence_number":26,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":".org","item_id":"msg_0b9ebb43bf24fcd8016abc42e0db0c87d0b78a0df8b85fcc6b","logprobs":[],"obfuscation":"9iHfaTVoiK3W","output_index":1,"sequence_number":27,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"/","item_id":"msg_0b9ebb43bf24fcd8016abc42e0db0c87d0b78a0df8b85fcc6b","logprobs":[],"obfuscation":"Cm7WgJXhHZi0khX","output_index":1,"sequence_number":28,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":").","item_id":"msg_0b9ebb43bf24fcd8016abc42e0db0c87d0b78a0df8b85fcc6b","logprobs":[],"obfuscation":"Sjwm2p0YxeCHuJ","output_index":1,"sequence_number":29,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" ","item_id":"msg_0b9ebb43bf24fcd8016abc42e0db0c87d0b78a0df8b85fcc6b","logprobs":[],"obfuscation":"sSHMawxUJnGPJkF","output_index":1,"sequence_number":30,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"([rust-lang.org](https://rust-lang.org/?utm_source=openai))","item_id":"msg_0b9ebb43bf24fcd8016abc42e0db0c87d0b78a0df8b85fcc6b","logprobs":[],"obfuscation":"iOC85","output_index":1,"sequence_number":31,"type":"response.output_text.delta"}
+
+    event: response.output_text.annotation.added
+    data: {"annotation":{"end_index":158,"start_index":99,"title":"Rust Programming Language","type":"url_citation","url":"https://rust-lang.org/?utm_source=openai"},"annotation_index":0,"content_index":0,"item_id":"msg_0b9ebb43bf24fcd8016abc42e0db0c87d0b78a0df8b85fcc6b","output_index":1,"sequence_number":32,"type":"response.output_text.annotation.added"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" ","item_id":"msg_0b9ebb43bf24fcd8016abc42e0db0c87d0b78a0df8b85fcc6b","logprobs":[],"obfuscation":"Q4375posp8vDPKz","output_index":1,"sequence_number":33,"type":"response.output_text.delta"}
+
+    event: response.output_text.done
+    data: {"content_index":0,"item_id":"msg_0b9ebb43bf24fcd8016abc42e0db0c87d0b78a0df8b85fcc6b","logprobs":[],"output_index":1,"sequence_number":34,"text":"The official website for the Rust programming language is [rust-lang.org](https://rust-lang.org/). ([rust-lang.org](https://rust-lang.org/?utm_source=openai)) ","type":"response.output_text.done"}
+
+    event: response.content_part.done
+    data: {"content_index":0,"item_id":"msg_0b9ebb43bf24fcd8016abc42e0db0c87d0b78a0df8b85fcc6b","output_index":1,"part":{"annotations":[{"end_index":158,"start_index":99,"title":"Rust Programming Language","type":"url_citation","url":"https://rust-lang.org/?utm_source=openai"}],"logprobs":[],"text":"The official website for the Rust programming language is [rust-lang.org](https://rust-lang.org/). ([rust-lang.org](https://rust-lang.org/?utm_source=openai)) ","type":"output_text"},"sequence_number":35,"type":"response.content_part.done"}
+
+    event: response.output_item.done
+    data: {"item":{"content":[{"annotations":[{"end_index":158,"start_index":99,"title":"Rust Programming Language","type":"url_citation","url":"https://rust-lang.org/?utm_source=openai"}],"logprobs":[],"text":"The official website for the Rust programming language is [rust-lang.org](https://rust-lang.org/). ([rust-lang.org](https://rust-lang.org/?utm_source=openai)) ","type":"output_text"}],"id":"msg_0b9ebb43bf24fcd8016abc42e0db0c87d0b78a0df8b85fcc6b","role":"assistant","status":"completed","type":"message"},"output_index":1,"sequence_number":36,"type":"response.output_item.done"}
+
+    event: response.completed
+    data: {"response":{"access_programs":null,"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_0b9ebb43bf24fcd8016abc42dd323487d085aeab8e4cd4b092","incomplete_details":null,"instructions":null,"max_output_tokens":512,"max_tool_calls":null,"metadata":{},"model":"gpt-4.1-mini-2025-04-14","moderation":null,"object":"response","output":[{"action":{"queries":["Rust programming language official website"],"query":"Rust programming language official website","type":"search"},"id":"ws_0b9ebb43bf24fcd8016abc42df768087d0a763618a06935861","status":"completed","type":"web_search_call"},{"content":[{"annotations":[{"end_index":158,"start_index":99,"title":"Rust Programming Language","type":"url_citation","url":"https://rust-lang.org/?utm_source=openai"}],"logprobs":[],"text":"The official website for the Rust programming language is [rust-lang.org](https://rust-lang.org/). ([rust-lang.org](https://rust-lang.org/?utm_source=openai)) ","type":"output_text"}],"id":"msg_0b9ebb43bf24fcd8016abc42e0db0c87d0b78a0df8b85fcc6b","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"context":null,"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":false,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":1}},"tools":[{"return_token_budget":"default","search_content_types":["text"],"search_context_size":"medium","type":"web_search","user_location":{"city":null,"country":"US","region":null,"timezone":null,"type":"approximate"}}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":{"input_tokens":8174,"input_tokens_details":{"cache_write_tokens":0,"cached_tokens":0},"output_tokens":54,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":8228},"user":null},"sequence_number":37,"type":"response.completed"}
+
+---
+when:
+  path: /v1/responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"content":[{"text":"Use web search to find the Rust programming language''s official website. Reply with one short sentence and a source citation.","type":"input_text"}],"role":"user","type":"message"}],"max_output_tokens":512,"model":"gpt-4.1-mini","store":false,"tools":[{"type":"web_search"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: x-request-id
+    value: req_8db882e71eaf42779fa99411c2f87991
+  body: '{"access_programs":null,"background":false,"billing":{"payer":"developer"},"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_0b13b6a6bff13056016abc42e1c9d087d08297da561ae56d72","incomplete_details":null,"instructions":null,"max_output_tokens":512,"max_tool_calls":null,"metadata":{},"model":"gpt-4.1-mini-2025-04-14","moderation":null,"object":"response","output":[{"action":{"queries":["Rust programming language official website"],"query":"Rust programming language official website","type":"search"},"id":"ws_0b13b6a6bff13056016abc42e275e087d0a57680098ad5b97a","status":"completed","type":"web_search_call"},{"content":[{"annotations":[{"end_index":158,"start_index":99,"title":"Rust Programming Language","type":"url_citation","url":"https://rust-lang.org/?utm_source=openai"}],"logprobs":[],"text":"The official website for the Rust programming language is [rust-lang.org](https://rust-lang.org/). ([rust-lang.org](https://rust-lang.org/?utm_source=openai)) ","type":"output_text"}],"id":"msg_0b13b6a6bff13056016abc42e3a90087d097a53831d89b2f74","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"context":null,"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":false,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":1}},"tools":[{"return_token_budget":"default","search_content_types":["text"],"search_context_size":"medium","type":"web_search","user_location":{"city":null,"country":"US","region":null,"timezone":null,"type":"approximate"}}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":{"input_tokens":8174,"input_tokens_details":{"cache_write_tokens":0,"cached_tokens":0},"output_tokens":54,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":8228},"user":null}'

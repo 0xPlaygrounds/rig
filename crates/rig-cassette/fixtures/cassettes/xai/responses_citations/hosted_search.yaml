@@ -1,0 +1,130 @@
+when:
+  path: /v1/responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"content":[{"text":"Use web search to find the Rust programming language''s official website. Reply with one short sentence and a source citation.","type":"input_text"}],"role":"user","type":"message"}],"max_output_tokens":512,"model":"grok-4-1-fast-non-reasoning","store":false,"stream":true,"tools":[{"type":"web_search"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  - name: x-request-id
+    value: f23866cc-9122-9310-ab89-24782c93badb
+  body: |+
+    event: response.created
+    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"f23866cc-9122-9310-ab89-24782c93badb","incomplete_details":null,"instructions":null,"max_output_tokens":512,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"in_progress","store":false,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"type":"web_search"}],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":null,"user":null},"sequence_number":0,"type":"response.created"}
+
+    event: response.in_progress
+    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"f23866cc-9122-9310-ab89-24782c93badb","incomplete_details":null,"instructions":null,"max_output_tokens":512,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"in_progress","store":false,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"type":"web_search"}],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":null,"user":null},"sequence_number":1,"type":"response.in_progress"}
+
+    event: response.output_item.added
+    data: {"item":{"action":{"query":"","sources":[],"type":"search"},"id":"ws_f23866cc-9122-9310-ab89-24782c93badb_call-16131fa1-f80b-4cda-b3e0-63d8eb42f8f8-0","status":"in_progress","type":"web_search_call"},"output_index":0,"sequence_number":2,"type":"response.output_item.added"}
+
+    event: response.web_search_call.in_progress
+    data: {"item_id":"ws_f23866cc-9122-9310-ab89-24782c93badb_call-16131fa1-f80b-4cda-b3e0-63d8eb42f8f8-0","output_index":0,"sequence_number":3,"type":"response.web_search_call.in_progress"}
+
+    event: response.web_search_call.searching
+    data: {"item_id":"ws_f23866cc-9122-9310-ab89-24782c93badb_call-16131fa1-f80b-4cda-b3e0-63d8eb42f8f8-0","output_index":0,"sequence_number":4,"type":"response.web_search_call.searching"}
+
+    event: response.web_search_call.completed
+    data: {"item_id":"ws_f23866cc-9122-9310-ab89-24782c93badb_call-16131fa1-f80b-4cda-b3e0-63d8eb42f8f8-0","output_index":0,"sequence_number":5,"type":"response.web_search_call.completed"}
+
+    event: response.output_item.done
+    data: {"item":{"action":{"query":"Rust programming language official website","sources":[{"type":"url","url":"https://www.rust-lang.org/"},{"type":"url","url":"https://rust-lang.github.io/book/"},{"type":"url","url":"https://github.com/rust-lang"},{"type":"url","url":"https://www.rust-lang.org/learn"},{"type":"url","url":"https://blog.rust-lang.org/2025/10/30/Rust-1.91.0/"}],"type":"search"},"id":"ws_f23866cc-9122-9310-ab89-24782c93badb_call-16131fa1-f80b-4cda-b3e0-63d8eb42f8f8-0","status":"completed","type":"web_search_call"},"output_index":0,"sequence_number":6,"type":"response.output_item.done"}
+
+    event: response.output_item.added
+    data: {"item":{"content":[],"id":"msg_f23866cc-9122-9310-ab89-24782c93badb","role":"assistant","status":"in_progress","type":"message"},"output_index":1,"sequence_number":7,"type":"response.output_item.added"}
+
+    event: response.content_part.added
+    data: {"content_index":0,"item_id":"msg_f23866cc-9122-9310-ab89-24782c93badb","output_index":1,"part":{"annotations":[],"logprobs":[],"text":"","type":"output_text"},"sequence_number":8,"type":"response.content_part.added"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"The","item_id":"msg_f23866cc-9122-9310-ab89-24782c93badb","logprobs":[],"output_index":1,"sequence_number":9,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" official","item_id":"msg_f23866cc-9122-9310-ab89-24782c93badb","logprobs":[],"output_index":1,"sequence_number":10,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" website","item_id":"msg_f23866cc-9122-9310-ab89-24782c93badb","logprobs":[],"output_index":1,"sequence_number":11,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" of","item_id":"msg_f23866cc-9122-9310-ab89-24782c93badb","logprobs":[],"output_index":1,"sequence_number":12,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" the","item_id":"msg_f23866cc-9122-9310-ab89-24782c93badb","logprobs":[],"output_index":1,"sequence_number":13,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" Rust","item_id":"msg_f23866cc-9122-9310-ab89-24782c93badb","logprobs":[],"output_index":1,"sequence_number":14,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" programming","item_id":"msg_f23866cc-9122-9310-ab89-24782c93badb","logprobs":[],"output_index":1,"sequence_number":15,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" language","item_id":"msg_f23866cc-9122-9310-ab89-24782c93badb","logprobs":[],"output_index":1,"sequence_number":16,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" is","item_id":"msg_f23866cc-9122-9310-ab89-24782c93badb","logprobs":[],"output_index":1,"sequence_number":17,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" https","item_id":"msg_f23866cc-9122-9310-ab89-24782c93badb","logprobs":[],"output_index":1,"sequence_number":18,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"://","item_id":"msg_f23866cc-9122-9310-ab89-24782c93badb","logprobs":[],"output_index":1,"sequence_number":19,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"www","item_id":"msg_f23866cc-9122-9310-ab89-24782c93badb","logprobs":[],"output_index":1,"sequence_number":20,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":".rust","item_id":"msg_f23866cc-9122-9310-ab89-24782c93badb","logprobs":[],"output_index":1,"sequence_number":21,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"-lang","item_id":"msg_f23866cc-9122-9310-ab89-24782c93badb","logprobs":[],"output_index":1,"sequence_number":22,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":".org","item_id":"msg_f23866cc-9122-9310-ab89-24782c93badb","logprobs":[],"output_index":1,"sequence_number":23,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"/.","item_id":"msg_f23866cc-9122-9310-ab89-24782c93badb","logprobs":[],"output_index":1,"sequence_number":24,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"[[1]](https://www.rust-lang.org/)","item_id":"msg_f23866cc-9122-9310-ab89-24782c93badb","logprobs":[],"output_index":1,"sequence_number":25,"type":"response.output_text.delta"}
+
+    event: response.output_text.annotation.added
+    data: {"annotation":{"end_index":117,"start_index":84,"title":"1","type":"url_citation","url":"https://www.rust-lang.org/"},"annotation_index":0,"content_index":0,"item_id":"msg_f23866cc-9122-9310-ab89-24782c93badb","output_index":1,"sequence_number":26,"type":"response.output_text.annotation.added"}
+
+    event: response.output_text.done
+    data: {"content_index":0,"item_id":"msg_f23866cc-9122-9310-ab89-24782c93badb","logprobs":[],"output_index":1,"sequence_number":27,"text":"The official website of the Rust programming language is https://www.rust-lang.org/.[[1]](https://www.rust-lang.org/)","type":"response.output_text.done"}
+
+    event: response.content_part.done
+    data: {"content_index":0,"item_id":"msg_f23866cc-9122-9310-ab89-24782c93badb","output_index":1,"part":{"annotations":[{"end_index":117,"start_index":84,"title":"1","type":"url_citation","url":"https://www.rust-lang.org/"}],"logprobs":[],"text":"The official website of the Rust programming language is https://www.rust-lang.org/.[[1]](https://www.rust-lang.org/)","type":"output_text"},"sequence_number":28,"type":"response.content_part.done"}
+
+    event: response.output_item.done
+    data: {"item":{"content":[{"annotations":[{"end_index":117,"start_index":84,"title":"1","type":"url_citation","url":"https://www.rust-lang.org/"}],"logprobs":[],"text":"The official website of the Rust programming language is https://www.rust-lang.org/.[[1]](https://www.rust-lang.org/)","type":"output_text"}],"id":"msg_f23866cc-9122-9310-ab89-24782c93badb","role":"assistant","status":"completed","type":"message"},"output_index":1,"sequence_number":29,"type":"response.output_item.done"}
+
+    event: response.completed
+    data: {"response":{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"f23866cc-9122-9310-ab89-24782c93badb","incomplete_details":null,"instructions":null,"max_output_tokens":512,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[{"action":{"query":"Rust programming language official website","sources":[{"type":"url","url":"https://rust-lang.github.io/book/"},{"type":"url","url":"https://www.rust-lang.org/learn"},{"type":"url","url":"https://github.com/rust-lang"},{"type":"url","url":"https://blog.rust-lang.org/2025/10/30/Rust-1.91.0/"},{"type":"url","url":"https://www.rust-lang.org/"}],"type":"search"},"id":"ws_f23866cc-9122-9310-ab89-24782c93badb_call-16131fa1-f80b-4cda-b3e0-63d8eb42f8f8-0","status":"completed","type":"web_search_call"},{"content":[{"annotations":[{"end_index":117,"start_index":84,"title":"1","type":"url_citation","url":"https://www.rust-lang.org/"}],"logprobs":[],"text":"The official website of the Rust programming language is https://www.rust-lang.org/.[[1]](https://www.rust-lang.org/)","type":"output_text"}],"id":"msg_f23866cc-9122-9310-ab89-24782c93badb","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":false,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"type":"web_search"}],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":{"context_details":{"input_tokens":3248,"output_tokens":31},"cost_in_usd_ticks":102224500,"input_tokens":4301,"input_tokens_details":{"cached_tokens":256},"num_server_side_tools_used":1,"num_sources_used":0,"output_tokens":46,"output_tokens_details":{"reasoning_tokens":0},"server_side_tool_usage_details":{"code_interpreter_calls":0,"document_search_calls":0,"file_search_calls":0,"image_generation_calls":0,"mcp_calls":0,"web_search_calls":1,"x_posts_fetched":0,"x_search_calls":0,"x_users_fetched":0},"total_tokens":4347},"user":null},"sequence_number":30,"type":"response.completed"}
+
+---
+when:
+  path: /v1/responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"content":[{"text":"Use web search to find the Rust programming language''s official website. Reply with one short sentence and a source citation.","type":"input_text"}],"role":"user","type":"message"}],"max_output_tokens":512,"model":"grok-4-1-fast-non-reasoning","store":false,"tools":[{"type":"web_search"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: x-request-id
+    value: 1e439c11-e729-931d-8fe2-de32c8a85cd5
+  body: '{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"1e439c11-e729-931d-8fe2-de32c8a85cd5","incomplete_details":null,"instructions":null,"max_output_tokens":512,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[{"action":{"query":"Rust programming language official website","sources":[{"type":"url","url":"https://www.rust-lang.org/"},{"type":"url","url":"https://rust-lang.github.io/book/"},{"type":"url","url":"https://github.com/rust-lang"},{"type":"url","url":"https://www.rust-lang.org/learn"},{"type":"url","url":"https://blog.rust-lang.org/2025/10/30/Rust-1.91.0/"}],"type":"search"},"id":"ws_1e439c11-e729-931d-8fe2-de32c8a85cd5_call-d8959845-a4a3-470d-af09-26eefd64161c-0","status":"completed","type":"web_search_call"},{"id":"tco_1e439c11-e729-931d-8fe2-de32c8a85cd5_call-d8959845-a4a3-470d-af09-26eefd64161c-0","status":"completed","summary":[],"type":"reasoning"},{"content":[{"annotations":[{"end_index":117,"start_index":84,"title":"1","type":"url_citation","url":"https://www.rust-lang.org/"}],"logprobs":[],"text":"The official website of the Rust programming language is https://www.rust-lang.org/.[[1]](https://www.rust-lang.org/)","type":"output_text"}],"id":"msg_1e439c11-e729-931d-8fe2-de32c8a85cd5","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":false,"temperature":0.7,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"search_context_size":"medium","type":"web_search"}],"top_logprobs":0,"top_p":0.95,"truncation":"disabled","usage":{"context_details":{"input_tokens":3248,"output_tokens":31},"cost_in_usd_ticks":92144500,"input_tokens":4301,"input_tokens_details":{"cached_tokens":1216},"num_server_side_tools_used":1,"num_sources_used":0,"output_tokens":46,"output_tokens_details":{"reasoning_tokens":0},"server_side_tool_usage_details":{"code_interpreter_calls":0,"document_search_calls":0,"file_search_calls":0,"image_generation_calls":0,"mcp_calls":0,"web_search_calls":1,"x_posts_fetched":0,"x_search_calls":0,"x_users_fetched":0},"total_tokens":4347},"user":null}'

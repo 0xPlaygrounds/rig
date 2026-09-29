@@ -22,6 +22,8 @@ mod ecs_termination;
 use rig_test_support::goldens;
 use rig_test_support::raw_capture;
 use rig_test_support::reasoning;
+#[path = "common/responses_citations.rs"]
+mod responses_citations;
 use rig_test_support::stream_faults;
 use rig_test_support::support;
 

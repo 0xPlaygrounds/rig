@@ -15,6 +15,8 @@ mod cassette_safety;
 use rig_test_support::cassettes;
 use rig_test_support::raw_capture;
 use rig_test_support::reasoning;
+#[path = "common/responses_citations.rs"]
+mod responses_citations;
 use rig_test_support::support;
 
 #[path = "providers/xai/mod.rs"]

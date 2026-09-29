@@ -1950,3 +1950,83 @@ fn additional_params_override_typed_fields_on_the_wire() {
     assert_eq!(body["temperature"], 0.9, "{body}");
     assert_eq!(body["top_p"], 0.5, "{body}");
 }
+
+/// Scripted key combinations pin alias precedence independently of endpoint availability.
+#[test]
+fn assistant_reasoning_keys_decode_independently() {
+    for (keys, expected) in [
+        (
+            json!({"reasoning": "same", "reasoning_content": "same"}),
+            Some("same"),
+        ),
+        (
+            json!({"reasoning": "fallback", "reasoning_content": "preferred"}),
+            Some("preferred"),
+        ),
+        (json!({"reasoning": "fallback"}), Some("fallback")),
+        (json!({"reasoning_content": "preferred"}), Some("preferred")),
+        (json!({}), None),
+        (
+            json!({"reasoning": null, "reasoning_content": "preferred"}),
+            Some("preferred"),
+        ),
+        (
+            json!({"reasoning": "fallback", "reasoning_content": null}),
+            Some("fallback"),
+        ),
+        (json!({"reasoning": null, "reasoning_content": null}), None),
+    ] {
+        let mut wire = json!({
+            "role": "assistant", "content": "answer", "name": "helper", "refusal": "no",
+            "tool_calls": [{"id": "call_1", "type": "function", "function": {
+                "name": "lookup", "arguments": "{\"city\":\"Tokyo\"}"
+            }}],
+            "reasoning_details": [{"type": "reasoning.text", "text": "detail", "id": "r_1",
+                "format": "test", "index": 0, "signature": "sig"}]
+        });
+        wire.as_object_mut()
+            .unwrap()
+            .extend(keys.as_object().unwrap().clone());
+        let message: Message = serde_json::from_value(wire.clone()).expect("both keys must decode");
+        let Message::Assistant {
+            reasoning,
+            content,
+            tool_calls,
+            reasoning_details,
+            name,
+            refusal,
+        } = &message
+        else {
+            panic!("expected assistant");
+        };
+        assert_eq!(reasoning.as_deref(), expected);
+        assert_eq!(
+            content,
+            &vec![AssistantContent::Text {
+                text: "answer".into()
+            }]
+        );
+        assert_eq!(
+            serde_json::to_value(tool_calls).unwrap(),
+            wire["tool_calls"]
+        );
+        assert_eq!(
+            serde_json::to_value(reasoning_details).unwrap(),
+            wire["reasoning_details"]
+        );
+        assert_eq!(name.as_deref(), Some("helper"));
+        assert_eq!(refusal.as_deref(), Some("no"));
+        let serialized = serde_json::to_value(&message).unwrap();
+        assert!(serialized.get("reasoning").is_none());
+        assert_eq!(
+            serialized
+                .get("reasoning_content")
+                .and_then(serde_json::Value::as_str),
+            expected
+        );
+        assert_eq!(
+            serde_json::from_value::<Message>(serialized).unwrap(),
+            message
+        );
+    }
+}

@@ -2145,3 +2145,423 @@ fn empty_item_ids_identify_nothing_and_do_not_panic() {
     );
     assert_eq!(texts_of(&decoded.events()), ["still text"]);
 }
+
+fn cited_message(annotations: serde_json::Value) -> serde_json::Value {
+    json!({"type": "message", "id": "msg_cited", "role": "assistant", "status": "completed",
+        "phase": "final_answer",
+        "content": [{"type": "output_text", "text": "source", "annotations": annotations,
+            "logprobs": [{"token": "source", "logprob": -0.1}]}]})
+}
+
+fn assert_streamed_citation_snapshots(done: bool, terminal: bool, annotation_event: bool) {
+    let annotations = json!([{"type": "url_citation", "start_index": 0, "end_index": 6,
+        "url": "https://example.org", "title": "Source"}]);
+    let message = cited_message(annotations.clone());
+    let mut events = vec![
+        json!({"type": "response.output_text.delta", "item_id": "msg_cited",
+                "output_index": 0, "content_index": 0, "sequence_number": 1, "delta": "source"}),
+    ];
+    if annotation_event {
+        events.push(
+            json!({"type": "response.output_text.annotation.added", "item_id": "msg_cited",
+                    "output_index": 0, "content_index": 0, "sequence_number": 2,
+                    "annotation_index": 0, "annotation": annotations[0]}),
+        );
+    }
+    // An interleaved tool call must not close the message's metadata draft.
+    events.push(json!({"type": "response.output_item.done", "output_index": 1, "sequence_number": 3,
+                "item": {"type": "function_call", "id": "fc_1", "call_id": "call_1", "name": "lookup", "arguments": "{}", "status": "completed"}}));
+    if done {
+        let snapshot = json!({"type": "response.output_item.done", "output_index": 0,
+                    "sequence_number": 4, "item": message});
+        events.extend([snapshot.clone(), snapshot]);
+    }
+    let mut response = sample_response(ResponseStatus::Completed);
+    if terminal {
+        response
+            .output
+            .push(serde_json::from_value(message.clone()).unwrap());
+    }
+    events.push(json!({"type": "response.completed", "sequence_number": 5, "response": response}));
+    let decoded = decoded_body("openai", &body_of(&events), None);
+    assert!(
+        decoded.outcome.is_ok(),
+        "valid scripted stream: {:?}",
+        decoded.outcome
+    );
+    let ends: Vec<_> = decoded
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            Ok(Item::Event(StreamEvent::End {
+                content: AssistantContent::Text(text),
+                ..
+            })) => Some(text),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(ends.len(), 1);
+    assert_eq!(ends[0].text, "source");
+    let extras = ends[0]
+        .additional_params
+        .as_ref()
+        .expect("snapshot extras")
+        .get("openai_responses")
+        .unwrap();
+    assert_eq!(extras["annotations"], annotations);
+    assert_eq!(extras["phase"], "final_answer");
+    assert_eq!(extras["logprobs"], message["content"][0]["logprobs"]);
+    assert_eq!(
+        decoded
+            .items
+            .iter()
+            .filter(|item| matches!(item, Ok(Item::Unknown(_))))
+            .count(),
+        usize::from(annotation_event)
+    );
+    let result = decoded.outcome.unwrap();
+    assert_eq!(result.tool_calls().count(), 1);
+    let mut unary_response = sample_response(ResponseStatus::Completed);
+    unary_response
+        .output
+        .push(serde_json::from_value(message).unwrap());
+    let unary = feed_frames!(
+        ResponsesDecoder::new("openai"),
+        "openai",
+        [WireFrame::Text(
+            serde_json::to_string(&unary_response).unwrap()
+        )]
+    )
+    .outcome
+    .unwrap();
+    assert_eq!(
+        result
+            .choice
+            .iter()
+            .find(|part| matches!(part, AssistantContent::Text(_))),
+        unary.choice.first()
+    );
+}
+
+/// Scripted boundaries isolate metadata delivered only at item end.
+#[test]
+fn streamed_citation_item_done_only() {
+    assert_streamed_citation_snapshots(true, false, false);
+}
+
+/// Scripted boundaries isolate gateways that deliver only a terminal snapshot.
+#[test]
+fn streamed_citation_terminal_fallback_only() {
+    assert_streamed_citation_snapshots(false, true, false);
+}
+
+/// Scripted repetitions pin array merge deduplication independently of provider ordering.
+#[test]
+fn streamed_citation_repeated_snapshots() {
+    assert_streamed_citation_snapshots(true, true, false);
+}
+
+/// Scripted annotation events pin raw passthrough without introducing a typed event.
+#[test]
+fn streamed_citation_annotation_event_passthrough() {
+    for (done, terminal) in [(true, false), (false, true), (true, true)] {
+        assert_streamed_citation_snapshots(done, terminal, true);
+    }
+}
+
+/// Scripted gateways may omit or change message IDs while retaining output slots.
+#[test]
+fn streamed_citation_snapshot_matches_delta_slot() {
+    for delta_id in [serde_json::Value::Null, json!("msg_delta")] {
+        let message = cited_message(json!([{"type": "url_citation", "start_index": 0,
+            "end_index": 6, "url": "https://example.org", "title": "Source"}]));
+        let mut response = sample_response(ResponseStatus::Completed);
+        response
+            .output
+            .push(serde_json::from_value(message.clone()).unwrap());
+        let events = [
+            json!({"type": "response.output_text.delta", "item_id": delta_id, "output_index": 0,
+                "content_index": 0, "sequence_number": 1, "delta": "source"}),
+            json!({"type": "response.output_item.done", "output_index": 0, "sequence_number": 2, "item": message}),
+            json!({"type": "response.completed", "sequence_number": 3, "response": response}),
+        ];
+        let result = decoded_body("openai", &body_of(&events), None)
+            .outcome
+            .unwrap();
+        assert_eq!(choice_text_parts(&result), vec!["source"]);
+        let AssistantContent::Text(text) = &result.choice[0] else {
+            panic!("text part");
+        };
+        assert_eq!(
+            text.additional_params
+                .as_ref()
+                .unwrap()
+                .get("openai_responses")
+                .unwrap()["annotations"],
+            message["content"][0]["annotations"]
+        );
+    }
+}
+
+/// Scripted snapshot-only text pins item-done precedence, including empty metadata.
+#[test]
+fn streamed_citation_snapshot_only_text_uses_item_done_metadata() {
+    for annotations in [
+        json!([]),
+        json!([{"type": "url_citation", "start_index": 0,
+        "end_index": 6, "url": "https://example.org", "title": "Source"}]),
+    ] {
+        let mut done = cited_message(annotations.clone());
+        done.as_object_mut().unwrap().remove("phase");
+        done["content"][0]
+            .as_object_mut()
+            .unwrap()
+            .remove("logprobs");
+        let mut terminal_message = done.clone();
+        terminal_message["content"][0]["annotations"] = json!([{"type": "url_citation", "start_index": 1,
+            "end_index": 6, "url": "https://example.org/terminal", "title": "Later"}]);
+        let mut response = sample_response(ResponseStatus::Completed);
+        response
+            .output
+            .push(serde_json::from_value(terminal_message).unwrap());
+        let events = [
+            json!({"type": "response.output_item.done", "output_index": 0, "sequence_number": 1, "item": done}),
+            json!({"type": "response.completed", "sequence_number": 2, "response": response}),
+        ];
+        let result = decoded_body("openai", &body_of(&events), None)
+            .outcome
+            .unwrap();
+        assert_eq!(choice_text_parts(&result), vec!["source"]);
+        let AssistantContent::Text(text) = &result.choice[0] else {
+            panic!("text part");
+        };
+        if annotations.as_array().unwrap().is_empty() {
+            assert!(text.additional_params.is_none());
+        } else {
+            assert_eq!(
+                text.additional_params
+                    .as_ref()
+                    .unwrap()
+                    .get("openai_responses")
+                    .unwrap()["annotations"],
+                annotations
+            );
+        }
+    }
+}
+
+/// Scripted id-less whole replies pin the existing per-output metadata merge.
+#[test]
+fn streamed_citation_idless_unary_items_keep_each_slots_extras() {
+    let mut response = sample_response(ResponseStatus::Completed);
+    for title in ["First", "Second"] {
+        let mut message = cited_message(json!([{"type": "url_citation", "start_index": 0,
+            "end_index": 6, "url": "https://example.org", "title": title}]));
+        message["id"] = json!("");
+        response
+            .output
+            .push(serde_json::from_value(message).unwrap());
+    }
+    let result = feed_frames!(
+        ResponsesDecoder::new("openai"),
+        "openai",
+        [WireFrame::Text(serde_json::to_string(&response).unwrap())]
+    )
+    .outcome
+    .unwrap();
+    assert_eq!(choice_text_parts(&result), vec!["sourcesource"]);
+    let AssistantContent::Text(text) = &result.choice[0] else {
+        panic!("text part");
+    };
+    let annotations = &text
+        .additional_params
+        .as_ref()
+        .unwrap()
+        .get("openai_responses")
+        .unwrap()["annotations"];
+    assert_eq!(annotations.as_array().unwrap().len(), 2);
+    assert_eq!(annotations[0]["title"], "First");
+    assert_eq!(annotations[1]["title"], "Second");
+}
+
+/// Scripted shifted terminal positions pin item-ID dedup and anonymous-draft fallback.
+#[test]
+fn streamed_citation_shifted_terminal_item_keeps_one_metadata_merge() {
+    for delta_id in [serde_json::Value::Null, json!("msg_cited")] {
+        for done in [false, true] {
+            let annotations = json!([{"type": "url_citation", "start_index": 0,
+                "end_index": 6, "url": "https://example.org", "title": "Source"}]);
+            let message = cited_message(annotations.clone());
+            let mut events = vec![
+                json!({"type": "response.output_text.delta", "item_id": delta_id,
+                "output_index": 0, "content_index": 0, "sequence_number": 1, "delta": "source"}),
+            ];
+            if done {
+                events.push(
+                    json!({"type": "response.output_item.done", "output_index": 0,
+                    "sequence_number": 2, "item": message}),
+                );
+            }
+            let mut response = sample_response(ResponseStatus::Completed);
+            response
+                .output
+                .push(crate::providers::openai::responses_api::Output::Unknown(
+                    json!({"type": "future_item"}),
+                ));
+            response
+                .output
+                .push(serde_json::from_value(message).unwrap());
+            events.push(
+                json!({"type": "response.completed", "sequence_number": 3, "response": response}),
+            );
+            let result = decoded_body("openai", &body_of(&events), None)
+                .outcome
+                .unwrap();
+            assert_eq!(choice_text_parts(&result), vec!["source"]);
+            let AssistantContent::Text(text) = &result.choice[0] else {
+                panic!("text part");
+            };
+            assert_eq!(
+                text.additional_params
+                    .as_ref()
+                    .unwrap()
+                    .get("openai_responses")
+                    .unwrap()["annotations"],
+                annotations
+            );
+        }
+    }
+}
+
+/// Scripted snapshot-only messages keep terminal publication and part ordering.
+#[test]
+fn streamed_citation_snapshot_only_done_does_not_open_text_early() {
+    for terminal_text in [false, true] {
+        let message = cited_message(json!([{"type": "url_citation", "start_index": 0,
+            "end_index": 6, "url": "https://example.org", "title": "Source"}]));
+        let mut response = sample_response(ResponseStatus::Completed);
+        if terminal_text {
+            response
+                .output
+                .push(serde_json::from_value(message.clone()).unwrap());
+        }
+        let events = [
+            json!({"type": "response.output_item.done", "output_index": 0, "sequence_number": 1, "item": message}),
+            json!({"type": "response.output_item.done", "output_index": 1, "sequence_number": 2,
+                "item": {"type": "function_call", "id": "fc_1", "call_id": "call_1", "name": "lookup", "arguments": "{}", "status": "completed"}}),
+            json!({"type": "response.completed", "sequence_number": 3, "response": response}),
+        ];
+        let result = decoded_body("openai", &body_of(&events), None)
+            .outcome
+            .unwrap();
+        assert!(matches!(
+            result.choice.first(),
+            Some(AssistantContent::ToolCall(_))
+        ));
+        if terminal_text {
+            assert_eq!(choice_text_parts(&result), vec!["source"]);
+            assert_eq!(result.choice.len(), 2);
+        } else {
+            assert!(choice_text_parts(&result).is_empty());
+            assert_eq!(result.choice.len(), 1);
+        }
+    }
+}
+
+/// Scripted shifted snapshot-only messages must not borrow another item's metadata.
+#[test]
+fn streamed_citation_pending_metadata_matches_message_id_before_slot() {
+    let mut done = cited_message(json!([{"type": "url_citation", "title": "Alpha"}]));
+    done["id"] = json!("msg_a");
+    let mut terminal_a = done.clone();
+    terminal_a["content"][0]["annotations"][0]["title"] = json!("Terminal Alpha");
+    let mut terminal_b = cited_message(json!([{"type": "url_citation", "title": "Bravo"}]));
+    terminal_b["id"] = json!("msg_b");
+    let mut response = sample_response(ResponseStatus::Completed);
+    response.output.extend([
+        serde_json::from_value(terminal_b).unwrap(),
+        serde_json::from_value(terminal_a).unwrap(),
+    ]);
+    let events = [
+        json!({"type": "response.output_item.done", "output_index": 0, "sequence_number": 1, "item": done}),
+        json!({"type": "response.completed", "sequence_number": 2, "response": response}),
+    ];
+    let result = decoded_body("openai", &body_of(&events), None)
+        .outcome
+        .unwrap();
+    let titles: Vec<_> = result
+        .choice
+        .iter()
+        .filter_map(|part| match part {
+            AssistantContent::Text(text) => Some(
+                text.additional_params
+                    .as_ref()
+                    .unwrap()
+                    .get("openai_responses")
+                    .unwrap()["annotations"][0]["title"]
+                    .clone(),
+            ),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(titles, vec![json!("Bravo"), json!("Alpha")]);
+}
+
+/// Scripted gateways can gain or lose a snapshot's ID without repeating its annotations.
+#[test]
+fn streamed_citation_snapshots_with_inconsistent_ids_attach_once() {
+    for (done_id, terminal_id) in [("", "msg_cited"), ("msg_cited", "")] {
+        let annotations = json!([{"type": "url_citation", "start_index": 0, "end_index": 6,
+            "url": "https://example.org", "title": "Source"}]);
+        let mut done = cited_message(annotations.clone());
+        done["id"] = json!(done_id);
+        let mut terminal = done.clone();
+        terminal["id"] = json!(terminal_id);
+        let mut response = sample_response(ResponseStatus::Completed);
+        response
+            .output
+            .push(serde_json::from_value(terminal).unwrap());
+        let events = [
+            json!({"type": "response.output_text.delta", "item_id": "msg_cited", "output_index": 0,
+                "content_index": 0, "sequence_number": 1, "delta": "source"}),
+            json!({"type": "response.output_item.done", "output_index": 0, "sequence_number": 2, "item": done}),
+            json!({"type": "response.completed", "sequence_number": 3, "response": response}),
+        ];
+        let result = decoded_body("openai", &body_of(&events), None)
+            .outcome
+            .unwrap();
+        assert_eq!(choice_text_parts(&result), vec!["source"]);
+        let AssistantContent::Text(text) = &result.choice[0] else {
+            panic!("text part");
+        };
+        assert_eq!(
+            text.additional_params
+                .as_ref()
+                .unwrap()
+                .get("openai_responses")
+                .unwrap()["annotations"],
+            annotations
+        );
+    }
+}
+
+/// Empty snapshots must not introduce metadata or duplicate a text-only answer.
+#[test]
+fn streamed_citation_empty_snapshots_add_no_params() {
+    let message = json!({"type": "message", "id": "msg_cited", "role": "assistant", "status": "completed",
+        "content": [{"type": "output_text", "text": "source", "annotations": []}]});
+    let mut response = sample_response(ResponseStatus::Completed);
+    response
+        .output
+        .push(serde_json::from_value(message.clone()).unwrap());
+    let events = [
+        json!({"type": "response.output_text.delta", "item_id": "msg_cited", "output_index": 0,
+            "content_index": 0, "sequence_number": 1, "delta": "source"}),
+        json!({"type": "response.output_item.done", "output_index": 0, "sequence_number": 2, "item": message}),
+        json!({"type": "response.completed", "sequence_number": 3, "response": response}),
+    ];
+    let result = decoded_body("openai", &body_of(&events), None)
+        .outcome
+        .unwrap();
+    assert_eq!(result.choice, vec![AssistantContent::text("source")]);
+}
