@@ -197,11 +197,11 @@ impl ChatUsage {
 
     /// Normalize this accounting for a dialect with `quirks`, as the chat
     /// wire does: [`Self::to_normalized`], with the reasoning count left
-    /// unreported where the dialect's reasoning is not part of its completion
-    /// count ([`Quirks::reasoning_within_completion`](super::Quirks::reasoning_within_completion)).
+    /// unreported where the dialect's count cannot be trusted
+    /// ([`Quirks::reliable_reasoning_count`](super::Quirks::reliable_reasoning_count)).
     pub fn to_normalized_for(&self, quirks: &super::Quirks) -> crate::completion::Usage {
         let mut usage = self.to_normalized();
-        if !quirks.reasoning_within_completion {
+        if !quirks.reliable_reasoning_count {
             usage.reasoning_tokens = None;
         }
         usage

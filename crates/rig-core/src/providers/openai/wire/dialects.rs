@@ -395,7 +395,7 @@ pub const DOUBLEWORD: Dialect = Dialect {
         },
         // Qwen3.5 replies report more reasoning tokens than completion
         // tokens, while `total_tokens` counts only the completion.
-        reasoning_within_completion: false,
+        reliable_reasoning_count: false,
         ..Quirks::openai()
     },
     ..Dialect::gateway(

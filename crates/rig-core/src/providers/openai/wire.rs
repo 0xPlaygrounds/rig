@@ -565,11 +565,12 @@ pub struct Quirks {
     /// to this dialect: a gateway relays each upstream's own reasoning state,
     /// valid only for that family ([`upstream_reasoning_issuer`]).
     pub upstream_reasoning_issuer: bool,
-    /// Whether `completion_tokens_details.reasoning_tokens` is a part of
-    /// `completion_tokens`. When it is not, the reasoning count is left
+    /// Whether `completion_tokens_details.reasoning_tokens` can be trusted as
+    /// a part of `completion_tokens`, as OpenAI documents it. A dialect whose
+    /// replies report more reasoning than completion leaves the count
     /// unreported, so [`Usage`](crate::completion::Usage) never reports more
     /// reasoning than output.
-    pub reasoning_within_completion: bool,
+    pub reliable_reasoning_count: bool,
     /// Whether a bare JSON string is accepted as a text-only completion reply.
     pub accepts_bare_string_reply: bool,
     /// Whether document and file inputs may use provider file IDs.
@@ -635,7 +636,7 @@ impl Quirks {
             native_finish_reason: false,
             reasoning_details: false,
             upstream_reasoning_issuer: false,
-            reasoning_within_completion: true,
+            reliable_reasoning_count: true,
             accepts_bare_string_reply: false,
             accepts_file_ids: true,
             rewrite: BodyRewrite::None,
