@@ -1345,6 +1345,40 @@ fn terminal_record_normalizes_stop_reason_usage_and_metadata() {
     assert_eq!(response.usage.total_tokens, Some(10));
 }
 
+/// A terminal `message_delta` carrying only the output count, as Anthropic's
+/// older shape and some Messages gateways send it, keeps `message_start`'s
+/// cache counters, so input still counts the cached prefix.
+#[test]
+fn terminal_record_keeps_message_start_cache_counters() {
+    let decoded = decode([
+        classified(&format!(
+            r#"{{"type":"message_start","message":{{"id":"msg_1","role":"assistant","content":[],"model":"{CLAUDE_OPUS_4_8}","stop_reason":null,"stop_sequence":null,"usage":{{"input_tokens":3,"cache_read_input_tokens":2000,"cache_creation_input_tokens":100,"output_tokens":0}}}}}}"#
+        )),
+        StreamingEvent::ContentBlockDelta {
+            index: 0,
+            delta: ContentDelta::TextDelta {
+                text: "hi".to_string(),
+            },
+        },
+        message_delta(
+            "end_turn",
+            PartialUsage {
+                output_tokens: 5,
+                input_tokens: None,
+                cache_creation_input_tokens: None,
+                cache_creation: None,
+                cache_read_input_tokens: None,
+                output_tokens_details: None,
+            },
+        ),
+    ]);
+    let response = decoded.outcome.expect("the reply ended");
+    assert_eq!(response.usage.input_tokens, Some(3 + 2000 + 100));
+    assert_eq!(response.usage.cached_input_tokens, Some(2000));
+    assert_eq!(response.usage.cache_creation_input_tokens, Some(100));
+    assert_eq!(response.usage.total_tokens, Some(3 + 2000 + 100 + 5));
+}
+
 #[test]
 fn terminal_record_upgrades_end_turn_to_tool_calls_after_a_streamed_tool_call() {
     // Anthropic normally reports `tool_use`, but the finish must report tool
