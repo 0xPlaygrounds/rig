@@ -443,3 +443,47 @@ fn test_content_delta_function_call_event() {
     assert_eq!(call.id.as_deref(), Some("call-1"));
     assert_eq!(call.arguments, Some(json!({"location": "Paris"})));
 }
+
+/// An unstored interaction (`store: false`) streams its status update
+/// without an `interaction_id`; it is still that event, not a whole
+/// interaction that ends the reply. Frame as recorded in
+/// `gemini/interactions_api/code_execution_usage_streamed.yaml`.
+#[test]
+fn a_status_update_without_an_interaction_id_is_a_status_update() {
+    let event = classify_interactions_frame(
+        r#"{"event_type":"interaction.status_update","status":"in_progress"}"#,
+    );
+    assert!(
+        matches!(
+            event,
+            WireEvent::Known(InteractionsEvent::Sse(
+                InteractionSseEvent::InteractionStatusUpdate { .. }
+            ))
+        ),
+        "the status update decodes as itself"
+    );
+}
+
+/// A tagged frame that fails its typed decode (a `step.stop` without its
+/// index) is corrupt: its `status` key must never let it pass for a whole
+/// interaction, which would end the reply as if completed.
+#[test]
+fn a_tagged_frame_that_fails_its_decode_is_corrupt_not_a_whole_interaction() {
+    let event = classify_interactions_frame(r#"{"event_type":"step.stop","status":"completed"}"#);
+    assert!(
+        matches!(event, WireEvent::Corrupt(_)),
+        "a malformed tagged event is corrupt"
+    );
+}
+
+/// The unary reply, an untagged interaction resource, still decodes whole.
+#[test]
+fn an_untagged_interaction_resource_decodes_whole() {
+    let event = classify_interactions_frame(
+        r#"{"id":"v1_1","object":"interaction","status":"completed","steps":[]}"#,
+    );
+    assert!(
+        matches!(event, WireEvent::Known(InteractionsEvent::Whole(_))),
+        "the unary resource decodes whole"
+    );
+}

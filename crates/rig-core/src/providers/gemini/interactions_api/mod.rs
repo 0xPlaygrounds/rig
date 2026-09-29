@@ -1960,6 +1960,8 @@ pub mod interactions_api_types {
         },
         #[serde(rename = "interaction.status_update")]
         InteractionStatusUpdate {
+            /// Absent for an interaction that is not stored (`store: false`).
+            #[serde(default)]
             interaction_id: String,
             status: InteractionStatus,
             #[serde(skip_serializing_if = "Option::is_none")]
