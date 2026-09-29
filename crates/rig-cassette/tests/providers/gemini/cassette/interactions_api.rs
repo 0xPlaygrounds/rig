@@ -347,3 +347,111 @@ async fn interactions_usage_surfaces_thinking_and_cached_tokens() {
     )
     .await;
 }
+
+/// The code-execution request both tool-use cells send.
+fn code_execution_request() -> CompletionRequest {
+    CompletionRequest::new(
+        "Use code execution to compute the sum of the first 50 prime numbers, then state it.",
+    )
+    .additional_params(
+        serde_json::to_value(AdditionalParameters {
+            tools: Some(vec![Tool::CodeExecution]),
+            store: Some(false),
+            ..Default::default()
+        })
+        .expect("params should serialize"),
+    )
+}
+
+/// Rig's `Usage` against the Interactions `usage` object the reply carried:
+/// the tool-use prompt is input beside `total_input_tokens`, thinking is
+/// output beside `total_output_tokens`, and input plus output is the
+/// provider's own `total_tokens`. That last equality is what shows the
+/// tool-use tokens sit outside `total_input_tokens` rather than inside it.
+fn assert_tool_use_usage(usage: &rig::completion::Usage, raw: &serde_json::Value) {
+    let wire = raw.get("usage").expect("the reply carries its usage");
+    let count = |field: &str| {
+        wire.get(field)
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(0)
+    };
+    let tool_use = count("total_tool_use_tokens");
+    assert!(
+        tool_use > 0,
+        "code execution reports tool-use tokens, or this cell proves nothing: {wire}"
+    );
+    assert_eq!(usage.tool_use_prompt_tokens, Some(tool_use), "{wire}");
+    assert_eq!(
+        usage.input_tokens,
+        Some(count("total_input_tokens") + tool_use),
+        "input counts the tool-use prompt: {wire}"
+    );
+    assert_eq!(
+        usage.output_tokens,
+        Some(count("total_output_tokens") + count("total_thought_tokens")),
+        "output counts the thinking: {wire}"
+    );
+    assert_eq!(
+        usage.total_tokens,
+        Some(count("total_tokens")),
+        "input plus output is the provider's total: {wire}"
+    );
+    assert_eq!(
+        usage.total_tokens,
+        usage
+            .input_tokens
+            .zip(usage.output_tokens)
+            .map(|(input, output)| input + output),
+        "the total is input plus output: {usage:?}"
+    );
+}
+
+/// A hosted tool's prompt is input: Interactions reports it as
+/// `total_tool_use_tokens` beside `total_input_tokens`, and its own total
+/// counts it. Recorded because no other Interactions cassette carries a
+/// non-zero tool-use count (Google Search reports zero).
+#[tokio::test]
+async fn code_execution_usage_counts_the_tool_use_prompt_as_input() {
+    super::super::support::with_gemini_interactions_cassette(
+        "interactions_api/code_execution_usage",
+        |client| async move {
+            let model = client.interactions("gemini-3-flash-preview");
+            let response = model
+                .call(code_execution_request())
+                .await
+                .expect("code-execution completion should succeed");
+            assert_nonempty_response(&extract_text(&response.choice));
+            assert_tool_use_usage(&response.usage, &response.raw);
+        },
+    )
+    .await;
+}
+
+/// The streamed twin: the terminal `interaction.completed` usage maps the
+/// same way. Unstored (`store: false`), its status update carries no
+/// `interaction_id`; that frame once passed for a whole interaction and
+/// ended the reply before its answer and its usage.
+#[tokio::test]
+async fn code_execution_usage_counts_the_tool_use_prompt_as_input_streamed() {
+    super::super::support::with_gemini_interactions_cassette(
+        "interactions_api/code_execution_usage_streamed",
+        |client| async move {
+            let model = client.interactions("gemini-3-flash-preview");
+            let mut stream = model
+                .stream(code_execution_request())
+                .expect("stream should start");
+            let mut text = String::new();
+            while let Some(chunk) = stream.next().await {
+                if let Item::Event(StreamEvent::Text { text: delta, .. }) =
+                    chunk.expect("stream chunk should succeed")
+                {
+                    text.push_str(&delta);
+                }
+            }
+            let response = stream.finish().await.expect("the stream ends");
+            assert_nonempty_response(&text);
+            assert_tool_use_usage(&response.usage, &response.raw);
+        },
+    )
+    .await;
+}
