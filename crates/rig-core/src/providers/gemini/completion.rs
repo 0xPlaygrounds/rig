@@ -1366,8 +1366,13 @@ pub mod gemini_api_types {
     impl From<&UsageMetadata> for crate::completion::Usage {
         fn from(value: &UsageMetadata) -> crate::completion::Usage {
             let count = |count: i32| count as u64;
+            // Input is every token the request put in front of the model:
+            // the prompt plus the prompt Gemini's own hosted tools added
+            // (`toolUsePromptTokenCount`). Cached tokens are counted against
+            // both, so without the tool-use part they could exceed input.
+            let tool_use = value.tool_use_prompt_token_count.map_or(0, count);
             crate::completion::Usage {
-                input_tokens: Some(count(value.prompt_token_count)),
+                input_tokens: Some(count(value.prompt_token_count).saturating_add(tool_use)),
                 output_tokens: value.candidates_token_count.map(count),
                 cached_input_tokens: value.cached_content_token_count.map(count),
                 reasoning_tokens: value.thoughts_token_count.map(count),
