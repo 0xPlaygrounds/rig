@@ -15,9 +15,9 @@
 //! # Reading the numbers
 //!
 //! OpenAI reports `cached_tokens` as a **subset** of the prompt-token counter,
-//! not alongside it (see [`crate::cache_conformance::CacheAccounting::Subset`]),
-//! so turn 1's billed prompt is `input_tokens` on its own and the hit ratio is
-//! turn 2's cache read over that. It never reports cache *writes* — rig hardcodes
+//! as rig's `Usage` counts cache reads on every provider, so turn 1's billed
+//! prompt is `input_tokens` on its own and the hit ratio is turn 2's cache read
+//! over that. It never reports cache *writes* — rig hardcodes
 //! `cache_creation_input_tokens` to 0 on both paths through
 //! `providers::internal::completion_usage` — so turn 1 legitimately shows zero
 //! for both counters, and [`assert_warms`] does not require otherwise.
@@ -44,11 +44,10 @@ use rig_test_support::cassette_models::OpenAiModels;
 use serde_json::json;
 
 use crate::cache_conformance::{
-    AGENT_CACHE_PROMPT, CacheAccounting, CacheObservation, CacheProbe, CacheProbeLookupTool,
-    CacheSupport, assert_agent_growth_still_hits, assert_breakpoints_match_support,
-    assert_cache_conformance, assert_cache_key_stable, assert_prefix_stable, assert_warms,
-    observation_from_completion_calls, report_and_assert_live, run_cache_probe,
-    run_cache_probe_streaming,
+    AGENT_CACHE_PROMPT, CacheObservation, CacheProbe, CacheProbeLookupTool, CacheSupport,
+    assert_agent_growth_still_hits, assert_breakpoints_match_support, assert_cache_conformance,
+    assert_cache_key_stable, assert_prefix_stable, assert_warms, observation_from_completion_calls,
+    report_and_assert_live, run_cache_probe, run_cache_probe_streaming,
 };
 
 use super::super::support::{
@@ -65,7 +64,6 @@ pub(super) const CACHE_MODEL: &str = openai::GPT_4O_MINI;
 /// miss no matter what rig did.
 pub(super) const OPENAI_CACHE_SUPPORT: CacheSupport = CacheSupport {
     provider: "openai",
-    accounting: CacheAccounting::Subset,
     explicit_breakpoints: false,
     reports_writes: false,
     min_cacheable_tokens: 1024,

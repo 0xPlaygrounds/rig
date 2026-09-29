@@ -1574,7 +1574,7 @@ fn cache_padding(repetitions: usize) -> String {
 // descriptor states.
 
 use crate::cache_conformance::{
-    AGENT_CACHE_PROMPT, CacheAccounting, CacheProbe, CacheProbeLookupTool, CacheSupport,
+    AGENT_CACHE_PROMPT, CacheProbe, CacheProbeLookupTool, CacheSupport,
     assert_agent_growth_still_hits, assert_breakpoints_match_support, assert_cache_conformance,
     assert_prefix_stable, observation_from_completion_calls, run_cache_probe,
     run_cache_probe_streaming,
@@ -1584,7 +1584,6 @@ use crate::cache_conformance::{
 /// 1's billed prompt is `input_tokens`.
 pub(super) const ANTHROPIC_CACHE_SUPPORT: CacheSupport = CacheSupport {
     provider: "anthropic",
-    accounting: CacheAccounting::Subset,
     explicit_breakpoints: true,
     reports_writes: true,
     // Anthropic's documented minimum is 1,024 tokens for Sonnet- and Opus-class

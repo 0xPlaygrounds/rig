@@ -19,7 +19,7 @@ pub mod handle;
 pub mod message;
 pub mod request;
 
-pub use cache_cost::{CacheAccounting, CacheCost, CacheRates};
+pub use cache_cost::{CacheCost, CacheRates};
 pub use handle::ModelRef;
 pub use message::{AssistantContent, Message, MessageError};
 pub use request::*;

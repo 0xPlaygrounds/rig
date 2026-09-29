@@ -56,7 +56,7 @@ use rig_test_support::cassette_models::GeminiModels;
 use rig_test_support::cassette_models::MapWire;
 
 use crate::cache_conformance::{
-    AGENT_CACHE_PROMPT, CacheAccounting, CacheProbe, CacheProbeLookupTool, CacheSupport,
+    AGENT_CACHE_PROMPT, CacheProbe, CacheProbeLookupTool, CacheSupport,
     assert_agent_growth_still_hits, assert_breakpoints_match_support, assert_cache_conformance,
     assert_cache_key_stable, assert_prefix_stable, observation_from_completion_calls,
     report_and_assert_live, run_cache_probe, run_cache_probe_streaming,
@@ -71,7 +71,6 @@ pub(super) const CACHE_MODEL: &str = gemini::completion::GEMINI_2_5_FLASH;
 /// (2.5 Pro's is 2,048). The probe pads well past both.
 pub(super) const GEMINI_CACHE_SUPPORT: CacheSupport = CacheSupport {
     provider: "gemini",
-    accounting: CacheAccounting::Subset,
     explicit_breakpoints: false,
     reports_writes: false,
     min_cacheable_tokens: 1024,

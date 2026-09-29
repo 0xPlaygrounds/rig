@@ -21,7 +21,7 @@
 //! ```
 
 use crate::cache_conformance::{
-    AGENT_CACHE_PROMPT, CacheAccounting, CacheProbe, CacheProbeLookupTool, CacheSupport,
+    AGENT_CACHE_PROMPT, CacheProbe, CacheProbeLookupTool, CacheSupport,
     assert_agent_growth_still_hits, assert_cache_conformance, assert_prefix_stable,
     observation_from_completion_calls, report_and_assert_live, run_cache_probe,
     run_cache_probe_streaming,
@@ -34,7 +34,6 @@ pub(super) const CACHE_MODEL: &str = "openai/gpt-4o-mini";
 
 pub(super) const OPENROUTER_CACHE_SUPPORT: CacheSupport = CacheSupport {
     provider: "openrouter",
-    accounting: CacheAccounting::Subset,
     // OpenRouter *can* report cache writes (`cache_write_tokens`), and does for
     // upstreams that bill them separately such as Anthropic. This scenario
     // routes to an OpenAI model, whose cache writes are free and unreported, so

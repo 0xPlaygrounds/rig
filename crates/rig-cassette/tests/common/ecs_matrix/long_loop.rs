@@ -882,16 +882,6 @@ pub(crate) fn raw_usage(
     }
 }
 
-/// The wire's prompt tokens, for the usage table (row 7). Rig's input
-/// includes cache reads and writes on every wire.
-fn prompt_tokens(usage: &Usage) -> u64 {
-    rig_core::completion::CacheCost::from_usage(
-        usage,
-        rig_core::completion::CacheAccounting::Subset,
-    )
-    .prompt_tokens()
-}
-
 /// The shape a cell's record must have.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Shape {
@@ -1086,7 +1076,8 @@ pub(crate) fn assert_log(cell: &Cell, thinking: ThinkingWire, log: &EffectLog) {
             "{}: turn {n}'s usage is the wire's report",
             cell.name
         );
-        let prompt = prompt_tokens(usage);
+        // The prompt is `input_tokens`, cache reads and writes included.
+        let prompt = usage.input_tokens.unwrap_or(0);
         assert!(prompt > 0, "{}: turn {n} billed prompt tokens", cell.name);
         assert!(
             prompt >= last_prompt,
@@ -1531,8 +1522,8 @@ pub(crate) fn assert_log(cell: &Cell, thinking: ThinkingWire, log: &EffectLog) {
 }
 
 /// One answered completion's usage, as row 7's table holds it: `prompt` is
-/// the wire's prompt-token denominator ([`prompt_tokens`]), the rest the
-/// adapter's `Usage` (asserted equal to the wire's raw report in
+/// the prompt-token denominator (`input_tokens`, cache included), the rest
+/// the adapter's `Usage` (asserted equal to the wire's raw report in
 /// `assert_log` step 3, which is what makes these rows an oracle).
 #[derive(Clone, Copy, Debug, Serialize)]
 struct UsageRow {

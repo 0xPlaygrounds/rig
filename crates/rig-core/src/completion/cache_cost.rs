@@ -7,18 +7,6 @@ use serde::{Deserialize, Serialize};
 
 use super::Usage;
 
-/// How a provider counts cache reads and writes against
-/// [`Usage::input_tokens`].
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
-pub enum CacheAccounting {
-    /// Cache reads and writes are counted beside `input_tokens`, so the
-    /// prompt is the sum of all three. No provider's [`Usage`] counts this way.
-    Alongside,
-    /// Cache reads and writes are part of `input_tokens`, so the prompt is
-    /// `input_tokens` alone. Every provider's [`Usage`] counts this way.
-    Subset,
-}
-
 /// Prices of one model and tier, in USD per 1M tokens (storage: per 1M
 /// token-hours). The caller supplies them from the provider's price list;
 /// rig has none built in. A provider without a separate write price bills
@@ -48,34 +36,22 @@ pub struct CacheRates {
 /// calls (and of any cache resources beside them) and price the total with
 /// [`CacheCost::usd`].
 ///
-/// The same run priced on each provider, with the caller's rates from the
-/// provider's price list:
+/// A run priced the same way on any provider, with the caller's rates from
+/// the provider's price list:
 ///
 /// ```no_run
-/// use rig_core::completion::{CacheAccounting, CacheCost, CacheRates, Usage};
+/// use rig_core::completion::{CacheCost, CacheRates, Usage};
 /// use rig_core::providers::gemini::{AutoCache, CacheBook};
 ///
 /// # let calls: Vec<Usage> = Vec::new();
 /// # let book = CacheBook::new(AutoCache::default());
-/// let run = |accounting| -> CacheCost {
-///     calls
-///         .iter()
-///         .map(|usage| CacheCost::from_usage(usage, accounting))
-///         .sum()
-/// };
+/// let run: CacheCost = calls.iter().map(CacheCost::from_usage).sum();
 ///
-/// // Anthropic's cache reads and writes are part of input.
-/// let anthropic = run(CacheAccounting::Subset);
 /// let opus = CacheRates { input: 4.0, cached_read: 0.2, cache_write: 5.0, storage_per_hour: 0.0 };
-/// println!("${:.3}, {:.1}% saved", anthropic.usd(&opus), anthropic.saving(&opus) * 100.0);
-///
-/// // So are OpenAI's.
-/// let openai = run(CacheAccounting::Subset);
-/// let sol = CacheRates { input: 2.0, cached_read: 0.2, cache_write: 2.5, storage_per_hour: 0.0 };
-/// println!("${:.3}, {:.1}% saved", openai.usd(&sol), openai.saving(&sol) * 100.0);
+/// println!("${:.3}, {:.1}% saved", run.usd(&opus), run.saving(&opus) * 100.0);
 ///
 /// // Gemini: the calls, plus the cache book's creation and storage.
-/// let gemini = run(CacheAccounting::Subset) + CacheCost::from(&book.report());
+/// let gemini = run + CacheCost::from(&book.report());
 /// let flash = CacheRates { input: 0.75, cached_read: 0.075, cache_write: 0.75, storage_per_hour: 0.5 };
 /// println!("${:.3}", gemini.usd(&flash));
 /// ```
@@ -92,19 +68,17 @@ pub struct CacheCost {
 }
 
 impl CacheCost {
-    /// The billed input of one call. An unreported counter counts as zero;
-    /// under [`CacheAccounting::Subset`] reads and writes above
-    /// `input_tokens` leave no uncached input rather than a negative one.
-    pub fn from_usage(usage: &Usage, accounting: CacheAccounting) -> Self {
+    /// The billed input of one call: the input neither read from nor written
+    /// to a cache is `input_tokens - cached_input_tokens -
+    /// cache_creation_input_tokens`. An unreported counter counts as zero;
+    /// reads and writes above `input_tokens` leave no uncached input rather
+    /// than a negative one.
+    pub fn from_usage(usage: &Usage) -> Self {
         let input = usage.input_tokens.unwrap_or(0);
         let cache_reads = usage.cached_input_tokens.unwrap_or(0);
         let cache_writes = usage.cache_creation_input_tokens.unwrap_or(0);
-        let uncached_input = match accounting {
-            CacheAccounting::Alongside => input,
-            CacheAccounting::Subset => input.saturating_sub(cache_reads + cache_writes),
-        };
         Self {
-            uncached_input,
+            uncached_input: input.saturating_sub(cache_reads + cache_writes),
             cache_reads,
             cache_writes,
             storage_token_hours: 0.0,

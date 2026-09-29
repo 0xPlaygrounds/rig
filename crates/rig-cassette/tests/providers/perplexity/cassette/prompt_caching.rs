@@ -40,8 +40,8 @@
 use rig::providers::perplexity;
 
 use crate::cache_conformance::{
-    CacheAccounting, CacheProbe, CacheSupport, assert_no_meaningful_prefix_cache,
-    assert_prefix_stable, run_cache_probe, run_cache_probe_streaming,
+    CacheProbe, CacheSupport, assert_no_meaningful_prefix_cache, assert_prefix_stable,
+    run_cache_probe, run_cache_probe_streaming,
 };
 
 use super::super::support::with_perplexity_prompt_caching_cassette;
@@ -50,7 +50,6 @@ const CACHE_MODEL: &str = perplexity::SONAR;
 
 const PERPLEXITY_CACHE_SUPPORT: CacheSupport = CacheSupport {
     provider: "perplexity",
-    accounting: CacheAccounting::Subset,
     explicit_breakpoints: false,
     reports_writes: false,
     min_cacheable_tokens: 1024,

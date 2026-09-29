@@ -42,7 +42,7 @@
 use serde_json::{Value, json};
 
 use crate::cache_conformance::{
-    AGENT_CACHE_PROMPT, CacheAccounting, CacheProbe, CacheProbeLookupTool, CacheSupport,
+    AGENT_CACHE_PROMPT, CacheProbe, CacheProbeLookupTool, CacheSupport,
     assert_breakpoints_match_support, assert_cache_conformance, assert_prefix_stable,
     run_cache_probe, run_cache_probe_streaming,
 };
@@ -61,7 +61,6 @@ const LLAMACPP_CACHE_SUPPORT: CacheSupport = CacheSupport {
     provider: "llamacpp",
     // `openai::Usage`: `prompt_tokens_details.cached_tokens` is a breakdown of
     // `prompt_tokens`, not a sibling of it.
-    accounting: CacheAccounting::Subset,
     // The KV cache is automatic; there is no `cache_control` on this wire.
     explicit_breakpoints: false,
     // llama.cpp reports reads only. There is no cache-creation counter, and

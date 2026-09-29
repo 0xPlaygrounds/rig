@@ -16,7 +16,7 @@ use std::time::Duration;
 
 use rig_agent::agent::{Agent, MultiTurnStreamItem, StreamingError};
 use rig_cassette::http::CassetteClock;
-use rig_core::completion::{CacheAccounting, CacheCost, CacheRates, Message, Usage};
+use rig_core::completion::{CacheCost, CacheRates, Message, Usage};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
@@ -237,12 +237,6 @@ impl CacheWire {
         }
     }
 
-    /// How rig's `Usage` counts cached tokens against input: inside it, on
-    /// every wire.
-    pub fn accounting(self) -> CacheAccounting {
-        CacheAccounting::Subset
-    }
-
     /// Whether `path` is a completion call on this wire.
     fn is_call(self, path: &str) -> bool {
         match self {
@@ -256,7 +250,8 @@ impl CacheWire {
     }
 
     /// The call's usage from its response body (JSON, or SSE frames), as rig
-    /// reports it: input, cached reads, cache writes and output, plus the
+    /// reports it: input (cache reads and writes included), cached reads,
+    /// cache writes, output (reasoning included) and their total, plus the
     /// thoughts Gemini counts apart from output.
     fn usage(self, response: &str) -> Option<(Usage, u64)> {
         let frames: Vec<Value> = match serde_json::from_str::<Value>(response) {
@@ -268,7 +263,7 @@ impl CacheWire {
                 .collect(),
         };
         let count = |value: &Value, pointer: &str| value.pointer(pointer).and_then(Value::as_u64);
-        match self {
+        let read = match self {
             Self::Gemini => frames
                 .iter()
                 .filter_map(|frame| frame.get("usageMetadata"))
@@ -364,7 +359,14 @@ impl CacheWire {
                     };
                     (usage, 0)
                 }),
-        }
+        };
+        read.map(|(mut usage, thoughts)| {
+            usage.total_tokens = usage
+                .input_tokens
+                .zip(usage.output_tokens)
+                .map(|(input, output)| input + output);
+            (usage, thoughts)
+        })
     }
 
     /// The request's (or a Gemini cache's) messages.
@@ -647,7 +649,7 @@ pub struct Figures {
     pub retries: usize,
     /// First to last reading of the session clock, when it has readings.
     pub recording_seconds: Option<u64>,
-    /// Prompt tokens, by the provider's accounting.
+    /// Prompt tokens: the calls' `input_tokens`.
     pub prompt: u64,
     /// Cached-read tokens.
     pub cached: u64,
@@ -857,11 +859,10 @@ fn figures(
     resources: CacheCost,
     retries: usize,
 ) -> Figures {
-    let accounting = run.wire.accounting();
     let billed: Vec<CacheCost> = recording
         .calls
         .iter()
-        .map(|call| CacheCost::from_usage(&call.usage, accounting))
+        .map(|call| CacheCost::from_usage(&call.usage))
         .collect();
     let calls: CacheCost = billed.iter().copied().sum();
     let total = calls + resources;
@@ -1033,7 +1034,7 @@ pub fn check(
         );
         if let Some(floor) = limits.min_call_share {
             assert_no_collapse(&recording);
-            assert_call_share(&recording, run.wire.accounting(), floor);
+            assert_call_share(&recording, floor);
         }
         if let Some(cap) = limits.max_writes_share {
             assert!(
@@ -1049,16 +1050,18 @@ pub fn check(
 }
 
 /// Rig's `Usage` for every call is what the wire reported: input, cached
-/// reads and cache writes. The recording may hold more successful calls than
-/// rig reported, but only in a run that retried a turn: a turn that failed
-/// after a successful call reports none of its calls. On a wire that counts
-/// cache tokens inside input, reads and writes never exceed input.
+/// reads, cache writes, output and total. The recording may hold more
+/// successful calls than rig reported, but only in a run that retried a
+/// turn: a turn that failed after a successful call reports none of its
+/// calls. Reads and writes never exceed input.
 fn assert_usage_matches_wire(recording: &Recording, log: &RunLog) {
     let key = |usage: &Usage| {
         (
             usage.input_tokens.unwrap_or(0),
             usage.cached_input_tokens.unwrap_or(0),
             usage.cache_creation_input_tokens.unwrap_or(0),
+            usage.output_tokens.unwrap_or(0),
+            usage.total_tokens.unwrap_or(0),
         )
     };
     assert!(
@@ -1076,7 +1079,8 @@ fn assert_usage_matches_wire(recording: &Recording, log: &RunLog) {
         let position = wire.iter().position(|call| *call == usage);
         assert!(
             position.is_some(),
-            "rig reported usage (input, cached, written) {usage:?}, which no recorded call has"
+            "rig reported usage (input, cached, written, output, total) {usage:?}, which no \
+             recorded call has"
         );
         if let Some(position) = position {
             wire.swap_remove(position);
@@ -1087,15 +1091,13 @@ fn assert_usage_matches_wire(recording: &Recording, log: &RunLog) {
         "{} recorded calls have no usage in rig's report, and no turn was retried: {wire:?}",
         wire.len()
     );
-    if recording.wire.accounting() == CacheAccounting::Subset {
-        for call in &recording.calls {
-            let (input, cached, written) = key(&call.usage);
-            assert!(
-                cached + written <= input,
-                "interaction {}: cached {cached} + written {written} > input {input}",
-                call.index
-            );
-        }
+    for call in &recording.calls {
+        let (input, cached, written, _, _) = key(&call.usage);
+        assert!(
+            cached + written <= input,
+            "interaction {}: cached {cached} + written {written} > input {input}",
+            call.index
+        );
     }
 }
 
@@ -1105,7 +1107,7 @@ fn assert_no_collapse(recording: &Recording) {
     let billed: Vec<CacheCost> = recording
         .calls
         .iter()
-        .map(|call| CacheCost::from_usage(&call.usage, recording.wire.accounting()))
+        .map(|call| CacheCost::from_usage(&call.usage))
         .collect();
     for (call, billed) in after_first_read(recording, &billed) {
         assert!(
@@ -1119,11 +1121,11 @@ fn assert_no_collapse(recording: &Recording) {
 
 /// Every call from its conversation's first cache read on covers at least
 /// `floor` of its prompt tokens.
-fn assert_call_share(recording: &Recording, accounting: CacheAccounting, floor: f64) {
+fn assert_call_share(recording: &Recording, floor: f64) {
     let billed: Vec<CacheCost> = recording
         .calls
         .iter()
-        .map(|call| CacheCost::from_usage(&call.usage, accounting))
+        .map(|call| CacheCost::from_usage(&call.usage))
         .collect();
     assert!(
         billed.iter().any(|call| call.cache_reads > 0),

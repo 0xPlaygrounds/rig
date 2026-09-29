@@ -45,7 +45,7 @@
 use rig::providers::cohere;
 
 use crate::cache_conformance::{
-    AGENT_CACHE_PROMPT, CacheAccounting, CacheProbe, CacheProbeLookupTool, CacheSupport,
+    AGENT_CACHE_PROMPT, CacheProbe, CacheProbeLookupTool, CacheSupport,
     assert_breakpoints_match_support, assert_cache_warms_over_turns, assert_prefix_stable,
     run_cache_probe, run_cache_probe_streaming,
 };
@@ -56,7 +56,6 @@ const CACHE_MODEL: &str = cohere::COMMAND_A_03_2025;
 
 const COHERE_CACHE_SUPPORT: CacheSupport = CacheSupport {
     provider: "cohere",
-    accounting: CacheAccounting::Subset,
     explicit_breakpoints: false,
     reports_writes: false,
     min_cacheable_tokens: 1024,
