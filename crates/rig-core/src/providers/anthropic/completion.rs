@@ -1099,6 +1099,18 @@ pub(super) fn default_max_tokens_for_model(model: &str) -> Option<u64> {
     }
 }
 
+/// Models that answer a forced `tool_choice` (`any` or `tool`) with a 400, per
+/// their what's-new pages.
+const REJECTS_FORCED_TOOL_CHOICE: [&str; 3] =
+    [CLAUDE_OPUS_5_5, CLAUDE_SONNET_5_5, CLAUDE_FABLE_5_1];
+
+/// Whether `model` rejects a forced tool choice.
+pub(super) fn rejects_forced_tool_choice(model: &str) -> bool {
+    REJECTS_FORCED_TOOL_CHOICE
+        .iter()
+        .any(|id| is_model(model, id))
+}
+
 /// Whether `model` accepts `role: "system"` inside `messages`.
 pub(super) fn supports_mid_conversation_system_messages(model: &str) -> bool {
     MID_CONVERSATION_SYSTEM.iter().any(|id| is_model(model, id))

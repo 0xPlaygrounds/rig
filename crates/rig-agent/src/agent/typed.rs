@@ -409,6 +409,14 @@ fn recover_output<T: DeserializeOwned>(
         }
         TypedOutput::OutputTool => {
             let submissions = response.output_tool_calls();
+            // A whole JSON answer is the run's output too: the protocol accepts
+            // schema-valid text, and a model that rejects forced tool choice
+            // answers in native structured output instead of calling the tool.
+            if submissions == 0
+                && let Ok(value) = serde_json::from_str::<T>(response.output.trim())
+            {
+                return Ok(value);
+            }
             if submissions == 0 {
                 tracing::warn!(
                     "The submit tool was not called. If this happens more than once, please ensure the model you are using is powerful enough to reliably call tools."

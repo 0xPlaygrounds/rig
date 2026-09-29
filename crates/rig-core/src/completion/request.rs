@@ -472,6 +472,11 @@ pub struct ProviderCapabilities {
     /// Whether native structured output can remain enabled with tool calls
     /// without suppressing them. Defaults to `false`.
     pub composes_native_output_with_tools: bool,
+    /// Whether the model answers a forced tool choice (`Required` or
+    /// `Specific`) with an error. Rig then does not force the output tool
+    /// of its own structured-output flow (the extractor). Defaults to `false`.
+    #[serde(default, skip_serializing_if = "crate::json_utils::is_false")]
+    pub rejects_forced_tool_choice: bool,
 }
 
 impl ProviderCapabilities {
@@ -479,12 +484,19 @@ impl ProviderCapabilities {
     pub const fn new() -> Self {
         Self {
             composes_native_output_with_tools: false,
+            rejects_forced_tool_choice: false,
         }
     }
 
     /// Declare whether native structured output composes with tool calls.
     pub const fn with_native_output_tool_composition(mut self, supported: bool) -> Self {
         self.composes_native_output_with_tools = supported;
+        self
+    }
+
+    /// Declare whether the model rejects a forced tool choice.
+    pub const fn with_forced_tool_choice_rejected(mut self, rejected: bool) -> Self {
+        self.rejects_forced_tool_choice = rejected;
         self
     }
 }

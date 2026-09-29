@@ -171,6 +171,13 @@ impl Chat {
 
     /// Apply typed dialect rewrites, rejecting unsupported tool choices or parameters.
     fn prepare(&self, request: &mut unary::CompletionRequest) -> Result<(), EncodeError> {
+        // Only OpenAI's own endpoint serves its reasoning families.
+        if matches!(
+            self.provider.dialect.quirks.output_cap,
+            OutputCap::OpenAiReasoningFamilies
+        ) {
+            refuse_tools_while_reasoning(request)?;
+        }
         match self.provider.dialect.quirks.rewrite {
             BodyRewrite::GroqCompoundTools => {
                 fold_groq_native_tools(request)?;
@@ -250,6 +257,52 @@ impl Chat {
         }
         Ok(())
     }
+}
+
+/// GPT-6 models that call function tools on Chat Completions only at
+/// `reasoning_effort: "none"` (their model pages), and those that do not
+/// support `"none"` at all, so never call tools there.
+const TOOLS_ONLY_WITHOUT_REASONING: [&str; 2] = [unary::GPT_6_SOL, unary::GPT_6_LUNA];
+const NO_TOOLS_ON_CHAT: [&str; 2] = [unary::GPT_6_ASTRA, unary::GPT_6_1_SOL];
+
+/// Whether `model` is `id` or one of its dated snapshots (`<id>-YYYY-MM-DD`).
+fn is_model(model: &str, id: &str) -> bool {
+    model
+        .strip_prefix(id)
+        .is_some_and(|rest| rest.is_empty() || rest.starts_with("-20"))
+}
+
+/// Refuse a Chat Completions request with function tools on a GPT-6 model
+/// that would answer it with a 400, naming the fix. A caller who already
+/// sends `reasoning_effort: "none"` where the model takes it is not refused.
+fn refuse_tools_while_reasoning(request: &unary::CompletionRequest) -> Result<(), EncodeError> {
+    if request.tools.is_empty() {
+        return Ok(());
+    }
+    let model = request.model.as_str();
+    if NO_TOOLS_ON_CHAT.iter().any(|id| is_model(model, id)) {
+        return Err(EncodeError::request(format!(
+            "{model} cannot call function tools on Chat Completions: it takes them there only \
+             at reasoning_effort \"none\", which it does not support. Use the Responses wire."
+        )));
+    }
+    let effort_none = request
+        .additional_params
+        .as_ref()
+        .and_then(|params| params.get("reasoning_effort"))
+        .and_then(serde_json::Value::as_str)
+        == Some("none");
+    if TOOLS_ONLY_WITHOUT_REASONING
+        .iter()
+        .any(|id| is_model(model, id))
+        && !effort_none
+    {
+        return Err(EncodeError::request(format!(
+            "{model} calls function tools on Chat Completions only at reasoning_effort \"none\": \
+             send `\"reasoning_effort\": \"none\"` in additional_params, or use the Responses wire."
+        )));
+    }
+    Ok(())
 }
 
 fn as_array_mut(value: &mut serde_json::Value) -> Option<&mut Vec<serde_json::Value>> {
