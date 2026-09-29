@@ -113,6 +113,48 @@ pub fn canonical_prefix_blocks(path: &str, body: &Value) -> Option<Vec<PrefixBlo
     Some(blocks)
 }
 
+/// The request a Gemini `generateContent` body stands for when it reads an
+/// explicit cache: the cache's system instruction, tools, tool config and
+/// contents, followed by the body's own contents.
+///
+/// A request that reads a cache sends only what came after it, so compared
+/// raw with the request before it, it looks like a different, shorter
+/// conversation. Spliced with the body that created the cache, it is compared
+/// as the whole conversation it is: a roll to a new cache is then clean, and
+/// a cache that dropped or rewrote an earlier turn is still a violation.
+///
+/// `cache` is the `cachedContents` create body. Returns `None` when `body`
+/// names no cache.
+pub fn splice_cached_content(body: &Value, cache: &Value) -> Option<Value> {
+    body.get("cachedContent")?.as_str()?;
+    let mut spliced = body.clone();
+    let object = spliced.as_object_mut()?;
+    object.remove("cachedContent");
+    for key in ["systemInstruction", "tools", "toolConfig"] {
+        match cache.get(key) {
+            Some(value) => {
+                object.insert(key.to_owned(), value.clone());
+            }
+            None => {
+                object.remove(key);
+            }
+        }
+    }
+    let mut contents = cache
+        .get("contents")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    contents.extend(
+        body.get("contents")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default(),
+    );
+    object.insert("contents".to_owned(), Value::Array(contents));
+    Some(spliced)
+}
+
 /// Strip cache *metadata* so the rule compares cached *content*.
 ///
 /// Anthropic's documented incremental-caching pattern moves the conversation
