@@ -628,13 +628,7 @@ impl ProviderCassette {
     /// return at once on replay. Panics above [`MAX_PAUSE`] (60 s): no
     /// cassette test waits longer.
     pub async fn pause(&self, duration: std::time::Duration) {
-        assert!(
-            duration <= MAX_PAUSE,
-            "a cassette pause of {duration:?} exceeds the {MAX_PAUSE:?} limit"
-        );
-        if self.mode.records() {
-            tokio::time::sleep(duration).await;
-        }
+        self.clock.pause(duration).await;
     }
 
     /// Write completed, scrubbed exchanges to `path` without finalizing recording.

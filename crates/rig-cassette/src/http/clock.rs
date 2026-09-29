@@ -114,6 +114,19 @@ impl CassetteClock {
         }
     }
 
+    /// Wait `duration` while recording, so a live provider sees the pause;
+    /// return at once on replay. Panics above [`MAX_PAUSE`] (60 s): no
+    /// cassette test waits longer.
+    pub async fn pause(&self, duration: std::time::Duration) {
+        assert!(
+            duration <= MAX_PAUSE,
+            "a cassette pause of {duration:?} exceeds the {MAX_PAUSE:?} limit"
+        );
+        if self.state.mode == CassetteMode::Record {
+            tokio::time::sleep(duration).await;
+        }
+    }
+
     /// Save the readings beside the fixture (recording) or check that
     /// replay used every one of them.
     pub(crate) async fn finish(&self) {
