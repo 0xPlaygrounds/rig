@@ -299,6 +299,39 @@ async fn gemini_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, Ge
     (cassette, gemini)
 }
 
+/// Automatic-caching long runs
+/// (`crates/rig-cassette/fixtures/cassettes/gemini/auto_caching/`). The body
+/// gets the client and the session's recorded clock, which the cache book
+/// reads so its time-dependent decisions replay; it returns whatever the
+/// test wants to assert on after the session is finished.
+pub(super) async fn with_gemini_auto_caching_cassette<F, Fut, R>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) -> R
+where
+    F: FnOnce(rig::providers::gemini::Gemini, crate::cassettes::CassetteClock) -> Fut,
+    Fut: Future<Output = R>,
+{
+    let spec = spec.into();
+    let (cassette, config) = gemini_cassette(spec).await;
+    let client = config.connect(rig::rig_reqwest::shared());
+    let clock = cassette.clock();
+    let result = AssertUnwindSafe(test_body(client, clock))
+        .catch_unwind()
+        .await;
+    crate::cassettes::checkpoint_attempt(&cassette, "gemini", spec.scenario()).await;
+    match result {
+        Ok(value) => {
+            cassette.finish_after_test(Ok(())).await;
+            value
+        }
+        Err(payload) => {
+            cassette.finish_after_test(Err(payload)).await;
+            unreachable!("finishing a failed session resumes its panic")
+        }
+    }
+}
+
 /// Cassette wrapper for the run-lifecycle matrix (PR #2407): the client sends
 /// through a [`rig::http_client::DynHttpClient`] carrying the supplied
 /// [`rig::http_client::HttpMiddleware`], so the same recorded exchange

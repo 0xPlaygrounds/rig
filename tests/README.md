@@ -475,6 +475,18 @@ Practical consequences for anyone touching these fixtures:
   padding its meaning. If it ever starts caching, the documented 1,024-token
   minimum is wrong and every probe's padding needs revisiting.
 
+**Automatic caching** (`gemini::caching`, fixtures under
+`gemini/auto_caching/`) is recorded as long runs: 100-turn support chats
+(about 200 calls each), a 60-call tool loop, four sub-agents and a lifecycle
+run. Their cache book reads the session's recorded clock, so each fixture has
+a `.clock.json` beside it. Besides each run's own thresholds, every run that
+uses a book asserts on its recorded traffic that no request re-sends what its
+cache holds, that cache plus request tail is the conversation byte for byte,
+that every created cache is deleted, that every replaced cache was read at
+least three times, and that cache creation stays under 15% of prompt tokens.
+A test turn retries a Google 5xx or 429 up to three times with a record-only
+pause, so the recording keeps the failed attempts and replay matches.
+
 ## Live Provider Tests
 
 Live provider tests use real provider APIs, local model servers, or account credentials. They are
