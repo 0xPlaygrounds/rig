@@ -251,8 +251,8 @@ impl CacheWire {
 
     /// The call's usage from its response body (JSON, or SSE frames), as rig
     /// reports it: input (cache reads and writes included), cached reads,
-    /// cache writes, output (reasoning included) and their total, plus the
-    /// thoughts Gemini counts apart from output.
+    /// cache writes, output (reasoning included) and their total, plus
+    /// Gemini's thoughts on their own (already inside that output).
     fn usage(self, response: &str) -> Option<(Usage, u64)> {
         let frames: Vec<Value> = match serde_json::from_str::<Value>(response) {
             Ok(value) => vec![value],

@@ -559,7 +559,13 @@ fn reported_total(documents: &[Value]) -> Option<u64> {
         .find_map(|key| usage.get(*key)?.as_u64())
 }
 
-async fn census() -> Census {
+/// The census, decoded once and shared by both tests.
+async fn census() -> &'static Census {
+    static CENSUS: tokio::sync::OnceCell<Census> = tokio::sync::OnceCell::const_new();
+    CENSUS.get_or_init(take_census).await
+}
+
+async fn take_census() -> Census {
     let root = cassette_root();
     let mut provider_dirs: Vec<String> = std::fs::read_dir(&root)
         .expect("cassette root is readable")
@@ -683,7 +689,7 @@ async fn every_recorded_completion_is_censused() {
         );
     }
     let census = census().await;
-    report(&census);
+    report(census);
 
     assert!(
         census.unknown.is_empty(),

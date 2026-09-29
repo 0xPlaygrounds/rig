@@ -58,7 +58,7 @@ fn tool_use_tokens_survive_the_interactions_mapping() {
 /// The total is input plus output, with or without a provider total, so it
 /// counts every component: thinking and tool use included.
 #[test]
-fn the_total_fallback_counts_thinking_and_tool_use() {
+fn the_total_counts_thinking_and_tool_use_without_a_provider_total() {
     let mut wire = recorded();
     wire.total_tokens = None;
     wire.total_tool_use_tokens = Some(5);
