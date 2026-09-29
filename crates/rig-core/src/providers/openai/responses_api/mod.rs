@@ -705,7 +705,7 @@ pub struct ResponsesToolDefinition {
     /// Always serialized on a function tool: the Responses API treats an omitted `strict`
     /// as "attempt strict mode", so `false` must reach the wire for non-strict tools to
     /// actually be non-strict. Never serialized on a hosted tool, which answers the field
-    /// with a 400 ("Unknown parameter: 'tools[0].strict'").
+    /// with a 400 (`Unknown parameter: 'tools[0].strict'`).
     #[serde(default, deserialize_with = "json_utils::null_or_default")]
     pub strict: bool,
     /// Tool description.
