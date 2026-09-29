@@ -17,6 +17,9 @@
 //! the cache-prefix census does: every 200-status reply is either a
 //! completion the census decodes or an endpoint it names as carrying none,
 //! and every provider directory yields decoded completions.
+//! [`every_recorded_call_keeps_the_usage_contract`] asserts `Usage`'s
+//! contract on every decoded call of every provider, and that rig's total is
+//! the provider's wherever the provider reports one.
 
 #![allow(clippy::expect_used, clippy::panic, clippy::indexing_slicing)]
 
@@ -710,5 +713,55 @@ async fn every_recorded_completion_is_censused() {
     println!(
         "USAGE_CENSUS_TOTAL {}",
         json!({ "calls": census.calls.len(), "decoded": decoded })
+    );
+}
+
+/// `Usage`'s contract on every decoded call of every provider: cached plus
+/// written input within input, reasoning within output, the total input plus
+/// output, and that total the provider's own wherever it reports one.
+#[tokio::test]
+async fn every_recorded_call_keeps_the_usage_contract() {
+    let census = census().await;
+    let mut violations = Vec::new();
+    for call in &census.calls {
+        let Some(usage) = &call.usage else {
+            continue;
+        };
+        let mut broken = Vec::new();
+        if cache_exceeds_input(usage) {
+            broken.push("cached + written > input");
+        }
+        if reasoning_exceeds_output(usage) {
+            broken.push("reasoning > output");
+        }
+        if usage.total_tokens != input_plus_output(usage) {
+            broken.push("total != input + output");
+        }
+        if call.reported_total.is_some() && call.reported_total != input_plus_output(usage) {
+            broken.push("the provider's total != input + output");
+        }
+        if !broken.is_empty() {
+            violations.push(format!(
+                "{} ({}/{}): {}; usage {usage:?}, provider total {:?}",
+                call.key,
+                call.provider,
+                call.wire,
+                broken.join(", "),
+                call.reported_total
+            ));
+        }
+    }
+    let decoded = census
+        .calls
+        .iter()
+        .filter(|call| call.usage.is_some())
+        .count();
+    assert!(decoded > 0, "the census decoded no completion");
+    assert!(
+        violations.is_empty(),
+        "{} of {decoded} recorded calls break `Usage`'s contract; fix the provider's usage \
+         mapping:\n{}",
+        violations.len(),
+        violations.join("\n")
     );
 }

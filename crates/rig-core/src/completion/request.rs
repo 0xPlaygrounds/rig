@@ -386,6 +386,16 @@ impl From<CompletionResponseRepr> for CompletionResponse {
 
 /// The token usage a provider reported for one completion.
 ///
+/// Every provider mapping keeps one contract, so the counters read the same
+/// way on every provider:
+///
+/// - `cached_input_tokens + cache_creation_input_tokens <= input_tokens`:
+///   input counts every prompt token, cache reads and writes included.
+/// - `reasoning_tokens <= output_tokens`: output counts every generated
+///   token, reasoning included.
+/// - `total_tokens == input_tokens + output_tokens`, absent unless both are
+///   reported.
+///
 /// A counter the provider did not send is `None`; a reported zero is
 /// `Some(0)`. Serialized as the same keys, absent when `None`.
 #[derive(Debug, Default, PartialEq, Eq, Clone, Copy, Serialize, Deserialize)]
