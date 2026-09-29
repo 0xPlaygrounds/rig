@@ -190,13 +190,14 @@ impl<'id> EchoDecoder<'id> {
         if let Some(part) = self.text.take() {
             out.close_text(part);
         }
-        out.end(
-            Finish::new(crate::completion::Usage {
+        out.end(Finish {
+            usage: crate::completion::Usage {
                 output_tokens: Some(usage.output_tokens),
                 ..crate::completion::Usage::default()
-            })
-            .with_optional_model(Some("echo-1".to_owned())),
-        )
+            },
+            model: Some("echo-1".to_owned()),
+            ..Finish::default()
+        })
     }
 }
 

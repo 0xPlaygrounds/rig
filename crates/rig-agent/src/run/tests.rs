@@ -140,16 +140,19 @@ fn run_step_and_outcome_round_trip_through_serde() {
 
 #[test]
 fn from_response_matches_hand_assembly_field_for_field() {
-    let resp = CompletionResponse::new(
-        vec![AssistantContent::text("hi"), tool_call("call_1", "add")],
-        usage(11, 7),
-        "openai",
-        json!({"provider": "payload"}),
-    )
-    .with_message_id("msg_1".to_string())
-    .with_response_id("chatcmpl_1".to_string())
-    .with_provider_request_id("req_1".to_string())
-    .with_finish_reason(FinishReason::ToolCalls);
+    let resp = {
+        let mut response = CompletionResponse::new(
+            vec![AssistantContent::text("hi"), tool_call("call_1", "add")],
+            usage(11, 7),
+            "openai",
+            json!({"provider": "payload"}),
+        )
+        .with_finish_reason(FinishReason::ToolCalls);
+        response.message_id = Some("msg_1".to_string());
+        response.response_id = Some("chatcmpl_1".to_string());
+        response.provider_request_id = Some("req_1".to_string());
+        response
+    };
 
     let executable = tool_names(&["add"]);
     let allowed = tool_names(&["add", "final_output"]);

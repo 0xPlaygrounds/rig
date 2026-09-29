@@ -199,9 +199,9 @@ impl<'id> Decoder<'id, rig_core::operation::Embedding, EmbeddingFrame> for Embed
             return Err(ProviderError::Response(error.to_string()));
         }
         out.raw(serde_json::Value::Array(std::mem::take(&mut self.raw)));
-        Ok(out.end(
-            embeddings::EmbeddingResponse::new(std::mem::take(&mut self.embeddings), PROVIDER_NAME)
-                .with_usage(self.usage),
-        ))
+        Ok(out.end(embeddings::EmbeddingResponse {
+            usage: self.usage,
+            ..embeddings::EmbeddingResponse::new(std::mem::take(&mut self.embeddings))
+        }))
     }
 }

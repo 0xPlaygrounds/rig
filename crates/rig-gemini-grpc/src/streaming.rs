@@ -116,12 +116,13 @@ impl<'id> rig_core::wire::Decoder<'id, Completion, proto::GenerateContentRespons
         self.close_text(&mut out);
         self.thoughts.close(&mut out, None);
         out.raw(serde_json::to_value(&last)?);
-        Ok(out.end(
-            Finish::new(super::completion::map_usage(last.usage_metadata.as_ref()))
-                .with_optional_reason(finish_reason)
-                .with_optional_response_id(Some(last.response_id).filter(|id| !id.is_empty()))
-                .with_optional_model(Some(last.model_version).filter(|model| !model.is_empty())),
-        ))
+        Ok(out.end(Finish {
+            usage: super::completion::map_usage(last.usage_metadata.as_ref()),
+            reason: finish_reason,
+            response_id: Some(last.response_id).filter(|id| !id.is_empty()),
+            model: Some(last.model_version).filter(|model| !model.is_empty()),
+            ..Finish::default()
+        }))
     }
 }
 

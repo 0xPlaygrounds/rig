@@ -2798,9 +2798,9 @@ mod raw_capture {
         assert!(raw.get("provider_request_id").is_none());
         assert_eq!(typed.provider_request_id, None);
 
-        let refolded = wire::fold_body(crate::providers::openai::wire::OPENAI.name, typed)
-            .expect("re-fold the capture")
-            .with_optional_provider_request_id(Some(REQUEST_ID.to_string()));
+        let mut refolded = wire::fold_body(crate::providers::openai::wire::OPENAI.name, typed)
+            .expect("re-fold the capture");
+        refolded.provider_request_id = Some(REQUEST_ID.to_string());
         assert_eq!(response.identity(), refolded.identity());
         assert_eq!(response.finish_reason(), refolded.finish_reason());
         assert_eq!(response.model, refolded.model);

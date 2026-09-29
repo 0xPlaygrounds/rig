@@ -71,16 +71,18 @@ impl Transport<Local<rig_core::operation::Embedding>> for Tiny {
         texts: Vec<String>,
         _exchange: Exchange,
     ) -> Opening<Step<rig_core::operation::Embedding>> {
-        let response = EmbeddingResponse::new(
-            texts
-                .into_iter()
-                .map(|document| Embedding {
-                    vec: vec![document.len() as f64, 1.0],
-                    document,
-                })
-                .collect(),
-            "tiny",
-        );
+        let response = EmbeddingResponse {
+            provider: "tiny".into(),
+            ..EmbeddingResponse::new(
+                texts
+                    .into_iter()
+                    .map(|document| Embedding {
+                        vec: vec![document.len() as f64, 1.0],
+                        document,
+                    })
+                    .collect(),
+            )
+        };
         Opening::ready(Opened::new(futures::stream::iter([Ok(Step::End(
             response,
         ))])))

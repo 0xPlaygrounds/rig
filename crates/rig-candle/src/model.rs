@@ -395,9 +395,11 @@ impl<'id> rig_core::wire::Decoder<'id, Completion, CandleFrame> for CandleAdapte
             GenerationEvent::Final(response) => {
                 self.close_text(&mut out);
                 out.raw(serde_json::to_value(&response)?);
-                return Ok(out.end(
-                    Finish::new((&response).into()).with_reason(response.finish_reason.into()),
-                ));
+                return Ok(out.end(Finish {
+                    usage: (&response).into(),
+                    reason: Some(response.finish_reason.into()),
+                    ..Finish::default()
+                }));
             }
         }
         Ok(Flow::More)

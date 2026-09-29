@@ -230,7 +230,7 @@ pub struct ResponseIdentity {
 
 impl CompletionResponse {
     /// Create a response from its required parts; optional metadata starts
-    /// unset and is filled in with the `with_*` helpers. `raw` is the
+    /// unset. `raw` is the
     /// provider's own document for this response, serialized; see
     /// [`Self::raw`].
     pub fn new(
@@ -327,8 +327,6 @@ impl CompletionResponse {
     }
 }
 
-crate::provider_response::response_metadata_setters!(CompletionResponse);
-
 /// The text and summaries of one reasoning part, concatenated in order.
 pub(crate) fn reasoning_text(reasoning: &Reasoning) -> String {
     reasoning
@@ -375,12 +373,14 @@ impl From<CompletionResponseRepr> for CompletionResponse {
             model,
             raw,
         } = repr;
-        Self::new(choice, usage, provider, raw)
-            .with_optional_message_id(message_id)
-            .with_optional_response_id(response_id)
-            .with_optional_provider_request_id(provider_request_id)
-            .with_optional_finish_reason(finish_reason)
-            .with_optional_model(model)
+        let present = |id: Option<String>| id.filter(|id| !id.is_empty());
+        let mut response =
+            Self::new(choice, usage, provider, raw).with_optional_finish_reason(finish_reason);
+        response.message_id = present(message_id);
+        response.response_id = present(response_id);
+        response.provider_request_id = present(provider_request_id);
+        response.model = present(model);
+        response
     }
 }
 

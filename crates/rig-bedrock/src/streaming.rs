@@ -39,9 +39,11 @@ impl From<&BedrockStreamingResponse> for rig_core::completion::Usage {
 
 /// Bedrock's terminal record as the provider's end of the reply.
 fn finish_of(response: &BedrockStreamingResponse) -> Finish {
-    Finish::new(response.into())
-        .with_optional_provider_request_id(response.provider_request_id.clone())
-        .with_optional_reason(response.stop_reason.as_ref().map(map_stop_reason))
+    Finish {
+        usage: response.into(),
+        reason: response.stop_reason.as_ref().map(map_stop_reason),
+        ..Finish::default()
+    }
 }
 
 /// The buffer index of a Converse content block: every signed index,
@@ -284,11 +286,11 @@ fn whole(
         }
     }
     let usage = output.usage().map(normalize_usage).unwrap_or_default();
-    Ok(out.end(
-        Finish::new(usage)
-            .with_optional_provider_request_id(output.request_id())
-            .with_reason(map_stop_reason(&output.stop_reason)),
-    ))
+    Ok(out.end(Finish {
+        usage,
+        reason: Some(map_stop_reason(&output.stop_reason)),
+        ..Finish::default()
+    }))
 }
 
 /// The assistant content of a Converse reply.
@@ -353,6 +355,3 @@ impl<'id> rig_core::wire::Decoder<'id, Completion, ConverseFrame> for StreamStat
 #[cfg(test)]
 #[allow(clippy::expect_used)]
 mod tests;
-
-#[cfg(test)]
-mod response_identity_tests;

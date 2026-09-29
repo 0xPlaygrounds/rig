@@ -523,7 +523,6 @@ impl<'id> MessagesDecoder<'id> {
             stop_sequence: message.stop_sequence,
             message_id: self.message_id.clone(),
             model: self.response_model.clone(),
-            provider_request_id: None,
         };
         Ok(out.end(finish_of(&native)))
     }
@@ -597,9 +596,6 @@ impl<'id> Decoder<'id, Completion> for MessagesDecoder<'id> {
                     stop_sequence: delta.stop_sequence,
                     message_id: self.message_id.clone(),
                     model: self.response_model.clone(),
-                    // The transport's request id; the decoder never sees
-                    // connection headers.
-                    provider_request_id: None,
                 };
                 out.raw(serde_json::to_value(&native)?);
                 Ok(out.end(finish_of(&native)))
@@ -725,19 +721,17 @@ pub struct StreamingCompletionResponse {
     /// The model named by `message_start`, when the stream reported one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
-    /// Transport request id supplied by an external record builder. Live
-    /// decoders leave this absent; the response takes the reply's header.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub provider_request_id: Option<String>,
 }
 
 /// The provider's end of the reply, from Anthropic's terminal record.
 fn finish_of(response: &StreamingCompletionResponse) -> Finish {
-    Finish::new(crate::completion::Usage::from(&response.usage))
-        .with_optional_reason(response.stop_reason.as_deref().map(map_finish_reason))
-        .with_optional_message_id(response.message_id.clone())
-        .with_optional_provider_request_id(response.provider_request_id.clone())
-        .with_optional_model(response.model.clone())
+    Finish {
+        usage: crate::completion::Usage::from(&response.usage),
+        reason: response.stop_reason.as_deref().map(map_finish_reason),
+        message_id: response.message_id.clone(),
+        model: response.model.clone(),
+        ..Finish::default()
+    }
 }
 
 #[cfg(test)]

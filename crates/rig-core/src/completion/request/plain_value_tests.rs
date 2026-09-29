@@ -308,7 +308,8 @@ fn a_response_is_the_assistant_turn() {
         AssistantContent::text("hi"),
         AssistantContent::ToolCall(call("c1", "a")),
     ];
-    let response = response(choice.clone()).with_message_id("msg_1");
+    let mut response = response(choice.clone());
+    response.message_id = Some("msg_1".to_owned());
     assert_eq!(
         response.message().expect("a non-empty choice"),
         Message::Assistant {

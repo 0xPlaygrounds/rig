@@ -124,7 +124,7 @@ fn response_parsing_returns_first_non_thought_inline_image() {
     };
 
     let parsed = response
-        .normalize(super::super::completion::PROVIDER_NAME)
+        .normalize()
         .expect("response should contain an image");
 
     assert_eq!(parsed.image, b"final image");
@@ -160,7 +160,7 @@ fn response_parsing_rejects_text_only_response() {
     };
 
     let err = response
-        .normalize(super::super::completion::PROVIDER_NAME)
+        .normalize()
         .expect_err("text-only responses should fail");
 
     assert!(err.to_string().contains("did not include image data"));

@@ -1801,19 +1801,21 @@ impl rig_core::driver::Transport<rig_core::driver::Local<rig_core::operation::Re
                 rig_core::driver::Opened::failed(ProviderError::Response(message.to_owned()))
             }
             None => rig_core::driver::Opened::new(futures::stream::iter([Ok(
-                rig_core::driver::Step::End(RerankResponse::new(
-                    request
-                        .documents
-                        .into_iter()
-                        .enumerate()
-                        .map(|(index, document)| RerankResult {
-                            index,
-                            document: Some(document),
-                            relevance_score: 1.0,
-                        })
-                        .collect(),
-                    "probe",
-                )),
+                rig_core::driver::Step::End(RerankResponse {
+                    provider: "probe".into(),
+                    ..RerankResponse::new(
+                        request
+                            .documents
+                            .into_iter()
+                            .enumerate()
+                            .map(|(index, document)| RerankResult {
+                                index,
+                                document: Some(document),
+                                relevance_score: 1.0,
+                            })
+                            .collect(),
+                    )
+                }),
             )])),
         })
     }

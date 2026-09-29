@@ -93,9 +93,6 @@ pub struct Finish {
     pub response_id: Option<String>,
     /// The model the provider reports.
     pub model: Option<String>,
-    /// The provider's request id when the reply itself carries one; the
-    /// transport's header fills a gap.
-    pub provider_request_id: Option<String>,
 }
 
 impl Finish {
@@ -118,8 +115,6 @@ impl Finish {
         self
     }
 }
-
-crate::provider_response::response_metadata_setters!(Finish);
 
 /// The completion fold. The driver and the bus writer build it; no other
 /// code can feed one.
@@ -746,16 +741,16 @@ impl Turn {
             message_id,
             response_id,
             model,
-            provider_request_id,
         } = end;
-        CompletionResponse::new(choice, usage, reply.provider, reply.raw)
-            // A message id the decoder recorded outranks the end's.
-            .with_optional_message_id(self.message_id.clone().or(message_id))
-            .with_optional_response_id(response_id)
-            // The reply's own id wins; the transport's header fills a gap.
-            .with_optional_provider_request_id(provider_request_id.or(reply.provider_request_id))
-            .with_optional_finish_reason(reason)
-            .with_optional_model(model)
+        let reported = |id: Option<String>| id.filter(|id| !id.is_empty());
+        let mut response = CompletionResponse::new(choice, usage, reply.provider, reply.raw)
+            .with_optional_finish_reason(reason);
+        // A message id the decoder recorded outranks the end's.
+        response.message_id = reported(self.message_id.clone().or(message_id));
+        response.response_id = reported(response_id);
+        response.model = reported(model);
+        response.provider_request_id = reply.provider_request_id;
+        response
     }
 }
 

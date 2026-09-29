@@ -47,16 +47,18 @@ impl MockEmbeddings {
     /// The reply this runtime gives for `texts`: one fixed ten-dimension
     /// vector per text, in order.
     pub fn embed(texts: Vec<String>) -> EmbeddingResponse {
-        EmbeddingResponse::new(
-            texts
-                .into_iter()
-                .map(|document| Embedding {
-                    document,
-                    vec: vec![0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9],
-                })
-                .collect(),
-            super::MOCK_PROVIDER,
-        )
+        EmbeddingResponse {
+            provider: super::MOCK_PROVIDER.to_owned(),
+            ..EmbeddingResponse::new(
+                texts
+                    .into_iter()
+                    .map(|document| Embedding {
+                        document,
+                        vec: vec![0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9],
+                    })
+                    .collect(),
+            )
+        }
     }
 }
 

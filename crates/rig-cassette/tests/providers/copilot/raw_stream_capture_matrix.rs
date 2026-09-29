@@ -158,11 +158,7 @@ async fn chat_stream_raw_terminal_round_trips_provider_type() {
     // round trip is exact, and the accounting's own normalization is what the
     // terminal must carry. The transport id is the header's, so the native
     // record has no slot filled for it.
-    let typed = chat::assert_terminal_round_trips(&terminal);
-    // Copilot's recorded chat stream reports no transport id, so the native
-    // record and the normalized terminal agree on its absence — the claim
-    // this cell made before the round trip became shared.
-    assert_eq!(typed.provider_request_id, terminal.provider_request_id);
+    chat::assert_terminal_round_trips(&terminal);
 
     let (_, terminal_frame) = recorded_chat_frames(scenario);
     assert_eq!(

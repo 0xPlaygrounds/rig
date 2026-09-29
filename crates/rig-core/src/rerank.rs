@@ -19,7 +19,7 @@
 //! # }
 //! ```
 
-use crate::completion::{ResponseIdentity, Usage};
+use crate::completion::Usage;
 use serde::{Deserialize, Serialize};
 
 /// A single reranked document result.
@@ -63,30 +63,18 @@ pub struct RerankResponse {
 }
 
 impl RerankResponse {
-    /// Create a response from its required parts; optional metadata starts
-    /// unset and is filled in with the `with_*` helpers.
-    pub fn new(results: Vec<RerankResult>, provider: impl Into<String>) -> Self {
+    /// A response carrying `results`. The driver writes the provider, the
+    /// transport request id and the reply document; decoders set what the
+    /// provider reported.
+    pub fn new(results: Vec<RerankResult>) -> Self {
         Self {
             results,
             model: None,
             usage: Usage::default(),
-            provider: provider.into(),
+            provider: String::new(),
             response_id: None,
             provider_request_id: None,
             raw: serde_json::Value::Null,
         }
     }
-
-    /// This response's identity metadata as one [`ResponseIdentity`] carrier.
-    /// `message_id` is always `None`: nothing here is replayed as an
-    /// assistant message.
-    pub fn identity(&self) -> ResponseIdentity {
-        ResponseIdentity {
-            message_id: None,
-            response_id: self.response_id.clone(),
-            provider_request_id: self.provider_request_id.clone(),
-        }
-    }
 }
-
-crate::provider_response::modality_response_metadata_setters!(RerankResponse);

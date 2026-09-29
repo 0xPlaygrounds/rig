@@ -363,11 +363,12 @@ impl<'id> ChatDecoder<'id> {
         }
         // Cohere's `/v2/chat` reports no model identifier in either mode, so
         // the normalized `model` stays unset.
-        Ok(out.end(
-            Finish::new(recorded_usage)
-                .with_optional_reason(native.finish_reason.as_ref().map(map_finish_reason))
-                .with_optional_response_id(native.message_id),
-        ))
+        Ok(out.end(Finish {
+            usage: recorded_usage,
+            reason: native.finish_reason.as_ref().map(map_finish_reason),
+            response_id: native.message_id,
+            ..Finish::default()
+        }))
     }
 }
 

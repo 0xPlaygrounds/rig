@@ -158,10 +158,7 @@ impl<'id> Decoder<'id, crate::operation::Embedding> for EmbeddingsDecoder {
             })
             .collect();
         // Gemini supplies no usage or response id; the driver attaches the raw body.
-        Ok(out.end(embeddings::EmbeddingResponse::new(
-            vectors,
-            super::PROVIDER_NAME,
-        )))
+        Ok(out.end(embeddings::EmbeddingResponse::new(vectors)))
     }
 }
 

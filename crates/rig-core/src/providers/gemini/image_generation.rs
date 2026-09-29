@@ -32,10 +32,7 @@ use serde_json::Value;
 pub const GEMINI_2_5_FLASH_IMAGE: &str = super::completion::GEMINI_2_5_FLASH_IMAGE;
 
 impl NormalizeImageGenerationResponse for GenerateContentResponse {
-    fn normalize(
-        self,
-        provider: &str,
-    ) -> Result<image_generation::ImageGenerationResponse, ProviderError> {
+    fn normalize(self) -> Result<image_generation::ImageGenerationResponse, ProviderError> {
         let image = first_image_bytes(&self)?;
         let usage = self
             .usage_metadata
@@ -43,12 +40,12 @@ impl NormalizeImageGenerationResponse for GenerateContentResponse {
             .map(Usage::from)
             .unwrap_or_default();
 
-        Ok(
-            image_generation::ImageGenerationResponse::new(image, provider)
-                .with_optional_model(self.model_version)
-                .with_response_id(self.response_id)
-                .with_usage(usage),
-        )
+        Ok(image_generation::ImageGenerationResponse {
+            model: self.model_version,
+            response_id: Some(self.response_id),
+            usage,
+            ..image_generation::ImageGenerationResponse::new(image)
+        })
     }
 }
 
@@ -219,7 +216,7 @@ impl<'id> Decoder<'id, ImageGeneration> for ImagesDecoder {
         event: Self::Event,
         out: Out<'id, ImageGeneration>,
     ) -> Result<Flow, ProviderError> {
-        Ok(out.end(event.normalize(super::PROVIDER_NAME)?))
+        Ok(out.end(event.normalize()?))
     }
 }
 

@@ -258,13 +258,16 @@ fn completion_from_script(
     if let Turn::Error(message) = &turn {
         return Err(ProviderError::Provider(message.clone()));
     }
-    Ok(CompletionResponse::new(
-        turn.choice(),
-        turn.usage(),
-        script.provider,
-        serde_json::json!({}),
-    )
-    .with_message_id(turn.message_id()))
+    Ok({
+        let mut response = CompletionResponse::new(
+            turn.choice(),
+            turn.usage(),
+            script.provider,
+            serde_json::json!({}),
+        );
+        response.message_id = Some(turn.message_id());
+        response
+    })
 }
 
 fn stream_from_script(
@@ -319,9 +322,11 @@ fn stream_from_script(
         // Handled by the early return above.
         Turn::Error(_) => return Err(ProviderError::Provider("unreachable".to_owned())),
     }
-    events.push(MockStreamEvent::FinalResponse(
-        Finish::new(turn.usage()).with_message_id(turn.message_id()),
-    ));
+    events.push(MockStreamEvent::FinalResponse(Finish {
+        usage: turn.usage(),
+        message_id: Some(turn.message_id()),
+        ..Finish::default()
+    }));
 
     Ok(events)
 }
@@ -1383,13 +1388,16 @@ fn gated_tool_model(started: Arc<Notify>, release: Arc<Notify>) -> FakeModel {
                     started.notify_one();
                     release.notified().await;
                     let turn = Turn::tool("lookup", 3, "gated-tool-message");
-                    let response = CompletionResponse::new(
-                        turn.choice(),
-                        turn.usage(),
-                        "gated",
-                        serde_json::json!({}),
-                    )
-                    .with_message_id(turn.message_id());
+                    let response = {
+                        let mut response = CompletionResponse::new(
+                            turn.choice(),
+                            turn.usage(),
+                            "gated",
+                            serde_json::json!({}),
+                        );
+                        response.message_id = Some(turn.message_id());
+                        response
+                    };
                     answered(response)
                 }) as FakeReply
             }

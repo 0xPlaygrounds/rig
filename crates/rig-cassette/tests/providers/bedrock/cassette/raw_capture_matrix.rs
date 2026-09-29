@@ -231,8 +231,11 @@ async fn normalized_fields_equal_raw_renormalized() {
     let stored = InternalConverseOutput::deserialize(&response.raw)
         .expect("raw must deserialize into InternalConverseOutput");
     let replay = Model::new(Converse::new(MODEL), Reply(stored));
-    let from_raw: RigCompletionResponse = replay.call(request()).await.expect("raw must normalize");
-    let from_raw = from_raw.with_optional_provider_request_id(response.provider_request_id.clone());
+    let mut from_raw: RigCompletionResponse =
+        replay.call(request()).await.expect("raw must normalize");
+    from_raw
+        .provider_request_id
+        .clone_from(&response.provider_request_id);
 
     assert_eq!(response.provider, BEDROCK_PROVIDER);
     assert_eq!(from_raw.provider, response.provider);

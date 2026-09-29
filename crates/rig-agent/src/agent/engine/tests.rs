@@ -455,12 +455,12 @@ impl AgentHook for TurnIdentityHook {
     }
 }
 
-fn stream_final_with_ids(request_id: &str, response_id: &str) -> MockStreamEvent {
-    MockStreamEvent::FinalResponse(
-        rig_core::operation::Finish::new(Usage::default())
-            .with_response_id(response_id)
-            .with_provider_request_id(request_id),
-    )
+fn stream_final_with_id(response_id: &str) -> MockStreamEvent {
+    MockStreamEvent::FinalResponse(rig_core::operation::Finish {
+        usage: Usage::default(),
+        response_id: Some(response_id.into()),
+        ..rig_core::operation::Finish::default()
+    })
 }
 
 /// Blocking surface: a tool-only turn and the following text turn each
@@ -519,11 +519,13 @@ async fn model_turn_finished_identity_streamed_tool_only_and_text() {
             MockStreamEvent::tool_call_name_delta("tc1", "add"),
             MockStreamEvent::tool_call_arguments_delta("tc1", "{\"x\":2,\"y\":3}"),
             MockStreamEvent::tool_call("tc1", "add", json!({"x": 2, "y": 3})),
-            stream_final_with_ids("req-stream-1", "resp-stream-1"),
+            MockStreamEvent::RequestId("req-stream-1".to_owned()),
+            stream_final_with_id("resp-stream-1"),
         ],
         vec![
             MockStreamEvent::text("5"),
-            stream_final_with_ids("req-stream-2", "resp-stream-2"),
+            MockStreamEvent::RequestId("req-stream-2".to_owned()),
+            stream_final_with_id("resp-stream-2"),
         ],
     ]);
     let mut stream = AgentBuilder::new(model)
@@ -568,7 +570,8 @@ async fn model_turn_finished_identity_streamed_reasoning_only() {
     let hook = TurnIdentityHook::default();
     let model = MockCompletionModel::from_stream_turns([vec![
         MockStreamEvent::reasoning("thinking quietly"),
-        stream_final_with_ids("req-reasoning-only", "resp-reasoning-only"),
+        MockStreamEvent::RequestId("req-reasoning-only".to_owned()),
+        stream_final_with_id("resp-reasoning-only"),
     ]]);
     let mut stream = AgentBuilder::new(model)
         .add_hook(hook.clone())
@@ -718,9 +721,9 @@ fn raw_payload(attempt: &str) -> serde_json::Value {
 /// mock's decoder records the end itself as the reply's `raw`, so the
 /// `raw` is exactly this record serialized.
 fn stream_final_for_attempt(attempt: &str, total_tokens: u64) -> rig_core::operation::Finish {
-    rig_core::test_utils::mock_final_with_total_tokens(total_tokens)
-        .with_response_id(format!("resp-{attempt}"))
-        .with_provider_request_id(format!("req-{attempt}"))
+    let mut finish = rig_core::test_utils::mock_final_with_total_tokens(total_tokens);
+    finish.response_id = Some(format!("resp-{attempt}"));
+    finish
 }
 
 /// What `raw` must be for a streamed attempt scripted with `terminal`.

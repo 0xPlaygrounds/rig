@@ -323,9 +323,6 @@ pub struct StreamingCompletionResponse<U = Usage> {
     /// Provider-reported model identifier, when the reply emitted one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
-    /// Driver-supplied transport request ID from `x-request-id`, if reported.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub provider_request_id: Option<String>,
     /// Token log probabilities accumulated from all primary-choice chunks.
     ///
     /// This stays provider-native: normalized completions do not model log
@@ -353,7 +350,6 @@ impl<U> StreamingCompletionResponse<U> {
             finish_reason: None,
             response_id: None,
             model: None,
-            provider_request_id: None,
             logprobs: None,
             additional_params: None,
         }
@@ -367,11 +363,13 @@ where
     /// The provider's end of the reply: normalized usage and terminal
     /// metadata.
     pub fn into_finish(self) -> crate::operation::Finish {
-        crate::operation::Finish::new(self.usage.map(Into::into).unwrap_or_default())
-            .with_optional_reason(self.finish_reason)
-            .with_optional_response_id(self.response_id)
-            .with_optional_provider_request_id(self.provider_request_id)
-            .with_optional_model(self.model)
+        crate::operation::Finish {
+            usage: self.usage.map(Into::into).unwrap_or_default(),
+            reason: self.finish_reason,
+            response_id: self.response_id,
+            model: self.model,
+            ..crate::operation::Finish::default()
+        }
     }
 }
 

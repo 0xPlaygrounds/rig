@@ -106,22 +106,57 @@ where
     }
 }
 
-/// Write the transport request id and the reply document onto a modality
-/// response that did not name its own.
-macro_rules! stamp_reply {
-    ($response:ty) => {
-        |response: &mut $response, reply: &Reply| {
-            if response.provider_request_id.is_none() {
-                response
-                    .provider_request_id
-                    .clone_from(&reply.provider_request_id);
-            }
-            if response.raw.is_null() {
-                response.raw.clone_from(&reply.raw);
+/// A modality response the driver writes its facts onto.
+pub(crate) trait Stamp {
+    /// Write the provider, the transport request id and the reply document,
+    /// and drop an id the provider reported empty.
+    fn stamp(&mut self, reply: &Reply);
+}
+
+/// Write the driver's facts into one response's fields.
+fn write(
+    reply: &Reply,
+    provider: &mut String,
+    provider_request_id: &mut Option<String>,
+    raw: &mut serde_json::Value,
+    reported: [&mut Option<String>; 2],
+) {
+    provider.clone_from(&reply.provider);
+    provider_request_id.clone_from(&reply.provider_request_id);
+    raw.clone_from(&reply.raw);
+    for id in reported {
+        if id.as_deref() == Some("") {
+            *id = None;
+        }
+    }
+}
+
+macro_rules! stamp {
+    ($($response:ty),*) => {$(
+        impl Stamp for $response {
+            fn stamp(&mut self, reply: &Reply) {
+                write(
+                    reply,
+                    &mut self.provider,
+                    &mut self.provider_request_id,
+                    &mut self.raw,
+                    [&mut self.model, &mut self.response_id],
+                );
             }
         }
-    };
+    )*};
 }
+
+stamp!(
+    crate::embeddings::EmbeddingResponse,
+    crate::embeddings::ImageEmbeddingResponse,
+    crate::rerank::RerankResponse,
+    crate::transcription::TranscriptionResponse
+);
+#[cfg(feature = "image")]
+stamp!(crate::image_generation::ImageGenerationResponse);
+#[cfg(feature = "audio")]
+stamp!(crate::audio_generation::AudioGenerationResponse);
 
 modality_operation!(
     /// Embedding a batch of texts.
@@ -155,7 +190,7 @@ modality_operation!(
         response: crate::rerank::RerankResponse,
         telemetry: Rerank,
         fold: Whole<Self>,
-        seed: |_: &_, _: &Call<'_>| Whole::stamping(stamp_reply!(crate::rerank::RerankResponse)),
+        seed: |_: &_, _: &Call<'_>| Whole::stamping(<crate::rerank::RerankResponse as Stamp>::stamp),
     }
 );
 
@@ -166,7 +201,7 @@ modality_operation!(
         response: crate::transcription::TranscriptionResponse,
         telemetry: Transcription,
         fold: Whole<Self>,
-        seed: |_: &_, _: &Call<'_>| Whole::stamping(stamp_reply!(crate::transcription::TranscriptionResponse)),
+        seed: |_: &_, _: &Call<'_>| Whole::stamping(<crate::transcription::TranscriptionResponse as Stamp>::stamp),
     }
 );
 
@@ -178,7 +213,7 @@ modality_operation!(
         response: crate::image_generation::ImageGenerationResponse,
         telemetry: ImageGeneration,
         fold: Whole<Self>,
-        seed: |_: &_, _: &Call<'_>| Whole::stamping(stamp_reply!(crate::image_generation::ImageGenerationResponse)),
+        seed: |_: &_, _: &Call<'_>| Whole::stamping(<crate::image_generation::ImageGenerationResponse as Stamp>::stamp),
     }
 );
 
@@ -190,7 +225,7 @@ modality_operation!(
         response: crate::audio_generation::AudioGenerationResponse,
         telemetry: AudioGeneration,
         fold: Whole<Self>,
-        seed: |_: &_, _: &Call<'_>| Whole::stamping(stamp_reply!(crate::audio_generation::AudioGenerationResponse)),
+        seed: |_: &_, _: &Call<'_>| Whole::stamping(<crate::audio_generation::AudioGenerationResponse as Stamp>::stamp),
     }
 );
 
@@ -251,7 +286,7 @@ impl Fold<Embedding> for Embedded {
         reply: Reply,
     ) -> Result<crate::embeddings::EmbeddingResponse, ProviderError> {
         response.embeddings = self.zipped(std::mem::take(&mut response.embeddings))?;
-        stamp(&mut response.provider_request_id, &mut response.raw, &reply);
+        response.stamp(&reply);
         Ok(response)
     }
 }
@@ -267,18 +302,7 @@ impl Fold<ImageEmbedding> for Embedded {
         reply: Reply,
     ) -> Result<crate::embeddings::ImageEmbeddingResponse, ProviderError> {
         response.embeddings = self.zipped(std::mem::take(&mut response.embeddings))?;
-        stamp(&mut response.provider_request_id, &mut response.raw, &reply);
+        response.stamp(&reply);
         Ok(response)
-    }
-}
-
-/// Fill a response's request id and document from the reply when the
-/// provider named neither.
-fn stamp(provider_request_id: &mut Option<String>, raw: &mut serde_json::Value, reply: &Reply) {
-    if provider_request_id.is_none() {
-        provider_request_id.clone_from(&reply.provider_request_id);
-    }
-    if raw.is_null() {
-        raw.clone_from(&reply.raw);
     }
 }

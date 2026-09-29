@@ -145,15 +145,16 @@ async fn text_boundary_pauses_before_polling_and_release_preserves_every_item() 
         ]),
         &[(1, "preserved error"), (6, "error after text")],
     );
-    expected.push(Ok(Relayed::Done(Box::new(
-        CompletionResponse::new(
+    expected.push(Ok(Relayed::Done(Box::new({
+        let mut response = CompletionResponse::new(
             Vec::new(),
             Usage::default(),
             "anthropic",
             serde_json::json!({"stop_reason": "end_turn"}),
-        )
-        .with_message_id("message"),
-    ))));
+        );
+        response.message_id = Some("message".into());
+        response
+    }))));
     let polls = Arc::new(AtomicUsize::new(0));
     let dropped = Arc::new(AtomicBool::new(false));
     let release = Arc::new(Semaphore::new(0));

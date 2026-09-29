@@ -237,12 +237,6 @@ impl<'id> Decoder<'id, Embedding> for EmbeddingsDecoder {
         reply: Self::Event,
         out: Out<'id, Embedding>,
     ) -> Result<Flow, ProviderError> {
-        let raw = match serde_json::to_value(&reply) {
-            Ok(raw) => raw,
-            Err(error) => {
-                return Err(error.into());
-            }
-        };
         // Ollama counts the prompt it embedded and nothing else: every token
         // of an embedding is input.
         let usage = crate::completion::Usage {
@@ -260,12 +254,11 @@ impl<'id> Decoder<'id, Embedding> for EmbeddingsDecoder {
                 vec,
             })
             .collect();
-        Ok(out.end(
-            crate::embeddings::EmbeddingResponse::new(vectors, PROVIDER_NAME)
-                .with_model(reply.model)
-                .with_usage(usage)
-                .with_raw(raw),
-        ))
+        Ok(out.end(crate::embeddings::EmbeddingResponse {
+            model: Some(reply.model),
+            usage,
+            ..crate::embeddings::EmbeddingResponse::new(vectors)
+        }))
     }
 }
 

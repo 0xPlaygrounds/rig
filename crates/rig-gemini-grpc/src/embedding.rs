@@ -151,10 +151,9 @@ impl<'id> Decoder<'id, Embedding, (String, proto::EmbedContentResponse)> for Emb
         }
         // gRPC: the native answers are prost messages, not JSON, and
         // `EmbedContent` reports no usage or response id; `raw` stays `Null`.
-        Ok(out.end(embeddings::EmbeddingResponse::new(
-            std::mem::take(&mut self.embeddings),
-            super::completion::PROVIDER_NAME,
-        )))
+        Ok(out.end(embeddings::EmbeddingResponse::new(std::mem::take(
+            &mut self.embeddings,
+        ))))
     }
 }
 

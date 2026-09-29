@@ -1779,10 +1779,6 @@ pub fn assert_normalized_embedding_response(
         expectations.provider,
         response.provider_request_id
     );
-    assert_eq!(
-        response.identity().provider_request_id,
-        response.provider_request_id
-    );
     assert!(
         !response.raw.is_null(),
         "every HTTP provider seam populates `raw`"
