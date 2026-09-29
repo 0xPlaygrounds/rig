@@ -74,6 +74,38 @@ where
     cassette.finish_after_test(result).await;
 }
 
+/// Long-run caching recordings
+/// (`crates/rig-cassette/fixtures/cassettes/anthropic/long_run_caching/`). The
+/// body gets the models and the session's clock, whose record-only pause
+/// spaces a retried turn; it returns whatever the test asserts on after the
+/// session is finished.
+pub(super) async fn with_anthropic_long_run_cassette<F, Fut, R>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) -> R
+where
+    F: FnOnce(AnthropicModels, crate::cassettes::CassetteClock) -> Fut,
+    Fut: Future<Output = R>,
+{
+    let spec = spec.into();
+    let (cassette, bound) = anthropic_cassette(spec).await;
+    let models = AnthropicModels::new(bound, rig::rig_reqwest::shared());
+    let result = AssertUnwindSafe(test_body(models, cassette.clock()))
+        .catch_unwind()
+        .await;
+    crate::cassettes::checkpoint_attempt(&cassette, "anthropic", spec.scenario()).await;
+    match result {
+        Ok(value) => {
+            cassette.finish_after_test(Ok(())).await;
+            value
+        }
+        Err(payload) => {
+            cassette.finish_after_test(Err(payload)).await;
+            unreachable!("finishing a failed session resumes its panic")
+        }
+    }
+}
+
 /// Per-bug wrapper for the model-turn termination-metadata matrix
 /// (`crates/rig-cassette/fixtures/cassettes/anthropic/turn_termination_matrix/`), rig#2184.
 pub(super) async fn with_anthropic_turn_metadata_cassette<F, Fut>(

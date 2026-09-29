@@ -1,33 +1,32 @@
 //! Automatic explicit caching (`gemini::caching`) over long live runs on
 //! gemini-3.8-flash, recorded and replayed.
 //!
-//! Every assertion here is on recorded traffic. Beside the per-run
-//! thresholds, every run that uses a cache book is checked for two things:
-//!
-//! - **Integrity.** A request that reads a cache carries none of the prefix
-//!   the cache holds; the cache's contents followed by the request's are the
-//!   conversation byte for byte; every cache the run created is deleted; and
-//!   rig's `Usage` never reports more cached than input tokens.
-//! - **"Not faked" economics.** A run could look well cached by creating a
-//!   new cache before every call and paying for it each time. So every cache
-//!   a later one replaced must have been read at least three times, the
-//!   tokens put into caches must stay at or below 15% of all prompt tokens,
-//!   and the input saving counts every creation at the input price and every
-//!   cache's storage.
+//! Every assertion here is on recorded traffic. The figures and the checks
+//! every long run shares live in `rig_test_support::cache_longrun`; for a run
+//! that uses a cache book they include Gemini's rules: a request that reads a
+//! cache carries none of the prefix the cache holds, cache plus request tail
+//! is the conversation byte for byte, every cache is deleted, every replaced
+//! cache was read at least three times, and cache creation stays at or below
+//! 15% of prompt tokens. The input saving counts every creation at the input
+//! price and every cache's storage.
 //!
 //! Record with `RIG_PROVIDER_TEST_MODE=record` and `GEMINI_API_KEY`; see
 //! `tests/README.md`.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::time::Duration;
 
-use rig::agent::{Agent, MultiTurnStreamItem};
-use rig::completion::{Message, Usage};
+use rig::agent::Agent;
+use rig::completion::{CacheCost, CacheRates, Message};
 use rig::providers::gemini::{
     AutoCache, CacheBook, CacheEvent, CacheReport, Gemini, Lease, ThoughtReplay,
 };
 use rig::tool::Tool;
 use rig::{AgentBuilder, AgentRun};
+use rig_test_support::cache_longrun::{
+    self, CacheWire, Created, Interaction, Limits, LongRun, LookupOrder, Recording, RunLog,
+    SUPPORT_PREAMBLE, chat, chat_streamed, question,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
@@ -36,9 +35,14 @@ use crate::cassettes::{CassetteClock, CassetteSpec};
 use super::super::support::with_gemini_auto_caching_cassette;
 
 const MODEL: &str = "gemini-3.8-flash";
-const SUPPORT_PREAMBLE: &str = include_str!("support_preamble.md");
-/// Gemini 3.8 Flash standard input price, USD per 1M tokens.
-const INPUT_PRICE: f64 = 0.75;
+/// Gemini 3.8 Flash standard prices, USD per 1M tokens: input, cached read,
+/// creation (billed as input) and storage per hour.
+const RATES: CacheRates = CacheRates {
+    input: 0.75,
+    cached_read: 0.075,
+    cache_write: 0.75,
+    storage_per_hour: 0.50,
+};
 /// Gemini 3.8 Flash standard output price (thinking included), USD per 1M tokens.
 const OUTPUT_PRICE: f64 = 3.75;
 /// The most caches a 100-turn chat may create. Rolling when the premium
@@ -50,67 +54,11 @@ const OUTPUT_PRICE: f64 = 3.75;
 /// "read at least three times" check and the 15% creation limit are what rule
 /// out paying for caches that are never used.
 const MAX_CACHES_100_TURNS: usize = 14;
+/// Gemini's limit on tokens put into caches, relative to prompt tokens.
+const MAX_CREATED_SHARE: f64 = 0.15;
 
 // ---------------------------------------------------------------------------
 // Tools.
-
-#[derive(Deserialize)]
-struct OrderArgs {
-    order_id: String,
-}
-
-/// Looks an order up. Deterministic: the same id always gives the same
-/// status, date and carrier, so a re-recording sees the same facts.
-struct LookupOrder;
-
-const STATUSES: [&str; 6] = [
-    "processing",
-    "shipped",
-    "delivered",
-    "refunded",
-    "cancelled",
-    "returned",
-];
-
-impl Tool for LookupOrder {
-    const NAME: &'static str = "lookup_order";
-    type Error = std::convert::Infallible;
-    type Args = OrderArgs;
-    type Output = Value;
-
-    fn description(&self) -> String {
-        "Status of an order by id.".to_owned()
-    }
-
-    fn parameters(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": { "order_id": { "type": "string" } },
-            "required": ["order_id"]
-        })
-    }
-
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
-        let hash = args.order_id.bytes().fold(7u32, |hash, byte| {
-            hash.wrapping_mul(31).wrapping_add(u32::from(byte))
-        });
-        let status = STATUSES[(hash % 6) as usize];
-        let day = hash % 27 + 1;
-        let mut result = json!({
-            "order_id": args.order_id,
-            "status": status,
-            "date": format!("2026-05-{day:02}"),
-        });
-        if status == "shipped" || status == "delivered" {
-            result["carrier"] = json!(["DHL", "UPS", "FedEx"][(hash % 3) as usize]);
-        }
-        Ok(result)
-    }
-}
 
 #[derive(Deserialize)]
 struct LogArgs {
@@ -182,7 +130,7 @@ impl Tool for ReadLog {
 }
 
 // ---------------------------------------------------------------------------
-// Agents and turns.
+// Agents, books and checks.
 
 fn thinking_low() -> Value {
     json!({ "generationConfig": { "thinkingConfig": { "thinkingLevel": "low" } } })
@@ -201,122 +149,6 @@ fn support_agent(
         .build()
 }
 
-fn question(turn: usize, prefix: &str) -> String {
-    let templates = [
-        "What happened to order {id}?",
-        "Can you check the status of order {id} for me?",
-        "Where is my order {id}?",
-        "Has order {id} shipped yet?",
-        "I need an update on order {id}, please.",
-        "Any news on {id}? I ordered it a while ago.",
-        "Could you look up {id}?",
-    ];
-    templates[turn % templates.len()].replace("{id}", &format!("{prefix}-{turn}"))
-}
-
-/// What a run did, from the test's side of the wire.
-#[derive(Default)]
-struct RunLog {
-    /// rig's `Usage` for every completion call.
-    usages: Vec<Usage>,
-    /// Turns retried after a Google 5xx or 429.
-    retries: usize,
-    /// The book's events, read after the run.
-    events: Vec<CacheEvent>,
-}
-
-fn retryable(status: Option<http::StatusCode>) -> bool {
-    status.is_some_and(|status| status.is_server_error() || status.as_u16() == 429)
-}
-
-const BACKOFF: [u64; 3] = [2, 5, 10];
-
-/// One chat turn, retried up to three times on a Google 5xx or 429 with a
-/// record-only pause between attempts. The failed attempts are recorded like
-/// any other calls, so replay matches.
-async fn chat(
-    agent: &Agent,
-    clock: &CassetteClock,
-    prompt: String,
-    history: &mut Vec<Message>,
-    log: &mut RunLog,
-) {
-    let mut waits = BACKOFF.iter();
-    loop {
-        let error = match agent.chat(prompt.clone(), history).await {
-            Ok(response) => {
-                log.usages
-                    .extend(response.completion_calls.iter().map(|call| call.usage));
-                return;
-            }
-            Err(error) => error,
-        };
-        match waits.next() {
-            Some(wait) if retryable(error.provider_response_status()) => {
-                log.retries += 1;
-                clock.pause(Duration::from_secs(*wait)).await;
-            }
-            _ => panic!("turn failed: {error}"),
-        }
-    }
-}
-
-fn streaming_status(error: &rig::agent::StreamingError) -> Option<http::StatusCode> {
-    match error {
-        rig::agent::StreamingError::Completion(error) => error.provider_response_status(),
-        rig::agent::StreamingError::Report(report) => report
-            .http_status
-            .and_then(|status| http::StatusCode::from_u16(status).ok()),
-        rig::agent::StreamingError::Prompt(error) => error.provider_response_status(),
-    }
-}
-
-/// [`chat`] over `streamGenerateContent`.
-async fn chat_streamed(
-    agent: &Agent,
-    clock: &CassetteClock,
-    prompt: String,
-    history: &mut Vec<Message>,
-    log: &mut RunLog,
-) {
-    use futures::StreamExt;
-    let mut waits = BACKOFF.iter();
-    loop {
-        let mut stream = agent
-            .prompt(prompt.clone())
-            .history(history.clone())
-            .stream();
-        let mut failure = None;
-        let mut done = None;
-        while let Some(item) = stream.next().await {
-            match item {
-                Ok(MultiTurnStreamItem::FinalResponse(response)) => done = Some(response),
-                Ok(_) => {}
-                Err(error) => {
-                    failure = Some(error);
-                    break;
-                }
-            }
-        }
-        let error = match (done, failure) {
-            (Some(response), None) => {
-                history.extend(response.messages.clone().unwrap_or_default());
-                log.usages
-                    .extend(response.completion_calls.iter().map(|call| call.usage));
-                return;
-            }
-            (_, error) => error,
-        };
-        match (waits.next(), &error) {
-            (Some(wait), Some(failure)) if retryable(streaming_status(failure)) => {
-                log.retries += 1;
-                clock.pause(Duration::from_secs(*wait)).await;
-            }
-            _ => panic!("streamed turn failed: {error:?}"),
-        }
-    }
-}
-
 /// A book on the session's clock with the run's display-name prefix.
 fn book(clock: &CassetteClock, policy: AutoCache) -> CacheBook {
     let clock = clock.clone();
@@ -325,450 +157,35 @@ fn book(clock: &CassetteClock, policy: AutoCache) -> CacheBook {
         .with_display_prefix("rig-auto-caching-test-")
 }
 
-// ---------------------------------------------------------------------------
-// Reading the recording back.
-
-#[derive(Debug)]
-struct Interaction {
-    method: String,
-    path: String,
-    request: String,
-    status: u16,
-    response: String,
+/// Limits for a run on a book: its saving floor and, where it holds from
+/// the first cache read on, its per-call floor.
+fn limits(min_saving: f64, min_call_share: Option<f64>) -> Option<Limits> {
+    Some(Limits {
+        min_saving,
+        min_call_share,
+        max_writes_share: Some(MAX_CREATED_SHARE),
+    })
 }
 
-fn interactions(scenario: &str) -> Vec<Interaction> {
-    let path = crate::cassettes::cassette_path("gemini", scenario);
-    let text = std::fs::read_to_string(&path)
-        .unwrap_or_else(|error| panic!("{} should be readable: {error}", path.display()));
-    serde_yaml::Deserializer::from_str(&text)
-        .map(|document| {
-            let document = serde_yaml::Value::deserialize(document).expect("cassette document");
-            let field = |side: &str, key: &str| {
-                document
-                    .get(side)
-                    .and_then(|side| side.get(key))
-                    .cloned()
-                    .unwrap_or(serde_yaml::Value::Null)
-            };
-            Interaction {
-                method: field("when", "method")
-                    .as_str()
-                    .unwrap_or_default()
-                    .to_owned(),
-                path: field("when", "path")
-                    .as_str()
-                    .unwrap_or_default()
-                    .to_owned(),
-                request: field("when", "body")
-                    .as_str()
-                    .unwrap_or_default()
-                    .to_owned(),
-                status: field("then", "status")
-                    .as_u64()
-                    .and_then(|status| u16::try_from(status).ok())
-                    .unwrap_or_default(),
-                response: field("then", "body")
-                    .as_str()
-                    .unwrap_or_default()
-                    .to_owned(),
-            }
-        })
-        .collect()
-}
-
-#[derive(Default, Debug, Clone, Copy)]
-struct Tokens {
-    prompt: u64,
-    tool_use: u64,
-    cached: u64,
-    thoughts: u64,
-    candidates: u64,
-}
-
-fn usage_of(response: &str) -> Option<Tokens> {
-    let read = |value: &Value| {
-        let usage = value.get("usageMetadata")?;
-        let count = |key: &str| usage.get(key).and_then(Value::as_u64).unwrap_or(0);
-        Some(Tokens {
-            prompt: count("promptTokenCount"),
-            tool_use: count("toolUsePromptTokenCount"),
-            cached: count("cachedContentTokenCount"),
-            thoughts: count("thoughtsTokenCount"),
-            candidates: count("candidatesTokenCount"),
-        })
-    };
-    if let Ok(value) = serde_json::from_str::<Value>(response) {
-        return read(&value);
-    }
-    response
-        .lines()
-        .filter_map(|line| line.strip_prefix("data:"))
-        .filter_map(|data| serde_json::from_str::<Value>(data.trim()).ok())
-        .filter_map(|value| read(&value))
-        .next_back()
-}
-
-/// One successful `generateContent` call.
-struct Call {
-    index: usize,
-    cache: Option<String>,
-    body: Value,
-    raw_contents: Vec<String>,
-    tokens: Tokens,
-}
-
-/// One cache the run created.
-struct Created {
-    index: usize,
-    name: String,
-    tokens: u64,
-    body: Value,
-    raw_contents: Vec<String>,
-}
-
-struct Recording {
-    interactions: Vec<Interaction>,
-    calls: Vec<Call>,
-    created: Vec<Created>,
-}
-
-fn raw_contents(body: &str) -> Vec<String> {
-    #[derive(Deserialize)]
-    struct Contents<'a> {
-        #[serde(borrow, default)]
-        contents: Vec<&'a serde_json::value::RawValue>,
-    }
-    serde_json::from_str::<Contents<'_>>(body)
-        .map(|contents| {
-            contents
-                .contents
-                .iter()
-                .map(|raw| raw.get().to_owned())
-                .collect()
-        })
-        .unwrap_or_default()
-}
-
-fn load(scenario: &str) -> Recording {
-    let interactions = interactions(scenario);
-    let mut calls = Vec::new();
-    let mut created = Vec::new();
-    for (index, interaction) in interactions.iter().enumerate() {
-        if interaction.path.contains(":generateContent")
-            || interaction.path.contains(":streamGenerateContent")
-        {
-            if interaction.status != 200 {
-                continue;
-            }
-            let body: Value = serde_json::from_str(&interaction.request).expect("request JSON");
-            calls.push(Call {
-                index,
-                cache: body
-                    .get("cachedContent")
-                    .and_then(Value::as_str)
-                    .map(str::to_owned),
-                raw_contents: raw_contents(&interaction.request),
-                body,
-                tokens: usage_of(&interaction.response).expect("a successful call reports usage"),
-            });
-        } else if interaction.method == "POST"
-            && interaction.path.ends_with("/cachedContents")
-            && interaction.status == 200
-        {
-            let reply: Value = serde_json::from_str(&interaction.response).expect("cache JSON");
-            created.push(Created {
-                index,
-                name: reply["name"].as_str().expect("cache name").to_owned(),
-                tokens: reply
-                    .pointer("/usageMetadata/totalTokenCount")
-                    .and_then(Value::as_u64)
-                    .unwrap_or_default(),
-                body: serde_json::from_str(&interaction.request).expect("create JSON"),
-                raw_contents: raw_contents(&interaction.request),
-            });
-        }
-    }
-    Recording {
-        interactions,
-        calls,
-        created,
-    }
-}
-
-/// Whole-run figures, in tokens and in dollars at the standard input price.
-#[derive(Debug, Serialize)]
-struct Figures {
-    calls: usize,
-    prompt: u64,
-    cached: u64,
-    cached_share: f64,
-    caches_created: usize,
-    created_tokens: u64,
-    created_share: f64,
-    reads: BTreeMap<String, u64>,
-    storage_token_hours: f64,
-    input_with_caching: f64,
-    input_uncached: f64,
-    input_saving: f64,
-    usd_with_caching: f64,
-    usd_uncached: f64,
-    output_tokens: u64,
-    usd_output: f64,
-    fixture_bytes: u64,
-    retries: usize,
-}
-
-fn figures(
+/// Read the run back and run the shared checks, pricing the book's caches
+/// (`resources`) beside the calls.
+fn check(
     scenario: &str,
-    recording: &Recording,
-    report: Option<&CacheReport>,
-    retries: usize,
-) -> Figures {
-    let policy = AutoCache::default();
-    let prompt: u64 = recording
-        .calls
-        .iter()
-        .map(|call| call.tokens.prompt + call.tokens.tool_use)
-        .sum();
-    let cached: u64 = recording.calls.iter().map(|call| call.tokens.cached).sum();
-    let created_tokens: u64 = recording.created.iter().map(|created| created.tokens).sum();
-    let output_tokens: u64 = recording
-        .calls
-        .iter()
-        .map(|call| call.tokens.candidates + call.tokens.thoughts)
-        .sum();
-    let token_hours = report.map_or(0.0, |report| report.token_hours);
-    let with = (prompt - cached) as f64
-        + cached as f64 * policy.cached_ratio
-        + created_tokens as f64
-        + token_hours * policy.storage_ratio_per_hour;
-    let mut reads = BTreeMap::new();
-    for call in &recording.calls {
-        if let Some(cache) = &call.cache {
-            *reads.entry(cache.clone()).or_default() += 1;
-        }
-    }
-    let fixture_bytes = std::fs::metadata(crate::cassettes::cassette_path("gemini", scenario))
-        .map_or(0, |metadata| metadata.len());
-    Figures {
-        calls: recording.calls.len(),
-        prompt,
-        cached,
-        cached_share: cached as f64 / prompt.max(1) as f64,
-        caches_created: recording.created.len(),
-        created_tokens,
-        created_share: created_tokens as f64 / prompt.max(1) as f64,
-        reads,
-        storage_token_hours: token_hours,
-        input_with_caching: with,
-        input_uncached: prompt as f64,
-        input_saving: 1.0 - with / (prompt.max(1) as f64),
-        usd_with_caching: with * INPUT_PRICE / 1e6,
-        usd_uncached: prompt as f64 * INPUT_PRICE / 1e6,
-        output_tokens,
-        usd_output: output_tokens as f64 * OUTPUT_PRICE / 1e6,
-        fixture_bytes,
-        retries,
-    }
-}
-
-/// Parts before the newest user text of `contents` with their signatures
-/// removed: what `ThoughtReplay::CurrentTurn` sends for finished turns.
-fn is_user_text(content: &Value) -> bool {
-    content["role"] == "user"
-        && content["parts"]
-            .as_array()
-            .is_some_and(|parts| parts.iter().any(|part| part.get("text").is_some()))
-        && !content["parts"].as_array().is_some_and(|parts| {
-            parts
-                .iter()
-                .any(|part| part.get("functionResponse").is_some())
-        })
-}
-
-fn without_signatures(content: &str) -> Value {
-    let mut value: Value = serde_json::from_str(content).expect("content JSON");
-    if let Some(parts) = value.get_mut("parts").and_then(Value::as_array_mut) {
-        for part in parts {
-            if let Some(part) = part.as_object_mut() {
-                part.remove("thoughtSignature");
-            }
-        }
-    }
-    value
-}
-
-/// The integrity checks every book run shares.
-fn assert_integrity(recording: &Recording, usages: &[Usage], current_turn: bool) {
-    let caches: HashMap<&str, &Created> = recording
-        .created
-        .iter()
-        .map(|created| (created.name.as_str(), created))
-        .collect();
-
-    // Rig's usage never reports more cached than input tokens.
-    assert!(!usages.is_empty(), "the run reported no completion calls");
-    for (index, usage) in usages.iter().enumerate() {
-        assert!(
-            usage.cached_input_tokens.unwrap_or(0) <= usage.input_tokens.unwrap_or(0),
-            "call {index}: cached {:?} > input {:?}",
-            usage.cached_input_tokens,
-            usage.input_tokens
-        );
-    }
-
-    // Each conversation, spliced, only grows.
-    let mut conversations: HashMap<String, (Vec<String>, String)> = HashMap::new();
-    for call in &recording.calls {
-        let (contents, prefix) = match &call.cache {
-            Some(name) => {
-                for key in ["systemInstruction", "tools", "toolConfig"] {
-                    assert!(
-                        call.body.get(key).is_none(),
-                        "interaction {}: reads {name} but also sends {key}",
-                        call.index
-                    );
-                }
-                let cache = caches.get(name.as_str()).unwrap_or_else(|| {
-                    panic!(
-                        "interaction {} reads {name}, which the run never created",
-                        call.index
-                    )
-                });
-                assert!(cache.index < call.index, "a cache is read before it exists");
-                let mut contents = cache.raw_contents.clone();
-                contents.extend(call.raw_contents.iter().cloned());
-                let prefix = format!(
-                    "{}|{}",
-                    cache
-                        .body
-                        .get("systemInstruction")
-                        .map(Value::to_string)
-                        .unwrap_or_default(),
-                    cache
-                        .body
-                        .get("tools")
-                        .map(Value::to_string)
-                        .unwrap_or_default()
-                );
-                (contents, prefix)
-            }
-            None => (
-                call.raw_contents.clone(),
-                format!(
-                    "{}|{}",
-                    call.body
-                        .get("systemInstruction")
-                        .filter(|v| !v.is_null())
-                        .map(Value::to_string)
-                        .unwrap_or_default(),
-                    call.body
-                        .get("tools")
-                        .filter(|v| !v.is_null())
-                        .map(Value::to_string)
-                        .unwrap_or_default()
-                ),
-            ),
-        };
-        let Some(first) = contents.first().cloned() else {
-            continue;
-        };
-        if let Some((previous, previous_prefix)) = conversations.get(&first) {
-            assert_eq!(
-                &prefix, previous_prefix,
-                "interaction {}: the conversation's system instruction or tools changed",
-                call.index
-            );
-            let newest_user = contents
-                .iter()
-                .rposition(|content| {
-                    is_user_text(&serde_json::from_str(content).unwrap_or(Value::Null))
-                })
-                .unwrap_or(0);
-            assert!(
-                contents.len() >= previous.len(),
-                "interaction {}: the conversation shrank from {} to {} contents",
-                call.index,
-                previous.len(),
-                contents.len()
-            );
-            for (position, (earlier, later)) in previous.iter().zip(&contents).enumerate() {
-                if earlier == later {
-                    continue;
-                }
-                // Current-turn replay drops a finished turn's signatures when
-                // the next user message arrives; nothing else may change.
-                let dropped_signatures = current_turn
-                    && position < newest_user
-                    && without_signatures(earlier)
-                        == serde_json::from_str::<Value>(later).unwrap_or(Value::Null);
-                assert!(
-                    dropped_signatures,
-                    "interaction {}: content {position} differs from the previous request's \
-                     (cache + request tail must be the conversation byte for byte)",
-                    call.index
-                );
-            }
-        }
-        conversations.insert(first, (contents, prefix));
-    }
-
-    // Every cache the run created is deleted.
-    for created in &recording.created {
-        let target = format!("/v1beta/{}", created.name);
-        assert!(
-            recording
-                .interactions
-                .iter()
-                .skip(created.index)
-                .any(|interaction| interaction.method == "DELETE" && interaction.path == target),
-            "{} was never deleted",
-            created.name
-        );
-    }
-}
-
-/// The "not faked" economics every book run shares.
-fn assert_economics(recording: &Recording, figures: &Figures) {
-    // A cache a later cache of the same conversation replaced was read at
-    // least three times; so was every prefix-only cache.
-    let conversation = |created: &Created| created.raw_contents.first().cloned();
-    for (position, created) in recording.created.iter().enumerate() {
-        let replaced = match conversation(created) {
-            Some(first) => recording.created[position + 1..]
-                .iter()
-                .any(|later| conversation(later).as_ref() == Some(&first)),
-            None => true,
-        };
-        if replaced {
-            let reads = figures.reads.get(&created.name).copied().unwrap_or(0);
-            assert!(
-                reads >= 3,
-                "{} ({} tokens) was read {reads} times before it was replaced",
-                created.name,
-                created.tokens
-            );
-        }
-    }
-    assert!(
-        figures.created_share <= 0.15,
-        "caches held {:.1}% of all prompt tokens (limit 15%)",
-        figures.created_share * 100.0
-    );
-}
-
-fn print(scenario: &str, figures: &Figures, report: Option<&CacheReport>) {
-    println!(
-        "AUTO_CACHING {scenario} {}",
-        serde_json::to_string(figures).unwrap_or_default()
-    );
-    if let Some(report) = report {
-        println!(
-            "AUTO_CACHING_REPORT {scenario} {}",
-            serde_json::to_string(report).unwrap_or_default()
-        );
-    }
+    log: &RunLog,
+    resources: Option<CacheCost>,
+    limits: Option<Limits>,
+    drops_signatures: bool,
+) -> (Recording, cache_longrun::Figures) {
+    let run = LongRun {
+        wire: CacheWire::Gemini,
+        scenario,
+        model: MODEL,
+        rates: RATES,
+        output_price: OUTPUT_PRICE,
+        limits,
+        drops_signatures,
+    };
+    cache_longrun::check(&run, log, resources)
 }
 
 /// How far the book's size estimate was from Gemini's count, per cache.
@@ -790,8 +207,8 @@ fn print_estimates(scenario: &str, events: &[CacheEvent]) {
     }
 }
 
-/// Every call after the first cache read reads its cache whole: its cached
-/// tokens equal the cache's size.
+/// Every call that names a cache reads it whole: its cached tokens equal the
+/// cache's size.
 fn assert_reads_whole(recording: &Recording) {
     let sizes: HashMap<&str, u64> = recording
         .created
@@ -800,36 +217,34 @@ fn assert_reads_whole(recording: &Recording) {
         .collect();
     for call in &recording.calls {
         if let Some(cache) = &call.cache {
+            let cached = call.usage.cached_input_tokens.unwrap_or(0);
             assert_eq!(
-                call.tokens.cached,
+                cached,
                 sizes[cache.as_str()],
-                "interaction {} read {} of {cache}'s {} tokens",
+                "interaction {} read {cached} of {cache}'s {} tokens",
                 call.index,
-                call.tokens.cached,
                 sizes[cache.as_str()]
             );
         }
     }
 }
 
-/// Every call after the first cache read covers at least `share` of its
-/// visible tokens (prompt tokens, which with current-turn replay carry only
-/// the current turn's thoughts).
-fn assert_cover_after_first_read(recording: &Recording, share: f64) {
-    let Some(first) = recording.calls.iter().position(|call| call.cache.is_some()) else {
-        panic!("no call ever read a cache");
-    };
-    for call in &recording.calls[first..] {
-        let covered =
-            call.tokens.cached as f64 / (call.tokens.prompt + call.tokens.tool_use).max(1) as f64;
-        assert!(
-            covered >= share,
-            "interaction {} covered {:.0}% of its prompt (limit {:.0}%)",
-            call.index,
-            covered * 100.0,
-            share * 100.0
-        );
-    }
+fn assert_caches_at_most(figures: &cache_longrun::Figures, most: usize) {
+    cache_longrun::print_limit(figures, &format!("at most {most} caches"));
+    let created = figures.caches_created.unwrap_or(0);
+    assert!(created <= most, "{created} caches (limit {most})");
+}
+
+fn assert_cached_share_at_least(figures: &cache_longrun::Figures, least: f64) {
+    cache_longrun::print_limit(
+        figures,
+        &format!("cached share at least {:.0}%", least * 100.0),
+    );
+    assert!(
+        figures.cached_share >= least,
+        "cached share {:.3} (limit {least:.2})",
+        figures.cached_share
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -842,7 +257,7 @@ async fn support_chat_100(
     clock: CassetteClock,
     replay: ThoughtReplay,
     streamed: bool,
-) -> (CacheReport, RunLog) {
+) -> (CacheReport, RunLog, Vec<CacheEvent>) {
     let book = book(&clock, AutoCache::default());
     let agent = support_agent(
         gemini
@@ -862,94 +277,67 @@ async fn support_chat_100(
         }
     }
     book.close(&gemini.cached_contents()).await;
-    log.events = book.events();
-    (book.report(), log)
+    (book.report(), log, book.events())
 }
 
 #[tokio::test]
 async fn support_chat_100_current_turn() {
     const SCENARIO: &str = "auto_caching/support_chat_100_current_turn";
-    let (report, log) = with_gemini_auto_caching_cassette(
+    let (report, log, events) = with_gemini_auto_caching_cassette(
         "auto_caching/support_chat_100_current_turn",
         |gemini, clock| support_chat_100(gemini, clock, ThoughtReplay::CurrentTurn, false),
     )
     .await;
-    let recording = load(SCENARIO);
-    let figures = figures(SCENARIO, &recording, Some(&report), log.retries);
-    print(SCENARIO, &figures, Some(&report));
-    print_estimates(SCENARIO, &log.events);
-    assert_integrity(&recording, &log.usages, true);
-    assert_economics(&recording, &figures);
-    assert!(
-        figures.cached_share >= 0.80,
-        "cached share {:.3}",
-        figures.cached_share
+    let (_, figures) = check(
+        SCENARIO,
+        &log,
+        Some(CacheCost::from(&report)),
+        limits(0.65, Some(0.50)),
+        true,
     );
-    assert!(
-        figures.input_saving >= 0.65,
-        "input saving {:.3}",
-        figures.input_saving
-    );
-    assert_cover_after_first_read(&recording, 0.50);
-    assert!(
-        figures.caches_created <= MAX_CACHES_100_TURNS,
-        "{} caches",
-        figures.caches_created
-    );
+    print_estimates(SCENARIO, &events);
+    assert_cached_share_at_least(&figures, 0.80);
+    assert_caches_at_most(&figures, MAX_CACHES_100_TURNS);
 }
 
 #[tokio::test]
 async fn support_chat_100_auto() {
     const SCENARIO: &str = "auto_caching/support_chat_100_auto";
-    let (report, log) =
+    let (report, log, events) =
         with_gemini_auto_caching_cassette("auto_caching/support_chat_100_auto", |gemini, clock| {
             support_chat_100(gemini, clock, ThoughtReplay::All, false)
         })
         .await;
-    let recording = load(SCENARIO);
-    let figures = figures(SCENARIO, &recording, Some(&report), log.retries);
-    print(SCENARIO, &figures, Some(&report));
-    print_estimates(SCENARIO, &log.events);
-    assert_integrity(&recording, &log.usages, false);
-    assert_economics(&recording, &figures);
-    assert!(
-        figures.input_saving >= 0.30,
-        "input saving {:.3}",
-        figures.input_saving
+    let (recording, figures) = check(
+        SCENARIO,
+        &log,
+        Some(CacheCost::from(&report)),
+        limits(0.30, Some(0.50)),
+        false,
     );
+    print_estimates(SCENARIO, &events);
+    cache_longrun::print_limit(&figures, "every read takes the whole cache");
     assert_reads_whole(&recording);
-    assert!(
-        figures.caches_created <= MAX_CACHES_100_TURNS,
-        "{} caches",
-        figures.caches_created
-    );
-    // Restored thoughts: every earlier thought whose signature a request
-    // re-sends is billed again as input (measured exactly on 3.8-flash).
-    let mut earlier_thoughts = 0u64;
-    let mut restored = 0u64;
-    for call in &recording.calls {
-        restored += earlier_thoughts;
-        earlier_thoughts += call.tokens.thoughts;
-    }
-    println!(
-        "AUTO_CACHING_RESTORED {SCENARIO} restored_thought_tokens={restored} of prompt={} ({:.1}%)",
-        figures.prompt,
-        100.0 * restored as f64 / figures.prompt.max(1) as f64
-    );
+    assert_caches_at_most(&figures, MAX_CACHES_100_TURNS);
 }
 
 #[tokio::test]
 async fn support_chat_100_streamed() {
     const SCENARIO: &str = "auto_caching/support_chat_100_streamed";
-    let (report, log) = with_gemini_auto_caching_cassette(
+    let (report, log, events) = with_gemini_auto_caching_cassette(
         "auto_caching/support_chat_100_streamed",
         |gemini, clock| support_chat_100(gemini, clock, ThoughtReplay::CurrentTurn, true),
     )
     .await;
-    let recording = load(SCENARIO);
-    let figures = figures(SCENARIO, &recording, Some(&report), log.retries);
-    print(SCENARIO, &figures, Some(&report));
-    print_estimates(SCENARIO, &log.events);
+    let (recording, figures) = check(
+        SCENARIO,
+        &log,
+        Some(CacheCost::from(&report)),
+        limits(0.65, Some(0.50)),
+        true,
+    );
+    print_estimates(SCENARIO, &events);
+    cache_longrun::print_limit(&figures, "every call streams");
     assert!(
         recording
             .calls
@@ -959,24 +347,8 @@ async fn support_chat_100_streamed() {
                 .contains(":streamGenerateContent")),
         "every call streams"
     );
-    assert_integrity(&recording, &log.usages, true);
-    assert_economics(&recording, &figures);
-    assert!(
-        figures.cached_share >= 0.80,
-        "cached share {:.3}",
-        figures.cached_share
-    );
-    assert!(
-        figures.input_saving >= 0.65,
-        "input saving {:.3}",
-        figures.input_saving
-    );
-    assert_cover_after_first_read(&recording, 0.50);
-    assert!(
-        figures.caches_created <= MAX_CACHES_100_TURNS,
-        "{} caches",
-        figures.caches_created
-    );
+    assert_cached_share_at_least(&figures, 0.80);
+    assert_caches_at_most(&figures, MAX_CACHES_100_TURNS);
 }
 
 /// What a process writes at a turn boundary: the next turn as a run, the
@@ -991,12 +363,12 @@ struct Checkpoint {
 #[tokio::test]
 async fn support_chat_100_resume() {
     const SCENARIO: &str = "auto_caching/support_chat_100_resume";
-    let (report, log, pre_leases) = with_gemini_auto_caching_cassette(
+    let (report, log, events, pre_leases, pre_created) = with_gemini_auto_caching_cassette(
         "auto_caching/support_chat_100_resume",
         |gemini, clock| async move {
             let mut log = RunLog::default();
             // Turns 1..=50, then a checkpoint as a process would write it.
-            let saved = {
+            let (saved, pre_created) = {
                 let book = book(&clock, AutoCache::default());
                 let agent = support_agent(
                     gemini
@@ -1016,7 +388,20 @@ async fn support_chat_100_resume() {
                     history,
                     leases: book.leases(),
                 };
-                serde_json::to_string(&checkpoint).expect("checkpoint serializes")
+                // The first process's caches; its report is never read, since
+                // reading one reads the clock.
+                let created: u64 = book
+                    .events()
+                    .iter()
+                    .filter_map(|event| match event {
+                        CacheEvent::Created { tokens, .. } => Some(*tokens),
+                        _ => None,
+                    })
+                    .sum();
+                (
+                    serde_json::to_string(&checkpoint).expect("checkpoint serializes"),
+                    created,
+                )
             };
 
             // A new process: a new book from the checkpoint, proven live.
@@ -1042,17 +427,30 @@ async fn support_chat_100_resume() {
                 chat(&agent, &clock, question(turn, "A"), &mut history, &mut log).await;
             }
             book.close(&gemini.cached_contents()).await;
-            log.events = book.events();
-            (book.report(), log, pre_leases)
+            (book.report(), log, book.events(), pre_leases, pre_created)
         },
     )
     .await;
-    let recording = load(SCENARIO);
-    let figures = figures(SCENARIO, &recording, Some(&report), log.retries);
-    print(SCENARIO, &figures, Some(&report));
-    print_estimates(SCENARIO, &log.events);
-    assert_integrity(&recording, &log.usages, true);
-    assert_economics(&recording, &figures);
+    // Creation counts both processes' caches; storage only the second
+    // book's, which counts restored caches from the restore.
+    let (recording, figures) = check(
+        SCENARIO,
+        &log,
+        Some(
+            CacheCost::from(&report)
+                + CacheCost {
+                    cache_writes: pre_created,
+                    ..CacheCost::default()
+                },
+        ),
+        limits(0.65, Some(0.50)),
+        true,
+    );
+    print_estimates(SCENARIO, &events);
+    cache_longrun::print_limit(
+        &figures,
+        "the first call after the resume reads a pre-checkpoint cache",
+    );
 
     // The first call after the resume reads a pre-checkpoint cache, and no
     // cache was created between the checkpoint and that call.
@@ -1084,28 +482,14 @@ async fn support_chat_100_resume() {
             .any(|created| created.index > resume_get && created.index < first_after.index),
         "the resume created a cache before its first call"
     );
-    assert!(
-        figures.cached_share >= 0.80,
-        "cached share {:.3}",
-        figures.cached_share
-    );
-    assert!(
-        figures.input_saving >= 0.65,
-        "input saving {:.3}",
-        figures.input_saving
-    );
-    assert_cover_after_first_read(&recording, 0.50);
-    assert!(
-        figures.caches_created <= MAX_CACHES_100_TURNS,
-        "{} caches",
-        figures.caches_created
-    );
+    assert_cached_share_at_least(&figures, 0.80);
+    assert_caches_at_most(&figures, MAX_CACHES_100_TURNS);
 }
 
 #[tokio::test]
 async fn support_chat_100_compaction() {
     const SCENARIO: &str = "auto_caching/support_chat_100_compaction";
-    let (report, log) = with_gemini_auto_caching_cassette(
+    let (report, log, events) = with_gemini_auto_caching_cassette(
         "auto_caching/support_chat_100_compaction",
         |gemini, clock| async move {
             let book = book(&clock, AutoCache::default());
@@ -1131,17 +515,22 @@ async fn support_chat_100_compaction() {
                 chat(&agent, &clock, question(turn, "A"), &mut history, &mut log).await;
             }
             book.close(&gemini.cached_contents()).await;
-            log.events = book.events();
-            (book.report(), log)
+            (book.report(), log, book.events())
         },
     )
     .await;
-    let recording = load(SCENARIO);
-    let figures = figures(SCENARIO, &recording, Some(&report), log.retries);
-    print(SCENARIO, &figures, Some(&report));
-    print_estimates(SCENARIO, &log.events);
-    assert_integrity(&recording, &log.usages, true);
-    assert_economics(&recording, &figures);
+    let (recording, figures) = check(
+        SCENARIO,
+        &log,
+        Some(CacheCost::from(&report)),
+        limits(0.50, Some(0.50)),
+        true,
+    );
+    print_estimates(SCENARIO, &events);
+    cache_longrun::print_limit(
+        &figures,
+        "no stale read after compaction, old cache retired",
+    );
 
     // The first call after compaction reads no cache made before it, and the
     // pre-compaction cache is retired before the run's close.
@@ -1191,17 +580,12 @@ async fn support_chat_100_compaction() {
             created.name
         );
     }
-    assert!(
-        figures.input_saving >= 0.50,
-        "input saving {:.3}",
-        figures.input_saving
-    );
 }
 
 #[tokio::test]
 async fn agent_loop_large_results() {
     const SCENARIO: &str = "auto_caching/agent_loop_large_results";
-    let (report, log) = with_gemini_auto_caching_cassette(
+    let (report, log, events) = with_gemini_auto_caching_cassette(
         "auto_caching/agent_loop_large_results",
         |gemini, clock| async move {
             let book = book(&clock, AutoCache::default());
@@ -1230,33 +614,24 @@ async fn agent_loop_large_results() {
             )
             .await;
             book.close(&gemini.cached_contents()).await;
-            log.events = book.events();
-            (book.report(), log)
+            (book.report(), log, book.events())
         },
     )
     .await;
-    let recording = load(SCENARIO);
-    let figures = figures(SCENARIO, &recording, Some(&report), log.retries);
-    print(SCENARIO, &figures, Some(&report));
-    print_estimates(SCENARIO, &log.events);
+    // The loop stays inline while implicit caching serves its large
+    // prompts, so it has no per-call floor.
+    let (_, figures) = check(
+        SCENARIO,
+        &log,
+        Some(CacheCost::from(&report)),
+        limits(0.60, None),
+        false,
+    );
+    print_estimates(SCENARIO, &events);
+    cache_longrun::print_limit(&figures, "at least 60 calls");
     assert!(figures.calls >= 60, "a long loop: {} calls", figures.calls);
-    assert_integrity(&recording, &log.usages, false);
-    assert_economics(&recording, &figures);
-    assert!(
-        figures.caches_created <= 3,
-        "{} caches",
-        figures.caches_created
-    );
-    assert!(
-        figures.cached_share >= 0.60,
-        "cached share {:.3}",
-        figures.cached_share
-    );
-    assert!(
-        figures.input_saving >= 0.60,
-        "input saving {:.3}",
-        figures.input_saving
-    );
+    assert_caches_at_most(&figures, 3);
+    assert_cached_share_at_least(&figures, 0.60);
 }
 
 /// A ~5.5k-token prefix: the handbook and a product appendix.
@@ -1291,7 +666,7 @@ fn shared_preamble() -> String {
 #[tokio::test]
 async fn subagents_shared_prefix() {
     const SCENARIO: &str = "auto_caching/subagents_shared_prefix";
-    let (report, log) = with_gemini_auto_caching_cassette(
+    let (report, log, events) = with_gemini_auto_caching_cassette(
         CassetteSpec::new("auto_caching/subagents_shared_prefix").unordered(),
         |gemini, clock| async move {
             let book = book(&clock, AutoCache::default());
@@ -1330,24 +705,24 @@ async fn subagents_shared_prefix() {
                 .await;
             }
             book.close(&gemini.cached_contents()).await;
-            let mut log = RunLog {
-                events: book.events(),
-                ..RunLog::default()
-            };
+            let mut log = RunLog::default();
             for part in logs {
                 log.usages.extend(part.usages);
                 log.retries += part.retries;
             }
-            (book.report(), log)
+            (book.report(), log, book.events())
         },
     )
     .await;
-    let recording = load(SCENARIO);
-    let figures = figures(SCENARIO, &recording, Some(&report), log.retries);
-    print(SCENARIO, &figures, Some(&report));
-    print_estimates(SCENARIO, &log.events);
-    assert_integrity(&recording, &log.usages, false);
-    assert_economics(&recording, &figures);
+    let (recording, figures) = check(
+        SCENARIO,
+        &log,
+        Some(CacheCost::from(&report)),
+        limits(0.60, Some(0.50)),
+        false,
+    );
+    print_estimates(SCENARIO, &events);
+    cache_longrun::print_limit(&figures, "shared prefix created exactly once");
     let prefix_caches = recording
         .created
         .iter()
@@ -1356,11 +731,6 @@ async fn subagents_shared_prefix() {
     assert_eq!(
         prefix_caches, 1,
         "the shared prefix is created exactly once"
-    );
-    assert!(
-        figures.input_saving >= 0.60,
-        "input saving {:.3}",
-        figures.input_saving
     );
 }
 
@@ -1405,16 +775,24 @@ async fn lifecycle() {
             (book.report(), log, book.events())
         })
         .await;
-    let recording = load(SCENARIO);
-    let figures = figures(SCENARIO, &recording, Some(&report), log.retries);
-    print(SCENARIO, &figures, Some(&report));
-    print_estimates(SCENARIO, &log.events);
+    // Caches expire and are deleted mid-run by design, so no per-call floor;
+    // caching must still never cost more than sending everything inline.
+    let (recording, figures) = check(
+        SCENARIO,
+        &log,
+        Some(CacheCost::from(&report)),
+        limits(0.0, None),
+        false,
+    );
+    print_estimates(SCENARIO, &events);
+    cache_longrun::print_limit(
+        &figures,
+        "refused, expired and deleted caches handled (a)-(d)",
+    );
     println!(
         "AUTO_CACHING_EVENTS {SCENARIO} {}",
         serde_json::to_string(&events).unwrap_or_default()
     );
-    assert_integrity(&recording, &log.usages, false);
-    assert_economics(&recording, &figures);
 
     // (a) Gemini refused a cache as too small, and the request still succeeded.
     let refused = recording
@@ -1502,9 +880,8 @@ async fn support_chat_30_baseline() {
         },
     )
     .await;
-    let recording = load(SCENARIO);
-    let figures = figures(SCENARIO, &recording, None, log.retries);
-    print(SCENARIO, &figures, None);
+    let (recording, figures) = check(SCENARIO, &log, None, None, false);
+    cache_longrun::print_limit(&figures, "no cache created or read");
     assert!(
         recording.created.is_empty(),
         "the baseline creates no cache"
@@ -1513,7 +890,4 @@ async fn support_chat_30_baseline() {
         recording.calls.iter().all(|call| call.cache.is_none()),
         "the baseline reads no cache"
     );
-    for usage in &log.usages {
-        assert!(usage.cached_input_tokens.unwrap_or(0) <= usage.input_tokens.unwrap_or(0));
-    }
 }

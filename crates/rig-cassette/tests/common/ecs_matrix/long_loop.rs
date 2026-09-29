@@ -829,7 +829,7 @@ pub(crate) fn raw_usage(
             (
                 count(&usage["prompt_tokens"]),
                 count(&usage["prompt_tokens_details"]["cached_tokens"]),
-                None,
+                count(&usage["prompt_tokens_details"]["cache_write_tokens"]),
             )
         }
         ThinkingWire::DeepSeek => {
@@ -853,7 +853,7 @@ pub(crate) fn raw_usage(
             (
                 count(&usage["input_tokens"]),
                 count(&usage["input_tokens_details"]["cached_tokens"]),
-                None,
+                count(&usage["input_tokens_details"]["cache_write_tokens"]),
             )
         }
         ThinkingWire::Gemini => {
@@ -876,19 +876,15 @@ pub(crate) fn raw_usage(
     }
 }
 
-/// The wire's cache accounting, for the usage table (row 7):
-/// `cache_conformance::CacheAccounting` by dialect.
+/// The wire's prompt tokens, for the usage table (row 7), by the dialect's
+/// `CacheAccounting`.
 fn prompt_tokens(thinking: ThinkingWire, usage: &Usage) -> u64 {
-    let input = usage.input_tokens.unwrap_or(0);
-    match thinking {
-        // Anthropic reports reads and writes *beside* `input_tokens`.
-        ThinkingWire::Anthropic => {
-            input
-                + usage.cached_input_tokens.unwrap_or(0)
-                + usage.cache_creation_input_tokens.unwrap_or(0)
-        }
-        _ => input,
-    }
+    // Anthropic reports reads and writes *beside* `input_tokens`.
+    let accounting = match thinking {
+        ThinkingWire::Anthropic => rig_core::completion::CacheAccounting::Alongside,
+        _ => rig_core::completion::CacheAccounting::Subset,
+    };
+    rig_core::completion::CacheCost::from_usage(usage, accounting).prompt_tokens()
 }
 
 /// The shape a cell's record must have.

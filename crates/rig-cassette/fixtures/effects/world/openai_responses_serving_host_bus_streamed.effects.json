@@ -203,6 +203,7 @@
             "output_tokens": 113,
             "total_tokens": 217,
             "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
             "reasoning_tokens": 64
           },
           "message_id": null,
@@ -230,7 +231,8 @@
             "usage": {
               "input_tokens": 104,
               "input_tokens_details": {
-                "cached_tokens": 0
+                "cached_tokens": 0,
+                "cache_write_tokens": 0
               },
               "output_tokens": 113,
               "output_tokens_details": {
@@ -517,6 +519,7 @@
             "output_tokens": 5,
             "total_tokens": 233,
             "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
           "message_id": "msg_03c73edcf96b17ca006ab2b3c2aa2c87d0bdbbf141218e71b0",
@@ -544,7 +547,8 @@
             "usage": {
               "input_tokens": 228,
               "input_tokens_details": {
-                "cached_tokens": 0
+                "cached_tokens": 0,
+                "cache_write_tokens": 0
               },
               "output_tokens": 5,
               "output_tokens_details": {

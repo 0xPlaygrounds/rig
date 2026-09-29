@@ -410,6 +410,66 @@ cargo test -p rig-cassette --all-features --test openai openai::cassette::prompt
   -- --exact --nocapture --test-threads=1
 ```
 
+### Layer 2b: long runs (`test-support/rig-test-support/src/cache_longrun.rs`)
+
+A probe proves a hit on turn 2 or 3. Caching can still degrade over a long run: a marker that
+stops moving forward, a prefix that drifts after turn 40, a cache key that changes, or cache
+writes that cost more than the reads save. Each provider with caching records the same 100-turn
+support chat (the handbook preamble, one `lookup_order` call per turn, about 200 calls) under
+`fixtures/cassettes/<provider>/long_run_caching/` (Gemini: `auto_caching/`), plus a 30-turn run
+with caching off as the baseline.
+
+`cache_longrun` holds everything the runs share:
+
+- The workload (`SUPPORT_PREAMBLE`, `LookupOrder`, `question`) and the turn helpers `chat` and
+  `chat_streamed`, which retry a 5xx or 429 up to three times with record-only pauses of 2, 5
+  and 10 s and count the retries.
+- One reader per wire, `CacheWire::{Gemini, Anthropic, OpenAiChat, OpenAiResponses}`. For each
+  recorded call it gives rig's `Usage` as the wire reported it (input, cached reads, cache
+  writes, output), the conversation the call continues, the OpenAI `prompt_cache_key`, and for
+  Gemini the cache the call reads and every `cachedContents` resource created. Prompt tokens
+  follow the provider's `CacheAccounting`: Anthropic reports reads and writes beside
+  `input_tokens`, the others inside it.
+- The figures, printed as one `CACHE_LONGRUN <provider>/<scenario> {json}` line per run so a PR
+  table is generated rather than transcribed: calls, fixture bytes, retries, prompt tokens,
+  cached reads, cache writes, cached share, hit rate (calls after the first that read anything),
+  the smallest per-call share from the first read on, cache accuracy (reads over cacheable
+  tokens, where a call's cacheable tokens are its conversation's previous prompt), where the
+  reads fell short of that, writes over prompt tokens, input dollars with and without caching
+  through `rig_core::completion::CacheCost` at the provider's rates, and the same for the first
+  30 turns alone, to set beside the baseline.
+- The checks `check` runs on every run: rig's `Usage` matches the wire on every call; the input
+  saving, counting every write, read and stored token-hour, is at least the run's floor; from
+  each conversation's first read on, every call is cached above the run's floor and none reads
+  nothing (the prefix-move signature); cache writes stay under the run's cap.
+
+"Not faked" means something different per provider, and each run asserts its own form:
+
+- **Anthropic** bills a write above the input price, so a marker that stops moving forward
+  shows as the same prefix written again and again: writes stay under a share of prompt tokens.
+- **OpenAI** caches automatically and bills writes on GPT-5.6 and later: every request carries
+  the same `prompt_cache_key`, and writes stay under a share of prompt tokens.
+- **Gemini** caches are resources: a request that reads one carries none of what it holds,
+  cache plus request tail is the conversation byte for byte, every cache is deleted, every
+  replaced cache was read at least three times, and creation stays at or below 15% of prompt
+  tokens.
+
+To add a provider, give `CacheWire` a variant with its reader (the call path, the usage fields,
+the first user message, the accounting), add a `with_<provider>_long_run_cassette` wrapper and
+register it with the cassette-safety scan, and record one 100-turn fixture and its baseline.
+Rates come from the provider's price page, quoted with the date. Thresholds are placeholders
+until a first recording confirms them; never loosen one to make a recording pass. Record with:
+
+```bash
+cargo xtask cassette record --cap 3 <provider>/long_run_caching/<fixture>.yaml ...
+```
+
+A 100-turn run takes six to eleven minutes to record. Replay prints the figures:
+
+```bash
+cargo test -p rig-cassette --all-features --test anthropic long_run_caching -- --nocapture --test-threads=1
+```
+
 ### Layer 3 — live economics (`live_cache_economics`, `#[ignore]`d)
 
 A cassette pins what a provider did at record time; only a live run catches the provider changing
@@ -479,13 +539,11 @@ Practical consequences for anyone touching these fixtures:
 `gemini/auto_caching/`) is recorded as long runs: 100-turn support chats
 (about 200 calls each), a 60-call tool loop, four sub-agents and a lifecycle
 run. Their cache book reads the session's recorded clock, so each fixture has
-a `.clock.json` beside it. Besides each run's own thresholds, every run that
-uses a book asserts on its recorded traffic that no request re-sends what its
-cache holds, that cache plus request tail is the conversation byte for byte,
-that every created cache is deleted, that every replaced cache was read at
-least three times, and that cache creation stays under 15% of prompt tokens.
-A test turn retries a Google 5xx or 429 up to three times with a record-only
-pause, so the recording keeps the failed attempts and replay matches.
+a `.clock.json` beside it. They run on the shared long-run checks (Layer 2b),
+which for a run with a book include Gemini's rules: no request re-sends what
+its cache holds, cache plus request tail is the conversation byte for byte,
+every created cache is deleted, every replaced cache was read at least three
+times, and cache creation stays under 15% of prompt tokens.
 
 ## Live Provider Tests
 
