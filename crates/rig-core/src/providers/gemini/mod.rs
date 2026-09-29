@@ -14,6 +14,7 @@
 //! Pair a wire with a transport in a [`Model`](crate::driver::Model) to call it.
 
 pub mod cached_content;
+pub mod caching;
 pub mod completion;
 pub mod embedding;
 #[cfg(feature = "image")]
@@ -26,6 +27,9 @@ pub mod transcription;
 
 pub use crate::client::gemini::Gemini;
 pub use cached_content::{CacheExpiry, CachedContent, CachedContents, NewCachedContent};
+pub use caching::{
+    AutoCache, CacheBook, CacheEvent, CacheReport, Caching, Clock, CreatedCache, Lease,
+};
 pub use completion::ThoughtReplay;
 pub use embedding::{EMBEDDING_001, EMBEDDING_004};
 #[cfg(feature = "image")]
