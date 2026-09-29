@@ -73,7 +73,7 @@ httpmock = { workspace = true, features = ["record", "proxy"], optional = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 serde_yaml = { workspace = true, optional = true }
-tokio = { workspace = true, features = ["rt-multi-thread", "macros", "net", "sync", "io-util", "fs"], optional = true }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "net", "sync", "io-util", "fs", "time"], optional = true }
 url = { workspace = true, optional = true }
 
 # Repository-only provider and verification dependencies. Downstream users select

@@ -56,6 +56,8 @@ use tokio::sync::{Mutex, oneshot};
 use tokio::task::JoinHandle;
 
 mod account;
+mod clock;
+pub use clock::{CassetteClock, MAX_PAUSE, clock_sidecar};
 pub mod ledger;
 mod relay;
 pub use account::{AccountFailure, account_failure, reply_account_failure};
@@ -394,6 +396,7 @@ pub struct ProviderCassette {
     scenario: &'static str,
     expected_failures: Arc<AtomicU8>,
     attempt_root: PathBuf,
+    clock: CassetteClock,
 }
 
 enum CassetteServer {
@@ -600,6 +603,7 @@ impl ProviderCassette {
             }
         };
 
+        let clock = CassetteClock::start(mode, &cassette_path);
         Self {
             server,
             cassette_path,
@@ -610,6 +614,26 @@ impl ProviderCassette {
             scenario,
             expected_failures: Arc::new(AtomicU8::new(spec.expected_failures)),
             attempt_root,
+            clock,
+        }
+    }
+
+    /// The session's recorded clock: wall time while recording, the same
+    /// readings in the same order on replay. See [`CassetteClock`].
+    pub fn clock(&self) -> CassetteClock {
+        self.clock.clone()
+    }
+
+    /// Wait `duration` while recording, so a live provider sees the pause;
+    /// return at once on replay. Panics above [`MAX_PAUSE`] (60 s): no
+    /// cassette test waits longer.
+    pub async fn pause(&self, duration: std::time::Duration) {
+        assert!(
+            duration <= MAX_PAUSE,
+            "a cassette pause of {duration:?} exceeds the {MAX_PAUSE:?} limit"
+        );
+        if self.mode.records() {
+            tokio::time::sleep(duration).await;
         }
     }
 
@@ -726,6 +750,7 @@ impl ProviderCassette {
             provider,
             scenario,
             attempt_root,
+            clock,
             ..
         } = self;
 
@@ -738,6 +763,7 @@ impl ProviderCassette {
                 if let Err(payload) = result {
                     resume_unwind(payload);
                 }
+                clock.finish().await;
                 return;
             }
             server => server.recorded_yaml().await.unwrap_or_else(|| {
@@ -762,6 +788,7 @@ impl ProviderCassette {
             );
         }
         write_scrubbed_cassette(&cassette_path, policy, &yaml).await;
+        clock.finish().await;
     }
 
     /// Finalize after a successful test, preserving its original panic otherwise.
