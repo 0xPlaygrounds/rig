@@ -1,0 +1,20 @@
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"max_tokens":128000,"messages":[{"content":[{"text":"Start a short language compliance check.","type":"text"}],"role":"user"},{"content":[{"text":"For the rest of this conversation, answer in Spanish only.","type":"text"}],"role":"system"},{"content":[{"text":"Entendido.","type":"text"}],"role":"assistant"},{"content":[{"text":"What color is a clear daytime sky? Reply with one lowercase Spanish word.","type":"text"}],"role":"user"}],"model":"claude-opus-5-5"}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: request-id
+    value: req_011CfYFpC2D3RYhabw5tkANM
+  body: '{"container":null,"content":[{"signature":"CAQSvAQKEAgSGAI4AUIIdGhpbmtpbmcSDJPz9KM6W049nS77gBoMZ5qqOHYSumQQg8l1IjB6bvtrMnIdjtgIEsFk6BfVp6x7ce6uXqigGzJ8bBK+pUdZurpuGtxsBI0fxGe8gYcq2QMwG2Le2LJESUnb4qylOMbO1G1Es7YJDJd0CPtoxLOmciqoZhRY6SWEf7z8dNC1teHOKtikbJPLpxsMqEvjdfaguyaudixK/Ve6UKnXZRoXgC4z+BmHdpJqSZB8Y6jWqDGa+I7HohB17H8NBCZElha15pktFSkDQ36Gf84qgXFOehBWGmpHb2HTDfXW9DJjGb2FoLe5cvzSE8lOWpmRk19MLATUVVSGkzlpAblZZoLujCHkZ9LCrGJaLqMglolPxKbYdfQVU/0Z5bhdgWlRRtCNG/33omA5AYY9MS9VLbrou/25g0tb00W2exL+2xdKtBuy2UwCAqCnrETVhLrC70gGxP7l3KuqySs3BM6REbnQ5ksz4Fz7CZrZ8HRvDtL7MWFAmQ37/mZH7Fn968TEoPqDzTC6a5HAfApnhj4Ay3KOmWSMsmGo8MTIvRW9JXx6O68DdeA8PzN1AKVRD8hsdNitbIbn4hbpOvZLr0MZKtRVT1KUS8rlQdhMYxDv4HrBASHX3n4sRe+Ad065n8pX8jId0FkhdrTGVlVHi8lwwSvHAS5KYzOHYOJKZPOoiQSu6sGI3kx2UoIaMXZ7YugFJ/heS/xGgddXq4A5Ac4T0703Jq9+aKMqptavzBgB","thinking":"","type":"thinking"},{"text":"azul","type":"text"}],"diagnostics":null,"id":"msg_011CfYFpDPZUj9u23PkejJp8","model":"claude-opus-5-5","role":"assistant","stop_details":null,"stop_reason":"end_turn","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":75,"output_tokens":12,"output_tokens_details":{"thinking_tokens":8},"service_tier":"standard"}}'

@@ -29,6 +29,18 @@ where
     content.serialize(serializer)
 }
 
+/// `gpt-6-astra` completion model
+pub const GPT_6_ASTRA: &str = "gpt-6-astra";
+
+/// `gpt-6.1-sol` completion model
+pub const GPT_6_1_SOL: &str = "gpt-6.1-sol";
+
+/// `gpt-6-sol` completion model
+pub const GPT_6_SOL: &str = "gpt-6-sol";
+
+/// `gpt-6-luna` completion model
+pub const GPT_6_LUNA: &str = "gpt-6-luna";
+
 /// `gpt-5.6` completion model (alias that routes to GPT-5.6 Sol)
 pub const GPT_5_6: &str = "gpt-5.6";
 
@@ -44,8 +56,26 @@ pub const GPT_5_6_LUNA: &str = "gpt-5.6-luna";
 /// `gpt-5.5` completion model
 pub const GPT_5_5: &str = "gpt-5.5";
 
+/// `gpt-5.5-pro` completion model
+pub const GPT_5_5_PRO: &str = "gpt-5.5-pro";
+
+/// `gpt-5.4` completion model
+pub const GPT_5_4: &str = "gpt-5.4";
+
+/// `gpt-5.4-mini` completion model
+pub const GPT_5_4_MINI: &str = "gpt-5.4-mini";
+
+/// `gpt-5.4-nano` completion model
+pub const GPT_5_4_NANO: &str = "gpt-5.4-nano";
+
+/// `gpt-5.4-pro` completion model
+pub const GPT_5_4_PRO: &str = "gpt-5.4-pro";
+
 /// `gpt-5.2` completion model
 pub const GPT_5_2: &str = "gpt-5.2";
+
+/// `gpt-5.2-pro` completion model
+pub const GPT_5_2_PRO: &str = "gpt-5.2-pro";
 
 /// `gpt-5.1` completion model
 pub const GPT_5_1: &str = "gpt-5.1";
