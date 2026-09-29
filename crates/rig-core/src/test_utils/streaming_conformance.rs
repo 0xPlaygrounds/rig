@@ -292,8 +292,9 @@ pub fn check_ungated_outcome(
 
 /// One scripted wire input frame.
 ///
-/// Byte-transport wires (SSE, NDJSON, websocket) script raw bytes fed through
-/// the provider's HTTP layer; typed-event wires (bedrock, candle,
+/// Byte-transport wires (SSE, NDJSON, websocket) script raw bytes, fed
+/// through the provider's HTTP layer or re-wrapped as websocket messages;
+/// typed-event wires (bedrock, candle,
 /// gemini-grpc) script already-typed SDK events fed to the adapter directly —
 /// events-first, no mock transport — which the typed driver downcasts back.
 #[derive(Clone)]

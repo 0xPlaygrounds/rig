@@ -109,6 +109,7 @@ mod cassette {
     mod url_pdf_document;
     mod vllm;
     mod websocket_error_identity_matrix;
+    mod websocket_turns;
 }
 
 mod live {
@@ -118,5 +119,4 @@ mod live {
     mod image_generation;
     mod streaming_tools_reasoning;
     mod transcription;
-    mod websocket;
 }

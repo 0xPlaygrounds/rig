@@ -457,9 +457,10 @@ socks = ["reqwest", "rig-reqwest/socks"]
 # through the bundled reqwest client: rig-core's `reqwest` feature.
 reqwest = ["dep:rig-reqwest", "rig-core/reqwest", "rig-typesafeai?/reqwest"]
 # The bundled websocket backend (`rig-tungstenite`) and the provider websocket
-# sessions it drives, through rig-core's `tungstenite` feature. Independent of
-# the HTTP transport axis: a session borrows the provider client for its
-# request mapping, so `reqwest` comes along for the client, not for the socket.
+# transports it drives, through rig-core's `tungstenite` feature. Independent of
+# the HTTP transport axis: a websocket model wraps the provider client's wire
+# for its request mapping, so `reqwest` comes along for the client, not for the
+# socket.
 #
 # `websocket` is the API gate — it is what `pub use rig_tungstenite` is cfg'd
 # on — and each of the three spellings is usable on its own. `rig-tungstenite`'s own `default = ["rustls"]` applies (see its

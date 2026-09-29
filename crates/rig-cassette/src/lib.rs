@@ -15,8 +15,8 @@
 //! [`effect_log`] is available without optional features and supports WASM.
 //! The `agent` and `ecs` features independently enable runtime integrations;
 //! neither enables the native HTTP engine or changes JSON map/float semantics.
-//! The `http` feature enables the native provider cassette engine, including
-//! ordered JSON maps and round-trip float parsing. `bedrock` extends it with
+//! The `http` feature enables the native provider cassette engine, WebSocket
+//! turns included, with ordered JSON maps and round-trip float parsing. `bedrock` extends it with
 //! AWS event-stream support. No optional feature is enabled by default.
 //!
 //! ```

@@ -28,9 +28,9 @@ pub use rig_reqwest;
 
 /// The bundled `tokio-tungstenite` websocket backend (`rig-tungstenite`), on
 /// native targets. With the `websocket` feature,
-/// `model.responses_websocket().connect()` opens a session over it with no
-/// backend named; without it, rig has no websocket backend and a session is
-/// opened with `responses_websocket().connect_with(..)` and any
+/// `model.responses_websocket().connect()` opens a websocket model over it
+/// with no backend named; without it, rig has no websocket backend and the
+/// model is opened with `responses_websocket().connect_with(..)` and any
 /// [`rig_core::ws_client::WebSocketClientExt`] implementation.
 #[cfg(all(feature = "websocket", not(target_family = "wasm")))]
 #[cfg_attr(docsrs, doc(cfg(feature = "websocket")))]

@@ -13,10 +13,11 @@
 //! | no `struct`/`enum` parameter bounded by `HttpClientExt` or defaulted to `DynHttpClient` | the transport parameter returning |
 //! | no `Transport` impl | a provider owning how its payloads are sent |
 //!
-//! `openai/responses_api/websocket.rs` is exempt because a session spans many
-//! turns over one connection rather than a single exchange. The credential
-//! exchanges named in [`CREDENTIAL_EXCHANGES`] are exempt from the `async` rules
-//! only.
+//! `openai/responses_api/websocket.rs` holds the websocket transport beside its
+//! wire, because a connection spans many turns rather than a single exchange.
+//! It is exempt from every rule but the one on `impl Wire` blocks. The
+//! credential exchanges named in [`CREDENTIAL_EXCHANGES`] are exempt from the
+//! `async` rules only.
 //!
 //! Source is parsed with `syn`, so awaits in comments or strings cannot trip the
 //! check and an unparsable file is an error. Because `syn` does not descend into
@@ -30,11 +31,11 @@ use quote::ToTokens;
 use syn::visit::{self, Visit};
 use syn::{Expr, File, ImplItemFn, ItemEnum, ItemFn, ItemImpl, ItemStruct};
 
-/// Files holding a session rather than a request/response exchange, currently
-/// only the Responses websocket.
+/// Files holding a connection that spans turns rather than a request/response
+/// exchange, currently only the Responses websocket.
 ///
-/// A session is exempt from the transport rule as well as the `async` ones
-/// because it owns the socket it runs over.
+/// Such a file is exempt from the transport rule as well as the `async` ones
+/// because it owns the socket its transport runs over.
 const SESSION_EXCEPTIONS: &[&str] = &["openai/responses_api/websocket.rs"];
 
 /// Files performing credential exchanges, which poll device flows, refresh
@@ -119,7 +120,8 @@ struct Wires {
     /// Whether `async` and `.await` are allowed, as in a session or a
     /// credential exchange.
     conversation: bool,
-    /// Whether a transport parameter is allowed, which holds for sessions only.
+    /// Whether a transport parameter or a `Transport` impl is allowed, which
+    /// holds for sessions only.
     session: bool,
     offenders: Vec<String>,
 }
@@ -281,7 +283,7 @@ impl<'ast> Visit<'ast> for Wires {
             .map(|segment| segment.ident.to_string());
 
         if let Some(name) = &implemented {
-            if name == "Transport" {
+            if name == "Transport" && !self.session {
                 self.report(&format!(
                     "`impl Transport for {}` — providers are wires; the HTTP transport is \
                      `driver::http_transport`",

@@ -415,6 +415,41 @@ pub(super) async fn with_openai_websocket_cassette<F, Fut>(
     cassette.finish_after_test(result).await;
 }
 
+/// Run `test_body` against a Responses websocket cassette: the recorded turns
+/// in replay, the live endpoint through the bundled backend when recording.
+/// The model's HTTP transport is never used.
+pub(super) async fn with_openai_websocket_turn_cassette<F, Fut>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) where
+    F: FnOnce(
+        OpenAiCassette,
+        crate::cassettes::websocket::CassetteSocket<rig::rig_tungstenite::TungsteniteClient>,
+    ) -> Fut,
+    Fut: Future<Output = ()>,
+{
+    // This test graph enables both rustls providers (httpmock's `ring`,
+    // reqwest's `aws-lc-rs`), so a live connection needs one chosen.
+    let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+    let cassette = crate::cassettes::websocket::WebSocketCassette::start(
+        &crate::cassettes::cassette_root(),
+        "openai",
+        spec,
+        "https://api.openai.com/v1",
+    )
+    .await;
+    let openai = OpenAiCassette::new(
+        cassette.api_key("OPENAI_API_KEY"),
+        "https://api.openai.com/v1",
+        rig::rig_reqwest::shared(),
+    );
+    let backend = cassette.backend(rig::rig_tungstenite::TungsteniteClient::new());
+    let result = AssertUnwindSafe(test_body(openai, backend))
+        .catch_unwind()
+        .await;
+    cassette.finish_after_test(result).await;
+}
+
 /// Like [`with_openai_cassette`], but authenticating with a deliberately
 /// invalid API key — for recording real 401s with no secret near the fixture.
 pub(super) async fn with_openai_cassette_bogus_key<F, Fut>(

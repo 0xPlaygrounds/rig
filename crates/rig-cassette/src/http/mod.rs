@@ -60,6 +60,7 @@ mod clock;
 pub use clock::{CassetteClock, MAX_PAUSE, clock_sidecar};
 pub mod ledger;
 mod relay;
+pub mod websocket;
 pub use account::{AccountFailure, account_failure, reply_account_failure};
 
 const MODE_ENV: &str = "RIG_PROVIDER_TEST_MODE";
@@ -279,7 +280,7 @@ impl DirectRecorder {
         status: u16,
         response_body: &[u8],
     ) {
-        if !(200..300).contains(&status) {
+        if !accepted(status) {
             return;
         }
         let path = url::Url::parse(uri)
@@ -2249,6 +2250,12 @@ pub fn cassette_account_failures(contents: &str) -> Vec<CassetteAccountFailure> 
 /// `store: false`.
 pub(crate) const STORING_RESPONSES_PROVIDERS: &[&str] = &["openai", "xai"];
 
+/// Whether the provider accepted a request: a 2xx reply, or the `101` a
+/// recorded WebSocket turn answers with.
+fn accepted(status: u16) -> bool {
+    (200..300).contains(&status) || status == 101
+}
+
 /// The stored responses a cassette for `provider` creates and never deletes:
 /// each successful Responses request without `store: false` whose response
 /// id no successful `DELETE` in the same cassette removes. Only `openai` and
@@ -2272,7 +2279,7 @@ pub fn cassette_stored_state(provider: &str, contents: &str) -> Vec<String> {
         .collect();
     let mut stored = Vec::new();
     for interaction in &interactions {
-        if !(200..300).contains(&interaction.then.status) {
+        if !accepted(interaction.then.status) {
             continue;
         }
         let created = ledger::created_resources(

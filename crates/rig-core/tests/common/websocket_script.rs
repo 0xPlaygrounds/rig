@@ -1,37 +1,25 @@
 //! A scripted in-memory [`WebSocketConnection`] for the OpenAI Responses
-//! websocket session tests.
-//!
-//! These session tests used to need a live local websocket server, a TLS-capable
-//! backend and a tokio reactor to assert on protocol behaviour that involves
-//! none of those things. Now that the session drives a
-//! [`WebSocketConnection`](rig_core::ws_client::WebSocketConnection), the
-//! "server" is a queue of frames.
+//! websocket transport tests: the "server" is a queue of frames.
 //!
 //! The script is expressed in *turns*, which is how the protocol works: each
-//! `response.create` the session writes releases the next turn's server frames.
-//! Assertions that used to read the payload the server received now read
-//! [`Script::sent`].
+//! `response.create` the transport writes releases the next turn's server
+//! frames. [`Script::sent`] reads what the transport wrote.
 
 #![allow(dead_code)]
 
 use rig_core::driver::Model;
 use rig_core::http_client;
 use rig_core::providers::openai::OpenAIConfig;
-use rig_core::providers::openai::responses_api::websocket::ResponsesWebSocketSession;
 use rig_core::providers::openai::responses_api::wire::Responses;
 use rig_core::test_utils::RecordingHttpClient;
 use rig_core::wasm_compat::WasmBoxedFuture;
 use rig_core::ws_client::{BoxedWebSocketConnection, CloseFrame, Frame, WebSocketConnection};
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
 
-/// The bound wire these sessions are opened from — which is also the model
-/// the tests build requests with. Its HTTP transport is never exercised (a
-/// websocket session borrows the wire only for its request mapping), so a
-/// recording stub stands in for it.
+/// The HTTP model whose wire the websocket wire wraps. Its HTTP transport
+/// is never exercised, so a recording stub stands in for it.
 pub type TestClient = Model<Responses>;
-pub type TestSession = ResponsesWebSocketSession;
 
 /// What a scripted connection does once its scripted frames run out.
 #[derive(Clone, Copy, Default, PartialEq, Eq, Debug)]
@@ -46,7 +34,7 @@ pub enum WhenDrained {
 
 #[derive(Default)]
 struct ScriptState {
-    /// Server frames per turn, released one turn per write: the session opens
+    /// Server frames per turn, released one turn per write: the transport opens
     /// every turn with a `response.create`, so the first write releases turn
     /// one, the second write turn two, and so on. Nothing is released before
     /// the first write.
@@ -57,14 +45,14 @@ struct ScriptState {
     drained: WhenDrained,
 }
 
-/// A scripted connection, cloneable so a test can inspect what the session
+/// A scripted connection, cloneable so a test can inspect what the transport
 /// wrote after handing the connection to it.
 #[derive(Clone, Default)]
 pub struct Script(Arc<Mutex<ScriptState>>);
 
 impl Script {
     /// A script whose turns are lists of JSON payloads, one list per
-    /// `response.create` the session sends.
+    /// `response.create` the transport sends.
     pub fn turns<I, J>(turns: I) -> Self
     where
         I: IntoIterator<Item = J>,
@@ -92,17 +80,17 @@ impl Script {
         self
     }
 
-    /// Every text payload the session has written, in order.
+    /// Every text payload the transport has written, in order.
     pub fn sent(&self) -> Vec<String> {
         self.0.lock().expect("script lock").sent.clone()
     }
 
-    /// Whether the session completed a close handshake.
+    /// Whether the transport completed a close handshake.
     pub fn closed(&self) -> bool {
         self.0.lock().expect("script lock").closed
     }
 
-    /// The scripted connection handle to hand to a session.
+    /// The scripted connection handle to hand to a transport.
     pub fn connection(&self) -> BoxedWebSocketConnection {
         Box::new(ScriptedConnection(self.clone()))
     }
@@ -115,7 +103,7 @@ impl WebSocketConnection for ScriptedConnection {
         let mut state = self.0.0.lock().expect("script lock");
         match frame {
             Frame::Text(text) => state.sent.push(text),
-            other => panic!("the session only writes text frames, got {other:?}"),
+            other => panic!("the transport only writes text frames, got {other:?}"),
         }
         // The write is the cue: a real endpoint answers a `response.create`
         // with that turn's events.
@@ -151,27 +139,9 @@ impl WebSocketConnection for ScriptedConnection {
     }
 }
 
-/// A bound wire whose HTTP transport is a stub: these tests never send one.
+/// A model whose HTTP transport is a stub: these tests never send over it.
 pub fn test_client() -> TestClient {
     OpenAIConfig::new("test-key")
         .connect(RecordingHttpClient::new("{}"))
         .responses("gpt-4o")
-}
-
-/// A session over `script`, with no event timeout.
-pub fn session(client: &TestClient, script: &Script) -> TestSession {
-    session_with_timeout(client, script, None)
-}
-
-/// A session over `script` with an explicit event timeout.
-pub fn session_with_timeout(
-    client: &TestClient,
-    script: &Script,
-    event_timeout: Option<Duration>,
-) -> TestSession {
-    ResponsesWebSocketSession::from_connection(
-        client.wire.clone(),
-        script.connection(),
-        event_timeout,
-    )
 }

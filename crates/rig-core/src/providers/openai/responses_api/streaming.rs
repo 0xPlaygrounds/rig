@@ -282,7 +282,7 @@ struct ErrorEnvelope {
 }
 
 /// The OpenAI Responses wire's decoder: one state machine for the SSE
-/// stream, the unary body and the websocket session.
+/// stream, the unary body and the websocket turn.
 pub struct ResponsesDecoder<'id> {
     /// Stable descriptor name the reply is attributed to: ChatGPT and
     /// Copilot stream this exact wire shape, so it is an input rather than

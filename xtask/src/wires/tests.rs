@@ -136,6 +136,19 @@ fn a_provider_may_not_implement_transport() {
             .first()
             .is_some_and(|report| report.contains("`driver::http_transport`"))
     );
+    // A credential exchange may converse, but not own a transport.
+    let found = offenders(
+        "copilot/auth/mod.rs",
+        "impl Transport<Device> for Exchange { }",
+    );
+    assert_eq!(found.len(), 1, "{found:?}");
+
+    // The connection a session runs over is its transport.
+    let found = offenders(
+        "openai/responses_api/websocket.rs",
+        "impl Transport<ResponsesSocket> for ResponsesWebSocket { }",
+    );
+    assert!(found.is_empty(), "{found:?}");
 }
 
 #[test]

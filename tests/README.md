@@ -271,6 +271,15 @@ the *request's* multipart body — a cassette that recorded no body still matche
 a multipart request, and the multipart shape itself is pinned by unit tests
 beside the provider.
 
+WebSocket turns record through `rig_cassette::http::websocket`: a
+`WebSocketCassette` hands the client a backend that wraps the live one when
+recording and plays the fixture back when replaying. Each turn is one
+interaction in the usual format: the upgrade's path with the client's message
+as its body, answered by `101` with the provider's messages as `data:` lines.
+Replay matches turns in order against the scrubbed message. The OpenAI
+Responses turns use `with_openai_websocket_turn_cassette` and record with
+`cargo xtask cassette record` like any other fixture.
+
 Run one cassette test by passing a test-name substring after the test target;
 the filter is a substring match, so use the full module path only when the
 shorter name is ambiguous:
