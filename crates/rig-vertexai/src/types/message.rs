@@ -8,189 +8,183 @@ use rig_core::message::{
 };
 use std::collections::HashSet;
 
-pub struct RigMessage(pub Message);
-
-impl TryFrom<RigMessage> for vertexai::model::Content {
-    type Error = ProviderError;
-
-    fn try_from(value: RigMessage) -> Result<Self, Self::Error> {
-        match value.0 {
-            Message::System { .. } => Err(ProviderError::Provider(
-                "System messages must be sent via Vertex AI system_instruction".to_string(),
-            )),
-            Message::User { content } => {
-                let parts: Result<Vec<vertexai::model::Part>, _> = content
-                    .into_iter()
-                    .map(|user_content| match user_content {
-                        UserContent::Text(Text { text, .. }) => {
-                            Ok(vertexai::model::Part::new().set_text(text))
+/// The Vertex AI `Content` for a non-system `message`. System messages
+/// travel in `system_instruction` and are rejected here.
+pub(crate) fn content_from_message(
+    message: Message,
+) -> Result<vertexai::model::Content, ProviderError> {
+    match message {
+        Message::System { .. } => Err(ProviderError::Provider(
+            "System messages must be sent via Vertex AI system_instruction".to_string(),
+        )),
+        Message::User { content } => {
+            let parts: Result<Vec<vertexai::model::Part>, _> = content
+                .into_iter()
+                .map(|user_content| match user_content {
+                    UserContent::Text(Text { text, .. }) => {
+                        Ok(vertexai::model::Part::new().set_text(text))
+                    }
+                    UserContent::ToolResult(tool_result) => {
+                        // Vertex carries media in `parts` and locates it in
+                        // the structured response through display-name
+                        // references, preserving canonical block order.
+                        let mut outputs = Vec::new();
+                        let mut response_parts = Vec::new();
+                        let mut reserved_display_names = HashSet::new();
+                        for content in tool_result.content.iter() {
+                            if let ToolResultContent::Json { value } = content {
+                                collect_json_ref_names(value, &mut reserved_display_names);
+                            }
                         }
-                        UserContent::ToolResult(tool_result) => {
-                            // Vertex carries media in `parts` and locates it in
-                            // the structured response through display-name
-                            // references, preserving canonical block order.
-                            let mut outputs = Vec::new();
-                            let mut response_parts = Vec::new();
-                            let mut reserved_display_names = HashSet::new();
-                            for content in tool_result.content.iter() {
-                                if let ToolResultContent::Json { value } = content {
-                                    collect_json_ref_names(value, &mut reserved_display_names);
+                        let mut image_index = 0;
+
+                        for content in tool_result.content.iter() {
+                            match content {
+                                ToolResultContent::Text(Text { text, .. }) => {
+                                    outputs.push(serde_json::Value::String(text.clone()));
+                                }
+                                ToolResultContent::Json { value } => {
+                                    outputs.push(value.clone());
+                                }
+                                ToolResultContent::Image(image) => {
+                                    let display_name = loop {
+                                        let candidate =
+                                            format!("rig_tool_result_image_{image_index}");
+                                        image_index += 1;
+                                        if reserved_display_names.insert(candidate.clone()) {
+                                            break candidate;
+                                        }
+                                    };
+                                    response_parts
+                                        .push(vertex_tool_result_image_part(image, &display_name)?);
+                                    outputs.push(serde_json::json!({ "$ref": display_name }));
                                 }
                             }
-                            let mut image_index = 0;
-
-                            for content in tool_result.content.iter() {
-                                match content {
-                                    ToolResultContent::Text(Text { text, .. }) => {
-                                        outputs.push(serde_json::Value::String(text.clone()));
-                                    }
-                                    ToolResultContent::Json { value } => {
-                                        outputs.push(value.clone());
-                                    }
-                                    ToolResultContent::Image(image) => {
-                                        let display_name = loop {
-                                            let candidate =
-                                                format!("rig_tool_result_image_{image_index}");
-                                            image_index += 1;
-                                            if reserved_display_names.insert(candidate.clone()) {
-                                                break candidate;
-                                            }
-                                        };
-                                        response_parts.push(vertex_tool_result_image_part(
-                                            image,
-                                            &display_name,
-                                        )?);
-                                        outputs.push(serde_json::json!({ "$ref": display_name }));
-                                    }
-                                }
-                            }
-
-                            let output_value = match outputs.as_slice() {
-                                [single] => single.clone(),
-                                _ => serde_json::Value::Array(outputs),
-                            };
-
-                            let mut response_struct = serde_json::Map::new();
-                            response_struct.insert("output".to_string(), output_value);
-
-                            // Function responses correlate by name, not call ID.
-                            let function_name = tool_result.name.clone();
-                            let function_response = vertexai::model::FunctionResponse::new()
-                                .set_name(function_name)
-                                .set_response(response_struct)
-                                .set_parts(response_parts);
-
-                            Ok(vertexai::model::Part::new()
-                                .set_function_response(function_response))
                         }
-                        _ => Err(ProviderError::Provider(format!(
-                            "Unsupported user content type: {user_content:?}"
-                        ))),
-                    })
-                    .collect();
 
-                let parts = parts?;
-                Ok(vertexai::model::Content::new()
-                    .set_role("user")
-                    .set_parts(parts))
-            }
-            Message::Assistant { content, .. } => {
-                let parts: Result<Vec<vertexai::model::Part>, _> = content
-                    .into_iter()
-                    // Reasoning another service issued is not replayed.
-                    .filter(|part| match part {
-                        AssistantContent::Reasoning(reasoning) => reasoning
+                        let output_value = match outputs.as_slice() {
+                            [single] => single.clone(),
+                            _ => serde_json::Value::Array(outputs),
+                        };
+
+                        let mut response_struct = serde_json::Map::new();
+                        response_struct.insert("output".to_string(), output_value);
+
+                        // Function responses correlate by name, not call ID.
+                        let function_name = tool_result.name.clone();
+                        let function_response = vertexai::model::FunctionResponse::new()
+                            .set_name(function_name)
+                            .set_response(response_struct)
+                            .set_parts(response_parts);
+
+                        Ok(vertexai::model::Part::new().set_function_response(function_response))
+                    }
+                    _ => Err(ProviderError::Provider(format!(
+                        "Unsupported user content type: {user_content:?}"
+                    ))),
+                })
+                .collect();
+
+            let parts = parts?;
+            Ok(vertexai::model::Content::new()
+                .set_role("user")
+                .set_parts(parts))
+        }
+        Message::Assistant { content, .. } => {
+            let parts: Result<Vec<vertexai::model::Part>, _> = content
+                .into_iter()
+                // Reasoning another service issued is not replayed.
+                .filter(|part| match part {
+                    AssistantContent::Reasoning(reasoning) => reasoning
+                        .open(&crate::types::completion_response::ISSUER)
+                        .is_some(),
+                    _ => true,
+                })
+                .map(|assistant_content| match assistant_content {
+                    AssistantContent::Text(text) => {
+                        let signature = rig_core::providers::gemini::text_signature_at(
+                            &text,
+                            crate::types::completion_response::VERTEX_TEXT_EXTRAS_KEY,
+                        )
+                        .map(str::to_owned);
+                        let mut part = vertexai::model::Part::new().set_text(text.text);
+                        // A signed answer part returns with its signature.
+                        if let Some(signature) = signature {
+                            match BASE64.decode(signature.as_bytes()) {
+                                Ok(bytes) => part = part.set_thought_signature(bytes),
+                                Err(err) => tracing::warn!(
+                                    %err,
+                                    "Failed to base64-decode text thought_signature; \
+                                     dropping it for this turn"
+                                ),
+                            }
+                        }
+                        Ok(part)
+                    }
+                    AssistantContent::Image(image) => vertex_assistant_image_part(image),
+                    AssistantContent::ToolCall(tool_call) => {
+                        let serde_json::Value::Object(struct_val) = tool_call.function.arguments
+                        else {
+                            return Err(ProviderError::Provider(
+                                "Expected JSON object for Struct conversion".to_string(),
+                            ));
+                        };
+
+                        let function_call = vertexai::model::FunctionCall::new()
+                            .set_name(tool_call.function.name.to_string())
+                            .set_args(struct_val);
+
+                        let mut part =
+                            vertexai::model::Part::new().set_function_call(function_call);
+
+                        // Restore signature bytes for replay; malformed base64
+                        // is omitted with a warning rather than rejecting the turn.
+                        if let Some(signature) = &tool_call.signature {
+                            match BASE64.decode(signature.as_bytes()) {
+                                Ok(bytes) => part = part.set_thought_signature(bytes),
+                                Err(err) => tracing::warn!(
+                                    %err,
+                                    tool = %tool_call.function.name,
+                                    "Failed to base64-decode tool call thought_signature; \
+                                     dropping it for this turn"
+                                ),
+                            }
+                        }
+
+                        Ok(part)
+                    }
+                    AssistantContent::Reasoning(reasoning) => {
+                        let reasoning = reasoning
                             .open(&crate::types::completion_response::ISSUER)
-                            .is_some(),
-                        _ => true,
-                    })
-                    .map(|assistant_content| match assistant_content {
-                        AssistantContent::Text(text) => {
-                            let signature = rig_core::providers::gemini::text_signature_at(
-                                &text,
-                                crate::types::completion_response::VERTEX_TEXT_EXTRAS_KEY,
-                            )
-                            .map(str::to_owned);
-                            let mut part = vertexai::model::Part::new().set_text(text.text);
-                            // A signed answer part returns with its signature.
-                            if let Some(signature) = signature {
-                                match BASE64.decode(signature.as_bytes()) {
-                                    Ok(bytes) => part = part.set_thought_signature(bytes),
-                                    Err(err) => tracing::warn!(
-                                        %err,
-                                        "Failed to base64-decode text thought_signature; \
-                                         dropping it for this turn"
-                                    ),
-                                }
+                            .ok_or_else(|| {
+                                ProviderError::request(
+                                    "Vertex cannot replay reasoning another service issued",
+                                )
+                            })?;
+                        let mut part = vertexai::model::Part::new()
+                            .set_text(reasoning.display_text())
+                            .set_thought(true);
+
+                        if let Some(signature) = reasoning.first_signature() {
+                            match BASE64.decode(signature.as_bytes()) {
+                                Ok(bytes) => part = part.set_thought_signature(bytes),
+                                Err(err) => tracing::warn!(
+                                    %err,
+                                    "Failed to base64-decode reasoning thought_signature; \
+                                     dropping it for this turn"
+                                ),
                             }
-                            Ok(part)
                         }
-                        AssistantContent::Image(image) => vertex_assistant_image_part(image),
-                        AssistantContent::ToolCall(tool_call) => {
-                            let serde_json::Value::Object(struct_val) =
-                                tool_call.function.arguments
-                            else {
-                                return Err(ProviderError::Provider(
-                                    "Expected JSON object for Struct conversion".to_string(),
-                                ));
-                            };
 
-                            let function_call = vertexai::model::FunctionCall::new()
-                                .set_name(tool_call.function.name.to_string())
-                                .set_args(struct_val);
+                        Ok(part)
+                    }
+                })
+                .collect();
 
-                            let mut part =
-                                vertexai::model::Part::new().set_function_call(function_call);
-
-                            // Restore signature bytes for replay; malformed base64
-                            // is omitted with a warning rather than rejecting the turn.
-                            if let Some(signature) = &tool_call.signature {
-                                match BASE64.decode(signature.as_bytes()) {
-                                    Ok(bytes) => part = part.set_thought_signature(bytes),
-                                    Err(err) => tracing::warn!(
-                                        %err,
-                                        tool = %tool_call.function.name,
-                                        "Failed to base64-decode tool call thought_signature; \
-                                         dropping it for this turn"
-                                    ),
-                                }
-                            }
-
-                            Ok(part)
-                        }
-                        AssistantContent::Reasoning(reasoning) => {
-                            let reasoning = reasoning
-                                .open(&crate::types::completion_response::ISSUER)
-                                .ok_or_else(|| {
-                                    ProviderError::request(
-                                        "Vertex cannot replay reasoning another service issued",
-                                    )
-                                })?;
-                            let mut part = vertexai::model::Part::new()
-                                .set_text(reasoning.display_text())
-                                .set_thought(true);
-
-                            if let Some(signature) = reasoning.first_signature() {
-                                match BASE64.decode(signature.as_bytes()) {
-                                    Ok(bytes) => part = part.set_thought_signature(bytes),
-                                    Err(err) => tracing::warn!(
-                                        %err,
-                                        "Failed to base64-decode reasoning thought_signature; \
-                                         dropping it for this turn"
-                                    ),
-                                }
-                            }
-
-                            Ok(part)
-                        }
-                    })
-                    .collect();
-
-                let parts = parts?;
-                Ok(vertexai::model::Content::new()
-                    .set_role("model")
-                    .set_parts(parts))
-            }
+            let parts = parts?;
+            Ok(vertexai::model::Content::new()
+                .set_role("model")
+                .set_parts(parts))
         }
     }
 }
