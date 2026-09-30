@@ -47,25 +47,29 @@ pub struct Embeddings {
     pub provider: super::GeminiConfig,
     /// The embedding model, as the path names it.
     pub model: String,
-    /// The `output_dimensionality` every document in the batch asks for.
-    pub ndims: usize,
+    /// The width the caller asked for. `None` takes the model's default.
+    pub ndims: Option<usize>,
 }
 
 impl Embeddings {
-    /// Build a wire for `model` with the requested output dimensions.
-    /// If `ndims` is absent, use the model default or 768 for unknown models.
+    /// The wire for `model`, asking for `ndims`-wide vectors when set.
     pub fn new(
         provider: super::GeminiConfig,
         model: impl Into<String>,
         ndims: Option<usize>,
     ) -> Self {
-        let model = model.into();
-        let ndims = ndims.or_else(|| model_default_ndims(&model)).unwrap_or(768);
         Self {
             provider,
-            model,
+            model: model.into(),
             ndims,
         }
+    }
+
+    /// The `output_dimensionality` every document in the batch asks for:
+    /// the caller's width, else the model's known default. `None` for an
+    /// unknown model leaves the width to the API.
+    fn width(&self) -> Option<usize> {
+        self.ndims.or_else(|| model_default_ndims(&self.model))
     }
 }
 
@@ -78,22 +82,24 @@ impl Wire for Embeddings {
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(super::PROVIDER_NAME)
             .model(self.model.as_str())
-            .capabilities(Capabilities::embedding(1024, self.ndims))
+            .capabilities(
+                Capabilities::embedding(1024, self.width().unwrap_or_default())
+                    .declaring(self.ndims),
+            )
     }
 
     fn encode(&self, request: Vec<String>, _mode: Mode) -> Result<Encoded, EncodeError> {
+        let width = self.width();
         let requests: Vec<_> = request
             .iter()
             .map(|doc| {
-                json!({
-                    "model": format!("models/{}", self.model),
-                    "content": json!({
-                        "parts": [json!({
-                            "text": doc
-                        })]
-                    }),
-                    "output_dimensionality": self.ndims,
-                })
+                let mut request = serde_json::Map::new();
+                request.insert("model".to_owned(), json!(format!("models/{}", self.model)));
+                request.insert("content".to_owned(), json!({ "parts": [{ "text": doc }] }));
+                if let Some(width) = width {
+                    request.insert("output_dimensionality".to_owned(), json!(width));
+                }
+                serde_json::Value::Object(request)
             })
             .collect();
 

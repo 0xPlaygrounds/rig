@@ -21,7 +21,7 @@ async fn embed_texts_smoke() {
     with_cohere_cassette("embeddings/embed_texts_smoke", |client| async move {
         let model = client
             .embedding(cohere::EMBED_V4, None)
-            .map_wire(|wire| wire.with_input_type("search_document"));
+            .map_wire(|wire| wire.with_input_type(cohere::InputType::SearchDocument));
         assert_eq!(model.capabilities().ndims, 1536);
 
         let embeddings = model
@@ -45,7 +45,7 @@ async fn embed_search_query_smoke() {
     with_cohere_cassette("embeddings/embed_search_query_smoke", |client| async move {
         let model = client
             .embedding(cohere::EMBED_ENGLISH_LIGHT_V3, None)
-            .map_wire(|wire| wire.with_input_type("search_query"));
+            .map_wire(|wire| wire.with_input_type(cohere::InputType::SearchQuery));
         assert_eq!(model.capabilities().ndims, 384);
 
         let embeddings = model
@@ -66,7 +66,7 @@ async fn embed_classification_smoke() {
         |client| async move {
             let model = client
                 .embedding(cohere::EMBED_ENGLISH_LIGHT_V3, None)
-                .map_wire(|wire| wire.with_input_type("classification"));
+                .map_wire(|wire| wire.with_input_type(cohere::InputType::Classification));
             assert_eq!(model.capabilities().ndims, 384);
 
             let embeddings = model

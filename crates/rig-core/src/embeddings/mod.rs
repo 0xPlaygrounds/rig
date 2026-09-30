@@ -6,6 +6,13 @@
 //! [`EmbeddingsBuilder`] to batch embedding requests for vector stores or
 //! retrieval workflows.
 //!
+//! Every provider's `embedding(model, ndims)` reads `ndims` the same way.
+//! `Some(n)` asks for `n`-wide vectors where the provider's API takes a
+//! width, and a reply of any other width fails with
+//! [`ProviderError::MismatchedDimensions`](crate::error::ProviderError::MismatchedDimensions).
+//! `None` takes the model's default width, reported when Rig knows it and
+//! zero otherwise.
+//!
 //! ```
 //! use rig_core::embeddings::to_texts;
 //!

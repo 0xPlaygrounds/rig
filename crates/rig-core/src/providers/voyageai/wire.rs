@@ -67,21 +67,15 @@ impl VoyageAiConfig {
         self
     }
 
-    /// Build an embedding wire reporting `ndims`, or the known model width,
-    /// or zero if unknown. This does not send an output-dimension override;
-    /// use [`Embeddings::with_output_dimension`] for that.
+    /// The embedding wire for `model`, asking for `ndims`-wide vectors when
+    /// set.
     pub(crate) fn embedding(&self, model: impl Into<String>, ndims: Option<usize>) -> Embeddings {
-        let model = model.into();
-        let ndims = ndims
-            .or_else(|| model_dimensions_from_identifier(&model))
-            .unwrap_or_default();
         Embeddings {
             provider: self.clone(),
-            model,
+            model: model.into(),
             ndims,
             input_type: None,
             truncation: None,
-            output_dimension: None,
         }
     }
 
@@ -107,6 +101,18 @@ impl VoyageAiConfig {
     }
 }
 
+/// The role of the text Voyage embeds, sent as `input_type`. Voyage
+/// prepends a retrieval prompt for it; embeddings produced with and without
+/// one are compatible.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum InputType {
+    /// A search query.
+    Query,
+    /// A document stored for retrieval.
+    Document,
+}
+
 /// The embedding wire: `POST /embeddings`.
 ///
 /// Every option defaults to `None`, which is Voyage's own server default:
@@ -118,25 +124,20 @@ pub struct Embeddings {
     pub provider: VoyageAiConfig,
     /// The model to address.
     pub model: String,
-    /// The width this wire reports, from the caller or the model's published
-    /// dimensions. `0` means neither named one.
-    pub ndims: usize,
-    /// Prepends a retrieval prompt to the input text: `"document"` when
-    /// embedding stored chunks, `"query"` when embedding search queries.
-    /// Embeddings produced with and without it are compatible.
-    pub input_type: Option<String>,
+    /// The width the caller asked for, sent as `output_dimension` unless it
+    /// is the model's default. `None` takes the model's default.
+    pub ndims: Option<usize>,
+    /// The role of the embedded text. `None` sends no retrieval prompt.
+    pub input_type: Option<InputType>,
     /// Whether to truncate inputs longer than the model's context. Voyage's
     /// server default is `true`.
     pub truncation: Option<bool>,
-    /// Dimensionality of the returned vectors, when overriding the model's
-    /// default output dimension.
-    pub output_dimension: Option<usize>,
 }
 
 impl Embeddings {
     /// Prepend Voyage's retrieval prompt for this input's role.
-    pub fn with_input_type(mut self, input_type: impl Into<String>) -> Self {
-        self.input_type = Some(input_type.into());
+    pub fn with_input_type(mut self, input_type: InputType) -> Self {
+        self.input_type = Some(input_type);
         self
     }
 
@@ -146,14 +147,12 @@ impl Embeddings {
         self
     }
 
-    /// Ask Voyage for vectors of this width.
-    ///
-    /// This is the width the request carries; [`Self::ndims`] is the width
-    /// the wire reports to a vector store, so they are set together.
-    pub fn with_output_dimension(mut self, output_dimension: usize) -> Self {
-        self.output_dimension = Some(output_dimension);
-        self.ndims = output_dimension;
-        self
+    /// The `output_dimension` to send: the caller's width, unless it is the
+    /// model's default. Voyage's fixed-width models reject the field, so
+    /// restating their width would fail a request that needs no override.
+    fn output_dimension(&self) -> Option<usize> {
+        self.ndims
+            .filter(|ndims| model_dimensions_from_identifier(&self.model) != Some(*ndims))
     }
 }
 
@@ -166,7 +165,15 @@ impl Wire for Embeddings {
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(PROVIDER_NAME)
             .model(self.model.as_str())
-            .capabilities(Capabilities::embedding(MAX_DOCUMENTS, self.ndims))
+            .capabilities(
+                Capabilities::embedding(
+                    MAX_DOCUMENTS,
+                    self.ndims
+                        .or_else(|| model_dimensions_from_identifier(&self.model))
+                        .unwrap_or_default(),
+                )
+                .declaring(self.ndims),
+            )
     }
 
     fn encode(&self, texts: Vec<String>, _mode: Mode) -> Result<Encoded, EncodeError> {
@@ -179,7 +186,7 @@ impl Wire for Embeddings {
         if let Some(truncation) = self.truncation {
             body.insert("truncation".to_owned(), serde_json::json!(truncation));
         }
-        if let Some(output_dimension) = self.output_dimension {
+        if let Some(output_dimension) = self.output_dimension() {
             body.insert(
                 "output_dimension".to_owned(),
                 serde_json::json!(output_dimension),

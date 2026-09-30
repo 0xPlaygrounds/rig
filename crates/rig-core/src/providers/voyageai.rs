@@ -19,7 +19,7 @@ use serde::{Deserialize, Serialize};
 pub mod wire;
 
 pub use crate::client::voyageai::VoyageAi;
-pub use wire::{Embeddings, Rerank, VoyageAiConfig};
+pub use wire::{Embeddings, InputType, Rerank, VoyageAiConfig};
 
 /// Voyage AI's API root.
 const VOYAGEAI_API_BASE_URL: &str = "https://api.voyageai.com/v1";

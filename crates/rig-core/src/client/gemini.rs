@@ -48,8 +48,9 @@ impl Gemini {
         self.model(self.config.interactions(model))
     }
 
-    /// The `batchEmbedContents` embedding model for `model`. `ndims`
-    /// defaults from the model identifier.
+    /// The `batchEmbedContents` embedding model for `model`. `Some(ndims)`
+    /// asks for vectors that wide and fails a reply of any other width;
+    /// `None` takes the model's default width.
     pub fn embedding(&self, model: impl Into<String>, ndims: Option<usize>) -> Model<Embeddings> {
         self.model(self.config.embedding(model, ndims))
     }

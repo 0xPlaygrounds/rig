@@ -76,18 +76,14 @@ impl CohereConfig {
         }
     }
 
-    /// Build a text-embedding wire reporting the supplied or known model width,
-    /// or zero if unknown. This width is metadata, not a request parameter.
+    /// The text-embedding wire for `model`, expecting `ndims`-wide vectors
+    /// when set.
     pub(crate) fn embedding(&self, model: impl Into<String>, ndims: Option<usize>) -> Embeddings {
-        let model = model.into();
-        let ndims = ndims
-            .or_else(|| super::model_dimensions_from_identifier(&model))
-            .unwrap_or_default();
         Embeddings {
             provider: self.clone(),
-            model,
+            model: model.into(),
             ndims,
-            input_type: DEFAULT_INPUT_TYPE.to_owned(),
+            input_type: InputType::default(),
         }
     }
 
@@ -168,9 +164,6 @@ impl Wire for Chat {
     }
 }
 
-/// Default retrieval role for embeddings of stored document chunks.
-const DEFAULT_INPUT_TYPE: &str = "search_document";
-
 /// The most texts Cohere embeds in one `/v1/embed` call.
 const MAX_DOCUMENTS: usize = 96;
 
@@ -224,18 +217,34 @@ pub struct Embeddings {
     pub provider: CohereConfig,
     /// The model to address.
     pub model: String,
-    /// The width this wire reports, from the caller or the model's published
-    /// dimensions. `0` means neither named one.
-    pub ndims: usize,
-    /// Cohere's retrieval prompt: `search_document` for stored chunks,
-    /// `search_query` for queries, `classification`, `clustering`.
-    pub input_type: String,
+    /// The width the caller expects. `/v1/embed` takes no width, so it is
+    /// not sent, but a reply of another width fails. `None` takes the
+    /// model's width.
+    pub ndims: Option<usize>,
+    /// What the vectors are for.
+    pub input_type: InputType,
+}
+
+/// What Cohere's text embeddings are for, sent as `input_type`. Embed v3
+/// and newer models require it.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum InputType {
+    /// Document chunks stored in a vector database for search.
+    #[default]
+    SearchDocument,
+    /// Search queries run against stored documents.
+    SearchQuery,
+    /// Texts passed to a classifier.
+    Classification,
+    /// Texts run through a clustering algorithm.
+    Clustering,
 }
 
 impl Embeddings {
     /// Embed for a different purpose than storing chunks.
-    pub fn with_input_type(mut self, input_type: impl Into<String>) -> Self {
-        self.input_type = input_type.into();
+    pub fn with_input_type(mut self, input_type: InputType) -> Self {
+        self.input_type = input_type;
         self
     }
 }
@@ -249,7 +258,15 @@ impl Wire for Embeddings {
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(PROVIDER_NAME)
             .model(self.model.as_str())
-            .capabilities(Capabilities::embedding(MAX_DOCUMENTS, self.ndims))
+            .capabilities(
+                Capabilities::embedding(
+                    MAX_DOCUMENTS,
+                    self.ndims
+                        .or_else(|| super::model_dimensions_from_identifier(&self.model))
+                        .unwrap_or_default(),
+                )
+                .declaring(self.ndims),
+            )
     }
 
     fn encode(&self, texts: Vec<String>, _mode: Mode) -> Result<Encoded, EncodeError> {

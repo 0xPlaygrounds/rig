@@ -66,9 +66,13 @@ async fn main() -> Result<(), anyhow::Error> {
     // Cohere scores a document and a query differently, so the two models
     // differ only in the `input_type` their wires send.
     let mut document_model = cohere_client.embedding(cohere::EMBED_ENGLISH_V3, None);
-    document_model.wire = document_model.wire.with_input_type("search_document");
+    document_model.wire = document_model
+        .wire
+        .with_input_type(cohere::InputType::SearchDocument);
     let mut search_model = cohere_client.embedding(cohere::EMBED_ENGLISH_V3, None);
-    search_model.wire = search_model.wire.with_input_type("search_query");
+    search_model.wire = search_model
+        .wire
+        .with_input_type(cohere::InputType::SearchQuery);
     let embeddings = EmbeddingsBuilder::new(document_model)
         .documents(sample_documents())?
         .build()

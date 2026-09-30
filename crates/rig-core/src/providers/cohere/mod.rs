@@ -20,7 +20,7 @@ pub mod streaming;
 pub mod wire;
 
 pub use crate::client::cohere::Cohere;
-pub use wire::{Chat, CohereConfig, Embeddings, ImageEmbeddings};
+pub use wire::{Chat, CohereConfig, Embeddings, ImageEmbeddings, InputType};
 
 /// `command-a-plus-05-2026` completion model
 pub const COMMAND_A_PLUS_05_2026: &str = "command-a-plus-05-2026";

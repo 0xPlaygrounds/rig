@@ -199,6 +199,31 @@ async fn an_embedding_reply_pairs_its_vectors_with_the_texts_that_were_sent() {
     );
 }
 
+/// `/v1/embed` cannot ask for a width, so a caller's width that the model
+/// does not produce fails the call instead of sizing a vector store wrongly.
+#[tokio::test]
+async fn a_reply_narrower_than_the_callers_width_fails() {
+    let error = crate::driver::Model::new(
+        cohere().embedding("embed-v4.0", Some(3)),
+        RecordingHttpClient::new(EMBED_BODY),
+    )
+    .call(vec!["first".to_owned(), "second".to_owned()])
+    .await
+    .expect_err("two-wide vectors contradict a three-wide declaration");
+
+    assert!(
+        matches!(
+            error,
+            ProviderError::MismatchedDimensions {
+                requested: 3,
+                returned: 2,
+                ..
+            }
+        ),
+        "{error:?}"
+    );
+}
+
 #[test]
 fn an_embedding_wire_reports_the_models_published_width() {
     let wire = cohere().embedding("embed-english-light-v3.0", None);
@@ -209,10 +234,45 @@ fn an_embedding_wire_reports_the_models_published_width() {
     assert_eq!(
         cohere()
             .embedding("embed-english-light-v3.0", Some(64))
-            .ndims,
-        64,
-        "a width the caller named wins over the model's table"
+            .describe()
+            .capabilities,
+        Capabilities::embedding(96, 64).declaring(Some(64)),
+        "a width the caller named is reported and declared, so a reply of \
+         the model's own width fails rather than reaching a vector store"
     );
+}
+
+/// Each input type goes out as the string Cohere documents, and a wire
+/// defaults to embedding stored documents. The widths are never sent:
+/// `/v1/embed` takes none.
+#[test]
+fn an_embedding_request_carries_its_input_type_and_no_width() {
+    let sent = |wire: Embeddings| {
+        wire.encode(vec!["first".to_owned()], Mode::Unary)
+            .map(|encoded| body_of(&encoded))
+            .expect("the request encodes")
+    };
+    let wire = || cohere().embedding("embed-english-v3.0", Some(1024));
+
+    assert_eq!(
+        sent(wire()),
+        serde_json::json!({
+            "model": "embed-english-v3.0",
+            "texts": ["first"],
+            "input_type": "search_document",
+        })
+    );
+    for (input_type, spelled) in [
+        (InputType::SearchDocument, "search_document"),
+        (InputType::SearchQuery, "search_query"),
+        (InputType::Classification, "classification"),
+        (InputType::Clustering, "clustering"),
+    ] {
+        assert_eq!(
+            sent(wire().with_input_type(input_type))["input_type"],
+            spelled
+        );
+    }
 }
 
 /// A one-pixel PNG-headed byte string: enough for the media-type sniff the

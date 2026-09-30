@@ -96,16 +96,12 @@ impl OllamaConfig {
         }
     }
 
-    /// Build an embedding wire reporting the supplied width, known model width,
-    /// or zero if unknown. The width is metadata and is not sent to the daemon.
+    /// The embedding wire for `model`, asking for `ndims`-wide vectors when
+    /// set.
     pub(crate) fn embedding(&self, model: impl Into<String>, ndims: Option<usize>) -> Embeddings {
-        let model = model.into();
-        let ndims = ndims
-            .or_else(|| model_dimensions_from_identifier(&model))
-            .unwrap_or_default();
         Embeddings {
             provider: self.clone(),
-            model,
+            model: model.into(),
             ndims,
         }
     }
@@ -188,9 +184,9 @@ pub struct Embeddings {
     pub provider: OllamaConfig,
     /// The model to address.
     pub model: String,
-    /// The width this wire reports, from the caller or the model's published
-    /// dimensions. `0` means neither named one.
-    pub ndims: usize,
+    /// The width the caller asked for, sent as `dimensions`. `None` takes
+    /// the model's default.
+    pub ndims: Option<usize>,
 }
 
 impl Wire for Embeddings {
@@ -202,11 +198,24 @@ impl Wire for Embeddings {
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(PROVIDER_NAME)
             .model(self.model.as_str())
-            .capabilities(Capabilities::embedding(MAX_DOCUMENTS, self.ndims))
+            .capabilities(
+                Capabilities::embedding(
+                    MAX_DOCUMENTS,
+                    self.ndims
+                        .or_else(|| model_dimensions_from_identifier(&self.model))
+                        .unwrap_or_default(),
+                )
+                .declaring(self.ndims),
+            )
     }
 
     fn encode(&self, texts: Vec<String>, _mode: Mode) -> Result<Encoded, EncodeError> {
-        let body = serde_json::json!({ "model": self.model, "input": texts });
+        let mut body = serde_json::Map::new();
+        body.insert("model".to_owned(), serde_json::json!(self.model));
+        body.insert("input".to_owned(), serde_json::json!(texts));
+        if let Some(ndims) = self.ndims {
+            body.insert("dimensions".to_owned(), serde_json::json!(ndims));
+        }
         let request = self
             .provider
             .request(http::Method::POST, "/api/embed")

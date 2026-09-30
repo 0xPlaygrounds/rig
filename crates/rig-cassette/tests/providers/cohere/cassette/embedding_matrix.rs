@@ -15,7 +15,7 @@ use crate::support::{
     EMBEDDING_INPUTS, EmbeddingMatrixExpectations, assert_normalized_embedding_response,
 };
 
-const INPUT_TYPE: &str = "search_document";
+const INPUT_TYPE: cohere::InputType = cohere::InputType::SearchDocument;
 
 /// A 2x2 red PNG, the same fixture the existing image-embedding smoke uses.
 const PNG_2X2: &str = "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACAQMAAABIeJ9nAAAAA1BMVEX/AAAZ4gk3AAAADElEQVQI12NgYGAAAAAEAAEnNCcKAAAAAElFTkSuQmCC";

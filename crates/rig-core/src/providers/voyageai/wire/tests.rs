@@ -62,10 +62,9 @@ fn an_unset_option_is_absent_from_the_request() {
     );
 
     let encoded = voyage()
-        .embedding("voyage-3.5", None)
-        .with_input_type("query")
+        .embedding("voyage-3.5", Some(256))
+        .with_input_type(InputType::Query)
         .with_truncation(false)
-        .with_output_dimension(256)
         .encode(vec!["first".to_owned()], Mode::Unary)
         .expect("the request encodes");
 
@@ -92,13 +91,27 @@ fn an_embedding_wire_reports_the_width_it_asked_for() {
     );
     assert_eq!(
         voyage()
-            .embedding("voyage-3.5", None)
-            .with_output_dimension(256)
+            .embedding("voyage-3.5", Some(256))
             .describe()
             .capabilities,
-        Capabilities::embedding(1024, 256),
-        "a vector store sizes its index from `ndims`, so asking Voyage for a \
-         narrower vector must change what the wire reports"
+        Capabilities::embedding(1024, 256).declaring(Some(256)),
+        "a vector store sizes its index from `ndims`, so the width asked for \
+         is the width reported, and a reply of another width fails"
+    );
+}
+
+/// Voyage's fixed-width models reject `output_dimension`, so a caller's
+/// width equal to the model's default is not restated on the wire.
+#[test]
+fn the_models_default_width_is_not_restated() {
+    let encoded = voyage()
+        .embedding(crate::providers::voyageai::VOYAGE_LAW_2, Some(1024))
+        .encode(vec!["first".to_owned()], Mode::Unary)
+        .expect("the request encodes");
+
+    assert_eq!(
+        body_of(&encoded),
+        serde_json::json!({ "model": "voyage-law-2", "input": ["first"] })
     );
 }
 

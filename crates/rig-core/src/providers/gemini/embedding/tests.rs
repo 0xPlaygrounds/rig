@@ -15,24 +15,75 @@ fn test_model_default_ndims_lookup() {
     assert_eq!(model_default_ndims("unknown-model"), None);
 }
 
-/// `ndims` is what every document in the batch asks for, so the wire has to
-/// resolve it from the model identifier when the caller named none — the
-/// batch body carries `output_dimensionality` unconditionally.
+/// Without a caller's width the wire reports the model's known default,
+/// and zero for a model this build does not know.
 #[test]
-fn ndims_defaults_from_the_model_identifier() {
+fn the_reported_width_defaults_from_the_model_identifier() {
     let gemini = GeminiConfig::new("test_key");
+    let reported = |model| gemini.embedding(model, None).describe().capabilities;
 
-    assert_eq!(gemini.embedding(EMBEDDING_001, None).ndims, 3072);
-    assert_eq!(gemini.embedding(EMBEDDING_004, None).ndims, 768);
-    // A model this build has never heard of still gets a dimensionality.
-    assert_eq!(gemini.embedding("some-future-model", None).ndims, 768);
+    assert_eq!(reported(EMBEDDING_001), Capabilities::embedding(1024, 3072));
+    assert_eq!(reported(EMBEDDING_004), Capabilities::embedding(1024, 768));
+    assert_eq!(
+        reported("some-future-model"),
+        Capabilities::embedding(1024, 0)
+    );
 }
 
+/// The caller's width is reported and declared, so a reply of another
+/// width fails instead of reaching a vector store.
 #[test]
-fn an_explicit_ndims_outranks_the_models_default() {
+fn an_explicit_ndims_is_reported_and_declared() {
     let gemini = GeminiConfig::new("test_key");
 
-    assert_eq!(gemini.embedding(EMBEDDING_001, Some(256)).ndims, 256);
+    assert_eq!(
+        gemini
+            .embedding(EMBEDDING_001, Some(256))
+            .describe()
+            .capabilities,
+        Capabilities::embedding(1024, 256).declaring(Some(256))
+    );
+}
+
+/// The `output_dimensionality` each document in `wire`'s batch asks for.
+fn sent_widths(wire: &Embeddings) -> Vec<Option<u64>> {
+    let encoded = wire
+        .encode(vec!["a".to_owned(), "b".to_owned()], Mode::Unary)
+        .expect("the batch encodes");
+    let Body::Bytes(bytes) = encoded.request.body() else {
+        return Vec::new();
+    };
+    let body: serde_json::Value = serde_json::from_slice(bytes).expect("the body is JSON");
+    body.get("requests")
+        .and_then(serde_json::Value::as_array)
+        .into_iter()
+        .flatten()
+        .map(|request| {
+            request
+                .get("output_dimensionality")
+                .and_then(serde_json::Value::as_u64)
+        })
+        .collect()
+}
+
+/// A model this build does not know is left at its own width: a guessed
+/// `output_dimensionality` would silently truncate a wider model's vectors.
+#[test]
+fn an_unknown_model_is_sent_no_width_unless_the_caller_names_one() {
+    let gemini = GeminiConfig::new("test_key");
+
+    assert_eq!(
+        sent_widths(&gemini.embedding("gemini-embedding-2", None)),
+        vec![None, None]
+    );
+    assert_eq!(
+        sent_widths(&gemini.embedding("gemini-embedding-2", Some(1536))),
+        vec![Some(1536), Some(1536)]
+    );
+    assert_eq!(
+        sent_widths(&gemini.embedding(EMBEDDING_001, Some(256))),
+        vec![Some(256), Some(256)]
+    );
 }
 
 /// `crates/rig-cassette/fixtures/cassettes/gemini/embeddings/derive_document_embeddings.yaml`'s

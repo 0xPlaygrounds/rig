@@ -315,8 +315,32 @@ fn an_embedding_wire_reports_the_models_published_width() {
             .embedding("qwen3-embedding", Some(2048))
             .describe()
             .capabilities,
-        Capabilities::embedding(1024, 2048),
-        "a family whose width varies by size takes the caller's"
+        Capabilities::embedding(1024, 2048).declaring(Some(2048)),
+        "a family whose width varies by size takes the caller's, and a reply \
+         of another width fails"
+    );
+}
+
+/// `/api/embed` takes `dimensions`, so a caller's width is asked for rather
+/// than only reported, and no width is sent when the caller names none.
+#[test]
+fn an_embedding_request_asks_for_the_callers_width() {
+    let texts = || vec!["first".to_owned()];
+    let sent = |ndims| {
+        OllamaConfig::new()
+            .embedding("qwen3-embedding", ndims)
+            .encode(texts(), Mode::Unary)
+            .map(|encoded| body_of(&encoded))
+            .expect("the request encodes")
+    };
+
+    assert_eq!(
+        sent(None),
+        serde_json::json!({ "model": "qwen3-embedding", "input": ["first"] })
+    );
+    assert_eq!(
+        sent(Some(2048)),
+        serde_json::json!({ "model": "qwen3-embedding", "input": ["first"], "dimensions": 2048 })
     );
 }
 

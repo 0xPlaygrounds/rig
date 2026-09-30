@@ -34,8 +34,9 @@ impl Cohere {
         self.model(self.config.completion(model))
     }
 
-    /// The text-embedding model for `model`. `ndims` is the width it
-    /// reports, defaulting to the model's known width.
+    /// The text-embedding model for `model`. `Some(ndims)` fails a reply
+    /// of any other width; `/v1/embed` cannot ask for one, so it must be the
+    /// model's width. `None` takes the model's width.
     pub fn embedding(&self, model: impl Into<String>, ndims: Option<usize>) -> Model<Embeddings> {
         self.model(self.config.embedding(model, ndims))
     }

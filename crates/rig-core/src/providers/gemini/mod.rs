@@ -148,8 +148,8 @@ impl GeminiConfig {
         interactions_api::Interactions::new(self.clone(), model)
     }
 
-    /// The `batchEmbedContents` embedding wire. `ndims` defaults from the
-    /// model identifier.
+    /// The `batchEmbedContents` embedding wire, asking for `ndims`-wide
+    /// vectors when set.
     pub(crate) fn embedding(
         &self,
         model: impl Into<String>,
