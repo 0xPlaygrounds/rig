@@ -471,6 +471,61 @@ A 100-turn run takes six to eleven minutes to record. Replay prints the figures:
 cargo test -p rig-cassette --all-features --test anthropic long_run_caching -- --nocapture --test-threads=1
 ```
 
+#### Workloads beyond the support chat (`cache_longrun::workloads`)
+
+The support chat measures one shape of traffic. `cache_longrun::workloads` holds the others,
+each a deterministic function that drives one conversation (or several) and returns its
+`RunLog`. Each names its conversation with a marker in the first user message, so one fixture
+can hold several conversations and `LongRun::conversation` can pick one out.
+
+- **`mixed_delivery`**: the support chat with odd turns unary and even turns streamed. It
+  measures whether a provider serves a streamed call's prefix to the unary call after it.
+- **`tool_loop`**: account investigations. Each turn calls `order_history` for two accounts
+  in one response, then `shipping_log` with a tracking number from them, then answers: three
+  calls a turn, with tool results of about a thousand tokens each. The workload asserts the
+  parallel call and the log on every turn. Its early calls add two large results to a short
+  prompt, so their cached share is structurally low; the runs set their per-call floor from
+  the first recording (0.30).
+- **`document_session`**: a store policy of about eight thousand tokens attached on the first
+  turn, then a question about it every turn. On Anthropic the document enables citations from
+  the first request, because enabling them later changes the rendered system prompt.
+- **`mid_system_chat`**: a mid-conversation system message every few turns, alternately where
+  Anthropic takes one and where rig moves it after the next user turn. The run asserts every
+  instruction stays in `messages` and none is hoisted into `system`.
+- **`dynamic_tools_chat`** with the `ToolSchedule` hook: the advertised tools change every few
+  turns through a request patch. A turn that fails ends the run and is returned, so a run can
+  assert a refusal.
+- **`fan_out`**: several conversations sharing the preamble, turn 1 one by one and the rest
+  concurrently. Every conversation's requests differ, so the cassette is `.unordered()`, as
+  Gemini's sub-agent run is.
+
+The runs live in `<provider>/cassette/long_run_workloads.rs` (workloads on their own) and
+`long_run_features.rs` (features that can move a prefix), with fixtures under
+`<provider>/long_run_caching/`:
+
+| run | model | measures |
+|---|---|---|
+| `mixed_delivery_100` | claude-opus-5-5 | unary and streamed turns share one cache |
+| `tool_loop_60` | claude-opus-5-5 | large tool results and thinking replayed across tool rounds |
+| `document_60` | claude-opus-5-5 | a large fixed input with citations, read back every turn |
+| `mid_system_every_10_60` | claude-opus-5-5 | mid-conversation system messages keep the prefix |
+| `dynamic_tools_30` | claude-opus-5-5 | a changed tool list: the thinking-block binding 400 on turn 11 |
+| `mixed_delivery_100_responses` | gpt-6.1-sol | as `mixed_delivery_100`, on Responses |
+| `mixed_delivery_30_responses` | gpt-6-astra | the same, kept short for price |
+| `tool_loop_60_responses` | gpt-6-luna | as `tool_loop_60`, with encrypted reasoning |
+| `document_60_responses` | gpt-6-sol | as `document_60`, without citations |
+| `fan_out_4x25` | gpt-6-luna | four conversations reading one shared prefix |
+
+The OpenAI runs are stateless (`store: false`), reason at low effort and send one
+`prompt_cache_key`. They run on Responses only: the GPT-6 models take function tools on Chat
+Completions only at `reasoning_effort: "none"`, and gpt-6-astra and gpt-6.1-sol not at all.
+
+To add a workload, write it in `cache_longrun::workloads` as a deterministic function taking
+the agent, the clock, its size and a conversation marker; keep generated inputs fixed text
+(no nonce or timestamp), so a re-recording sends the bytes its cassette holds. Add a run for
+it in `long_run_workloads.rs` with its own `Limits`, rehearse it once under a scratch scenario
+name, and record it with `cargo xtask cassette record`.
+
 ### Layer 3 — live economics (`live_cache_economics`, `#[ignore]`d)
 
 A cassette pins what a provider did at record time; only a live run catches the provider changing
