@@ -74,6 +74,10 @@ More information about this crate can be found in the [official](https://rig.rs/
   classic runtime — see [target support](crates/rig-agent/README.md#target-support)
   for the full matrix (WASI is not supported; `rig-rmcp`/MCP is native-only)
 
+Embedding distance methods return typed errors for mismatched dimensions.
+See [vector distances](crates/rig-core/README.md#vector-distances) for usage and
+in-memory search validation boundaries.
+
 ## Runtime choices
 
 Rig separates portable provider/backend contracts from agent orchestration:

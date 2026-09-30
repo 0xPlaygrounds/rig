@@ -133,6 +133,29 @@ Below is a non-exhaustive list of companies and people who are using Rig:
 
 Are you also using Rig in production? [Open an issue](https://www.github.com/0xPlaygrounds/rig/issues) to have your name added!
 
+## Vector distances
+
+`embeddings::distance::VectorDistance` methods return
+`Result<f64, VectorDistanceError>`. Propagate errors with `?` or match
+`VectorDistanceError::DimensionMismatch { left, right }` to inspect both lengths.
+Equal dimensions are required even when cosine or angular distance is called
+with `normalized: true`. Equal-length arithmetic is unchanged, including
+non-finite results for zero-magnitude cosine inputs.
+
+```rust
+use rig_core::embeddings::{Embedding, distance::{VectorDistance, VectorDistanceError}};
+
+fn similarity(a: &Embedding, b: &Embedding) -> Result<f64, VectorDistanceError> {
+    a.cosine_similarity(b, false)
+}
+```
+
+In-memory search propagates dimension errors from scored candidates as
+`VectorStoreError::DistanceError`, rather than returning partial rankings.
+Metadata-filtered documents and documents outside the LSH candidate set are not
+scored or validated. Insertion and LSH hashing do not validate dimensions.
+Supply embeddings from the same model and dimension throughout a store.
+
 ## Provider selection persistence
 
 Registry references distinguish registered presets from explicit configurations.
