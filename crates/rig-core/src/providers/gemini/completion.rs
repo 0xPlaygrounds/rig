@@ -236,9 +236,7 @@ pub(crate) fn create_request_body(
         record_telemetry_content: _,
     } = completion_request;
 
-    let mut full_history = Vec::new();
-    full_history.extend(chat_history);
-    let (history_system, full_history) = split_system_messages_from_history(full_history);
+    let (history_system, full_history) = split_system_messages_from_history(chat_history);
 
     let mut additional_params_payload = additional_params
         .take()

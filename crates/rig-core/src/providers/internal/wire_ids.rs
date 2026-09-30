@@ -17,6 +17,7 @@
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 
+use crate::error::EncodeError;
 use crate::message::{AssistantContent, CallId, LocalCallId, Message, UserContent};
 
 /// The wire spelling of every tool call and result of one request's
@@ -99,6 +100,28 @@ impl WireIds {
             ids.insert(position, spelled);
         }
         Self { ids }
+    }
+
+    /// Convert each message of `history` with `convert` and spell the tool
+    /// ids of what it becomes. `slots` yields one converted item's id fields
+    /// in the source message's tool-content order.
+    pub fn convert<T, E>(
+        history: Vec<Message>,
+        mut convert: impl FnMut(Message) -> Result<Vec<T>, E>,
+        mut slots: impl FnMut(&mut T) -> Vec<&mut String>,
+    ) -> Result<Vec<T>, EncodeError>
+    where
+        EncodeError: From<E>,
+    {
+        let ids = Self::new(&history);
+        let mut converted = Vec::new();
+        for (position, message) in history.into_iter().enumerate() {
+            let mut items = convert(message)?;
+            ids.apply(position, items.iter_mut().flat_map(&mut slots))
+                .map_err(EncodeError::request)?;
+            converted.extend(items);
+        }
+        Ok(converted)
     }
 
     /// The spelling for the call or result at this position of the history,

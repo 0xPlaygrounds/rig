@@ -460,30 +460,18 @@ impl TryFrom<(&str, CompletionRequest)> for CohereCompletionRequest {
         }
 
         let model = req.model.clone().unwrap_or_else(|| model.to_string());
-        let mut partial_history = vec![];
-        partial_history.extend(req.chat_history);
-
-        let mut full_history: Vec<Message> = Vec::new();
-
-        let tool_ids = crate::providers::internal::wire_ids::WireIds::new(&partial_history);
-        for (position, message) in partial_history.into_iter().enumerate() {
-            let mut messages = Vec::<Message>::try_from(message)?;
-            let slots: Vec<&mut String> = messages
-                .iter_mut()
-                .flat_map(|message| match message {
-                    Message::Assistant { tool_calls, .. } => tool_calls
-                        .iter_mut()
-                        .filter_map(|call| call.id.as_mut())
-                        .collect(),
-                    Message::Tool { tool_call_id, .. } => vec![tool_call_id],
-                    _ => Vec::new(),
-                })
-                .collect();
-            tool_ids
-                .apply(position, slots)
-                .map_err(EncodeError::request)?;
-            full_history.extend(messages);
-        }
+        let full_history = crate::providers::internal::wire_ids::WireIds::convert(
+            req.chat_history,
+            Vec::<Message>::try_from,
+            |message| match message {
+                Message::Assistant { tool_calls, .. } => tool_calls
+                    .iter_mut()
+                    .filter_map(|call| call.id.as_mut())
+                    .collect(),
+                Message::Tool { tool_call_id, .. } => vec![tool_call_id],
+                _ => Vec::new(),
+            },
+        )?;
 
         let tool_choice = req
             .tool_choice

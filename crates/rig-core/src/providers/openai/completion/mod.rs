@@ -1051,66 +1051,6 @@ impl TryFrom<message::Message> for Vec<Message> {
     }
 }
 
-fn message_with_tool_ids(
-    source: message::Message,
-    position: usize,
-    ids: &crate::providers::internal::wire_ids::WireIds,
-    reasoning_details: bool,
-    issuers: &[message::Issuer],
-) -> Result<Vec<Message>, message::MessageError> {
-    let content_positions: Vec<_> = match &source {
-        message::Message::Assistant { content, .. } => content
-            .iter()
-            .enumerate()
-            .filter_map(|(index, part)| {
-                matches!(part, message::AssistantContent::ToolCall(_)).then_some(index)
-            })
-            .collect(),
-        message::Message::User { content } => content
-            .iter()
-            .enumerate()
-            .filter_map(|(index, part)| {
-                matches!(part, message::UserContent::ToolResult(_)).then_some(index)
-            })
-            .collect(),
-        message::Message::System { .. } => Vec::new(),
-    };
-    let mut converted: Vec<Message> = match source {
-        message::Message::Assistant { content, .. } => {
-            assistant_content_to_messages(content, reasoning_details, issuers)?
-        }
-        source => source.try_into()?,
-    };
-    // Conversion can split text into separate messages, but retains every tool
-    // call/result in source order. Assign only wire fields, never core provenance.
-    let slots: Vec<&mut String> = converted
-        .iter_mut()
-        .flat_map(|message| match message {
-            Message::Assistant { tool_calls, .. } => {
-                tool_calls.iter_mut().map(|call| &mut call.id).collect()
-            }
-            Message::ToolResult { tool_call_id, .. } => vec![tool_call_id],
-            _ => Vec::new(),
-        })
-        .collect();
-    if slots.len() != content_positions.len() {
-        return Err(message::MessageError::ConversionError(
-            "tool identity mapping lost a content occurrence during OpenAI conversion".into(),
-        ));
-    }
-    for (slot, content) in slots.into_iter().zip(content_positions) {
-        *slot = ids
-            .get(position, content)
-            .ok_or_else(|| {
-                message::MessageError::ConversionError(
-                    "missing planned OpenAI tool identity".into(),
-                )
-            })?
-            .to_owned();
-    }
-    Ok(converted)
-}
-
 impl From<message::ToolCall> for ToolCall {
     fn from(tool_call: message::ToolCall) -> Self {
         Self {
@@ -1665,22 +1605,24 @@ impl TryFrom<OpenAIRequestParams> for CompletionRequest {
             ..
         } = req;
 
-        let partial_history = chat_history;
-
-        let tool_ids = crate::providers::internal::wire_ids::WireIds::new(&partial_history);
-
-        let mut full_history: Vec<Message> = Vec::new();
-        full_history.extend(
-            partial_history
-                .into_iter()
-                .enumerate()
-                .map(|(position, message)| {
-                    message_with_tool_ids(message, position, &tool_ids, reasoning_details, &issuers)
-                })
-                .collect::<Result<Vec<Vec<Message>>, _>>()?
-                .into_iter()
-                .flatten(),
-        );
+        // Conversion can split text into separate messages, but keeps every
+        // tool call and result in source order.
+        let mut full_history = crate::providers::internal::wire_ids::WireIds::convert(
+            chat_history,
+            |message| match message {
+                message::Message::Assistant { content, .. } => {
+                    assistant_content_to_messages(content, reasoning_details, &issuers)
+                }
+                message => message.try_into(),
+            },
+            |message| match message {
+                Message::Assistant { tool_calls, .. } => {
+                    tool_calls.iter_mut().map(|call| &mut call.id).collect()
+                }
+                Message::ToolResult { tool_call_id, .. } => vec![tool_call_id],
+                _ => Vec::new(),
+            },
+        )?;
 
         if full_history.is_empty() {
             return Err(EncodeError::request(std::io::Error::new(

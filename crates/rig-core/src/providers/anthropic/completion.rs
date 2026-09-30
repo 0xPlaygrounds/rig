@@ -2135,12 +2135,10 @@ impl AnthropicCompletionRequest {
             ));
         };
 
-        let (history_system, chat_history) = split_system_messages_from_history(
+        let (history_system, full_history) = split_system_messages_from_history(
             &chat_history,
             supports_mid_conversation_system_messages(model),
         );
-        let mut full_history = vec![];
-        full_history.extend(chat_history);
 
         let mut messages = full_history
             .iter()

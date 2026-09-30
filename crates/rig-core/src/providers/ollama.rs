@@ -218,18 +218,13 @@ impl TryFrom<(&str, CompletionRequest)> for OllamaCompletionRequest {
         if req.tool_choice.is_some() {
             tracing::warn!("WARNING: `tool_choice` not supported for Ollama");
         }
-        let mut partial_history = vec![];
-        partial_history.extend(chat_history);
-
-        let mut full_history: Vec<Message> = Vec::new();
-        full_history.extend(
-            partial_history
-                .into_iter()
-                .map(message::Message::try_into)
-                .collect::<Result<Vec<Vec<Message>>, _>>()?
-                .into_iter()
-                .flatten(),
-        );
+        let full_history = chat_history
+            .into_iter()
+            .map(message::Message::try_into)
+            .collect::<Result<Vec<Vec<Message>>, _>>()?
+            .into_iter()
+            .flatten()
+            .collect();
 
         let mut think: Option<Think> = None;
         let mut keep_alive: Option<String> = None;
