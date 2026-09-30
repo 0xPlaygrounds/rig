@@ -59,6 +59,36 @@ mod empty_lists_do_not_parse {
     }
 }
 
+/// The request-boundary check accepts what providers accept.
+mod message_content {
+    use crate::message::{CallId, Message, ToolName, ToolResultContent, UserContent};
+
+    #[test]
+    fn a_request_with_content_in_every_message_is_accepted() {
+        let request = super::CompletionRequest::new("hello")
+            .message(Message::assistant("hi"))
+            .preamble("be brief");
+        assert!(request.validate_message_content().is_ok());
+    }
+
+    #[test]
+    fn an_empty_system_message_is_not_checked() {
+        let request = super::CompletionRequest::new("hello").preamble("");
+        assert!(request.validate_message_content().is_ok());
+    }
+
+    #[test]
+    fn a_tool_result_with_one_empty_text_block_is_accepted() {
+        let result = UserContent::tool_result(
+            CallId::from_wire("call_1"),
+            ToolName::new("lookup").expect("tool name"),
+            ToolResultContent::text(""),
+        );
+        let request = super::CompletionRequest::new(Message::from(result));
+        assert!(request.validate_message_content().is_ok());
+    }
+}
+
 fn tool_call_choice() -> Vec<AssistantContent> {
     vec![AssistantContent::tool_call(
         "call_1",

@@ -69,6 +69,11 @@ impl Operation for Completion {
             ..Turn::new(call.wire.name)
         }
     }
+
+    /// [`CompletionRequest::validate_message_content`].
+    fn validate(request: &Self::Request) -> Result<(), ProviderError> {
+        request.validate_message_content()
+    }
 }
 
 impl crate::wire::reply::Closing<Completion> for Assembled {

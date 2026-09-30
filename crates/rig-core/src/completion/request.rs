@@ -10,6 +10,7 @@
 //! ```
 
 use super::message::{AssistantContent, DocumentMediaType, Reasoning, ReasoningContent, ToolCall};
+use crate::error::ProviderError;
 use crate::message::ToolChoice;
 use crate::{
     NonEmpty, json_utils,
@@ -506,7 +507,13 @@ impl ProviderCapabilities {
 pub struct CompletionRequest {
     /// Optional model override for this request.
     pub model: Option<String>,
-    /// Conversation ending with the prompt.
+    /// The chat history to be sent to the completion model provider.
+    /// The very last message is the prompt.
+    ///
+    /// It must hold at least one message, and every user and assistant
+    /// message must carry content. The field is public, so this is a rule
+    /// rather than a type guarantee: [`Self::validate_message_content`]
+    /// checks it at the request boundary.
     pub chat_history: NonEmpty<Message>,
     /// The documents to be sent to the completion model provider
     pub documents: Vec<Document>,
@@ -542,6 +549,78 @@ impl CompletionRequest {
             Message::System { content } => Some(content.as_str()),
             _ => None,
         }
+    }
+
+    /// Reject a request with no messages, a user or assistant message with no
+    /// content, or a tool result with no content blocks. The error is
+    /// [`ProviderError::Request`] and names the role and index of the first
+    /// offending message.
+    ///
+    /// Every wire rejects an empty turn, so this turns a remote 400 into a
+    /// local error. It checks the request direction only: a provider may
+    /// return empty assistant content, and each wire judges its own replies
+    /// with [`crate::message::require_non_empty`]. `System` content is a
+    /// `String` and is not checked. A tool result holding one empty text
+    /// block is not empty.
+    ///
+    /// [`Model::call`](crate::driver::Model::call),
+    /// [`Model::stream`](crate::driver::Model::stream) and their `_observed`
+    /// twins run it before encoding, so it covers
+    /// [`DynModel`](crate::DynModel), every model the bus serves and the
+    /// agent runtimes built on them. The OpenAI Responses websocket session
+    /// sends without the driver and runs it on each send. Code that encodes
+    /// a request some other way should call it first.
+    pub fn validate_message_content(&self) -> Result<(), ProviderError> {
+        if self.chat_history.is_empty() {
+            return Err(ProviderError::request(
+                "request has an empty chat history; providers require at least one message",
+            ));
+        }
+
+        let empty_message = |role: &str, index: usize| {
+            ProviderError::request(format!(
+                "{role} message at index {index} has no content; \
+                 providers reject empty content blocks"
+            ))
+        };
+
+        for (index, message) in self.chat_history.iter().enumerate() {
+            match message {
+                Message::System { .. } => {}
+                Message::Assistant { content, .. } => {
+                    if content.is_empty() {
+                        return Err(empty_message("assistant", index));
+                    }
+                }
+                Message::User { content } => {
+                    if content.is_empty() {
+                        return Err(empty_message("user", index));
+                    }
+                    for (position, item) in content.iter().enumerate() {
+                        // Exhaustive, so a new variant with its own block
+                        // list decides here whether its emptiness is checked.
+                        match item {
+                            UserContent::ToolResult(result) if result.content.is_empty() => {
+                                let name = &result.name;
+                                return Err(ProviderError::request(format!(
+                                    "tool result for `{name}` at index {position} of the user \
+                                     message at index {index} has no content; providers \
+                                     reject empty content blocks"
+                                )));
+                            }
+                            UserContent::ToolResult(_)
+                            | UserContent::Text(_)
+                            | UserContent::Image(_)
+                            | UserContent::Audio(_)
+                            | UserContent::Video(_)
+                            | UserContent::Document(_) => {}
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(())
     }
 
     /// This request as a service replaying reasoning `issuers` issued reads

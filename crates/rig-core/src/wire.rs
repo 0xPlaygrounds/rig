@@ -191,6 +191,13 @@ pub trait Operation: Sized + 'static {
     /// telemetry opens its span here and hands it to
     /// [`Call::instrument`].
     fn fold(request: &Self::Request, call: &mut Call<'_>) -> Self::Fold;
+
+    /// Reject a request no provider of this operation can answer. The
+    /// driver calls it before the request is encoded, so a rejected request
+    /// reaches no wire or transport. Accepts every request by default.
+    fn validate(_request: &Self::Request) -> Result<(), ProviderError> {
+        Ok(())
+    }
 }
 
 /// Events a decoder builds and writes with [`Out::event`].
