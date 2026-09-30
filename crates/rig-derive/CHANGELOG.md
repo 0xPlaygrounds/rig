@@ -6,6 +6,35 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [0.43.0](https://github.com/0xPlaygrounds/rig/compare/rig-derive-v0.42.0...rig-derive-v0.43.0) - 2026-09-30
+
+### Added
+
+- [**breaking**] the effect-bus critical path — one protocol, one channel, typed views ([#2443](https://github.com/0xPlaygrounds/rig/pull/2443)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2443
+- [**breaking**] lower ModelHandle and the erased tool set into rig-core; pure rig_run::prepare_request ([#2405](https://github.com/0xPlaygrounds/rig/pull/2405)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2405
+- [**breaking**] rig-reqwest — cut the bundled transport into its own crate; rig-core has no default transport and no reqwest/tokio ([#2397](https://github.com/0xPlaygrounds/rig/pull/2397)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2397
+
+### Fixed
+
+- pre-0.43 release fixes (docs.rs, opt-in rig::cassette, rust-version, READMEs) ([#2638](https://github.com/0xPlaygrounds/rig/pull/2638)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2638
+- repair eleven downstream consumer conformance defects ([#2561](https://github.com/0xPlaygrounds/rig/pull/2561)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2561
+
+### Other
+
+- *(rig-core)* [**breaking**] a smaller model layer (Operation, Fold, Wire, Decoder, Transport) ([#2613](https://github.com/0xPlaygrounds/rig/pull/2613)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- [**breaking**] provider clients own their transport; conversations use plain values ([#2611](https://github.com/0xPlaygrounds/rig/pull/2611)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2611
+- finish the comment cleanup across the workspace ([#2575](https://github.com/0xPlaygrounds/rig/pull/2575)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2575
+- Unify every provider onto one wire model ([#2538](https://github.com/0xPlaygrounds/rig/pull/2538)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2538
+- delete the reflect and replay features and the source-shape guards ([#2523](https://github.com/0xPlaygrounds/rig/pull/2523)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2523
+- [**breaking**] one run type in rig-agent ([#2438](https://github.com/0xPlaygrounds/rig/pull/2438)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2438
+- idiomatic Rust sweep, round 2 ([#2410](https://github.com/0xPlaygrounds/rig/pull/2410)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2410
+- idiomatic Rust sweep across the workspace ([#2409](https://github.com/0xPlaygrounds/rig/pull/2409)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2409
+- [**breaking**] ownership audit round 2 — borrow-shaped telemetry getters, slice-shaped embed seams, Copy usage types, dead Default/Debug transport bounds ([#2392](https://github.com/0xPlaygrounds/rig/pull/2392)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2392
+- [**breaking**] ownership audit — borrow-shaped signatures, dead clones, clone_from in accumulators, minimal bounds ([#2391](https://github.com/0xPlaygrounds/rig/pull/2391)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2391
+
+### Contributors
+
+* [gold-silver-copper](https://github.com/gold-silver-copper)
 ## [0.42.0](https://github.com/0xPlaygrounds/rig/compare/rig-derive-v0.41.0...rig-derive-v0.42.0) - 2026-08-16
 
 ### Other
