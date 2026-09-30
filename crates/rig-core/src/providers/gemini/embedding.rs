@@ -4,7 +4,7 @@
 //! use rig_core::providers::gemini::{Gemini, embedding::EMBEDDING_001};
 //!
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
-//! let model = Gemini::from_env()?.embedding(EMBEDDING_001, None);
+//! let model = Gemini::from_env()?.embedding(EMBEDDING_001);
 //! # Ok(())
 //! # }
 //! ```
@@ -47,25 +47,32 @@ pub struct Embeddings {
     pub provider: super::GeminiConfig,
     /// The embedding model, as the path names it.
     pub model: String,
-    /// The `output_dimensionality` every document in the batch asks for.
-    pub ndims: usize,
+    /// The width the caller asked for with [`Self::with_ndims`]. `None`
+    /// takes the model's known width.
+    pub ndims: Option<usize>,
 }
 
 impl Embeddings {
-    /// Build a wire for `model` with the requested output dimensions.
-    /// If `ndims` is absent, use the model default or 768 for unknown models.
-    pub fn new(
-        provider: super::GeminiConfig,
-        model: impl Into<String>,
-        ndims: Option<usize>,
-    ) -> Self {
-        let model = model.into();
-        let ndims = ndims.or_else(|| model_default_ndims(&model)).unwrap_or(768);
+    /// The embedding wire for `model`, at the model's known width.
+    pub fn new(provider: super::GeminiConfig, model: impl Into<String>) -> Self {
         Self {
             provider,
-            model,
-            ndims,
+            model: model.into(),
+            ndims: None,
         }
+    }
+
+    /// Ask for `ndims`-wide vectors (`output_dimensionality`). A reply of
+    /// another width is [`ProviderError::MismatchedDimensions`].
+    pub fn with_ndims(mut self, ndims: usize) -> Self {
+        self.ndims = Some(ndims);
+        self
+    }
+
+    /// The caller's width, else the model's known width. `None` for a model
+    /// this build does not know, whose width is neither guessed nor sent.
+    fn resolved_ndims(&self) -> Option<usize> {
+        self.ndims.or_else(|| model_default_ndims(&self.model))
     }
 }
 
@@ -78,22 +85,24 @@ impl Wire for Embeddings {
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(super::PROVIDER_NAME)
             .model(self.model.as_str())
-            .capabilities(Capabilities::embedding(1024, self.ndims))
+            .capabilities(
+                Capabilities::embedding(1024, self.resolved_ndims().unwrap_or_default())
+                    .declaring(self.ndims),
+            )
     }
 
     fn encode(&self, request: Vec<String>, _mode: Mode) -> Result<Encoded, EncodeError> {
+        let ndims = self.resolved_ndims();
         let requests: Vec<_> = request
             .iter()
             .map(|doc| {
-                json!({
-                    "model": format!("models/{}", self.model),
-                    "content": json!({
-                        "parts": [json!({
-                            "text": doc
-                        })]
-                    }),
-                    "output_dimensionality": self.ndims,
-                })
+                let mut request = serde_json::Map::new();
+                request.insert("model".to_owned(), json!(format!("models/{}", self.model)));
+                request.insert("content".to_owned(), json!({ "parts": [{ "text": doc }] }));
+                if let Some(ndims) = ndims {
+                    request.insert("output_dimensionality".to_owned(), json!(ndims));
+                }
+                request
             })
             .collect();
 

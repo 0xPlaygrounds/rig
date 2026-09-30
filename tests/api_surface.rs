@@ -73,7 +73,7 @@ async fn models_from_clients_and_strings_hold_a_conversation() -> anyhow::Result
     let any = ProviderRef::parse("deepseek:deepseek-chat")?.completion_model()?;
     anyhow::ensure!(any.name() == "deepseek" && any.id() == Some("deepseek-chat"));
 
-    let model = OpenAI::from_env()?.embedding(openai::TEXT_EMBEDDING_3_SMALL, None);
+    let model = OpenAI::from_env()?.embedding(openai::TEXT_EMBEDDING_3_SMALL);
     let width = model.capabilities().ndims;
     anyhow::ensure!(width == 1536);
 

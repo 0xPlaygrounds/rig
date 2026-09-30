@@ -20,7 +20,7 @@ fn decode_image(encoded: &str) -> Vec<u8> {
 async fn embed_texts_smoke() {
     with_cohere_cassette("embeddings/embed_texts_smoke", |client| async move {
         let model = client
-            .embedding(cohere::EMBED_V4, None)
+            .embedding(cohere::EMBED_V4)
             .map_wire(|wire| wire.with_input_type("search_document"));
         assert_eq!(model.capabilities().ndims, 1536);
 
@@ -44,7 +44,7 @@ async fn embed_texts_smoke() {
 async fn embed_search_query_smoke() {
     with_cohere_cassette("embeddings/embed_search_query_smoke", |client| async move {
         let model = client
-            .embedding(cohere::EMBED_ENGLISH_LIGHT_V3, None)
+            .embedding(cohere::EMBED_ENGLISH_LIGHT_V3)
             .map_wire(|wire| wire.with_input_type("search_query"));
         assert_eq!(model.capabilities().ndims, 384);
 
@@ -65,7 +65,7 @@ async fn embed_classification_smoke() {
         "embeddings/embed_classification_smoke",
         |client| async move {
             let model = client
-                .embedding(cohere::EMBED_ENGLISH_LIGHT_V3, None)
+                .embedding(cohere::EMBED_ENGLISH_LIGHT_V3)
                 .map_wire(|wire| wire.with_input_type("classification"));
             assert_eq!(model.capabilities().ndims, 384);
 

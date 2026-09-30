@@ -29,7 +29,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let runtime = BedrockRuntime::from_env();
     let embedding_model = runtime
         .clone()
-        .embedding(AMAZON_TITAN_EMBED_TEXT_V2_0, Some(256))
+        .embedding_with_ndims(AMAZON_TITAN_EMBED_TEXT_V2_0, 256)
         .erase();
 
     // Generate embeddings for the definitions of all the documents using the specified embedding model.

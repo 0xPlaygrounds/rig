@@ -30,7 +30,7 @@ async fn main() -> Result<(), anyhow::Error> {
     // The OpenAI client, from `OPENAI_API_KEY`.
     let openai_client = OpenAI::from_env()?;
     let model = openai_client
-        .embedding(openai::TEXT_EMBEDDING_3_SMALL, None)
+        .embedding(openai::TEXT_EMBEDDING_3_SMALL)
         .erase();
 
     let base_url = std::env::var("MILVUS_BASE_URL")?;

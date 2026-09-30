@@ -27,7 +27,7 @@ impl std::fmt::Display for WordDefinition {
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     let openai_model = OpenAI::from_env()?
-        .embedding(openai::TEXT_EMBEDDING_ADA_002, None)
+        .embedding(openai::TEXT_EMBEDDING_ADA_002)
         .erase();
 
     let helixdb_client = HelixDB::new(None, Some(6969), None); // Uses default port 6969

@@ -34,7 +34,7 @@ async fn main() -> Result<(), anyhow::Error> {
     // We'll use OpenAI's embedding model for this example
     let openai_client = openai::OpenAI::from_env()?;
     let embedding_model = openai_client
-        .embedding(openai::TEXT_EMBEDDING_ADA_002, None)
+        .embedding(openai::TEXT_EMBEDDING_ADA_002)
         .erase();
 
     // Create a knowledge base with sample entries

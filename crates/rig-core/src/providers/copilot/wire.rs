@@ -196,9 +196,8 @@ impl CopilotConfig {
     }
 
     /// Build an embedding wire with Copilot's editor headers and optional usage.
-    /// Use `ndims` when supplied, otherwise the shared wire's model default.
-    pub(crate) fn embedding(&self, model: impl Into<String>, ndims: Option<usize>) -> Embeddings {
-        Embeddings::new(self.openai(), model, ndims)
+    pub(crate) fn embedding(&self, model: impl Into<String>) -> Embeddings {
+        Embeddings::new(self.openai(), model)
     }
 
     /// The model-listing wire.

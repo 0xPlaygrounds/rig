@@ -26,7 +26,7 @@ async fn main() -> Result<(), anyhow::Error> {
     // The OpenAI client, from `OPENAI_API_KEY`.
     let openai_client = OpenAI::from_env()?;
     let model = openai_client
-        .embedding(openai::TEXT_EMBEDDING_ADA_002, None)
+        .embedding(openai::TEXT_EMBEDDING_ADA_002)
         .erase();
 
     // Create ScyllaDB vector store

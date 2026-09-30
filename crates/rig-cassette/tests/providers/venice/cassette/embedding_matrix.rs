@@ -32,7 +32,7 @@ async fn normalized_response_is_complete() {
     with_venice_cassette(
         "embedding_matrix/normalized_response_is_complete",
         |client| async move {
-            let model = client.embedding(venice::TEXT_EMBEDDING_QWEN3_0_6B, None);
+            let model = client.embedding(venice::TEXT_EMBEDDING_QWEN3_0_6B);
             let response = model
                 .call(inputs())
                 .await
@@ -49,7 +49,7 @@ async fn normalized_response_is_complete() {
 #[tokio::test]
 async fn raw_round_trips() {
     with_venice_cassette("embedding_matrix/raw_round_trips", |client| async move {
-        let model = client.embedding(venice::TEXT_EMBEDDING_QWEN3_0_6B, None);
+        let model = client.embedding(venice::TEXT_EMBEDDING_QWEN3_0_6B);
         let response = model
             .call(inputs())
             .await
@@ -90,7 +90,7 @@ async fn raw_route_parity() {
     const SCENARIO: &str = "embedding_matrix/raw_route_parity";
 
     with_venice_cassette("embedding_matrix/raw_route_parity", |client| async move {
-        let model = client.embedding(venice::TEXT_EMBEDDING_QWEN3_0_6B, None);
+        let model = client.embedding(venice::TEXT_EMBEDDING_QWEN3_0_6B);
         let normalized = model
             .call(inputs())
             .await
@@ -136,7 +136,7 @@ async fn single_text_convenience() {
     with_venice_cassette(
         "embedding_matrix/single_text_convenience",
         |client| async move {
-            let model = client.embedding(venice::TEXT_EMBEDDING_QWEN3_0_6B, None);
+            let model = client.embedding(venice::TEXT_EMBEDDING_QWEN3_0_6B);
             let response = model
                 .call(vec![EMBEDDING_INPUTS[0].to_string()])
                 .await
@@ -154,7 +154,7 @@ async fn single_text_convenience() {
     .await;
 }
 
-/// `embedding(model, Some(ndims))` round-trips the requested width — the
+/// `embedding_with_ndims(model, ndims)` round-trips the requested width — the
 /// provider either honors it or the driver errors honestly with
 /// `MismatchedDimensions`; a silent mismatch is the bug this cell exists to
 /// catch.
@@ -162,7 +162,7 @@ async fn single_text_convenience() {
 async fn dimensions_request() {
     with_venice_cassette("embedding_matrix/dimensions_request", |client| async move {
         let ndims = 256;
-        let model = client.embedding(venice::TEXT_EMBEDDING_QWEN3_0_6B, Some(ndims));
+        let model = client.embedding_with_ndims(venice::TEXT_EMBEDDING_QWEN3_0_6B, ndims);
         let response = model
             .call(inputs())
             .await
@@ -180,7 +180,7 @@ async fn error_preserves_provider_body() {
     with_venice_cassette(
         "embedding_matrix/error_preserves_provider_body",
         |client| async move {
-            let model = client.embedding("no-such-embedding-model", None);
+            let model = client.embedding("no-such-embedding-model");
             let error = model
                 .call(inputs())
                 .await

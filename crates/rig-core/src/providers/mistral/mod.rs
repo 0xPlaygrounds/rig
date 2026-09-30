@@ -10,7 +10,7 @@
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
 //! let mistral = mistral::from_env()?;
 //! let small = mistral.chat(mistral::MISTRAL_SMALL);
-//! let embed = mistral.embedding(mistral::embedding::MISTRAL_EMBED, None);
+//! let embed = mistral.embedding(mistral::embedding::MISTRAL_EMBED);
 //! # let _ = (small, embed);
 //! # Ok(())
 //! # }

@@ -22,7 +22,7 @@ struct WordDefinition {
 async fn main() -> Result<(), anyhow::Error> {
     // Load the local Fastembed model and pair it with its embedding wire
     let embedding_model = rig_fastembed::Fastembed::load(&FastembedModel::AllMiniLML6V2Q)?
-        .embedding(&FastembedModel::AllMiniLML6V2Q, None)?
+        .embedding(&FastembedModel::AllMiniLML6V2Q)?
         .erase();
 
     let embeddings = EmbeddingsBuilder::new(embedding_model.clone())

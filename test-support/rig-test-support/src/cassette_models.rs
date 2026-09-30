@@ -74,12 +74,17 @@ impl OpenAiModels {
     }
 
     /// The embedding model for `model`.
-    pub fn embedding(
+    pub fn embedding(&self, model: impl Into<String>) -> Model<openai::wire::Embeddings> {
+        self.client().embedding(model)
+    }
+
+    /// The embedding model for `model`, asking for `ndims`-wide vectors.
+    pub fn embedding_with_ndims(
         &self,
         model: impl Into<String>,
-        ndims: Option<usize>,
+        ndims: usize,
     ) -> Model<openai::wire::Embeddings> {
-        self.client().embedding(model, ndims)
+        self.client().embedding_with_ndims(model, ndims)
     }
 
     /// The rerank model for `model`.
@@ -240,12 +245,17 @@ impl GeminiModels {
     }
 
     /// The embedding model for `model`.
-    pub fn embedding(
+    pub fn embedding(&self, model: impl Into<String>) -> Model<gemini::embedding::Embeddings> {
+        self.client().embedding(model)
+    }
+
+    /// The embedding model for `model`, asking for `ndims`-wide vectors.
+    pub fn embedding_with_ndims(
         &self,
         model: impl Into<String>,
-        ndims: Option<usize>,
+        ndims: usize,
     ) -> Model<gemini::embedding::Embeddings> {
-        self.client().embedding(model, ndims)
+        self.client().embedding_with_ndims(model, ndims)
     }
 
     /// The transcription model for `model`.
@@ -318,12 +328,17 @@ impl CohereModels {
     }
 
     /// The text-embedding model for `model`.
-    pub fn embedding(
+    pub fn embedding(&self, model: impl Into<String>) -> Model<cohere::Embeddings> {
+        self.client().embedding(model)
+    }
+
+    /// The text-embedding model for `model`, asking for `ndims`-wide vectors.
+    pub fn embedding_with_ndims(
         &self,
         model: impl Into<String>,
-        ndims: Option<usize>,
+        ndims: usize,
     ) -> Model<cohere::Embeddings> {
-        self.client().embedding(model, ndims)
+        self.client().embedding_with_ndims(model, ndims)
     }
 
     /// The image-embedding model.
@@ -370,12 +385,17 @@ impl OllamaModels {
     }
 
     /// The embedding model for `model`.
-    pub fn embedding(
+    pub fn embedding(&self, model: impl Into<String>) -> Model<ollama::Embeddings> {
+        self.client().embedding(model)
+    }
+
+    /// The embedding model for `model`, asking for `ndims`-wide vectors.
+    pub fn embedding_with_ndims(
         &self,
         model: impl Into<String>,
-        ndims: Option<usize>,
+        ndims: usize,
     ) -> Model<ollama::Embeddings> {
-        self.client().embedding(model, ndims)
+        self.client().embedding_with_ndims(model, ndims)
     }
 
     /// The daemon's model listing.
@@ -422,12 +442,17 @@ impl CopilotModels {
     }
 
     /// The embedding model for `model`.
-    pub fn embedding(
+    pub fn embedding(&self, model: impl Into<String>) -> Model<copilot::wire::Embeddings> {
+        self.client().embedding(model)
+    }
+
+    /// The embedding model for `model`, asking for `ndims`-wide vectors.
+    pub fn embedding_with_ndims(
         &self,
         model: impl Into<String>,
-        ndims: Option<usize>,
+        ndims: usize,
     ) -> Model<copilot::wire::Embeddings> {
-        self.client().embedding(model, ndims)
+        self.client().embedding_with_ndims(model, ndims)
     }
 
     /// The session's model listing.

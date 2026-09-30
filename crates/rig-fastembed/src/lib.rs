@@ -10,7 +10,7 @@
 //! use rig_fastembed::{Fastembed, FastembedModel, text_embeddings};
 //!
 //! # fn run() -> Result<(), rig_fastembed::FastembedError> {
-//! let model = Fastembed::load(&FastembedModel::AllMiniLML6V2Q)?.embedding(&FastembedModel::AllMiniLML6V2Q, None)?;
+//! let model = Fastembed::load(&FastembedModel::AllMiniLML6V2Q)?.embedding(&FastembedModel::AllMiniLML6V2Q)?;
 //! # let _ = model;
 //! # Ok(())
 //! # }
@@ -60,23 +60,30 @@ impl fmt::Display for FastembedError {
 
 impl StdError for FastembedError {}
 
-/// The local embedding wire of `model` at `ndims` dimensions, named
-/// `fastembed` and addressing the model by its `fastembed` name. `None`
-/// takes the width from the model metadata, which errors for models
-/// `fastembed` does not know.
-pub fn text_embeddings(
-    model: &FastembedModel,
-    ndims: Option<usize>,
-) -> Result<Local<Embedding>, FastembedError> {
-    let ndims = match ndims {
-        Some(ndims) => ndims,
-        None => TextEmbedding::get_model_info(model)
-            .map(|info| info.dim)
-            .map_err(|_| FastembedError::UnknownModel(model.clone()))?,
-    };
-    Ok(Local::new("fastembed")
+/// The local embedding wire of `model`, named `fastembed` and addressing
+/// the model by its `fastembed` name, at the width the model metadata
+/// states. Errors for a model `fastembed` has no metadata for; name its
+/// width with [`text_embeddings_with_ndims`] instead.
+pub fn text_embeddings(model: &FastembedModel) -> Result<Local<Embedding>, FastembedError> {
+    let ndims = TextEmbedding::get_model_info(model)
+        .map(|info| info.dim)
+        .map_err(|_| FastembedError::UnknownModel(model.clone()))?;
+    Ok(local_wire(model, Capabilities::embedding(1024, ndims)))
+}
+
+/// The local embedding wire of `model`, expecting `ndims`-wide vectors. A
+/// reply of another width is [`ProviderError::MismatchedDimensions`].
+pub fn text_embeddings_with_ndims(model: &FastembedModel, ndims: usize) -> Local<Embedding> {
+    local_wire(
+        model,
+        Capabilities::embedding(1024, ndims).declaring(Some(ndims)),
+    )
+}
+
+fn local_wire(model: &FastembedModel, capabilities: Capabilities) -> Local<Embedding> {
+    Local::new("fastembed")
         .with_id(format!("{model:?}"))
-        .with_capabilities(Capabilities::embedding(1024, ndims)))
+        .with_capabilities(capabilities)
 }
 
 /// A loaded Fastembed model: the transport that embeds in the calling
@@ -104,17 +111,25 @@ impl Fastembed {
         })
     }
 
-    /// The embedding model of `model` at `ndims` dimensions, on this
-    /// runtime: the [`text_embeddings`] wire, which fails for a model
-    /// `fastembed` does not know when `ndims` is `None`. `model` names what
-    /// spans and capabilities report; this runtime embeds with whatever it
-    /// loaded.
+    /// The embedding model of `model` on this runtime: the
+    /// [`text_embeddings`] wire, which fails for a model `fastembed` has no
+    /// metadata for. `model` names what spans and capabilities report; this
+    /// runtime embeds with whatever it loaded.
     pub fn embedding(
         &self,
         model: &FastembedModel,
-        ndims: Option<usize>,
     ) -> Result<Model<Local<Embedding>, Self>, FastembedError> {
-        Ok(Model::new(text_embeddings(model, ndims)?, self.clone()))
+        Ok(Model::new(text_embeddings(model)?, self.clone()))
+    }
+
+    /// The embedding model of `model` on this runtime, expecting
+    /// `ndims`-wide vectors: the [`text_embeddings_with_ndims`] wire.
+    pub fn embedding_with_ndims(
+        &self,
+        model: &FastembedModel,
+        ndims: usize,
+    ) -> Model<Local<Embedding>, Self> {
+        Model::new(text_embeddings_with_ndims(model, ndims), self.clone())
     }
 
     /// Loads a caller-supplied ONNX model.

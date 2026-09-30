@@ -6,7 +6,7 @@
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
 //! let provider = gemini::Gemini::from_env()?;
 //!
-//! let embeddings = provider.embedding(gemini::EMBEDDING_001, None);
+//! let embeddings = provider.embedding(gemini::EMBEDDING_001);
 //! # Ok(())
 //! # }
 //! ```
@@ -148,14 +148,9 @@ impl GeminiConfig {
         interactions_api::Interactions::new(self.clone(), model)
     }
 
-    /// The `batchEmbedContents` embedding wire. `ndims` defaults from the
-    /// model identifier.
-    pub(crate) fn embedding(
-        &self,
-        model: impl Into<String>,
-        ndims: Option<usize>,
-    ) -> embedding::Embeddings {
-        embedding::Embeddings::new(self.clone(), model, ndims)
+    /// The `batchEmbedContents` embedding wire.
+    pub(crate) fn embedding(&self, model: impl Into<String>) -> embedding::Embeddings {
+        embedding::Embeddings::new(self.clone(), model)
     }
 
     /// The audio transcription wire.

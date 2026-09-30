@@ -57,9 +57,7 @@ async fn embeds_over_host_with(
             HandlerKey::from(EMBED_KEY),
             rig::serve::ErasedHandler::new(rig::serve::adapters::ModelAdapter::new(
                 "host",
-                client
-                    .openai
-                    .embedding(openai::TEXT_EMBEDDING_3_SMALL, None),
+                client.openai.embedding(openai::TEXT_EMBEDDING_3_SMALL),
             )),
         )
         .expect("a fresh key");

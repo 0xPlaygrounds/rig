@@ -276,7 +276,7 @@ const EMBED_BODY: &str = r#"{"model":"all-minilm","embeddings":[[0.5,-0.25],[0.1
 #[tokio::test]
 async fn an_embedding_reply_pairs_its_vectors_with_the_texts_that_were_sent() {
     let response = crate::driver::Model::new(
-        OllamaConfig::new().embedding("all-minilm", None),
+        OllamaConfig::new().embedding("all-minilm"),
         RecordingHttpClient::new(EMBED_BODY),
     )
     .call(vec!["first".to_owned(), "second".to_owned()])
@@ -305,18 +305,19 @@ async fn an_embedding_reply_pairs_its_vectors_with_the_texts_that_were_sent() {
 fn an_embedding_wire_reports_the_models_published_width() {
     assert_eq!(
         OllamaConfig::new()
-            .embedding("all-minilm", None)
+            .embedding("all-minilm")
             .describe()
             .capabilities,
         Capabilities::embedding(1024, 384)
     );
     assert_eq!(
         OllamaConfig::new()
-            .embedding("qwen3-embedding", Some(2048))
+            .embedding("qwen3-embedding")
+            .with_ndims(2048)
             .describe()
             .capabilities,
-        Capabilities::embedding(1024, 2048),
-        "a family whose width varies by size takes the caller's"
+        Capabilities::embedding(1024, 2048).declaring(Some(2048)),
+        "a family whose width varies by size takes the caller's, checked against the reply"
     );
 }
 
@@ -326,7 +327,7 @@ fn an_embedding_wire_reports_the_models_published_width() {
 async fn an_embedding_reply_keeps_its_whole_body_as_raw() {
     let body = r#"{"model":"all-minilm","embeddings":[[0.5,-0.25],[0.125,0.0]],"prompt_eval_count":6,"unmodeled":"kept"}"#;
     let response = crate::driver::Model::new(
-        OllamaConfig::new().embedding("all-minilm", None),
+        OllamaConfig::new().embedding("all-minilm"),
         RecordingHttpClient::new(body),
     )
     .call(vec!["first".to_owned(), "second".to_owned()])

@@ -77,7 +77,7 @@ async fn vector_search_test() {
         .with_base_url(openai_mock.base_url())
         .client();
 
-    let model = openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None);
+    let model = openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002);
 
     // Create test documents with mocked embeddings
     let words = vec![
@@ -347,7 +347,7 @@ async fn test_mock_server_setup() {
         .with_base_url(server.base_url())
         .client();
 
-    let model = openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None);
+    let model = openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002);
 
     // Test that we can create embeddings with the mock
     let words = vec![Word {

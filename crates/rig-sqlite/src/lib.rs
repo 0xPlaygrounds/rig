@@ -1494,7 +1494,7 @@ fn sqlite_json_operator_operand_len(operand: &str) -> Option<usize> {
 ///
 /// let conn = Connection::open("vector_store.db").await?;
 /// let openai = OpenAI::new("YOUR_API_KEY");
-/// let model = openai.embedding(TEXT_EMBEDDING_ADA_002, None)
+/// let model = openai.embedding(TEXT_EMBEDDING_ADA_002)
 /// .erase();
 ///
 /// // Initialize vector store

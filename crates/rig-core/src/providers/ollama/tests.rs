@@ -1268,8 +1268,7 @@ async fn embeddings_non_success_preserves_status_and_body() {
     let body = r#"{"error":"model not found"}"#;
     let http_client =
         RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
-    let model =
-        crate::driver::Model::new(OllamaConfig::new().embedding(ALL_MINILM, None), http_client);
+    let model = crate::driver::Model::new(OllamaConfig::new().embedding(ALL_MINILM), http_client);
 
     let error = model
         .call(vec!["hello".to_string()])

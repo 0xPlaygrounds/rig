@@ -29,7 +29,7 @@ async fn main() -> Result<(), anyhow::Error> {
     // embeddings to the shared REST surface.
     let openai_client = OpenAI::from_env()?;
     let embedding_model = openai_client
-        .embedding(openai::TEXT_EMBEDDING_ADA_002, None)
+        .embedding(openai::TEXT_EMBEDDING_ADA_002)
         .erase();
 
     // Generate embeddings for the definitions of all the documents using the specified embedding model.

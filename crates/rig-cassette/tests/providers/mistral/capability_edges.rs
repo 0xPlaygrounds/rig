@@ -29,7 +29,7 @@ async fn one_request_over_mistrals_batch_cap_is_rejected() -> Result<()> {
     with_mistral_capability_cassette(
         "capability_edges/one_request_over_mistrals_batch_cap_is_rejected",
         |client| async move {
-            let model = client.embedding(mistral::embedding::MISTRAL_EMBED, None);
+            let model = client.embedding(mistral::embedding::MISTRAL_EMBED);
             // Straight through the model, bypassing the builder's chunking, so
             // the cell pins Mistral's own cap rather than rig's arithmetic.
             let error = model
@@ -55,7 +55,7 @@ async fn mistral_embed_reports_its_real_dimensions() -> Result<()> {
     with_mistral_capability_cassette(
         "capability_edges/mistral_embed_reports_its_real_dimensions",
         |client| async move {
-            let model = client.embedding(mistral::embedding::MISTRAL_EMBED, None);
+            let model = client.embedding(mistral::embedding::MISTRAL_EMBED);
             // The claim under test is the *declared* dimension; the live call
             // is what proves the declaration matches the vectors Mistral
             // actually returns.

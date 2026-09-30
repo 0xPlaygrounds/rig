@@ -2,7 +2,7 @@
 //!
 //! ```no_run
 //! use rig_core::providers::together;
-//! let model = together::from_env()?.embedding(together::BGE_BASE_EN_V1_5, None);
+//! let model = together::from_env()?.embedding(together::BGE_BASE_EN_V1_5);
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 

@@ -103,7 +103,7 @@ Example usage
     // OpenAI's embedding model, erased once: the builder and the store each
     // take a clone of the handle.
     let model = rig::providers::openai::OpenAI::from_env()?
-            .embedding(rig::providers::openai::TEXT_EMBEDDING_3_SMALL, None)
+            .embedding(rig::providers::openai::TEXT_EMBEDDING_3_SMALL)
         .erase();
 
     // connect to Postgres

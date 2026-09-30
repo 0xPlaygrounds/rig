@@ -11,7 +11,7 @@
 //!
 //! # fn example() -> anyhow::Result<()> {
 //! let openai = openai::OpenAI::from_env()?;
-//! let embedding_model = openai.embedding(openai::TEXT_EMBEDDING_3_SMALL, None);
+//! let embedding_model = openai.embedding(openai::TEXT_EMBEDDING_3_SMALL);
 //!
 //! let vector_store = VectorizeVectorStore::new(
 //!     embedding_model,

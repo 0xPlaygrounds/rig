@@ -43,7 +43,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let openai_client = OpenAI::from_env()?;
 
     let model = openai_client
-        .embedding(openai::TEXT_EMBEDDING_ADA_002, None)
+        .embedding(openai::TEXT_EMBEDDING_ADA_002)
         .erase();
 
     let documents = EmbeddingsBuilder::new(model.clone())

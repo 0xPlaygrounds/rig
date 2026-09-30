@@ -149,7 +149,7 @@ async fn vector_search_test() {
         .with_base_url(server.base_url())
         .client();
     let model = openai_client
-        .embedding(openai::TEXT_EMBEDDING_ADA_002, None)
+        .embedding(openai::TEXT_EMBEDDING_ADA_002)
         .erase();
 
     let embeddings = create_embeddings(model.clone()).await;
@@ -234,7 +234,7 @@ async fn insert_documents_test() {
         .with_base_url(server.base_url())
         .client();
     let model = openai_client
-        .embedding(openai::TEXT_EMBEDDING_ADA_002, None)
+        .embedding(openai::TEXT_EMBEDDING_ADA_002)
         .erase();
     let embeddings = create_embeddings(model.clone()).await;
 

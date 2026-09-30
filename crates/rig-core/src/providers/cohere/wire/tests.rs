@@ -173,7 +173,7 @@ const EMBED_BODY: &str = r#"{"id":"b2e4b0f7-0000-0000-0000-000000000000","texts"
 #[tokio::test]
 async fn an_embedding_reply_pairs_its_vectors_with_the_texts_that_were_sent() {
     let response = crate::driver::Model::new(
-        cohere().embedding("embed-v4.0", None),
+        cohere().embedding("embed-v4.0"),
         RecordingHttpClient::new(EMBED_BODY),
     )
     .call(vec!["first".to_owned(), "second".to_owned()])
@@ -201,17 +201,19 @@ async fn an_embedding_reply_pairs_its_vectors_with_the_texts_that_were_sent() {
 
 #[test]
 fn an_embedding_wire_reports_the_models_published_width() {
-    let wire = cohere().embedding("embed-english-light-v3.0", None);
+    let wire = cohere().embedding("embed-english-light-v3.0");
     assert_eq!(
         wire.describe().capabilities,
         Capabilities::embedding(96, 384)
     );
     assert_eq!(
         cohere()
-            .embedding("embed-english-light-v3.0", Some(64))
-            .ndims,
-        64,
-        "a width the caller named wins over the model's table"
+            .embedding("embed-english-light-v3.0")
+            .with_ndims(64)
+            .describe()
+            .capabilities,
+        Capabilities::embedding(96, 64).declaring(Some(64)),
+        "a width the caller named wins over the model's table, and the reply is checked against it"
     );
 }
 
@@ -294,7 +296,7 @@ async fn a_single_image_embed_captures_the_bare_document() {
 async fn an_embedding_reply_keeps_its_whole_body_as_raw() {
     let body = r#"{"id":"b2e4b0f7-0000-0000-0000-000000000000","texts":["first","second"],"embeddings":[[0.5,-0.25],[0.125,0.0]],"meta":{"api_version":{"version":"1"},"billed_units":{"input_tokens":7,"search_units":0,"classifications":0,"images":0}},"unmodeled":"kept"}"#;
     let response = crate::driver::Model::new(
-        cohere().embedding("embed-v4.0", None),
+        cohere().embedding("embed-v4.0"),
         RecordingHttpClient::new(body),
     )
     .call(vec!["first".to_owned(), "second".to_owned()])

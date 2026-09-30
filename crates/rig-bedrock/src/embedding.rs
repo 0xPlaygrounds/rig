@@ -4,7 +4,7 @@
 //! use rig_bedrock::{client::BedrockRuntime, embedding::{AMAZON_TITAN_EMBED_TEXT_V2_0, Embeddings}};
 //! use rig_core::Model;
 //!
-//! let model = BedrockRuntime::from_env().embedding(AMAZON_TITAN_EMBED_TEXT_V2_0, Some(256));
+//! let model = BedrockRuntime::from_env().embedding_with_ndims(AMAZON_TITAN_EMBED_TEXT_V2_0, 256);
 //! # let _ = model;
 //! ```
 
@@ -23,7 +23,9 @@ use crate::types::errors::AwsSdkInvokeModelError;
 #[serde(rename_all = "camelCase")]
 pub struct EmbeddingRequest {
     pub input_text: String,
-    pub dimensions: usize,
+    /// The width asked for; absent takes the model's default.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub dimensions: Option<usize>,
     pub normalize: bool,
 }
 
@@ -42,19 +44,39 @@ pub use crate::completion::{
     COHERE_EMBED_MULTILINGUAL as COHERE_EMBED_MULTILINGUAL_V3,
 };
 
-/// The embedding endpoint for one model, at a caller-chosen width.
+/// The default width of a Titan text model, or `None` for a model this
+/// build does not know.
+fn model_default_ndims(model: &str) -> Option<usize> {
+    match model {
+        AMAZON_TITAN_EMBED_TEXT_V1 => Some(1536),
+        AMAZON_TITAN_EMBED_TEXT_V2_0 => Some(1024),
+        _ => None,
+    }
+}
+
+/// The embedding endpoint for one model.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Embeddings {
     pub model: String,
+    /// The width the caller asked for with [`Self::with_ndims`], sent as
+    /// `dimensions`. `None` takes the model's default.
     pub ndims: Option<usize>,
 }
 
 impl Embeddings {
-    pub fn new(model: impl Into<String>, ndims: Option<usize>) -> Self {
+    /// The embedding wire for `model`, at the model's default width.
+    pub fn new(model: impl Into<String>) -> Self {
         Self {
             model: model.into(),
-            ndims,
+            ndims: None,
         }
+    }
+
+    /// Ask for `ndims`-wide vectors (`dimensions`). A reply of another
+    /// width is [`ProviderError::MismatchedDimensions`].
+    pub fn with_ndims(mut self, ndims: usize) -> Self {
+        self.ndims = Some(ndims);
+        self
     }
 }
 
@@ -83,10 +105,15 @@ impl Wire for Embeddings {
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(PROVIDER_NAME)
             .model(self.model.as_str())
-            .capabilities(Capabilities::embedding(
-                1024,
-                self.ndims.unwrap_or_default(),
-            ))
+            .capabilities(
+                Capabilities::embedding(
+                    1024,
+                    self.ndims
+                        .or_else(|| model_default_ndims(&self.model))
+                        .unwrap_or_default(),
+                )
+                .declaring(self.ndims),
+            )
     }
 
     fn encode(&self, texts: Vec<String>, _mode: Mode) -> Result<EmbeddingBatch, EncodeError> {
@@ -95,7 +122,7 @@ impl Wire for Embeddings {
             .map(|text| {
                 let body = serde_json::to_string(&EmbeddingRequest {
                     input_text: text.clone(),
-                    dimensions: self.ndims.unwrap_or_default(),
+                    dimensions: self.ndims,
                     normalize: true,
                 })?;
                 Ok((text, body))

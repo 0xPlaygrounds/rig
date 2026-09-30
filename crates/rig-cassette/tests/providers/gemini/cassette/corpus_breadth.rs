@@ -89,7 +89,7 @@ fn host_bus(
                 HandlerKey::from(EMBED_KEY),
                 rig::serve::ErasedHandler::new(rig::serve::adapters::ModelAdapter::new(
                     "host",
-                    client.embedding(gemini::embedding::EMBEDDING_001, None),
+                    client.embedding(gemini::embedding::EMBEDDING_001),
                 )),
             )
             .expect("a fresh key");

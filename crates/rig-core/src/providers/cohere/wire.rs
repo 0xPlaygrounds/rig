@@ -2,7 +2,7 @@
 //!
 //! ```no_run
 //! use rig_core::providers::cohere::{Cohere, EMBED_V4};
-//! let wire = Cohere::from_env()?.embedding(EMBED_V4, None);
+//! let wire = Cohere::from_env()?.embedding(EMBED_V4);
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 
@@ -76,17 +76,12 @@ impl CohereConfig {
         }
     }
 
-    /// Build a text-embedding wire reporting the supplied or known model width,
-    /// or zero if unknown. This width is metadata, not a request parameter.
-    pub(crate) fn embedding(&self, model: impl Into<String>, ndims: Option<usize>) -> Embeddings {
-        let model = model.into();
-        let ndims = ndims
-            .or_else(|| super::model_dimensions_from_identifier(&model))
-            .unwrap_or_default();
+    /// The text-embedding wire for `model`, at the model's known width.
+    pub(crate) fn embedding(&self, model: impl Into<String>) -> Embeddings {
         Embeddings {
             provider: self.clone(),
-            model,
-            ndims,
+            model: model.into(),
+            ndims: None,
             input_type: DEFAULT_INPUT_TYPE.to_owned(),
         }
     }
@@ -224,9 +219,9 @@ pub struct Embeddings {
     pub provider: CohereConfig,
     /// The model to address.
     pub model: String,
-    /// The width this wire reports, from the caller or the model's published
-    /// dimensions. `0` means neither named one.
-    pub ndims: usize,
+    /// The width the caller expects, set with [`Self::with_ndims`]. `None`
+    /// takes the model's known width.
+    pub ndims: Option<usize>,
     /// Cohere's retrieval prompt: `search_document` for stored chunks,
     /// `search_query` for queries, `classification`, `clustering`.
     pub input_type: String,
@@ -236,6 +231,14 @@ impl Embeddings {
     /// Embed for a different purpose than storing chunks.
     pub fn with_input_type(mut self, input_type: impl Into<String>) -> Self {
         self.input_type = input_type.into();
+        self
+    }
+
+    /// Expect `ndims`-wide vectors. `/v1/embed` takes no width, so none is
+    /// sent; a reply of another width is
+    /// [`ProviderError::MismatchedDimensions`].
+    pub fn with_ndims(mut self, ndims: usize) -> Self {
+        self.ndims = Some(ndims);
         self
     }
 }
@@ -249,7 +252,15 @@ impl Wire for Embeddings {
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(PROVIDER_NAME)
             .model(self.model.as_str())
-            .capabilities(Capabilities::embedding(MAX_DOCUMENTS, self.ndims))
+            .capabilities(
+                Capabilities::embedding(
+                    MAX_DOCUMENTS,
+                    self.ndims
+                        .or_else(|| super::model_dimensions_from_identifier(&self.model))
+                        .unwrap_or_default(),
+                )
+                .declaring(self.ndims),
+            )
     }
 
     fn encode(&self, texts: Vec<String>, _mode: Mode) -> Result<Encoded, EncodeError> {
