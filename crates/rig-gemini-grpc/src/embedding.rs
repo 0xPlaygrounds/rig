@@ -37,8 +37,8 @@ fn native_ndims(model: &str) -> Option<usize> {
 pub struct Embeddings {
     /// The model, without the `models/` prefix.
     pub model: String,
-    /// The width the caller declared with [`Self::with_ndims`], when they
-    /// named one rather than taking the model's native width.
+    /// The width the caller declared through
+    /// [`EmbeddingWidth`](rig_core::embeddings::EmbeddingWidth), if any.
     pub ndims: Option<usize>,
 }
 

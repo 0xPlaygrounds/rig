@@ -110,8 +110,8 @@ pub struct Embeddings {
     pub provider: VoyageAiConfig,
     /// The model to address.
     pub model: String,
-    /// The width the caller declared with [`Self::with_ndims`], when they
-    /// named one rather than taking the model's published width.
+    /// The width the caller declared through
+    /// [`EmbeddingWidth`](crate::embeddings::EmbeddingWidth), if any.
     pub ndims: Option<usize>,
     /// Prepends a retrieval prompt to the input text: `"document"` when
     /// embedding stored chunks, `"query"` when embedding search queries.

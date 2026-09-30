@@ -49,7 +49,8 @@ impl Gemini {
     }
 
     /// The `batchEmbedContents` embedding model for `model`, at its native
-    /// width. Declare another width with [`with_ndims`](Embeddings::with_ndims).
+    /// width. [`EmbeddingWidth`](crate::embeddings::EmbeddingWidth) declares
+    /// another.
     pub fn embedding(&self, model: impl Into<String>) -> Model<Embeddings> {
         self.model(self.config.embedding(model))
     }

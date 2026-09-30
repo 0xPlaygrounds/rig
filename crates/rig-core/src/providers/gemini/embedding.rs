@@ -47,8 +47,8 @@ pub struct Embeddings {
     pub provider: super::GeminiConfig,
     /// The embedding model, as the path names it.
     pub model: String,
-    /// The width the caller declared with [`Self::with_ndims`], when they
-    /// named one rather than taking the model's default.
+    /// The width the caller declared through
+    /// [`EmbeddingWidth`](crate::embeddings::EmbeddingWidth), if any.
     pub ndims: Option<usize>,
 }
 

@@ -53,7 +53,8 @@ async fn main() -> Result<(), anyhow::Error> {
         UserDefinedEmbeddingModel::new(onnx_file, tokenizer_files).with_pooling(Pooling::Mean);
 
     let embedding_model = Fastembed::from_user_defined(user_defined_model)?
-        .embedding(&test_model_info.model, Some(384))?
+        .embedding(&test_model_info.model)
+        .with_ndims(384)
         .erase();
 
     // Create documents

@@ -6,11 +6,10 @@
 //! downloads and ONNX Runtime binary downloads.
 //!
 //! ```no_run
-//! use rig_core::Model;
-//! use rig_fastembed::{Fastembed, FastembedModel, text_embeddings};
+//! use rig_fastembed::{Fastembed, FastembedModel};
 //!
 //! # fn run() -> Result<(), rig_fastembed::FastembedError> {
-//! let model = Fastembed::load(&FastembedModel::AllMiniLML6V2Q)?.embedding(&FastembedModel::AllMiniLML6V2Q, None)?;
+//! let model = Fastembed::load(&FastembedModel::AllMiniLML6V2Q)?.embedding(&FastembedModel::AllMiniLML6V2Q);
 //! # let _ = model;
 //! # Ok(())
 //! # }
@@ -33,11 +32,9 @@ use rig_core::error::ProviderError;
 use rig_core::operation::Embedding;
 use rig_core::wire::Capabilities;
 
-/// Errors raised while resolving or initializing a Fastembed model.
+/// Errors raised while initializing a Fastembed model.
 #[derive(Debug, Clone)]
 pub enum FastembedError {
-    /// `fastembed` has no metadata for the requested model.
-    UnknownModel(FastembedModel),
     /// The model failed to load, download, or initialize.
     Initialization(String),
 }
@@ -45,12 +42,6 @@ pub enum FastembedError {
 impl fmt::Display for FastembedError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            FastembedError::UnknownModel(model) => {
-                write!(
-                    f,
-                    "Failed to resolve FastEmbed model metadata for {model:?}"
-                )
-            }
             FastembedError::Initialization(message) => {
                 write!(f, "Failed to initialize FastEmbed model: {message}")
             }
@@ -60,23 +51,17 @@ impl fmt::Display for FastembedError {
 
 impl StdError for FastembedError {}
 
-/// The local embedding wire of `model` at `ndims` dimensions, named
-/// `fastembed` and addressing the model by its `fastembed` name. `None`
-/// takes the width from the model metadata, which errors for models
-/// `fastembed` does not know.
-pub fn text_embeddings(
-    model: &FastembedModel,
-    ndims: Option<usize>,
-) -> Result<Local<Embedding>, FastembedError> {
-    let ndims = match ndims {
-        Some(ndims) => ndims,
-        None => TextEmbedding::get_model_info(model)
-            .map(|info| info.dim)
-            .map_err(|_| FastembedError::UnknownModel(model.clone()))?,
-    };
-    Ok(Local::new("fastembed")
+/// The local embedding wire of `model`, named `fastembed` and addressing the
+/// model by its `fastembed` name. Its width comes from the model metadata,
+/// or is zero for a model `fastembed` has none for; declare that width with
+/// [`EmbeddingWidth`](rig_core::embeddings::EmbeddingWidth).
+pub fn text_embeddings(model: &FastembedModel) -> Local<Embedding> {
+    let ndims = TextEmbedding::get_model_info(model)
+        .map(|info| info.dim)
+        .unwrap_or_default();
+    Local::new("fastembed")
         .with_id(format!("{model:?}"))
-        .with_capabilities(Capabilities::embedding(1024, ndims)))
+        .with_capabilities(Capabilities::embedding(1024, ndims))
 }
 
 /// A loaded Fastembed model: the transport that embeds in the calling
@@ -104,17 +89,13 @@ impl Fastembed {
         })
     }
 
-    /// The embedding model of `model` at `ndims` dimensions, on this
-    /// runtime: the [`text_embeddings`] wire, which fails for a model
-    /// `fastembed` does not know when `ndims` is `None`. `model` names what
-    /// spans and capabilities report; this runtime embeds with whatever it
-    /// loaded.
-    pub fn embedding(
-        &self,
-        model: &FastembedModel,
-        ndims: Option<usize>,
-    ) -> Result<Model<Local<Embedding>, Self>, FastembedError> {
-        Ok(Model::new(text_embeddings(model, ndims)?, self.clone()))
+    /// The embedding model of `model` on this runtime: the
+    /// [`text_embeddings`] wire. `model` names what spans and capabilities
+    /// report; this runtime embeds with whatever it loaded, so a
+    /// user-defined model declares its width with
+    /// [`EmbeddingWidth`](rig_core::embeddings::EmbeddingWidth).
+    pub fn embedding(&self, model: &FastembedModel) -> Model<Local<Embedding>, Self> {
+        Model::new(text_embeddings(model), self.clone())
     }
 
     /// Loads a caller-supplied ONNX model.

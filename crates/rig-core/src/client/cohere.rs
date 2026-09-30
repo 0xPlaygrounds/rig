@@ -36,7 +36,7 @@ impl Cohere {
 
     /// The text-embedding model for `model`, at its native width. Declare
     /// the width of a model this build does not know with
-    /// [`with_ndims`](Embeddings::with_ndims).
+    /// [`EmbeddingWidth`](crate::embeddings::EmbeddingWidth).
     pub fn embedding(&self, model: impl Into<String>) -> Model<Embeddings> {
         self.model(self.config.embedding(model))
     }

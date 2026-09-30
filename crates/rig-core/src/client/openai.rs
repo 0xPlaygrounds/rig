@@ -68,8 +68,8 @@ impl OpenAI {
         self.model(self.config.chat(model))
     }
 
-    /// The embedding model for `model`, at its native width. Declare another
-    /// width with [`with_ndims`](crate::providers::openai::wire::Embeddings::with_ndims).
+    /// The embedding model for `model`, at its native width.
+    /// [`EmbeddingWidth`](crate::embeddings::EmbeddingWidth) declares another.
     pub fn embedding(&self, model: impl Into<String>) -> Model<Embeddings> {
         self.model(self.config.embedding(model))
     }

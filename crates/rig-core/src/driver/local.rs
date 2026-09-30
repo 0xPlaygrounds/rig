@@ -80,6 +80,16 @@ impl<Op: Operation<Emit = Free>> Local<Op> {
     }
 }
 
+/// Declaring a width sets the width the capabilities report and checks every
+/// reply against it; the runtime is asked for nothing.
+impl crate::embeddings::EmbeddingWidth for Local<crate::operation::Embedding> {
+    fn with_ndims(mut self, ndims: usize) -> Self {
+        self.capabilities.ndims = ndims;
+        self.capabilities.declared = Some(ndims);
+        self
+    }
+}
+
 impl<Op> Clone for Local<Op> {
     fn clone(&self) -> Self {
         Self {

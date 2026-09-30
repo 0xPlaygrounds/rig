@@ -37,14 +37,13 @@ where
 /// [`Capabilities::ndims`](crate::wire::Capabilities::ndims) reports.
 ///
 /// ```
-/// use rig_core::embeddings::EmbeddingWidth;
 /// use rig_core::providers::ollama::OllamaConfig;
 ///
-/// let model = OllamaConfig::new()
-///     .connect(rig_core::test_utils::MockStreamingClient::default())
-///     .embedding("my-finetune")
-///     .with_ndims(512);
+/// # fn example(http: rig_core::http_client::DynHttpClient) {
+/// let ollama = OllamaConfig::new().connect(http);
+/// let model = ollama.embedding("my-finetune").with_ndims(512);
 /// assert_eq!(model.capabilities().ndims, 512);
+/// # }
 /// ```
 pub trait EmbeddingWidth: crate::wire::Wire<Op = crate::operation::Embedding> {
     /// This wire, declaring that its vectors come back `ndims` wide.

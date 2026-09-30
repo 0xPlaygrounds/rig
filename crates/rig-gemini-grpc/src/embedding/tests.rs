@@ -31,3 +31,31 @@ fn embedding_rpc_errors_carry_the_code_and_its_verdict() {
     );
     assert_eq!(bad.provider_response_status(), None);
 }
+
+/// An undeclared width leaves `output_dimensionality` to the server, so
+/// `gemini-embedding-001` keeps its native 3072 instead of a guessed 768.
+#[test]
+fn only_a_declared_width_is_sent() -> anyhow::Result<()> {
+    use super::{EMBEDDING_004, Embeddings};
+    use rig_core::embeddings::EmbeddingWidth;
+    use rig_core::wire::{Capabilities, Mode, Wire};
+
+    let sent = |wire: &Embeddings| -> anyhow::Result<Vec<Option<i32>>> {
+        Ok(wire
+            .encode(vec!["text".to_owned()], Mode::Unary)?
+            .into_iter()
+            .map(|(_, request)| request.output_dimensionality)
+            .collect())
+    };
+
+    let native = Embeddings::new("gemini-embedding-001");
+    anyhow::ensure!(sent(&native)? == vec![None]);
+    anyhow::ensure!(native.describe().capabilities == Capabilities::embedding(100, 3072));
+
+    let declared = Embeddings::new(EMBEDDING_004).with_ndims(256);
+    anyhow::ensure!(sent(&declared)? == vec![Some(256)]);
+    anyhow::ensure!(
+        declared.describe().capabilities == Capabilities::embedding(100, 256).declaring(Some(256))
+    );
+    Ok(())
+}

@@ -57,8 +57,8 @@ fn native_ndims(model: &str) -> Option<usize> {
 pub struct Embeddings {
     /// The Bedrock model id.
     pub model: String,
-    /// The width the caller declared with [`Self::with_ndims`], when they
-    /// named one rather than taking the model's native width.
+    /// The width the caller declared through
+    /// [`EmbeddingWidth`](rig_core::embeddings::EmbeddingWidth), if any.
     pub ndims: Option<usize>,
 }
 
@@ -232,3 +232,6 @@ impl<'id> Decoder<'id, rig_core::operation::Embedding, EmbeddingFrame> for Embed
         }))
     }
 }
+
+#[cfg(test)]
+mod tests;

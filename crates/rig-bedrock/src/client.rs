@@ -100,8 +100,8 @@ impl BedrockRuntime {
         Model::new(Converse::new(model), self.clone())
     }
 
-    /// The embedding model for `model`, at its native width. Request another
-    /// width with [`with_ndims`](Embeddings::with_ndims).
+    /// The embedding model for `model`, at its native width.
+    /// [`EmbeddingWidth`](rig_core::embeddings::EmbeddingWidth) requests another.
     pub fn embedding(&self, model: impl Into<String>) -> Model<Embeddings, Self> {
         Model::new(Embeddings::new(model), self.clone())
     }

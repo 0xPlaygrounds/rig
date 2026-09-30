@@ -29,8 +29,8 @@ impl VoyageAi {
         Ok(VoyageAiConfig::from_env()?.client())
     }
 
-    /// The embedding model for `model`, at its native width. Request
-    /// another width with [`with_ndims`](Embeddings::with_ndims).
+    /// The embedding model for `model`, at its native width.
+    /// [`EmbeddingWidth`](crate::embeddings::EmbeddingWidth) requests another.
     pub fn embedding(&self, model: impl Into<String>) -> Model<Embeddings> {
         self.model(self.config.embedding(model))
     }

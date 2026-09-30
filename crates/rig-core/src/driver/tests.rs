@@ -1293,3 +1293,33 @@ async fn a_request_the_operation_rejects_never_reaches_the_transport() {
     assert_eq!(response, "hello");
     assert_eq!(runtime.0.load(std::sync::atomic::Ordering::SeqCst), 1);
 }
+
+/// A local runtime is asked for no width, so a declared one is only checked.
+#[tokio::test]
+async fn a_local_embedding_wire_checks_a_declared_width() {
+    let model = crate::test_utils::MockEmbeddings::model();
+    let texts = || vec!["text".to_owned()];
+
+    let declared = model.clone().with_ndims(3);
+    assert_eq!(declared.capabilities().ndims, 3);
+    let error = declared
+        .call(texts())
+        .await
+        .expect_err("ten-wide vectors contradict a declared 3");
+    assert!(
+        matches!(
+            error,
+            ProviderError::MismatchedDimensions {
+                requested: 3,
+                returned: 10,
+                ..
+            }
+        ),
+        "{error:?}"
+    );
+    model
+        .with_ndims(10)
+        .call(texts())
+        .await
+        .expect("a declared width the reply honours embeds");
+}
