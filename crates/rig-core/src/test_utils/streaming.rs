@@ -260,12 +260,6 @@ pub struct MockDecoder<'id> {
 }
 
 impl<'id> MockDecoder<'id> {
-    fn close_text(&mut self, out: &mut Out<'id, Completion>) {
-        if let Some(part) = self.text.take() {
-            out.close_text(part);
-        }
-    }
-
     fn call_index(&mut self, id: &str) -> usize {
         if let Some(index) = self.calls.get(id) {
             return *index;
@@ -285,14 +279,13 @@ impl<'id> MockDecoder<'id> {
     ) -> Result<Flow, ProviderError> {
         match event {
             MockStreamEvent::Text(text) => {
-                let part = self.text.get_or_insert_with(|| out.text());
-                out.push_text(part, &text);
+                out.extend_text(&mut self.text, &text);
             }
             MockStreamEvent::TextStart {
                 id: _,
                 additional_params,
             } => {
-                self.close_text(&mut out);
+                out.close_open_text(&mut self.text);
                 let part = out.text();
                 if let Some(params) = additional_params
                     .map(fixture_additional_params)
@@ -322,7 +315,7 @@ impl<'id> MockDecoder<'id> {
                 arguments,
                 call_id,
             } => {
-                self.close_text(&mut out);
+                out.close_open_text(&mut self.text);
                 // An id-less call is a wire that sends none: rig issues the
                 // id. A call id beside the wire id makes the pair a
                 // dual-identifier call. A call scripted as fragments under
@@ -345,7 +338,7 @@ impl<'id> MockDecoder<'id> {
                 out.close_pending(index, IfMalformed::Fail)?;
             }
             MockStreamEvent::ToolCallNameDelta { id, name } => {
-                self.close_text(&mut out);
+                out.close_open_text(&mut self.text);
                 let index = self.call_index(&id);
                 out.call_fragment(
                     index,
@@ -357,7 +350,7 @@ impl<'id> MockDecoder<'id> {
                 )?;
             }
             MockStreamEvent::ToolCallArgumentsDelta { id, arguments } => {
-                self.close_text(&mut out);
+                out.close_open_text(&mut self.text);
                 let index = self.call_index(&id);
                 out.call_fragment(
                     index,
@@ -374,7 +367,7 @@ impl<'id> MockDecoder<'id> {
                 out.close_pending(index, IfMalformed::Fail)?;
             }
             MockStreamEvent::Reasoning { id, content } => {
-                self.close_text(&mut out);
+                out.close_open_text(&mut self.text);
                 let reasoning = crate::message::Reasoning {
                     id: fixture_provider_id(&id).map(str::to_owned),
                     content: vec![content],
@@ -397,7 +390,7 @@ impl<'id> MockDecoder<'id> {
                 }
             }
             MockStreamEvent::ReasoningDelta { id, reasoning } => {
-                self.close_text(&mut out);
+                out.close_open_text(&mut self.text);
                 let at = match self.reasoning.iter().position(|(open, _)| *open == id) {
                     Some(at) => at,
                     None => {
@@ -413,7 +406,7 @@ impl<'id> MockDecoder<'id> {
             MockStreamEvent::Unknown(value) => out.unknown(value.into()),
             MockStreamEvent::RequestId(_) => {}
             MockStreamEvent::FinalResponse(finish) => {
-                self.close_text(&mut out);
+                out.close_open_text(&mut self.text);
                 for (id, part) in std::mem::take(&mut self.reasoning) {
                     out.close_reasoning(
                         part,

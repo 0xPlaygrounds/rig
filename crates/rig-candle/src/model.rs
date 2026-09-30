@@ -349,14 +349,6 @@ pub struct CandleAdapter<'id> {
     text: Option<TextPart<'id>>,
 }
 
-impl<'id> CandleAdapter<'id> {
-    fn close_text(&mut self, out: &mut Out<'id, Completion>) {
-        if let Some(part) = self.text.take() {
-            out.close_text(part);
-        }
-    }
-}
-
 impl<'id> rig_core::wire::Decoder<'id, Completion, CandleFrame> for CandleAdapter<'id> {
     type Event = CandleFrame;
 
@@ -380,20 +372,19 @@ impl<'id> rig_core::wire::Decoder<'id, Completion, CandleFrame> for CandleAdapte
         };
         match event {
             GenerationEvent::Text(text) => {
-                let part = self.text.get_or_insert_with(|| out.text());
-                out.push_text(part, &text);
+                out.extend_text(&mut self.text, &text);
             }
             GenerationEvent::ToolCall(call) => {
-                self.close_text(&mut out);
+                out.close_open_text(&mut self.text);
                 out.tool_call(call)?;
             }
             GenerationEvent::Reasoning(reasoning) => {
-                self.close_text(&mut out);
+                out.close_open_text(&mut self.text);
                 out.reasoning_block(reasoning);
             }
             // The local response record is the response's `raw`.
             GenerationEvent::Final(response) => {
-                self.close_text(&mut out);
+                out.close_open_text(&mut self.text);
                 out.raw(serde_json::to_value(&response)?);
                 return Ok(out.end(Finish {
                     usage: (&response).into(),

@@ -164,12 +164,6 @@ pub enum ChatEvent {
 }
 
 impl<'id> ChatDecoder<'id> {
-    fn close_text(&mut self, out: &mut Out<'id, Completion>) {
-        if let Some(part) = self.text.take() {
-            out.close_text(part);
-        }
-    }
-
     /// Reasoning then text, as one content fragment carries them.
     fn content(
         &mut self,
@@ -178,13 +172,12 @@ impl<'id> ChatDecoder<'id> {
         text: Option<&str>,
     ) {
         if let Some(thinking) = thinking.filter(|thinking| !thinking.is_empty()) {
-            self.close_text(out);
+            out.close_open_text(&mut self.text);
             self.thoughts.fragment(out, thinking);
         }
         if let Some(text) = text.filter(|text| !text.is_empty()) {
             self.thoughts.boundary();
-            let part = self.text.get_or_insert_with(|| out.text());
-            out.push_text(part, text);
+            out.extend_text(&mut self.text, text);
         }
     }
 
@@ -239,7 +232,7 @@ impl<'id> ChatDecoder<'id> {
                 };
                 // Tool content interleaving an open thinking part stops it.
                 self.thoughts.boundary();
-                self.close_text(&mut out);
+                out.close_open_text(&mut self.text);
                 let index = self.calls;
                 self.calls += 1;
                 self.current_tool_call = Some(index);
@@ -313,7 +306,7 @@ impl<'id> ChatDecoder<'id> {
             }
         }
         self.thoughts.boundary();
-        self.close_text(&mut out);
+        out.close_open_text(&mut self.text);
         for call in tool_calls {
             let Some(function) = call.function else {
                 continue;
@@ -347,7 +340,7 @@ impl<'id> ChatDecoder<'id> {
         mut out: Out<'id, Completion>,
         streamed: bool,
     ) -> Result<Flow, ProviderError> {
-        self.close_text(&mut out);
+        out.close_open_text(&mut self.text);
         self.thoughts.close(&mut out, None);
         let recorded_usage = usage
             .as_ref()
