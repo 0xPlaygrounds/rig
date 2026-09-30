@@ -1226,25 +1226,15 @@ impl TryFrom<ResponsesRequestParams> for CompletionRequest {
         let chat_history = req.chat_history_with_documents();
         let model = req.model.clone().unwrap_or(model);
         let mut instruction_parts = Vec::new();
-        let mut input = {
-            let mut full_history: Vec<InputItem> = Vec::new();
-            let tool_ids = crate::providers::internal::wire_ids::WireIds::new(&chat_history);
-            for (position, history_item) in chat_history.into_iter().enumerate() {
-                let mut items = input_items(history_item, &issuers)?;
-                tool_ids
-                    .apply(
-                        position,
-                        items.iter_mut().filter_map(|item| match &mut item.input {
-                            InputContent::FunctionCall(call) => Some(&mut call.call_id),
-                            InputContent::FunctionCallOutput(result) => Some(&mut result.call_id),
-                            _ => None,
-                        }),
-                    )
-                    .map_err(EncodeError::request)?;
-                full_history.extend(items);
-            }
-            full_history
-        };
+        let mut input = crate::providers::internal::wire_ids::WireIds::convert(
+            chat_history,
+            |message| input_items(message, &issuers),
+            |item| match &mut item.input {
+                InputContent::FunctionCall(call) => vec![&mut call.call_id],
+                InputContent::FunctionCallOutput(result) => vec![&mut result.call_id],
+                _ => Vec::new(),
+            },
+        )?;
 
         let mut lift_system_text = |text: String| {
             let text = text.trim();
