@@ -321,6 +321,34 @@ pub struct ResponsesDecoder<'id> {
     extras_slots: std::collections::HashSet<u64>,
     /// The reasoning part of each output slot, fixed by its first fragment.
     reasoning: std::collections::HashMap<u64, ReasoningPart<'id>>,
+    /// The output slot of each keyed text part, and of the anonymous one.
+    /// A gateway may name a message's deltas with ids its item events do
+    /// not use, so the slot is what ties a part to its message item.
+    text_slots: std::collections::HashMap<String, u64>,
+    anonymous_text_slot: Option<u64>,
+    /// The message items the reply stated, in the order they opened, and
+    /// the one each output slot holds.
+    message_items: Vec<MessageItem>,
+    message_slots: std::collections::HashMap<u64, usize>,
+}
+
+/// What a `message` output item says about itself rather than its content.
+#[derive(Default)]
+struct MessageItem {
+    id: String,
+    phase: Option<String>,
+    /// Whether `output_item.done` stated the item. What it states wins, as
+    /// its id does for the reply's message id: a gateway may name one item
+    /// differently in each event.
+    done: bool,
+}
+
+/// The event that states a message item.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Statement {
+    Added,
+    Done,
+    Terminal,
 }
 
 impl<'id> ResponsesDecoder<'id> {
@@ -341,6 +369,10 @@ impl<'id> ResponsesDecoder<'id> {
             extras_items: std::collections::HashSet::new(),
             extras_slots: std::collections::HashSet::new(),
             reasoning: std::collections::HashMap::new(),
+            text_slots: std::collections::HashMap::new(),
+            anonymous_text_slot: None,
+            message_items: Vec::new(),
+            message_slots: std::collections::HashMap::new(),
         }
     }
 
@@ -394,9 +426,11 @@ impl<'id> ResponsesDecoder<'id> {
         )
     }
 
-    /// The text part a fragment of the message item `item_id` extends.
+    /// The text part a fragment of the message item `item_id` at
+    /// `output_index` extends.
     fn text_part(
         &mut self,
+        output_index: u64,
         item_id: Option<&str>,
         out: &mut Out<'id, Completion>,
     ) -> &TextPart<'id> {
@@ -407,9 +441,119 @@ impl<'id> ResponsesDecoder<'id> {
         match item_id {
             Some(item_id) => {
                 self.current_text_item = Some(item_id.clone());
+                self.text_slots
+                    .entry(item_id.clone())
+                    .or_insert(output_index);
                 self.texts.entry(item_id).or_insert_with(|| out.text())
             }
-            None => self.anonymous_text.get_or_insert_with(|| out.text()),
+            None => {
+                self.anonymous_text_slot.get_or_insert(output_index);
+                self.anonymous_text.get_or_insert_with(|| out.text())
+            }
+        }
+    }
+
+    /// Record what `statement` says about the message item at
+    /// `output_index`. An item is found by its id first: a terminal may
+    /// shift positions, and a stream whose indices were repaired to zero
+    /// puts every item in one slot. `output_item.added` of an unknown id
+    /// opens a new item, as does `output_item.done` when the slot's item is
+    /// already done; otherwise a statement falls back to the slot. An empty
+    /// id or an absent `phase` erases nothing.
+    fn note_message_item(
+        &mut self,
+        output_index: u64,
+        message: &super::OutputMessage,
+        statement: Statement,
+    ) {
+        let known = self
+            .message_items
+            .iter()
+            .position(|item| !message.id.is_empty() && item.id == message.id);
+        let slot = self.message_slots.get(&output_index).copied();
+        let slot = match statement {
+            Statement::Added => None,
+            Statement::Done => {
+                slot.filter(|at| self.message_items.get(*at).is_some_and(|item| !item.done))
+            }
+            Statement::Terminal => slot,
+        };
+        let at = match known.or(slot) {
+            Some(at) => at,
+            None => {
+                self.message_items.push(MessageItem::default());
+                self.message_items.len() - 1
+            }
+        };
+        // The terminal's positions are not the stream's.
+        if statement != Statement::Terminal || !self.message_slots.contains_key(&output_index) {
+            self.message_slots.insert(output_index, at);
+        }
+        let Some(item) = self.message_items.get_mut(at) else {
+            return;
+        };
+        let wins = statement == Statement::Done || !item.done;
+        if !message.id.is_empty() && (wins || item.id.is_empty()) {
+            item.id.clone_from(&message.id);
+        }
+        if message.phase.is_some() && (wins || item.phase.is_none()) {
+            item.phase.clone_from(&message.phase);
+        }
+        item.done |= statement == Statement::Done;
+    }
+
+    /// Put each message item's `phase` on the text part its content built,
+    /// once, at the end of the reply, when every statement has been read. A
+    /// part is its item's by id, or else by output slot: a gateway may name
+    /// a message's deltas with ids its item events do not use. When the
+    /// reply carries several message items, each part also records its
+    /// item's id, so replay can send each item back as itself.
+    fn attach_message_items(&mut self, out: &mut Out<'id, Completion>) {
+        let item_of = |key: Option<&str>, slot: Option<u64>| {
+            key.and_then(|key| {
+                self.message_items
+                    .iter()
+                    .position(|item| !item.id.is_empty() && item.id == key)
+            })
+            .or_else(|| self.message_slots.get(&slot?).copied())
+            .and_then(|at| self.message_items.get(at))
+        };
+        let parts: Vec<(&TextPart<'id>, &MessageItem)> = self
+            .texts
+            .iter()
+            .filter_map(|(key, part)| {
+                Some((part, item_of(Some(key), self.text_slots.get(key).copied())?))
+            })
+            .chain(
+                self.anonymous_text
+                    .as_ref()
+                    .and_then(|part| Some((part, item_of(None, self.anonymous_text_slot)?))),
+            )
+            .collect();
+        let several = self.message_items.len() > 1;
+        for (part, item) in parts {
+            let mut extras = serde_json::Map::new();
+            if let Some(phase) = &item.phase {
+                extras.insert(
+                    super::OPENAI_RESPONSES_PHASE_KEY.to_owned(),
+                    serde_json::Value::String(phase.clone()),
+                );
+            }
+            if several && !item.id.is_empty() {
+                extras.insert(
+                    super::OPENAI_RESPONSES_MESSAGE_ID_KEY.to_owned(),
+                    serde_json::Value::String(item.id.clone()),
+                );
+            }
+            if extras.is_empty() {
+                continue;
+            }
+            if let Some(params) = crate::message::AdditionalParams::from_entries(Some((
+                super::OPENAI_RESPONSES_EXTRAS_KEY,
+                serde_json::Value::Object(extras),
+            ))) {
+                out.text_params(part, params);
+            }
         }
     }
 
@@ -460,9 +604,8 @@ impl<'id> ResponsesDecoder<'id> {
         }
         self.note_extras(output_index, &message.id);
         for content in message.content.iter().cloned() {
-            let mut text = super::text_block(content);
-            super::stamp_phase(&mut text, message.phase.as_deref());
-            let part = self.text_part(Some(&message.id), out);
+            let text = super::text_block(content);
+            let part = self.text_part(output_index, Some(&message.id), out);
             out.push_text(part, &text.text);
             if let Some(additional_params) = text.additional_params {
                 out.text_params(part, additional_params);
@@ -527,6 +670,7 @@ impl<'id> ResponsesDecoder<'id> {
             let Output::Message(message) = item else {
                 continue;
             };
+            self.note_message_item(output_index, message, Statement::Terminal);
             if message.content.is_empty() {
                 continue;
             }
@@ -570,6 +714,10 @@ impl<'id> ResponsesDecoder<'id> {
                     },
                 )?;
             }
+            ItemChunkKind::OutputItemAdded(StreamingItemDoneOutput {
+                item: Output::Message(message),
+                ..
+            }) => self.note_message_item(output_index, &message, Statement::Added),
             ItemChunkKind::OutputItemDone(message) => {
                 // Any completed item ends the one it carried; a fragment
                 // arriving afterwards names its own item.
@@ -581,7 +729,7 @@ impl<'id> ResponsesDecoder<'id> {
             ItemChunkKind::OutputTextDelta(DeltaTextChunk { delta, .. })
             | ItemChunkKind::RefusalDelta(DeltaTextChunk { delta, .. }) => {
                 self.note_text_delta(output_index, outer_item_id.as_deref());
-                let part = self.text_part(outer_item_id.as_deref(), out);
+                let part = self.text_part(output_index, outer_item_id.as_deref(), out);
                 out.push_text(part, &delta);
             }
             // Summary and raw-reasoning deltas differ only in which wire
@@ -690,6 +838,7 @@ impl<'id> ResponsesDecoder<'id> {
                 }
             }
             Output::Message(message) => {
+                self.note_message_item(output_index, &message, Statement::Done);
                 self.attach_message_extras(output_index, &message, out);
                 if !message.id.is_empty() {
                     out.message_id(message.id);
@@ -756,6 +905,7 @@ impl<'id> ResponsesDecoder<'id> {
         for index in out.pending_calls() {
             out.close_pending(index, IfMalformed::Drop)?;
         }
+        self.attach_message_items(&mut out);
         if let Some(document) = self.document.take() {
             out.raw(document);
         }

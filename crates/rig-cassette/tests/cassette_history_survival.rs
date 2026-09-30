@@ -51,6 +51,19 @@ const SURVIVAL_EXEMPT: &[(&str, &str, &str)] = &[
          so the id returns on a call whose name no longer anchors it",
     ),
     (
+        "copilot/reasoning_roundtrip/streaming.yaml",
+        "phase",
+        "the shared reasoning round trip rebuilds turn 1's answer from the streamed text \
+         deltas rather than from rig's decoded choice, so the history it sends holds no \
+         text block to carry the message's phase",
+    ),
+    (
+        "openai/gpt_5_6_reasoning/five_turn_streaming_metadata_roundtrip.yaml",
+        "phase",
+        "the cell rebuilds each streamed answer from its text deltas rather than from rig's \
+         decoded choice, so the history it sends holds no text block to carry the phase",
+    ),
+    (
         "gemini/auto_caching/support_chat_100_current_turn.yaml",
         "thought_signature",
         "the run opts into ThoughtReplay::CurrentTurn, which stops re-sending a turn's \

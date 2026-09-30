@@ -327,7 +327,8 @@ pub fn assert_recorded(cell: Cell, scenario: &str) -> Forwarded {
     forwarded.sort();
     forwarded.dedup();
     // Reasoning state is only meaningful to its issuer: none of it may reach
-    // another issuer's model. Tool-call ids are correlation, not state. Claude
+    // another issuer's model. Tool-call ids are correlation, not state, and a
+    // message's `phase` labels the message for every Responses dialect. Claude
     // through OpenRouter shares the Anthropic issuer (its thinking signatures
     // verified valid between OpenRouter and the Claude API both ways), so
     // there the signature must arrive.
@@ -335,7 +336,9 @@ pub fn assert_recorded(cell: Cell, scenario: &str) -> Forwarded {
     let leaked: Vec<&str> = forwarded
         .iter()
         .copied()
-        .filter(|kind| *kind != "tool_call_id" && !(shared && *kind == "signature"))
+        .filter(|kind| {
+            *kind != "tool_call_id" && *kind != "phase" && !(shared && *kind == "signature")
+        })
         .collect();
     assert!(
         leaked.is_empty(),

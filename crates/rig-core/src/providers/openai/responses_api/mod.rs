@@ -508,9 +508,11 @@ fn input_items(
             crate::completion::Message::Assistant { id, content } => {
                 let mut reasoning_items = Vec::new();
                 let mut other_items: Vec<InputItem> = Vec::new();
-                // Merge text parts under one message ID because duplicate input
-                // item IDs are rejected.
-                let mut message_item: Option<usize> = None;
+                // Each message item's position, by id. Text blocks of one
+                // item join it as more content parts, because duplicate
+                // input item ids are rejected; blocks of distinct items keep
+                // their own item, id and `phase`.
+                let mut message_items: Vec<(String, usize)> = Vec::new();
 
                 for assistant_content in content {
                     match assistant_content {
@@ -518,12 +520,23 @@ fn input_items(
                             text,
                             additional_params,
                         }) => {
-                            let Some(message) =
-                                assistant_text_replay_message(id.clone(), text, additional_params)
-                            else {
+                            let Some(message) = assistant_text_replay_message(
+                                id.as_deref(),
+                                text,
+                                additional_params,
+                            ) else {
                                 continue;
                             };
-                            match (message, message_item) {
+                            let joined = match &message {
+                                Message::Assistant { id: item_id, .. } if !item_id.is_empty() => {
+                                    message_items
+                                        .iter()
+                                        .find(|(seen, _)| seen == item_id)
+                                        .map(|(_, at)| *at)
+                                }
+                                _ => None,
+                            };
+                            match (message, joined) {
                                 (Message::Assistant { content: more, .. }, Some(at)) => {
                                     if let Some(InputItem {
                                         input:
@@ -537,14 +550,15 @@ fn input_items(
                                     }
                                 }
                                 (message, _) => {
-                                    let with_id = matches!(message, Message::Assistant { .. });
+                                    if let Message::Assistant { id: item_id, .. } = &message
+                                        && !item_id.is_empty()
+                                    {
+                                        message_items.push((item_id.clone(), other_items.len()));
+                                    }
                                     other_items.push(InputItem {
                                         role: Some(Role::Assistant),
                                         input: InputContent::Message(message),
                                     });
-                                    if with_id {
-                                        message_item = Some(other_items.len() - 1);
-                                    }
                                 }
                             }
                         }
@@ -2225,9 +2239,13 @@ impl OutputText {
             .map(|map| {
                 map.into_iter()
                     // Reserved keys would duplicate the block's text or tag.
-                    // Phase belongs on the message, not the content block.
+                    // Phase and the item id belong on the message, not the
+                    // content block.
                     .filter(|(key, _)| {
-                        key != "text" && key != "type" && key != OPENAI_RESPONSES_PHASE_KEY
+                        key != "text"
+                            && key != "type"
+                            && key != OPENAI_RESPONSES_PHASE_KEY
+                            && key != OPENAI_RESPONSES_MESSAGE_ID_KEY
                     })
                     .collect()
             })
@@ -2239,11 +2257,14 @@ impl OutputText {
     }
 }
 
-/// Builds an assistant input using only Responses-owned extras. Empty text is
-/// skipped unless both an ID and owned extras are present. Malformed extras
-/// warn before skipping; extras on nonempty ID-less inputs warn and are dropped.
+/// Builds the assistant input one text block replays as, using only
+/// Responses-owned extras. The item is the block's own message item when its
+/// extras name one, and `id` otherwise; its `phase` comes from the extras.
+/// Empty text is skipped unless the item has an id and owned extras. Without
+/// an id the text replays id-less: `phase` rides it, content-part extras do
+/// not. Malformed or dropped extras warn.
 fn assistant_text_replay_message(
-    id: Option<String>,
+    id: Option<&str>,
     text: String,
     additional_params: Option<crate::message::AdditionalParams>,
 ) -> Option<Message> {
@@ -2262,21 +2283,35 @@ fn assistant_text_replay_message(
     }
     let own_extras = additional_params
         .as_ref()
-        .and_then(|params| params.wire_extras(OPENAI_RESPONSES_EXTRAS_KEY))
-        .is_some();
-    if text.is_empty() && !(own_extras && id.is_some()) {
+        .and_then(|params| params.wire_extras(OPENAI_RESPONSES_EXTRAS_KEY));
+    // `phase` and the item id ride the text block's own-wire extras on
+    // ingest; they belong to the message, so they are lifted here and
+    // filtered from the block.
+    let message_field = |key: &str| {
+        own_extras
+            .and_then(|extras| extras.get(key))
+            .and_then(Value::as_str)
+            .filter(|value| !value.is_empty())
+            .map(str::to_owned)
+    };
+    let phase = message_field(OPENAI_RESPONSES_PHASE_KEY);
+    let id = message_field(OPENAI_RESPONSES_MESSAGE_ID_KEY).or_else(|| id.map(str::to_owned));
+    let content_extras = own_extras.is_some_and(|extras| {
+        extras
+            .keys()
+            .any(|key| key != OPENAI_RESPONSES_PHASE_KEY && key != OPENAI_RESPONSES_MESSAGE_ID_KEY)
+    });
+    if text.is_empty() && !(own_extras.is_some() && id.is_some()) {
         return None;
     }
-    // `phase` rides the text block's own-wire extras on ingest; it belongs
-    // to the message, so it is lifted here and filtered from the block.
-    let phase = additional_params
-        .as_ref()
-        .and_then(|params| params.wire_extras(OPENAI_RESPONSES_EXTRAS_KEY))
-        .and_then(|extras| extras.get(OPENAI_RESPONSES_PHASE_KEY))
-        .and_then(Value::as_str)
-        .map(str::to_owned);
-    match id {
-        Some(id) => Some(Message::Assistant {
+    if id.is_none() && content_extras {
+        tracing::warn!(
+            "own-wire extras cannot ride the id-less assistant form — \
+             replaying the text without them"
+        );
+    }
+    match (id, phase) {
+        (Some(id), phase) => Some(Message::Assistant {
             content: vec![AssistantContentType::Text(AssistantContent::OutputText(
                 OutputText::from_message_text(text, additional_params),
             ))],
@@ -2285,18 +2320,21 @@ fn assistant_text_replay_message(
             status: ToolStatus::Completed,
             phase,
         }),
-        None => {
-            if own_extras {
-                tracing::warn!(
-                    "own-wire extras cannot ride the id-less assistant form — \
-                     replaying the text without them"
-                );
-            }
-            Some(Message::AssistantInput {
-                content: text,
-                name: None,
-            })
-        }
+        // The id-less input message form has no `phase`; an output message
+        // without its id carries one.
+        (None, Some(phase)) => Some(Message::Assistant {
+            content: vec![AssistantContentType::Text(AssistantContent::OutputText(
+                OutputText::new(text),
+            ))],
+            id: String::new(),
+            name: None,
+            status: ToolStatus::Completed,
+            phase: Some(phase),
+        }),
+        (None, None) => Some(Message::AssistantInput {
+            content: text,
+            name: None,
+        }),
     }
 }
 
@@ -2311,27 +2349,11 @@ pub(crate) const OPENAI_RESPONSES_EXTRAS_KEY: &str = "openai_responses";
 /// lifted back onto the assistant input item at replay.
 pub(crate) const OPENAI_RESPONSES_PHASE_KEY: &str = "phase";
 
-/// Record an output message's `phase` on a text block's own-wire extras so
-/// the follow-up request can re-send it.
-pub(crate) fn stamp_phase(text: &mut Text, phase: Option<&str>) {
-    let Some(phase) = phase else {
-        return;
-    };
-    let mut extras = text
-        .additional_params
-        .as_ref()
-        .and_then(|params| params.wire_extras(OPENAI_RESPONSES_EXTRAS_KEY))
-        .cloned()
-        .unwrap_or_default();
-    extras.insert(
-        OPENAI_RESPONSES_PHASE_KEY.to_string(),
-        Value::String(phase.to_string()),
-    );
-    text.additional_params = crate::message::AdditionalParams::from_entries(Some((
-        OPENAI_RESPONSES_EXTRAS_KEY,
-        Value::Object(extras),
-    )));
-}
+/// Key inside the [`OPENAI_RESPONSES_EXTRAS_KEY`] object that carries the
+/// id of the message item a text block came from. Recorded only when a
+/// reply carries several message items, which one rig assistant message
+/// id cannot name; lifted back onto the assistant input item at replay.
+pub(crate) const OPENAI_RESPONSES_MESSAGE_ID_KEY: &str = "message_id";
 
 /// Converts output text or a refusal to a Rig text block, retaining nonempty
 /// output-text extras under the Responses key.

@@ -2011,9 +2011,8 @@ fn assistant_text_without_idless_reasoning_replays_as_output_text() {
     ));
 }
 
-/// A turn the wire delivered as several text parts (two `output_text`
-/// contents, or two message items folded under the first's id) replays as
-/// one message item: the wire refuses two input items with one id.
+/// Text blocks that name no message item of their own replay as one message
+/// item under the turn's id: the wire refuses two input items with one id.
 #[test]
 fn assistant_turn_with_several_text_parts_replays_as_one_message_item() {
     let assistant = completion::Message::Assistant {

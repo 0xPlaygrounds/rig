@@ -311,7 +311,9 @@ A provider hands Rig opaque fields only it can interpret (thinking signatures,
 encrypted reasoning, redacted reasoning, reasoning item ids, tool-call ids)
 and expects them back on the next turn, in the slot that carries them: the
 signature on its own reasoning block, the ciphertext on its reasoning item,
-the call id on both the call and its result. The rule lives in
+the call id on both the call and its result. A Responses message's `phase`
+is held to the same rule: it must return on the assistant item with the
+message's id. The rule lives in
 `test-support/rig-test-support/src/history_survival.rs`, modeled per dialect,
 and is applied twice:
 
