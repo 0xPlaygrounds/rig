@@ -188,8 +188,6 @@ pub struct Embeddings {
     pub ndims: Option<usize>,
 }
 
-impl Embeddings {}
-
 /// The daemon takes no width, so nothing is sent: declare the width of a
 /// model the table does not know, and the reply is checked against it.
 impl crate::embeddings::EmbeddingWidth for Embeddings {
