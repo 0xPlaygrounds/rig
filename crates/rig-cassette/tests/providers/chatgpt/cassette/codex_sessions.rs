@@ -508,3 +508,117 @@ async fn usage_accumulates_across_streaming_multi_turn() {
     )
     .await;
 }
+
+/// A streamed ChatGPT turn's `phase` reaches its text block, and the
+/// follow-up re-sends it on the same assistant item, which the backend
+/// accepts. Expectations come from the recorded stream: the message's id
+/// and `phase` as `output_item.done` stated them.
+#[tokio::test]
+async fn streamed_phase_round_trips_on_follow_up() {
+    const PROMPT: &str = "Remember the codeword ALPHA-17. Reply exactly: ACK-1";
+    let mut first = None;
+    with_chatgpt_cassette(
+        "codex_sessions/streamed_phase_round_trips_on_follow_up",
+        |client| {
+            let first = &mut first;
+            async move {
+                // The backend serves this account only its current models.
+                let model = client.responses(rig::providers::openai::GPT_6_ASTRA);
+                let turn = |request: CompletionRequest| {
+                    let model = model.clone();
+                    async move {
+                        let mut stream = model.stream(request).expect("the stream starts");
+                        while let Some(item) = stream.next().await {
+                            item.expect("every stream item decodes");
+                        }
+                        stream.finish().await.expect("the stream ends")
+                    }
+                };
+                let reply = turn(CompletionRequest::new(PROMPT).preamble("Be concise.")).await;
+                let mut history = vec![Message::user(PROMPT)];
+                history.extend(reply.message());
+                turn(
+                    CompletionRequest::new("Reply with exactly the remembered codeword.")
+                        .preamble("Be concise.")
+                        .messages(history),
+                )
+                .await;
+                *first = Some(reply);
+            }
+        },
+    )
+    .await;
+    let first = first.expect("turn 1 ran");
+
+    let recorded = crate::cassettes::recorded_interaction_bodies(
+        "chatgpt",
+        "codex_sessions/streamed_phase_round_trips_on_follow_up",
+    );
+    assert_eq!(recorded.len(), 2, "two turns recorded");
+    let delivered: Vec<(String, String)> = crate::cassettes::recorded_sse_json_frames(
+        "chatgpt",
+        "codex_sessions/streamed_phase_round_trips_on_follow_up",
+    )
+    .into_iter()
+    .filter(|event| {
+        event["type"] == "response.output_item.done" && event["item"]["type"] == "message"
+    })
+    .map(|event| {
+        (
+            event["item"]["id"]
+                .as_str()
+                .filter(|id| !id.is_empty())
+                .expect("the recorded message has an id")
+                .to_owned(),
+            event["item"]["phase"]
+                .as_str()
+                .expect("the recorded message states a phase")
+                .to_owned(),
+        )
+    })
+    .collect();
+    assert_eq!(delivered.len(), 1, "one message item: {delivered:?}");
+    let (id, phase) = &delivered[0];
+
+    let texts: Vec<Option<&str>> = first
+        .choice
+        .iter()
+        .filter_map(|content| match content {
+            AssistantContent::Text(text) => Some(
+                text.additional_params
+                    .as_ref()
+                    .and_then(|params| params.wire_extras("openai_responses"))
+                    .and_then(|extras| extras.get("phase"))
+                    .and_then(serde_json::Value::as_str),
+            ),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        !texts.is_empty() && texts.iter().all(|text| *text == Some(phase.as_str())),
+        "the streamed text carries the message's phase: {texts:?}"
+    );
+
+    let request: serde_json::Value = serde_json::from_str(&recorded[1].0).expect("request is JSON");
+    let phased: Vec<(&str, &str)> = request["input"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|item| item.get("phase").is_some())
+        .map(|item| {
+            (
+                item["id"].as_str().unwrap_or_default(),
+                item["phase"].as_str().unwrap_or_default(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        phased,
+        [(id.as_str(), phase.as_str())],
+        "the follow-up re-sends the phase on the same assistant item, and on no other"
+    );
+    assert!(
+        recorded[1].1.contains("\"type\":\"response.completed\""),
+        "the backend accepted the follow-up"
+    );
+}

@@ -2473,3 +2473,461 @@ fn streamed_and_unary_text_carry_equal_extras() {
         assert_eq!(texts, unary_texts, "{label}");
     }
 }
+
+/// A completed `message` item with one `output_text` part and `phase`
+/// spelled as given (`Value::Null` states it as `null`).
+fn phased_message(id: &str, text: &str, phase: serde_json::Value) -> serde_json::Value {
+    let mut message = annotated_message(id, &[(text, json!([]))]);
+    if phase != json!("<absent>") {
+        message["phase"] = phase;
+    }
+    message
+}
+
+/// The `output_item.added` opening `item` at `output_index`, with no content.
+fn item_added(output_index: u64, sequence: u64, mut item: serde_json::Value) -> serde_json::Value {
+    if item["type"] == "message" {
+        item["content"] = json!([]);
+        item["status"] = json!("in_progress");
+    }
+    json!({
+        "type": "response.output_item.added",
+        "output_index": output_index,
+        "sequence_number": sequence,
+        "item": item,
+    })
+}
+
+/// The Responses-owned extras a text block carries.
+fn own_extras(text: &crate::message::Text) -> Option<&serde_json::Map<String, serde_json::Value>> {
+    text.additional_params.as_ref().and_then(|params| {
+        params.wire_extras(crate::providers::openai::responses_api::OPENAI_RESPONSES_EXTRAS_KEY)
+    })
+}
+
+/// The unary body whose `output` is `output`, decoded as a buffered replay.
+fn unary_of(output: serde_json::Value) -> Decoded<Completion> {
+    let mut body = serde_json::to_value(sample_response(ResponseStatus::Completed))
+        .expect("the sample response serializes");
+    body["output"] = output;
+    decoded_body("openai", &format!("data: {body}\n"), None)
+}
+
+/// Streamed text carries its message's `phase` whichever restatement
+/// states it: `output_item.added`, `output_item.done`, the terminal, or all
+/// three. It lands once, on the text part, and the text is what the deltas
+/// delivered. Unit-level because a live stream always states it in all
+/// three places; the recorded streams pin that shape.
+#[test]
+fn streamed_text_carries_its_message_phase_from_any_restatement() {
+    let phased = phased_message("msg_1", "Hello.", json!("commentary"));
+    let bare = phased_message("msg_1", "Hello.", json!("<absent>"));
+    let cases = [
+        ("added", &phased, &bare, &bare),
+        ("done", &bare, &phased, &bare),
+        ("terminal", &bare, &bare, &phased),
+        ("all", &phased, &phased, &phased),
+    ];
+    for (label, added, done, terminal) in cases {
+        let decoded = decoded_body(
+            "openai",
+            &body_of(&[
+                item_added(0, 1, added.clone()),
+                text_delta("msg_1", 0, 0, 2, "Hel"),
+                text_delta("msg_1", 0, 0, 3, "lo."),
+                item_done(0, 4, done.clone()),
+                completed_with(5, json!([terminal])),
+            ]),
+            None,
+        );
+        let texts = ended_texts(&decoded);
+        assert_eq!(texts.len(), 1, "{label}: {texts:?}");
+        assert_eq!(texts[0].text, "Hello.", "{label}");
+        assert_eq!(
+            own_extras(&texts[0]),
+            json!({ "phase": "commentary" }).as_object(),
+            "{label}"
+        );
+    }
+}
+
+/// A `null` or absent `phase` is no phase: the text ends without params,
+/// streamed or unary.
+#[test]
+fn null_and_absent_phase_add_no_params() {
+    for phase in [serde_json::Value::Null, json!("<absent>")] {
+        let message = phased_message("msg_1", "Hello.", phase.clone());
+        let streamed = decoded_body(
+            "openai",
+            &body_of(&[
+                item_added(0, 1, message.clone()),
+                text_delta("msg_1", 0, 0, 2, "Hello."),
+                item_done(0, 3, message.clone()),
+                completed_with(4, json!([message])),
+            ]),
+            None,
+        );
+        let unary = unary_of(json!([message]));
+        for (label, decoded) in [("streamed", &streamed), ("unary", &unary)] {
+            let texts = ended_texts(decoded);
+            assert_eq!(texts.len(), 1, "{label} {phase}: {texts:?}");
+            assert_eq!(texts[0].additional_params, None, "{label} {phase}");
+        }
+    }
+}
+
+/// A commentary message between reasoning and a function call keeps its
+/// `phase`; the reasoning and the call decode as before.
+#[test]
+fn phase_attaches_beside_interleaved_reasoning_and_tool_call() {
+    let reasoning = json!({
+        "type": "reasoning",
+        "id": "rs_1",
+        "summary": [],
+        "encrypted_content": "opaque",
+    });
+    let message = phased_message("msg_1", "Checking the weather.", json!("commentary"));
+    let call = json!({
+        "type": "function_call",
+        "id": "fc_1",
+        "call_id": "call_1",
+        "name": "get_weather",
+        "arguments": "{\"city\":\"Paris\"}",
+        "status": "completed",
+    });
+    let decoded = decoded_body(
+        "openai",
+        &body_of(&[
+            item_added(0, 1, reasoning.clone()),
+            item_done(0, 2, reasoning.clone()),
+            item_added(1, 3, message.clone()),
+            text_delta("msg_1", 1, 0, 4, "Checking the weather."),
+            item_done(1, 5, message.clone()),
+            item_added(2, 6, call.clone()),
+            json!({
+                "type": "response.function_call_arguments.delta",
+                "item_id": "fc_1",
+                "output_index": 2,
+                "sequence_number": 7,
+                "delta": "{\"city\":\"Paris\"}",
+            }),
+            item_done(2, 8, call.clone()),
+            completed_with(9, json!([reasoning, message, call])),
+        ]),
+        None,
+    );
+    let texts = ended_texts(&decoded);
+    assert_eq!(texts.len(), 1, "{texts:?}");
+    assert_eq!(texts[0].text, "Checking the weather.");
+    assert_eq!(
+        own_extras(&texts[0]),
+        json!({ "phase": "commentary" }).as_object()
+    );
+    let response = decoded.outcome.expect("the stream decodes");
+    let calls = calls_of(&response);
+    assert_eq!(calls.len(), 1, "{calls:?}");
+    assert_eq!(calls[0].function.arguments, json!({ "city": "Paris" }));
+    assert!(
+        response
+            .choice
+            .iter()
+            .any(|content| matches!(content, AssistantContent::Reasoning(reasoning) if reasoning.value().id.as_deref() == Some("rs_1"))),
+        "{:?}",
+        response.choice
+    );
+}
+
+/// A reply with a commentary message and a final answer ends two text
+/// blocks, each with its own item's `phase` and id, streamed and unary
+/// alike. A reply with one message records no id: the assistant message's
+/// own id names it.
+#[test]
+fn several_messages_each_keep_their_phase_and_id() {
+    let commentary = phased_message("msg_1", "Let me think.", json!("commentary"));
+    let answer = phased_message("msg_2", "Apple.", json!("final_answer"));
+    let streamed = decoded_body(
+        "openai",
+        &body_of(&[
+            item_added(0, 1, commentary.clone()),
+            text_delta("msg_1", 0, 0, 2, "Let me think."),
+            item_done(0, 3, commentary.clone()),
+            item_added(1, 4, answer.clone()),
+            text_delta("msg_2", 1, 0, 5, "Apple."),
+            item_done(1, 6, answer.clone()),
+            completed_with(7, json!([commentary, answer])),
+        ]),
+        None,
+    );
+    let unary = unary_of(json!([commentary, answer]));
+    for (label, decoded) in [("streamed", &streamed), ("unary", &unary)] {
+        let texts = ended_texts(decoded);
+        let facts: Vec<(&str, Option<&serde_json::Map<String, serde_json::Value>>)> = texts
+            .iter()
+            .map(|text| (text.text.as_str(), own_extras(text)))
+            .collect();
+        assert_eq!(
+            facts,
+            [
+                (
+                    "Let me think.",
+                    json!({ "phase": "commentary", "message_id": "msg_1" }).as_object()
+                ),
+                (
+                    "Apple.",
+                    json!({ "phase": "final_answer", "message_id": "msg_2" }).as_object()
+                ),
+            ],
+            "{label}"
+        );
+    }
+}
+
+/// A gateway that names a message's deltas with another id than its item
+/// events still gets the item's `phase` on the text: the output slot ties
+/// them.
+#[test]
+fn phase_follows_the_output_slot_when_delta_ids_differ() {
+    let message = phased_message("msg_1", "Hello.", json!("final_answer"));
+    let decoded = decoded_body(
+        "copilot",
+        &body_of(&[
+            item_added(0, 1, message.clone()),
+            text_delta("item_a", 0, 0, 2, "Hello."),
+            item_done(0, 3, message.clone()),
+            completed_with(4, json!([message])),
+        ]),
+        None,
+    );
+    let texts = ended_texts(&decoded);
+    assert_eq!(texts.len(), 1, "{texts:?}");
+    assert_eq!(
+        own_extras(&texts[0]),
+        json!({ "phase": "final_answer" }).as_object()
+    );
+}
+
+/// For equal content the streamed, snapshot-only and unary text blocks
+/// carry equal `openai_responses` extras, `phase` among them.
+#[test]
+fn streamed_and_unary_text_carry_equal_phase() {
+    let citation = url_citation(0, 4, "https://a.example");
+    let mut message = annotated_message("msg_1", &[("Rust is fast.", json!([citation]))]);
+    message["phase"] = json!("final_answer");
+    let streamed = decoded_body(
+        "openai",
+        &body_of(&[
+            item_added(0, 1, message.clone()),
+            text_delta("msg_1", 0, 0, 2, "Rust is fast."),
+            item_done(0, 3, message.clone()),
+            completed_with(4, json!([message])),
+        ]),
+        None,
+    );
+    let snapshot_only = decoded_body(
+        "openai",
+        &body_of(&[
+            item_done(0, 1, message.clone()),
+            completed_with(2, json!([message])),
+        ]),
+        None,
+    );
+    let unary_texts = ended_texts(&unary_of(json!([message])));
+    assert_eq!(unary_texts.len(), 1, "{unary_texts:?}");
+    assert_eq!(
+        own_extras(&unary_texts[0]),
+        json!({ "annotations": [citation], "phase": "final_answer" }).as_object()
+    );
+    for (label, decoded) in [("streamed", &streamed), ("snapshot only", &snapshot_only)] {
+        assert_eq!(ended_texts(decoded), unary_texts, "{label}");
+    }
+}
+
+/// A terminal that restates a message at another position than its stream
+/// did (it left an earlier item out) still gives that message its `phase`:
+/// the item's id ties the restatement to it, and the part at the terminal's
+/// position keeps its own.
+#[test]
+fn terminal_phase_follows_the_item_id_when_positions_shift() {
+    let reasoning = json!({ "type": "reasoning", "id": "rs_1", "summary": [] });
+    let commentary = phased_message("msg_1", "Let me think.", json!("<absent>"));
+    let answer = phased_message("msg_2", "Apple.", json!("final_answer"));
+    let decoded = decoded_body(
+        "openai",
+        &body_of(&[
+            item_added(0, 1, answer.clone()),
+            text_delta("msg_2", 0, 0, 2, "Apple."),
+            item_done(0, 3, answer.clone()),
+            item_added(1, 4, reasoning.clone()),
+            item_done(1, 5, reasoning),
+            item_added(2, 6, commentary.clone()),
+            text_delta("msg_1", 2, 0, 7, "Let me think."),
+            item_done(2, 8, commentary),
+            completed_with(
+                9,
+                json!([
+                    answer,
+                    phased_message("msg_1", "Let me think.", json!("commentary"))
+                ]),
+            ),
+        ]),
+        None,
+    );
+    let phases: Vec<(String, Option<String>)> = ended_texts(&decoded)
+        .iter()
+        .map(|text| {
+            let phase = own_extras(text)
+                .and_then(|extras| extras.get("phase"))
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_owned);
+            (text.text.clone(), phase)
+        })
+        .collect();
+    assert_eq!(
+        phases,
+        [
+            ("Apple.".to_owned(), Some("final_answer".to_owned())),
+            ("Let me think.".to_owned(), Some("commentary".to_owned())),
+        ]
+    );
+}
+
+/// Copilot names one message item differently in each event: the
+/// `output_item.added`, every delta and the `output_item.done` carry their
+/// own ids. The output slot still ties the text to its item, the done id
+/// names it (as it names the reply's message id), and a reply with two
+/// items replays as two, each with its own `phase`. The stream shape is a
+/// live Copilot probe's, recorded outside the corpus.
+#[test]
+fn a_gateway_naming_each_event_differently_replays_each_message_once() {
+    let with_id = |message: &serde_json::Value, id: &str| {
+        let mut message = message.clone();
+        message["id"] = json!(id);
+        message
+    };
+    let commentary = phased_message("msg", "Let me think.", json!("commentary"));
+    let answer = phased_message("msg", "Apple.", json!("final_answer"));
+    let decoded = decoded_body(
+        "copilot",
+        &body_of(&[
+            item_added(0, 1, with_id(&commentary, "added_1")),
+            text_delta("delta_1", 0, 0, 2, "Let "),
+            text_delta("delta_2", 0, 0, 3, "me think."),
+            item_done(0, 4, with_id(&commentary, "done_1")),
+            item_added(1, 5, with_id(&answer, "added_2")),
+            text_delta("delta_3", 1, 0, 6, "Apple."),
+            item_done(1, 7, with_id(&answer, "done_2")),
+            // The terminal renames the items again and lists them in another
+            // order; what `output_item.done` stated stands.
+            completed_with(
+                8,
+                json!([with_id(&answer, "final_2"), with_id(&commentary, "final_1")]),
+            ),
+        ]),
+        None,
+    );
+    let response = decoded.outcome.expect("the stream decodes");
+    assert_eq!(response.message_id.as_deref(), Some("done_2"));
+    let history = response.message().expect("the reply has content");
+    let items: Vec<serde_json::Value> =
+        Vec::<crate::providers::openai::responses_api::InputItem>::try_from(history)
+            .expect("history converts")
+            .iter()
+            .map(|item| serde_json::to_value(item).expect("item serializes"))
+            .collect();
+    let replayed: Vec<(&str, &str, String)> = items
+        .iter()
+        .map(|item| {
+            let text = item["content"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|block| block["text"].as_str())
+                .collect::<String>();
+            (
+                item["id"].as_str().unwrap_or("-"),
+                item["phase"].as_str().unwrap_or("-"),
+                text,
+            )
+        })
+        .collect();
+    assert_eq!(
+        replayed,
+        [
+            ("done_1", "commentary", "Let me think.".to_owned()),
+            ("done_2", "final_answer", "Apple.".to_owned()),
+        ]
+    );
+}
+
+/// A stream whose output indices were repaired to zero puts every item in
+/// one slot. Each message's id still ties its text to its own `phase`,
+/// whether or not the stream opens its items with `output_item.added`.
+#[test]
+fn repaired_indices_keep_each_message_phase_by_id() {
+    let strip = |mut event: serde_json::Value| {
+        if let Some(event) = event.as_object_mut() {
+            event.remove("output_index");
+        }
+        event
+    };
+    let commentary = phased_message("msg_1", "Let me think.", json!("commentary"));
+    let answer = phased_message("msg_2", "Apple.", json!("final_answer"));
+    for with_added in [true, false] {
+        let mut events = Vec::new();
+        for (index, (message, text)) in [(&commentary, "Let me think."), (&answer, "Apple.")]
+            .into_iter()
+            .enumerate()
+        {
+            let index = index as u64;
+            let id = message["id"].as_str().unwrap_or_default();
+            if with_added {
+                events.push(item_added(index, 3 * index + 1, message.clone()));
+            }
+            events.push(text_delta(id, index, 0, 3 * index + 2, text));
+            events.push(item_done(index, 3 * index + 3, message.clone()));
+        }
+        events.push(completed_with(7, json!([commentary, answer])));
+        let decoded = decoded_body(
+            "chatgpt",
+            &body_of(&events.into_iter().map(strip).collect::<Vec<_>>()),
+            None,
+        );
+        let texts = ended_texts(&decoded);
+        let facts: Vec<(&str, Option<&serde_json::Map<String, serde_json::Value>>)> = texts
+            .iter()
+            .map(|text| (text.text.as_str(), own_extras(text)))
+            .collect();
+        assert_eq!(
+            facts,
+            [
+                (
+                    "Let me think.",
+                    json!({ "phase": "commentary", "message_id": "msg_1" }).as_object()
+                ),
+                (
+                    "Apple.",
+                    json!({ "phase": "final_answer", "message_id": "msg_2" }).as_object()
+                ),
+            ],
+            "with_added = {with_added}"
+        );
+    }
+}
+
+/// A reply whose second message item carries no text still names the
+/// first text by its own item: the reply's message id is the second's.
+#[test]
+fn a_text_beside_an_empty_message_item_keeps_its_own_id() {
+    let commentary = phased_message("msg_1", "Let me think.", json!("commentary"));
+    let mut empty = phased_message("msg_2", "", json!("final_answer"));
+    empty["content"] = json!([]);
+    let decoded = unary_of(json!([commentary, empty]));
+    let texts = ended_texts(&decoded);
+    assert_eq!(texts.len(), 1, "{texts:?}");
+    assert_eq!(
+        own_extras(&texts[0]),
+        json!({ "phase": "commentary", "message_id": "msg_1" }).as_object()
+    );
+    let response = decoded.outcome.expect("the body decodes");
+    assert_eq!(response.message_id.as_deref(), Some("msg_2"));
+}

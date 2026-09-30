@@ -134,3 +134,263 @@ fn history_without_phase_replays_without_the_key() {
     let wire = serde_json::to_value(&items[0]).expect("item serializes");
     assert!(wire.get("phase").is_none(), "{wire}");
 }
+
+/// The assistant turn a unary reply with `output` folds into, as history
+/// holds it: the fold's choice under the fold's message id.
+fn history_of(output: serde_json::Value) -> completion::Message {
+    let response: CompletionResponse = serde_json::from_value(json!({
+        "id": "resp_1", "object": "response", "created_at": 0, "status": "completed",
+        "error": null, "incomplete_details": null, "instructions": null,
+        "max_output_tokens": null, "model": "gpt-5.3-codex", "usage": null,
+        "output": output,
+    }))
+    .expect("reply decodes");
+    wire::fold_body("openai", response)
+        .expect("the body folds")
+        .message()
+        .expect("the reply has content")
+}
+
+fn message_item(id: &str, phase: &str, text: &str) -> serde_json::Value {
+    json!({
+        "type": "message", "id": id, "role": "assistant", "status": "completed",
+        "phase": phase,
+        "content": [{"type": "output_text", "text": text, "annotations": []}],
+    })
+}
+
+/// The serialized input items `history` replays as, replaying OpenAI's own
+/// reasoning.
+fn replayed(history: completion::Message) -> Vec<serde_json::Value> {
+    super::input_items(history, &["openai".into()])
+        .expect("history converts")
+        .iter()
+        .map(|item| serde_json::to_value(item).expect("item serializes"))
+        .collect()
+}
+
+/// `(type, id, phase)` of each replayed item, in order.
+fn shape(items: &[serde_json::Value]) -> Vec<(String, String, String)> {
+    let field = |item: &serde_json::Value, key: &str| {
+        item.get(key)
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("-")
+            .to_owned()
+    };
+    items
+        .iter()
+        .map(|item| (field(item, "type"), field(item, "id"), field(item, "phase")))
+        .collect()
+}
+
+fn assert_no_block_carries_message_fields(items: &[serde_json::Value]) {
+    for item in items {
+        for block in item["content"].as_array().into_iter().flatten() {
+            assert!(
+                block.get("phase").is_none() && block.get("message_id").is_none(),
+                "a message field leaked onto a content block: {block}"
+            );
+        }
+    }
+}
+
+/// A reply with a commentary message and a final answer replays as two
+/// message items, each under its own id with its own `phase`, in the order
+/// the reply stated them, after the reasoning. No id repeats.
+#[test]
+fn several_message_items_replay_each_with_its_own_phase_and_id() {
+    let history = history_of(json!([
+        {"type": "reasoning", "id": "rs_1", "summary": [], "encrypted_content": "opaque"},
+        message_item("msg_1", "commentary", "Let me think."),
+        message_item("msg_2", "final_answer", "Apple."),
+    ]));
+    let items = replayed(history);
+    assert_eq!(
+        shape(&items),
+        [
+            ("reasoning".into(), "rs_1".into(), "-".into()),
+            ("message".into(), "msg_1".into(), "commentary".into()),
+            ("message".into(), "msg_2".into(), "final_answer".into()),
+        ]
+    );
+    assert_eq!(items[1]["content"][0]["text"], "Let me think.");
+    assert_eq!(items[2]["content"][0]["text"], "Apple.");
+    assert_no_block_carries_message_fields(&items);
+}
+
+/// A commentary message stated before a function call replays before it,
+/// with its `phase`, and the call keeps its ids.
+#[test]
+fn a_commentary_message_replays_before_its_function_call() {
+    let history = history_of(json!([
+        {"type": "reasoning", "id": "rs_1", "summary": [], "encrypted_content": "opaque"},
+        message_item("msg_1", "commentary", "Checking the weather."),
+        {"type": "function_call", "id": "fc_1", "call_id": "call_1", "name": "get_weather",
+         "arguments": "{\"city\":\"Paris\"}", "status": "completed"},
+    ]));
+    let items = replayed(history);
+    assert_eq!(
+        shape(&items),
+        [
+            ("reasoning".into(), "rs_1".into(), "-".into()),
+            ("message".into(), "msg_1".into(), "commentary".into()),
+            ("function_call".into(), "fc_1".into(), "-".into()),
+        ]
+    );
+    assert_eq!(items[2]["call_id"], "call_1");
+}
+
+/// Text blocks naming one message item join it, wherever they sit; a block
+/// naming none joins the assistant message's own item. No input item id
+/// repeats.
+#[test]
+fn text_blocks_of_one_item_join_it_and_no_id_repeats() {
+    let block = |text: &str, extras: serde_json::Value| {
+        message::AssistantContent::Text(Text {
+            text: text.to_owned(),
+            additional_params: message::AdditionalParams::from_entries(Some((
+                OPENAI_RESPONSES_EXTRAS_KEY,
+                extras,
+            ))),
+        })
+    };
+    let history = completion::Message::Assistant {
+        id: Some("msg_2".to_owned()),
+        content: crate::NonEmpty::with_rest(
+            block("one", json!({"message_id": "msg_1", "phase": "commentary"})),
+            [
+                block(
+                    "two",
+                    json!({"message_id": "msg_2", "phase": "final_answer"}),
+                ),
+                block(
+                    "three",
+                    json!({"message_id": "msg_1", "phase": "commentary"}),
+                ),
+                message::AssistantContent::Text(Text::new("four")),
+            ],
+        ),
+    };
+    let items = replayed(history);
+    assert_eq!(
+        shape(&items),
+        [
+            ("message".into(), "msg_1".into(), "commentary".into()),
+            ("message".into(), "msg_2".into(), "final_answer".into()),
+        ]
+    );
+    let texts = |item: &serde_json::Value| -> Vec<String> {
+        item["content"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|block| block["text"].as_str().map(str::to_owned))
+            .collect()
+    };
+    assert_eq!(texts(&items[0]), ["one", "three"]);
+    assert_eq!(texts(&items[1]), ["two", "four"]);
+    assert_no_block_carries_message_fields(&items);
+}
+
+/// Text without any message id replays id-less. With a `phase` it takes the
+/// output-message form, which carries one, and no content-part extras;
+/// without one it keeps the plain input-message form.
+#[test]
+fn idless_text_replays_its_phase_without_an_id() {
+    let history = completion::Message::Assistant {
+        id: None,
+        content: crate::NonEmpty::with_rest(
+            message::AssistantContent::Text(Text {
+                text: "Let me think.".to_owned(),
+                additional_params: message::AdditionalParams::from_entries(Some((
+                    OPENAI_RESPONSES_EXTRAS_KEY,
+                    json!({"phase": "commentary", "annotations": [{"type": "url_citation"}]}),
+                ))),
+            }),
+            [message::AssistantContent::Text(Text::new("Apple."))],
+        ),
+    };
+    let items = replayed(history);
+    assert_eq!(
+        items,
+        [
+            json!({
+                "type": "message", "role": "assistant", "status": "completed",
+                "phase": "commentary",
+                "content": [{"type": "output_text", "text": "Let me think."}],
+            }),
+            json!({"type": "message", "role": "assistant", "content": "Apple."}),
+        ]
+    );
+}
+
+/// `phase` is an assistant field: extras on a user text block never reach
+/// the user item, and a system message has no seat for it.
+#[test]
+fn phase_never_rides_user_or_system_messages() {
+    let phased = message::AdditionalParams::from_entries(Some((
+        OPENAI_RESPONSES_EXTRAS_KEY,
+        json!({"phase": "final_answer", "message_id": "msg_1"}),
+    )));
+    let user = completion::Message::User {
+        content: crate::NonEmpty::new(message::UserContent::Text(Text {
+            text: "hi".to_owned(),
+            additional_params: phased,
+        })),
+    };
+    let system = completion::Message::system("be brief");
+    for history in [user, system] {
+        for item in replayed(history) {
+            assert!(item.get("phase").is_none(), "{item}");
+            assert!(item.get("id").is_none(), "{item}");
+            assert_no_block_carries_message_fields(std::slice::from_ref(&item));
+        }
+    }
+}
+
+/// Every Responses dialect keeps `phase` on replay; none strips it.
+/// Unit-level because this is request shaping per dialect. OpenAI and
+/// ChatGPT accept it in recorded follow-ups; probes outside the corpus found
+/// Copilot and OpenRouter accept it and answer with their own, and xAI
+/// accepts and ignores it.
+#[test]
+fn every_responses_dialect_resends_phase() {
+    use crate::providers::openai::OpenAIConfig;
+    use crate::providers::openai::wire::{Dialect, OPENAI, OPENROUTER};
+    let dialects: [(&str, &Dialect); 5] = [
+        ("openai", &OPENAI),
+        ("xai", &crate::providers::xai::DIALECT),
+        ("chatgpt", &crate::providers::chatgpt::DIALECT),
+        ("copilot", &crate::providers::copilot::wire::DIALECT),
+        ("openrouter", &OPENROUTER),
+    ];
+    let history = history_of(json!([
+        message_item("msg_1", "commentary", "Let me think."),
+        message_item("msg_2", "final_answer", "Apple."),
+    ]));
+    for (name, dialect) in dialects {
+        let wire = OpenAIConfig::with_key(dialect, "dummy-key").responses("gpt-5.3-codex");
+        let request = completion::CompletionRequest::new("One more fruit?")
+            .messages([completion::Message::user("Three fruits?"), history.clone()]);
+        let request = wire
+            .responses_request(request, vec![crate::message::Issuer::from(name)], false)
+            .expect("request converts");
+        let items: Vec<serde_json::Value> = request
+            .input
+            .iter()
+            .map(|item| serde_json::to_value(item).expect("item serializes"))
+            .collect();
+        let assistant: Vec<(String, String, String)> = shape(&items)
+            .into_iter()
+            .filter(|(_, id, _)| id.starts_with("msg_"))
+            .collect();
+        assert_eq!(
+            assistant,
+            [
+                ("message".into(), "msg_1".into(), "commentary".into()),
+                ("message".into(), "msg_2".into(), "final_answer".into()),
+            ],
+            "{name}"
+        );
+    }
+}
