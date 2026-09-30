@@ -4,6 +4,151 @@ use crate::{embeddings::embedding::Embedding, vector_store::IndexStrategy};
 
 use super::{InMemoryVectorStore, RankingItem};
 
+// No equality, ordering, cloning, or default implementations are needed for payloads.
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+struct Product {
+    price: f64,
+}
+
+fn product(price: f64) -> (Product, Vec<Embedding>) {
+    (
+        Product { price },
+        vec![Embedding {
+            document: format!("price {price}"),
+            vec: vec![0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9],
+        }],
+    )
+}
+
+#[test]
+fn non_equality_documents_support_default_and_constructors() {
+    let empty = InMemoryVectorStore::<Product>::default();
+    assert!(empty.is_empty());
+    assert!(matches!(empty.index_strategy, IndexStrategy::BruteForce));
+
+    let builder = super::InMemoryVectorStoreBuilder::<Product>::default();
+    assert!(builder.build().is_empty());
+
+    let mut automatic = InMemoryVectorStore::from_documents([product(1.5)]);
+    automatic.add_documents([product(2.5)]);
+    assert_eq!(automatic.len(), 2);
+
+    let (doc, embeddings) = product(3.5);
+    let mut explicit = InMemoryVectorStore::from_documents_with_ids([("sale", doc, embeddings)]);
+    let (doc, embeddings) = product(4.5);
+    explicit.add_documents_with_ids([("sale", doc, embeddings)]);
+    assert_eq!(explicit.len(), 1);
+    assert_eq!(explicit.embeddings["sale"].0.price, 4.5);
+}
+
+#[test]
+fn custom_ids_accept_captured_mutable_state() {
+    let namespace = String::from("catalog");
+    let mut counter = 0;
+    let mut id = |doc: &Product| {
+        counter += 1;
+        format!("{namespace}:{counter}:{}", doc.price)
+    };
+    let mut store =
+        InMemoryVectorStore::from_documents_with_id_f([product(1.5), product(2.5)], &mut id);
+    store.add_documents_with_id_f([product(3.5)], &mut id);
+    store.add_documents_with_id_f([], &mut id);
+    assert_eq!(counter, 3);
+    assert_eq!(store.len(), 3);
+    for (id, price) in [
+        ("catalog:1:1.5", 1.5),
+        ("catalog:2:2.5", 2.5),
+        ("catalog:3:3.5", 3.5),
+    ] {
+        assert_eq!(store.embeddings[id].0.price, price);
+    }
+}
+
+#[test]
+fn custom_ids_preserve_function_pointers_and_replacement() {
+    fn id(_: &Product) -> String {
+        "same".to_owned()
+    }
+    let callback: fn(&Product) -> String = id;
+    let mut store =
+        InMemoryVectorStore::from_documents_with_id_f([product(1.5), product(2.5)], callback);
+    assert_eq!(store.len(), 1);
+    assert_eq!(store.embeddings["same"].0.price, 2.5);
+    store.add_documents_with_id_f([product(3.5)], callback);
+    assert_eq!(store.len(), 1);
+    assert_eq!(store.embeddings["same"].0.price, 3.5);
+    assert_eq!(store.embeddings["same"].1[0].document, "price 3.5");
+}
+
+#[test]
+fn ranking_equality_uses_only_score_and_id() {
+    use ordered_float::OrderedFloat;
+
+    let id = String::from("a");
+    let other_id = String::from("b");
+    let first_doc = Product { price: 1.5 };
+    let second_doc = Product { price: 2.5 };
+    let first = RankingItem(OrderedFloat(1.0), &id, &first_doc);
+    let same_key = RankingItem(OrderedFloat(1.0), &id, &second_doc);
+    let other_key = RankingItem(OrderedFloat(1.0), &other_id, &first_doc);
+    let lower_score = RankingItem(OrderedFloat(0.5), &id, &first_doc);
+    for other in [&same_key, &other_key, &lower_score] {
+        assert_eq!(first == *other, first.cmp(other).is_eq());
+        assert_eq!(first.partial_cmp(other), Some(first.cmp(other)));
+    }
+    assert!(first == same_key);
+    assert!(first > other_key);
+    assert!(first > lower_score);
+}
+
+#[tokio::test]
+async fn non_equality_documents_support_search_and_filters() -> anyhow::Result<()> {
+    use crate::test_utils::MockEmbeddings;
+    use crate::vector_store::VectorStoreIndex;
+    use crate::vector_store::request::{Filter, SearchFilter, VectorSearchRequest};
+
+    for strategy in [
+        IndexStrategy::BruteForce,
+        IndexStrategy::LSH {
+            num_tables: 5,
+            num_hyperplanes: 10,
+        },
+    ] {
+        // Identical vectors ensure LSH recall without depending on random hyperplanes.
+        let (doc, embeddings) = product(3.5);
+        let mut store = InMemoryVectorStore::builder()
+            .index_strategy(strategy)
+            .documents([product(1.5), product(2.5)])
+            .documents_with_ids([("sale", doc, embeddings)])
+            .build();
+        store.add_documents([product(4.5)]);
+        if matches!(store.index_strategy, IndexStrategy::LSH { .. }) {
+            anyhow::ensure!(store.lsh_index.is_some(), "LSH was not initialized");
+        }
+        let index = store.index(MockEmbeddings::model());
+        let request = VectorSearchRequest::builder()
+            .query("product")
+            .samples(2)
+            .threshold(0.9)
+            .filter(Filter::gt("price", serde_json::json!(2.0)))
+            .build();
+        let documents = index.top_n::<Product>(request.clone()).await?;
+        let ids = index.top_n_ids(request).await?;
+        anyhow::ensure!(
+            documents.len() == 2 && ids.len() == 2,
+            "unexpected result count"
+        );
+        for (position, (id, price)) in [("doc1", 2.5), ("doc3", 4.5)].into_iter().enumerate() {
+            anyhow::ensure!(documents[position].1 == id, "document tie order changed");
+            anyhow::ensure!(documents[position].2.price == price, "payload changed");
+            anyhow::ensure!(ids[position].1 == id, "ID tie order changed");
+            anyhow::ensure!(documents[position].0 >= 0.9, "threshold was ignored");
+            anyhow::ensure!(documents[position].0 == ids[position].0, "scores differ");
+        }
+    }
+    Ok(())
+}
+
 #[test]
 fn equal_score_cutoff_is_independent_of_candidate_order() {
     let query = Embedding {
@@ -195,7 +340,13 @@ fn check_generated_id_documents(
     let mut results: Vec<_> = store
         .vector_search(&query, expected.len(), None, None)?
         .into_iter()
-        .map(|Reverse(RankingItem(_, id, doc, text))| (id.as_str(), *doc, text.as_str()))
+        .map(|Reverse(RankingItem(_, id, doc))| {
+            (
+                id.as_str(),
+                *doc,
+                store.embeddings[id].1[0].document.as_str(),
+            )
+        })
         .collect();
     results.sort_unstable();
     let mut expected_results: Vec<_> = expected
@@ -380,7 +531,7 @@ fn test_single_embedding() {
     assert_eq!(
         ranking
             .into_iter()
-            .map(|Reverse(RankingItem(distance, id, doc, _))| {
+            .map(|Reverse(RankingItem(distance, id, doc))| {
                 (
                     distance.0,
                     id.clone(),
@@ -464,7 +615,7 @@ fn test_multiple_embeddings() {
     assert_eq!(
         ranking
             .into_iter()
-            .map(|Reverse(RankingItem(distance, id, doc, _))| {
+            .map(|Reverse(RankingItem(distance, id, doc))| {
                 (
                     distance.0,
                     id.clone(),
