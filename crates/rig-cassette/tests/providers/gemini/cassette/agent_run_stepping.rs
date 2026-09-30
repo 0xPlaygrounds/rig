@@ -291,13 +291,13 @@ async fn max_turns_error_carries_pending_tool_results_message() {
                 }
             };
 
-            let PromptError::MaxTurnsError {
+            let PromptError::MaxTurns {
                 max_turns,
                 chat_history,
                 prompt,
             } = error
             else {
-                panic!("expected MaxTurnsError, got {error:?}");
+                panic!("expected MaxTurns, got {error:?}");
             };
             assert_eq!(max_turns, 2);
             // Pins the divergence resolved by #1899: the error carries the
@@ -305,7 +305,7 @@ async fn max_turns_error_carries_pending_tool_results_message() {
             // reconstruction of its text.
             assert!(
                 is_tool_result_user_message(&prompt),
-                "MaxTurnsError must carry the pending tool-results message: {prompt:?}"
+                "MaxTurns must carry the pending tool-results message: {prompt:?}"
             );
             assert!(
                 matches!(

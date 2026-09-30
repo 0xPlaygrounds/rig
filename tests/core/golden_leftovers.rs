@@ -151,7 +151,7 @@ async fn denied_memory_load_effect_log_is_the_golden_fixture() {
     assert!(
         matches!(
             &error,
-            rig::completion::PromptError::MemoryError(rig::memory::MemoryError::Policy(reason))
+            rig::completion::PromptError::Memory(rig::memory::MemoryError::Policy(reason))
                 if reason == HOST_DENY_REASON
         ),
         "{error:?}"

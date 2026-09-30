@@ -65,7 +65,7 @@ use rig_agent::{
     agent::{
         CompletionCallAction, CompletionCallEvent, DispatchAction, DispatchEvent, ModelTurnAction,
         ModelTurnFinished, MultiTurnStreamItem, OutcomeAction, OutcomeEvent, RequestPatch,
-        RetryRequest, RunSettled, RunStart, RunStartAction, StepEventKind, StreamingError,
+        RetryRequest, RunSettled, RunStart, RunStartAction, StepEventKind,
     },
     completion::PromptError,
     run::{
@@ -263,7 +263,7 @@ pub const ROUTE: &str = "fast";
 pub enum Ending {
     /// A final answer, the last completion's text.
     Answer,
-    /// `PromptError::MaxTurnsError`: the model-call budget ran out with the
+    /// `PromptError::MaxTurns`: the model-call budget ran out with the
     /// model still calling tools (a per-run `tool_choice` that forces a
     /// call does this). Every record is a success; the run is not.
     MaxTurns,
@@ -274,10 +274,10 @@ pub enum Ending {
     /// does not advertise and no hook resolved it; the run fails at the
     /// completion record.
     UnknownToolCall,
-    /// `PromptError::MemoryError`: the conversation's `Load` failed; the
+    /// `PromptError::Memory`: the conversation's `Load` failed; the
     /// run fails at the memory record before any completion.
     MemoryError,
-    /// `PromptError::PromptCancelled` with this reason: a hook stopped the
+    /// `PromptError::Cancelled` with this reason: a hook stopped the
     /// run. The records are those the engine made before the stop.
     Cancelled(&'static str),
     /// `PromptError::Report` (or a stream's `Report` item) of this kind: a
@@ -2704,53 +2704,51 @@ pub async fn bus_engine_reproduces(program: &Program) {
                     Ok(MultiTurnStreamItem::FinalResponse(response)) => {
                         output = Some(response.output);
                     }
-                    Err(StreamingError::Report(report))
+                    Err(PromptError::Report(report))
                         if program.cancel_after_first_delta
                             && report.kind == rig_core::error::ErrorKind::Cancelled =>
                     {
                         break;
                     }
-                    Err(StreamingError::Prompt(error))
+                    Err(error)
                         if program.ending == Ending::MaxTurns
-                            && matches!(error, PromptError::MaxTurnsError { .. }) =>
+                            && matches!(error, PromptError::MaxTurns { .. }) =>
                     {
                         failed_as_expected = true;
                     }
-                    Err(StreamingError::Prompt(error))
+                    Err(error)
                         if program.ending == Ending::UnknownToolCall
                             && matches!(error, PromptError::UnknownToolCall { .. }) =>
                     {
                         failed_as_expected = true;
                     }
-                    Err(StreamingError::Prompt(error))
+                    Err(error)
                         if program.ending == Ending::MemoryError
-                            && matches!(error, PromptError::MemoryError(_)) =>
+                            && matches!(error, PromptError::Memory(_)) =>
                     {
                         failed_as_expected = true;
                     }
-                    Err(StreamingError::Prompt(error))
+                    Err(error)
                         if matches!(
                             (&error, program.ending),
-                            (PromptError::PromptCancelled { reason, .. }, Ending::Cancelled(expected))
+                            (PromptError::Cancelled { reason, .. }, Ending::Cancelled(expected))
                                 if reason == expected
                         ) =>
                     {
                         failed_as_expected = true;
                     }
-                    Err(StreamingError::Report(report))
+                    Err(PromptError::Report(report))
                         if program.ending == Ending::ProviderError
                             && report.kind == rig_core::error::ErrorKind::ProviderResponse =>
                     {
                         failed_as_expected = true;
                     }
-                    Err(StreamingError::Report(report))
+                    Err(PromptError::Report(report))
                         if program.ending == Ending::Failed(report.kind) =>
                     {
                         failed_as_expected = true;
                     }
-                    Err(StreamingError::Completion(_))
-                        if program.ending == Ending::ProviderError =>
-                    {
+                    Err(PromptError::Provider(_)) if program.ending == Ending::ProviderError => {
                         failed_as_expected = true;
                     }
                     Err(error) => {
@@ -2803,9 +2801,9 @@ pub async fn bus_engine_reproduces(program: &Program) {
             }
             match (within(runner.run()).await, program.ending) {
                 (Ok(response), Ending::Answer) => Some(response.output),
-                (Err(PromptError::MaxTurnsError { .. }), Ending::MaxTurns)
+                (Err(PromptError::MaxTurns { .. }), Ending::MaxTurns)
                 | (Err(PromptError::UnknownToolCall { .. }), Ending::UnknownToolCall)
-                | (Err(PromptError::MemoryError(_)), Ending::MemoryError) => None,
+                | (Err(PromptError::Memory(_)), Ending::MemoryError) => None,
                 (Err(PromptError::Report(report)), Ending::ProviderError)
                     if report.kind == rig_core::error::ErrorKind::ProviderResponse =>
                 {
@@ -2814,7 +2812,7 @@ pub async fn bus_engine_reproduces(program: &Program) {
                 (Err(PromptError::Report(report)), Ending::Failed(kind)) if report.kind == kind => {
                     None
                 }
-                (Err(PromptError::PromptCancelled { reason, .. }), Ending::Cancelled(expected))
+                (Err(PromptError::Cancelled { reason, .. }), Ending::Cancelled(expected))
                     if reason == expected =>
                 {
                     None
@@ -3204,8 +3202,7 @@ async fn resumed_tail(
             match item {
                 Ok(MultiTurnStreamItem::FinalResponse(response)) => output = Some(response),
                 Ok(_) => {}
-                Err(StreamingError::Prompt(error)) => failure = Some(error),
-                Err(error) => panic!("the resumed stream: {error:?}"),
+                Err(error) => failure = Some(error),
             }
         }
         drop(stream);
@@ -3219,9 +3216,9 @@ async fn resumed_tail(
     drop(agent);
     match (outcome, program.ending) {
         (Ok(response), Ending::Answer) => Ok(Some(response)),
-        (Err(PromptError::MaxTurnsError { .. }), Ending::MaxTurns)
+        (Err(PromptError::MaxTurns { .. }), Ending::MaxTurns)
         | (Err(PromptError::UnknownToolCall { .. }), Ending::UnknownToolCall) => Ok(None),
-        (Err(PromptError::PromptCancelled { reason, .. }), Ending::Cancelled(expected))
+        (Err(PromptError::Cancelled { reason, .. }), Ending::Cancelled(expected))
             if reason == expected =>
         {
             Err(expected)
@@ -3587,7 +3584,7 @@ async fn hand_drive(program: &Program, resume: Resume) {
             }
             let step = match (run.next_step(), program.ending) {
                 (Ok(step), _) => step,
-                (Err(PromptError::MaxTurnsError { .. }), Ending::MaxTurns) => break None,
+                (Err(PromptError::MaxTurns { .. }), Ending::MaxTurns) => break None,
                 (Err(error), _) => panic!("a step: {error:?}"),
             };
             match step {

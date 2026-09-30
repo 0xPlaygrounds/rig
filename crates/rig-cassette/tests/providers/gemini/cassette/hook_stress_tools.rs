@@ -277,11 +277,11 @@ async fn terminate_from_tool_result_cancels_after_execution_blocking() {
                 "the tool body must have run before the ToolResult terminate"
             );
             match &error {
-                PromptError::PromptCancelled { reason, .. } => assert_eq!(
+                PromptError::Cancelled { reason, .. } => assert_eq!(
                     reason, "result vetoed by policy hook",
                     "the cancellation must carry the hook reason verbatim"
                 ),
-                other => panic!("expected PromptCancelled, got {other:?}"),
+                other => panic!("expected Cancelled, got {other:?}"),
             }
         },
     )

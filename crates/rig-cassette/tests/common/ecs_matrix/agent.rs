@@ -11,8 +11,6 @@ use rig_agent::agent::MultiTurnStreamItem;
 
 use rig_agent::agent::NoToolConfig;
 
-use rig_agent::agent::StreamingError;
-
 use rig_agent::agent::WithBuilderTools;
 
 use rig_agent::agent::WithToolServerHandle;
@@ -63,20 +61,12 @@ enum RunFailure {
 
 fn classify_prompt(error: PromptError) -> RunFailure {
     match error {
-        PromptError::PromptCancelled { reason, .. } => RunFailure::Cancelled(reason),
-        PromptError::MaxTurnsError { .. } => RunFailure::MaxTurns,
-        PromptError::MemoryError(_) => RunFailure::MemoryError,
+        PromptError::Cancelled { reason, .. } => RunFailure::Cancelled(reason),
+        PromptError::MaxTurns { .. } => RunFailure::MaxTurns,
+        PromptError::Memory(_) => RunFailure::MemoryError,
         PromptError::Report(report) => RunFailure::Report(report),
-        PromptError::CompletionError(error) => RunFailure::Report(ErrorReport::from(&error)),
+        PromptError::Provider(error) => RunFailure::Report(ErrorReport::from(&error)),
         other => panic!("the run fails as one of the program's endings, not {other:?}"),
-    }
-}
-
-fn classify_stream(error: StreamingError) -> RunFailure {
-    match error {
-        StreamingError::Prompt(error) => classify_prompt(error),
-        StreamingError::Report(report) => RunFailure::Report(report),
-        StreamingError::Completion(error) => RunFailure::Report(ErrorReport::from(&error)),
     }
 }
 
@@ -90,7 +80,7 @@ async fn final_output(
         match item {
             Ok(MultiTurnStreamItem::FinalResponse(response)) => output = Some(response),
             Ok(_) => {}
-            Err(error) => return Err(classify_stream(error)),
+            Err(error) => return Err(classify_prompt(error)),
         }
     }
     Ok(output.expect("a final response"))

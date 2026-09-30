@@ -9,7 +9,8 @@ use rig_cassette::agent::AgentReplayExt;
 use std::time::Duration;
 
 use futures::StreamExt;
-use rig::agent::{AgentBuilder, MultiTurnStreamItem, StreamingError};
+use rig::agent::{AgentBuilder, MultiTurnStreamItem};
+use rig::completion::PromptError;
 use rig::effect::EffectFamily;
 use rig::serve::ErasedHandler;
 use rig::test_utils::{MockCompletionModel, MockStreamEvent, MockTurn};
@@ -228,16 +229,11 @@ async fn replace_streamed_cancelled_effect_log_is_the_golden_fixture() {
     drop(stream);
     let ending = ending.expect("the run ends in an error");
     match &ending {
-        StreamingError::Report(report) => {
+        PromptError::Report(report) => {
             assert_eq!(report.kind, rig::error::ErrorKind::Cancelled);
             assert_eq!(report.message, CANCEL_STREAM_REASON);
         }
-        StreamingError::Prompt(error) => {
-            assert!(
-                matches!(error, rig::completion::PromptError::PromptCancelled { reason, .. } if reason == CANCEL_STREAM_REASON),
-                "{error:?}"
-            );
-        }
+        PromptError::Cancelled { reason, .. } => assert_eq!(reason, CANCEL_STREAM_REASON),
         other => panic!("a cancel, not {other:?}"),
     }
     assert_eq!(texts, "streamed", "the events were delivered as they came");

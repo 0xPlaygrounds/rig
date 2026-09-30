@@ -52,7 +52,7 @@
 //! | `anthropic_hooks_replace_tool_result` | the head replaced the result the tail reads |
 //! | `anthropic_hooks_two_hooks` | both |
 //! | `anthropic_hooks_lookup_before_run` | the head's run-start dispatch; the resumed run fires no run start |
-//! | `anthropic_endings_answer_turn_stop` | the stop fires in the tail: `PromptCancelled` from the resumed engine |
+//! | `anthropic_endings_answer_turn_stop` | the stop fires in the tail: `Cancelled` from the resumed engine |
 //! | `anthropic_host_custom_at_outcome` | the head's per-call note; the tail dispatches none |
 //! | `anthropic_host_custom_at_outcome_streamed` | the same, streamed head |
 //! | `anthropic_serving_serial_memory_tools` | memory under serial serving |

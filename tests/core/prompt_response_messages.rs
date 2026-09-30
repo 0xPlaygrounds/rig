@@ -259,7 +259,7 @@ async fn prompt_response_with_messages_builder() {
     assert_eq!(resp.messages.as_ref().unwrap().len(), 2);
 }
 
-/// Test 8: MaxTurnsError still works — the error should contain the chat history.
+/// Test 8: MaxTurns still works — the error should contain the chat history.
 /// This verifies the error path isn't broken by our changes.
 #[tokio::test]
 async fn max_turns_error_still_contains_history() {
@@ -274,7 +274,7 @@ async fn max_turns_error_still_contains_history() {
     let result = agent.prompt("do something").max_turns(2).await;
 
     match result {
-        Err(PromptError::MaxTurnsError {
+        Err(PromptError::MaxTurns {
             max_turns,
             chat_history,
             ..
@@ -286,8 +286,8 @@ async fn max_turns_error_still_contains_history() {
                 "chat_history in error should not be empty"
             );
         }
-        Ok(_) => panic!("expected MaxTurnsError, got Ok"),
-        Err(other) => panic!("expected MaxTurnsError, got: {other:?}"),
+        Ok(_) => panic!("expected MaxTurns, got Ok"),
+        Err(other) => panic!("expected MaxTurns, got: {other:?}"),
     }
 }
 

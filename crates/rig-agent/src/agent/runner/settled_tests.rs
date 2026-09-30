@@ -40,7 +40,7 @@ async fn a_blocking_run_a_hook_stops_settles_with_the_error() {
         .build();
     let error = agent.prompt("go").await.expect_err("stopped");
     assert!(
-        matches!(error, PromptError::PromptCancelled { ref reason, .. } if reason == "stopped at start")
+        matches!(error, PromptError::Cancelled { ref reason, .. } if reason == "stopped at start")
     );
     let seen = settled.0.lock().expect("settled").clone();
     assert!(
@@ -126,11 +126,8 @@ mod slow_stream {
         let mut stream = agent.prompt("go").stream();
         let mut stopped = false;
         while let Some(item) = stream.next().await {
-            if let Err(crate::agent::StreamingError::Prompt(error)) = item {
-                stopped = matches!(
-                    error,
-                    crate::completion::PromptError::PromptCancelled { .. }
-                );
+            if let Err(error) = item {
+                stopped = matches!(error, crate::completion::PromptError::Cancelled { .. });
             }
         }
         drop(stream);
@@ -174,10 +171,10 @@ mod slow_stream {
             .build();
         let mut stream = agent.prompt("go").stream();
         while let Some(item) = stream.next().await {
-            if let Err(crate::agent::StreamingError::Prompt(error)) = item {
+            if let Err(error) = item {
                 assert!(matches!(
                     error,
-                    crate::completion::PromptError::PromptCancelled { .. }
+                    crate::completion::PromptError::Cancelled { .. }
                 ));
             }
         }

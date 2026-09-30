@@ -10,7 +10,7 @@ use rig_core::error::ProviderError;
 use rig_core::{message::AssistantContent, wasm_compat::WasmCompatSend};
 
 use crate::{
-    agent::engine::{DriveItem, StreamingTurnSource, drive_agent, streaming_error_into_prompt},
+    agent::engine::{DriveItem, StreamingTurnSource, drive_agent},
     agent::hook::{AgentHook, RunSettled, SettledOutcome, StepEventKind},
     agent::runner::{AgentRunner, RunOrigin},
     streaming::{Item, StreamEvent, StreamedUserContent},
@@ -30,11 +30,11 @@ use rig_core::message::Message;
 /// The stream a streamed run yields: its items, then its ending.
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 pub type StreamingResult =
-    Pin<Box<dyn Stream<Item = Result<MultiTurnStreamItem, StreamingError>> + Send>>;
+    Pin<Box<dyn Stream<Item = Result<MultiTurnStreamItem, PromptError>> + Send>>;
 
 /// The stream a streamed run yields: its items, then its ending.
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
-pub type StreamingResult = Pin<Box<dyn Stream<Item = Result<MultiTurnStreamItem, StreamingError>>>>;
+pub type StreamingResult = Pin<Box<dyn Stream<Item = Result<MultiTurnStreamItem, PromptError>>>>;
 
 #[derive(Serialize, Debug, Clone)]
 #[serde(tag = "type", rename_all = "camelCase")]
@@ -215,36 +215,6 @@ pub(crate) fn finalize_streamed_choice(
     Some(items)
 }
 
-/// Why a streamed run ended before its final response.
-#[derive(Debug, thiserror::Error)]
-pub enum StreamingError {
-    /// The provider stream failed.
-    #[error("CompletionError: {0}")]
-    Completion(ProviderError),
-    /// Structured failure from the bus, a handler, a hook, or a stream item.
-    #[error("{0}")]
-    Report(#[from] rig_core::error::ErrorReport),
-    /// The run failed for a reason the blocking surface reports the same way.
-    #[error("PromptError: {0}")]
-    Prompt(#[from] PromptError),
-}
-
-/// A failure relayed over the bus is the report the origin sent.
-impl From<ProviderError> for StreamingError {
-    fn from(error: ProviderError) -> Self {
-        match error {
-            ProviderError::Relayed(report) => Self::Report(*report),
-            error => Self::Completion(error),
-        }
-    }
-}
-
-impl From<rig_core::memory::MemoryError> for StreamingError {
-    fn from(err: rig_core::memory::MemoryError) -> Self {
-        Self::Prompt(PromptError::MemoryError(err))
-    }
-}
-
 impl AgentRunner {
     /// Drive the agent loop as a stream of assistant content, tool activity
     /// and, last, the [`FinalResponse`](MultiTurnStreamItem::FinalResponse).
@@ -317,7 +287,7 @@ impl AgentRunner {
                 // at the first failure cannot suppress the lifecycle notification.
                 let hooks = self.config.hooks.clone();
                 let stream = async_stream::stream! {
-                    let err = StreamingError::from(err);
+                    let err = PromptError::from(err);
                     if hooks.observes(StepEventKind::RunSettled) {
                         let reason = err.to_string();
                         hooks
@@ -467,9 +437,8 @@ impl AgentRunner {
                     Err(err) => {
                         // Drain after the terminal error so span and lineage teardown
                         // completes instead of being dropped at the yield.
-                        let error = streaming_error_into_prompt(err);
                         while stream.next().await.is_some() {}
-                        return Err(error);
+                        return Err(err);
                     }
                 };
                 match item {
@@ -489,7 +458,7 @@ impl AgentRunner {
                 }
             }
             response.ok_or_else(|| {
-                PromptError::CompletionError(ProviderError::Response(
+                PromptError::Provider(ProviderError::Response(
                     "agent run ended without producing a final response".to_string(),
                 ))
             })

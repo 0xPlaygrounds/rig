@@ -237,7 +237,7 @@ async fn model_error_streamed_effect_log_is_the_golden_fixture() {
 
 /// The runner's budget exhausted with a tool call pending: one model call
 /// allowed, the tool runs, the next call is refused by the budget. Two
-/// records, then `MaxTurnsError`. Its own recording: the run makes one
+/// records, then `MaxTurns`. Its own recording: the run makes one
 /// request, and a cassette with a second interaction refuses to leave it
 /// unused.
 #[tokio::test]
@@ -259,7 +259,7 @@ async fn max_turns_exhausted_effect_log_is_the_golden_fixture() {
                 .await
                 .expect_err("one call cannot finish a tool turn");
             assert!(
-                matches!(error, PromptError::MaxTurnsError { max_turns: 1, .. }),
+                matches!(error, PromptError::MaxTurns { max_turns: 1, .. }),
                 "{error:?}"
             );
             let log = agent.stamp(recorder.take());

@@ -755,6 +755,24 @@ async fn typed_prompt_response_preserves_completion_calls() {
     );
 }
 
+#[tokio::test]
+async fn typed_prompt_deserialization_error_keeps_the_model_output() {
+    let model = MockCompletionModel::from_turns([MockTurn::text("the answer is ok")]);
+    let agent = AgentBuilder::new(model).build();
+
+    let error = agent
+        .prompt_typed::<TypedAnswer>("return typed json")
+        .await
+        .expect_err("prose is not a TypedAnswer");
+
+    match error {
+        StructuredOutputError::Deserialization { output, .. } => {
+            assert_eq!(output, "the answer is ok");
+        }
+        other => panic!("expected a deserialization error, got {other:?}"),
+    }
+}
+
 fn validate_follow_up_tool_history(request: &CompletionRequest) {
     let history = request.chat_history.clone();
     assert_eq!(
@@ -1565,7 +1583,7 @@ async fn typed_prompt_default_invalid_tool_call_fails_fast() {
         .expect_err("typed prompt should preserve fail-fast default");
 
     match err {
-        StructuredOutputError::PromptError(err) => match err {
+        StructuredOutputError::Prompt(err) => match err {
             PromptError::UnknownToolCall { tool_name, .. } => {
                 assert_eq!(tool_name, "default_api");
             }
@@ -1643,7 +1661,7 @@ async fn typed_prompt_invalid_tool_call_retry_budget_exhaustion_fails() {
         .expect_err("typed prompt should fail when retry budget is exhausted");
 
     match err {
-        StructuredOutputError::PromptError(err) => match err {
+        StructuredOutputError::Prompt(err) => match err {
             PromptError::UnknownToolCall { tool_name, .. } => {
                 assert_eq!(tool_name, "default_api");
             }
@@ -1671,7 +1689,7 @@ async fn invalid_specific_tool_choice_fails_before_non_streaming_provider_reques
         .expect_err("invalid ToolChoice::Specific should fail before provider request");
 
     match err {
-        PromptError::CompletionError(ProviderError::Request(err)) => {
+        PromptError::Provider(ProviderError::Request(err)) => {
             let msg = err.to_string();
             assert!(msg.contains("missing"), "got: {msg}");
             assert!(msg.contains("add"), "got: {msg}");
@@ -2239,11 +2257,11 @@ async fn memory_load_error_surfaces_as_prompt_error() {
     let result = agent.prompt("hello").conversation("t1").await;
 
     match result {
-        Err(PromptError::MemoryError(err)) => {
+        Err(PromptError::Memory(err)) => {
             let msg = err.to_string();
             assert!(msg.contains("load boom"), "got: {msg}");
         }
-        other => panic!("expected PromptError::MemoryError, got {other:?}"),
+        other => panic!("expected PromptError::Memory, got {other:?}"),
     }
 }
 

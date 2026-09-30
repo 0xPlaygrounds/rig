@@ -85,7 +85,7 @@ async fn on_tool_call_terminate_cancels_run() {
 
             assert_eq!(counter.count(), 0, "the vetoed tool should never execute");
             match &error {
-                PromptError::PromptCancelled { reason, .. } => {
+                PromptError::Cancelled { reason, .. } => {
                     // The hook's reason passes through verbatim (no model
                     // content), so this is exact.
                     assert_eq!(
@@ -93,7 +93,7 @@ async fn on_tool_call_terminate_cancels_run() {
                         "cancellation should carry the hook's reason verbatim"
                     );
                 }
-                other => panic!("expected PromptCancelled, got {other:?}"),
+                other => panic!("expected Cancelled, got {other:?}"),
             }
         },
     )

@@ -342,10 +342,10 @@ async fn extractor_completion_call_stop_prevents_provider_io() {
 
     assert!(matches!(
         error,
-        StructuredOutputError::PromptError(err)
+        StructuredOutputError::Prompt(err)
             if matches!(
                 err,
-                PromptError::PromptCancelled { ref reason, .. } if reason == "extractor stopped"
+                PromptError::Cancelled { ref reason, .. } if reason == "extractor stopped"
             )
     ));
     assert_eq!(model.request_count(), 0);
@@ -455,10 +455,10 @@ async fn unexpected_tool_call_hook_can_stop_extraction() {
 
     assert!(matches!(
         error,
-        StructuredOutputError::PromptError(err)
+        StructuredOutputError::Prompt(err)
             if matches!(
                 err,
-                PromptError::PromptCancelled { ref reason, .. }
+                PromptError::Cancelled { ref reason, .. }
                     if reason == "unexpected extractor tool call"
             )
     ));
@@ -601,7 +601,7 @@ async fn exhausted_retries_return_error_from_final_attempt() {
 
     assert!(matches!(
         err,
-        StructuredOutputError::PromptError(err)
+        StructuredOutputError::Prompt(err)
             if matches!(
                 err,
                 PromptError::Report(ref report)

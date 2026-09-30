@@ -262,24 +262,28 @@ use thiserror::Error;
 
 use rig_core::memory::MemoryError;
 
-/// Errors from classic agent prompting.
+/// Why an agent run failed, whether it was awaited or streamed.
+///
+/// Variants that wrap another error display it unchanged and forward its
+/// source.
 #[derive(Debug, Error)]
 pub enum PromptError {
     /// A provider completion failed.
-    #[error("CompletionError: {0}")]
-    CompletionError(#[from] ProviderError),
+    #[error(transparent)]
+    Provider(ProviderError),
 
-    /// Structured effect failure from the bus, a handler, a hook, or a stream item.
-    #[error("{0}")]
+    /// Structured effect failure from the bus, a handler, a hook, or a stream
+    /// item. A provider failure relayed over the bus arrives as its report.
+    #[error(transparent)]
     Report(#[from] rig_core::error::ErrorReport),
 
     /// Conversation memory failed to load or persist history.
-    #[error("MemoryError: {0}")]
-    MemoryError(#[from] MemoryError),
+    #[error(transparent)]
+    Memory(#[from] MemoryError),
 
     /// The run exhausted its total model-call budget.
-    #[error("MaxTurnsError: reached max turns limit: {max_turns}")]
-    MaxTurnsError {
+    #[error("reached the max turns limit of {max_turns}")]
+    MaxTurns {
         /// Configured total model-call budget.
         max_turns: usize,
         /// Canonical history available when the budget was exhausted.
@@ -288,9 +292,9 @@ pub enum PromptError {
         prompt: Message,
     },
 
-    /// A prompting loop was cancelled.
-    #[error("PromptCancelled: {reason}")]
-    PromptCancelled {
+    /// The run was cancelled.
+    #[error("the run was cancelled: {reason}")]
+    Cancelled {
         /// Canonical history available at cancellation.
         chat_history: Vec<Message>,
         /// Human-readable cancellation reason.
@@ -299,7 +303,7 @@ pub enum PromptError {
 
     /// The model attempted to call a tool unavailable for the current turn.
     #[error(
-        "UnknownToolCall: model attempted to call unknown or disallowed tool `{tool_name}`. Available tools: {available_tools:?}. Allowed tools for this turn: {allowed_tools:?}"
+        "model attempted to call unknown or disallowed tool `{tool_name}`. Available tools: {available_tools:?}. Allowed tools for this turn: {allowed_tools:?}"
     )]
     UnknownToolCall {
         /// Tool name emitted by the model.
@@ -311,6 +315,16 @@ pub enum PromptError {
         /// Canonical history available at failure.
         chat_history: Vec<Message>,
     },
+}
+
+/// A failure relayed over the bus is the report the origin sent.
+impl From<ProviderError> for PromptError {
+    fn from(error: ProviderError) -> Self {
+        match error {
+            ProviderError::Relayed(report) => Self::Report(*report),
+            error => Self::Provider(error),
+        }
+    }
 }
 
 /// Forward provider response accessors through wrapped errors and optional reports.
@@ -369,21 +383,16 @@ macro_rules! forward_provider_response_helpers {
     };
 }
 
-forward_provider_response_helpers!(
-    PromptError,
-    CompletionError,
-    "completion error",
-    report = Report
-);
+forward_provider_response_helpers!(PromptError, Provider, "completion error", report = Report);
 
 impl PromptError {
-    /// Build a [`PromptError::PromptCancelled`] from the history available at
+    /// Build a [`PromptError::Cancelled`] from the history available at
     /// cancellation and a reason.
-    pub fn prompt_cancelled(
+    pub fn cancelled(
         chat_history: impl IntoIterator<Item = Message>,
         reason: impl Into<String>,
     ) -> Self {
-        Self::PromptCancelled {
+        Self::Cancelled {
             chat_history: chat_history.into_iter().collect(),
             reason: reason.into(),
         }

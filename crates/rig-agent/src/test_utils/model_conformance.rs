@@ -21,7 +21,7 @@ use crate::{
     agent::{
         AgentBuilder, AgentHook, CompletionCallAction, CompletionCallEvent, DispatchAction,
         DispatchEvent, HookContext, InvalidToolCallAction, MultiTurnStreamItem, NoToolConfig,
-        OutcomeAction, OutcomeEvent, OutputMode, RequestPatch, StreamingError,
+        OutcomeAction, OutcomeEvent, OutputMode, RequestPatch,
         run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome},
     },
     completion::{AssistantContent, Message, PromptError, ToolDefinition},
@@ -34,15 +34,12 @@ use rig_core::message::{ToolChoice, UserContent};
 /// Typed failure from a portable model-conformance scenario.
 #[derive(Debug, thiserror::Error)]
 pub enum ScenarioError {
-    /// A buffered agent run failed.
+    /// An agent run failed.
     #[error(transparent)]
     Prompt(#[from] PromptError),
     /// A direct model completion failed.
     #[error(transparent)]
     Completion(#[from] ProviderError),
-    /// A streaming agent run failed.
-    #[error(transparent)]
-    Streaming(#[from] StreamingError),
     /// A stream item or bus effect failed, as the wire reports it.
     #[error(transparent)]
     Report(#[from] rig_core::error::ErrorReport),
@@ -124,14 +121,14 @@ pub fn validate_cancelled_failure(
     expected_tool: &str,
 ) -> Result<(), ScenarioError> {
     const SCENARIO: &str = "cancelled_failure";
-    let PromptError::PromptCancelled {
+    let PromptError::Cancelled {
         chat_history,
         reason,
     } = error
     else {
         return Err(ScenarioError::contract(
             SCENARIO,
-            format!("expected PromptCancelled, observed {error:?}"),
+            format!("expected Cancelled, observed {error:?}"),
         ));
     };
     let history_has_call = chat_history.iter().any(|message| {
@@ -162,7 +159,7 @@ pub fn validate_max_turns_failure(
     expected_max_turns: usize,
 ) -> Result<(), ScenarioError> {
     const SCENARIO: &str = "max_turns_failure";
-    let PromptError::MaxTurnsError {
+    let PromptError::MaxTurns {
         max_turns,
         chat_history,
         prompt,
@@ -170,7 +167,7 @@ pub fn validate_max_turns_failure(
     else {
         return Err(ScenarioError::contract(
             SCENARIO,
-            format!("expected MaxTurnsError, observed {error:?}"),
+            format!("expected MaxTurns, observed {error:?}"),
         ));
     };
     let pending_prompt_retained = matches!(
@@ -1459,7 +1456,7 @@ where
         .add_hook(CaptureTurn(captured.clone()))
         .run()
         .await;
-    if !matches!(stopped, Err(PromptError::PromptCancelled { .. })) {
+    if !matches!(stopped, Err(PromptError::Cancelled { .. })) {
         return Err(ScenarioError::contract(
             SCENARIO,
             format!("capture hook did not stop after the model response: {stopped:?}"),

@@ -61,19 +61,24 @@ macro_rules! forward_provider_response_helpers {
     };
 }
 
-forward_provider_response_helpers!(StructuredOutputError, PromptError, "prompt error");
+forward_provider_response_helpers!(StructuredOutputError, Prompt, "prompt error");
 
-/// Errors returned by typed structured prompting.
+/// Why a typed run produced no value.
 #[derive(Debug, Error)]
 pub enum StructuredOutputError {
-    /// The underlying classic run failed.
-    #[error("PromptError: {0}")]
-    PromptError(#[from] PromptError),
-    /// The accepted response could not be deserialized.
-    #[error("DeserializationError: {0}")]
-    DeserializationError(#[from] serde_json::Error),
+    /// The underlying run failed.
+    #[error(transparent)]
+    Prompt(#[from] PromptError),
+    /// The accepted output did not deserialize into the requested type.
+    #[error("structured output does not match the requested type: {error}")]
+    Deserialization {
+        /// The model's output that was parsed.
+        output: String,
+        /// Why it did not parse.
+        error: serde_json::Error,
+    },
     /// The model returned no accepted content.
-    #[error("EmptyResponse: model returned no content")]
+    #[error("the model returned no structured output")]
     EmptyResponse,
 }
 

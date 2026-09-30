@@ -4,7 +4,7 @@
 //! outcome can be a success, a `Cancelled` report (the consumer dropped
 //! the stream), a failed tool result (the model sees it), or the
 //! provider's own error (the run fails at the record). A run can end in
-//! an answer, `MaxTurnsError`, `UnknownToolCall`, or the provider's error,
+//! an answer, `MaxTurns`, `UnknownToolCall`, or the provider's error,
 //! and a run can be suspended after its first tool result, serialized and
 //! resumed on a fresh bus to the same answer.
 //!
@@ -14,7 +14,7 @@
 //! |---|---|
 //! | record outcome | success · `Cancelled` after a text delta (the corpus's) · `Cancelled` after a tool-call delta · a failed tool result · the provider's 401 |
 //! | transport | unary · streamed with events |
-//! | run ending | answer · `MaxTurnsError` with a tool pending · `UnknownToolCall` unhandled · the provider's error |
+//! | run ending | answer · `MaxTurns` with a tool pending · `UnknownToolCall` unhandled · the provider's error |
 //! | turn budget | runner `max_turns` (not in the spec) · builder `default_max_turns` (in the spec) |
 //! | continuation | one run · suspended after the first tool result, resumed |
 //! | resume wire | anthropic · gemini (id-less) · openai (dual ids) · anthropic under serial serving with two calls |
@@ -39,7 +39,7 @@
 //! | `anthropic_outcome_tool_error_streamed` | `tool_error_streamed_…` | the same, events kept | an answer |
 //! | `anthropic_outcome_model_error` | `model_error_…` | `[Completion]`, outcome the provider's 401 | `PromptError::Report(ProviderResponse)` |
 //! | `anthropic_outcome_model_error_streamed` | `model_error_streamed_…` | the same, streamed | the stream's one item is the error |
-//! | `anthropic_outcome_max_turns_exhausted` | `max_turns_exhausted_…` | `[Completion, Tool]` | `MaxTurnsError { max_turns: 1 }` |
+//! | `anthropic_outcome_max_turns_exhausted` | `max_turns_exhausted_…` | `[Completion, Tool]` | `MaxTurns { max_turns: 1 }` |
 //! | `anthropic_outcome_default_max_turns` | `default_max_turns_…` | `[Completion, Tool, Completion]` | an answer; the header refuses the runner-budget golden's program |
 //! | `mock_outcome_invalid_call_unhandled` | `tests/core/golden_outcome.rs` `outcome_invalid_call_unhandled_…` | `[Completion]` | `UnknownToolCall` (mock-scripted: no live model calls an unadvertised tool) |
 //!

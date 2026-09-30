@@ -5,7 +5,7 @@
 //! closes the block with `content_block_stop`, so rig's accumulator treats a
 //! close as "the wire promised a complete block" and, when the assembled
 //! fragments are not JSON, raised a bare `ErrorReport`. The agent engine
-//! turned any stream error into a fatal `StreamingError` before the
+//! turned any stream error into a fatal run error before the
 //! invalid-tool recovery seam saw it: one bad byte from the model ended the
 //! run, the model never learned why, and the application got a string.
 //!
@@ -58,7 +58,7 @@
 use futures::StreamExt;
 use rig::agent::{
     AgentHook, HookContext, InvalidToolCallAction, InvalidToolCallContext, InvalidToolCallReason,
-    MultiTurnStreamItem, StreamingError,
+    MultiTurnStreamItem,
 };
 use rig::completion::PromptError;
 use rig::providers::anthropic;
@@ -218,17 +218,11 @@ async fn streaming_malformed_fails_by_default() {
                 }
             }
             match error.expect("default policy is fail-fast") {
-                StreamingError::Prompt(err) => match err {
-                    PromptError::Report(report) => assert!(
-                        report.message.contains("malformed JSON input"),
-                        "{}",
-                        report.message
-                    ),
-                    other => panic!("expected the provider report, got {other:?}"),
-                },
-                StreamingError::Report(report) => {
-                    assert!(report.message.contains("malformed JSON input"));
-                }
+                PromptError::Report(report) => assert!(
+                    report.message.contains("malformed JSON input"),
+                    "{}",
+                    report.message
+                ),
                 other => panic!("expected the provider report, got {other:?}"),
             }
         },

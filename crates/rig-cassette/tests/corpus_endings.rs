@@ -1,7 +1,7 @@
 //! Matrix F: hook-ended runs.
 //!
 //! Every `Stop` in the hook surface ends the run in
-//! `PromptError::PromptCancelled` with the hook's reason. Where the stop
+//! `PromptError::Cancelled` with the hook's reason. Where the stop
 //! fires decides what the log holds: before any dispatch (nothing), before
 //! a tool reaches the bus (the completion only), after a tool answered
 //! (the completion and the tool, the tool's real result in the record),

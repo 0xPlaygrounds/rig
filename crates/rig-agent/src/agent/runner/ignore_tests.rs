@@ -72,5 +72,8 @@ async fn the_streaming_surface_applies_the_unhandled_policy() {
     let failed = output_under(UnhandledInvalidToolCall::Fail)
         .await
         .expect_err("Fail fails the run");
-    assert!(failed.contains("UnknownToolCall"), "{failed}");
+    assert!(
+        failed.contains("unknown or disallowed tool `multiply`"),
+        "{failed}"
+    );
 }

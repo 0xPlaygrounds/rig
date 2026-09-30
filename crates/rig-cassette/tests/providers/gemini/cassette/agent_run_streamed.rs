@@ -13,7 +13,6 @@ use rig::agent::run::{
 };
 use rig::agent::{
     AgentHook, DispatchAction, DispatchEvent, InvalidToolCallAction, MultiTurnStreamItem,
-    StreamingError,
 };
 use rig::completion::{PromptError, Usage};
 use rig::message::{Message, ToolChoice, ToolResult};
@@ -467,24 +466,23 @@ async fn builtin_streaming_max_turns_error_carries_pending_message() {
             while let Some(item) = stream.next().await {
                 match item {
                     Ok(_) => {}
-                    Err(StreamingError::Prompt(error)) => {
+                    Err(error) => {
                         prompt_error = Some(error);
                         break;
                     }
-                    Err(other) => panic!("expected a prompt error, got {other:?}"),
                 }
             }
 
-            let error = prompt_error.expect("the stream should surface MaxTurnsError");
+            let error = prompt_error.expect("the stream should surface MaxTurns");
             validate_max_turns_failure(&error, 2)
                 .expect("portable max-turn diagnostics should hold");
-            let PromptError::MaxTurnsError {
+            let PromptError::MaxTurns {
                 max_turns,
                 chat_history,
                 prompt,
             } = error
             else {
-                panic!("expected MaxTurnsError");
+                panic!("expected MaxTurns");
             };
             assert_eq!(max_turns, 2);
             // Pins the divergence resolved by #1899: the streaming error
@@ -492,7 +490,7 @@ async fn builtin_streaming_max_turns_error_carries_pending_message() {
             // reconstruction of it.
             assert!(
                 is_tool_result_user_message(&prompt),
-                "MaxTurnsError must carry the pending tool-results message: {prompt:?}"
+                "MaxTurns must carry the pending tool-results message: {prompt:?}"
             );
             assert!(
                 history_has_assistant_tool_call(&chat_history, "add"),
@@ -543,11 +541,10 @@ async fn builtin_streaming_cancellation_history_includes_assistant_turn() {
                 match item {
                     Ok(MultiTurnStreamItem::FinalResponse(_)) => saw_final = true,
                     Ok(_) => {}
-                    Err(StreamingError::Prompt(error)) => {
+                    Err(error) => {
                         prompt_error = Some(error);
                         break;
                     }
-                    Err(other) => panic!("expected a prompt error, got {other:?}"),
                 }
             }
             assert!(
@@ -558,12 +555,12 @@ async fn builtin_streaming_cancellation_history_includes_assistant_turn() {
             let error = prompt_error.expect("the hook should cancel the run");
             validate_cancelled_failure(&error, "cancelled by test hook", "add")
                 .expect("portable cancellation diagnostics should hold");
-            let PromptError::PromptCancelled {
+            let PromptError::Cancelled {
                 chat_history,
                 reason,
             } = error
             else {
-                panic!("expected PromptCancelled");
+                panic!("expected Cancelled");
             };
             assert!(
                 reason.contains("cancelled by test hook"),

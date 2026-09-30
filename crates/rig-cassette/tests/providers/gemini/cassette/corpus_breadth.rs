@@ -5,7 +5,7 @@
 //! recording under `crates/rig-cassette/fixtures/cassettes/gemini/corpus_breadth/`.
 
 use futures::StreamExt;
-use rig::agent::{AgentBuilder, MultiTurnStreamItem, StreamingError};
+use rig::agent::{AgentBuilder, MultiTurnStreamItem};
 use rig::bus::Bus;
 use rig::completion::PromptError;
 use rig::effect::{EffectFamily, HandlerKey};
@@ -44,11 +44,10 @@ async fn final_output(stream: &mut rig::agent::StreamingResult) -> Result<String
         match item {
             Ok(MultiTurnStreamItem::FinalResponse(response)) => output = Some(response.output),
             Ok(_) => {}
-            Err(StreamingError::Prompt(error)) => match error {
-                PromptError::PromptCancelled { reason, .. } => return Err(reason),
+            Err(error) => match error {
+                PromptError::Cancelled { reason, .. } => return Err(reason),
                 other => panic!("the stream yields: {other:?}"),
             },
-            Err(other) => panic!("the stream yields: {other:?}"),
         }
     }
     Ok(output.expect("a final response"))
@@ -186,7 +185,7 @@ async fn tool_dispatch_cancelled_effect_log_is_the_golden_fixture() {
                 .await
                 .expect_err("the hook stops the run");
             assert!(
-                matches!(&error, PromptError::PromptCancelled { reason, .. } if reason == CANCEL_ADD_DISPATCH),
+                matches!(&error, PromptError::Cancelled { reason, .. } if reason == CANCEL_ADD_DISPATCH),
                 "{error:?}"
             );
             let log = agent.stamp(recorder.take());

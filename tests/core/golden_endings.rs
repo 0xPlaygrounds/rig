@@ -2,7 +2,7 @@
 //! dispatch — at run start, at model selection, before the completion
 //! call. Nothing reaches the wire, so no cassette exists to record; the
 //! model is a mock that is never asked, and the golden is a header over an
-//! empty record. The run ends in `PromptCancelled` with the hook's reason.
+//! empty record. The run ends in `Cancelled` with the hook's reason.
 
 use rig::agent::AgentBuilder;
 use rig::completion::PromptError;
@@ -17,7 +17,7 @@ use crate::goldens::{
 
 fn cancelled_reason(error: &PromptError) -> &str {
     match error {
-        PromptError::PromptCancelled { reason, .. } => reason,
+        PromptError::Cancelled { reason, .. } => reason,
         other => panic!("a cancelled run, not {other:?}"),
     }
 }

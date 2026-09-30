@@ -7,7 +7,7 @@ use super::*;
 fn prompt_error_forwards_provider_response_to_completion_error() {
     let body = r#"{"error":{"message":"boom"}}"#;
     let inner = ProviderError::from_http_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
-    let error = PromptError::CompletionError(inner);
+    let error = PromptError::Provider(inner);
 
     assert_eq!(
         error.provider_response_status(),
@@ -26,7 +26,7 @@ fn prompt_error_forwards_provider_response_to_completion_error() {
 #[test]
 fn prompt_error_provider_response_helpers_forward_http_status_and_body() {
     let body = r#"{"error":{"message":"unauthorized"}}"#;
-    let error = PromptError::CompletionError(ProviderError::from_transport_error(
+    let error = PromptError::Provider(ProviderError::from_transport_error(
         http_client::Error::non_success_with_details(
             http::StatusCode::UNAUTHORIZED,
             http::HeaderMap::new(),
@@ -50,7 +50,7 @@ fn prompt_error_provider_response_helpers_forward_http_status_and_body() {
 #[test]
 fn prompt_error_provider_response_helpers_forward_wrapped_completion_error() {
     let body = r#"{"error":{"code":"invalid_request","message":"bad input"}}"#;
-    let error = PromptError::CompletionError(ProviderError::ProviderResponse(
+    let error = PromptError::Provider(ProviderError::ProviderResponse(
         ProviderResponseError::without_status(body),
     ));
 
@@ -97,7 +97,7 @@ fn prompt_error_forwards_captured_response_headers() {
             headers: headers.clone(),
         }),
     ] {
-        let prompt_error = PromptError::CompletionError(completion_error);
+        let prompt_error = PromptError::Provider(completion_error);
         assert_eq!(
             prompt_error
                 .provider_response_headers()
@@ -107,7 +107,7 @@ fn prompt_error_forwards_captured_response_headers() {
             "PromptError dropped the captured headers",
         );
 
-        let structured = StructuredOutputError::PromptError(prompt_error);
+        let structured = StructuredOutputError::Prompt(prompt_error);
         assert_eq!(
             structured
                 .provider_response_headers()
@@ -122,7 +122,7 @@ fn prompt_error_forwards_captured_response_headers() {
 /// Variants that wrap no provider response report no headers.
 #[test]
 fn prompt_error_reports_no_headers_for_unrelated_variants() {
-    let error = PromptError::PromptCancelled {
+    let error = PromptError::Cancelled {
         chat_history: vec![Message::user("hi")],
         reason: "cancelled".to_string(),
     };
@@ -138,7 +138,7 @@ fn prompt_error_reports_no_headers_for_unrelated_variants() {
 /// through `PromptError` (and, transitively, `StructuredOutputError`).
 #[test]
 fn prompt_error_forwards_the_provider_request_id() {
-    let error = PromptError::CompletionError(ProviderError::ProviderResponse(
+    let error = PromptError::Provider(ProviderError::ProviderResponse(
         ProviderResponseError::new(http::StatusCode::NOT_FOUND, "{}")
             .with_provider_request_id(Some("req_failed_call".to_string())),
     ));
@@ -147,7 +147,7 @@ fn prompt_error_forwards_the_provider_request_id() {
 
 #[test]
 fn prompt_error_provider_response_helpers_return_none_for_unrelated_variant() {
-    let error = PromptError::PromptCancelled {
+    let error = PromptError::Cancelled {
         chat_history: vec![Message::user("hi")],
         reason: "cancelled".to_string(),
     };
@@ -165,16 +165,46 @@ fn prompt_error_provider_response_helpers_return_none_for_unrelated_variant() {
 #[test]
 fn structured_output_error_provider_response_helpers_forward_prompt_error() {
     let body = r#"{"error":{"message":"bad input"}}"#;
-    let error = StructuredOutputError::PromptError(PromptError::CompletionError(
-        ProviderError::ProviderResponse(ProviderResponseError::new(
-            http::StatusCode::BAD_REQUEST,
-            body,
-        )),
-    ));
+    let error =
+        StructuredOutputError::Prompt(PromptError::Provider(ProviderError::ProviderResponse(
+            ProviderResponseError::new(http::StatusCode::BAD_REQUEST, body),
+        )));
 
     assert_eq!(error.provider_response_body(), Some(body));
     assert_eq!(
         error.provider_response_status(),
         Some(http::StatusCode::BAD_REQUEST)
+    );
+}
+
+/// A provider failure relayed over the bus is the report it carries, so an
+/// awaited and a streamed run classify it the same way.
+#[test]
+fn prompt_error_from_relayed_provider_error_is_its_report() {
+    let report = rig_core::error::ErrorReport::new(rig_core::ErrorKind::Provider, "exploded");
+    let error = PromptError::from(ProviderError::Relayed(Box::new(report.clone())));
+    assert!(matches!(error, PromptError::Report(relayed) if relayed == report));
+}
+
+/// Wrapping variants display their inner error once and forward its source,
+/// so an error-chain printer does not repeat a message.
+#[test]
+fn wrapping_errors_are_transparent() {
+    use std::error::Error as _;
+
+    let json = serde_json::from_str::<u8>("not json").expect_err("invalid JSON");
+    let inner = ProviderError::from(json);
+    let error = PromptError::from(inner.clone());
+    assert_eq!(error.to_string(), inner.to_string());
+    assert_eq!(
+        error.source().map(ToString::to_string),
+        inner.source().map(ToString::to_string)
+    );
+
+    let structured = StructuredOutputError::from(error);
+    assert_eq!(structured.to_string(), inner.to_string());
+    assert_eq!(
+        structured.source().map(ToString::to_string),
+        inner.source().map(ToString::to_string)
     );
 }

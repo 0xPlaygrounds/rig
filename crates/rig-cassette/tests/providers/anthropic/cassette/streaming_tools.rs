@@ -5,7 +5,7 @@ use rig::streaming::Item;
 use rig_cassette::agent::AgentReplayExt;
 
 use futures::StreamExt;
-use rig::agent::{MultiTurnStreamItem, StreamingError, StreamingResult};
+use rig::agent::{MultiTurnStreamItem, StreamingResult};
 use rig::message::{CallId, Message, UserContent};
 use rig::providers::anthropic;
 use rig::streaming::{StreamEvent, StreamedUserContent};
@@ -376,17 +376,13 @@ async fn collect_concurrent_tool_observation(
             Ok(MultiTurnStreamItem::CompletionCall(_)) => {}
             Ok(_) => {}
             Err(error) => {
-                observation.errors.push(streaming_error_to_string(error));
+                observation.errors.push(error.to_string());
                 observation.events.push("error");
             }
         }
     }
 
     observation
-}
-
-fn streaming_error_to_string(error: StreamingError) -> String {
-    error.to_string()
 }
 
 fn tool_result_names_in_history(

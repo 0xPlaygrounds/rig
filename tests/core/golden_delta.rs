@@ -58,7 +58,7 @@ async fn streamed(
     max_turns: usize,
     unhandled: UnhandledInvalidToolCall,
     retries: usize,
-) -> Result<String, rig::agent::StreamingError> {
+) -> Result<String, PromptError> {
     let mut stream = agent
         .prompt(PROMPT)
         .max_turns(max_turns)
@@ -84,12 +84,9 @@ async fn streamed(
     }
 }
 
-fn cancelled_reason(error: &rig::agent::StreamingError) -> &str {
+fn cancelled_reason(error: &PromptError) -> &str {
     match error {
-        rig::agent::StreamingError::Prompt(error) => match error {
-            PromptError::PromptCancelled { reason, .. } => reason,
-            other => panic!("a cancelled run, not {other:?}"),
-        },
+        PromptError::Cancelled { reason, .. } => reason,
         other => panic!("a cancelled run, not {other:?}"),
     }
 }
@@ -320,7 +317,7 @@ async fn delta_fail_effect_log_is_the_golden_fixture() {
         .await
         .expect_err("the unknown call fails the run");
     assert!(
-        matches!(&error, rig::agent::StreamingError::Prompt(error) if matches!(error, PromptError::UnknownToolCall { .. })),
+        matches!(&error, error if matches!(error, PromptError::UnknownToolCall { .. })),
         "{error:?}"
     );
     let log = agent.stamp(recorder.take());
