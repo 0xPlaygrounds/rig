@@ -16,9 +16,7 @@ use crate::{
         assistant_content::{PROVIDER_NAME, reasoning_issuer},
         completion_request::AwsCompletionRequest,
         converse_output::InternalConverseOutput,
-        errors::{
-            AwsSdkConverseError, AwsSdkConverseStreamError, converse_stream_output_completion_error,
-        },
+        errors::{sdk_error, stream_error},
     },
 };
 
@@ -275,7 +273,7 @@ impl Transport<Converse> for BedrockRuntime {
                         .set_guardrail_config(guardrail)
                         .send()
                         .await
-                        .map_err(|sdk_error| ProviderError::from(AwsSdkConverseError(sdk_error)))
+                        .map_err(sdk_error)
                         .and_then(|response| {
                             InternalConverseOutput::try_from(response).map_err(|error| {
                                 ProviderError::Provider(format!("Type conversion error: {error}"))
@@ -310,8 +308,8 @@ impl Transport<Converse> for BedrockRuntime {
                         .await;
                     let response = match sent {
                         Ok(response) => response,
-                        Err(sdk_error) => {
-                            return Ok(Opened::failed(AwsSdkConverseStreamError(sdk_error).into()));
+                        Err(error) => {
+                            return Ok(Opened::failed(sdk_error(error)));
                         }
                     };
                     // Events do not carry the request id the terminal record
@@ -331,9 +329,7 @@ impl Transport<Converse> for BedrockRuntime {
                                 Ok(Some(output)) => yield Ok(ConverseFrame::Event(output)),
                                 Ok(None) => break,
                                 Err(error) => {
-                                    yield Err(converse_stream_output_completion_error(
-                                        error.into_service_error(),
-                                    ));
+                                    yield Err(stream_error(error.into_service_error()));
                                     break;
                                 }
                             }
