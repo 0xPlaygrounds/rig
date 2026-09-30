@@ -12,7 +12,6 @@ use rig::message::AssistantContent;
 use rig::providers::openai;
 use rig::providers::openai::responses_api::{CompletionResponse as ResponsesReply, ResponseStatus};
 use rig::tool::Tool;
-use rig_test_support::cassette_models::MapWire;
 use serde::Deserialize;
 
 use super::super::support::with_openai_cassette;

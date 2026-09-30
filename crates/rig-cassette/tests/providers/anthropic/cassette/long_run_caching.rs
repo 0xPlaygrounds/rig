@@ -22,7 +22,6 @@ use rig_test_support::cache_longrun::{
     self, CacheWire, Limits, LongRun, LookupOrder, RunLog, SUPPORT_PREAMBLE, chat, chat_streamed,
     question,
 };
-use rig_test_support::cassette_models::MapWire;
 
 use crate::cassettes::CassetteClock;
 

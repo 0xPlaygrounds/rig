@@ -2,7 +2,6 @@
 //! feature collisions, failure/recovery paths, and replay semantics, chosen
 //! because a plausible implementation error would make each cell fail.
 
-use rig_test_support::cassette_models::MapWire;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 

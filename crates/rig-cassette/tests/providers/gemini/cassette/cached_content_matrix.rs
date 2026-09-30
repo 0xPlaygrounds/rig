@@ -54,7 +54,6 @@ use rig::error::ProviderError;
 use rig::providers::gemini::cached_content::{CacheExpiry, CachedContent, NewCachedContent};
 use rig::providers::gemini::{self, GeminiConfig};
 use rig_test_support::cassette_models::GeminiModels;
-use rig_test_support::cassette_models::MapWire;
 use std::time::Duration;
 
 use super::super::support::{

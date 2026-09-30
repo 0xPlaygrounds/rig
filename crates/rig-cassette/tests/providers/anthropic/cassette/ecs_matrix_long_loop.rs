@@ -9,7 +9,6 @@
 use rig::providers::anthropic::wire::AnthropicConfig;
 use rig::test_utils::{MockHttpResponse, SequencedHttpClient};
 use rig_test_support::cassette_models::AnthropicModels;
-use rig_test_support::cassette_models::MapWire;
 
 use super::super::support::with_anthropic_cassette;
 use crate::ecs_matrix::{Wire, cells, long_loop, long_loop_world};

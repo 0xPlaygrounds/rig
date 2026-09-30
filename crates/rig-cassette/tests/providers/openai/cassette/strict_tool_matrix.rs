@@ -34,7 +34,6 @@
 use rig::completion::ToolDefinition;
 use rig::message::AssistantContent;
 use rig::providers::openai;
-use rig_test_support::cassette_models::MapWire;
 use serde_json::{Value, json};
 
 use super::super::support::with_openai_cassette;

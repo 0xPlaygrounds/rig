@@ -6,7 +6,6 @@
 //! in one session.
 
 use rig_test_support::cassette_models::GeminiModels;
-use rig_test_support::cassette_models::MapWire;
 use std::future::Future;
 use std::panic::{AssertUnwindSafe, resume_unwind};
 use std::sync::{Arc, Mutex};

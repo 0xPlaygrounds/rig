@@ -14,7 +14,6 @@ use rig::message::{AssistantContent, ReasoningContent};
 use rig::providers::anthropic;
 use rig::streaming::Item;
 use rig::streaming::StreamEvent;
-use rig_test_support::cassette_models::MapWire;
 
 use super::super::support::with_anthropic_cassette;
 use rig::completion::CompletionRequest;

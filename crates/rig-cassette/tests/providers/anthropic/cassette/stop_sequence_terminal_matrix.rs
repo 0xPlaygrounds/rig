@@ -72,7 +72,6 @@ use rig::driver::Model;
 use rig::providers::anthropic;
 use rig::providers::anthropic::streaming::StreamingCompletionResponse;
 use rig::providers::anthropic::wire::Messages;
-use rig_test_support::cassette_models::MapWire;
 use serde::Deserialize;
 use serde_json::json;
 

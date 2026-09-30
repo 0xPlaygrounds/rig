@@ -11,7 +11,6 @@ use rig::message::AssistantContent;
 use rig::providers::chatgpt;
 use rig::providers::openai::responses_api;
 use rig::tool::Tool;
-use rig_test_support::cassette_models::MapWire;
 use serde::Deserialize;
 
 use super::super::support::{with_chatgpt_cassette, with_chatgpt_cassette_default_instructions};

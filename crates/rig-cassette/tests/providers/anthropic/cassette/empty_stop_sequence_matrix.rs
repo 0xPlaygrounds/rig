@@ -62,7 +62,6 @@
 use rig::completion::{FinishReason, ToolDefinition};
 use rig::providers::anthropic;
 use rig::providers::anthropic::completion::CompletionResponse;
-use rig_test_support::cassette_models::MapWire;
 use serde::Deserialize;
 use serde_json::json;
 

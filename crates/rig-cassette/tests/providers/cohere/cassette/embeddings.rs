@@ -2,7 +2,6 @@
 
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use rig::providers::cohere;
-use rig_test_support::cassette_models::MapWire;
 
 use super::super::support::with_cohere_cassette;
 use crate::support::{EMBEDDING_INPUTS, assert_embeddings_nonempty_and_consistent};

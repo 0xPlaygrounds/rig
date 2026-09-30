@@ -20,7 +20,7 @@ use rig_test_support::cache_longrun::workloads::{
 use rig_test_support::cache_longrun::{
     self, CacheWire, Figures, Limits, LongRun, LookupOrder, Recording, RunLog, SUPPORT_PREAMBLE,
 };
-use rig_test_support::cassette_models::{AnthropicModels, MapWire};
+use rig_test_support::cassette_models::AnthropicModels;
 
 use super::super::support::with_anthropic_long_run_cassette;
 

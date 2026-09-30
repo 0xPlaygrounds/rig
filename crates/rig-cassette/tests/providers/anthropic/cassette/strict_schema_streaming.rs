@@ -6,7 +6,6 @@ use rig::message::ToolChoice;
 use rig::providers::anthropic;
 use rig::providers::anthropic::wire::Messages;
 use rig_test_support::cassette_models::AnthropicModels;
-use rig_test_support::cassette_models::MapWire;
 use serde_json::{Value, json};
 
 use super::super::support::with_anthropic_cassette;

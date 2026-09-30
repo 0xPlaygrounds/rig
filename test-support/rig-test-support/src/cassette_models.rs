@@ -435,16 +435,3 @@ impl CopilotModels {
         self.client().list_models().await
     }
 }
-
-/// A model with its wire changed: how a test applies a wire option (strict
-/// tools, prompt caching, a cached-content handle) to a model it built.
-pub trait MapWire<W, T> {
-    /// The same transport under the wire `f` returns.
-    fn map_wire<V>(self, f: impl FnOnce(W) -> V) -> Model<V, T>;
-}
-
-impl<W, T> MapWire<W, T> for Model<W, T> {
-    fn map_wire<V>(self, f: impl FnOnce(W) -> V) -> Model<V, T> {
-        Model::new(f(self.wire), self.transport)
-    }
-}

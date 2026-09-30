@@ -53,7 +53,6 @@
 use rig::error::ProviderError;
 use rig::providers::gemini::{self};
 use rig_test_support::cassette_models::GeminiModels;
-use rig_test_support::cassette_models::MapWire;
 
 use crate::cache_conformance::{
     AGENT_CACHE_PROMPT, CacheProbe, CacheProbeLookupTool, CacheSupport,

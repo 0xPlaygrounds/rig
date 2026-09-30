@@ -10,7 +10,6 @@ use rig::completion::FinishReason;
 use rig::driver::Model;
 use rig::providers::anthropic;
 use rig::providers::anthropic::wire::Messages;
-use rig_test_support::cassette_models::MapWire;
 
 use super::super::support::with_anthropic_cassette;
 use crate::support::{

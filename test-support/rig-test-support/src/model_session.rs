@@ -39,7 +39,7 @@ use serde_json::{Value, json};
 use crate::cache_longrun::{
     self, CacheWire, Limits, LongRun, LookupOrder, RunLog, SUPPORT_PREAMBLE, chat, chat_streamed,
 };
-use crate::cassette_models::{AnthropicModels, MapWire, OpenAiModels};
+use crate::cassette_models::{AnthropicModels, OpenAiModels};
 use rig_core::completion::CacheRates;
 
 /// Text the main conversation's first user message carries, so the cache

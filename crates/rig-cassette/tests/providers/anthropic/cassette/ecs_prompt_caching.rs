@@ -5,7 +5,6 @@ use crate::{
     cache_conformance::assert_prefix_stable, ecs_agent::EcsAgent, ecs_cache::assert_cache_growth,
 };
 use rig::providers::anthropic;
-use rig_test_support::cassette_models::MapWire;
 
 #[tokio::test]
 async fn conformance_agent_loop_keeps_hitting_across_tool_turns() {

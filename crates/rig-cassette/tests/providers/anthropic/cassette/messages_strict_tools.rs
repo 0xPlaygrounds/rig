@@ -7,7 +7,6 @@ use rig::completion::ToolDefinition;
 use rig::message::{AssistantContent, ToolChoice};
 use rig::providers::anthropic;
 use rig_test_support::cassette_models::AnthropicModels;
-use rig_test_support::cassette_models::MapWire;
 use serde_json::json;
 
 use super::super::support::with_anthropic_cassette;

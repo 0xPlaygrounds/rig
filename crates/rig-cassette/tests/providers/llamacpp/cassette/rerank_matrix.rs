@@ -35,7 +35,6 @@
 //! corrects the doc comment; [`scores_are_raw_logits_and_may_be_negative`]
 //! is what keeps the corrected wording honest.
 
-use rig_test_support::cassette_models::MapWire;
 use serde_json::Value;
 
 use crate::cassettes::{

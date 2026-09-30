@@ -61,6 +61,13 @@ impl<W, T> Model<W, T> {
     pub fn new(wire: W, transport: T) -> Self {
         Self { wire, transport }
     }
+
+    /// The same transport under the wire `f` returns: how a wire option
+    /// (an embedding width, strict tools, prompt caching) is applied to a
+    /// model a client built.
+    pub fn map_wire<V>(self, f: impl FnOnce(W) -> V) -> Model<V, T> {
+        Model::new(f(self.wire), self.transport)
+    }
 }
 
 /// Sends a wire's payloads and delivers its replies' frames.

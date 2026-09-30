@@ -13,7 +13,6 @@ use rig::providers::anthropic::wire::Messages;
 use rig::streaming::Item;
 use rig::streaming::StreamEvent;
 use rig_test_support::cassette_models::AnthropicModels;
-use rig_test_support::cassette_models::MapWire;
 use serde::Deserialize;
 use serde_json::json;
 

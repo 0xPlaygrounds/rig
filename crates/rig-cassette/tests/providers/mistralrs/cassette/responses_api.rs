@@ -4,7 +4,6 @@ use rig::agent::AgentBuilder;
 use rig::message::AssistantContent;
 use rig::providers::openai::responses_api;
 use rig::providers::openai::responses_api::wire::Responses;
-use rig_test_support::cassette_models::MapWire;
 use serde::Deserialize;
 
 use crate::support::{assert_contains_all_case_insensitive, assert_nonempty_response};
