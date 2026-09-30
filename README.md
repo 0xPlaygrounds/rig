@@ -170,6 +170,11 @@ for dependency guarantees, ECS replay installation and migration paths.
 
 ## Supported Integrations
 
+The built-in `rig::vector_store::in_memory_store::InMemoryVectorStore` stores
+serializable documents without requiring `Eq` or `Default`. Its custom ID
+callbacks accept closures that capture and mutate application state. See the
+[vector-search example](examples/vector_search/src/main.rs).
+
 The root `rig` facade exposes companion crates behind one feature per integration:
 
 ```toml

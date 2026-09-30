@@ -94,6 +94,10 @@ Rig supports the following LLM providers out of the box:
 - Xiaomi MiMo
 - Z.ai
 
+The built-in `rig_core::vector_store::in_memory_store::InMemoryVectorStore`
+stores serializable documents without requiring `Eq` or `Default`. Its custom
+ID callbacks accept closures that capture and mutate application state.
+
 Vector stores are available as separate companion-crates and as feature-gated modules on the root `rig` facade:
 
 ```toml

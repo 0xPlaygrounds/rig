@@ -3,8 +3,12 @@
 //! ```
 //! use rig_core::vector_store::in_memory_store::InMemoryVectorStore;
 //!
-//! let store = InMemoryVectorStore::<String>::builder().build();
-//! assert!(store.is_empty());
+//! let namespace = String::from("prices");
+//! let store = InMemoryVectorStore::from_documents_with_id_f(
+//!     [(1.5_f64, Vec::new())],
+//!     |price| format!("{namespace}:{price}"),
+//! );
+//! assert_eq!(store.len(), 1);
 //! ```
 use std::{
     cmp::Reverse,
@@ -27,9 +31,9 @@ use super::lsh::LSHIndex;
 
 pub use super::builder::InMemoryVectorStoreBuilder;
 
-/// [InMemoryVectorStore] is a simple in-memory vector store that stores embeddings
-/// in-memory using a HashMap.
-#[derive(Clone, Default)]
+/// Stores serializable documents and their embeddings by document ID.
+/// Documents do not need equality or ordering implementations.
+#[derive(Clone)]
 pub struct InMemoryVectorStore<D: Serialize> {
     /// The embeddings are stored in a HashMap.
     /// Hashmap key is the document id.
@@ -41,7 +45,13 @@ pub struct InMemoryVectorStore<D: Serialize> {
     lsh_index: Option<LSHIndex>,
 }
 
-impl<D: Serialize + Eq> InMemoryVectorStore<D> {
+impl<D: Serialize> Default for InMemoryVectorStore<D> {
+    fn default() -> Self {
+        Self::from_builder(HashMap::new(), IndexStrategy::default())
+    }
+}
+
+impl<D: Serialize> InMemoryVectorStore<D> {
     /// Creates an empty builder with brute-force search as the default strategy.
     pub fn builder() -> InMemoryVectorStoreBuilder<D> {
         InMemoryVectorStoreBuilder::new()
@@ -95,13 +105,11 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
         store
     }
 
-    /// Create a new [InMemoryVectorStore] from documents and their corresponding embeddings.
-    /// Document ids are generated using the provided function.
-    ///
-    /// Uses BruteForce index strategy by default. For custom index strategies, use [InMemoryVectorStore::builder].
+    /// Creates a brute-force store, calling `f` once per document in input order.
+    /// The callback may capture and mutate state. Duplicate IDs replace earlier documents.
     pub fn from_documents_with_id_f(
         documents: impl IntoIterator<Item = (D, Vec<Embedding>)>,
-        f: fn(&D) -> String,
+        f: impl FnMut(&D) -> String,
     ) -> Self {
         let mut store = Self::from_builder(HashMap::new(), IndexStrategy::default());
         store.add_documents_with_id_f(documents, f);
@@ -138,34 +146,29 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
 
     /// Scores one candidate document against the query prompt.
     ///
-    /// Returns the best similarity across the document's embeddings together with
-    /// the matching embedding text, or `None` when the document is filtered out,
-    /// has no finite-similarity embedding, or scores below the threshold. Shared
+    /// Returns the best similarity across the document's embeddings, or `None`
+    /// when the document is filtered out, has no finite-similarity embedding,
+    /// or scores below the threshold. Shared
     /// by the brute-force and LSH scans so the filter, threshold, and NaN
     /// handling live in exactly one place.
-    fn score_candidate<'a>(
+    fn score_candidate(
         doc: &D,
-        embeddings: &'a [Embedding],
+        embeddings: &[Embedding],
         prompt_embedding: &Embedding,
         filter: Option<&Filter<serde_json::Value>>,
         threshold: Option<f64>,
-    ) -> Result<Option<(OrderedFloat<f64>, &'a String)>, VectorStoreError> {
+    ) -> Result<Option<OrderedFloat<f64>>, VectorStoreError> {
         if !Self::satisfies_filter(doc, filter)? {
             return Ok(None);
         }
 
         // Filter non-finite scores before selecting the maximum so NaN cannot
         // outrank valid embeddings or bypass the threshold.
-        let Some((distance, embed_doc)) = embeddings
+        let Some(distance) = embeddings
             .iter()
-            .map(|embedding| {
-                (
-                    OrderedFloat(embedding.cosine_similarity(prompt_embedding, false)),
-                    &embedding.document,
-                )
-            })
-            .filter(|(distance, _)| distance.0.is_finite())
-            .max_by(|a, b| a.0.cmp(&b.0))
+            .map(|embedding| OrderedFloat(embedding.cosine_similarity(prompt_embedding, false)))
+            .filter(|distance| distance.0.is_finite())
+            .max()
         else {
             return Ok(None);
         };
@@ -174,7 +177,7 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
             return Ok(None);
         }
 
-        Ok(Some((distance, embed_doc)))
+        Ok(Some(distance))
     }
 
     /// Implement vector search on [InMemoryVectorStore].
@@ -240,13 +243,13 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
             else {
                 continue;
             };
-            let Some((distance, embed_doc)) =
+            let Some(distance) =
                 Self::score_candidate(doc, embeddings, prompt_embedding, filter, threshold)?
             else {
                 continue;
             };
 
-            docs.push(Reverse(RankingItem(distance, id, doc, embed_doc)));
+            docs.push(Reverse(RankingItem(distance, id, doc)));
 
             // Evict the worst score, or the greatest id at an equal score.
             if docs.len() > n {
@@ -260,7 +263,7 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
             tracing::info!(target: "rig",
                 "Selected documents: {}",
                 docs.iter()
-                    .map(|Reverse(RankingItem(distance, id, _, _))| format!("{id} ({distance})"))
+                    .map(|Reverse(RankingItem(distance, id, _))| format!("{id} ({distance})"))
                     .collect::<Vec<String>>()
                     .join(", ")
             );
@@ -323,12 +326,12 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
         }
     }
 
-    /// Add documents and their corresponding embeddings to the store.
-    /// Document ids are generated using the provided function.
+    /// Adds documents, calling `f` once per document in input order.
+    /// The callback may capture and mutate state. Duplicate IDs replace existing documents.
     pub fn add_documents_with_id_f(
         &mut self,
         documents: impl IntoIterator<Item = (D, Vec<Embedding>)>,
-        f: fn(&D) -> String,
+        mut f: impl FnMut(&D) -> String,
     ) {
         for (doc, embeddings) in documents {
             self.insert_document(f(&doc), doc, embeddings);
@@ -336,25 +339,32 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
     }
 }
 
-/// RankingItem(distance, document_id, serializable document, embeddings document)
-#[derive(Eq, PartialEq)]
-struct RankingItem<'a, D: Serialize>(OrderedFloat<f64>, &'a String, &'a D, &'a String);
+/// A score and document ID define the ranking key; the payload does not.
+struct RankingItem<'a, D: Serialize>(OrderedFloat<f64>, &'a String, &'a D);
+
+impl<D: Serialize> PartialEq for RankingItem<'_, D> {
+    fn eq(&self, other: &Self) -> bool {
+        self.0 == other.0 && self.1 == other.1
+    }
+}
+
+impl<D: Serialize> Eq for RankingItem<'_, D> {}
 
 /// Orders results by descending score and ascending document ID for ties.
 /// Explicit ordering keeps retrieval independent of hash-map iteration order.
-fn ranked<D: Serialize + Eq>(docs: EmbeddingRanking<'_, D>) -> Vec<RankingItem<'_, D>> {
+fn ranked<D: Serialize>(docs: EmbeddingRanking<'_, D>) -> Vec<RankingItem<'_, D>> {
     let mut items: Vec<RankingItem<'_, D>> = docs.into_iter().map(|Reverse(item)| item).collect();
     items.sort_by(|left, right| right.0.cmp(&left.0).then_with(|| left.1.cmp(right.1)));
     items
 }
 
-impl<D: Serialize + Eq> Ord for RankingItem<'_, D> {
+impl<D: Serialize> Ord for RankingItem<'_, D> {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         self.0.cmp(&other.0).then_with(|| other.1.cmp(self.1))
     }
 }
 
-impl<D: Serialize + Eq> PartialOrd for RankingItem<'_, D> {
+impl<D: Serialize> PartialOrd for RankingItem<'_, D> {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         Some(self.cmp(other))
     }
@@ -411,7 +421,7 @@ impl<D: Serialize> InMemoryVectorIndex<D> {
 
 impl<D> VectorStoreIndex for InMemoryVectorIndex<D>
 where
-    D: Serialize + WasmCompatSend + WasmCompatSync + Eq,
+    D: Serialize + WasmCompatSend + WasmCompatSync,
 {
     type Filter = Filter<serde_json::Value>;
 
@@ -430,7 +440,7 @@ where
 
         ranked(docs)
             .into_iter()
-            .map(|RankingItem(distance, id, doc, _)| {
+            .map(|RankingItem(distance, id, doc)| {
                 Ok((
                     distance.0,
                     id.clone(),
@@ -458,7 +468,7 @@ where
 
         ranked(docs)
             .into_iter()
-            .map(|RankingItem(distance, id, _, _)| Ok((distance.0, id.clone())))
+            .map(|RankingItem(distance, id, _)| Ok((distance.0, id.clone())))
             .collect::<Result<Vec<_>, _>>()
     }
 }

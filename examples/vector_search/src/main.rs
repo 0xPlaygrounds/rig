@@ -10,7 +10,7 @@ type SearchMatch = (f64, String, String);
 
 // Shape of data that needs to be RAG'ed.
 // The definition field will be used to generate embeddings.
-#[derive(Embed, Clone, Deserialize, Debug, Serialize, Eq, PartialEq, Default)]
+#[derive(Embed, Deserialize, Debug, Serialize)]
 struct WordDefinition {
     id: String,
     word: String,
@@ -72,8 +72,10 @@ async fn main() -> Result<(), anyhow::Error> {
         .build()
         .await?;
 
-    let vector_store =
-        InMemoryVectorStore::from_documents_with_id_f(embeddings, |doc| doc.id.clone());
+    let namespace = String::from("dictionary");
+    let vector_store = InMemoryVectorStore::from_documents_with_id_f(embeddings, |doc| {
+        format!("{namespace}:{}", doc.id)
+    });
 
     let query =
         "I need to buy something in a fictional universe. What type of money can I use for this?";
