@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::client::BedrockRuntime;
 use crate::types::assistant_content::PROVIDER_NAME;
-use crate::types::errors::AwsSdkInvokeModelError;
+use crate::types::errors::sdk_error;
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -131,7 +131,7 @@ impl Transport<Embeddings> for BedrockRuntime {
                     .send()
                     .await;
                 let reply = sent
-                    .map_err(|sdk_error| ProviderError::from(AwsSdkInvokeModelError(sdk_error)))
+                    .map_err(sdk_error)
                     .and_then(|response| {
                         String::from_utf8(response.body.into_inner())
                             .map_err(|error| ProviderError::Response(error.to_string()))
