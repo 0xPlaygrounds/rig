@@ -38,6 +38,27 @@ fn retrieval_wrapping_preserves_embedding_error_classification() {
     }
 }
 
+#[test]
+fn vector_distance_errors_are_non_retryable_request_errors() {
+    use crate::embeddings::distance::VectorDistanceError;
+    use std::error::Error;
+
+    let mismatch = VectorDistanceError::DimensionMismatch { left: 3, right: 2 };
+    let error = VectorStoreError::from(mismatch);
+    let source = error
+        .source()
+        .and_then(|source| source.downcast_ref::<VectorDistanceError>());
+    assert_eq!(source, Some(&mismatch));
+    assert_eq!(
+        mismatch.to_string(),
+        "vector dimensions differ: left has 3, right has 2"
+    );
+    let report = ErrorReport::from(&error);
+    assert_eq!(report.kind, ErrorKind::Request);
+    assert!(!report.retryable);
+    assert_eq!(report.source_chain, vec![mismatch.to_string()]);
+}
+
 /// These are normalization contracts over captured parts, not provider wire behavior.
 #[test]
 fn vector_http_reports_preserve_response_details() {

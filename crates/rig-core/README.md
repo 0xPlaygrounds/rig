@@ -139,8 +139,8 @@ Are you also using Rig in production? [Open an issue](https://www.github.com/0xP
 `Result<f64, VectorDistanceError>`. Propagate errors with `?` or match
 `VectorDistanceError::DimensionMismatch { left, right }` to inspect both lengths.
 Equal dimensions are required even when cosine or angular distance is called
-with `normalized: true`. Equal-length arithmetic is unchanged, including
-non-finite results for zero-magnitude cosine inputs.
+with `normalized: true`. Equal-length inputs follow IEEE floating-point
+arithmetic, so zero-magnitude cosine inputs produce non-finite results.
 
 ```rust
 use rig_core::embeddings::{Embedding, distance::{VectorDistance, VectorDistanceError}};
@@ -150,9 +150,8 @@ fn similarity(a: &Embedding, b: &Embedding) -> Result<f64, VectorDistanceError> 
 }
 ```
 
-In-memory search propagates dimension errors from scored candidates as
-`VectorStoreError::DistanceError`, rather than returning partial rankings.
-Metadata-filtered documents and documents outside the LSH candidate set are not
+In-memory search fails with `VectorStoreError::DistanceError` when a scored
+candidate's embedding dimension differs from the query's. Metadata-filtered documents and documents outside the LSH candidate set are not
 scored or validated. Insertion and LSH hashing do not validate dimensions.
 Supply embeddings from the same model and dimension throughout a store.
 

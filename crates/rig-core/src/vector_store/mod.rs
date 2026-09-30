@@ -36,6 +36,8 @@ pub enum VectorStoreError {
     EmbeddingError(#[from] ProviderError),
 
     /// A scored embedding has a different dimension from the query.
+    /// The in-memory store reports the stored embedding as `left` and the query
+    /// as `right`.
     #[error("Vector distance error: {0}")]
     DistanceError(#[from] crate::embeddings::distance::VectorDistanceError),
 
