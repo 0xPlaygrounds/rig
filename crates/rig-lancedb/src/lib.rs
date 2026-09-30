@@ -30,7 +30,7 @@ use rig_core::{
 };
 use serde::de::DeserializeOwned;
 use serde_json::Value;
-use utils::{FilterTableColumns, QueryToJson};
+use utils::{execute_query, filter_embeddings};
 
 mod utils;
 
@@ -384,6 +384,11 @@ impl VectorStoreIndex for LanceDbVectorIndex {
         req: VectorSearchRequest<LanceDBFilter>,
     ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
         let prompt_embedding = self.model.embed_text(req.query()).await?;
+        let schema = self
+            .table
+            .schema()
+            .await
+            .map_err(VectorStoreError::datastore)?;
 
         let mut query = self
             .table
@@ -391,20 +396,13 @@ impl VectorStoreIndex for LanceDbVectorIndex {
             .map_err(VectorStoreError::datastore)?
             .limit(req.samples() as usize)
             .distance_range(None, req.threshold().map(|x| x as f32))
-            .select(lancedb::query::Select::Columns(
-                self.table
-                    .schema()
-                    .await
-                    .map_err(VectorStoreError::datastore)?
-                    .filter_embeddings(),
-            ));
+            .select(lancedb::query::Select::Columns(filter_embeddings(&schema)));
 
         if let Some(filter) = req.filter() {
             query = query.only_if(filter.clone().into_inner()?);
         }
 
-        self.build_query(query)
-            .execute_query()
+        execute_query(&self.build_query(query))
             .await?
             .into_iter()
             .enumerate()
@@ -445,8 +443,7 @@ impl VectorStoreIndex for LanceDbVectorIndex {
             query = query.only_if(filter.clone().into_inner()?);
         }
 
-        self.build_query(query)
-            .execute_query()
+        execute_query(&self.build_query(query))
             .await?
             .into_iter()
             .map(|value| {
