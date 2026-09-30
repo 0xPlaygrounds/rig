@@ -2,6 +2,7 @@
 
 use super::super::tests::{recorded, recorded_json};
 use super::*;
+use crate::embeddings::EmbeddingWidth;
 use crate::error::{ErrorKind, ProviderError};
 use crate::providers::doubleword::QWEN3_EMBEDDING_8B;
 use crate::providers::mistral::embedding::{CODESTRAL_EMBED, MISTRAL_EMBED};
@@ -29,7 +30,7 @@ async fn a_recorded_embedding_reply_zips_onto_the_requests_inputs() {
         "then",
         "embedding_matrix/normalized_response_is_complete.yaml",
     );
-    let wire = OpenAIConfig::new("sk-test").embedding("text-embedding-3-small", None);
+    let wire = OpenAIConfig::new("sk-test").embedding("text-embedding-3-small");
     let bound = crate::driver::Model::new(wire, RecordingHttpClient::new(reply));
 
     let response = bound
@@ -71,7 +72,7 @@ async fn a_recorded_embedding_reply_zips_onto_the_requests_inputs() {
 async fn a_short_embedding_reply_fails_the_call() {
     let reply = r#"{"object":"list","model":"m","data":[{"object":"embedding","index":0,"embedding":[0.5]}],"usage":{"prompt_tokens":1,"total_tokens":1}}"#;
     let bound = crate::driver::Model::new(
-        OpenAIConfig::new("sk-test").embedding("text-embedding-3-small", None),
+        OpenAIConfig::new("sk-test").embedding("text-embedding-3-small"),
         RecordingHttpClient::new(reply),
     );
     let error = bound
@@ -86,12 +87,16 @@ async fn a_short_embedding_reply_fails_the_call() {
 
 /// An unstated width still goes on the wire, resolved from the model's
 /// documented dimensionality — which is what every recorded embedding
-/// cassette carries, and what `bound.embedding(model, None)` regressed on.
+/// cassette carries, and what `bound.embedding(model)` regressed on.
 #[test]
 fn an_unstated_width_resolves_from_the_model_table() {
     let width = |model: &str, ndims: Option<usize>| -> Option<serde_json::Value> {
-        let encoded = OpenAIConfig::new("sk-test")
-            .embedding(model, ndims)
+        let wire = OpenAIConfig::new("sk-test").embedding(model);
+        let wire = match ndims {
+            Some(ndims) => wire.with_ndims(ndims),
+            None => wire,
+        };
+        let encoded = wire
             .encode(documents(), Mode::Unary)
             .expect("the request encodes");
         let request = &encoded.request;
@@ -134,7 +139,8 @@ fn an_unstated_width_resolves_from_the_model_table() {
 #[test]
 fn a_requested_width_matches_the_recorded_request() {
     let encoded = OpenAIConfig::new("sk-test")
-        .embedding("text-embedding-3-small", Some(512))
+        .embedding("text-embedding-3-small")
+        .with_ndims(512)
         .encode(documents(), Mode::Unary)
         .expect("the request encodes");
     let request = &encoded.request;
@@ -155,7 +161,8 @@ fn a_requested_width_matches_the_recorded_request() {
 fn the_dialect_decides_the_width_field() {
     fn width_field(dialect: &Dialect, model: &str) -> Option<String> {
         let encoded = OpenAIConfig::with_key(dialect, "k")
-            .embedding(model, Some(256))
+            .embedding(model)
+            .with_ndims(256)
             .encode(documents(), Mode::Unary)
             .expect("the request encodes");
         let request = &encoded.request;
@@ -193,7 +200,7 @@ fn azure_sends_no_model_field() {
     let encoded = OpenAIConfig::with_key(&AZURE, "k")
         .with_base_url("https://example.openai.azure.com")
         .with_api_version("2024-10-21")
-        .embedding("my-deployment", None)
+        .embedding("my-deployment")
         .encode(documents(), Mode::Unary)
         .expect("the request encodes");
     let request = &encoded.request;
@@ -214,7 +221,7 @@ fn azure_sends_no_model_field() {
 async fn a_usage_less_reply_fails_a_dialect_that_requires_usage() {
     let reply = r#"{"object":"list","model":"m","data":[{"object":"embedding","index":0,"embedding":[0.5]}]}"#;
     let error = crate::driver::Model::new(
-        OpenAIConfig::new("sk-test").embedding("text-embedding-3-small", None),
+        OpenAIConfig::new("sk-test").embedding("text-embedding-3-small"),
         RecordingHttpClient::new(reply),
     )
     .call(vec!["one".to_owned()])
@@ -231,7 +238,7 @@ async fn a_usage_less_reply_fails_a_dialect_that_requires_usage() {
     // Together does not guarantee it, so the same reply succeeds there.
     let response = crate::driver::Model::new(
         OpenAIConfig::with_key(&TOGETHER, "k")
-            .embedding("togethercomputer/m2-bert-80M-8k-retrieval", None),
+            .embedding("togethercomputer/m2-bert-80M-8k-retrieval"),
         RecordingHttpClient::new(reply),
     )
     .call(vec!["one".to_owned()])
@@ -444,7 +451,7 @@ fn azure_speech_carries_its_own_api_version() {
     let embeddings = OpenAIConfig::with_key(&AZURE, "k")
         .with_base_url("https://example.openai.azure.com")
         .with_api_version("2024-10-21")
-        .embedding("my-embed", None)
+        .embedding("my-embed")
         .encode(vec!["a".to_owned()], Mode::Unary)
         .expect("encodes");
     let request = &embeddings.request;
@@ -753,7 +760,7 @@ fn azure_always_carries_an_api_version() {
 /// dialect has to carry its own.
 #[test]
 fn a_dialects_width_table_supplies_the_default_and_suppresses_the_field() {
-    let unasked = OpenAIConfig::with_key(&DOUBLEWORD, "k").embedding(QWEN3_EMBEDDING_8B, None);
+    let unasked = OpenAIConfig::with_key(&DOUBLEWORD, "k").embedding(QWEN3_EMBEDDING_8B);
     assert_eq!(
         unasked.describe().capabilities.ndims,
         4_096,
@@ -764,7 +771,9 @@ fn a_dialects_width_table_supplies_the_default_and_suppresses_the_field() {
     // unasked, so the vector is identical either way.
     for wire in [
         &unasked,
-        &OpenAIConfig::with_key(&DOUBLEWORD, "k").embedding(QWEN3_EMBEDDING_8B, Some(4_096)),
+        &OpenAIConfig::with_key(&DOUBLEWORD, "k")
+            .embedding(QWEN3_EMBEDDING_8B)
+            .with_ndims(4_096),
     ] {
         let encoded = wire
             .encode(documents(), Mode::Unary)
@@ -778,14 +787,15 @@ fn a_dialects_width_table_supplies_the_default_and_suppresses_the_field() {
 
     // A truncating width is a real request and goes out.
     let encoded = OpenAIConfig::with_key(&DOUBLEWORD, "k")
-        .embedding(QWEN3_EMBEDDING_8B, Some(512))
+        .embedding(QWEN3_EMBEDDING_8B)
+        .with_ndims(512)
         .encode(documents(), Mode::Unary)
         .expect("a width inside the documented range encodes");
     assert_eq!(json_body(&encoded)["dimensions"], serde_json::json!(512));
 
     // Mistral's fixed-width model is the same mechanism with a different
     // table: 1024 reported, and no `output_dimension` on the wire.
-    let mistral = OpenAIConfig::with_key(&MISTRAL, "k").embedding(MISTRAL_EMBED, None);
+    let mistral = OpenAIConfig::with_key(&MISTRAL, "k").embedding(MISTRAL_EMBED);
     assert_eq!(mistral.describe().capabilities.ndims, 1_024);
     let encoded = mistral
         .encode(documents(), Mode::Unary)
@@ -806,7 +816,8 @@ fn a_dialects_width_table_supplies_the_default_and_suppresses_the_field() {
 fn an_unhonourable_width_is_refused_before_the_request_is_built() {
     fn refusal(dialect: &Dialect, model: &str, ndims: usize) -> String {
         let error: ProviderError = OpenAIConfig::with_key(dialect, "k")
-            .embedding(model, Some(ndims))
+            .embedding(model)
+            .with_ndims(ndims)
             .encode(documents(), Mode::Unary)
             .expect_err("a width the dialect cannot honour must not reach the wire")
             .into();
@@ -843,8 +854,9 @@ fn an_unhonourable_width_is_refused_before_the_request_is_built() {
     // rig polices only the range it has a table for. For a model the dialect
     // does not document, the caller's width is the only width there is: it
     // goes out unvalidated and the provider decides.
-    let unknown =
-        OpenAIConfig::with_key(&DOUBLEWORD, "k").embedding("Qwen/Qwen4-Unreleased", Some(8_192));
+    let unknown = OpenAIConfig::with_key(&DOUBLEWORD, "k")
+        .embedding("Qwen/Qwen4-Unreleased")
+        .with_ndims(8_192);
     assert_eq!(unknown.describe().capabilities.ndims, 8_192);
     let encoded = unknown
         .encode(documents(), Mode::Unary)
@@ -860,7 +872,7 @@ fn an_unhonourable_width_is_refused_before_the_request_is_built() {
 /// a number the caller never asked for.
 #[test]
 fn a_table_supplied_width_is_not_a_declaration() {
-    let unasked = OpenAIConfig::with_key(&DOUBLEWORD, "k").embedding(QWEN3_EMBEDDING_8B, None);
+    let unasked = OpenAIConfig::with_key(&DOUBLEWORD, "k").embedding(QWEN3_EMBEDDING_8B);
     let capabilities = unasked.describe().capabilities;
     assert_eq!(capabilities.ndims, 4_096, "the table resolves the width");
     assert_eq!(
@@ -869,6 +881,8 @@ fn a_table_supplied_width_is_not_a_declaration() {
     );
 
     // Declaring the same number is a different fact, and is recorded as one.
-    let asked = OpenAIConfig::with_key(&DOUBLEWORD, "k").embedding(QWEN3_EMBEDDING_8B, Some(4_096));
+    let asked = OpenAIConfig::with_key(&DOUBLEWORD, "k")
+        .embedding(QWEN3_EMBEDDING_8B)
+        .with_ndims(4_096);
     assert_eq!(asked.describe().capabilities.declared, Some(4_096));
 }

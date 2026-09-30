@@ -107,7 +107,8 @@ async fn bare_openai_client_always_sends_an_authorization_header() {
         let bare = OpenAIConfig::new("llamacpp-local");
         let _ = bare
             .connect(recorder.clone())
-            .embedding("m", Some(1))
+            .embedding("m")
+            .with_ndims(1)
             .call(vec!["probe".to_string()])
             .await
             .map(|response| response.embeddings);
@@ -127,7 +128,8 @@ async fn bare_openai_client_always_sends_an_authorization_header() {
         let provider = OpenAIConfig::with_key(&LLAMACPP, "");
         let _ = provider
             .connect(recorder.clone())
-            .embedding("m", Some(1))
+            .embedding("m")
+            .with_ndims(1)
             .call(vec!["probe".to_string()])
             .await
             .map(|response| response.embeddings);

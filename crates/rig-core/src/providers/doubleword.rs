@@ -10,7 +10,7 @@
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
 //! let doubleword = doubleword::from_env()?;
 //! let chat = doubleword.chat(doubleword::QWEN3_5_9B);
-//! let embedding = doubleword.embedding(doubleword::QWEN3_EMBEDDING_8B, None);
+//! let embedding = doubleword.embedding(doubleword::QWEN3_EMBEDDING_8B);
 //! # let _ = (chat, embedding);
 //! # Ok(())
 //! # }

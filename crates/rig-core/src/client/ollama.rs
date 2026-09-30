@@ -41,10 +41,11 @@ impl Ollama {
         self.model(self.config.completion(model))
     }
 
-    /// The embedding model for `model`. `ndims` is the width it reports,
-    /// defaulting to the model's known width.
-    pub fn embedding(&self, model: impl Into<String>, ndims: Option<usize>) -> Model<Embeddings> {
-        self.model(self.config.embedding(model, ndims))
+    /// The embedding model for `model`, at its native width. Declare the
+    /// width of a model this build does not know with
+    /// [`with_ndims`](Embeddings::with_ndims).
+    pub fn embedding(&self, model: impl Into<String>) -> Model<Embeddings> {
+        self.model(self.config.embedding(model))
     }
 
     /// The models the daemon serves.

@@ -15,7 +15,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Select an embedding model.
     let model = openai_client
-        .embedding(openai::TEXT_EMBEDDING_ADA_002, None)
+        .embedding(openai::TEXT_EMBEDDING_ADA_002)
         .erase();
 
     // Initialize LanceDB locally.

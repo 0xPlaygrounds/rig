@@ -130,7 +130,7 @@ fn provider_encode_failures_classify_as_request_building() {
             "openai embeddings",
             failure(
                 openai
-                    .embedding("text-embedding-3-small", None)
+                    .embedding("text-embedding-3-small")
                     .encode(vec!["a".into()], Mode::Unary),
             ),
             "RequestError: invalid uri character",
@@ -139,7 +139,7 @@ fn provider_encode_failures_classify_as_request_building() {
             "openai embeddings, base64",
             failure(
                 OpenAIConfig::with_key(&OPENAI, "k")
-                    .embedding("text-embedding-3-small", None)
+                    .embedding("text-embedding-3-small")
                     .with_encoding_format(EncodingFormat::Base64)
                     .encode(vec!["a".into()], Mode::Unary),
             ),
@@ -149,7 +149,7 @@ fn provider_encode_failures_classify_as_request_building() {
             "openai-compatible embeddings, unsupported encoding format",
             failure(
                 OpenAIConfig::with_key(&TOGETHER, "k")
-                    .embedding("m", None)
+                    .embedding("m")
                     .with_encoding_format(EncodingFormat::Float)
                     .encode(vec!["a".into()], Mode::Unary),
             ),
@@ -159,7 +159,7 @@ fn provider_encode_failures_classify_as_request_building() {
             "openai-compatible embeddings, unsupported user",
             failure(
                 OpenAIConfig::with_key(&MISTRAL, "k")
-                    .embedding("mistral-embed", None)
+                    .embedding("mistral-embed")
                     .with_user("u")
                     .encode(vec!["a".into()], Mode::Unary),
             ),
@@ -241,7 +241,7 @@ fn provider_encode_failures_classify_as_request_building() {
             failure(
                 CohereConfig::new("k")
                     .with_base_url(BAD)
-                    .embedding("embed-english-v3.0", None)
+                    .embedding("embed-english-v3.0")
                     .encode(vec!["a".into()], Mode::Unary),
             ),
             "RequestError: invalid uri character",
@@ -251,7 +251,7 @@ fn provider_encode_failures_classify_as_request_building() {
             failure(
                 VoyageAiConfig::new("k")
                     .with_base_url(BAD)
-                    .embedding("voyage-3", None)
+                    .embedding("voyage-3")
                     .encode(vec!["a".into()], Mode::Unary),
             ),
             "RequestError: invalid uri character",

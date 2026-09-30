@@ -1,4 +1,5 @@
 use super::*;
+use crate::embeddings::EmbeddingWidth;
 use crate::message::AssistantContent;
 use crate::test_utils::{MockStreamingClient, RecordingHttpClient};
 use crate::wire::secret::tests::a_config_reloads_without_its_credential;
@@ -276,7 +277,7 @@ const EMBED_BODY: &str = r#"{"model":"all-minilm","embeddings":[[0.5,-0.25],[0.1
 #[tokio::test]
 async fn an_embedding_reply_pairs_its_vectors_with_the_texts_that_were_sent() {
     let response = crate::driver::Model::new(
-        OllamaConfig::new().embedding("all-minilm", None),
+        OllamaConfig::new().embedding("all-minilm"),
         RecordingHttpClient::new(EMBED_BODY),
     )
     .call(vec!["first".to_owned(), "second".to_owned()])
@@ -305,19 +306,54 @@ async fn an_embedding_reply_pairs_its_vectors_with_the_texts_that_were_sent() {
 fn an_embedding_wire_reports_the_models_published_width() {
     assert_eq!(
         OllamaConfig::new()
-            .embedding("all-minilm", None)
+            .embedding("all-minilm")
             .describe()
             .capabilities,
         Capabilities::embedding(1024, 384)
     );
     assert_eq!(
         OllamaConfig::new()
-            .embedding("qwen3-embedding", Some(2048))
+            .embedding("qwen3-embedding")
+            .with_ndims(2048)
             .describe()
             .capabilities,
-        Capabilities::embedding(1024, 2048),
+        Capabilities::embedding(1024, 2048).declaring(Some(2048)),
         "a family whose width varies by size takes the caller's"
     );
+}
+
+/// The daemon takes no width, so a declared width is only checked: a reply of
+/// another width is an error rather than vectors the capabilities misdescribe.
+#[tokio::test]
+async fn a_declared_width_the_reply_contradicts_is_an_error() {
+    let model = |ndims| {
+        crate::driver::Model::new(
+            OllamaConfig::new().embedding("all-minilm"),
+            RecordingHttpClient::new(EMBED_BODY),
+        )
+        .with_ndims(ndims)
+    };
+    let texts = || vec!["first".to_owned(), "second".to_owned()];
+
+    let error = model(384)
+        .call(texts())
+        .await
+        .expect_err("two-wide vectors contradict a declared 384");
+    assert!(
+        matches!(
+            error,
+            ProviderError::MismatchedDimensions {
+                requested: 384,
+                returned: 2,
+                ..
+            }
+        ),
+        "{error:?}"
+    );
+    model(2)
+        .call(texts())
+        .await
+        .expect("a declared width the reply honours decodes");
 }
 
 /// `raw` is the whole reply body, so a field the reply type does not model
@@ -326,7 +362,7 @@ fn an_embedding_wire_reports_the_models_published_width() {
 async fn an_embedding_reply_keeps_its_whole_body_as_raw() {
     let body = r#"{"model":"all-minilm","embeddings":[[0.5,-0.25],[0.125,0.0]],"prompt_eval_count":6,"unmodeled":"kept"}"#;
     let response = crate::driver::Model::new(
-        OllamaConfig::new().embedding("all-minilm", None),
+        OllamaConfig::new().embedding("all-minilm"),
         RecordingHttpClient::new(body),
     )
     .call(vec!["first".to_owned(), "second".to_owned()])

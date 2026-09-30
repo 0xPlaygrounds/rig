@@ -140,9 +140,7 @@ async fn embeddings_error_preserves_status_and_body() {
     with_openai_cassette(
         "error_identity_edge/embeddings_error_preserves_status_and_body",
         |client| async move {
-            let model = client
-                .openai
-                .embedding("text-embedding-nonexistent-model", None);
+            let model = client.openai.embedding("text-embedding-nonexistent-model");
             let error = model
                 .embed_text("never embedded")
                 .await

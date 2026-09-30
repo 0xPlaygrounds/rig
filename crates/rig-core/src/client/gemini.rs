@@ -48,10 +48,10 @@ impl Gemini {
         self.model(self.config.interactions(model))
     }
 
-    /// The `batchEmbedContents` embedding model for `model`. `ndims`
-    /// defaults from the model identifier.
-    pub fn embedding(&self, model: impl Into<String>, ndims: Option<usize>) -> Model<Embeddings> {
-        self.model(self.config.embedding(model, ndims))
+    /// The `batchEmbedContents` embedding model for `model`, at its native
+    /// width. Declare another width with [`with_ndims`](Embeddings::with_ndims).
+    pub fn embedding(&self, model: impl Into<String>) -> Model<Embeddings> {
+        self.model(self.config.embedding(model))
     }
 
     /// The audio transcription model for `model`.

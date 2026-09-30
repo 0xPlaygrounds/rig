@@ -74,12 +74,8 @@ impl OpenAiModels {
     }
 
     /// The embedding model for `model`.
-    pub fn embedding(
-        &self,
-        model: impl Into<String>,
-        ndims: Option<usize>,
-    ) -> Model<openai::wire::Embeddings> {
-        self.client().embedding(model, ndims)
+    pub fn embedding(&self, model: impl Into<String>) -> Model<openai::wire::Embeddings> {
+        self.client().embedding(model)
     }
 
     /// The rerank model for `model`.
@@ -240,12 +236,8 @@ impl GeminiModels {
     }
 
     /// The embedding model for `model`.
-    pub fn embedding(
-        &self,
-        model: impl Into<String>,
-        ndims: Option<usize>,
-    ) -> Model<gemini::embedding::Embeddings> {
-        self.client().embedding(model, ndims)
+    pub fn embedding(&self, model: impl Into<String>) -> Model<gemini::embedding::Embeddings> {
+        self.client().embedding(model)
     }
 
     /// The transcription model for `model`.
@@ -318,12 +310,8 @@ impl CohereModels {
     }
 
     /// The text-embedding model for `model`.
-    pub fn embedding(
-        &self,
-        model: impl Into<String>,
-        ndims: Option<usize>,
-    ) -> Model<cohere::Embeddings> {
-        self.client().embedding(model, ndims)
+    pub fn embedding(&self, model: impl Into<String>) -> Model<cohere::Embeddings> {
+        self.client().embedding(model)
     }
 
     /// The image-embedding model.
@@ -370,12 +358,8 @@ impl OllamaModels {
     }
 
     /// The embedding model for `model`.
-    pub fn embedding(
-        &self,
-        model: impl Into<String>,
-        ndims: Option<usize>,
-    ) -> Model<ollama::Embeddings> {
-        self.client().embedding(model, ndims)
+    pub fn embedding(&self, model: impl Into<String>) -> Model<ollama::Embeddings> {
+        self.client().embedding(model)
     }
 
     /// The daemon's model listing.
@@ -422,12 +406,8 @@ impl CopilotModels {
     }
 
     /// The embedding model for `model`.
-    pub fn embedding(
-        &self,
-        model: impl Into<String>,
-        ndims: Option<usize>,
-    ) -> Model<copilot::wire::Embeddings> {
-        self.client().embedding(model, ndims)
+    pub fn embedding(&self, model: impl Into<String>) -> Model<copilot::wire::Embeddings> {
+        self.client().embedding(model)
     }
 
     /// The session's model listing.

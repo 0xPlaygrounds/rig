@@ -7,7 +7,7 @@
 //! let provider = cohere::Cohere::from_env()?;
 //!
 //! let command_a = provider.completion(cohere::COMMAND_A_03_2025);
-//! let embeddings = provider.embedding(cohere::EMBED_V4, None);
+//! let embeddings = provider.embedding(cohere::EMBED_V4);
 //! # Ok(())
 //! # }
 //! ```

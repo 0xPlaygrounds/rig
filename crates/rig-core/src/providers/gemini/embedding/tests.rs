@@ -1,4 +1,5 @@
 use super::*;
+use crate::embeddings::EmbeddingWidth;
 use crate::providers::gemini::{GeminiConfig, PROVIDER_NAME};
 
 #[test]
@@ -15,24 +16,61 @@ fn test_model_default_ndims_lookup() {
     assert_eq!(model_default_ndims("unknown-model"), None);
 }
 
-/// `ndims` is what every document in the batch asks for, so the wire has to
-/// resolve it from the model identifier when the caller named none — the
-/// batch body carries `output_dimensionality` unconditionally.
-#[test]
-fn ndims_defaults_from_the_model_identifier() {
-    let gemini = GeminiConfig::new("test_key");
-
-    assert_eq!(gemini.embedding(EMBEDDING_001, None).ndims, 3072);
-    assert_eq!(gemini.embedding(EMBEDDING_004, None).ndims, 768);
-    // A model this build has never heard of still gets a dimensionality.
-    assert_eq!(gemini.embedding("some-future-model", None).ndims, 768);
+/// The first document's `output_dimensionality`, when the batch sends one.
+fn sent_width(wire: &Embeddings) -> Option<serde_json::Value> {
+    let encoded = wire
+        .encode(vec!["text".to_owned()], Mode::Unary)
+        .expect("the batch encodes");
+    let Body::Bytes(bytes) = encoded.request.body() else {
+        unreachable!("the embedding wire sends JSON")
+    };
+    let body: serde_json::Value =
+        serde_json::from_slice(bytes).expect("the encoded body is one JSON document");
+    body["requests"][0].get("output_dimensionality").cloned()
 }
 
 #[test]
-fn an_explicit_ndims_outranks_the_models_default() {
+fn an_undeclared_width_comes_from_the_model_identifier_and_is_not_checked() {
     let gemini = GeminiConfig::new("test_key");
 
-    assert_eq!(gemini.embedding(EMBEDDING_001, Some(256)).ndims, 256);
+    assert_eq!(
+        gemini.embedding(EMBEDDING_001).describe().capabilities,
+        Capabilities::embedding(1024, 3072)
+    );
+    assert_eq!(
+        gemini.embedding(EMBEDDING_004).describe().capabilities,
+        Capabilities::embedding(1024, 768)
+    );
+    assert_eq!(
+        sent_width(&gemini.embedding(EMBEDDING_001)),
+        Some(serde_json::json!(3072))
+    );
+}
+
+/// A model this build does not know gets the server's default width rather
+/// than a guessed one, and reports its width as unknown.
+#[test]
+fn an_unknown_model_without_a_declared_width_sends_none() {
+    let wire = GeminiConfig::new("test_key").embedding("some-future-model");
+
+    assert_eq!(
+        wire.describe().capabilities,
+        Capabilities::embedding(1024, 0)
+    );
+    assert_eq!(sent_width(&wire), None);
+}
+
+#[test]
+fn a_declared_width_is_sent_reported_and_checked() {
+    let wire = GeminiConfig::new("test_key")
+        .embedding(EMBEDDING_001)
+        .with_ndims(256);
+
+    assert_eq!(
+        wire.describe().capabilities,
+        Capabilities::embedding(1024, 256).declaring(Some(256))
+    );
+    assert_eq!(sent_width(&wire), Some(serde_json::json!(256)));
 }
 
 /// `crates/rig-cassette/fixtures/cassettes/gemini/embeddings/derive_document_embeddings.yaml`'s
@@ -56,7 +94,7 @@ fn recorded_documents() -> Vec<String> {
 #[test]
 fn the_batch_request_is_the_recorded_one() {
     let encoded = GeminiConfig::new("test-key")
-        .embedding(EMBEDDING_001, None)
+        .embedding(EMBEDDING_001)
         .encode(
             vec!["Hello, world!".to_owned(), "Goodbye, world!".to_owned()],
             Mode::Unary,
@@ -87,7 +125,9 @@ fn the_batch_request_is_the_recorded_one() {
 
 #[test]
 fn a_recorded_reply_folds_into_the_batchs_vectors_in_input_order() {
-    let wire = GeminiConfig::new("test-key").embedding(EMBEDDING_001, Some(256));
+    let wire = GeminiConfig::new("test-key")
+        .embedding(EMBEDDING_001)
+        .with_ndims(256);
     let documents = recorded_documents();
     let response = crate::test_utils::decode_reply(
         &wire,

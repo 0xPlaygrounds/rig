@@ -493,7 +493,7 @@ async fn the_embeddings_wire_folds_its_recorded_reply() {
         "Embeddings turn text into numeric vectors for similarity search.".to_owned(),
     ];
     let bound = crate::driver::Model::new(
-        copilot().embedding(super::super::TEXT_EMBEDDING_3_SMALL, None),
+        copilot().embedding(super::super::TEXT_EMBEDDING_3_SMALL),
         RecordingHttpClient::new(Bytes::from(body)),
     );
     assert_eq!(
@@ -518,7 +518,7 @@ async fn the_embeddings_wire_folds_its_recorded_reply() {
 /// `"dimensions":1536` for a caller who named none.
 #[test]
 fn the_embeddings_request_sends_the_resolved_width() {
-    let wire = copilot().embedding(super::super::TEXT_EMBEDDING_3_SMALL, None);
+    let wire = copilot().embedding(super::super::TEXT_EMBEDDING_3_SMALL);
     let encoded = wire
         .encode(vec!["one".to_owned()], Mode::Unary)
         .expect("the request encodes");
@@ -530,7 +530,7 @@ fn the_embeddings_request_sends_the_resolved_width() {
     assert_eq!(body["model"], serde_json::json!("text-embedding-3-small"));
 
     // The legacy Ada model accepts no width at all.
-    let ada = copilot().embedding(super::super::TEXT_EMBEDDING_ADA_002, None);
+    let ada = copilot().embedding(super::super::TEXT_EMBEDDING_ADA_002);
     let encoded = ada
         .encode(vec!["one".to_owned()], Mode::Unary)
         .expect("the request encodes");
@@ -547,7 +547,7 @@ fn the_embeddings_request_sends_the_resolved_width() {
 /// answers a request without the envelope, regardless of the body.
 #[test]
 fn the_embeddings_route_carries_copilots_editor_envelope() {
-    let wire = copilot().embedding(super::super::TEXT_EMBEDDING_3_SMALL, None);
+    let wire = copilot().embedding(super::super::TEXT_EMBEDDING_3_SMALL);
     let encoded = wire
         .encode(vec!["one".to_owned()], Mode::Unary)
         .expect("the request encodes");

@@ -16,7 +16,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Select the embedding model and generate our embeddings
     let model = openai_client
-        .embedding(openai::TEXT_EMBEDDING_ADA_002, None)
+        .embedding(openai::TEXT_EMBEDDING_ADA_002)
         .erase();
 
     // Generate embeddings for the test data.

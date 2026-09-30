@@ -26,7 +26,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create ollama client
     let ollama_client = Ollama::new();
-    let embedding_model = ollama_client.embedding("nomic-embed-text", None).erase();
+    let embedding_model = ollama_client.embedding("nomic-embed-text").erase();
 
     // Generate embeddings for the definitions of all the documents using the specified embedding model.
     let embeddings = EmbeddingsBuilder::new(embedding_model.clone())

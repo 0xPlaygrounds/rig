@@ -5,7 +5,7 @@
 //! use rig_gemini_grpc::{GeminiGrpc, embedding::{EMBEDDING_004, Embeddings}};
 //!
 //! # async fn example() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-//! let model = GeminiGrpc::new("API_KEY").await?.embedding(EMBEDDING_004, None);
+//! let model = GeminiGrpc::new("API_KEY").await?.embedding(EMBEDDING_004);
 //! # let _ = model;
 //! # Ok(())
 //! # }
@@ -23,19 +23,40 @@ use rig_core::wire::{Capabilities, Decoder, Descriptor, Flow, Mode, Out, Wire, W
 use super::GeminiGrpc;
 use super::proto::{self, EmbedContentRequest};
 
-/// The embedding endpoint for one model, at a chosen width.
+/// The width a model returns when no width is requested.
+fn native_ndims(model: &str) -> Option<usize> {
+    match model {
+        EMBEDDING_004 => Some(768),
+        "gemini-embedding-001" => Some(3072),
+        _ => None,
+    }
+}
+
+/// The embedding endpoint for one model.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Embeddings {
+    /// The model, without the `models/` prefix.
     pub model: String,
-    pub ndims: usize,
+    /// The width the caller declared with [`Self::with_ndims`], when they
+    /// named one rather than taking the model's native width.
+    pub ndims: Option<usize>,
 }
 
 impl Embeddings {
-    pub fn new(model: impl Into<String>, dims: Option<usize>) -> Self {
+    /// The embedding endpoint for `model`, at the model's native width.
+    pub fn new(model: impl Into<String>) -> Self {
         Self {
             model: model.into(),
-            ndims: dims.unwrap_or(768), // Default embedding size for text-embedding-004
+            ndims: None,
         }
+    }
+}
+
+/// The width is sent as `output_dimensionality`.
+impl rig_core::embeddings::EmbeddingWidth for Embeddings {
+    fn with_ndims(mut self, ndims: usize) -> Self {
+        self.ndims = Some(ndims);
+        self
     }
 }
 
@@ -48,7 +69,15 @@ impl Wire for Embeddings {
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(super::completion::PROVIDER_NAME)
             .model(self.model.as_str())
-            .capabilities(Capabilities::embedding(100, self.ndims))
+            .capabilities(
+                Capabilities::embedding(
+                    100,
+                    self.ndims
+                        .or_else(|| native_ndims(&self.model))
+                        .unwrap_or_default(),
+                )
+                .declaring(self.ndims),
+            )
     }
 
     fn encode(
@@ -67,7 +96,7 @@ impl Wire for Embeddings {
                     }),
                     task_type: None,
                     title: None,
-                    output_dimensionality: Some(self.ndims as i32),
+                    output_dimensionality: self.ndims.map(|ndims| ndims as i32),
                 };
                 (text, request)
             })

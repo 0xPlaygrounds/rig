@@ -26,6 +26,42 @@ where
     }
 }
 
+/// An embedding wire whose vectors' width the caller can declare.
+///
+/// A client's `embedding(model)` takes the model's native width from the
+/// provider's model table, or reports zero for a model the table does not
+/// know, and checks nothing. Declaring a width means the vectors come back
+/// that wide: a provider whose API takes a width is asked for it, and on
+/// every provider a reply of another width fails with
+/// [`ProviderError::MismatchedDimensions`]. The declared width is what
+/// [`Capabilities::ndims`](crate::wire::Capabilities::ndims) reports.
+///
+/// ```
+/// use rig_core::embeddings::EmbeddingWidth;
+/// use rig_core::providers::ollama::OllamaConfig;
+///
+/// let model = OllamaConfig::new()
+///     .connect(rig_core::test_utils::MockStreamingClient::default())
+///     .embedding("my-finetune")
+///     .with_ndims(512);
+/// assert_eq!(model.capabilities().ndims, 512);
+/// ```
+pub trait EmbeddingWidth: crate::wire::Wire<Op = crate::operation::Embedding> {
+    /// This wire, declaring that its vectors come back `ndims` wide.
+    fn with_ndims(self, ndims: usize) -> Self;
+}
+
+impl<W: EmbeddingWidth, T> crate::driver::Model<W, T> {
+    /// This model, declaring that its vectors come back `ndims` wide. See
+    /// [`EmbeddingWidth`].
+    pub fn with_ndims(self, ndims: usize) -> Self {
+        Self {
+            wire: self.wire.with_ndims(ndims),
+            transport: self.transport,
+        }
+    }
+}
+
 impl crate::driver::DynModel<crate::operation::Embedding> {
     /// Embed one text, returning the last vector or an error if none is returned.
     pub async fn embed_text(&self, text: &str) -> Result<Embedding, ProviderError> {

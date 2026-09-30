@@ -26,7 +26,7 @@ async fn build_tool_index(
     client: &GeminiModels,
     toolset: &ToolSet,
 ) -> rig::vector_store::in_memory_store::InMemoryVectorIndex<rig::embeddings::ToolSchema> {
-    let embedding_model = client.embedding(gemini::embedding::EMBEDDING_001, None);
+    let embedding_model = client.embedding(gemini::embedding::EMBEDDING_001);
     // ToolSet::schemas() returns registration order, so the recorded
     // embedding batch replays deterministically.
     let embeddings = EmbeddingsBuilder::new(embedding_model.clone())

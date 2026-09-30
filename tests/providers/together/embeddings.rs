@@ -8,7 +8,7 @@ use crate::support::{EMBEDDING_INPUTS, assert_embeddings_nonempty_and_consistent
 #[ignore = "requires TOGETHER_API_KEY"]
 async fn embeddings_smoke() {
     let provider = together::from_env().expect("config should build from env");
-    let model = provider.embedding(together::embedding::M2_BERT_80M_8K_RETRIEVAL, None);
+    let model = provider.embedding(together::embedding::M2_BERT_80M_8K_RETRIEVAL);
 
     let embeddings = model
         .call(

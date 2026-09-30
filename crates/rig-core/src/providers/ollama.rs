@@ -7,7 +7,7 @@
 //! let provider = ollama::Ollama::new();
 //!
 //! let qwen = provider.completion("qwen2.5:14b");
-//! let embeddings = provider.embedding(ollama::ALL_MINILM, Some(384));
+//! let embeddings = provider.embedding(ollama::ALL_MINILM).with_ndims(384);
 //! # Ok(())
 //! # }
 //! ```

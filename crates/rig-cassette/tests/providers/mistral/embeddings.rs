@@ -20,7 +20,7 @@ struct Greetings {
 #[ignore = "requires MISTRAL_API_KEY and --features derive"]
 async fn derive_embeddings_and_vector_search() {
     let client = OpenAiModels::from_env_for(&MISTRAL).expect("MISTRAL_API_KEY should be set");
-    let embedding_model = client.embedding(mistral::embedding::MISTRAL_EMBED, None);
+    let embedding_model = client.embedding(mistral::embedding::MISTRAL_EMBED);
     let embeddings = EmbeddingsBuilder::new(embedding_model.clone())
         .document(Greetings {
             message: "Hello, world!".to_string(),

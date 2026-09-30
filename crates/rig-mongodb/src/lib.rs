@@ -90,7 +90,7 @@ struct Field {
 /// let collection = mongodb_client.database("db").collection::<WordDefinition>(""); // <-- replace with your mongodb collection.
 ///
 /// // <-- replace with your embedding model.
-/// let model = openai.embedding(openai::TEXT_EMBEDDING_ADA_002, None);
+/// let model = openai.embedding(openai::TEXT_EMBEDDING_ADA_002);
 /// let index = MongoDbVectorIndex::new(
 ///     collection,
 ///     model,

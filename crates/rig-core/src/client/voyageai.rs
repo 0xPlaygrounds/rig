@@ -29,11 +29,10 @@ impl VoyageAi {
         Ok(VoyageAiConfig::from_env()?.client())
     }
 
-    /// The embedding model for `model`. `ndims` is the width it reports,
-    /// defaulting to the model's known width; see
-    /// [`Embeddings::with_output_dimension`] to request another.
-    pub fn embedding(&self, model: impl Into<String>, ndims: Option<usize>) -> Model<Embeddings> {
-        self.model(self.config.embedding(model, ndims))
+    /// The embedding model for `model`, at its native width. Request
+    /// another width with [`with_ndims`](Embeddings::with_ndims).
+    pub fn embedding(&self, model: impl Into<String>) -> Model<Embeddings> {
+        self.model(self.config.embedding(model))
     }
 
     /// The rerank model for `model`.

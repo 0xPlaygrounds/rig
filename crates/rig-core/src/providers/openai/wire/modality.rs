@@ -3,7 +3,8 @@
 //!
 //! ```
 //! use rig_core::providers::openai::{OpenAI, TEXT_EMBEDDING_3_SMALL};
-//! let wire = OpenAI::new("key").embedding(TEXT_EMBEDDING_3_SMALL, None);
+//! let model = OpenAI::new("key").embedding(TEXT_EMBEDDING_3_SMALL).with_ndims(256);
+//! assert_eq!(model.capabilities().ndims, 256);
 //! ```
 
 use crate::wire::Flow;
@@ -100,8 +101,8 @@ pub struct Embeddings {
     pub provider: OpenAIConfig,
     /// The embedding model.
     pub model: String,
-    /// The width the caller asked for, when they named one rather than
-    /// taking the model's default.
+    /// The width the caller declared with [`Self::with_ndims`], when they
+    /// named one rather than taking the model's default.
     pub ndims: Option<usize>,
     /// The encoding the caller asked the provider to answer in.
     pub encoding_format: Option<EncodingFormat>,
@@ -110,12 +111,12 @@ pub struct Embeddings {
 }
 
 impl Embeddings {
-    /// The embeddings wire for `model`.
-    pub fn new(provider: OpenAIConfig, model: impl Into<String>, ndims: Option<usize>) -> Self {
+    /// The embeddings wire for `model`, at the model's native width.
+    pub fn new(provider: OpenAIConfig, model: impl Into<String>) -> Self {
         Self {
             provider,
             model: model.into(),
-            ndims,
+            ndims: None,
             encoding_format: None,
             user: None,
         }
@@ -278,6 +279,16 @@ impl<'id> Decoder<'id, Embedding> for EmbeddingsDecoder {
             usage,
             ..embeddings::EmbeddingResponse::new(embeddings)
         }))
+    }
+}
+
+/// The width is sent in the dialect's width field when it has one and differs
+/// from a documented model's native width. A width the dialect documents as
+/// unsupported fails the request before it is sent.
+impl crate::embeddings::EmbeddingWidth for Embeddings {
+    fn with_ndims(mut self, ndims: usize) -> Self {
+        self.ndims = Some(ndims);
+        self
     }
 }
 
