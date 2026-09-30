@@ -56,8 +56,51 @@ include = [
     "/img/ryzome-bg.png",
 ]
 
+# docs.rs builds with a current nightly, on which `surrealdb`'s `diskann`
+# dependency does not compile, so every feature but `surrealdb` is documented.
+# `cargo xtask check-packaging` requires the list to cover every other feature.
 [package.metadata.docs.rs]
-all-features = true
+features = [
+    "agent",
+    "audio",
+    "bedrock",
+    "candle",
+    "derive",
+    "epub",
+    "facade-build-tests",
+    "fastembed",
+    "fastembed-hf-hub",
+    "fastembed-ort-download-binaries",
+    "gemini-grpc",
+    "helixdb",
+    "image",
+    "lancedb",
+    "memory",
+    "milvus",
+    "mongodb",
+    "native-tls",
+    "neo4j",
+    "pdf",
+    "postgres",
+    "qdrant",
+    "reqwest",
+    "reqwest-middleware",
+    "reqwest-middleware-native-tls",
+    "reqwest-middleware-rustls",
+    "rmcp",
+    "rustls",
+    "s3vectors",
+    "scylladb",
+    "socks",
+    "sqlite",
+    "test-utils",
+    "typesafeai",
+    "vectorize",
+    "vertexai",
+    "websocket",
+    "websocket-native-tls",
+    "websocket-rustls",
+]
 rustdoc-args = ["--cfg", "docsrs"]
 
 [workspace]
