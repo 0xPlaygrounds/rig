@@ -85,6 +85,17 @@ impl Wire for Embeddings {
         texts: Vec<String>,
         _mode: Mode,
     ) -> Result<Vec<(String, EmbedContentRequest)>, EncodeError> {
+        // The proto field is an `i32`; a wider width is refused, not wrapped.
+        let output_dimensionality = self
+            .ndims
+            .map(|ndims| {
+                i32::try_from(ndims).map_err(|_| {
+                    EncodeError::request(format!(
+                        "embedding width {ndims} does not fit output_dimensionality (i32)"
+                    ))
+                })
+            })
+            .transpose()?;
         Ok(texts
             .into_iter()
             .map(|text| {
@@ -96,7 +107,7 @@ impl Wire for Embeddings {
                     }),
                     task_type: None,
                     title: None,
-                    output_dimensionality: self.ndims.map(|ndims| ndims as i32),
+                    output_dimensionality,
                 };
                 (text, request)
             })

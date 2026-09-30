@@ -322,8 +322,34 @@ fn an_embedding_wire_reports_the_models_published_width() {
     );
 }
 
-/// The daemon takes no width, so a declared width is only checked: a reply of
-/// another width is an error rather than vectors the capabilities misdescribe.
+/// A declared width is sent as `dimensions`; an undeclared one sends nothing,
+/// so the daemon answers at the model's own width.
+#[test]
+fn only_a_declared_width_is_sent_as_dimensions() {
+    let texts = || vec!["first".to_owned()];
+    let undeclared = OllamaConfig::new()
+        .embedding("all-minilm")
+        .encode(texts(), Mode::Unary)
+        .expect("the request encodes");
+    assert_eq!(
+        body_of(&undeclared),
+        serde_json::json!({ "model": "all-minilm", "input": ["first"] })
+    );
+
+    let declared = OllamaConfig::new()
+        .embedding("qwen3-embedding")
+        .with_ndims(256)
+        .encode(texts(), Mode::Unary)
+        .expect("the request encodes");
+    assert_eq!(
+        body_of(&declared),
+        serde_json::json!({ "model": "qwen3-embedding", "input": ["first"], "dimensions": 256 })
+    );
+}
+
+/// A daemon that predates `dimensions` ignores it, and a width above the
+/// model's is not padded, so the reply is still checked: a reply of another
+/// width is an error rather than vectors the capabilities misdescribe.
 #[tokio::test]
 async fn a_declared_width_the_reply_contradicts_is_an_error() {
     let model = |ndims| {

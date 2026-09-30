@@ -188,8 +188,10 @@ pub struct Embeddings {
     pub ndims: Option<usize>,
 }
 
-/// The daemon takes no width, so nothing is sent: declare the width of a
-/// model the table does not know, and the reply is checked against it.
+/// The width is sent as `/api/embed`'s `dimensions`, which the daemon honours
+/// by truncating a wider vector; a daemon that predates the field ignores it.
+/// Either way the reply is checked against the width, so declaring also gives
+/// the width of a model the table does not know.
 impl crate::embeddings::EmbeddingWidth for Embeddings {
     fn with_ndims(mut self, ndims: usize) -> Self {
         self.ndims = Some(ndims);
@@ -218,7 +220,10 @@ impl Wire for Embeddings {
     }
 
     fn encode(&self, texts: Vec<String>, _mode: Mode) -> Result<Encoded, EncodeError> {
-        let body = serde_json::json!({ "model": self.model, "input": texts });
+        let mut body = serde_json::json!({ "model": self.model, "input": texts });
+        if let (Some(ndims), Some(object)) = (self.ndims, body.as_object_mut()) {
+            object.insert("dimensions".to_owned(), serde_json::json!(ndims));
+        }
         let request = self
             .provider
             .request(http::Method::POST, "/api/embed")

@@ -52,10 +52,16 @@ impl fmt::Display for FastembedError {
 impl StdError for FastembedError {}
 
 /// The local embedding wire of `model`, named `fastembed` and addressing the
-/// model by its `fastembed` name. Its width comes from the model metadata,
-/// or is zero for a model `fastembed` has none for; declare that width with
-/// [`EmbeddingWidth`](rig_core::embeddings::EmbeddingWidth).
+/// model by its `fastembed` name, at the width `fastembed`'s metadata gives
+/// it. Every [`FastembedModel`] has that metadata, so the width is always
+/// known. A model loaded with [`Fastembed::from_user_defined`] is not one of
+/// them: declare its width with
+/// [`EmbeddingWidth::with_ndims`](rig_core::embeddings::EmbeddingWidth::with_ndims),
+/// and a reply of another width fails instead of misdescribing the index.
 pub fn text_embeddings(model: &FastembedModel) -> Local<Embedding> {
+    // `fastembed` lists every variant (its own `Display` expects to find
+    // it); zero, the unknown width, only guards a future release that
+    // drops one.
     let ndims = TextEmbedding::get_model_info(model)
         .map(|info| info.dim)
         .unwrap_or_default();

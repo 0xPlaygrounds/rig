@@ -59,3 +59,21 @@ fn only_a_declared_width_is_sent() -> anyhow::Result<()> {
     );
     Ok(())
 }
+
+/// A width the proto's `i32` cannot hold is a request error, not a wrapped
+/// negative width on the wire.
+#[test]
+fn a_width_beyond_i32_is_refused() {
+    use super::Embeddings;
+    use rig_core::embeddings::EmbeddingWidth;
+    use rig_core::wire::{Mode, Wire};
+
+    let too_wide = i32::MAX as usize + 1;
+    let result = Embeddings::new("gemini-embedding-001")
+        .with_ndims(too_wide)
+        .encode(vec!["text".to_owned()], Mode::Unary);
+    assert!(
+        result.is_err(),
+        "a width of {too_wide} must not reach the wire"
+    );
+}
