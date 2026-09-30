@@ -314,6 +314,11 @@ pub struct ResponsesDecoder<'id> {
     /// text when a gateway changes item IDs between deltas and restatements.
     delta_text_slots: std::collections::HashSet<u64>,
     unattributed_text_delta: bool,
+    /// The message items, by id and output slot, whose content-part extras
+    /// are on their text part. Every snapshot restates them, so only the
+    /// first attaches.
+    extras_items: std::collections::HashSet<String>,
+    extras_slots: std::collections::HashSet<u64>,
     /// The reasoning part of each output slot, fixed by its first fragment.
     reasoning: std::collections::HashMap<u64, ReasoningPart<'id>>,
 }
@@ -333,6 +338,8 @@ impl<'id> ResponsesDecoder<'id> {
             delta_text_items: std::collections::HashSet::new(),
             delta_text_slots: std::collections::HashSet::new(),
             unattributed_text_delta: false,
+            extras_items: std::collections::HashSet::new(),
+            extras_slots: std::collections::HashSet::new(),
             reasoning: std::collections::HashMap::new(),
         }
     }
@@ -451,6 +458,7 @@ impl<'id> ResponsesDecoder<'id> {
         if !message.content.is_empty() {
             self.note_text_delta(output_index, Some(&message.id));
         }
+        self.note_extras(output_index, &message.id);
         for content in message.content.iter().cloned() {
             let mut text = super::text_block(content);
             super::stamp_phase(&mut text, message.phase.as_deref());
@@ -462,7 +470,49 @@ impl<'id> ResponsesDecoder<'id> {
         }
     }
 
-    /// Publish nonempty terminal message content only when no delta delivered it.
+    /// Record that the message item at `output_index` has its extras on its
+    /// text part.
+    fn note_extras(&mut self, output_index: u64, item_id: &str) {
+        self.extras_slots.insert(output_index);
+        if !item_id.is_empty() {
+            self.extras_items.insert(item_id.to_owned());
+        }
+    }
+
+    /// Attach a message item's content-part extras, such as its citation
+    /// annotations, to the text part its deltas built, in content-part order.
+    /// Nothing attaches when a snapshot already did or no delta built a part
+    /// for the item: text stated only by a snapshot publishes its extras
+    /// with it.
+    fn attach_message_extras(
+        &mut self,
+        output_index: u64,
+        message: &super::OutputMessage,
+        out: &mut Out<'id, Completion>,
+    ) {
+        if self.extras_slots.contains(&output_index) || self.extras_items.contains(&message.id) {
+            return;
+        }
+        let Some(part) = self.texts.get(&message.id) else {
+            return;
+        };
+        let extras = message
+            .content
+            .iter()
+            .cloned()
+            .filter_map(|content| super::text_block(content).additional_params)
+            .reduce(|mut extras, next| {
+                extras.merge(next);
+                extras
+            });
+        if let Some(extras) = extras {
+            out.text_params(part, extras);
+        }
+        self.note_extras(output_index, &message.id);
+    }
+
+    /// Publish nonempty terminal message content when no delta delivered it,
+    /// and otherwise only the extras no `output_item.done` attached.
     /// Match by output position, item ID, or the unattributed-delta safeguard.
     fn merge_terminal_body_text(
         &mut self,
@@ -477,10 +527,14 @@ impl<'id> ResponsesDecoder<'id> {
             let Output::Message(message) = item else {
                 continue;
             };
-            if message.content.is_empty() || self.delta_delivered_text(output_index, &message.id) {
+            if message.content.is_empty() {
                 continue;
             }
-            self.publish_message_text(output_index, message, out);
+            if self.delta_delivered_text(output_index, &message.id) {
+                self.attach_message_extras(output_index, message, out);
+            } else {
+                self.publish_message_text(output_index, message, out);
+            }
         }
     }
 
@@ -636,6 +690,7 @@ impl<'id> ResponsesDecoder<'id> {
                 }
             }
             Output::Message(message) => {
+                self.attach_message_extras(output_index, &message, out);
                 if !message.id.is_empty() {
                     out.message_id(message.id);
                 }
@@ -660,10 +715,10 @@ impl<'id> ResponsesDecoder<'id> {
         Ok(())
     }
 
-    /// Record a terminal event's facts: the text no delta delivered, and
-    /// how the turn ended, which model answered, and which assistant
-    /// message (`msg_...`, not the response's `resp_...`) carried the
-    /// output.
+    /// Record a terminal event's facts: the text no delta delivered, the
+    /// extras no item snapshot attached, how the turn ended, which model
+    /// answered, and which assistant message (`msg_...`, not the response's
+    /// `resp_...`) carried the output.
     fn record_terminal(&mut self, response: CompletionResponse, out: &mut Out<'id, Completion>) {
         self.document = serde_json::to_value(&response).ok();
         // The terminal restates the whole turn, so the message text no delta

@@ -1950,3 +1950,111 @@ fn additional_params_override_typed_fields_on_the_wire() {
     assert_eq!(body["temperature"], 0.9, "{body}");
     assert_eq!(body["top_p"], 0.5, "{body}");
 }
+
+/// A tool-call assistant message whose reasoning keys are `reasoning_keys`,
+/// decoded as a unary chat-completions reply.
+fn assistant_with_reasoning_keys(reasoning_keys: Value) -> Result<Message, serde_json::Error> {
+    let mut message = json!({
+        "role": "assistant",
+        "content": null,
+        "tool_calls": [{
+            "id": "call_00",
+            "type": "function",
+            "function": { "name": "search", "arguments": "{\"q\":\"rust\"}" }
+        }]
+    });
+    if let (Some(message), Value::Object(keys)) = (message.as_object_mut(), reasoning_keys) {
+        message.extend(keys);
+    }
+    let body = json!({
+        "id": "gen_1",
+        "object": "chat.completion",
+        "created": 1,
+        "model": "deepseek-v4.1-flash",
+        "choices": [{ "index": 0, "finish_reason": "tool_calls", "message": message }],
+        "usage": { "prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2 }
+    });
+    serde_json::from_value::<CompletionResponse>(body)
+        .map(|response| response.choices[0].message.clone())
+}
+
+/// Compatible gateways relaying a `reasoning_content` upstream behind a
+/// `reasoning` surface send both keys. Each key decodes on its own and
+/// `reasoning_content` wins, as on the streamed delta; `null` is absent.
+/// Unit-level because it pins every key combination, most of which no
+/// endpoint can be made to send on demand.
+#[test]
+fn assistant_reasoning_keys_decode_independently() {
+    let cases = [
+        (
+            json!({ "reasoning": "Let me search.", "reasoning_content": "Let me search." }),
+            Some("Let me search."),
+        ),
+        (
+            json!({ "reasoning": "surface", "reasoning_content": "upstream" }),
+            Some("upstream"),
+        ),
+        (
+            json!({ "reasoning_content": "upstream", "reasoning": "surface" }),
+            Some("upstream"),
+        ),
+        (json!({ "reasoning": "surface" }), Some("surface")),
+        (json!({ "reasoning_content": "upstream" }), Some("upstream")),
+        (json!({}), None),
+        (
+            json!({ "reasoning": null, "reasoning_content": "upstream" }),
+            Some("upstream"),
+        ),
+        (
+            json!({ "reasoning": "surface", "reasoning_content": null }),
+            Some("surface"),
+        ),
+        (
+            json!({ "reasoning": null, "reasoning_content": null }),
+            None,
+        ),
+    ];
+    for (keys, expected) in cases {
+        let decoded = assistant_with_reasoning_keys(keys.clone());
+        let Ok(Message::Assistant {
+            content,
+            reasoning,
+            tool_calls,
+            reasoning_details,
+            ..
+        }) = decoded
+        else {
+            panic!("{keys} should decode to an assistant message: {decoded:?}");
+        };
+        assert_eq!(reasoning.as_deref(), expected, "{keys}");
+        assert!(content.is_empty(), "{keys}");
+        assert!(reasoning_details.is_empty(), "{keys}");
+        assert_eq!(
+            tool_calls,
+            vec![ToolCall {
+                id: "call_00".to_owned(),
+                r#type: ToolType::Function,
+                function: Function {
+                    name: "search".to_owned(),
+                    arguments: json!({ "q": "rust" }),
+                },
+            }],
+            "{keys}"
+        );
+    }
+}
+
+/// A message decoded from both keys still serializes its reasoning once,
+/// under `reasoning_content`.
+#[test]
+fn assistant_reasoning_from_both_keys_serializes_as_reasoning_content() {
+    let message = assistant_with_reasoning_keys(
+        json!({ "reasoning": "surface", "reasoning_content": "upstream" }),
+    )
+    .expect("both reasoning keys decode");
+    let wire = serde_json::to_value(&message).expect("the message serializes");
+    assert_eq!(wire["reasoning_content"], "upstream");
+    assert!(wire.get("reasoning").is_none(), "{wire}");
+    let back: Message = serde_json::from_value(wire).expect("the serialized message decodes");
+    assert_eq!(back, message);
+}

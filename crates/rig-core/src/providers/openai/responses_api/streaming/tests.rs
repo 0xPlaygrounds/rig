@@ -2145,3 +2145,331 @@ fn empty_item_ids_identify_nothing_and_do_not_panic() {
     );
     assert_eq!(texts_of(&decoded.events()), ["still text"]);
 }
+
+/// A `url_citation` annotation as the Responses API attaches it to an
+/// `output_text` part.
+fn url_citation(start: u64, end: u64, url: &str) -> serde_json::Value {
+    json!({
+        "type": "url_citation",
+        "start_index": start,
+        "end_index": end,
+        "url": url,
+        "title": "Source",
+    })
+}
+
+/// A completed `message` item whose `output_text` parts are `(text, annotations)`.
+fn annotated_message(id: &str, parts: &[(&str, serde_json::Value)]) -> serde_json::Value {
+    let content: Vec<serde_json::Value> = parts
+        .iter()
+        .map(|(text, annotations)| {
+            json!({ "type": "output_text", "text": text, "annotations": annotations })
+        })
+        .collect();
+    json!({
+        "type": "message",
+        "id": id,
+        "role": "assistant",
+        "status": "completed",
+        "content": content,
+    })
+}
+
+/// One `output_text.delta` of the message item `item_id`.
+fn text_delta(
+    item_id: &str,
+    output_index: u64,
+    content_index: u64,
+    sequence: u64,
+    delta: &str,
+) -> serde_json::Value {
+    json!({
+        "type": "response.output_text.delta",
+        "item_id": item_id,
+        "output_index": output_index,
+        "content_index": content_index,
+        "sequence_number": sequence,
+        "delta": delta,
+    })
+}
+
+/// The `output_item.done` restating `item` at `output_index`.
+fn item_done(output_index: u64, sequence: u64, item: serde_json::Value) -> serde_json::Value {
+    json!({
+        "type": "response.output_item.done",
+        "output_index": output_index,
+        "sequence_number": sequence,
+        "item": item,
+    })
+}
+
+/// The terminal `response.completed` whose `output` is `output`.
+fn completed_with(sequence: u64, output: serde_json::Value) -> serde_json::Value {
+    let mut response = serde_json::to_value(sample_response(ResponseStatus::Completed))
+        .expect("the sample response serializes");
+    response["output"] = output;
+    json!({
+        "type": "response.completed",
+        "sequence_number": sequence,
+        "response": response,
+    })
+}
+
+/// The text blocks a reply's parts ended with, in order.
+fn ended_texts(decoded: &Decoded<Completion>) -> Vec<crate::message::Text> {
+    decoded
+        .ended()
+        .into_iter()
+        .filter_map(|content| match content {
+            AssistantContent::Text(text) => Some(text),
+            _ => None,
+        })
+        .collect()
+}
+
+/// The Responses-owned annotations a text block carries.
+fn annotations_of(text: &crate::message::Text) -> Option<&serde_json::Value> {
+    text.additional_params
+        .as_ref()
+        .and_then(|params| {
+            params.wire_extras(crate::providers::openai::responses_api::OPENAI_RESPONSES_EXTRAS_KEY)
+        })
+        .and_then(|extras| extras.get("annotations"))
+}
+
+/// The streamed text part carries the annotations its `output_item.done`
+/// restates, once, and its text stays what the deltas delivered. Unit-level
+/// because each snapshot combination below is a frame sequence one live
+/// recording cannot select; the recorded web-search cassettes pin the live
+/// shape.
+#[test]
+fn output_item_done_attaches_annotations_to_the_streamed_text() {
+    let citation = url_citation(0, 4, "https://a.example");
+    let decoded = decoded_body(
+        "openai",
+        &body_of(&[
+            text_delta("msg_1", 0, 0, 1, "Rust "),
+            text_delta("msg_1", 0, 0, 2, "is fast."),
+            item_done(
+                0,
+                3,
+                annotated_message("msg_1", &[("Rust is fast.", json!([citation]))]),
+            ),
+            completed_with(4, json!([])),
+        ]),
+        None,
+    );
+    let texts = ended_texts(&decoded);
+    assert_eq!(texts.len(), 1, "{texts:?}");
+    assert_eq!(texts[0].text, "Rust is fast.");
+    assert_eq!(annotations_of(&texts[0]), Some(&json!([citation])));
+    let response = decoded.outcome.expect("the stream decodes");
+    assert_eq!(choice_text_parts(&response), ["Rust is fast."]);
+}
+
+/// A gateway that sends no `output_item.done` for a streamed message still
+/// states its annotations in the terminal snapshot, which supplies them.
+#[test]
+fn terminal_supplies_annotations_no_item_done_covered() {
+    let citation = url_citation(0, 4, "https://a.example");
+    let decoded = decoded_body(
+        "openai",
+        &body_of(&[
+            text_delta("msg_1", 0, 0, 1, "Rust is fast."),
+            completed_with(
+                2,
+                json!([annotated_message(
+                    "msg_1",
+                    &[("Rust is fast.", json!([citation]))]
+                )]),
+            ),
+        ]),
+        None,
+    );
+    let texts = ended_texts(&decoded);
+    assert_eq!(texts.len(), 1, "{texts:?}");
+    assert_eq!(
+        texts[0].text, "Rust is fast.",
+        "the terminal restates no text"
+    );
+    assert_eq!(annotations_of(&texts[0]), Some(&json!([citation])));
+}
+
+/// Every snapshot restates the same annotations: `content_part.done`,
+/// `output_item.done` and `response.completed`. They attach once, with
+/// or without the incremental `annotation.added` event, which still
+/// reaches the consumer as an unmodeled payload.
+#[test]
+fn repeated_snapshots_attach_annotations_once() {
+    let first = url_citation(0, 4, "https://a.example");
+    let second = url_citation(8, 12, "https://b.example");
+    let message = annotated_message("msg_1", &[("Rust is fast.", json!([first, second]))]);
+    for with_added in [false, true] {
+        let mut events = vec![text_delta("msg_1", 0, 0, 1, "Rust is fast.")];
+        if with_added {
+            for (index, annotation) in [&first, &second].into_iter().enumerate() {
+                events.push(json!({
+                    "type": "response.output_text.annotation.added",
+                    "item_id": "msg_1",
+                    "output_index": 0,
+                    "content_index": 0,
+                    "annotation_index": index,
+                    "sequence_number": 2 + index,
+                    "annotation": annotation,
+                }));
+            }
+        }
+        events.extend([
+            json!({
+                "type": "response.content_part.done",
+                "item_id": "msg_1",
+                "output_index": 0,
+                "content_index": 0,
+                "sequence_number": 4,
+                "part": message["content"][0],
+            }),
+            item_done(0, 5, message.clone()),
+            completed_with(6, json!([message])),
+        ]);
+        let decoded = decoded_body("openai", &body_of(&events), None);
+        let unknown_types: Vec<String> = decoded
+            .items
+            .iter()
+            .filter_map(|item| match item {
+                Ok(Item::Unknown(payload)) => serde_json::to_value(payload)
+                    .ok()
+                    .and_then(|value| value["type"].as_str().map(str::to_owned)),
+                _ => None,
+            })
+            .collect();
+        let expected_unknown = if with_added {
+            vec!["response.output_text.annotation.added"; 2]
+        } else {
+            Vec::new()
+        };
+        assert_eq!(unknown_types, expected_unknown);
+        let texts = ended_texts(&decoded);
+        assert_eq!(texts.len(), 1, "{texts:?}");
+        assert_eq!(
+            annotations_of(&texts[0]),
+            Some(&json!([first, second])),
+            "with_added = {with_added}"
+        );
+    }
+}
+
+/// Empty annotations are no metadata: the text part ends without params,
+/// as the unary path decodes the same content.
+#[test]
+fn empty_annotations_add_no_params() {
+    let message = annotated_message("msg_1", &[("hi", json!([]))]);
+    let decoded = decoded_body(
+        "openai",
+        &body_of(&[
+            text_delta("msg_1", 0, 0, 1, "hi"),
+            item_done(0, 2, message.clone()),
+            completed_with(3, json!([message])),
+        ]),
+        None,
+    );
+    let texts = ended_texts(&decoded);
+    assert_eq!(texts.len(), 1, "{texts:?}");
+    assert_eq!(texts[0].additional_params, None);
+}
+
+/// A message interleaved with a function call keeps its annotations, and
+/// the call is still decoded whole.
+#[test]
+fn annotations_attach_beside_an_interleaved_tool_call() {
+    let citation = url_citation(0, 4, "https://a.example");
+    let call = json!({
+        "type": "function_call",
+        "id": "fc_1",
+        "call_id": "call_1",
+        "name": "lookup",
+        "arguments": "{\"q\":\"rust\"}",
+        "status": "completed",
+    });
+    let message = annotated_message("msg_1", &[("Rust is fast.", json!([citation]))]);
+    let decoded = decoded_body(
+        "openai",
+        &body_of(&[
+            text_delta("msg_1", 0, 0, 1, "Rust is fast."),
+            json!({
+                "type": "response.output_item.added",
+                "output_index": 1,
+                "sequence_number": 2,
+                "item": call,
+            }),
+            json!({
+                "type": "response.function_call_arguments.delta",
+                "item_id": "fc_1",
+                "output_index": 1,
+                "sequence_number": 3,
+                "delta": "{\"q\":\"rust\"}",
+            }),
+            item_done(0, 4, message.clone()),
+            item_done(1, 5, call.clone()),
+            completed_with(6, json!([message, call])),
+        ]),
+        None,
+    );
+    let texts = ended_texts(&decoded);
+    assert_eq!(texts.len(), 1, "{texts:?}");
+    assert_eq!(annotations_of(&texts[0]), Some(&json!([citation])));
+    let response = decoded.outcome.expect("the stream decodes");
+    let calls = calls_of(&response);
+    assert_eq!(calls.len(), 1, "{calls:?}");
+    assert_eq!(calls[0].function.name, "lookup");
+    assert_eq!(calls[0].function.arguments, json!({ "q": "rust" }));
+}
+
+/// Streaming and the unary body end a message's text with equal extras,
+/// content parts in wire order, and a message stated only by snapshots
+/// keeps its text and annotations once.
+#[test]
+fn streamed_and_unary_text_carry_equal_extras() {
+    let first = url_citation(0, 4, "https://a.example");
+    let second = url_citation(0, 4, "https://b.example");
+    let message = annotated_message(
+        "msg_1",
+        &[
+            ("Part one.", json!([first])),
+            ("Part two.", json!([second])),
+        ],
+    );
+
+    let streamed = decoded_body(
+        "openai",
+        &body_of(&[
+            text_delta("msg_1", 0, 0, 1, "Part one."),
+            text_delta("msg_1", 0, 1, 2, "Part two."),
+            item_done(0, 3, message.clone()),
+            completed_with(4, json!([message])),
+        ]),
+        None,
+    );
+    let snapshot_only = decoded_body(
+        "openai",
+        &body_of(&[
+            item_done(0, 1, message.clone()),
+            completed_with(2, json!([message])),
+        ]),
+        None,
+    );
+    let mut body = serde_json::to_value(sample_response(ResponseStatus::Completed))
+        .expect("the sample response serializes");
+    body["output"] = json!([message]);
+    let unary = decoded_body("openai", &format!("data: {body}\n"), None);
+
+    let unary_texts = ended_texts(&unary);
+    assert_eq!(unary_texts.len(), 1, "{unary_texts:?}");
+    assert_eq!(
+        annotations_of(&unary_texts[0]),
+        Some(&json!([first, second]))
+    );
+    for (label, decoded) in [("streamed", &streamed), ("snapshot only", &snapshot_only)] {
+        let texts = ended_texts(decoded);
+        assert_eq!(texts, unary_texts, "{label}");
+    }
+}
