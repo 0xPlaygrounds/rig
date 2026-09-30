@@ -61283,6 +61283,78 @@
       }
     }
   },
+  "openai_compatible/dual_reasoning_keys.yaml#0": {
+    "mode": "unary",
+    "choice": [
+      {
+        "reasoning": {
+          "id": null,
+          "issuer": "openai",
+          "content": [
+            {
+              "text": "preferred reasoning",
+              "signature": null
+            }
+          ]
+        }
+      },
+      {
+        "tool_call": {
+          "id": "call_local_1",
+          "item_id": null,
+          "name": "lookup",
+          "arguments": {
+            "city": "Tokyo"
+          },
+          "signature": null,
+          "additional_params": null
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 5,
+      "output_tokens": 5,
+      "total_tokens": 10
+    },
+    "message_id": null,
+    "response_id": "chatcmpl_local_1",
+    "finish_reason": "tool_calls",
+    "model": "local-dual-key-model",
+    "provider_request_id": null,
+    "raw": {
+      "choices": [
+        {
+          "finish_reason": "tool_calls",
+          "index": 0,
+          "message": {
+            "content": null,
+            "reasoning": "fallback reasoning",
+            "reasoning_content": "preferred reasoning",
+            "role": "assistant",
+            "tool_calls": [
+              {
+                "function": {
+                  "arguments": "{\"city\":\"Tokyo\"}",
+                  "name": "lookup"
+                },
+                "id": "call_local_1",
+                "type": "function"
+              }
+            ]
+          }
+        }
+      ],
+      "created": 0,
+      "id": "chatcmpl_local_1",
+      "model": "local-dual-key-model",
+      "object": "chat.completion",
+      "usage": {
+        "completion_tokens": 5,
+        "prompt_tokens": 5,
+        "total_tokens": 10
+      }
+    }
+  },
   "portability_matrix/chat_from_anthropic.yaml#0": {
     "mode": "unary",
     "choice": [
