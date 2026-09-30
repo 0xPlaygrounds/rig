@@ -1,5 +1,8 @@
 # rig-ecs
 
+> **Experimental.** The rig-ecs API may change in minor releases. [CONTRACT.md](CONTRACT.md)
+> states the runtime behaviour its tests pin.
+
 Rig's effect bus and agent runtime in a Bevy `World`. Effects and handlers are
 entities; systems dispatch work and publish outcomes; relationships carry causal
 and conversation structure. `App::new().add_plugins(rig_ecs::RigPlugin::default())`
