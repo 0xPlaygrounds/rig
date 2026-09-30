@@ -480,6 +480,105 @@ fn test_multiple_embeddings() {
     );
 }
 
+/// Dimension validation is local arithmetic, not provider wire behavior.
+#[tokio::test]
+async fn searches_preserve_dimension_errors_for_mixed_candidate_embeddings() {
+    use crate::embeddings::distance::VectorDistanceError;
+    use crate::test_utils::MockEmbeddings;
+    use crate::vector_store::{VectorSearchRequest, VectorStoreError, VectorStoreIndex};
+
+    for strategy in [
+        IndexStrategy::BruteForce,
+        IndexStrategy::LSH {
+            num_tables: 5,
+            num_hyperplanes: 10,
+        },
+    ] {
+        let index = InMemoryVectorStore::builder()
+            .index_strategy(strategy)
+            .documents([(
+                "mixed".to_owned(),
+                vec![
+                    Embedding {
+                        document: "valid".into(),
+                        vec: vec![0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9],
+                    },
+                    Embedding {
+                        document: "invalid".into(),
+                        vec: vec![1.0; 9],
+                    },
+                ],
+            )])
+            .build()
+            .index(MockEmbeddings::model());
+        // The valid embedding puts this document in the query's LSH bucket.
+        // Even a threshold that would discard it must not hide the invalid one.
+        for threshold in [0.0, 2.0] {
+            let request = || {
+                VectorSearchRequest::builder()
+                    .query("q")
+                    .samples(1)
+                    .threshold(threshold)
+                    .build()
+            };
+            let documents = index.top_n::<String>(request()).await;
+            let ids = index.top_n_ids(request()).await;
+            for error in [documents.err(), ids.err()] {
+                assert!(matches!(
+                    error,
+                    Some(VectorStoreError::DistanceError(
+                        VectorDistanceError::DimensionMismatch { left: 9, right: 10 }
+                    ))
+                ));
+            }
+        }
+    }
+}
+
+#[test]
+fn metadata_filter_excludes_candidates_before_dimension_validation() -> anyhow::Result<()> {
+    use crate::vector_store::request::{Filter, SearchFilter};
+    use serde_json::json;
+
+    let doc = json!({"category": "excluded"});
+    let query = Embedding {
+        document: "query".into(),
+        vec: vec![1.0, 1.0],
+    };
+    let embeddings = [Embedding {
+        document: "invalid".into(),
+        vec: vec![1.0],
+    }];
+    let filter = Filter::eq("category", json!("included"));
+    let score =
+        InMemoryVectorStore::score_candidate(&doc, &embeddings, &query, Some(&filter), None)?;
+    anyhow::ensure!(score.is_none());
+    Ok(())
+}
+
+#[test]
+fn distance_error_preserves_its_source_and_report() {
+    use crate::embeddings::distance::VectorDistanceError;
+    use crate::error::{ErrorKind, ErrorReport};
+    use crate::vector_store::VectorStoreError;
+    use std::error::Error;
+
+    let mismatch = VectorDistanceError::DimensionMismatch { left: 3, right: 2 };
+    let error = VectorStoreError::from(mismatch);
+    let source = error
+        .source()
+        .and_then(|source| source.downcast_ref::<VectorDistanceError>());
+    assert_eq!(source, Some(&mismatch));
+    assert_eq!(
+        mismatch.to_string(),
+        "vector dimensions differ: left has 3, right has 2"
+    );
+    let report = ErrorReport::from(&error);
+    assert_eq!(report.kind, ErrorKind::Request);
+    assert!(!report.retryable);
+    assert_eq!(report.source_chain, vec![mismatch.to_string()]);
+}
+
 #[tokio::test]
 async fn top_n_honors_filter_and_threshold() {
     use crate::test_utils::MockEmbeddings;

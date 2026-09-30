@@ -35,6 +35,10 @@ pub enum VectorStoreError {
     #[error("Embedding error: {0}")]
     EmbeddingError(#[from] ProviderError),
 
+    /// A scored embedding has a different dimension from the query.
+    #[error("Vector distance error: {0}")]
+    DistanceError(#[from] crate::embeddings::distance::VectorDistanceError),
+
     /// JSON serialization or deserialization failed.
     #[error("Json error: {0}")]
     JsonError(#[from] serde_json::Error),

@@ -878,9 +878,9 @@ impl From<&VectorStoreError> for ErrorReport {
             }
             VectorStoreError::JsonError(_) => (ErrorKind::Json, None),
             VectorStoreError::DatastoreError(_) => (ErrorKind::Provider, None),
-            VectorStoreError::FilterError(_) | VectorStoreError::BuilderError(_) => {
-                (ErrorKind::Request, None)
-            }
+            VectorStoreError::FilterError(_)
+            | VectorStoreError::BuilderError(_)
+            | VectorStoreError::DistanceError(_) => (ErrorKind::Request, None),
             VectorStoreError::MissingIdError(_) => (ErrorKind::Response, None),
             VectorStoreError::Http(crate::http_client::Error::InvalidStatusCodeWithDetails {
                 status,

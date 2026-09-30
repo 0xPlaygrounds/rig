@@ -4,34 +4,65 @@
 //! left-to-right summation for reproducible ordering.
 //!
 //! ```
-//! use rig_core::embeddings::{Embedding, distance::VectorDistance};
+//! use rig_core::embeddings::{Embedding, distance::{VectorDistance, VectorDistanceError}};
 //!
+//! # fn main() -> Result<(), VectorDistanceError> {
 //! let vector = Embedding { document: String::new(), vec: vec![1.0, 0.0] };
-//! assert_eq!(vector.dot_product(&vector), 1.0);
+//! let score = vector.dot_product(&vector)?;
+//! assert_eq!(score, 1.0);
+//! # Ok(())
+//! # }
 //! ```
 
+/// Invalid input to a vector distance or similarity calculation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+pub enum VectorDistanceError {
+    /// The vectors have different lengths.
+    #[error("vector dimensions differ: left has {left}, right has {right}")]
+    DimensionMismatch {
+        /// Number of components in `self`.
+        left: usize,
+        /// Number of components in `other`.
+        right: usize,
+    },
+}
+
 /// Distance and similarity metrics for embedding vectors.
-/// Supply equal-length vectors; the embedding implementation pairs only their
-/// shared prefix. Unnormalized cosine requires nonzero magnitudes.
+/// All methods return [`VectorDistanceError::DimensionMismatch`] for unequal
+/// lengths. Equal-length inputs retain IEEE floating-point behavior, including
+/// non-finite results. Unnormalized cosine requires nonzero magnitudes.
 pub trait VectorDistance {
-    /// Get dot product of two embedding vectors
-    fn dot_product(&self, other: &Self) -> f64;
+    /// Returns the dot product, or an error if dimensions differ.
+    fn dot_product(&self, other: &Self) -> Result<f64, VectorDistanceError>;
 
-    /// Get cosine similarity of two embedding vectors.
-    /// If `normalized` is true, the dot product is returned.
-    fn cosine_similarity(&self, other: &Self, normalized: bool) -> f64;
+    /// Returns cosine similarity, or an error if dimensions differ.
+    /// If `normalized` is true, the caller must supply unit vectors and the
+    /// dot product is returned without computing magnitudes.
+    fn cosine_similarity(&self, other: &Self, normalized: bool)
+    -> Result<f64, VectorDistanceError>;
 
-    /// Get angular distance of two embedding vectors.
-    fn angular_distance(&self, other: &Self, normalized: bool) -> f64;
+    /// Returns angular distance, or an error if dimensions differ.
+    /// If `normalized` is true, the caller must supply unit vectors.
+    fn angular_distance(&self, other: &Self, normalized: bool) -> Result<f64, VectorDistanceError>;
 
-    /// Get euclidean distance of two embedding vectors.
-    fn euclidean_distance(&self, other: &Self) -> f64;
+    /// Returns Euclidean distance, or an error if dimensions differ.
+    fn euclidean_distance(&self, other: &Self) -> Result<f64, VectorDistanceError>;
 
-    /// Get manhattan distance of two embedding vectors.
-    fn manhattan_distance(&self, other: &Self) -> f64;
+    /// Returns Manhattan distance, or an error if dimensions differ.
+    fn manhattan_distance(&self, other: &Self) -> Result<f64, VectorDistanceError>;
 
-    /// Get chebyshev distance of two embedding vectors.
-    fn chebyshev_distance(&self, other: &Self) -> f64;
+    /// Returns Chebyshev distance, or an error if dimensions differ.
+    fn chebyshev_distance(&self, other: &Self) -> Result<f64, VectorDistanceError>;
+}
+
+fn check_dimensions(a: &[f64], b: &[f64]) -> Result<(), VectorDistanceError> {
+    if a.len() != b.len() {
+        return Err(VectorDistanceError::DimensionMismatch {
+            left: a.len(),
+            right: b.len(),
+        });
+    }
+    Ok(())
 }
 
 /// Reduction chunk size. Preserve left-to-right summation within and across
@@ -42,45 +73,57 @@ const CHUNK: usize = 256;
 /// from one pairwise sum, one unary sum and one max-reduction.
 macro_rules! impl_vector_distance {
     ($pair_sum:ident, $unary_sum:ident, $pair_max:ident) => {
-        fn dot_product(&self, other: &Self) -> f64 {
-            $pair_sum(&self.vec, &other.vec, |x, y| x * y)
+        fn dot_product(&self, other: &Self) -> Result<f64, VectorDistanceError> {
+            check_dimensions(&self.vec, &other.vec)?;
+            Ok($pair_sum(&self.vec, &other.vec, |x, y| x * y))
         }
 
-        fn cosine_similarity(&self, other: &Self, normalized: bool) -> f64 {
-            let dot_product = self.dot_product(other);
+        fn cosine_similarity(
+            &self,
+            other: &Self,
+            normalized: bool,
+        ) -> Result<f64, VectorDistanceError> {
+            let dot_product = self.dot_product(other)?;
 
             if normalized {
-                dot_product
+                Ok(dot_product)
             } else {
                 let magnitude1: f64 = $unary_sum(&self.vec, |x| x.powi(2)).sqrt();
                 let magnitude2: f64 = $unary_sum(&other.vec, |x| x.powi(2)).sqrt();
 
-                dot_product / (magnitude1 * magnitude2)
+                Ok(dot_product / (magnitude1 * magnitude2))
             }
         }
 
-        fn angular_distance(&self, other: &Self, normalized: bool) -> f64 {
-            let cosine_sim = self.cosine_similarity(other, normalized);
+        fn angular_distance(
+            &self,
+            other: &Self,
+            normalized: bool,
+        ) -> Result<f64, VectorDistanceError> {
+            let cosine_sim = self.cosine_similarity(other, normalized)?;
             // Roundoff can push a valid cosine beyond the domain of acos.
-            cosine_sim.clamp(-1.0, 1.0).acos() / std::f64::consts::PI
+            Ok(cosine_sim.clamp(-1.0, 1.0).acos() / std::f64::consts::PI)
         }
 
-        fn euclidean_distance(&self, other: &Self) -> f64 {
-            $pair_sum(&self.vec, &other.vec, |x, y| (x - y).powi(2)).sqrt()
+        fn euclidean_distance(&self, other: &Self) -> Result<f64, VectorDistanceError> {
+            check_dimensions(&self.vec, &other.vec)?;
+            Ok($pair_sum(&self.vec, &other.vec, |x, y| (x - y).powi(2)).sqrt())
         }
 
-        fn manhattan_distance(&self, other: &Self) -> f64 {
-            $pair_sum(&self.vec, &other.vec, |x, y| (x - y).abs())
+        fn manhattan_distance(&self, other: &Self) -> Result<f64, VectorDistanceError> {
+            check_dimensions(&self.vec, &other.vec)?;
+            Ok($pair_sum(&self.vec, &other.vec, |x, y| (x - y).abs()))
         }
 
-        fn chebyshev_distance(&self, other: &Self) -> f64 {
-            $pair_max(&self.vec, &other.vec, |x, y| (x - y).abs())
+        fn chebyshev_distance(&self, other: &Self) -> Result<f64, VectorDistanceError> {
+            check_dimensions(&self.vec, &other.vec)?;
+            Ok($pair_max(&self.vec, &other.vec, |x, y| (x - y).abs()))
         }
     };
 }
 
 mod sequential {
-    use super::{CHUNK, VectorDistance};
+    use super::{CHUNK, VectorDistance, VectorDistanceError, check_dimensions};
     use crate::embeddings::Embedding;
 
     /// Fixed chunks, two left-to-right sums, one thread.

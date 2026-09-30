@@ -142,7 +142,8 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
     /// the matching embedding text, or `None` when the document is filtered out,
     /// has no finite-similarity embedding, or scores below the threshold. Shared
     /// by the brute-force and LSH scans so the filter, threshold, and NaN
-    /// handling live in exactly one place.
+    /// handling live in exactly one place. Returns a distance error if any
+    /// embedding in an unfiltered candidate differs from the query's dimension.
     fn score_candidate<'a>(
         doc: &D,
         embeddings: &'a [Embedding],
@@ -156,17 +157,14 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
 
         // Filter non-finite scores before selecting the maximum so NaN cannot
         // outrank valid embeddings or bypass the threshold.
-        let Some((distance, embed_doc)) = embeddings
-            .iter()
-            .map(|embedding| {
-                (
-                    OrderedFloat(embedding.cosine_similarity(prompt_embedding, false)),
-                    &embedding.document,
-                )
-            })
-            .filter(|(distance, _)| distance.0.is_finite())
-            .max_by(|a, b| a.0.cmp(&b.0))
-        else {
+        let mut best: Option<(OrderedFloat<f64>, &String)> = None;
+        for embedding in embeddings {
+            let distance = OrderedFloat(embedding.cosine_similarity(prompt_embedding, false)?);
+            if distance.0.is_finite() && best.as_ref().is_none_or(|(score, _)| distance >= *score) {
+                best = Some((distance, &embedding.document));
+            }
+        }
+        let Some((distance, embed_doc)) = best else {
             return Ok(None);
         };
 

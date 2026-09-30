@@ -1,4 +1,4 @@
-use super::VectorDistance;
+use super::{VectorDistance, VectorDistanceError};
 use crate::embeddings::Embedding;
 
 fn embeddings() -> (Embedding, Embedding) {
@@ -19,7 +19,7 @@ fn embeddings() -> (Embedding, Embedding) {
 fn test_dot_product() {
     let (embedding_1, embedding_2) = embeddings();
 
-    assert_eq!(embedding_1.dot_product(&embedding_2), 32.0);
+    assert_eq!(embedding_1.dot_product(&embedding_2), Ok(32.0));
 }
 
 #[test]
@@ -28,7 +28,7 @@ fn test_cosine_similarity() {
 
     assert_eq!(
         embedding_1.cosine_similarity(&embedding_2, false),
-        0.9875414397573881
+        Ok(0.9875414397573881)
     );
 }
 
@@ -38,7 +38,7 @@ fn test_angular_distance() {
 
     assert_eq!(
         embedding_1.angular_distance(&embedding_2, false),
-        0.0502980301830343
+        Ok(0.0502980301830343)
     );
 }
 
@@ -53,36 +53,34 @@ fn angular_distance_handles_rounded_cosine_endpoints() {
         vec: vec![-1.0, -1.0, -1.0],
     };
 
-    assert_eq!(vector.angular_distance(&vector, false), 0.0);
-    assert_eq!(vector.angular_distance(&opposite, false), 1.0);
+    assert_eq!(vector.angular_distance(&vector, false), Ok(0.0));
+    assert_eq!(vector.angular_distance(&opposite, false), Ok(1.0));
 }
 
 #[test]
 fn test_euclidean_distance() {
     let (embedding_1, embedding_2) = embeddings();
 
-    assert_eq!(embedding_1.euclidean_distance(&embedding_2), 5.0);
+    assert_eq!(embedding_1.euclidean_distance(&embedding_2), Ok(5.0));
 }
 
 #[test]
 fn test_manhattan_distance() {
     let (embedding_1, embedding_2) = embeddings();
 
-    assert_eq!(embedding_1.manhattan_distance(&embedding_2), 7.0);
+    assert_eq!(embedding_1.manhattan_distance(&embedding_2), Ok(7.0));
 }
 
 #[test]
 fn test_chebyshev_distance() {
     let (embedding_1, embedding_2) = embeddings();
 
-    assert_eq!(embedding_1.chebyshev_distance(&embedding_2), 4.0);
+    assert_eq!(embedding_1.chebyshev_distance(&embedding_2), Ok(4.0));
 }
 
-/// Every sum is taken in fixed chunks in index order, so a metric is the
-/// same bits on every run. (A recorded retrieval score that differed in its last digit
-/// between two replays of one cassette is how this was found.)
+/// Fixed chunks and index-order sums keep the same bits on every run.
 #[test]
-fn a_metric_is_the_same_bits_on_every_run() {
+fn a_metric_is_the_same_bits_on_every_run() -> anyhow::Result<()> {
     let a = Embedding {
         document: "a".into(),
         vec: (0..5000)
@@ -96,22 +94,22 @@ fn a_metric_is_the_same_bits_on_every_run() {
             .collect(),
     };
     let first = (
-        a.dot_product(&b),
-        a.cosine_similarity(&b, false),
-        a.euclidean_distance(&b),
-        a.manhattan_distance(&b),
+        a.dot_product(&b)?,
+        a.cosine_similarity(&b, false)?,
+        a.euclidean_distance(&b)?,
+        a.manhattan_distance(&b)?,
     );
     for _ in 0..64 {
         let again = (
-            a.dot_product(&b),
-            a.cosine_similarity(&b, false),
-            a.euclidean_distance(&b),
-            a.manhattan_distance(&b),
+            a.dot_product(&b)?,
+            a.cosine_similarity(&b, false)?,
+            a.euclidean_distance(&b)?,
+            a.manhattan_distance(&b)?,
         );
-        assert_eq!(first.0.to_bits(), again.0.to_bits());
-        assert_eq!(first.1.to_bits(), again.1.to_bits());
-        assert_eq!(first.2.to_bits(), again.2.to_bits());
-        assert_eq!(first.3.to_bits(), again.3.to_bits());
+        anyhow::ensure!(first.0.to_bits() == again.0.to_bits());
+        anyhow::ensure!(first.1.to_bits() == again.1.to_bits());
+        anyhow::ensure!(first.2.to_bits() == again.2.to_bits());
+        anyhow::ensure!(first.3.to_bits() == again.3.to_bits());
     }
     // And the same bits as the chunked reference the sequential build
     // computes: 256-term chunks summed left to right, then the chunk sums.
@@ -123,5 +121,64 @@ fn a_metric_is_the_same_bits_on_every_run() {
         .collect::<Vec<f64>>()
         .into_iter()
         .sum();
-    assert_eq!(first.0.to_bits(), reference.to_bits());
+    anyhow::ensure!(first.0.to_bits() == reference.to_bits());
+    Ok(())
+}
+
+#[test]
+fn every_metric_rejects_mismatched_dimensions() {
+    for (left, right) in [(2, 3), (3, 2), (0, 1), (1, 0), (256, 257), (257, 256)] {
+        let a = Embedding {
+            document: String::new(),
+            vec: vec![1.0; left],
+        };
+        let b = Embedding {
+            document: String::new(),
+            vec: vec![1.0; right],
+        };
+        let expected = Err(VectorDistanceError::DimensionMismatch { left, right });
+        for result in [
+            a.dot_product(&b),
+            a.cosine_similarity(&b, false),
+            a.cosine_similarity(&b, true),
+            a.angular_distance(&b, false),
+            a.angular_distance(&b, true),
+            a.euclidean_distance(&b),
+            a.manhattan_distance(&b),
+            a.chebyshev_distance(&b),
+        ] {
+            assert_eq!(result, expected);
+        }
+    }
+}
+
+#[test]
+fn normalized_metrics_accept_equal_dimensions() {
+    let a = Embedding {
+        document: String::new(),
+        vec: vec![1.0, 0.0],
+    };
+    let b = Embedding {
+        document: String::new(),
+        vec: vec![0.0, 1.0],
+    };
+    assert_eq!(a.cosine_similarity(&b, true), Ok(0.0));
+    assert_eq!(a.angular_distance(&b, true), Ok(0.5));
+}
+
+#[test]
+fn equal_empty_and_zero_vectors_keep_arithmetic_behavior() -> anyhow::Result<()> {
+    for vec in [vec![], vec![0.0, 0.0]] {
+        let embedding = Embedding {
+            document: String::new(),
+            vec,
+        };
+        anyhow::ensure!(embedding.dot_product(&embedding)? == 0.0);
+        anyhow::ensure!(embedding.euclidean_distance(&embedding)? == 0.0);
+        anyhow::ensure!(embedding.manhattan_distance(&embedding)? == 0.0);
+        anyhow::ensure!(embedding.chebyshev_distance(&embedding)? == 0.0);
+        anyhow::ensure!(embedding.cosine_similarity(&embedding, false)?.is_nan());
+        anyhow::ensure!(embedding.angular_distance(&embedding, false)?.is_nan());
+    }
+    Ok(())
 }
