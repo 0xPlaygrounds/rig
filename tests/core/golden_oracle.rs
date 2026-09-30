@@ -39,7 +39,7 @@ async fn oracle_rerank_effect_log_is_the_golden_fixture() {
             )),
         )
         .expect("a fresh key");
-    let recorder = rig::cassette::effect_log::EffectLogRecorder::new();
+    let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
     driver.record_to(recorder.clone());
     let driver = tokio::spawn(driver);
     let agent = AgentBuilder::over_bus(dispatcher.clone(), registrar.clone(), "golden", model_key)

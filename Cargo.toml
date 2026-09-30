@@ -65,6 +65,7 @@ features = [
     "audio",
     "bedrock",
     "candle",
+    "cassette",
     "derive",
     "epub",
     "facade-build-tests",
@@ -372,7 +373,7 @@ workspace = true
 [dependencies]
 rig-typesafeai = { path = "crates/rig-typesafeai", version = "0.42.0", optional = true, default-features = false }
 rig-core = { path = "crates/rig-core", version = "0.42.0", default-features = false }
-rig-cassette = { path = "crates/rig-cassette", version = "0.42.0", default-features = false }
+rig-cassette = { path = "crates/rig-cassette", version = "0.42.0", optional = true, default-features = false }
 rig-reqwest = { path = "crates/rig-reqwest", version = "0.42.0", optional = true, default-features = false }
 rig-agent = { path = "crates/rig-agent", version = "0.42.0", optional = true, default-features = false }
 rig-rmcp = { path = "crates/rig-rmcp", version = "0.42.0", optional = true }
@@ -416,6 +417,8 @@ rig-tungstenite = { path = "crates/rig-tungstenite", version = "0.42.0", optiona
 
 [dev-dependencies]
 rig-test-support = { path = "test-support/rig-test-support" }
+# The facade's tests use the recorder directly, whatever `cassette` is set to.
+rig-cassette = { path = "crates/rig-cassette", default-features = false, features = ["agent"] }
 bevy_app = { workspace = true }
 bevy_ecs = { workspace = true }
 # The ECS contract matrix (`crates/rig-cassette/tests/common/ecs_matrix.rs`) pins the bus's task pool to one thread, as the cassette crate's world interpreter does.
@@ -460,7 +463,10 @@ tracing-opentelemetry = { workspace = true }
 [features]
 typesafeai = ["dep:rig-typesafeai"]
 default = ["rig-core/default", "reqwest", "agent", "derive", "rustls"]
-agent = ["dep:rig-agent", "rig-cassette/agent"]
+agent = ["dep:rig-agent", "rig-cassette?/agent"]
+# `rig::cassette`: effect-log recording and replay. With `agent`, also the
+# classic-agent adapter (`rig::cassette::agent`).
+cassette = ["dep:rig-cassette"]
 test-utils = ["rig-core/test-utils", "rig-agent?/test-utils"]
 # Internal: opt in to the slow nested-`cargo check` facade build tests
 # (`tests/tool_facade_features.rs`). Not in `default`; `--all-features` (CI's

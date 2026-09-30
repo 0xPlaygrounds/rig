@@ -64,7 +64,7 @@ async fn streamed_output(agent: &rig::agent::Agent, max_turns: usize) -> String 
     output.expect("a final response")
 }
 
-fn tool_result_texts(log: &rig::cassette::effect_log::EffectLog, at: usize) -> Vec<String> {
+fn tool_result_texts(log: &rig_cassette::effect_log::EffectLog, at: usize) -> Vec<String> {
     match &log.records[at].kind {
         rig::effect::EffectKind::Completion { request, .. } => request
             .chat_history

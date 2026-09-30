@@ -26,7 +26,7 @@ async fn stops_before_any_dispatch(
     hook: impl rig::agent::AgentHook + 'static,
     reason: &str,
     golden: &str,
-) -> rig::cassette::effect_log::EffectLog {
+) -> rig_cassette::effect_log::EffectLog {
     let settled = RecordSettled::default();
     let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
     let agent = AgentBuilder::new(MockCompletionModel::text("never asked"))

@@ -83,6 +83,7 @@ rig = { path = "../..", default-features = false, features = [
   "agent",
   "audio",
   "bedrock",
+  "cassette",
   "derive",
   "image",
   "reqwest",
