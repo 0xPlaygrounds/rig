@@ -33,8 +33,8 @@
 //! | golden | producer (`tests/providers/anthropic/cassette/corpus_request_shape.rs`) | shape | interpreters |
 //! |---|---|---|---|
 //! | `anthropic_request_shape_tool_choice_auto` | `tool_choice_auto_effect_log_is_the_golden_fixture` | `[Completion, Tool, Completion]` | both |
-//! | `anthropic_request_shape_tool_choice_required` | `tool_choice_required_…` | `[Completion, Tool, Completion, Tool]`, then `MaxTurnsError` at 2 | both |
-//! | `anthropic_request_shape_tool_choice_specific` | `tool_choice_specific_…` | `[Completion, Tool, Completion, Tool]`, then `MaxTurnsError` at 2 | both |
+//! | `anthropic_request_shape_tool_choice_required` | `tool_choice_required_…` | `[Completion, Tool, Completion, Tool]`, then `MaxTurns` at 2 | both |
+//! | `anthropic_request_shape_tool_choice_specific` | `tool_choice_specific_…` | `[Completion, Tool, Completion, Tool]`, then `MaxTurns` at 2 | both |
 //! | `anthropic_request_shape_tool_choice_none` | `tool_choice_none_…` | `[Completion]`, `add` advertised, never called; Sonnet 4.6 answers `none` with empty content, the run's output is `""` | both |
 //! | `anthropic_request_shape_max_tokens` | `max_tokens_…` | `[Completion]`, `max_tokens: 32` | both |
 //! | `anthropic_request_shape_thinking_unary` | `thinking_unary_…` | `[Completion]` with a reasoning block | both |
@@ -54,7 +54,7 @@
 //!
 //! - A per-run `tool_choice` of `Required` or `Specific` is applied to
 //!   every turn, so the run can never answer in text: it ends in
-//!   `MaxTurnsError` with the model still calling the tool. The corpus
+//!   `MaxTurns` with the model still calling the tool. The corpus
 //!   pins that as the ending (`Ending::MaxTurns`) rather than hiding it;
 //!   whether the engine should relax a forced choice after the first call
 //!   is a design decision outside the bus.

@@ -19,7 +19,7 @@ use tokio::sync::{Barrier, Notify};
 use crate::agent::AgentBuilder;
 use crate::agent::hook::{AgentHook, HookContext, RequestPatch, StepEventKind};
 use crate::agent::run::OutputMode;
-use crate::agent::streaming::{MultiTurnStreamItem, StreamingError};
+use crate::agent::streaming::MultiTurnStreamItem;
 use crate::completion::{FinishReason, Message, PromptError, Usage};
 use crate::streaming::{Item, StreamEvent, StreamedUserContent};
 use crate::test_utils::{
@@ -1191,10 +1191,10 @@ async fn streaming_completion_response_stop_preserves_the_completion_call() {
     assert_eq!(hook.model_turns.load(SeqCst), 0);
     assert!(matches!(
         error,
-        Some(StreamingError::Prompt(error))
+        Some(error)
             if matches!(
                 &error,
-                PromptError::PromptCancelled { chat_history, reason }
+                PromptError::Cancelled { chat_history, reason }
                     if chat_history == &[prompt] && reason == "stop at stream EOF"
             )
     ));
@@ -1243,10 +1243,10 @@ async fn streaming_model_turn_stop_preserves_the_completion_call() {
     assert!(!saw_run_final);
     assert!(matches!(
         error,
-        Some(StreamingError::Prompt(error))
+        Some(error)
             if matches!(
                 &error,
-                PromptError::PromptCancelled { reason, .. }
+                PromptError::Cancelled { reason, .. }
                     if reason == "stop completed model turn"
             )
     ));
@@ -1447,7 +1447,7 @@ async fn from_agent_preserves_implicit_one_and_explicit_zero_budgets() {
         .expect_err("implicit budget should reject the second model call");
     assert!(matches!(
         implicit_err,
-        PromptError::MaxTurnsError { max_turns: 1, .. }
+        PromptError::MaxTurns { max_turns: 1, .. }
     ));
     assert_eq!(implicit_recorded.request_count(), 1);
 
@@ -1463,7 +1463,7 @@ async fn from_agent_preserves_implicit_one_and_explicit_zero_budgets() {
         .expect_err("explicit zero budget should reject the initial model call");
     assert!(matches!(
         zero_err,
-        PromptError::MaxTurnsError { max_turns: 0, .. }
+        PromptError::MaxTurns { max_turns: 0, .. }
     ));
     assert_eq!(zero_recorded.request_count(), 0);
 }
@@ -1524,7 +1524,7 @@ async fn prompt_surfaces_reject_second_tool_roundtrip_request_at_budget_one() {
         .expect_err("blocking prompt should reject request two");
     assert!(matches!(
         blocking_err,
-        PromptError::MaxTurnsError { max_turns: 1, .. }
+        PromptError::MaxTurns { max_turns: 1, .. }
     ));
     assert_eq!(blocking_recorded.request_count(), 1);
 
@@ -1540,10 +1540,7 @@ async fn prompt_surfaces_reject_second_tool_roundtrip_request_at_budget_one() {
         }
     }
     match streaming_err {
-        Some(StreamingError::Prompt(err)) => assert!(matches!(
-            err,
-            PromptError::MaxTurnsError { max_turns: 1, .. }
-        )),
+        Some(err) => assert!(matches!(err, PromptError::MaxTurns { max_turns: 1, .. })),
         other => panic!("expected streaming max-turns error, got {other:?}"),
     }
     assert_eq!(streaming_recorded.request_count(), 1);
@@ -2664,7 +2661,7 @@ mod span_safety_net {
 
         assert!(matches!(
             error,
-            PromptError::PromptCancelled { reason, .. }
+            PromptError::Cancelled { reason, .. }
                 if reason == "stop completed model turn"
         ));
     }
@@ -2694,12 +2691,7 @@ mod span_safety_net {
                     errors += 1;
                     assert!(matches!(
                         error,
-                        super::StreamingError::Prompt(error)
-                            if matches!(
-                                &error,
-                                PromptError::PromptCancelled { reason, .. }
-                                    if reason == "stop completed model turn"
-                            )
+                        PromptError::Cancelled { reason, .. } if reason == "stop completed model turn"
                     ));
                 }
             }
@@ -3827,7 +3819,7 @@ impl Tool for DrainProbeTool {
     }
 }
 
-/// On the concurrent path, a terminate surfaces a `StreamingError`, ends the
+/// On the concurrent path, a terminate surfaces a `PromptError`, ends the
 /// run with no final response, and — for a sibling that is **already in
 /// flight** — drains it to completion rather than cancelling it mid-poll (so
 /// no detached task is left running and the deterministic terminate reason
@@ -3872,7 +3864,7 @@ async fn stream_concurrent_tool_result_terminate_drains_in_flight_siblings() {
                 match item {
                     Ok(MultiTurnStreamItem::FinalResponse(_)) => saw_final_response = true,
                     Ok(_) => {}
-                    Err(StreamingError::Prompt(_)) => saw_error = true,
+                    Err(_) => saw_error = true,
                     Err(other) => panic!("unexpected streaming error: {other}"),
                 }
             }
@@ -3883,7 +3875,7 @@ async fn stream_concurrent_tool_result_terminate_drains_in_flight_siblings() {
 
     assert!(
         saw_error,
-        "a terminate hook on the concurrent path must surface a StreamingError::Prompt"
+        "a terminate hook on the concurrent path must surface a PromptError"
     );
     assert!(
         !saw_final_response,
@@ -4836,7 +4828,7 @@ async fn run_terminates_from_each_shared_event() {
             .await
             .expect_err(&format!("terminate at {kind:?} must cancel the run"));
         assert!(
-            matches!(err, PromptError::PromptCancelled { .. }),
+            matches!(err, PromptError::Cancelled { .. }),
             "terminate at {kind:?} should cancel the run, got {err:?}"
         );
     }
@@ -6914,7 +6906,7 @@ async fn dynamic_context_and_application_hooks_follow_registration_order() {
         .run()
         .await
         .expect_err("an earlier stop hook should terminate before retrieval");
-    assert!(matches!(error, PromptError::PromptCancelled { .. }));
+    assert!(matches!(error, PromptError::Cancelled { .. }));
     assert!(skipped_queries.lock().expect("skipped queries").is_empty());
 }
 
@@ -6931,7 +6923,7 @@ async fn dynamic_context_retrieval_failure_stops_before_provider_io_on_both_surf
         .expect_err("failed retrieval should stop the run");
     assert!(matches!(
         error,
-        PromptError::PromptCancelled { reason, .. }
+        PromptError::Cancelled { reason, .. }
             if reason.contains("context index unavailable")
     ));
     assert_eq!(blocking_probe.request_count(), 0);
@@ -6950,12 +6942,7 @@ async fn dynamic_context_retrieval_failure_stops_before_provider_io_on_both_surf
         .expect_err("failed retrieval should stop the stream");
     assert!(matches!(
         error,
-        StreamingError::Prompt(prompt_error)
-            if matches!(
-                &prompt_error,
-                PromptError::PromptCancelled { reason, .. }
-                    if reason.contains("context index unavailable")
-            )
+        PromptError::Cancelled { reason, .. } if reason.contains("context index unavailable")
     ));
     assert_eq!(streaming_probe.request_count(), 0);
 }
@@ -7657,10 +7644,7 @@ async fn late_output_tool_collision_fails_before_blocking_provider_for_all_choic
             .unwrap_err();
 
         assert!(
-            matches!(
-                &err,
-                PromptError::CompletionError(ProviderError::Request(_))
-            ),
+            matches!(&err, PromptError::Provider(ProviderError::Request(_))),
             "{case}: expected a local completion request error, got {err:?}"
         );
         assert_eq!(
@@ -7726,7 +7710,7 @@ async fn late_output_tool_collision_fails_before_streaming_provider() {
     let err = collisions.pop().expect("one collision error was asserted");
 
     assert!(
-        matches!(&err, StreamingError::Completion(ProviderError::Request(_))),
+        matches!(&err, PromptError::Provider(ProviderError::Request(_))),
         "expected a local streaming completion request error, got {err:?}"
     );
     assert_eq!(
@@ -7827,7 +7811,7 @@ async fn retrieved_output_tool_collision_fails_before_provider_request() {
 
     assert!(matches!(
         &err,
-        PromptError::CompletionError(ProviderError::Request(_))
+        PromptError::Provider(ProviderError::Request(_))
     ));
     assert_eq!(
         probe.request_count(),
@@ -8237,7 +8221,7 @@ async fn human_in_the_loop_approve_deny_edit_parity_across_run_and_stream() {
 }
 
 /// A HITL hook that aborts a tool call (`Decision::Abort` -> `DispatchAction::stop`)
-/// stops the run and surfaces the reason as a `PromptCancelled` error — on both
+/// stops the run and surfaces the reason as a `Cancelled` error — on both
 /// the blocking and streaming drivers.
 #[tokio::test]
 async fn human_in_the_loop_abort_terminates_the_run() {
@@ -8247,7 +8231,7 @@ async fn human_in_the_loop_abort_terminates_the_run() {
     ];
     const ABORT_REASON: &str = "aborted by the human reviewer";
 
-    // Blocking driver: the run resolves to a PromptCancelled error.
+    // Blocking driver: the run resolves to a Cancelled error.
     let blocking_model =
         MockCompletionModel::from_turns(turns.iter().map(ScriptedTurn::as_blocking_turn));
     let err = AgentBuilder::new(blocking_model)
@@ -9349,8 +9333,8 @@ async fn streaming_model_turn_retry_respects_max_turns() {
     assert!(saw_rollback);
     assert!(matches!(
         error,
-        Some(StreamingError::Prompt(error))
-            if matches!(error, PromptError::MaxTurnsError { max_turns: 1, .. })
+        Some(error)
+            if matches!(error, PromptError::MaxTurns { max_turns: 1, .. })
     ));
 }
 
@@ -9387,12 +9371,12 @@ async fn model_turn_retry_rejects_tool_turn_before_tool_hooks_or_execution() {
     .await
     .expect_err("tool-bearing retry must fail closed");
 
-    let PromptError::PromptCancelled {
+    let PromptError::Cancelled {
         chat_history,
         reason,
     } = err
     else {
-        panic!("tool-bearing retry should return PromptCancelled");
+        panic!("tool-bearing retry should return Cancelled");
     };
     assert!(reason.contains("tool-bearing model turns"));
     assert!(reason.contains("tool-call hooks"));
@@ -9441,15 +9425,15 @@ async fn streaming_model_turn_retry_rejects_tool_turn_without_committed_executio
         }
     }
 
-    let Some(StreamingError::Prompt(error)) = error else {
-        panic!("tool-bearing streaming retry should return PromptCancelled");
+    let Some(error) = error else {
+        panic!("tool-bearing streaming retry should return Cancelled");
     };
-    let PromptError::PromptCancelled {
+    let PromptError::Cancelled {
         chat_history,
         reason,
     } = error
     else {
-        panic!("tool-bearing streaming retry should return PromptCancelled");
+        panic!("tool-bearing streaming retry should return Cancelled");
     };
     assert!(reason.contains("tool-bearing model turns"));
     assert!(reason.contains("tool-call hooks"));
@@ -9798,8 +9782,8 @@ mod run_lifecycle {
         let first = stream.next().await.expect("terminal item");
         assert!(matches!(
             first,
-            Err(StreamingError::Prompt(ref err))
-                if matches!(err, PromptError::PromptCancelled { .. })
+            Err(ref err)
+                if matches!(err, PromptError::Cancelled { .. })
         ));
         assert!(stream.next().await.is_none());
 

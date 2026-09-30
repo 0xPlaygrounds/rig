@@ -104,7 +104,7 @@ impl InvalidToolCallDiagnostic<'_> {
     }
 
     fn cancelled(&self, reason: String) -> PromptError {
-        PromptError::prompt_cancelled(self.history.to_vec(), reason)
+        PromptError::cancelled(self.history.to_vec(), reason)
     }
 }
 
@@ -509,7 +509,7 @@ impl AgentRun {
     /// rewrite the user prompt here, before any model call. Valid only while
     /// [`initial_prompt`](Self::initial_prompt) is `Some`; once the first
     /// [`AgentRunStep::CallModel`] has been emitted the prompt is committed
-    /// and rewriting returns [`PromptError::PromptCancelled`].
+    /// and rewriting returns [`PromptError::Cancelled`].
     pub(crate) fn rewrite_initial_prompt(
         &mut self,
         prompt: impl Into<Message>,
@@ -520,7 +520,7 @@ impl AgentRun {
                 *slot = prompt.into();
                 Ok(())
             }
-            _ => Err(PromptError::prompt_cancelled(
+            _ => Err(PromptError::cancelled(
                 self.full_history(),
                 "the initial prompt can only be rewritten before the run starts",
             )),
@@ -572,7 +572,7 @@ impl AgentRun {
     /// Set the total model-call budget, including the initial call and every
     /// retry or continuation. A budget of zero emits no model calls. Exceeding
     /// the budget makes [`AgentRun::next_step`] return
-    /// [`PromptError::MaxTurnsError`].
+    /// [`PromptError::MaxTurns`].
     pub fn max_turns(mut self, max_turns: usize) -> Self {
         self.max_turns = max_turns;
         self
@@ -762,7 +762,7 @@ impl AgentRun {
             }
         };
         if parked_has_tool_calls || replacement_has_tool_calls {
-            return Err(PromptError::prompt_cancelled(
+            return Err(PromptError::cancelled(
                 self.full_history(),
                 "a completion outcome replacement does not support tool-bearing model turns; patch or deny the tool dispatches instead",
             ));
@@ -798,7 +798,7 @@ impl AgentRun {
         };
 
         if turn.has_tool_calls {
-            return Err(PromptError::prompt_cancelled(
+            return Err(PromptError::cancelled(
                 self.full_history(),
                 "model-turn retry does not support tool-bearing model turns; use tool-call hooks instead",
             ));
@@ -843,7 +843,7 @@ impl AgentRun {
     /// Build the cancellation error a driver should return when one of its
     /// hooks terminates the run, carrying the current full history.
     pub fn cancel_error(&self, reason: impl Into<String>) -> PromptError {
-        PromptError::prompt_cancelled(self.full_history(), reason)
+        PromptError::cancelled(self.full_history(), reason)
     }
 
     /// The invalid tool call currently awaiting
@@ -873,15 +873,15 @@ impl AgentRun {
     /// Advance the machine and return the next action for the driver.
     ///
     /// # Errors
-    /// - [`PromptError::MaxTurnsError`] when the total model-call budget is exhausted.
-    /// - [`PromptError::PromptCancelled`] when the machine is driven out of
+    /// - [`PromptError::MaxTurns`] when the total model-call budget is exhausted.
+    /// - [`PromptError::Cancelled`] when the machine is driven out of
     ///   protocol (for example, calling this while a model response is
     ///   pending).
     pub fn next_step(&mut self) -> Result<AgentRunStep, PromptError> {
         match std::mem::replace(&mut self.state, RunState::Failed) {
             RunState::PreparingRequest => {
                 let Some((prompt_ref, history_for_turn)) = self.new_messages.split_last() else {
-                    return Err(PromptError::prompt_cancelled(
+                    return Err(PromptError::cancelled(
                         self.full_history(),
                         "prompt loop lost its pending prompt",
                     ));
@@ -889,7 +889,7 @@ impl AgentRun {
                 let prompt = prompt_ref.clone();
 
                 if self.current_turn >= self.max_turns {
-                    return Err(PromptError::MaxTurnsError {
+                    return Err(PromptError::MaxTurns {
                         max_turns: self.max_turns,
                         chat_history: self.full_history(),
                         prompt,
@@ -1222,7 +1222,7 @@ impl AgentRun {
     /// - [`InvalidToolCallAction::Repair`] renames the tool call; the
     ///   repaired name is revalidated against the allowed tools.
     /// - [`InvalidToolCallAction::Stop`] cancels the run with
-    ///   `PromptError::prompt_cancelled` and the supplied reason.
+    ///   `PromptError::cancelled` and the supplied reason.
     /// - [`InvalidToolCallAction::Skip`] records a synthetic tool result
     ///   and suppresses execution of every tool call in the turn. Rejected
     ///   under [`ToolChoice::None`].
@@ -1263,7 +1263,7 @@ impl AgentRun {
                     &tool_call.id,
                     &feedback,
                 ) else {
-                    return Err(PromptError::prompt_cancelled(
+                    return Err(PromptError::cancelled(
                         diagnostic_history,
                         "invalid tool call retry produced no retry messages",
                     ));
@@ -1354,7 +1354,7 @@ impl AgentRun {
 
         if results.is_empty() {
             self.state = RunState::Failed;
-            return Err(PromptError::prompt_cancelled(
+            return Err(PromptError::cancelled(
                 self.full_history(),
                 "tool execution produced no tool results",
             ));
@@ -1599,7 +1599,7 @@ impl AgentRun {
             partial.rollback_messages(invalid.tool_call.clone(), feedback)
         else {
             self.state = RunState::Failed;
-            return Err(PromptError::prompt_cancelled(
+            return Err(PromptError::cancelled(
                 diagnostic_history,
                 no_messages_reason,
             ));
@@ -1692,7 +1692,7 @@ impl AgentRun {
     }
 
     fn protocol_violation(&self, reason: &str) -> PromptError {
-        PromptError::prompt_cancelled(
+        PromptError::cancelled(
             self.full_history(),
             format!("agent run driver protocol violation: {reason}"),
         )

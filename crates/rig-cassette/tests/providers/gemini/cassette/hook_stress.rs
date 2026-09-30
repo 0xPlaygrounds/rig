@@ -28,7 +28,7 @@ use futures::StreamExt;
 use rig::agent::{
     AgentHook, CompletionCallAction, CompletionCallEvent, DispatchAction, DispatchEvent,
     HookContext, ModelTurnAction, ModelTurnFinished, MultiTurnStreamItem, OutcomeAction,
-    OutcomeEvent, RequestPatch, StreamingError,
+    OutcomeEvent, RequestPatch,
 };
 use rig::completion::Document;
 use rig::providers::gemini;
@@ -568,8 +568,7 @@ async fn streaming_lifecycle_ordering_and_context_streaming_flag() {
                         events.push("final_response");
                     }
                     Ok(_) => {}
-                    Err(StreamingError::Prompt(error)) => panic!("stream errored: {error:?}"),
-                    Err(other) => panic!("stream errored: {other:?}"),
+                    Err(error) => panic!("stream errored: {error:?}"),
                 }
             }
 

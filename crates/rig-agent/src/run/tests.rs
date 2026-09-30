@@ -423,10 +423,7 @@ fn repeated_model_turn_consumes_existing_max_turns_budget() {
         .expect("state transition itself should succeed");
 
     let err = run.next_step().expect_err("second call must exceed budget");
-    assert!(matches!(
-        err,
-        PromptError::MaxTurnsError { max_turns: 1, .. }
-    ));
+    assert!(matches!(err, PromptError::MaxTurns { max_turns: 1, .. }));
     assert_eq!(run.completion_calls().len(), 1);
 }
 
@@ -443,12 +440,12 @@ fn model_turn_retry_rejects_tool_calls_without_advancing_to_execution() {
         .retry_model_turn(RetryRequest::Feedback("do not call tools".to_string()))
         .expect_err("tool-bearing retries must fail closed");
 
-    let PromptError::PromptCancelled {
+    let PromptError::Cancelled {
         chat_history,
         reason,
     } = err
     else {
-        panic!("tool-bearing retry should return PromptCancelled");
+        panic!("tool-bearing retry should return Cancelled");
     };
     assert!(reason.contains("tool-bearing model turns"));
     assert!(reason.contains("tool-call hooks"));
@@ -557,10 +554,7 @@ fn max_turns_zero_rejects_initial_model_call() {
     let err = run
         .next_step()
         .expect_err("zero budget should emit no call");
-    assert!(matches!(
-        err,
-        PromptError::MaxTurnsError { max_turns: 0, .. }
-    ));
+    assert!(matches!(err, PromptError::MaxTurns { max_turns: 0, .. }));
     assert_eq!(run.turn(), 0);
 }
 
@@ -581,10 +575,7 @@ fn new_implicitly_allows_one_model_call_and_rejects_tool_continuation() {
     let err = run
         .next_step()
         .expect_err("second model call should exceed budget");
-    assert!(matches!(
-        err,
-        PromptError::MaxTurnsError { max_turns: 1, .. }
-    ));
+    assert!(matches!(err, PromptError::MaxTurns { max_turns: 1, .. }));
     assert_eq!(run.turn(), 1);
 }
 
@@ -607,10 +598,7 @@ fn max_turns_n_allows_exactly_n_model_calls() {
     let err = run
         .next_step()
         .expect_err("fourth model call should exceed budget");
-    assert!(matches!(
-        err,
-        PromptError::MaxTurnsError { max_turns: 3, .. }
-    ));
+    assert!(matches!(err, PromptError::MaxTurns { max_turns: 3, .. }));
     assert_eq!(run.turn(), 3);
 }
 
@@ -652,7 +640,7 @@ fn invalid_tool_call_stop_leaves_run_terminal() {
         .expect_err("stop should cancel the run");
     assert!(matches!(
         err,
-        PromptError::PromptCancelled { reason, .. } if reason == "operator stop"
+        PromptError::Cancelled { reason, .. } if reason == "operator stop"
     ));
 
     let err = run
@@ -660,7 +648,7 @@ fn invalid_tool_call_stop_leaves_run_terminal() {
         .expect_err("a stopped run must remain terminal");
     assert!(matches!(
         err,
-        PromptError::PromptCancelled { reason, .. }
+        PromptError::Cancelled { reason, .. }
             if reason.contains("next_step called after the run already failed")
     ));
 }
@@ -722,10 +710,7 @@ fn invalid_tool_call_retry_cannot_emit_call_past_total_budget() {
     let err = run
         .next_step()
         .expect_err("retry must not emit a second model call");
-    assert!(matches!(
-        err,
-        PromptError::MaxTurnsError { max_turns: 1, .. }
-    ));
+    assert!(matches!(err, PromptError::MaxTurns { max_turns: 1, .. }));
     assert_eq!(run.turn(), 1);
 }
 
@@ -898,7 +883,7 @@ fn empty_tool_results_cancel_the_run() {
         .expect_err("empty results should cancel");
     assert!(matches!(
         err,
-        PromptError::PromptCancelled { reason, .. }
+        PromptError::Cancelled { reason, .. }
             if reason.contains("tool execution produced no tool results")
     ));
 }
@@ -910,14 +895,14 @@ fn out_of_protocol_calls_are_rejected_without_corrupting_state() {
     let err = run
         .tool_results(vec![tool_result("call_1", "x")])
         .expect_err("no CallTools pending");
-    assert!(matches!(err, PromptError::PromptCancelled { .. }));
+    assert!(matches!(err, PromptError::Cancelled { .. }));
 
     // The run is still drivable after a rejected out-of-protocol call.
     expect_call_model(&mut run);
     let err = run
         .next_step()
         .expect_err("model response is pending, next_step must be rejected");
-    assert!(matches!(err, PromptError::PromptCancelled { .. }));
+    assert!(matches!(err, PromptError::Cancelled { .. }));
     expect_continue(
         run.model_response(text_turn("hi"))
             .expect("model_response should still succeed"),
@@ -940,7 +925,7 @@ fn model_response_rejected_after_streamed_completion_call_record() {
     let err = run
         .model_response(text_turn("hi"))
         .expect_err("mixed streamed/non-streamed ingestion must be rejected");
-    assert!(matches!(err, PromptError::PromptCancelled { .. }));
+    assert!(matches!(err, PromptError::Cancelled { .. }));
     // No duplicate completion call was appended.
     assert_eq!(run.completion_calls().len(), 1);
 }
@@ -1022,7 +1007,7 @@ fn tool_results_validates_against_pending_calls() {
     let err = run
         .tool_results(vec![tool_result("call_unknown", "2")])
         .expect_err("unknown tool call id must be rejected");
-    assert!(matches!(err, PromptError::PromptCancelled { .. }));
+    assert!(matches!(err, PromptError::Cancelled { .. }));
     run.tool_results(vec![tool_result("call_1", "2")])
         .expect("valid results should still be accepted after a rejection");
 
@@ -1031,14 +1016,14 @@ fn tool_results_validates_against_pending_calls() {
     let err = run
         .tool_results(vec![tool_result("call_1", "2"), tool_result("call_1", "3")])
         .expect_err("answering one call twice must be rejected");
-    assert!(matches!(err, PromptError::PromptCancelled { .. }));
+    assert!(matches!(err, PromptError::Cancelled { .. }));
 
     // Non-tool-result content is rejected.
     let mut run = drive_to_pending_tools();
     let err = run
         .tool_results(vec![UserContent::text("not a tool result")])
         .expect_err("non-tool-result content must be rejected");
-    assert!(matches!(err, PromptError::PromptCancelled { .. }));
+    assert!(matches!(err, PromptError::Cancelled { .. }));
 }
 
 #[test]
@@ -1102,10 +1087,7 @@ fn serde_round_trip_at_exhausted_budget_preserves_boundary() {
     let err = restored
         .next_step()
         .expect_err("restored run must not emit a second model call");
-    assert!(matches!(
-        err,
-        PromptError::MaxTurnsError { max_turns: 1, .. }
-    ));
+    assert!(matches!(err, PromptError::MaxTurns { max_turns: 1, .. }));
     assert_eq!(restored.turn(), 1);
 }
 

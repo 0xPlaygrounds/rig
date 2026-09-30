@@ -68,9 +68,7 @@ async fn public_streaming_request_constructor_preserves_agent_hooks() {
 
     assert!(matches!(
         error,
-        StreamingError::Prompt(error)
-            if matches!(&error, PromptError::PromptCancelled { reason, .. }
-                if reason == "agent streaming stopped")
+        PromptError::Cancelled { reason, .. } if reason == "agent streaming stopped"
     ));
     assert_eq!(model.request_count(), 0);
 }
@@ -2210,21 +2208,18 @@ async fn unknown_tool_call_fails_before_streaming_second_request() {
     assert!(!saw_tool_call);
     let error = error.expect("unknown model-emitted tool should fail");
     match error {
-        StreamingError::Prompt(err) => match err {
-            PromptError::UnknownToolCall {
-                tool_name,
-                available_tools,
-                allowed_tools,
-                chat_history,
-            } => {
-                assert_eq!(tool_name, "default_api");
-                assert_eq!(available_tools, vec!["add".to_string()]);
-                assert_eq!(allowed_tools, vec!["add".to_string()]);
-                assert!(history_contains_tool_call(&chat_history, "default_api"));
-            }
-            other => panic!("expected UnknownToolCall, got {other:?}"),
-        },
-        other => panic!("expected prompt streaming error, got {other:?}"),
+        PromptError::UnknownToolCall {
+            tool_name,
+            available_tools,
+            allowed_tools,
+            chat_history,
+        } => {
+            assert_eq!(tool_name, "default_api");
+            assert_eq!(available_tools, vec!["add".to_string()]);
+            assert_eq!(allowed_tools, vec!["add".to_string()]);
+            assert!(history_contains_tool_call(&chat_history, "default_api"));
+        }
+        other => panic!("expected UnknownToolCall, got {other:?}"),
     }
     assert_eq!(recorded.request_count(), 1);
 }
@@ -3243,18 +3238,15 @@ async fn streaming_retry_budget_exhaustion_history_contains_invalid_tool_call() 
 
     let error = error.expect("retry budget exhaustion should fail");
     match error {
-        StreamingError::Prompt(err) => match err {
-            PromptError::UnknownToolCall {
-                tool_name,
-                chat_history,
-                ..
-            } => {
-                assert_eq!(tool_name, "default_api");
-                assert!(history_contains_tool_call(&chat_history, "default_api"));
-            }
-            other => panic!("expected UnknownToolCall, got {other:?}"),
-        },
-        other => panic!("expected prompt streaming error, got {other:?}"),
+        PromptError::UnknownToolCall {
+            tool_name,
+            chat_history,
+            ..
+        } => {
+            assert_eq!(tool_name, "default_api");
+            assert!(history_contains_tool_call(&chat_history, "default_api"));
+        }
+        other => panic!("expected UnknownToolCall, got {other:?}"),
     }
     assert_eq!(recorded.request_count(), 1);
 }
@@ -3295,20 +3287,17 @@ async fn streaming_name_delta_retry_budget_exhaustion_history_includes_same_turn
 
     let error = error.expect("retry budget exhaustion should fail");
     match error {
-        StreamingError::Prompt(err) => match err {
-            PromptError::UnknownToolCall {
-                tool_name,
-                chat_history,
-                ..
-            } => {
-                assert_eq!(tool_name, "default_api");
-                assert!(history_contains_text(&chat_history, "checking "));
-                assert!(history_contains_tool_call(&chat_history, "add"));
-                assert!(history_contains_tool_call(&chat_history, "default_api"));
-            }
-            other => panic!("expected UnknownToolCall, got {other:?}"),
-        },
-        other => panic!("expected prompt streaming error, got {other:?}"),
+        PromptError::UnknownToolCall {
+            tool_name,
+            chat_history,
+            ..
+        } => {
+            assert_eq!(tool_name, "default_api");
+            assert!(history_contains_text(&chat_history, "checking "));
+            assert!(history_contains_tool_call(&chat_history, "add"));
+            assert!(history_contains_tool_call(&chat_history, "default_api"));
+        }
+        other => panic!("expected UnknownToolCall, got {other:?}"),
     }
     assert_eq!(recorded.request_count(), 1);
 }
@@ -3385,21 +3374,18 @@ async fn completed_unknown_tool_call_after_text_fails_before_finish_hook_or_late
     assert_eq!(add_calls.load(Ordering::SeqCst), 0);
     let error = error.expect("completed unknown tool call should fail immediately");
     match error {
-        StreamingError::Prompt(err) => match err {
-            PromptError::UnknownToolCall {
-                tool_name,
-                available_tools,
-                allowed_tools,
-                chat_history,
-            } => {
-                assert_eq!(tool_name, "default_api");
-                assert_eq!(available_tools, vec!["add".to_string()]);
-                assert_eq!(allowed_tools, vec!["add".to_string()]);
-                assert!(history_contains_tool_call(&chat_history, "default_api"));
-            }
-            other => panic!("expected UnknownToolCall, got {other:?}"),
-        },
-        other => panic!("expected prompt streaming error, got {other:?}"),
+        PromptError::UnknownToolCall {
+            tool_name,
+            available_tools,
+            allowed_tools,
+            chat_history,
+        } => {
+            assert_eq!(tool_name, "default_api");
+            assert_eq!(available_tools, vec!["add".to_string()]);
+            assert_eq!(allowed_tools, vec!["add".to_string()]);
+            assert!(history_contains_tool_call(&chat_history, "default_api"));
+        }
+        other => panic!("expected UnknownToolCall, got {other:?}"),
     }
     assert_eq!(recorded.request_count(), 1);
 }
@@ -3465,21 +3451,18 @@ async fn mixed_streaming_tool_calls_fail_before_any_tool_execution() {
     assert_eq!(add_calls.load(Ordering::SeqCst), 0);
     let error = error.expect("mixed unknown streamed tool call should fail");
     match error {
-        StreamingError::Prompt(err) => match err {
-            PromptError::UnknownToolCall {
-                tool_name,
-                available_tools,
-                allowed_tools,
-                chat_history,
-            } => {
-                assert_eq!(tool_name, "default_api");
-                assert_eq!(available_tools, vec!["add".to_string()]);
-                assert_eq!(allowed_tools, vec!["add".to_string()]);
-                assert!(history_contains_tool_call(&chat_history, "default_api"));
-            }
-            other => panic!("expected UnknownToolCall, got {other:?}"),
-        },
-        other => panic!("expected prompt streaming error, got {other:?}"),
+        PromptError::UnknownToolCall {
+            tool_name,
+            available_tools,
+            allowed_tools,
+            chat_history,
+        } => {
+            assert_eq!(tool_name, "default_api");
+            assert_eq!(available_tools, vec!["add".to_string()]);
+            assert_eq!(allowed_tools, vec!["add".to_string()]);
+            assert!(history_contains_tool_call(&chat_history, "default_api"));
+        }
+        other => panic!("expected UnknownToolCall, got {other:?}"),
     }
     assert_eq!(recorded.request_count(), 1);
 }
@@ -3611,24 +3594,21 @@ async fn disallowed_specific_tool_call_fails_before_streaming_second_request() {
     assert!(!saw_tool_call);
     let error = error.expect("disallowed model-emitted tool should fail");
     match error {
-        StreamingError::Prompt(err) => match err {
-            PromptError::UnknownToolCall {
-                tool_name,
+        PromptError::UnknownToolCall {
+            tool_name,
+            available_tools,
+            allowed_tools,
+            chat_history,
+        } => {
+            assert_eq!(tool_name, "subtract");
+            assert_eq!(
                 available_tools,
-                allowed_tools,
-                chat_history,
-            } => {
-                assert_eq!(tool_name, "subtract");
-                assert_eq!(
-                    available_tools,
-                    vec!["add".to_string(), "subtract".to_string()]
-                );
-                assert_eq!(allowed_tools, vec!["add".to_string()]);
-                assert!(history_contains_tool_call(&chat_history, "subtract"));
-            }
-            other => panic!("expected UnknownToolCall, got {other:?}"),
-        },
-        other => panic!("expected prompt streaming error, got {other:?}"),
+                vec!["add".to_string(), "subtract".to_string()]
+            );
+            assert_eq!(allowed_tools, vec!["add".to_string()]);
+            assert!(history_contains_tool_call(&chat_history, "subtract"));
+        }
+        other => panic!("expected UnknownToolCall, got {other:?}"),
     }
     assert_eq!(recorded.request_count(), 1);
 }
@@ -3692,24 +3672,21 @@ async fn mixed_specific_tool_calls_fail_before_any_tool_execution() {
     assert_eq!(add_calls.load(Ordering::SeqCst), 0);
     let error = error.expect("mixed disallowed streamed tool call should fail");
     match error {
-        StreamingError::Prompt(err) => match err {
-            PromptError::UnknownToolCall {
-                tool_name,
+        PromptError::UnknownToolCall {
+            tool_name,
+            available_tools,
+            allowed_tools,
+            chat_history,
+        } => {
+            assert_eq!(tool_name, "subtract");
+            assert_eq!(
                 available_tools,
-                allowed_tools,
-                chat_history,
-            } => {
-                assert_eq!(tool_name, "subtract");
-                assert_eq!(
-                    available_tools,
-                    vec!["add".to_string(), "subtract".to_string()]
-                );
-                assert_eq!(allowed_tools, vec!["add".to_string()]);
-                assert!(history_contains_tool_call(&chat_history, "subtract"));
-            }
-            other => panic!("expected UnknownToolCall, got {other:?}"),
-        },
-        other => panic!("expected prompt streaming error, got {other:?}"),
+                vec!["add".to_string(), "subtract".to_string()]
+            );
+            assert_eq!(allowed_tools, vec!["add".to_string()]);
+            assert!(history_contains_tool_call(&chat_history, "subtract"));
+        }
+        other => panic!("expected UnknownToolCall, got {other:?}"),
     }
     assert_eq!(recorded.request_count(), 1);
 }
@@ -3756,21 +3733,18 @@ async fn tool_choice_none_rejects_streaming_tool_call() {
     assert!(!saw_tool_call);
     let error = error.expect("ToolChoice::None should reject returned tool calls");
     match error {
-        StreamingError::Prompt(err) => match err {
-            PromptError::UnknownToolCall {
-                tool_name,
-                available_tools,
-                allowed_tools,
-                chat_history,
-            } => {
-                assert_eq!(tool_name, "add");
-                assert_eq!(available_tools, vec!["add".to_string()]);
-                assert!(allowed_tools.is_empty());
-                assert!(history_contains_tool_call(&chat_history, "add"));
-            }
-            other => panic!("expected UnknownToolCall, got {other:?}"),
-        },
-        other => panic!("expected prompt streaming error, got {other:?}"),
+        PromptError::UnknownToolCall {
+            tool_name,
+            available_tools,
+            allowed_tools,
+            chat_history,
+        } => {
+            assert_eq!(tool_name, "add");
+            assert_eq!(available_tools, vec!["add".to_string()]);
+            assert!(allowed_tools.is_empty());
+            assert!(history_contains_tool_call(&chat_history, "add"));
+        }
+        other => panic!("expected UnknownToolCall, got {other:?}"),
     }
     assert_eq!(recorded.request_count(), 1);
 }
@@ -3820,21 +3794,18 @@ async fn tool_choice_none_rejects_streaming_tool_call_name_delta_before_hook_or_
     assert!(!saw_delta);
     let error = error.expect("ToolChoice::None should reject returned tool-call deltas");
     match error {
-        StreamingError::Prompt(err) => match err {
-            PromptError::UnknownToolCall {
-                tool_name,
-                available_tools,
-                allowed_tools,
-                chat_history,
-            } => {
-                assert_eq!(tool_name, "add");
-                assert_eq!(available_tools, vec!["add".to_string()]);
-                assert!(allowed_tools.is_empty());
-                assert!(history_contains_tool_call(&chat_history, "add"));
-            }
-            other => panic!("expected UnknownToolCall, got {other:?}"),
-        },
-        other => panic!("expected prompt streaming error, got {other:?}"),
+        PromptError::UnknownToolCall {
+            tool_name,
+            available_tools,
+            allowed_tools,
+            chat_history,
+        } => {
+            assert_eq!(tool_name, "add");
+            assert_eq!(available_tools, vec!["add".to_string()]);
+            assert!(allowed_tools.is_empty());
+            assert!(history_contains_tool_call(&chat_history, "add"));
+        }
+        other => panic!("expected UnknownToolCall, got {other:?}"),
     }
     assert_eq!(recorded.request_count(), 1);
 }
@@ -3881,21 +3852,18 @@ async fn unknown_tool_call_name_delta_fails_before_streaming_delta_hook_or_emit(
     assert!(!saw_delta);
     let error = error.expect("unknown tool-call name delta should fail");
     match error {
-        StreamingError::Prompt(err) => match err {
-            PromptError::UnknownToolCall {
-                tool_name,
-                available_tools,
-                allowed_tools,
-                chat_history,
-            } => {
-                assert_eq!(tool_name, "default_api");
-                assert_eq!(available_tools, vec!["add".to_string()]);
-                assert_eq!(allowed_tools, vec!["add".to_string()]);
-                assert!(history_contains_tool_call(&chat_history, "default_api"));
-            }
-            other => panic!("expected UnknownToolCall, got {other:?}"),
-        },
-        other => panic!("expected prompt streaming error, got {other:?}"),
+        PromptError::UnknownToolCall {
+            tool_name,
+            available_tools,
+            allowed_tools,
+            chat_history,
+        } => {
+            assert_eq!(tool_name, "default_api");
+            assert_eq!(available_tools, vec!["add".to_string()]);
+            assert_eq!(allowed_tools, vec!["add".to_string()]);
+            assert!(history_contains_tool_call(&chat_history, "default_api"));
+        }
+        other => panic!("expected UnknownToolCall, got {other:?}"),
     }
     assert_eq!(recorded.request_count(), 1);
 }
@@ -3942,21 +3910,18 @@ async fn tool_call_args_delta_before_unknown_name_fails_before_hook_or_emit() {
     assert!(!saw_delta);
     let error = error.expect("unknown tool-call name should reject buffered args");
     match error {
-        StreamingError::Prompt(err) => match err {
-            PromptError::UnknownToolCall {
-                tool_name,
-                available_tools,
-                allowed_tools,
-                chat_history,
-            } => {
-                assert_eq!(tool_name, "default_api");
-                assert_eq!(available_tools, vec!["add".to_string()]);
-                assert_eq!(allowed_tools, vec!["add".to_string()]);
-                assert!(history_contains_tool_call(&chat_history, "default_api"));
-            }
-            other => panic!("expected UnknownToolCall, got {other:?}"),
-        },
-        other => panic!("expected prompt streaming error, got {other:?}"),
+        PromptError::UnknownToolCall {
+            tool_name,
+            available_tools,
+            allowed_tools,
+            chat_history,
+        } => {
+            assert_eq!(tool_name, "default_api");
+            assert_eq!(available_tools, vec!["add".to_string()]);
+            assert_eq!(allowed_tools, vec!["add".to_string()]);
+            assert!(history_contains_tool_call(&chat_history, "default_api"));
+        }
+        other => panic!("expected UnknownToolCall, got {other:?}"),
     }
     assert_eq!(recorded.request_count(), 1);
 }
@@ -4105,21 +4070,18 @@ async fn tool_choice_none_buffers_args_then_rejects_name_without_emit() {
     assert!(!saw_delta);
     let error = error.expect("ToolChoice::None should reject buffered tool-call deltas");
     match error {
-        StreamingError::Prompt(err) => match err {
-            PromptError::UnknownToolCall {
-                tool_name,
-                available_tools,
-                allowed_tools,
-                chat_history,
-            } => {
-                assert_eq!(tool_name, "add");
-                assert_eq!(available_tools, vec!["add".to_string()]);
-                assert!(allowed_tools.is_empty());
-                assert!(history_contains_tool_call(&chat_history, "add"));
-            }
-            other => panic!("expected UnknownToolCall, got {other:?}"),
-        },
-        other => panic!("expected prompt streaming error, got {other:?}"),
+        PromptError::UnknownToolCall {
+            tool_name,
+            available_tools,
+            allowed_tools,
+            chat_history,
+        } => {
+            assert_eq!(tool_name, "add");
+            assert_eq!(available_tools, vec!["add".to_string()]);
+            assert!(allowed_tools.is_empty());
+            assert!(history_contains_tool_call(&chat_history, "add"));
+        }
+        other => panic!("expected UnknownToolCall, got {other:?}"),
     }
     assert_eq!(recorded.request_count(), 1);
 }
@@ -4230,9 +4192,9 @@ async fn stream_prompt_reasoning_delta_stop_prevents_emit_and_later_hook_dispatc
     assert!(!saw_delta);
     assert!(!saw_final_response);
     assert!(
-        error_message
-            .as_deref()
-            .is_some_and(|message| message.contains("PromptCancelled: stop on reasoning delta")),
+        error_message.as_deref().is_some_and(
+            |message| message.contains("the run was cancelled: stop on reasoning delta")
+        ),
         "expected hook termination error, got {error_message:?}"
     );
 }
@@ -4446,9 +4408,9 @@ async fn stream_prompt_tool_call_deltas_hook_termination_prevents_delta_emit() {
     assert!(!saw_delta);
     assert!(!saw_final_response);
     assert!(
-        error_message
-            .as_deref()
-            .is_some_and(|message| message.contains("PromptCancelled: stop on tool call delta")),
+        error_message.as_deref().is_some_and(
+            |message| message.contains("the run was cancelled: stop on tool call delta")
+        ),
         "expected hook termination error, got {error_message:?}"
     );
 }
@@ -5620,13 +5582,13 @@ async fn streaming_load_error_yields_memory_error() {
 
     let first = stream.next().await.expect("at least one item");
     match first {
-        Err(StreamingError::Prompt(err)) => match err {
-            PromptError::MemoryError(err) => {
+        Err(err) => match err {
+            PromptError::Memory(err) => {
                 assert!(err.to_string().contains("load boom"));
             }
-            other => panic!("expected PromptError::MemoryError, got {other:?}"),
+            other => panic!("expected PromptError::Memory, got {other:?}"),
         },
-        other => panic!("expected StreamingError::Prompt, got {other:?}"),
+        other => panic!("expected PromptError::Memory, got {other:?}"),
     }
 }
 

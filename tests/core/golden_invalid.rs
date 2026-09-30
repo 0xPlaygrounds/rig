@@ -462,7 +462,7 @@ async fn invalid_skip_under_none_effect_log_is_the_golden_fixture() {
 
 /// A retry under `tool_choice: Required`: the retry is itself a forced
 /// call, and the per-run choice forces every later turn too, so the run
-/// ends in `MaxTurnsError` after the real call.
+/// ends in `MaxTurns` after the real call.
 #[tokio::test]
 async fn invalid_retry_under_required_effect_log_is_the_golden_fixture() {
     let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
@@ -485,7 +485,7 @@ async fn invalid_retry_under_required_effect_log_is_the_golden_fixture() {
         .await
         .expect_err("a forced choice never answers in text");
     assert!(
-        matches!(error, PromptError::MaxTurnsError { max_turns: 2, .. }),
+        matches!(error, PromptError::MaxTurns { max_turns: 2, .. }),
         "{error:?}"
     );
     let log = agent.stamp(recorder.take());

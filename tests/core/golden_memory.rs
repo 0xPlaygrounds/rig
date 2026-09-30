@@ -27,7 +27,7 @@ async fn memory_failing_load_effect_log_is_the_golden_fixture() {
     assert!(
         matches!(
             &error,
-            PromptError::MemoryError(rig::memory::MemoryError::Backend(_))
+            PromptError::Memory(rig::memory::MemoryError::Backend(_))
         ),
         "{error:?}"
     );

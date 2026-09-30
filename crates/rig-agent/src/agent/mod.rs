@@ -17,7 +17,6 @@ mod builder;
 mod completion;
 pub(crate) mod drive;
 mod engine;
-pub(crate) use engine::streaming_error_into_prompt;
 pub mod hook;
 pub mod run;
 pub mod runner;
@@ -52,7 +51,6 @@ pub use run::TurnTools;
 pub use run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome, OutputMode, PendingToolCall};
 pub use runner::AgentRunner;
 pub use streaming::{
-    MultiTurnStreamItem, RUN_EVENTS_CAPACITY, RunEvents, StreamingError, StreamingResult,
-    stream_to_stdout,
+    MultiTurnStreamItem, RUN_EVENTS_CAPACITY, RunEvents, StreamingResult, stream_to_stdout,
 };
 pub use typed::{TypedPromptResponse, TypedRun};

@@ -276,7 +276,7 @@ macro_rules! forward_runner_setters {
         /// Set the total model-call budget, including the initial call and every
         /// retry or continuation. Zero emits no model calls; one permits only the
         /// initial call. Exceeding the budget returns a
-        /// [`StructuredOutputError::PromptError`] wrapping a `MaxTurnsError`.
+        /// [`StructuredOutputError::Prompt`] wrapping a `MaxTurns`.
         pub fn max_turns(mut self, max_turns: usize) -> Self {
             self.runner = self.runner.max_turns(max_turns);
             self
@@ -375,7 +375,7 @@ where
                 }
                 Err(err) => {
                     usage += error_usage;
-                    Err(StructuredOutputError::PromptError(err))
+                    Err(StructuredOutputError::Prompt(err))
                 }
             };
             match outcome {
@@ -405,7 +405,8 @@ fn recover_output<T: DeserializeOwned>(
             if response.output.is_empty() {
                 return Err(StructuredOutputError::EmptyResponse);
             }
-            Ok(deserialize_structured_output(&response.output)?)
+            deserialize_structured_output(&response.output)
+                .map_err(|error| deserialization_error(&response.output, error))
         }
         TypedOutput::OutputTool => {
             let submissions = response.output_tool_calls();
@@ -428,8 +429,16 @@ fn recover_output<T: DeserializeOwned>(
                     "Multiple submit calls detected, using the first one. Providers / agents should only ensure one submit call."
                 );
             }
-            Ok(serde_json::from_str(&response.output)?)
+            serde_json::from_str(&response.output)
+                .map_err(|error| deserialization_error(&response.output, error))
         }
+    }
+}
+
+fn deserialization_error(output: &str, error: serde_json::Error) -> StructuredOutputError {
+    StructuredOutputError::Deserialization {
+        output: output.to_string(),
+        error,
     }
 }
 

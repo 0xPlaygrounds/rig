@@ -137,10 +137,7 @@ impl CliChat for AgentImpl {
                         .messages()
                         .map(<[rig_core::completion::Message]>::to_vec);
                 }
-                Err(e) => {
-                    // Preserve structured run errors rather than reducing them to display text.
-                    break Err(crate::agent::streaming_error_into_prompt(e));
-                }
+                Err(e) => break Err(e),
                 _ => continue,
             }
         };
@@ -243,7 +240,7 @@ where
         loop {
             print!("> ");
             stdout.flush().map_err(|e| {
-                PromptError::CompletionError(ProviderError::Response(format!(
+                PromptError::Provider(ProviderError::Response(format!(
                     "failed to flush stdout: {e}"
                 )))
             })?;

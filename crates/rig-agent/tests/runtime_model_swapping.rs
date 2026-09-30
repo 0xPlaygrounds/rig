@@ -17,7 +17,7 @@ use rig_agent::{
     agent::{
         AgentHook, AgentRunner, CompletionCallAction, DispatchAction, DispatchEvent, HookContext,
         InvalidToolCallAction, ModelSelection, ModelSelectionAction, ModelTurnAction,
-        ModelTurnFinished, NoToolConfig, OutcomeAction, OutcomeEvent, RequestPatch, StreamingError,
+        ModelTurnFinished, NoToolConfig, OutcomeAction, OutcomeEvent, RequestPatch,
         StreamingResult,
     },
     completion::{
@@ -686,7 +686,7 @@ async fn model_selection_stop_cancels_before_provider_execution() {
 
     assert!(matches!(
         error,
-        PromptError::PromptCancelled { reason, .. } if reason == "routing denied"
+        PromptError::Cancelled { reason, .. } if reason == "routing denied"
     ));
     assert!(blocking_script.requests().is_empty());
     // Completion-call hooks resolve BEFORE model selection, so the stop above
@@ -711,9 +711,7 @@ async fn model_selection_stop_cancels_before_provider_execution() {
 
     assert!(matches!(
         error,
-        StreamingError::Prompt(error)
-            if matches!(&error, PromptError::PromptCancelled { reason, .. }
-                if reason == "routing denied")
+        PromptError::Cancelled { reason, .. } if reason == "routing denied"
     ));
     assert!(streaming_script.requests().is_empty());
     assert_eq!(streaming_completion_calls.load(Ordering::SeqCst), 1);
@@ -1642,7 +1640,7 @@ fn observing_selector(
 
 /// Drive a streaming run to its terminal item, returning the first error if
 /// the stream yields one.
-async fn drain_stream(mut stream: StreamingResult) -> Result<(), StreamingError> {
+async fn drain_stream(mut stream: StreamingResult) -> Result<(), PromptError> {
     while let Some(item) = stream.next().await {
         item?;
     }
@@ -1751,9 +1749,7 @@ async fn a_stopped_completion_call_hook_suppresses_selection_on_both_surfaces() 
                 .expect_err("streaming completion-call stop");
             assert!(matches!(
                 error,
-                StreamingError::Prompt(error)
-                    if matches!(&error, PromptError::PromptCancelled { reason, .. }
-                        if reason == "completion denied")
+                PromptError::Cancelled { reason, .. } if reason == "completion denied"
             ));
         } else {
             let error = agent
@@ -1762,7 +1758,7 @@ async fn a_stopped_completion_call_hook_suppresses_selection_on_both_surfaces() 
                 .expect_err("blocking completion-call stop");
             assert!(matches!(
                 error,
-                PromptError::PromptCancelled { reason, .. } if reason == "completion denied"
+                PromptError::Cancelled { reason, .. } if reason == "completion denied"
             ));
         }
 
@@ -1871,7 +1867,7 @@ async fn an_errored_provider_attempt_still_counts_as_the_previous_model() {
         let failed_with_provider_error = if streaming {
             matches!(
                 drain_stream(agent.prompt("boom").stream()).await,
-                Err(StreamingError::Report(report))
+                Err(PromptError::Report(report))
                     if report.kind == ErrorKind::Provider
                         && report.message.ends_with("provider exploded")
             )

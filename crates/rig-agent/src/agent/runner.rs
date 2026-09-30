@@ -21,7 +21,7 @@ use tracing_futures::Instrument;
 
 use super::{
     completion::{Agent, AgentConfig},
-    engine::{DriveItem, UnaryTurnSource, drive_agent, streaming_error_into_prompt},
+    engine::{DriveItem, UnaryTurnSource, drive_agent},
     hook::{AgentHook, HookContext, RunSettled, SettledOutcome, StepEventKind},
     run::{AgentRun, response::PromptResponse, spec::UnhandledInvalidToolCall},
     telemetry::acquire_agent_span,
@@ -131,7 +131,7 @@ impl AgentRunner {
 impl AgentRunner {
     /// Set the total model-call budget, including the initial call and every
     /// retry or continuation. Zero emits no model calls; one permits only the
-    /// initial call. Exceeding the budget returns [`PromptError::MaxTurnsError`].
+    /// initial call. Exceeding the budget returns [`PromptError::MaxTurns`].
     pub fn max_turns(mut self, max_turns: usize) -> Self {
         self.config.max_turns = max_turns;
         self
@@ -322,7 +322,7 @@ impl AgentRunner {
     ///
     /// With a memory backend configured, the run loads the conversation
     /// before its first model call (a load failure fails the run with
-    /// [`PromptError::MemoryError`] before any completion) and appends its
+    /// [`PromptError::Memory`] before any completion) and appends its
     /// `messages` once it finishes. The append is acknowledged on the
     /// response's [`memory_append`](PromptResponse::memory_append): a
     /// failed append does not invalidate the answer and does not prove that no
@@ -573,14 +573,13 @@ impl AgentRunner {
                     Err(err) => {
                         // Drain through termination so engine teardown completes
                         // rather than being dropped at the error yield.
-                        let error = streaming_error_into_prompt(err);
                         while driver.next().await.is_some() {}
-                        return Err(error);
+                        return Err(err);
                     }
                 }
             }
             response.ok_or_else(|| {
-                PromptError::CompletionError(ProviderError::Response(
+                PromptError::Provider(ProviderError::Response(
                     "agent run ended without producing a final response".to_string(),
                 ))
             })

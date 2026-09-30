@@ -1211,10 +1211,7 @@ async fn a_cancelling_replacement_on_a_completion_outcome_stops_the_run_on_both_
         .build();
     let err = within(unary.prompt("go").run()).await.expect_err("stopped");
     assert!(
-        matches!(
-            err,
-            rig_agent::run::response::PromptError::PromptCancelled { .. }
-        ),
+        matches!(err, rig_agent::run::response::PromptError::Cancelled { .. }),
         "{err:?}"
     );
 
@@ -1226,10 +1223,10 @@ async fn a_cancelling_replacement_on_a_completion_outcome_stops_the_run_on_both_
     let mut stream = streaming.prompt("go").stream();
     let mut cancelled = false;
     while let Some(item) = within(stream.next()).await {
-        if let Err(rig_agent::agent::StreamingError::Prompt(err)) = item
+        if let Err(err) = item
             && matches!(
                 &err,
-                rig_agent::run::response::PromptError::PromptCancelled { .. }
+                rig_agent::run::response::PromptError::Cancelled { .. }
             )
         {
             cancelled = true;

@@ -110,7 +110,7 @@ async fn tool_choice_auto_effect_log_is_the_golden_fixture() {
 
 /// `tool_choice(Required)`: every turn must be a tool call, and the run
 /// spec's tool choice applies to every turn, so the run never reaches a
-/// text answer: after `max_turns(2)` model calls it ends in `MaxTurnsError`
+/// text answer: after `max_turns(2)` model calls it ends in `MaxTurns`
 /// with `[Completion, Tool, Completion, Tool]` recorded. The corpus pins
 /// that this is what the engine does with a per-run `Required`.
 #[tokio::test]
@@ -135,7 +135,7 @@ async fn tool_choice_required_effect_log_is_the_golden_fixture() {
             assert!(
                 matches!(
                     error,
-                    rig::completion::PromptError::MaxTurnsError { max_turns: 2, .. }
+                    rig::completion::PromptError::MaxTurns { max_turns: 2, .. }
                 ),
                 "{error:?}"
             );
@@ -156,7 +156,7 @@ async fn tool_choice_required_effect_log_is_the_golden_fixture() {
 }
 
 /// `tool_choice(Specific(add))`: the named tool is forced on every turn,
-/// so, like `Required`, the run ends in `MaxTurnsError` after two forced
+/// so, like `Required`, the run ends in `MaxTurns` after two forced
 /// calls.
 #[tokio::test]
 async fn tool_choice_specific_effect_log_is_the_golden_fixture() {
@@ -182,7 +182,7 @@ async fn tool_choice_specific_effect_log_is_the_golden_fixture() {
             assert!(
                 matches!(
                     error,
-                    rig::completion::PromptError::MaxTurnsError { max_turns: 2, .. }
+                    rig::completion::PromptError::MaxTurns { max_turns: 2, .. }
                 ),
                 "{error:?}"
             );

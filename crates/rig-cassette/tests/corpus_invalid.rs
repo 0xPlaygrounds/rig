@@ -48,7 +48,7 @@
 //! | `mock_invalid_repair_to_add` | `invalid_repair_to_add_…` | `[Completion, Tool(add), Completion]` | answer |
 //! | `mock_invalid_skip_under_auto` | `invalid_skip_under_auto_…` | `[Completion, Completion]`, the reason in the transcript | answer |
 //! | `mock_invalid_skip_under_none` | `invalid_skip_under_none_…` | `[Completion]`; the skip is refused under `tool_choice: none` | `UnknownToolCall` |
-//! | `mock_invalid_retry_under_required` | `invalid_retry_under_required_…` | `[Completion, Completion, Tool]` | `MaxTurnsError { max_turns: 2 }` |
+//! | `mock_invalid_retry_under_required` | `invalid_retry_under_required_…` | `[Completion, Completion, Tool]` | `MaxTurns { max_turns: 2 }` |
 //! | `mock_invalid_streamed_repair` | `invalid_streamed_repair_…` | `[Completion, Tool, Completion]`, events kept | answer |
 //! | `mock_invalid_streamed_skip` | `invalid_streamed_skip_…` | `[Completion, Completion]`, events kept | answer |
 //!

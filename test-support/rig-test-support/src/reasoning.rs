@@ -25,7 +25,7 @@ use rig_agent::agent::ReasoningDelta;
 
 use rig_agent::agent::StepEventKind;
 
-use rig_agent::agent::StreamingError;
+use rig_agent::completion::PromptError;
 
 use rig_agent::completion;
 
@@ -690,7 +690,7 @@ fn record_reasoning(
 
 /// Drain an agent stream into observations, retaining errors for later assertions.
 pub async fn collect_stream_stats(
-    stream: impl futures::Stream<Item = Result<MultiTurnStreamItem, StreamingError>>,
+    stream: impl futures::Stream<Item = Result<MultiTurnStreamItem, PromptError>>,
     provider: &str,
 ) -> StreamStats {
     let mut stats = StreamStats::new();

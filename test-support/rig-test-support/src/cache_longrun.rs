@@ -14,7 +14,7 @@
 use std::collections::{BTreeMap, HashMap};
 use std::time::Duration;
 
-use rig_agent::agent::{Agent, MultiTurnStreamItem, StreamingError};
+use rig_agent::agent::{Agent, MultiTurnStreamItem};
 use rig_cassette::http::CassetteClock;
 use rig_core::completion::{CacheCost, CacheRates, Message, Usage};
 use serde::{Deserialize, Serialize};
@@ -172,16 +172,6 @@ pub async fn try_chat(
     }
 }
 
-fn streaming_status(error: &StreamingError) -> Option<http::StatusCode> {
-    match error {
-        StreamingError::Completion(error) => error.provider_response_status(),
-        StreamingError::Report(report) => report
-            .http_status
-            .and_then(|status| http::StatusCode::from_u16(status).ok()),
-        StreamingError::Prompt(error) => error.provider_response_status(),
-    }
-}
-
 /// [`chat`] over the provider's streaming endpoint.
 ///
 /// # Panics
@@ -223,7 +213,7 @@ pub async fn chat_streamed(
             (_, error) => error,
         };
         match (waits.next(), &error) {
-            (Some(wait), Some(failure)) if retryable(streaming_status(failure)) => {
+            (Some(wait), Some(failure)) if retryable(failure.provider_response_status()) => {
                 log.retries += 1;
                 clock.pause(Duration::from_secs(*wait)).await;
             }
