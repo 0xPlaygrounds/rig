@@ -96,17 +96,12 @@ impl OllamaConfig {
         }
     }
 
-    /// Build an embedding wire reporting the supplied width, known model width,
-    /// or zero if unknown. The width is metadata and is not sent to the daemon.
-    pub(crate) fn embedding(&self, model: impl Into<String>, ndims: Option<usize>) -> Embeddings {
-        let model = model.into();
-        let ndims = ndims
-            .or_else(|| model_dimensions_from_identifier(&model))
-            .unwrap_or_default();
+    /// The embedding wire for `model`, at its known width.
+    pub(crate) fn embedding(&self, model: impl Into<String>) -> Embeddings {
         Embeddings {
             provider: self.clone(),
-            model,
-            ndims,
+            model: model.into(),
+            ndims: None,
         }
     }
 
@@ -188,9 +183,26 @@ pub struct Embeddings {
     pub provider: OllamaConfig,
     /// The model to address.
     pub model: String,
-    /// The width this wire reports, from the caller or the model's published
-    /// dimensions. `0` means neither named one.
-    pub ndims: usize,
+    /// The width set by [`Self::with_ndims`], when the caller named one
+    /// rather than taking the model's published width.
+    pub ndims: Option<usize>,
+}
+
+impl Embeddings {
+    /// Vectors `ndims` wide, for a model whose width Rig does not know.
+    /// Nothing is sent to the daemon; a reply of another width fails with
+    /// [`ProviderError::MismatchedDimensions`].
+    pub fn with_ndims(mut self, ndims: usize) -> Self {
+        self.ndims = Some(ndims);
+        self
+    }
+
+    /// The caller's width, else the model's published one, else zero.
+    fn resolved_ndims(&self) -> usize {
+        self.ndims
+            .or_else(|| model_dimensions_from_identifier(&self.model))
+            .unwrap_or_default()
+    }
 }
 
 impl Wire for Embeddings {
@@ -202,7 +214,9 @@ impl Wire for Embeddings {
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(PROVIDER_NAME)
             .model(self.model.as_str())
-            .capabilities(Capabilities::embedding(MAX_DOCUMENTS, self.ndims))
+            .capabilities(
+                Capabilities::embedding(MAX_DOCUMENTS, self.resolved_ndims()).declaring(self.ndims),
+            )
     }
 
     fn encode(&self, texts: Vec<String>, _mode: Mode) -> Result<Encoded, EncodeError> {

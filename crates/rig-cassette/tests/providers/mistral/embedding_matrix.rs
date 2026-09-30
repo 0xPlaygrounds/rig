@@ -31,7 +31,7 @@ async fn normalized_response_is_complete() {
     with_mistral_embedding_cassette(
         "embedding_matrix/normalized_response_is_complete",
         |client| async move {
-            let model = client.embedding(mistral::embedding::MISTRAL_EMBED, None);
+            let model = client.embedding(mistral::embedding::MISTRAL_EMBED);
             let response = model
                 .call(inputs())
                 .await
@@ -48,7 +48,7 @@ async fn normalized_response_is_complete() {
 #[tokio::test]
 async fn raw_round_trips() {
     with_mistral_embedding_cassette("embedding_matrix/raw_round_trips", |client| async move {
-        let model = client.embedding(mistral::embedding::MISTRAL_EMBED, None);
+        let model = client.embedding(mistral::embedding::MISTRAL_EMBED);
         let response = model
             .call(inputs())
             .await
@@ -74,7 +74,7 @@ async fn raw_round_trips() {
 #[tokio::test]
 async fn raw_route_parity() {
     with_mistral_embedding_cassette("embedding_matrix/raw_route_parity", |client| async move {
-        let model = client.embedding(mistral::embedding::MISTRAL_EMBED, None);
+        let model = client.embedding(mistral::embedding::MISTRAL_EMBED);
         let normalized = model
             .call(inputs())
             .await
@@ -100,7 +100,7 @@ async fn single_text_convenience() {
     with_mistral_embedding_cassette(
         "embedding_matrix/single_text_convenience",
         |client| async move {
-            let model = client.embedding(mistral::embedding::MISTRAL_EMBED, None);
+            let model = client.embedding(mistral::embedding::MISTRAL_EMBED);
             let response = model
                 .call(vec![EMBEDDING_INPUTS[0].to_string()])
                 .await
@@ -118,7 +118,7 @@ async fn single_text_convenience() {
     .await;
 }
 
-/// `embedding(model, Some(n))` round-trips the requested width — the
+/// `with_ndims(n)` round-trips the requested width — the
 /// provider either honors it or the driver errors honestly with
 /// `MismatchedDimensions`; a silent mismatch is the bug this cell exists to
 /// catch.
@@ -128,7 +128,9 @@ async fn dimensions_request() {
         // `mistral-embed` is fixed-width; `output_dimension` is a
         // codestral-embed capability, so the cell exercises that model.
         let ndims = 64;
-        let model = client.embedding(mistral::embedding::CODESTRAL_EMBED, Some(ndims));
+        let model = client
+            .embedding(mistral::embedding::CODESTRAL_EMBED)
+            .map_wire(|wire| wire.with_ndims(ndims));
         let response = model
             .call(inputs())
             .await
@@ -146,7 +148,7 @@ async fn error_preserves_provider_body() {
     with_mistral_embedding_cassette(
         "embedding_matrix/error_preserves_provider_body",
         |client| async move {
-            let model = client.embedding("no-such-embedding-model", None);
+            let model = client.embedding("no-such-embedding-model");
             let error = model
                 .call(inputs())
                 .await
@@ -179,7 +181,7 @@ async fn bug_mistral_request_id_dropped() {
     with_mistral_embedding_cassette(
         "embedding_matrix/bug_mistral_request_id_dropped",
         |client| async move {
-            let model = client.embedding(mistral::embedding::MISTRAL_EMBED, None);
+            let model = client.embedding(mistral::embedding::MISTRAL_EMBED);
             let response = model
                 .call(inputs())
                 .await

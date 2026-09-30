@@ -38,9 +38,10 @@ impl Copilot {
         self.model(self.config.completion(model))
     }
 
-    /// The embedding model for `model`, `ndims` wide when set.
-    pub fn embedding(&self, model: impl Into<String>, ndims: Option<usize>) -> Model<Embeddings> {
-        self.model(self.config.embedding(model, ndims))
+    /// The embedding model for `model`, at its documented width.
+    /// [`Embeddings::with_ndims`] asks for another.
+    pub fn embedding(&self, model: impl Into<String>) -> Model<Embeddings> {
+        self.model(self.config.embedding(model))
     }
 
     /// The models this session can use.

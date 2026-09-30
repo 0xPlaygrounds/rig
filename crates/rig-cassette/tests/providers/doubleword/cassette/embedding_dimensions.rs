@@ -22,7 +22,7 @@
 //!   and after the fix, so they fail on `origin/main` as a clean assertion
 //!   failure (`4096 != 0`) with no mock miss.
 //! - **the wrong width** — a caller-requested `dimensions` was dropped on the
-//!   floor, so `embedding(model, Some(512))` reported 512 and
+//!   floor, so `with_ndims(512)` reported 512 and
 //!   received 4096. Every `width_<n>_*` cell pins this half; the fix changes
 //!   what rig *sends*, so on `origin/main` these replay as a mock miss (the
 //!   recorded body carries `"dimensions":<n>`, main sends none) *plus* the
@@ -122,7 +122,11 @@ fn embedding_model(
     client: &OpenAiModels,
     width: Option<usize>,
 ) -> rig::Model<rig::providers::openai::wire::Embeddings> {
-    client.embedding(MODEL, width)
+    let model = client.embedding(MODEL);
+    match width {
+        Some(width) => model.map_wire(|wire| wire.with_ndims(width)),
+        None => model,
+    }
 }
 
 /// Runs one input through the model and proves `ndims()` described the vector
@@ -171,7 +175,8 @@ async fn embed_batch(client: &OpenAiModels, width: Option<usize>, inputs: &[&str
 /// wire for the refusal to be the provider's rather than rig's.
 async fn assert_rejected_input(client: &OpenAiModels, input: &str) {
     let error = client
-        .embedding(MODEL, Some(512))
+        .embedding(MODEL)
+        .map_wire(|wire| wire.with_ndims(512))
         .call(vec![input.to_string()])
         .await
         .map(|response| response.embeddings)
@@ -356,7 +361,9 @@ async fn usage_survives_a_requested_width() {
     let calls = with_doubleword_embedding_cassette(
         "embedding_dimensions/usage_survives_a_requested_width",
         |client| async move {
-            let model = client.embedding(MODEL, Some(256));
+            let model = client
+                .embedding(MODEL)
+                .map_wire(|wire| wire.with_ndims(256));
             let response = model
                 .call(vec![PROBE.to_string()])
                 .await
@@ -384,7 +391,7 @@ async fn usage_at_the_default_width() {
     let calls = with_doubleword_embedding_cassette(
         "embedding_dimensions/usage_at_the_default_width",
         |client| async move {
-            let model = client.embedding(MODEL, None);
+            let model = client.embedding(MODEL);
             let response = model
                 .call(vec![PROBE.to_string()])
                 .await
@@ -409,7 +416,9 @@ async fn builder_documents_at_a_requested_width() {
     let calls = with_doubleword_embedding_cassette(
         "embedding_dimensions/builder_documents_at_a_requested_width",
         |client| async move {
-            let model = client.embedding(MODEL, Some(128));
+            let model = client
+                .embedding(MODEL)
+                .map_wire(|wire| wire.with_ndims(128));
             let documents = EmbeddingsBuilder::new(model.clone())
                 .document("first note".to_string())
                 .expect("document should embed")
@@ -438,7 +447,7 @@ async fn builder_documents_at_the_default_width() {
     let calls = with_doubleword_embedding_cassette(
         "embedding_dimensions/builder_documents_at_the_default_width",
         |client| async move {
-            let model = client.embedding(MODEL, None);
+            let model = client.embedding(MODEL);
             let documents = EmbeddingsBuilder::new(model.clone())
                 .document("first note".to_string())
                 .expect("document should embed")
@@ -557,7 +566,9 @@ async fn an_unknown_model_still_puts_the_requested_width_on_the_wire() {
     let calls = with_doubleword_embedding_cassette(
         "embedding_dimensions/an_unknown_model_still_puts_the_requested_width_on_the_wire",
         |client| async move {
-            let model = client.embedding("Qwen/Qwen4-Embedding-Unreleased", Some(8_192));
+            let model = client
+                .embedding("Qwen/Qwen4-Embedding-Unreleased")
+                .map_wire(|wire| wire.with_ndims(8_192));
             assert_eq!(model.capabilities().ndims, 8_192);
             let error = model
                 .call(vec![PROBE.to_string()])

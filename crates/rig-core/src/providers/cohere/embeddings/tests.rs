@@ -10,7 +10,7 @@ async fn embeddings_non_success_preserves_status_and_body() {
         RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
     let model = crate::driver::Model::new(
         crate::providers::cohere::CohereConfig::new("test-key")
-            .embedding(crate::providers::cohere::EMBED_ENGLISH_V3, None),
+            .embedding(crate::providers::cohere::EMBED_ENGLISH_V3),
         http_client,
     );
 
@@ -40,7 +40,7 @@ async fn embeddings_2xx_error_envelope_preserves_status_and_body() {
     let http_client = RecordingHttpClient::new(body); // 200 OK
     let model = crate::driver::Model::new(
         crate::providers::cohere::CohereConfig::new("test-key")
-            .embedding(crate::providers::cohere::EMBED_ENGLISH_V3, None),
+            .embedding(crate::providers::cohere::EMBED_ENGLISH_V3),
         http_client,
     );
 

@@ -16,7 +16,9 @@ async fn main() -> Result<(), anyhow::Error> {
         .with_target(false)
         .init();
 
-    let model = BedrockRuntime::from_env().embedding(AMAZON_TITAN_EMBED_TEXT_V2_0, Some(256));
+    let model = BedrockRuntime::from_env()
+        .embedding(AMAZON_TITAN_EMBED_TEXT_V2_0)
+        .map_wire(|wire| wire.with_ndims(256));
     let embeddings = EmbeddingsBuilder::new(model)
         .document(Greetings {
             message: "aa".to_string(),

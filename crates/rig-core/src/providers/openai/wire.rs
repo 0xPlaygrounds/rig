@@ -1047,8 +1047,8 @@ impl OpenAIConfig {
     }
 
     /// The embeddings wire for `model`.
-    pub(crate) fn embedding(&self, model: impl Into<String>, ndims: Option<usize>) -> Embeddings {
-        Embeddings::new(self.clone(), model, ndims)
+    pub(crate) fn embedding(&self, model: impl Into<String>) -> Embeddings {
+        Embeddings::new(self.clone(), model)
     }
 
     /// The rerank wire for `model`.

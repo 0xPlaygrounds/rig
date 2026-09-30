@@ -276,7 +276,7 @@ const EMBED_BODY: &str = r#"{"model":"all-minilm","embeddings":[[0.5,-0.25],[0.1
 #[tokio::test]
 async fn an_embedding_reply_pairs_its_vectors_with_the_texts_that_were_sent() {
     let response = crate::driver::Model::new(
-        OllamaConfig::new().embedding("all-minilm", None),
+        OllamaConfig::new().embedding("all-minilm"),
         RecordingHttpClient::new(EMBED_BODY),
     )
     .call(vec!["first".to_owned(), "second".to_owned()])
@@ -305,17 +305,18 @@ async fn an_embedding_reply_pairs_its_vectors_with_the_texts_that_were_sent() {
 fn an_embedding_wire_reports_the_models_published_width() {
     assert_eq!(
         OllamaConfig::new()
-            .embedding("all-minilm", None)
+            .embedding("all-minilm")
             .describe()
             .capabilities,
         Capabilities::embedding(1024, 384)
     );
     assert_eq!(
         OllamaConfig::new()
-            .embedding("qwen3-embedding", Some(2048))
+            .embedding("qwen3-embedding")
+            .with_ndims(2048)
             .describe()
             .capabilities,
-        Capabilities::embedding(1024, 2048),
+        Capabilities::embedding(1024, 2048).declaring(Some(2048)),
         "a family whose width varies by size takes the caller's"
     );
 }
@@ -326,7 +327,7 @@ fn an_embedding_wire_reports_the_models_published_width() {
 async fn an_embedding_reply_keeps_its_whole_body_as_raw() {
     let body = r#"{"model":"all-minilm","embeddings":[[0.5,-0.25],[0.125,0.0]],"prompt_eval_count":6,"unmodeled":"kept"}"#;
     let response = crate::driver::Model::new(
-        OllamaConfig::new().embedding("all-minilm", None),
+        OllamaConfig::new().embedding("all-minilm"),
         RecordingHttpClient::new(body),
     )
     .call(vec!["first".to_owned(), "second".to_owned()])
@@ -338,4 +339,30 @@ async fn an_embedding_reply_keeps_its_whole_body_as_raw() {
         serde_json::from_str::<serde_json::Value>(body).expect("the body is JSON")
     );
     assert_eq!(response.raw["unmodeled"], "kept");
+}
+
+/// The daemon takes no width, so a declared one is checked against the reply
+/// instead: a wrong declaration fails rather than mis-sizing a vector index.
+#[tokio::test]
+async fn a_declared_width_the_reply_does_not_match_fails() {
+    let body = r#"{"model":"my-embedder","embeddings":[[0.5,-0.25]],"prompt_eval_count":3}"#;
+    let error = crate::driver::Model::new(
+        OllamaConfig::new().embedding("my-embedder").with_ndims(3),
+        RecordingHttpClient::new(body),
+    )
+    .call(vec!["first".to_owned()])
+    .await
+    .expect_err("a two-wide reply is not three wide");
+
+    assert!(
+        matches!(
+            error,
+            ProviderError::MismatchedDimensions {
+                requested: 3,
+                returned: 2,
+                ..
+            }
+        ),
+        "{error:?}"
+    );
 }

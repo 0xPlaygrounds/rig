@@ -69,7 +69,7 @@ async fn vector_search_test() {
         .with_base_url(openai_mock.base_url())
         .client();
 
-    let model = openai_client.embedding(openai::TEXT_EMBEDDING_3_SMALL, None);
+    let model = openai_client.embedding(openai::TEXT_EMBEDDING_3_SMALL);
 
     // create test documents with mocked embeddings
     let words = vec![

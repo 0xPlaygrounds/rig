@@ -3,7 +3,10 @@
 //!
 //! ```
 //! use rig_core::providers::openai::{OpenAI, TEXT_EMBEDDING_3_SMALL};
-//! let wire = OpenAI::new("key").embedding(TEXT_EMBEDDING_3_SMALL, None);
+//! let model = OpenAI::new("key")
+//!     .embedding(TEXT_EMBEDDING_3_SMALL)
+//!     .map_wire(|wire| wire.with_ndims(512));
+//! assert_eq!(model.capabilities().ndims, 512);
 //! ```
 
 use crate::wire::Flow;
@@ -100,8 +103,8 @@ pub struct Embeddings {
     pub provider: OpenAIConfig,
     /// The embedding model.
     pub model: String,
-    /// The width the caller asked for, when they named one rather than
-    /// taking the model's default.
+    /// The width set by [`Self::with_ndims`], when the caller named one
+    /// rather than taking the model's default.
     pub ndims: Option<usize>,
     /// The encoding the caller asked the provider to answer in.
     pub encoding_format: Option<EncodingFormat>,
@@ -110,15 +113,25 @@ pub struct Embeddings {
 }
 
 impl Embeddings {
-    /// The embeddings wire for `model`.
-    pub fn new(provider: OpenAIConfig, model: impl Into<String>, ndims: Option<usize>) -> Self {
+    /// The embeddings wire for `model`, at the model's documented width.
+    pub fn new(provider: OpenAIConfig, model: impl Into<String>) -> Self {
         Self {
             provider,
             model: model.into(),
-            ndims,
+            ndims: None,
             encoding_format: None,
             user: None,
         }
+    }
+
+    /// Vectors `ndims` wide. The width goes out in the dialect's width
+    /// field, when it has one, unless it is the model's documented width.
+    /// Encoding fails for a width the dialect's table says the model cannot
+    /// produce, and a reply of another width fails with
+    /// [`ProviderError::MismatchedDimensions`].
+    pub fn with_ndims(mut self, ndims: usize) -> Self {
+        self.ndims = Some(ndims);
+        self
     }
 
     /// Ask the provider to answer in `encoding_format`.

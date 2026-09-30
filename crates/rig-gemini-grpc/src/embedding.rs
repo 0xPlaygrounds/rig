@@ -5,7 +5,7 @@
 //! use rig_gemini_grpc::{GeminiGrpc, embedding::{EMBEDDING_004, Embeddings}};
 //!
 //! # async fn example() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-//! let model = GeminiGrpc::new("API_KEY").await?.embedding(EMBEDDING_004, None);
+//! let model = GeminiGrpc::new("API_KEY").await?.embedding(EMBEDDING_004);
 //! # let _ = model;
 //! # Ok(())
 //! # }
@@ -23,19 +23,38 @@ use rig_core::wire::{Capabilities, Decoder, Descriptor, Flow, Mode, Out, Wire, W
 use super::GeminiGrpc;
 use super::proto::{self, EmbedContentRequest};
 
-/// The embedding endpoint for one model, at a chosen width.
+/// The embedding endpoint for one model.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Embeddings {
+    /// The model to address.
     pub model: String,
-    pub ndims: usize,
+    /// The width set by [`Self::with_ndims`], when the caller named one
+    /// rather than taking the model's default.
+    pub ndims: Option<usize>,
 }
 
 impl Embeddings {
-    pub fn new(model: impl Into<String>, dims: Option<usize>) -> Self {
+    /// The embedding endpoint for `model`, at the model's default width.
+    pub fn new(model: impl Into<String>) -> Self {
         Self {
             model: model.into(),
-            ndims: dims.unwrap_or(768), // Default embedding size for text-embedding-004
+            ndims: None,
         }
+    }
+
+    /// Vectors `ndims` wide, sent as every text's `output_dimensionality`.
+    /// A reply of another width fails with
+    /// [`ProviderError::MismatchedDimensions`].
+    pub fn with_ndims(mut self, ndims: usize) -> Self {
+        self.ndims = Some(ndims);
+        self
+    }
+
+    /// The caller's width, else the model's documented one, else zero.
+    fn resolved_ndims(&self) -> usize {
+        self.ndims
+            .or_else(|| (self.model == EMBEDDING_004).then_some(768))
+            .unwrap_or_default()
     }
 }
 
@@ -48,7 +67,7 @@ impl Wire for Embeddings {
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(super::completion::PROVIDER_NAME)
             .model(self.model.as_str())
-            .capabilities(Capabilities::embedding(100, self.ndims))
+            .capabilities(Capabilities::embedding(100, self.resolved_ndims()).declaring(self.ndims))
     }
 
     fn encode(
@@ -56,6 +75,11 @@ impl Wire for Embeddings {
         texts: Vec<String>,
         _mode: Mode,
     ) -> Result<Vec<(String, EmbedContentRequest)>, EncodeError> {
+        let output_dimensionality = self
+            .ndims
+            .map(i32::try_from)
+            .transpose()
+            .map_err(EncodeError::request)?;
         Ok(texts
             .into_iter()
             .map(|text| {
@@ -67,7 +91,7 @@ impl Wire for Embeddings {
                     }),
                     task_type: None,
                     title: None,
-                    output_dimensionality: Some(self.ndims as i32),
+                    output_dimensionality,
                 };
                 (text, request)
             })

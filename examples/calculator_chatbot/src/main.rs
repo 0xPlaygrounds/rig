@@ -254,7 +254,7 @@ async fn main() -> Result<(), anyhow::Error> {
     toolset.add_retrieved_tool(Multiply)?;
     toolset.add_retrieved_tool(Divide)?;
     let embedding_model = openai_client
-        .embedding(openai::TEXT_EMBEDDING_ADA_002, None)
+        .embedding(openai::TEXT_EMBEDDING_ADA_002)
         .erase();
     let embeddings = EmbeddingsBuilder::new(embedding_model.clone())
         .documents(toolset.schemas()?)?

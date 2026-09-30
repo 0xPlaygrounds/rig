@@ -437,7 +437,7 @@ async fn embeddings_without_the_flag_are_a_501() {
         "error_matrix/embeddings_without_the_flag",
         |client| async move {
             let error = client
-                .embedding(CASSETTE_EMBEDDING_MODEL, None)
+                .embedding(CASSETTE_EMBEDDING_MODEL)
                 .call(vec!["hello".to_string()])
                 .await
                 .map(|response| response.embeddings)
@@ -482,7 +482,7 @@ async fn embeddings_with_pooling_none_are_a_400() {
         "error_matrix/embeddings_with_pooling_none",
         |client| async move {
             let error = client
-                .embedding(CASSETTE_EMBEDDING_MODEL, None)
+                .embedding(CASSETTE_EMBEDDING_MODEL)
                 .call(vec!["hello".to_string()])
                 .await
                 .map(|response| response.embeddings)
@@ -526,7 +526,7 @@ async fn embeddings_on_a_causal_lm_return_pooled_numbers() {
         "error_matrix/embeddings_on_a_causal_lm",
         |client| async move {
             let embeddings = client
-                .embedding(CASSETTE_MODEL, None)
+                .embedding(CASSETTE_MODEL)
                 .call(vec!["hello".to_string()])
                 .await
                 .map(|response| response.embeddings)
@@ -797,7 +797,7 @@ async fn an_embeddings_input_past_the_batch_size_is_a_500() {
             // with, and deterministic.
             let oversized = "word ".repeat(4_000);
             let error = client
-                .embedding(CASSETTE_EMBEDDING_MODEL, None)
+                .embedding(CASSETTE_EMBEDDING_MODEL)
                 .call(vec![oversized])
                 .await
                 .map(|response| response.embeddings)

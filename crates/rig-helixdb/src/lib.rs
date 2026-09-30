@@ -121,7 +121,7 @@ impl HelixDBClient for HelixDB {
 /// use rig_helixdb::{HelixDB, HelixDBVectorStore};
 ///
 /// # fn example() -> anyhow::Result<()> {
-/// let openai_model = OpenAI::from_env()?.embedding("text-embedding-ada-002", None);
+/// let openai_model = OpenAI::from_env()?.embedding("text-embedding-ada-002");
 ///
 /// let helixdb_client = HelixDB::new(None, Some(6969), None);
 /// let vector_store = HelixDBVectorStore::new(helixdb_client, openai_model);

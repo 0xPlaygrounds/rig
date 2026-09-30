@@ -44,9 +44,7 @@ fn lookup_context(docs: Vec<(f64, String, String)>, prompt: &str) -> String {
 async fn main() -> Result<(), anyhow::Error> {
     tracing_subscriber::fmt().init();
     let client = OpenAI::from_env()?;
-    let embedding_model = client
-        .embedding(openai::TEXT_EMBEDDING_ADA_002, None)
-        .erase();
+    let embedding_model = client.embedding(openai::TEXT_EMBEDDING_ADA_002).erase();
 
     let mut builder = EmbeddingsBuilder::new(embedding_model.clone());
     for definition in sample_definitions() {

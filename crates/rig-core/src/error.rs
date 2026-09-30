@@ -386,8 +386,8 @@ pub enum ProviderError {
         response: ProviderResponseError,
     },
     /// The provider returned vectors of a width other than the one the caller
-    /// declared through an embedding wire's `ndims` argument. Raised only
-    /// when the width was set explicitly.
+    /// set with an embedding wire's `with_ndims`. Raised only when the width
+    /// was set explicitly.
     MismatchedDimensions {
         /// Provider whose response disagreed with the declared width.
         provider: String,

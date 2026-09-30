@@ -7,7 +7,9 @@
 //! let provider = ollama::Ollama::new();
 //!
 //! let qwen = provider.completion("qwen2.5:14b");
-//! let embeddings = provider.embedding(ollama::ALL_MINILM, Some(384));
+//! let embeddings = provider.embedding(ollama::ALL_MINILM);
+//! // A model Rig has no width for declares one, which replies must match.
+//! let custom = provider.embedding("my-embedder").map_wire(|wire| wire.with_ndims(1024));
 //! # Ok(())
 //! # }
 //! ```

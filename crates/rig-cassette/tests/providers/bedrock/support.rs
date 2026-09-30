@@ -30,12 +30,8 @@ impl Bedrock {
         Model::new(Converse::new(model), self.0.clone())
     }
 
-    pub(super) fn embedding(
-        &self,
-        model: &str,
-        ndims: Option<usize>,
-    ) -> Model<Embeddings, BedrockRuntime> {
-        Model::new(Embeddings::new(model, ndims), self.0.clone())
+    pub(super) fn embedding(&self, model: &str) -> Model<Embeddings, BedrockRuntime> {
+        Model::new(Embeddings::new(model), self.0.clone())
     }
 
     pub(super) fn agent(&self, model: &str) -> rig::agent::AgentBuilder {

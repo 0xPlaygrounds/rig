@@ -45,7 +45,7 @@ async fn normalized_response_is_complete() {
         "embedding_matrix/normalized_response_is_complete",
         |client| async move {
             let model = client
-                .embedding(cohere::EMBED_V4, None)
+                .embedding(cohere::EMBED_V4)
                 .map_wire(|wire| wire.with_input_type(INPUT_TYPE));
             let response = model
                 .call(inputs())
@@ -66,7 +66,7 @@ async fn normalized_response_is_complete() {
 async fn raw_round_trips() {
     with_cohere_cassette("embedding_matrix/raw_round_trips", |client| async move {
         let model = client
-            .embedding(cohere::EMBED_V4, None)
+            .embedding(cohere::EMBED_V4)
             .map_wire(|wire| wire.with_input_type(INPUT_TYPE));
         let response = model
             .call(inputs())
@@ -105,7 +105,7 @@ async fn raw_round_trips() {
 async fn raw_route_parity() {
     with_cohere_cassette("embedding_matrix/raw_route_parity", |client| async move {
         let model = client
-            .embedding(cohere::EMBED_V4, None)
+            .embedding(cohere::EMBED_V4)
             .map_wire(|wire| wire.with_input_type(INPUT_TYPE));
         let normalized = model
             .call(inputs())
@@ -129,7 +129,7 @@ async fn single_text_convenience() {
         "embedding_matrix/single_text_convenience",
         |client| async move {
             let model = client
-                .embedding(cohere::EMBED_V4, None)
+                .embedding(cohere::EMBED_V4)
                 .map_wire(|wire| wire.with_input_type(INPUT_TYPE));
             let response = model
                 .call(vec![EMBEDDING_INPUTS[0].to_string()])
@@ -149,7 +149,7 @@ async fn error_preserves_provider_body() {
         "embedding_matrix/error_preserves_provider_body",
         |client| async move {
             let model = client
-                .embedding("no-such-embedding-model", None)
+                .embedding("no-such-embedding-model")
                 .map_wire(|wire| wire.with_input_type(INPUT_TYPE));
             let error = model
                 .call(inputs())

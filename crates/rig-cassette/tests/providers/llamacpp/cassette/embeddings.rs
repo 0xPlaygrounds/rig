@@ -22,7 +22,7 @@ struct Greetings {
 #[tokio::test]
 async fn embeddings_smoke() {
     with_llamacpp_embeddings_cassette("embeddings/embeddings_smoke", |client| async move {
-        let model = client.embedding(CASSETTE_EMBEDDING_MODEL, None);
+        let model = client.embedding(CASSETTE_EMBEDDING_MODEL);
 
         let embeddings = model
             .call(
@@ -45,20 +45,19 @@ async fn derive_document_embeddings() {
     with_llamacpp_embeddings_cassette(
         "embeddings/derive_document_embeddings",
         |client| async move {
-            let embeddings = rig::embeddings::EmbeddingsBuilder::new(
-                client.embedding(CASSETTE_EMBEDDING_MODEL, None),
-            )
-            .document(Greetings {
-                message: "Hello, world!".to_string(),
-            })
-            .expect("first document should build")
-            .document(Greetings {
-                message: "Goodbye, world!".to_string(),
-            })
-            .expect("second document should build")
-            .build()
-            .await
-            .expect("embedding request should succeed");
+            let embeddings =
+                rig::embeddings::EmbeddingsBuilder::new(client.embedding(CASSETTE_EMBEDDING_MODEL))
+                    .document(Greetings {
+                        message: "Hello, world!".to_string(),
+                    })
+                    .expect("first document should build")
+                    .document(Greetings {
+                        message: "Goodbye, world!".to_string(),
+                    })
+                    .expect("second document should build")
+                    .build()
+                    .await
+                    .expect("embedding request should succeed");
 
             assert_eq!(embeddings.len(), 2);
             for (_document, embeddings_for_document) in embeddings {

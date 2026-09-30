@@ -100,13 +100,10 @@ impl BedrockRuntime {
         Model::new(Converse::new(model), self.clone())
     }
 
-    /// The embedding model for `model`, `ndims` wide when set.
-    pub fn embedding(
-        &self,
-        model: impl Into<String>,
-        ndims: Option<usize>,
-    ) -> Model<Embeddings, Self> {
-        Model::new(Embeddings::new(model, ndims), self.clone())
+    /// The embedding model for `model`, at its default width.
+    /// [`Embeddings::with_ndims`] asks for another.
+    pub fn embedding(&self, model: impl Into<String>) -> Model<Embeddings, Self> {
+        Model::new(Embeddings::new(model), self.clone())
     }
 
     /// The image-generation model for `model`.

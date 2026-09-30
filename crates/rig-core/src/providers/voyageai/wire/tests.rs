@@ -22,7 +22,7 @@ const EMBED_BODY: &str = r#"{"object":"list","data":[{"object":"embedding","embe
 #[tokio::test]
 async fn an_embedding_reply_pairs_its_vectors_with_the_texts_that_were_sent() {
     let response = crate::driver::Model::new(
-        voyage().embedding("voyage-3.5", None),
+        voyage().embedding("voyage-3.5"),
         RecordingHttpClient::new(EMBED_BODY),
     )
     .call(vec!["first".to_owned(), "second".to_owned()])
@@ -52,7 +52,7 @@ async fn an_embedding_reply_pairs_its_vectors_with_the_texts_that_were_sent() {
 #[test]
 fn an_unset_option_is_absent_from_the_request() {
     let encoded = voyage()
-        .embedding("voyage-3.5", None)
+        .embedding("voyage-3.5")
         .encode(vec!["first".to_owned()], Mode::Unary)
         .expect("the request encodes");
 
@@ -62,10 +62,10 @@ fn an_unset_option_is_absent_from_the_request() {
     );
 
     let encoded = voyage()
-        .embedding("voyage-3.5", None)
+        .embedding("voyage-3.5")
         .with_input_type("query")
         .with_truncation(false)
-        .with_output_dimension(256)
+        .with_ndims(256)
         .encode(vec!["first".to_owned()], Mode::Unary)
         .expect("the request encodes");
 
@@ -84,22 +84,35 @@ fn an_unset_option_is_absent_from_the_request() {
 #[test]
 fn an_embedding_wire_reports_the_width_it_asked_for() {
     assert_eq!(
-        voyage()
-            .embedding("voyage-3.5", None)
-            .describe()
-            .capabilities,
+        voyage().embedding("voyage-3.5").describe().capabilities,
         Capabilities::embedding(1024, 1024)
     );
     assert_eq!(
         voyage()
-            .embedding("voyage-3.5", None)
-            .with_output_dimension(256)
+            .embedding("voyage-3.5")
+            .with_ndims(256)
             .describe()
             .capabilities,
-        Capabilities::embedding(1024, 256),
+        Capabilities::embedding(1024, 256).declaring(Some(256)),
         "a vector store sizes its index from `ndims`, so asking Voyage for a \
          narrower vector must change what the wire reports"
     );
+}
+
+/// Older Voyage models reject `output_dimension`, so declaring the width a
+/// known model emits unasked sends nothing and still checks the reply.
+#[test]
+fn a_models_own_width_is_declared_but_not_sent() {
+    let wire = voyage().embedding("voyage-3.5").with_ndims(1024);
+    let encoded = wire
+        .encode(vec!["first".to_owned()], Mode::Unary)
+        .expect("the request encodes");
+
+    assert_eq!(
+        body_of(&encoded),
+        serde_json::json!({ "model": "voyage-3.5", "input": ["first"] })
+    );
+    assert_eq!(wire.describe().capabilities.declared, Some(1024));
 }
 
 /// `POST /rerank`'s reply shape: scores in relevance order, each naming the
@@ -187,7 +200,7 @@ fn a_serialized_config_carries_no_key_material() {
     );
 
     for wire in [
-        serde_json::to_string(&voyage().embedding("voyage-3.5", None)),
+        serde_json::to_string(&voyage().embedding("voyage-3.5")),
         serde_json::to_string(&voyage().rerank("rerank-2.5")),
     ] {
         let serialized = wire.expect("the wire serializes");
@@ -204,7 +217,7 @@ fn a_serialized_config_carries_no_key_material() {
 async fn an_embedding_reply_keeps_its_whole_body_as_raw() {
     let body = r#"{"object":"list","data":[{"object":"embedding","embedding":[0.5,-0.25],"index":0},{"object":"embedding","embedding":[0.125,0.0],"index":1}],"model":"voyage-3.5","usage":{"total_tokens":9},"unmodeled":"kept"}"#;
     let response = crate::driver::Model::new(
-        voyage().embedding("voyage-3.5", None),
+        voyage().embedding("voyage-3.5"),
         RecordingHttpClient::new(body),
     )
     .call(vec!["first".to_owned(), "second".to_owned()])

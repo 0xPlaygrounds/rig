@@ -153,7 +153,8 @@ fn embedding_seam_and_vector_search_record_on_the_span() {
                 &crate::providers::openai::wire::OPENAI,
                 "test-key",
             )
-            .embedding("text-embedding-3-small", Some(2)),
+            .embedding("text-embedding-3-small")
+            .with_ndims(2),
             crate::test_utils::RecordingHttpClient::new(BODY),
         );
 

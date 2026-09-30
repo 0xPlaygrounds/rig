@@ -2,7 +2,7 @@
 //!
 //! ```no_run
 //! use rig_core::providers::mistral;
-//! let model = mistral::from_env()?.embedding(mistral::MISTRAL_EMBED, None);
+//! let model = mistral::from_env()?.embedding(mistral::MISTRAL_EMBED);
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 
