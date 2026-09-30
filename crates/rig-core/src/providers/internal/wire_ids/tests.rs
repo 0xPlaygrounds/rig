@@ -10,23 +10,23 @@ const SHARED: &str = "call_shared";
 fn call(id: CallId) -> Message {
     Message::Assistant {
         id: None,
-        content: crate::NonEmpty::new(AssistantContent::ToolCall(ToolCall::new(
+        content: vec![AssistantContent::ToolCall(ToolCall::new(
             id,
             ToolFunction {
                 name: crate::message::ToolName::new("test").expect("tool name"),
                 arguments: serde_json::json!({}),
             },
-        ))),
+        ))],
     }
 }
 
 fn result(id: CallId) -> Message {
     Message::User {
-        content: crate::NonEmpty::new(UserContent::ToolResult(ToolResult {
+        content: vec![UserContent::ToolResult(ToolResult {
             call: id,
             name: crate::message::ToolName::new("possibly_repaired").expect("tool name"),
-            content: crate::NonEmpty::new(crate::message::ToolResultContent::text("")),
-        })),
+            content: vec![crate::message::ToolResultContent::text("")],
+        })],
     }
 }
 
@@ -46,18 +46,16 @@ pub(crate) fn adapter_request() -> crate::completion::CompletionRequest {
     let later = local();
     crate::completion::CompletionRequest {
         model: None,
-        chat_history: crate::NonEmpty::with_rest(
+        chat_history: vec![
             Message::system("system"),
-            [
-                call(id.clone()),
-                call(provider(SHARED)),
-                result(provider(SHARED)),
-                Message::assistant("intervening text"),
-                result(id),
-                call(later.clone()),
-                result(later),
-            ],
-        ),
+            call(id.clone()),
+            call(provider(SHARED)),
+            result(provider(SHARED)),
+            Message::assistant("intervening text"),
+            result(id),
+            call(later.clone()),
+            result(later),
+        ],
         documents: vec![],
         tools: vec![],
         temperature: None,
@@ -150,14 +148,12 @@ fn wire_slot_assignment_is_atomic_and_uses_original_content_order() {
     };
     let history = vec![Message::Assistant {
         id: None,
-        content: crate::NonEmpty::with_rest(
+        content: vec![
             AssistantContent::text("before"),
-            [
-                AssistantContent::ToolCall(ToolCall::new(provider("first"), function())),
-                AssistantContent::text("between"),
-                AssistantContent::ToolCall(ToolCall::new(provider("second"), function())),
-            ],
-        ),
+            AssistantContent::ToolCall(ToolCall::new(provider("first"), function())),
+            AssistantContent::text("between"),
+            AssistantContent::ToolCall(ToolCall::new(provider("second"), function())),
+        ],
     }];
     let ids = WireIds::new(&history);
     for count in [1, 3] {

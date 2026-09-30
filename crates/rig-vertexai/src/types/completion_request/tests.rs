@@ -6,9 +6,9 @@ use rig_core::message::{Message, Text, ToolChoice, UserContent};
 fn minimal_request() -> CompletionRequest {
     CompletionRequest {
         model: None,
-        chat_history: rig_core::NonEmpty::new(Message::User {
-            content: rig_core::NonEmpty::new(UserContent::Text(Text::new("test".to_string()))),
-        }),
+        chat_history: vec![Message::User {
+            content: vec![UserContent::Text(Text::new("test".to_string()))],
+        }],
         documents: vec![],
         tools: vec![],
         temperature: None,
@@ -31,57 +31,57 @@ fn tool_result_serializes_the_executed_name_not_an_identifier() {
 
     let call = |wire_id: &str, name: &str| Message::Assistant {
         id: None,
-        content: rig_core::NonEmpty::new(AssistantContent::ToolCall(ToolCall::from_wire(
+        content: vec![AssistantContent::ToolCall(ToolCall::from_wire(
             wire_id,
             ToolFunction {
                 name: rig_core::message::ToolName::new(name.to_owned()).expect("tool name"),
                 arguments: serde_json::json!({}),
             },
-        ))),
+        ))],
     };
     let result = |wire_id: &str, name: &str| Message::User {
-        content: rig_core::NonEmpty::new(UserContent::ToolResult(ToolResult {
+        content: vec![UserContent::ToolResult(ToolResult {
             call: CallId::from_wire(wire_id),
             name: rig_core::message::ToolName::new(name.to_owned()).expect("tool name"),
-            content: rig_core::NonEmpty::new(ToolResultContent::text("out")),
-        })),
+            content: vec![ToolResultContent::text("out")],
+        })],
     };
     let call_dual = |item_id: &str, call_id: &str, name: &str| Message::Assistant {
         id: None,
-        content: rig_core::NonEmpty::new(AssistantContent::ToolCall(ToolCall::from_dual_wire(
+        content: vec![AssistantContent::ToolCall(ToolCall::from_dual_wire(
             item_id,
             call_id,
             ToolFunction {
                 name: rig_core::message::ToolName::new(name.to_owned()).expect("tool name"),
                 arguments: serde_json::json!({}),
             },
-        ))),
+        ))],
     };
     let result_dual = |item_id: &str, call_id: &str, name: &str| Message::User {
-        content: rig_core::NonEmpty::new(UserContent::ToolResult(ToolResult {
+        content: vec![UserContent::ToolResult(ToolResult {
             call: CallId::from_dual_wire(item_id, call_id),
             name: rig_core::message::ToolName::new(name.to_owned()).expect("tool name"),
-            content: rig_core::NonEmpty::new(ToolResultContent::text("out")),
-        })),
+            content: vec![ToolResultContent::text("out")],
+        })],
     };
 
     let request = CompletionRequest {
-        chat_history: rig_core::NonEmpty::with_rest(
+        chat_history: vec![
             // A driver-built result carries the executed name (a repair
             // hook renamed the call: `sum` ran, not `add`) — the wire
             // name comes from the result, not the call.
             call("call_1", "add"),
-            [
-                result("call_1", "sum"), // A cross-provider history with an OpenAI-shaped identifier:
-                // `call_abc` must never reach the wire as a name.
-                call("call_abc", "get_weather"),
-                result("call_abc", "get_weather"), // A dual-identifier history (OpenAI Responses: item id
-                // `fc_…` + correlator `call_…`, both carried on `provider`) —
-                // `fc_1` must never reach the wire as a name.
-                call_dual("fc_1", "call_9", "get_time"),
-                result_dual("fc_1", "call_9", "get_time"),
-            ],
-        ),
+            result("call_1", "sum"),
+            // A cross-provider history with an OpenAI-shaped identifier:
+            // `call_abc` must never reach the wire as a name.
+            call("call_abc", "get_weather"),
+            result("call_abc", "get_weather"),
+            // A dual-identifier history (OpenAI Responses: item id
+            // `fc_…` + correlator `call_…`, both carried on `provider`) —
+            // `fc_1` must never reach the wire as a name.
+            call_dual("fc_1", "call_9", "get_time"),
+            result_dual("fc_1", "call_9", "get_time"),
+        ],
         ..minimal_request()
     };
 
@@ -260,12 +260,12 @@ fn test_system_instruction_from_preamble() {
 fn test_system_instruction_from_system_history_and_contents_skip_system() {
     let request = CompletionRequest {
         model: None,
-        chat_history: rig_core::NonEmpty::with_rest(
+        chat_history: vec![
             Message::system("System from history"),
-            [Message::User {
-                content: rig_core::NonEmpty::new(UserContent::Text(Text::new("hello".to_string()))),
-            }],
-        ),
+            Message::User {
+                content: vec![UserContent::Text(Text::new("hello".to_string()))],
+            },
+        ],
         ..minimal_request()
     };
 
@@ -812,25 +812,21 @@ fn only_vertex_reasoning_is_replayed() {
         )
     };
     let mut request = minimal_request();
-    request.chat_history = rig_core::NonEmpty::with_rest(
+    request.chat_history = vec![
         Message::user("What is 2 + 2?"),
-        [
-            Message::Assistant {
-                id: None,
-                content: rig_core::NonEmpty::with_rest(
-                    signed(
-                        "vertex thought",
-                        crate::types::completion_response::PROVIDER_NAME,
-                    ),
-                    [
-                        signed("anthropic thought", "anthropic"),
-                        AssistantContent::text("4"),
-                    ],
+        Message::Assistant {
+            id: None,
+            content: vec![
+                signed(
+                    "vertex thought",
+                    crate::types::completion_response::PROVIDER_NAME,
                 ),
-            },
-            Message::user("And 3 + 3?"),
-        ],
-    );
+                signed("anthropic thought", "anthropic"),
+                AssistantContent::text("4"),
+            ],
+        },
+        Message::user("And 3 + 3?"),
+    ];
     let contents = VertexCompletionRequest(request)
         .contents()
         .expect("contents build");

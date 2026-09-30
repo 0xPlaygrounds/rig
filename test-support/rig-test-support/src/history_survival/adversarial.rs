@@ -47,7 +47,7 @@ fn lookup() -> ToolDefinition {
 pub fn request(history: Vec<Message>, params: Option<Value>, max_tokens: u64) -> CompletionRequest {
     CompletionRequest {
         model: None,
-        chat_history: rig_core::NonEmpty::from_vec(history).expect("non-empty"),
+        chat_history: history,
         documents: vec![],
         tools: vec![lookup()],
         temperature: None,
@@ -73,17 +73,17 @@ fn result(call: CallId, record: &str) -> UserContent {
     UserContent::tool_result(
         call,
         rig_core::message::ToolName::new("lookup_code").expect("tool name"),
-        rig_core::NonEmpty::new(ToolResultContent::text(format!(
+        vec![ToolResultContent::text(format!(
             "record {record}: code {}",
             code(record)
-        ))),
+        ))],
     )
 }
 
 fn assistant(reply: &CompletionResponse) -> Message {
     Message::Assistant {
         id: reply.message_id.clone(),
-        content: rig_core::NonEmpty::from_vec(reply.choice.clone()).expect("non-empty"),
+        content: reply.choice.clone(),
     }
 }
 
@@ -102,15 +102,15 @@ pub async fn colliding_ids(
         }
         history.push(Message::Assistant {
             id: None,
-            content: rig_core::NonEmpty::new(AssistantContent::tool_call(
+            content: vec![AssistantContent::tool_call(
                 id,
                 rig_core::message::ToolName::new("lookup_code").expect("tool name"),
                 serde_json::json!({ "record": record }),
-            )),
+            )],
         });
         let call = CallId::from_wire(id);
         history.push(Message::User {
-            content: rig_core::NonEmpty::new(result(call, record)),
+            content: vec![result(call, record)],
         });
     }
     history.push(Message::user(
@@ -192,13 +192,7 @@ pub async fn out_of_order_results(
     let history = vec![
         prompt,
         assistant(&first),
-        Message::User {
-            content: results
-                .into_iter()
-                .collect::<Vec<_>>()
-                .try_into()
-                .expect("non-empty"),
-        },
+        Message::User { content: results },
         Message::user("Without calling any tool, reply exactly `alpha=<code> beta=<code>`."),
     ];
     let reply = model
@@ -288,7 +282,7 @@ pub async fn reasoning_round_trip(
         prompt,
         assistant(&first),
         Message::User {
-            content: rig_core::NonEmpty::new(result(call.id.clone(), record)),
+            content: vec![result(call.id.clone(), record)],
         },
     ];
     let reply = complete(&model, request(history, params, max_tokens), streamed)

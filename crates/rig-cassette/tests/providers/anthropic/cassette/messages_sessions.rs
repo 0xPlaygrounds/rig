@@ -308,15 +308,15 @@ async fn long_history_replay_nonstreaming() {
             .message(Message::user("Now look up the harbor label with the tool."))
             .message(Message::Assistant {
                 id: None,
-                content: rig_core::NonEmpty::with_rest(
+                content: vec![
                     AssistantContent::text("Checking the harbor label now."),
-                    [AssistantContent::ToolCall(tool_call.clone())],
-                ),
+                    AssistantContent::ToolCall(tool_call.clone()),
+                ],
             })
             .message(Message::from(UserContent::tool_result(
                 tool_call.id.clone(),
                 tool_call.function.name.clone(),
-                rig_core::NonEmpty::new(rig::message::ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)),
+                vec![rig::message::ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)],
             )))
             .message(Message::assistant("The harbor label is crimson-harbor."))
             .tool(rig::tool::tool_definition(&AlphaSignal));

@@ -35,7 +35,7 @@ fn lookup_tool() -> ToolDefinition {
 fn request(history: Vec<Message>, tools: Vec<ToolDefinition>, params: Value) -> CompletionRequest {
     CompletionRequest {
         model: None,
-        chat_history: rig_core::NonEmpty::from_vec(history).expect("non-empty"),
+        chat_history: history,
         documents: vec![],
         tools,
         temperature: None,
@@ -71,13 +71,13 @@ fn only_call(choice: &[AssistantContent]) -> ToolCall {
 
 fn answer(call: &ToolCall) -> Message {
     Message::User {
-        content: rig_core::NonEmpty::new(UserContent::tool_result(
+        content: vec![UserContent::tool_result(
             call.id.clone(),
             call.function.name.clone(),
-            rig_core::NonEmpty::new(ToolResultContent::text(format!(
+            vec![ToolResultContent::text(format!(
                 "record alpha: code {CODE}"
-            ))),
-        )),
+            ))],
+        )],
     }
 }
 
@@ -314,14 +314,12 @@ async fn stored_then_stateless_mid_conversation() {
                     prompt,
                     Message::Assistant {
                         id: first.message_id.clone(),
-                        content: rig_core::NonEmpty::from_vec(first.choice.clone())
-                            .expect("non-empty"),
+                        content: first.choice.clone(),
                     },
                     tool_answer,
                     Message::Assistant {
                         id: second.message_id.clone(),
-                        content: rig_core::NonEmpty::from_vec(second.choice.clone())
-                            .expect("non-empty"),
+                        content: second.choice.clone(),
                     },
                     Message::user("Repeat the code you reported, exactly, and nothing else."),
                 ];
@@ -400,16 +398,14 @@ async fn file_id_chain() {
             created(&resources, format!("files/{file_id}"));
 
             let document = Message::User {
-                content: rig_core::NonEmpty::with_rest(
+                content: vec![
                     UserContent::Document(rig::message::Document {
                         data: rig::message::DocumentSourceKind::file_id(&file_id),
                         media_type: Some(rig::message::DocumentMediaType::PDF),
                         additional_params: None,
                     }),
-                    [UserContent::text(
-                        "What is the title on the first page? Answer briefly.",
-                    )],
-                ),
+                    UserContent::text("What is the title on the first page? Answer briefly."),
+                ],
             };
             let model = client.openai.responses("gpt-4.1-mini");
             let params = json!({ "store": false });
@@ -421,7 +417,7 @@ async fn file_id_chain() {
                 document,
                 Message::Assistant {
                     id: first.message_id.clone(),
-                    content: rig_core::NonEmpty::from_vec(first.choice.clone()).expect("non-empty"),
+                    content: first.choice.clone(),
                 },
                 Message::user("How many pages does the attached PDF have? Answer with a number."),
             ];

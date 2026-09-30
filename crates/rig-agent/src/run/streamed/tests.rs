@@ -464,7 +464,7 @@ fn streamed_run_completes_a_tool_roundtrip() {
     run.tool_results(vec![UserContent::tool_result(
         CallId::from_wire("tc_1"),
         ToolName::new("add").expect("tool name"),
-        NonEmpty::new(ToolResultContent::text("2")),
+        vec![ToolResultContent::text("2")],
     )])
     .expect("tool_results should succeed");
 
@@ -832,7 +832,7 @@ fn streamed_run_serde_round_trips_while_tools_pend() {
         .tool_results(vec![UserContent::tool_result(
             CallId::from_wire("tc_1"),
             ToolName::new("add").expect("tool name"),
-            NonEmpty::new(ToolResultContent::text("2")),
+            vec![ToolResultContent::text("2")],
         )])
         .expect("tool_results should succeed");
     assert!(matches!(
@@ -889,7 +889,7 @@ fn typed_namespaces_survive_pending_tool_checkpoints_and_completed_turn_reuse() 
                         UserContent::tool_result(
                             call.id.clone(),
                             ToolName::new("add").expect("tool name"),
-                            NonEmpty::new(ToolResultContent::text("2")),
+                            vec![ToolResultContent::text("2")],
                         )
                     })
                     .collect::<Vec<_>>();
@@ -935,4 +935,16 @@ fn a_partial_turn_carries_the_ended_reasoning_sealed_to_its_issuer() {
     );
     assert_eq!(partial.reasoning, vec![sealed]);
     assert_eq!(partial.text, None);
+}
+
+/// A partial turn that produced nothing is no assistant message.
+#[test]
+fn an_empty_partial_turn_is_no_assistant_message() {
+    let turn = PartialStreamedTurn {
+        message_id: None,
+        text: Some(String::new()),
+        reasoning: Vec::new(),
+        pending_tool_calls: Vec::new(),
+    };
+    assert_eq!(turn.assistant_message(None), None);
 }

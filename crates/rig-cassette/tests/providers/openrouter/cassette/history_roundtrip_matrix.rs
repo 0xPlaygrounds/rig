@@ -112,61 +112,61 @@ fn history(shape: Shape) -> Vec<Message> {
     match shape {
         Shape::Text => vec![
             Message::User {
-                content: rig_core::NonEmpty::new(UserContent::text(
+                content: vec![UserContent::text(
                     "Unicode context: café 東京. The marker is exactly: lantern-42.",
-                )),
+                )],
             },
             Message::Assistant {
                 id: None,
-                content: rig_core::NonEmpty::new(AssistantContent::text("lantern-42")),
+                content: vec![AssistantContent::text("lantern-42")],
             },
         ],
         Shape::SingleTool => vec![
             Message::Assistant {
                 id: None,
-                content: rig_core::NonEmpty::new(AssistantContent::tool_call(
+                content: vec![AssistantContent::tool_call(
                     "call_history_single",
                     rig_core::message::ToolName::new("lookup_marker").expect("tool name"),
                     json!({ "key": "harbor" }),
-                )),
+                )],
             },
             Message::User {
-                content: rig_core::NonEmpty::new(UserContent::tool_result(
+                content: vec![UserContent::tool_result(
                     rig_core::message::CallId::from_wire("call_history_single"),
                     rig_core::message::ToolName::new("lookup_marker").expect("tool name"),
-                    rig_core::NonEmpty::new(ToolResultContent::text("azimuth-47")),
-                )),
+                    vec![ToolResultContent::text("azimuth-47")],
+                )],
             },
         ],
         Shape::ParallelTool => vec![
             Message::Assistant {
                 id: None,
-                content: rig_core::NonEmpty::with_rest(
+                content: vec![
                     AssistantContent::tool_call(
                         "call_history_alpha",
                         rig_core::message::ToolName::new("alpha").expect("tool name"),
                         json!({ "slot": 1 }),
                     ),
-                    [AssistantContent::tool_call(
+                    AssistantContent::tool_call(
                         "call_history_beta",
                         rig_core::message::ToolName::new("beta").expect("tool name"),
                         json!({ "slot": 2 }),
-                    )],
-                ),
+                    ),
+                ],
             },
             Message::User {
-                content: rig_core::NonEmpty::with_rest(
+                content: vec![
                     UserContent::tool_result(
                         rig_core::message::CallId::from_wire("call_history_alpha"),
                         rig_core::message::ToolName::new("alpha").expect("tool name"),
-                        rig_core::NonEmpty::new(ToolResultContent::text("red")),
+                        vec![ToolResultContent::text("red")],
                     ),
-                    [UserContent::tool_result(
+                    UserContent::tool_result(
                         rig_core::message::CallId::from_wire("call_history_beta"),
                         rig_core::message::ToolName::new("beta").expect("tool name"),
-                        rig_core::NonEmpty::new(ToolResultContent::text("blue")),
-                    )],
-                ),
+                        vec![ToolResultContent::text("blue")],
+                    ),
+                ],
             },
         ],
     }

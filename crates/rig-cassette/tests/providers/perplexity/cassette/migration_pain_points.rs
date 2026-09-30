@@ -18,10 +18,10 @@ async fn text_only_content_parts_are_flattened() {
         |client| async move {
             let model = client.completion(perplexity::SONAR);
             let prompt = Message::User {
-                content: rig_core::NonEmpty::with_rest(
+                content: vec![
                     UserContent::text("First text part: amber."),
-                    [UserContent::text("Second text part: rig.")],
-                ),
+                    UserContent::text("Second text part: rig."),
+                ],
             };
 
             let response = model
@@ -66,7 +66,7 @@ async fn tool_exchange_history_is_stripped_and_remerged() {
                     .message(Message::user("Remember this code word: amber-rig."))
                     .message(Message::Assistant {
                         id: None,
-                        content: rig_core::NonEmpty::new(AssistantContent::ToolCall(tool_call)),
+                        content: vec![AssistantContent::ToolCall(tool_call)],
                     })
                     .message(Message::tool_result(
                         rig_core::message::CallId::from_wire("call_amber"),

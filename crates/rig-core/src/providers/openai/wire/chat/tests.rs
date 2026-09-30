@@ -28,7 +28,7 @@ fn wire() -> Chat {
 fn prompt(text: &str) -> CompletionRequest {
     CompletionRequest {
         model: None,
-        chat_history: crate::NonEmpty::new(crate::message::Message::user(text)),
+        chat_history: vec![crate::message::Message::user(text)],
         documents: Vec::new(),
         tools: Vec::new(),
         temperature: Some(0.0),
@@ -436,13 +436,13 @@ fn openrouter_refuses_a_document_that_is_only_a_file_id() {
 
     let with_file_id = || {
         let mut request = prompt("read this");
-        request.chat_history = crate::NonEmpty::new(Message::User {
-            content: crate::NonEmpty::new(UserContent::Document(Document {
+        request.chat_history = vec![Message::User {
+            content: vec![UserContent::Document(Document {
                 data: DocumentSourceKind::FileId("file-abc".to_owned()),
                 media_type: None,
                 additional_params: None,
-            })),
-        });
+            })],
+        }];
         request
     };
 
@@ -983,9 +983,7 @@ fn the_mistral_body_rebuilds_content_as_its_own_chunks() {
 
     let encode = |content: Vec<UserContent>| {
         let mut request = prompt("look at this");
-        request.chat_history = crate::NonEmpty::new(Message::User {
-            content: crate::NonEmpty::from_vec(content).expect("non-empty"),
-        });
+        request.chat_history = vec![Message::User { content }];
         OpenAIConfig::new("k")
             .with_dialect(&MISTRAL)
             .chat("mistral-small-latest")
@@ -1056,14 +1054,14 @@ fn the_mistral_body_rebuilds_content_as_its_own_chunks() {
 
     // And no other dialect rebuilds content this way.
     let mut request = prompt("describe");
-    request.chat_history = crate::NonEmpty::new(Message::User {
-        content: crate::NonEmpty::new(UserContent::Image(Image {
+    request.chat_history = vec![Message::User {
+        content: vec![UserContent::Image(Image {
             data: crate::message::DocumentSourceKind::Url("https://x.invalid/a.png".to_owned()),
             media_type: None,
             detail: None,
             additional_params: None,
-        })),
-    });
+        })],
+    }];
     let openai = wire().encode(request, Mode::Unary).expect("encodes");
     let http_request = &openai.request;
     let Body::Bytes(bytes) = http_request.body() else {
@@ -1088,19 +1086,17 @@ fn groq_replays_reasoning_turns_without_reasoning_content() {
 
     let history = |issuer: &'static str| {
         let mut request = prompt("and then?");
-        request.chat_history = crate::NonEmpty::with_rest(
+        request.chat_history = vec![
             Message::user("think first"),
-            [
-                Message::Assistant {
-                    id: None,
-                    content: crate::NonEmpty::with_rest(
-                        AssistantContent::Reasoning(Reasoning::new("private chain").sealed(issuer)),
-                        [AssistantContent::text("visible answer")],
-                    ),
-                },
-                Message::user("and then?"),
-            ],
-        );
+            Message::Assistant {
+                id: None,
+                content: vec![
+                    AssistantContent::Reasoning(Reasoning::new("private chain").sealed(issuer)),
+                    AssistantContent::text("visible answer"),
+                ],
+            },
+            Message::user("and then?"),
+        ];
         request
     };
     let assistant = |dialect: &Dialect| {

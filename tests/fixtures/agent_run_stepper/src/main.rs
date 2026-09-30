@@ -87,7 +87,7 @@ impl Transport<MockScript> for Scripted {
             assert!(
                 matches!(
                     request.chat_history.first(),
-                    Message::System { content } if content == "be brief"
+                    Some(Message::System { content }) if content == "be brief"
                 ),
                 "the spec's preamble leads the prepared history"
             );

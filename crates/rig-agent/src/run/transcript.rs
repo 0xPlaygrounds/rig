@@ -7,7 +7,6 @@
 //! assert_eq!(history.len(), 1);
 //! ```
 
-use rig_core::NonEmpty;
 use rig_core::message::{AssistantContent, CallId, Message};
 pub use rig_core::transcript::{
     TranscriptError, tool_result_message, tool_result_output, validate_canonical,
@@ -63,17 +62,24 @@ pub fn invalid_tool_retry_user_message(
         })
         .collect::<Vec<_>>();
 
+    if retry_results.is_empty() {
+        return None;
+    }
     Some(Message::User {
-        content: rig_core::NonEmpty::from_vec(retry_results).ok()?,
+        content: retry_results,
     })
 }
 
 /// The assistant message carrying `choice` under `id`, or `None` when the
 /// choice is empty.
 pub fn assistant_message(id: Option<String>, choice: Vec<AssistantContent>) -> Option<Message> {
-    NonEmpty::from_vec(choice)
-        .ok()
-        .map(|content| Message::Assistant { id, content })
+    if choice.is_empty() {
+        return None;
+    }
+    Some(Message::Assistant {
+        id,
+        content: choice,
+    })
 }
 
 /// The assistant message for a generated turn, or `None` for an empty turn

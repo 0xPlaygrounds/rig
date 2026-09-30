@@ -33,13 +33,13 @@ const STREAM_BODY: &str = concat!(
 fn recorded_request() -> CompletionRequest {
     CompletionRequest {
         model: None,
-        chat_history: crate::NonEmpty::with_rest(
+        chat_history: vec![
             crate::message::Message::system("You are a concise assistant. Answer directly."),
-            [crate::message::Message::user(
+            crate::message::Message::user(
                 "In one or two sentences, explain what Rust programming language is and why \
                  memory safety matters.",
-            )],
-        ),
+            ),
+        ],
         documents: Vec::new(),
         tools: Vec::new(),
         temperature: None,

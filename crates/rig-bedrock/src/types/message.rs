@@ -1,6 +1,5 @@
 use aws_sdk_bedrockruntime::types as aws_bedrock;
 
-use rig_core::NonEmpty;
 use rig_core::error::ProviderError;
 use rig_core::message::{AssistantContent, Issuer, Message, UserContent};
 
@@ -70,9 +69,7 @@ impl TryFrom<ConverseMessage> for RigMessage {
                     .map(|rig_assistant_content| rig_assistant_content.0)
                     .collect::<Vec<AssistantContent>>();
 
-                let content = NonEmpty::from_vec(assistant_content).map_err(|_| {
-                    ProviderError::Response(rig_core::message::EMPTY_RESPONSE_ERROR.to_owned())
-                })?;
+                let content = rig_core::message::require_non_empty_response(assistant_content)?;
 
                 Ok(RigMessage(Message::Assistant { content, id: None }))
             }
@@ -86,7 +83,7 @@ impl TryFrom<ConverseMessage> for RigMessage {
                     .map(|user_content| user_content.0)
                     .collect::<Vec<UserContent>>();
 
-                let content = NonEmpty::from_vec(user_content).map_err(|_| {
+                let content = rig_core::message::require_non_empty(user_content, || {
                     ProviderError::Response(
                         "Bedrock returned a user message with no content".to_owned(),
                     )

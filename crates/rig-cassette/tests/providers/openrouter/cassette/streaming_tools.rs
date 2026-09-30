@@ -242,10 +242,10 @@ async fn stream_encrypted_reasoning_survives_into_the_next_turn() {
             // replays as history.
             let assistant_message = Message::Assistant {
                 id: stream.message_id(),
-                content: rig_core::NonEmpty::from_vec(stream.partial().choice).expect("non-empty"),
+                content: stream.partial().choice,
             };
             let tool_result_message = Message::User {
-        content: rig_core::NonEmpty::new(UserContent::tool_result(tool_call.id.clone(), tool_call.function.name.clone(), rig_core::NonEmpty::new(ToolResultContent::text("Weather in Tokyo, Japan: 72F (22C), sunny with light clouds, humidity 45%, wind 8 mph NW")))),
+        content: vec![UserContent::tool_result(tool_call.id.clone(), tool_call.function.name.clone(), vec![ToolResultContent::text("Weather in Tokyo, Japan: 72F (22C), sunny with light clouds, humidity 45%, wind 8 mph NW")])],
     };
 
             let followup = CompletionRequest::new("Summarize the weather using the tool result.")
@@ -327,10 +327,10 @@ async fn raw_followup_uses_tool_result_without_new_tool_calls() {
                 .expect("raw stream should yield lookup_harbor_label");
             let assistant_message = Message::Assistant {
                 id: None,
-                content: rig_core::NonEmpty::new(AssistantContent::ToolCall(tool_call.clone())),
+                content: vec![AssistantContent::ToolCall(tool_call.clone())],
             };
             let tool_result_message = Message::User {
-        content: rig_core::NonEmpty::new(UserContent::tool_result(tool_call.id.clone(), tool_call.function.name.clone(), rig_core::NonEmpty::new(ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)))),
+        content: vec![UserContent::tool_result(tool_call.id.clone(), tool_call.function.name.clone(), vec![ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)])],
     };
             let followup_request = CompletionRequest::new(
                     "Now reply in one short sentence using the provided tool result. Do not call any tools.",

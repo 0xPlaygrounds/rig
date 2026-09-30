@@ -429,7 +429,7 @@ pub async fn document_session(
         let text = marked(marker, turn, policy_question(turn));
         let prompt = if turn == 1 {
             Message::User {
-                content: rig_core::NonEmpty::with_rest(document.clone(), [UserContent::text(text)]),
+                content: vec![document.clone(), UserContent::text(text)],
             }
         } else {
             Message::user(text)

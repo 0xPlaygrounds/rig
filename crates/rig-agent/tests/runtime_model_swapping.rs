@@ -427,7 +427,7 @@ fn beta_static(text: &str) -> FakeModel {
 fn request(prompt: &str) -> CompletionRequest {
     CompletionRequest {
         model: None,
-        chat_history: rig_core::NonEmpty::new(Message::user(prompt)),
+        chat_history: vec![Message::user(prompt)],
         documents: Vec::new(),
         tools: Vec::new(),
         temperature: None,

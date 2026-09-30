@@ -423,12 +423,12 @@ async fn tool_call_then_followup_text_across_turns() {
 
             let assistant_message = Message::Assistant {
                 id: first.message_id.clone(),
-                content: rig_core::NonEmpty::new(AssistantContent::ToolCall(tool_call.clone())),
+                content: vec![AssistantContent::ToolCall(tool_call.clone())],
             };
             let tool_result = Message::from(UserContent::tool_result(
                 tool_call.id.clone(),
                 tool_call.function.name.clone(),
-                rig_core::NonEmpty::new(ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)),
+                vec![ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)],
             ));
             let followup_request = CompletionRequest::new(
                 "Now reply in one short sentence using the provided tool result. \
@@ -536,9 +536,9 @@ async fn three_turn_tool_session_replays_rs_ids_across_turns() {
             // gate together with the tool result.
             let first_assistant = Message::Assistant {
                 id: first.message_id.clone(),
-                content: rig_core::NonEmpty::from_vec(first.choice.clone()).expect("non-empty"),
+                content: first.choice.clone(),
             };
-            let tool_result = Message::from(UserContent::tool_result(tool_call.id.clone(), tool_call.function.name.clone(), rig_core::NonEmpty::new(ToolResultContent::text(ALPHA_SIGNAL_OUTPUT))));
+            let tool_result = Message::from(UserContent::tool_result(tool_call.id.clone(), tool_call.function.name.clone(), vec![ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)]));
             let second_request = CompletionRequest::new(
                     "Answer in one short sentence that includes the exact tool output. \
                      Do not call any tools.",
@@ -566,7 +566,7 @@ async fn three_turn_tool_session_replays_rs_ids_across_turns() {
             // Turn 3: both prior assistant turns' rs_* items replay together.
             let second_assistant = Message::Assistant {
                 id: second.message_id.clone(),
-                content: rig_core::NonEmpty::from_vec(second.choice.clone()).expect("non-empty"),
+                content: second.choice.clone(),
             };
             let third_request = CompletionRequest::new(
                     "Repeat the exact tool output one more time, alone on a single line.",

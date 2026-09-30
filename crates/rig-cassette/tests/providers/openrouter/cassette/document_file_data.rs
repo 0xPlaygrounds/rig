@@ -39,12 +39,12 @@ fn verifier_document() -> Document {
 
 fn document_question(page_number: u8) -> RigMessage {
     RigMessage::User {
-        content: rig_core::NonEmpty::with_rest(
+        content: vec![
             RigUserContent::Document(verifier_document()),
-            [RigUserContent::Text(Text::new(format!(
+            RigUserContent::Text(Text::new(format!(
                 "What verifier token is printed on page {page_number}? Reply with only the exact token."
-            )))],
-        ),
+            ))),
+        ],
     }
 }
 

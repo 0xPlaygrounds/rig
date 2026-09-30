@@ -116,7 +116,7 @@ pub fn tool_result_output(call: CallId, name: ToolName, output: ToolOutput) -> U
 /// feedback or a skip reason. JSON-shaped text is not reinterpreted as structured
 /// or multimodal output.
 pub fn tool_result_message(call: CallId, name: ToolName, message: String) -> UserContent {
-    UserContent::tool_result(call, name, ToolResultContent::text(message))
+    UserContent::tool_result(call, name, vec![ToolResultContent::text(message)])
 }
 
 #[cfg(test)]

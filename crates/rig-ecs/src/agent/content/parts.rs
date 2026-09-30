@@ -608,8 +608,11 @@ fn read_message_from<'a>(
 }
 
 /// `items`, or [`ContentError::Shape`] when there are none.
-fn non_empty<T>(items: Vec<T>) -> Result<rig_core::NonEmpty<T>, ContentError> {
-    rig_core::NonEmpty::from_vec(items).map_err(|_| ContentError::Shape)
+fn non_empty<T>(items: Vec<T>) -> Result<Vec<T>, ContentError> {
+    if items.is_empty() {
+        return Err(ContentError::Shape);
+    }
+    Ok(items)
 }
 
 /// Collect payloads unreachable from every content entity in the world and the

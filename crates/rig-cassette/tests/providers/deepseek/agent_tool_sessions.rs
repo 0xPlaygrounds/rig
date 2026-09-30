@@ -690,11 +690,11 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
                 .message(Message::user("Look up the harbor label with the tool."))
                 .message(Message::Assistant {
                     id: None,
-                    content: rig_core::NonEmpty::new(AssistantContent::tool_call(
+                    content: vec![AssistantContent::tool_call(
                         "call_REDACTED_1",
                         rig_core::message::ToolName::new(AlphaSignal::NAME).expect("tool name"),
                         json!({}),
-                    )),
+                    )],
                 })
                 .message(Message::tool_result(rig_core::message::CallId::from_wire("call_REDACTED_1"), rig_core::message::ToolName::new(AlphaSignal::NAME).expect("tool name"), ALPHA_SIGNAL_OUTPUT))
                 .message(Message::assistant("The harbor label is crimson-harbor."))

@@ -16,27 +16,25 @@ use super::super::OPENROUTER;
 fn request() -> CompletionRequest {
     CompletionRequest {
         model: None,
-        chat_history: crate::NonEmpty::with_rest(
+        chat_history: vec![
             Message::system("be brief"),
-            [
-                "probe".into(),
-                Message::Assistant {
-                    id: None,
-                    content: crate::NonEmpty::new(AssistantContent::tool_call(
-                        "call_1",
-                        crate::message::ToolName::new("lookup").expect("tool name"),
-                        serde_json::json!({"q": "x"}),
-                    )),
-                },
-                Message::User {
-                    content: crate::NonEmpty::new(UserContent::tool_result(
-                        crate::message::CallId::from_wire("call_1"),
-                        crate::message::ToolName::new("lookup").expect("tool name"),
-                        crate::NonEmpty::new(ToolResultContent::text("the answer")),
-                    )),
-                },
-            ],
-        ),
+            "probe".into(),
+            Message::Assistant {
+                id: None,
+                content: vec![AssistantContent::tool_call(
+                    "call_1",
+                    crate::message::ToolName::new("lookup").expect("tool name"),
+                    serde_json::json!({"q": "x"}),
+                )],
+            },
+            Message::User {
+                content: vec![UserContent::tool_result(
+                    crate::message::CallId::from_wire("call_1"),
+                    crate::message::ToolName::new("lookup").expect("tool name"),
+                    vec![ToolResultContent::text("the answer")],
+                )],
+            },
+        ],
         documents: vec![],
         tools: vec![ToolDefinition {
             name: "lookup".to_owned(),
@@ -159,7 +157,7 @@ fn changed_system_prefix_changes_both_encoded_openai_routes() {
     for provider in [chat(), responses()] {
         let original = request();
         let mut changed = original.clone();
-        *changed.chat_history.first_mut() = Message::system("different task rules");
+        changed.chat_history[0] = Message::system("different task rules");
         assert_ne!(
             body_with_request(provider.clone(), untouched, original),
             body_with_request(provider, untouched, changed)

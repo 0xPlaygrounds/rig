@@ -183,7 +183,7 @@ fn a_reserved_run_despawned_before_it_was_populated_is_gone() {
         },
     );
     let history = [MessageParts::User {
-        content: rig_core::NonEmpty::new(UserContent::text("earlier")),
+        content: vec![UserContent::text("earlier")],
     }];
     let run = world
         .commands()
@@ -320,7 +320,7 @@ fn a_run_assembled_by_hand_starts_on_ready_with_its_history_first() {
         world,
         run,
         MessageParts::User {
-            content: rig_core::NonEmpty::new(UserContent::text("earlier")),
+            content: vec![UserContent::text("earlier")],
         },
     )
     .expect("a user utterance");

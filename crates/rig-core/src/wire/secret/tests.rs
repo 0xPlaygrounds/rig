@@ -88,7 +88,7 @@ fn a_reloaded_wire_sends_no_credential_sentinel() {
 fn probe_request() -> CompletionRequest {
     CompletionRequest {
         model: None,
-        chat_history: crate::NonEmpty::new("probe".into()),
+        chat_history: vec!["probe".into()],
         documents: vec![],
         tools: vec![],
         temperature: None,

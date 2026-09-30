@@ -70,11 +70,11 @@ const NO_THINK: &str = "/no_think ";
 fn lookup_call_turn(id: &str) -> Message {
     Message::Assistant {
         id: None,
-        content: rig_core::NonEmpty::new(AssistantContent::tool_call(
+        content: vec![AssistantContent::tool_call(
             id,
             rig_core::message::ToolName::new("lookup").expect("tool name"),
             json!({}),
-        )),
+        )],
     }
 }
 
@@ -687,14 +687,12 @@ async fn a_tool_result_carrying_text_reaches_the_model() {
         let response = model
             .call(
                 CompletionRequest::new(Message::User {
-                    content: rig_core::NonEmpty::new(UserContent::ToolResult(ToolResult {
+                    content: vec![UserContent::ToolResult(ToolResult {
                         call: CallId::from_wire("call_text"),
                         name: rig_core::message::ToolName::new("lookup".to_string())
                             .expect("tool name"),
-                        content: rig_core::NonEmpty::new(ToolResultContent::text(
-                            "the codeword is heliotrope",
-                        )),
-                    })),
+                        content: vec![ToolResultContent::text("the codeword is heliotrope")],
+                    })],
                 })
                 .preamble(
                     "Answer using only the tool result you were given. \
@@ -707,9 +705,7 @@ async fn a_tool_result_carrying_text_reaches_the_model() {
                 // has nothing to answer.
                 .messages(vec![
                     Message::User {
-                        content: rig_core::NonEmpty::new(UserContent::text(
-                            "What is the codeword?",
-                        )),
+                        content: vec![UserContent::text("What is the codeword?")],
                     },
                     lookup_call_turn("call_text"),
                 ])
@@ -751,14 +747,14 @@ async fn a_tool_result_carrying_json_reaches_the_model() {
         let response = model
             .call(
                 CompletionRequest::new(Message::User {
-                    content: rig_core::NonEmpty::new(UserContent::ToolResult(ToolResult {
+                    content: vec![UserContent::ToolResult(ToolResult {
                         call: CallId::from_wire("call_json"),
                         name: rig_core::message::ToolName::new("lookup".to_string())
                             .expect("tool name"),
-                        content: rig_core::NonEmpty::new(ToolResultContent::text(
+                        content: vec![ToolResultContent::text(
                             json!({ "codeword": "heliotrope", "confidence": 0.99 }).to_string(),
-                        )),
-                    })),
+                        )],
+                    })],
                 })
                 .preamble(
                     "Answer using only the JSON tool result you were given. \
@@ -767,9 +763,7 @@ async fn a_tool_result_carrying_json_reaches_the_model() {
                 )
                 .messages(vec![
                     Message::User {
-                        content: rig_core::NonEmpty::new(UserContent::text(
-                            "What is the codeword?",
-                        )),
+                        content: vec![UserContent::text("What is the codeword?")],
                     },
                     lookup_call_turn("call_json"),
                 ])

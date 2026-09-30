@@ -30,7 +30,6 @@ use serde::{Deserialize, Serialize};
 use rig_core::completion::{CompletionResponse, FinishReason, ToolDefinition};
 use rig_core::error::ProviderError;
 
-use rig_core::NonEmpty;
 use rig_core::message::{
     AssistantContent, ToolCall, ToolChoice, ToolName, ToolResult, ToolResultContent, UserContent,
 };
@@ -1288,7 +1287,7 @@ impl AgentRun {
                 let user_content = UserContent::tool_result(
                     tool_call.id.clone(),
                     tool_call.function.name.clone(),
-                    ToolResultContent::from(reason),
+                    vec![ToolResultContent::from(reason)],
                 );
                 // Keyed by the call's position: `next_index` is exactly the
                 // invalid call's slot in `items`, and later mutations only
@@ -1380,9 +1379,8 @@ impl AgentRun {
             )));
         }
 
-        if let Ok(content) = NonEmpty::from_vec(results) {
-            self.new_messages.push(Message::User { content });
-        }
+        // Not empty: an empty batch failed the run above.
+        self.new_messages.push(Message::User { content: results });
         self.state = RunState::PreparingRequest;
         Ok(())
     }
@@ -1560,7 +1558,7 @@ impl AgentRun {
                 // avoiding re-parsing a rejection message as structured output.
                 let skipped_tool_result = invalid
                     .tool_call
-                    .result(ToolResultContent::text(reason.as_str()));
+                    .result(vec![ToolResultContent::text(reason.as_str())]);
                 self.abandon_streamed_turn(
                     partial,
                     invalid,

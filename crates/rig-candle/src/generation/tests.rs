@@ -6,7 +6,7 @@ use rig_core::message::Message;
 fn parsed_missing_ids_keep_their_identity_and_provenance_through_stream_emission() {
     let request = CompletionRequest {
         model: None,
-        chat_history: rig_core::NonEmpty::new(Message::user("tools")),
+        chat_history: vec![Message::user("tools")],
         documents: vec![],
         tools: vec![],
         temperature: None,

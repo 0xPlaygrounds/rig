@@ -260,10 +260,10 @@ fn validate_follow_up_tool_history(request: &CompletionRequest) -> Result<(), St
 
     if !matches!(
         history.first(),
-        Message::User { content }
+        Some(Message::User { content })
             if matches!(
                 content.first(),
-                UserContent::Text(text) if text.text == "do tool work"
+                Some(UserContent::Text(text)) if text.text == "do tool work"
             )
     ) {
         return Err(format!(
@@ -279,7 +279,7 @@ fn validate_follow_up_tool_history(request: &CompletionRequest) -> Result<(), St
         Some(Message::Assistant { content, .. })
             if matches!(
                 content.first(),
-                AssistantContent::ToolCall(tool_call)
+                Some(AssistantContent::ToolCall(tool_call))
                     if tool_call.id.provider().map(|provider| provider.call_id.as_str()) == Some("call_1")
                         && tool_call.id.provider().as_ref().is_some_and(|provider| {
                             provider.call_id == "call_1"
@@ -297,7 +297,7 @@ fn validate_follow_up_tool_history(request: &CompletionRequest) -> Result<(), St
         Some(Message::User { content })
             if matches!(
                 content.first(),
-                UserContent::ToolResult(tool_result)
+                Some(UserContent::ToolResult(tool_result))
                     if tool_result.call.provider().map(|provider| provider.call_id.as_str()) == Some("call_1")
                         && tool_result.call.provider().as_ref().is_some_and(|provider| {
                             provider.call_id == "call_1"
@@ -5508,7 +5508,7 @@ async fn streaming_reasoning_without_tools_does_not_duplicate_final_history() {
         Some(Message::User { content })
             if matches!(
                 content.first(),
-                UserContent::Text(text) if text.text == "think before answering"
+                Some(UserContent::Text(text)) if text.text == "think before answering"
             )
     ));
 

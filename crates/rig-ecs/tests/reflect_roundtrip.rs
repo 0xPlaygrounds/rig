@@ -194,7 +194,7 @@ fn populated() -> bevy_app::App {
         app.world_mut(),
         utterance,
         MessageParts::User {
-            content: rig_core::NonEmpty::new(rig_core::message::UserContent::text("u")),
+            content: vec![rig_core::message::UserContent::text("u")],
         },
     )
     .expect("valid reflected content");
@@ -204,20 +204,18 @@ fn populated() -> bevy_app::App {
     };
     for parts in [
         MessageParts::User {
-            content: rig_core::NonEmpty::with_rest(
+            content: vec![
                 UserContent::Image(Image::default()),
-                [
-                    UserContent::Audio(Audio::default()),
-                    UserContent::Video(Video::default()),
-                    UserContent::Document(Document::default()),
-                ],
-            ),
+                UserContent::Audio(Audio::default()),
+                UserContent::Video(Video::default()),
+                UserContent::Document(Document::default()),
+            ],
         },
         MessageParts::Assistant {
             id: Some("message".into()),
-            content: rig_core::NonEmpty::new(AssistantContent::Reasoning(
+            content: vec![AssistantContent::Reasoning(
                 Reasoning::new("thought").sealed("test"),
-            )),
+            )],
         },
     ] {
         let entity = app.world_mut().spawn(Utterance).id();

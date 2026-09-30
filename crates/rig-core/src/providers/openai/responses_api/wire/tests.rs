@@ -87,7 +87,7 @@ fn terminal_response_body(sse: &str) -> String {
 fn prompt() -> CompletionRequest {
     CompletionRequest {
         model: None,
-        chat_history: crate::NonEmpty::new(Message::user("say hi")),
+        chat_history: vec![Message::user("say hi")],
         documents: Vec::new(),
         tools: Vec::new(),
         temperature: None,
@@ -228,7 +228,7 @@ fn encoded_body_of(wire: &Responses, request: CompletionRequest, mode: Mode) -> 
 /// The bare [`prompt`] with a history of its own.
 fn turn(chat_history: Vec<Message>) -> CompletionRequest {
     CompletionRequest {
-        chat_history: crate::NonEmpty::from_vec(chat_history).expect("non-empty"),
+        chat_history,
         ..prompt()
     }
 }
@@ -479,19 +479,17 @@ fn the_xai_dialect_folds_tool_results_between_user_text_in_order() {
     let body = encoded_body_of(
         &xai(),
         turn(vec![Message::User {
-            content: crate::NonEmpty::with_rest(
+            content: vec![
                 message::UserContent::text("before"),
-                [
-                    message::UserContent::tool_result(
-                        crate::message::CallId::from_dual_wire("result-id", "call-id".to_owned()),
-                        crate::message::ToolName::new("tool").expect("tool name"),
-                        crate::NonEmpty::new(message::ToolResultContent::json(
-                            serde_json::json!({ "ok": true }),
-                        )),
-                    ),
-                    message::UserContent::text("after"),
-                ],
-            ),
+                message::UserContent::tool_result(
+                    crate::message::CallId::from_dual_wire("result-id", "call-id".to_owned()),
+                    crate::message::ToolName::new("tool").expect("tool name"),
+                    vec![message::ToolResultContent::json(
+                        serde_json::json!({ "ok": true }),
+                    )],
+                ),
+                message::UserContent::text("after"),
+            ],
         }]),
         Mode::Unary,
     );
@@ -519,7 +517,7 @@ fn the_xai_dialect_replays_reasoning_by_wire_id_with_its_encrypted_payload() {
             Message::user("Use the tool."),
             Message::Assistant {
                 id: Some("msg_1".to_owned()),
-                content: crate::NonEmpty::with_rest(
+                content: vec![
                     message::AssistantContent::Reasoning(
                         message::Reasoning {
                             id: Some("rs_1".to_owned()),
@@ -532,12 +530,12 @@ fn the_xai_dialect_replays_reasoning_by_wire_id_with_its_encrypted_payload() {
                         }
                         .sealed("xai"),
                     ),
-                    [message::AssistantContent::tool_call(
+                    message::AssistantContent::tool_call(
                         "call_1",
                         crate::message::ToolName::new("my_tool").expect("tool name"),
                         serde_json::json!({"arg": "value"}),
-                    )],
-                ),
+                    ),
+                ],
             },
         ]),
         Mode::Unary,

@@ -46,7 +46,7 @@ fn register_the_model(mut handlers: Handlers) {
 fn ask(mut commands: Commands) {
     let request = CompletionRequest {
         model: None,
-        chat_history: rig_core::NonEmpty::new(Message::user("hello?")),
+        chat_history: vec![Message::user("hello?")],
         documents: vec![],
         tools: vec![],
         temperature: None,

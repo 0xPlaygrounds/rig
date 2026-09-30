@@ -600,6 +600,8 @@ impl std::future::IntoFuture for AgentRunner {
 }
 
 #[cfg(test)]
+mod empty_turn_tests;
+#[cfg(test)]
 mod entry_tests;
 #[cfg(test)]
 mod ignore_tests;

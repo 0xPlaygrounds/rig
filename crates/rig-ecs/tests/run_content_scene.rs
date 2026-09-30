@@ -18,20 +18,18 @@ fn fixture() -> (World, Entity, MessageParts) {
     let mut world = bare_world();
     let utterance = world.spawn(Utterance).id();
     let parts = MessageParts::User {
-        content: rig_core::NonEmpty::with_rest(
+        content: vec![
             UserContent::text("before"),
-            [
-                UserContent::Image(Image {
-                    data: DocumentSourceKind::Base64("Zg==".into()),
-                    ..Default::default()
-                }),
-                UserContent::text("between"),
-                UserContent::Image(Image {
-                    data: DocumentSourceKind::Raw(b"f".to_vec()),
-                    ..Default::default()
-                }),
-            ],
-        ),
+            UserContent::Image(Image {
+                data: DocumentSourceKind::Base64("Zg==".into()),
+                ..Default::default()
+            }),
+            UserContent::text("between"),
+            UserContent::Image(Image {
+                data: DocumentSourceKind::Raw(b"f".to_vec()),
+                ..Default::default()
+            }),
+        ],
     };
     write_message(&mut world, utterance, parts.clone()).unwrap();
     (world, utterance, parts)
@@ -197,7 +195,7 @@ fn a_run_with_two_spellings_of_one_image_round_trips_with_one_payload() {
     assert_eq!(
         expected,
         MessageParts::User {
-            content: rig_core::NonEmpty::from_vec(prompt.0.clone()).expect("non-empty")
+            content: prompt.0.clone()
         },
         "the graph keeps the prompt's spellings"
     );

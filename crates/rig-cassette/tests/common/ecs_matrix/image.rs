@@ -135,7 +135,7 @@ pub(crate) fn user_content(image: ImageCell, prompt: &str) -> Vec<UserContent> {
 /// The cell's first prompt as the message both interpreters send.
 pub(crate) fn prompt_message(image: ImageCell, prompt: &str) -> Message {
     Message::User {
-        content: rig_core::NonEmpty::from_vec(user_content(image, prompt)).expect("non-empty"),
+        content: user_content(image, prompt),
     }
 }
 

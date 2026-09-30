@@ -49,7 +49,7 @@ fn copilot() -> CopilotConfig {
 fn prompt() -> CompletionRequest {
     CompletionRequest {
         model: None,
-        chat_history: crate::NonEmpty::new(Message::user("say hi")),
+        chat_history: vec![Message::user("say hi")],
         documents: Vec::new(),
         tools: Vec::new(),
         temperature: None,
@@ -796,15 +796,15 @@ fn configured_outbound_endpoints_remain_explicit_after_rotation() {
 fn both_completion_envelopes_see_the_original_vision_and_assistant_history() {
     use crate::message::{DocumentSourceKind, Image, UserContent};
     let mut request = prompt();
-    request.chat_history = crate::NonEmpty::with_rest(
+    request.chat_history = vec![
         Message::assistant("send an image"),
-        [Message::User {
-            content: crate::NonEmpty::new(UserContent::Image(Image {
+        Message::User {
+            content: vec![UserContent::Image(Image {
                 data: DocumentSourceKind::Url("https://image.invalid/example.png".into()),
                 ..Image::default()
-            })),
-        }],
-    );
+            })],
+        },
+    ];
     for model in [super::super::GPT_4O, super::super::GPT_5_3_CODEX] {
         let direct = copilot().completion(model).with_edits_intent();
         let generic = copilot().openai().completion(model);

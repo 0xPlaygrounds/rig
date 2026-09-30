@@ -16,14 +16,11 @@ fn result(id: &str) -> UserContent {
     UserContent::ToolResult(ToolResult {
         call: crate::message::CallId::from_wire(id),
         name: crate::message::ToolName::new("add").expect("tool name"),
-        content: crate::NonEmpty::new(ToolResultContent::text("3")),
+        content: vec![ToolResultContent::text("3")],
     })
 }
 fn assistant(content: Vec<AssistantContent>) -> Message {
-    Message::Assistant {
-        id: None,
-        content: crate::NonEmpty::from_vec(content).expect("non-empty"),
-    }
+    Message::Assistant { id: None, content }
 }
 
 #[test]
@@ -32,7 +29,7 @@ fn canonical_transcripts_pass() {
         Message::user("hi"),
         assistant(vec![call("c1")]),
         Message::User {
-            content: crate::NonEmpty::new(result("c1")),
+            content: vec![result("c1")],
         },
         assistant(vec![AssistantContent::text("done")]),
         Message::user("thanks"),
@@ -63,7 +60,7 @@ fn unanswered_and_orphan_results_are_rejected() {
     let orphan = vec![
         Message::user("hi"),
         Message::User {
-            content: crate::NonEmpty::new(result("ghost")),
+            content: vec![result("ghost")],
         },
     ];
     assert!(matches!(
@@ -92,22 +89,19 @@ fn a_result_answers_only_its_own_call() {
         ))
     };
     let result_for = |id: crate::message::CallId| {
-        UserContent::tool_result(id, tool.clone(), ToolResultContent::text("3"))
+        UserContent::tool_result(id, tool.clone(), vec![ToolResultContent::text("3")])
     };
     let history = vec![
         assistant(vec![call_for(first.clone()), call_for(second.clone())]),
         Message::User {
-            content: crate::NonEmpty::with_rest(
-                result_for(second.clone()),
-                [result_for(first.clone())],
-            ),
+            content: vec![result_for(second.clone()), result_for(first.clone())],
         },
     ];
     assert_eq!(validate_canonical(&history), Ok(()));
     let mismatched = vec![
         assistant(vec![call_for(first)]),
         Message::User {
-            content: crate::NonEmpty::new(result_for(second)),
+            content: vec![result_for(second)],
         },
     ];
     assert!(matches!(

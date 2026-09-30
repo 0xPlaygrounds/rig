@@ -6812,11 +6812,11 @@ async fn dynamic_context_preserves_query_selection_formatting_and_order_on_both_
         )
         .build()
         .prompt(Message::User {
-            content: rig_core::NonEmpty::new(UserContent::image_url(
+            content: vec![UserContent::image_url(
                 "https://example.com/prompt.png",
                 None,
                 None,
-            )),
+            )],
         })
         .history(vec![
             Message::user("older history query"),
@@ -6988,11 +6988,11 @@ async fn retrieved_tool_query_selection_is_unchanged_on_both_surfaces() {
         )
         .build()
         .prompt(Message::User {
-            content: rig_core::NonEmpty::new(UserContent::image_url(
+            content: vec![UserContent::image_url(
                 "https://example.com/blocking.png",
                 None,
                 None,
-            )),
+            )],
         })
         .history(vec![
             Message::user("older blocking history query"),
@@ -7032,11 +7032,11 @@ async fn retrieved_tool_query_selection_is_unchanged_on_both_surfaces() {
     )
     .build()
     .prompt(Message::User {
-        content: rig_core::NonEmpty::new(UserContent::image_url(
+        content: vec![UserContent::image_url(
             "https://example.com/streaming.png",
             None,
             None,
-        )),
+        )],
     })
     .history(vec![
         Message::user("older streaming history query"),
@@ -8946,7 +8946,7 @@ async fn blocking_model_turn_repeat_preserves_prompt_history_with_fresh_preparat
     assert_eq!(requests.len(), 2);
     let first = requests[0].chat_history.clone();
     let second = requests[1].chat_history.clone();
-    assert_eq!(first, rig_core::NonEmpty::new(Message::user("question")));
+    assert_eq!(first, vec![Message::user("question")]);
     assert_eq!(
         second, first,
         "Repeat must preserve the prompt and preceding history"
@@ -8986,13 +8986,11 @@ async fn blocking_model_turn_feedback_preserves_rejected_response() {
     let second_request = &model.requests()[1];
     assert_eq!(
         second_request.chat_history.clone(),
-        rig_core::NonEmpty::with_rest(
+        vec![
             Message::user("question"),
-            [
-                Message::assistant("rejected"),
-                Message::user("try another approach")
-            ]
-        )
+            Message::assistant("rejected"),
+            Message::user("try another approach")
+        ]
     );
 }
 
@@ -9030,10 +9028,10 @@ async fn blocking_empty_feedback_retry_omits_empty_assistant_history() {
     );
     assert_eq!(
         model.requests()[1].chat_history.clone(),
-        rig_core::NonEmpty::with_rest(
+        vec![
             Message::user("question"),
-            [Message::user("provide an answer")]
-        ),
+            Message::user("provide an answer")
+        ],
         "the retry request must not contain an empty assistant message"
     );
 }
@@ -9217,10 +9215,10 @@ async fn streaming_empty_feedback_retry_omits_empty_assistant_history() {
     );
     assert_eq!(
         model.requests()[1].chat_history.clone(),
-        rig_core::NonEmpty::with_rest(
+        vec![
             Message::user("question"),
-            [Message::user("provide an answer")]
-        ),
+            Message::user("provide an answer")
+        ],
         "the retry request must not contain an empty assistant message"
     );
 }

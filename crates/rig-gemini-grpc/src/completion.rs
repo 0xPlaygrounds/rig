@@ -234,8 +234,7 @@ pub(crate) fn create_grpc_request(
         record_telemetry_content: _,
     } = completion_request;
 
-    let (history_system, chat_history) =
-        split_system_messages_from_history(chat_history.into_vec());
+    let (history_system, chat_history) = split_system_messages_from_history(chat_history);
     let mut contents = Vec::new();
 
     for msg in chat_history {

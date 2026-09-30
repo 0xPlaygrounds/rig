@@ -58,12 +58,10 @@ async fn plaintext_document_with_instruction() {
 
     let response = agent
         .prompt(Message::User {
-            content: rig_core::NonEmpty::with_rest(
+            content: vec![
                 UserContent::document(rust_document(), Some(DocumentMediaType::TXT)),
-                [UserContent::text(
-                    "List the three main goals of Rust mentioned in this document.",
-                )],
-            ),
+                UserContent::text("List the three main goals of Rust mentioned in this document."),
+            ],
         })
         .await
         .expect("instruction prompt should succeed")

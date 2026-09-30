@@ -134,10 +134,7 @@ fn output_tool_history_preserves_reasoning_and_commits_arguments_as_text() {
         .collect();
     assert_eq!(
         assistant,
-        [rig_core::NonEmpty::with_rest(
-            reasoning,
-            [AssistantContent::text("{\"answer\":42}")]
-        )]
+        [vec![reasoning, AssistantContent::text("{\"answer\":42}")]]
     );
 }
 

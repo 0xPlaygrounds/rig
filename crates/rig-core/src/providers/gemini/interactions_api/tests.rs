@@ -6,13 +6,13 @@ use serde_json::json;
 #[test]
 fn test_create_request_body_simple() {
     let prompt = Message::User {
-        content: crate::NonEmpty::new(message::UserContent::text("Hello")),
+        content: vec![message::UserContent::text("Hello")],
     };
 
     let request = CompletionRequest {
         record_telemetry_content: false,
         model: None,
-        chat_history: crate::NonEmpty::with_rest(Message::system("Be precise."), [prompt]),
+        chat_history: vec![Message::system("Be precise."), prompt],
         documents: vec![],
         tools: vec![],
         temperature: Some(0.7),
@@ -69,44 +69,42 @@ fn tool_result_serializes_the_executed_name_not_an_identifier() {
         };
         Message::Assistant {
             id: None,
-            content: crate::NonEmpty::new(AssistantContent::ToolCall(tool_call)),
+            content: vec![AssistantContent::ToolCall(tool_call)],
         }
     };
     let result = |item_id: Option<&str>, call_id: &str, name: &str| Message::User {
-        content: crate::NonEmpty::new(match item_id {
+        content: vec![match item_id {
             Some(item_id) => message::UserContent::tool_result(
                 crate::message::CallId::from_dual_wire(item_id, call_id),
                 crate::message::ToolName::new(name).expect("tool name"),
-                crate::NonEmpty::new(ToolResultContent::text("out")),
+                vec![ToolResultContent::text("out")],
             ),
             None => message::UserContent::tool_result(
                 crate::message::CallId::from_wire(call_id),
                 crate::message::ToolName::new(name).expect("tool name"),
-                crate::NonEmpty::new(ToolResultContent::text("out")),
+                vec![ToolResultContent::text("out")],
             ),
-        }),
+        }],
     };
 
     let request = CompletionRequest {
         record_telemetry_content: false,
         model: None,
-        chat_history: crate::NonEmpty::with_rest(
+        chat_history: vec![
             // A driver-built result carries the executed name (a repair
             // hook renamed the call: `sum` ran, not `add`).
             call(None, "call_1", "sum"),
-            [
-                result(None, "call_1", "sum"), // An OpenAI-shaped correlator travels as the call id while
-                // the required `name` field carries the executed name —
-                // `call_abc` must never reach the wire as a name.
-                call(None, "call_abc", "get_weather"),
-                result(None, "call_abc", "get_weather"), // A dual-identifier result (OpenAI Responses: item id `fc_…`
-                // + `call_id` `call_…`) keeps the correlator on the wire and
-                // the executed name in `name` — `fc_1` must never reach the
-                // wire as a name.
-                call(Some("fc_1"), "call_9", "get_time"),
-                result(Some("fc_1"), "call_9", "get_time"),
-            ],
-        ),
+            result(None, "call_1", "sum"), // An OpenAI-shaped correlator travels as the call id while
+            // the required `name` field carries the executed name —
+            // `call_abc` must never reach the wire as a name.
+            call(None, "call_abc", "get_weather"),
+            result(None, "call_abc", "get_weather"), // A dual-identifier result (OpenAI Responses: item id `fc_…`
+            // + `call_id` `call_…`) keeps the correlator on the wire and
+            // the executed name in `name` — `fc_1` must never reach the
+            // wire as a name.
+            call(Some("fc_1"), "call_9", "get_time"),
+            result(Some("fc_1"), "call_9", "get_time"),
+        ],
         documents: vec![],
         tools: vec![],
         temperature: None,
@@ -172,7 +170,7 @@ fn test_tool_result_without_provider_id_sends_minted_call_id() {
     let content = message::UserContent::ToolResult(message::ToolResult {
         call: call.clone(),
         name: crate::message::ToolName::new("get_weather".to_string()).expect("tool name"),
-        content: crate::NonEmpty::new(message::ToolResultContent::text("ok")),
+        content: vec![message::ToolResultContent::text("ok")],
     });
 
     let converted = Content::try_from(content).expect("tool result should convert");
@@ -188,12 +186,10 @@ fn test_tool_result_preserves_text_and_json_types() {
     let content = message::UserContent::ToolResult(message::ToolResult {
         call: crate::message::CallId::from_wire("call-123"),
         name: crate::message::ToolName::new("get_weather".to_string()).expect("tool name"),
-        content: crate::NonEmpty::with_rest(
+        content: vec![
             message::ToolResultContent::text(r#"{"status":"literal"}"#),
-            [message::ToolResultContent::json(
-                json!({ "status": "structured" }),
-            )],
-        ),
+            message::ToolResultContent::json(json!({ "status": "structured" })),
+        ],
     });
 
     let converted = Content::try_from(content).expect("tool result should convert");
@@ -254,7 +250,7 @@ fn test_tool_result_text_and_json_singletons_remain_scalar() {
         let content = message::UserContent::ToolResult(message::ToolResult {
             call: crate::message::CallId::from_wire("call-123"),
             name: crate::message::ToolName::new("get_weather".to_string()).expect("tool name"),
-            content: crate::NonEmpty::new(tool_content),
+            content: vec![tool_content],
         });
 
         let Content::FunctionResult(result) =
@@ -285,7 +281,7 @@ fn test_tool_result_rich_singletons_use_tagged_content() {
         let content = message::UserContent::ToolResult(message::ToolResult {
             call: crate::message::CallId::from_wire("call-123"),
             name: crate::message::ToolName::new("get_weather".to_string()).expect("tool name"),
-            content: crate::NonEmpty::new(tool_content),
+            content: vec![tool_content],
         });
 
         let Content::FunctionResult(result) =
@@ -302,31 +298,29 @@ fn test_tool_result_images_and_text_serialize_as_ordered_tagged_content() {
     let tool_result = message::UserContent::ToolResult(message::ToolResult {
         call: crate::message::CallId::from_wire("call-image"),
         name: crate::message::ToolName::new("render".to_string()).expect("tool name"),
-        content: crate::NonEmpty::with_rest(
+        content: vec![
             message::ToolResultContent::image_base64(
                 "first-image",
                 Some(message::ImageMediaType::PNG),
                 None,
             ),
-            [
-                message::ToolResultContent::text("between-images"),
-                message::ToolResultContent::Image(message::Image {
-                    data: message::DocumentSourceKind::Url(
-                        "https://example.com/second.jpg".to_string(),
-                    ),
-                    media_type: Some(message::ImageMediaType::JPEG),
-                    detail: None,
-                    additional_params: None,
-                }),
-            ],
-        ),
+            message::ToolResultContent::text("between-images"),
+            message::ToolResultContent::Image(message::Image {
+                data: message::DocumentSourceKind::Url(
+                    "https://example.com/second.jpg".to_string(),
+                ),
+                media_type: Some(message::ImageMediaType::JPEG),
+                detail: None,
+                additional_params: None,
+            }),
+        ],
     });
     let request = CompletionRequest {
         record_telemetry_content: false,
         model: None,
-        chat_history: crate::NonEmpty::new(Message::User {
-            content: crate::NonEmpty::new(tool_result),
-        }),
+        chat_history: vec![Message::User {
+            content: vec![tool_result],
+        }],
         documents: vec![],
         tools: vec![],
         temperature: None,
@@ -1082,31 +1076,26 @@ fn a_tool_round_trip_is_top_level_steps() {
     );
     let assistant = Message::Assistant {
         id: None,
-        content: crate::NonEmpty::with_rest(
+        content: vec![
             message::AssistantContent::Reasoning(
                 message::Reasoning::new_with_signature("", Some("sig".to_owned()))
                     .sealed("gcp.gemini"),
             ),
-            [
-                message::AssistantContent::text("Adding."),
-                message::AssistantContent::ToolCall(call.clone()),
-            ],
-        ),
+            message::AssistantContent::text("Adding."),
+            message::AssistantContent::ToolCall(call.clone()),
+        ],
     };
     let result = Message::from(message::UserContent::tool_result(
         call.id.clone(),
         crate::message::ToolName::new("add").expect("tool name"),
-        crate::NonEmpty::new(message::ToolResultContent::json(json!({"sum": 42}))),
+        vec![message::ToolResultContent::json(json!({"sum": 42}))],
     ));
     let body = create_request_body(
         "gemini-2.5-flash".to_owned(),
         CompletionRequest {
             record_telemetry_content: false,
             model: None,
-            chat_history: crate::NonEmpty::with_rest(
-                Message::user("Add 17 and 25."),
-                [assistant, result],
-            ),
+            chat_history: vec![Message::user("Add 17 and 25."), assistant, result],
             documents: vec![],
             tools: vec![],
             temperature: None,
@@ -1207,7 +1196,7 @@ fn probe() -> CompletionRequest {
     CompletionRequest {
         record_telemetry_content: false,
         model: None,
-        chat_history: crate::NonEmpty::new(Message::user("probe")),
+        chat_history: vec![Message::user("probe")],
         documents: vec![],
         tools: vec![],
         temperature: None,

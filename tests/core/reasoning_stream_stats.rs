@@ -30,7 +30,7 @@ async fn collect_stream_stats_tracks_only_final_turn_text() {
     let tool_result = ToolResult {
         call: tool_call.id.clone(),
         name: tool_call.function.name.clone(),
-        content: rig_core::NonEmpty::new(ToolResultContent::text("72F and sunny")),
+        content: vec![ToolResultContent::text("72F and sunny")],
     };
 
     let items = vec![

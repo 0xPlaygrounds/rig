@@ -109,7 +109,7 @@ fn provider_reply(response: &rig::completion::CompletionResponse) -> ProviderRes
 /// Two blocking turns, threading turn 1's normalized response back as history.
 async fn two_turn_conversation(client: OpenAiModels) -> (ProviderResponse, ProviderResponse) {
     let model = client.completion(openai::GPT_5_6_SOL);
-    let mut history = rig::NonEmpty::new(Message::user(TURN_ONE));
+    let mut history = vec![Message::user(TURN_ONE)];
     let first = model
         .call(history.clone())
         .await
@@ -599,7 +599,7 @@ async fn commentary_before_a_tool_call_replays_with_its_phase() {
                 history.push(Message::from(UserContent::tool_result(
                     call.id.clone(),
                     call.function.name.clone(),
-                    rig::NonEmpty::new(ToolResultContent::text("Sunny, 21 °C.")),
+                    vec![ToolResultContent::text("Sunny, 21 °C.")],
                 )));
                 streamed(
                     &model,

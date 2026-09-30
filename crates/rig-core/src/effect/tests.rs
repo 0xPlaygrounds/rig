@@ -23,7 +23,7 @@ where
 fn request() -> CompletionRequest {
     CompletionRequest {
         model: None,
-        chat_history: crate::NonEmpty::new(Message::user("hi")),
+        chat_history: vec![Message::user("hi")],
         documents: vec![],
         tools: vec![],
         temperature: None,

@@ -13,16 +13,13 @@ fn request_with(preamble: Option<&str>, tools: bool) -> GenerateContentRequest {
         });
     }
     super::create_request_body(CompletionRequest {
-        chat_history: crate::NonEmpty::from_vec(
-            preamble
-                .map(Message::system)
-                .into_iter()
-                .chain([Message::User {
-                    content: crate::NonEmpty::new(UserContent::text("hi")),
-                }])
-                .collect::<Vec<_>>(),
-        )
-        .expect("non-empty"),
+        chat_history: preamble
+            .map(Message::system)
+            .into_iter()
+            .chain([Message::User {
+                content: vec![UserContent::text("hi")],
+            }])
+            .collect::<Vec<_>>(),
         documents: vec![],
         tools: tool_defs,
         temperature: None,
@@ -192,16 +189,13 @@ fn build_with(
     additional: Option<serde_json::Value>,
 ) -> Result<GenerateContentRequest, EncodeError> {
     super::create_request_body(CompletionRequest {
-        chat_history: crate::NonEmpty::from_vec(
-            preamble
-                .map(Message::system)
-                .into_iter()
-                .chain([Message::User {
-                    content: crate::NonEmpty::new(UserContent::text("hi")),
-                }])
-                .collect::<Vec<_>>(),
-        )
-        .expect("non-empty"),
+        chat_history: preamble
+            .map(Message::system)
+            .into_iter()
+            .chain([Message::User {
+                content: vec![UserContent::text("hi")],
+            }])
+            .collect::<Vec<_>>(),
         documents: vec![],
         tools: vec![],
         temperature: None,
@@ -299,9 +293,9 @@ fn a_non_string_handle_in_additional_params_is_refused() {
 #[test]
 fn unrelated_additional_params_coexist_with_the_typed_field() {
     let mut request = super::create_request_body(CompletionRequest {
-        chat_history: crate::NonEmpty::new(Message::User {
-            content: crate::NonEmpty::new(UserContent::text("hi")),
-        }),
+        chat_history: vec![Message::User {
+            content: vec![UserContent::text("hi")],
+        }],
         documents: vec![],
         tools: vec![],
         temperature: None,
@@ -385,9 +379,9 @@ fn setting_a_field_twice_is_refused_rather_than_resolved_by_serialization_order(
     );
 
     let message = super::create_request_body(CompletionRequest {
-        chat_history: crate::NonEmpty::new(Message::User {
-            content: crate::NonEmpty::new(UserContent::text("hi")),
-        }),
+        chat_history: vec![Message::User {
+            content: vec![UserContent::text("hi")],
+        }],
         documents: vec![],
         tools: vec![],
         temperature: None,

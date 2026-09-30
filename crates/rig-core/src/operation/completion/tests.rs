@@ -45,16 +45,13 @@ fn history(own: &str) -> CompletionRequest {
     .map(AssistantContent::Reasoning)
     .chain([AssistantContent::text("The answer is 4.")])
     .collect::<Vec<_>>();
-    let content = crate::NonEmpty::from_vec(content).expect("non-empty");
     CompletionRequest {
         model: None,
-        chat_history: crate::NonEmpty::with_rest(
+        chat_history: vec![
             Message::user("What is 2 + 2?"),
-            [
-                Message::Assistant { id: None, content },
-                Message::user("And 3 + 3?"),
-            ],
-        ),
+            Message::Assistant { id: None, content },
+            Message::user("And 3 + 3?"),
+        ],
         documents: vec![],
         tools: vec![],
         temperature: None,
@@ -178,13 +175,10 @@ fn a_turn_that_held_only_foreign_reasoning_is_omitted() {
         1,
         Message::Assistant {
             id: None,
-            content: crate::NonEmpty::from_vec(
-                reasoning(FOREIGN)
-                    .into_iter()
-                    .map(|reasoning| AssistantContent::Reasoning(reasoning.sealed("another")))
-                    .collect(),
-            )
-            .expect("non-empty"),
+            content: reasoning(FOREIGN)
+                .into_iter()
+                .map(|reasoning| AssistantContent::Reasoning(reasoning.sealed("another")))
+                .collect(),
         },
     );
     assert_eq!(request.chat_history.len(), 4);
@@ -254,10 +248,7 @@ async fn openrouter_replays_only_the_requested_familys_reasoning() {
         RecordingHttpClient: crate::driver::Transport<W>,
     {
         let mut request = history("unused");
-        request.chat_history[1] = Message::Assistant {
-            id: None,
-            content: crate::NonEmpty::from_vec(content).expect("non-empty"),
-        };
+        request.chat_history[1] = Message::Assistant { id: None, content };
         let http = RecordingHttpClient::new(Bytes::from_static(b"{}"));
         let _ = crate::driver::Model::new(wire, http.clone())
             .call(request)
@@ -339,10 +330,7 @@ async fn openrouter_responses_route_scopes_reasoning_by_family() {
         let content = content.clone();
         async move {
             let mut request = history("unused");
-            request.chat_history[1] = Message::Assistant {
-                id: None,
-                content: crate::NonEmpty::from_vec(content).expect("non-empty"),
-            };
+            request.chat_history[1] = Message::Assistant { id: None, content };
             let http = RecordingHttpClient::new(Bytes::from_static(b"{}"));
             let wire = OpenAIConfig::with_key(&OPENROUTER, "test-key").responses(model);
             let _ = crate::driver::Model::new(wire, http.clone())
@@ -431,7 +419,7 @@ async fn openrouter_responses_route_round_trips_a_claude_signature() {
     let mut request = history("unused");
     request.chat_history[1] = Message::Assistant {
         id: None,
-        content: crate::NonEmpty::from_vec(response.choice.clone()).expect("non-empty"),
+        content: response.choice.clone(),
     };
     let http = RecordingHttpClient::new(Bytes::from_static(b"{}"));
     let _ = crate::driver::Model::new(wire, http.clone())

@@ -10,7 +10,7 @@ use futures::StreamExt;
 fn request(prompt: &str) -> CompletionRequest {
     CompletionRequest {
         model: None,
-        chat_history: crate::NonEmpty::new(Message::user(prompt)),
+        chat_history: vec![Message::user(prompt)],
         documents: Vec::new(),
         tools: Vec::new(),
         temperature: None,

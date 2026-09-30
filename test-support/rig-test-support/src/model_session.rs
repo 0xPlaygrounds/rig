@@ -401,11 +401,7 @@ fn has_reasoning(history: &[Message], from: usize) -> bool {
 }
 
 fn user(parts: Vec<UserContent>) -> Message {
-    let mut parts = parts.into_iter();
-    let first = parts.next().unwrap_or_else(|| UserContent::text(""));
-    Message::User {
-        content: rig_core::NonEmpty::with_rest(first, parts),
-    }
+    Message::User { content: parts }
 }
 
 fn red_square() -> UserContent {

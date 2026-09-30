@@ -4,48 +4,113 @@ use crate::error::ProviderError;
 use crate::message::AssistantContent;
 use crate::{http_client, provider_response};
 
-/// An empty conversation or content list is not a value these types can
-/// hold, so it does not parse.
-mod empty_lists_do_not_parse {
+/// An empty conversation, message or tool result parses, and the request
+/// boundary rejects it by role and index.
+mod empty_lists_parse_and_are_rejected_when_sent {
     use crate::message::Message;
+    use crate::test_utils::{MockCompletionModel, MockTurn};
     use serde_json::json;
 
-    #[test]
-    fn an_empty_history_is_not_a_request() {
-        let request =
-            serde_json::to_value(super::CompletionRequest::new("hello")).expect("serializes");
-        let mut empty = request.clone();
-        empty["chat_history"] = json!([]);
-        assert!(serde_json::from_value::<super::CompletionRequest>(request).is_ok());
-        assert!(serde_json::from_value::<super::CompletionRequest>(empty).is_err());
+    /// A request carrying each empty piece, and the text its rejection names.
+    fn empty_requests() -> Vec<(super::CompletionRequest, &'static str)> {
+        let with = |message: serde_json::Value| {
+            super::CompletionRequest::new("hello")
+                .message(serde_json::from_value::<Message>(message).expect("an empty list parses"))
+        };
+        let mut empty_history = super::CompletionRequest::new("hello");
+        empty_history.chat_history.clear();
+        vec![
+            (empty_history, "request has an empty chat history"),
+            (
+                with(json!({"role": "user", "content": []})),
+                "user message at index 0 has no content",
+            ),
+            (
+                with(json!({"role": "assistant", "id": null, "content": []})),
+                "assistant message at index 0 has no content",
+            ),
+            (
+                with(json!({
+                    "role": "user",
+                    "content": [{
+                        "type": "toolresult",
+                        "call": {"provider": {"call_id": "call_1"}},
+                        "name": "lookup",
+                        "content": [],
+                    }],
+                })),
+                "tool result for `lookup` at index 0 of the user message at index 0 has no content",
+            ),
+        ]
     }
 
     #[test]
-    fn an_empty_user_or_assistant_message_does_not_parse() {
-        for message in [
-            json!({"role": "user", "content": []}),
-            json!({"role": "assistant", "id": null, "content": []}),
-        ] {
-            assert!(serde_json::from_value::<Message>(message).is_err());
+    fn an_empty_history_parses() {
+        let mut request =
+            serde_json::to_value(super::CompletionRequest::new("hello")).expect("serializes");
+        request["chat_history"] = json!([]);
+        let request = serde_json::from_value::<super::CompletionRequest>(request)
+            .expect("an empty history parses");
+        assert!(request.chat_history.is_empty());
+    }
+
+    #[test]
+    fn each_empty_piece_is_rejected_by_role_and_index() {
+        for (request, expected) in empty_requests() {
+            let error = request
+                .validate_message_content()
+                .expect_err("the request is rejected");
+            assert!(matches!(error, super::ProviderError::Request(_)), "{error}");
+            assert!(error.to_string().contains(expected), "{error}");
         }
     }
 
-    #[test]
-    fn a_block_less_tool_result_does_not_parse() {
-        let result = json!({
-            "role": "user",
-            "content": [{
-                "type": "toolresult",
-                "call": {"provider": {"call_id": "call_1"}},
-                "name": "lookup",
-                "content": [],
-            }],
-        });
-        assert!(serde_json::from_value::<Message>(result).is_err());
+    /// `Model::call`, `Model::stream` and their erased twins reject each
+    /// empty piece before the scripted runtime sees the request.
+    #[tokio::test]
+    async fn every_model_surface_rejects_each_empty_piece_before_the_transport() {
+        for (request, expected) in empty_requests() {
+            let model = MockCompletionModel::from_turns([MockTurn::text("unreachable")]);
+            let erased = model.clone().erase();
+            let errors = [
+                model.call(request.clone()).await.err(),
+                model.stream(request.clone()).err(),
+                erased.call(request.clone()).await.err(),
+                erased.stream(request.clone()).err(),
+            ];
+            for error in errors {
+                let error = error.expect("the request is rejected");
+                assert!(error.to_string().contains(expected), "{error}");
+            }
+            assert_eq!(model.request_count(), 0, "nothing reached the transport");
+            assert_eq!(model.script().len(), 1, "the scripted turn is unused");
+        }
+    }
+
+    /// Deserializing `[]` is not where the rule lives: the message reads and
+    /// writes the same JSON, and sending it is what fails.
+    #[tokio::test]
+    async fn an_empty_content_list_round_trips_and_is_rejected_when_sent() {
+        let json = json!({"role": "user", "content": []});
+        let message = serde_json::from_value::<Message>(json.clone()).expect("parses");
+        assert_eq!(serde_json::to_value(&message).expect("serializes"), json);
+
+        let model = MockCompletionModel::from_turns([MockTurn::text("unreachable")]);
+        let error = model
+            .call(super::CompletionRequest::new(message))
+            .await
+            .expect_err("sending it is rejected");
+        assert!(
+            error
+                .to_string()
+                .contains("user message at index 0 has no content"),
+            "{error}"
+        );
+        assert_eq!(model.request_count(), 0);
     }
 
     #[test]
-    fn a_tool_result_with_one_empty_string_block_parses() {
+    fn a_tool_result_with_one_empty_string_block_parses_and_is_accepted() {
         let result = json!({
             "role": "user",
             "content": [{
@@ -55,7 +120,12 @@ mod empty_lists_do_not_parse {
                 "content": [{"type": "text", "text": ""}],
             }],
         });
-        assert!(serde_json::from_value::<Message>(result).is_ok());
+        let message = serde_json::from_value::<Message>(result).expect("parses");
+        assert!(
+            super::CompletionRequest::new(message)
+                .validate_message_content()
+                .is_ok()
+        );
     }
 }
 
@@ -82,7 +152,7 @@ mod message_content {
         let result = UserContent::tool_result(
             CallId::from_wire("call_1"),
             ToolName::new("lookup").expect("tool name"),
-            ToolResultContent::text(""),
+            vec![ToolResultContent::text("")],
         );
         let request = super::CompletionRequest::new(Message::from(result));
         assert!(request.validate_message_content().is_ok());
@@ -387,15 +457,15 @@ fn message_telemetry_includes_normalized_documents() {
     assert!(matches!(
         &messages[2],
         Message::User { content }
-            if matches!(content.first(), UserContent::Text(text) if text.text == "history")
+            if matches!(content.first(), Some(UserContent::Text(text)) if text.text == "history")
     ));
     assert!(matches!(
         &messages[3],
         Message::User { content }
-            if matches!(content.first(), UserContent::Text(text) if text.text == "prompt")
+            if matches!(content.first(), Some(UserContent::Text(text)) if text.text == "prompt")
     ));
 
-    assert_eq!(messages, request.chat_history_with_documents().into_vec());
+    assert_eq!(messages, request.chat_history_with_documents());
 }
 
 fn is_document_message(message: &Message, expected_id: &str) -> bool {
@@ -461,7 +531,7 @@ fn test_normalize_documents_with_documents() {
 
     let request = CompletionRequest {
         model: None,
-        chat_history: crate::NonEmpty::new("What is the capital of France?".into()),
+        chat_history: vec!["What is the capital of France?".into()],
         documents: vec![doc1, doc2],
         tools: Vec::new(),
         temperature: None,
@@ -473,16 +543,16 @@ fn test_normalize_documents_with_documents() {
     };
 
     let expected = Message::User {
-        content: crate::NonEmpty::with_rest(
+        content: vec![
             UserContent::document(
                 "<file id: doc1>\nDocument 1 text.\n</file>\n".to_string(),
                 Some(DocumentMediaType::TXT),
             ),
-            [UserContent::document(
+            UserContent::document(
                 "<file id: doc2>\nDocument 2 text.\n</file>\n".to_string(),
                 Some(DocumentMediaType::TXT),
-            )],
-        ),
+            ),
+        ],
     };
 
     assert_eq!(request.normalized_documents(), Some(expected));
@@ -492,7 +562,7 @@ fn test_normalize_documents_with_documents() {
 fn test_normalize_documents_without_documents() {
     let request = CompletionRequest {
         model: None,
-        chat_history: crate::NonEmpty::new("What is the capital of France?".into()),
+        chat_history: vec!["What is the capital of France?".into()],
         documents: Vec::new(),
         tools: Vec::new(),
         temperature: None,
@@ -587,14 +657,12 @@ fn build_without_documents_keeps_message_order_unchanged() {
 fn chat_history_with_documents_places_documents_after_leading_system_messages() {
     let request = CompletionRequest {
         model: None,
-        chat_history: crate::NonEmpty::with_rest(
+        chat_history: vec![
             Message::system("System prompt"),
-            [
-                Message::assistant("Earlier assistant turn"),
-                Message::user("Earlier user turn"),
-                Message::user("Prompt"),
-            ],
-        ),
+            Message::assistant("Earlier assistant turn"),
+            Message::user("Earlier user turn"),
+            Message::user("Prompt"),
+        ],
         documents: vec![test_document("doc1", "Document text.")],
         tools: Vec::new(),
         temperature: None,
@@ -621,14 +689,12 @@ fn chat_history_with_documents_places_documents_after_leading_system_messages() 
 fn chat_history_with_documents_places_documents_before_mid_conversation_system_messages() {
     let request = CompletionRequest {
         model: None,
-        chat_history: crate::NonEmpty::with_rest(
+        chat_history: vec![
             Message::system("Leading system prompt"),
-            [
-                Message::assistant("Earlier assistant turn"),
-                Message::system("Mid-conversation instruction"),
-                Message::user("Prompt"),
-            ],
-        ),
+            Message::assistant("Earlier assistant turn"),
+            Message::system("Mid-conversation instruction"),
+            Message::user("Prompt"),
+        ],
         documents: vec![test_document("doc1", "Document text.")],
         tools: Vec::new(),
         temperature: None,
@@ -659,14 +725,12 @@ fn chat_history_with_documents_places_documents_before_mid_conversation_system_m
 fn chat_history_with_documents_does_not_duplicate_documents() {
     let request = CompletionRequest {
         model: None,
-        chat_history: crate::NonEmpty::with_rest(
+        chat_history: vec![
             Message::system("System prompt"),
-            [
-                Message::user("Earlier user turn"),
-                Message::assistant("Earlier assistant turn"),
-                Message::user("Prompt"),
-            ],
-        ),
+            Message::user("Earlier user turn"),
+            Message::assistant("Earlier assistant turn"),
+            Message::user("Prompt"),
+        ],
         documents: vec![test_document("doc1", "Document text.")],
         tools: Vec::new(),
         temperature: None,
