@@ -82,7 +82,7 @@ impl<'id> rig_core::wire::Decoder<'id, Completion, proto::GenerateContentRespons
             for part in &content.parts {
                 let text = !part.thought && matches!(part.data, Some(proto::part::Data::Text(_)));
                 if text && previous_text {
-                    self.close_text(&mut out);
+                    out.close_open_text(&mut self.text);
                 }
                 previous_text = text;
                 self.interpret_part(part, &mut out)?;
@@ -113,7 +113,7 @@ impl<'id> rig_core::wire::Decoder<'id, Completion, proto::GenerateContentRespons
                 rig_core::message::EMPTY_RESPONSE_ERROR.to_owned(),
             ));
         }
-        self.close_text(&mut out);
+        out.close_open_text(&mut self.text);
         self.thoughts.close(&mut out, None);
         out.raw(serde_json::to_value(&last)?);
         Ok(out.end(Finish {
@@ -127,12 +127,6 @@ impl<'id> rig_core::wire::Decoder<'id, Completion, proto::GenerateContentRespons
 }
 
 impl<'id> GrpcAdapter<'id> {
-    fn close_text(&mut self, out: &mut Out<'id, Completion>) {
-        if let Some(part) = self.text.take() {
-            out.close_text(part);
-        }
-    }
-
     /// Write one protobuf part.
     fn interpret_part(
         &mut self,
@@ -145,7 +139,7 @@ impl<'id> GrpcAdapter<'id> {
             Some(proto::part::Data::Text(text)) if part.thought => {
                 self.delivered = true;
                 if !text.is_empty() {
-                    self.close_text(out);
+                    out.close_open_text(&mut self.text);
                 }
                 self.thoughts.fragment(out, text);
                 if let Some(signature) = encode_signature(&part.thought_signature) {
@@ -159,7 +153,7 @@ impl<'id> GrpcAdapter<'id> {
                 let signature = encode_signature(&part.thought_signature);
                 let signed = signature.is_some();
                 if signed && text.is_empty() {
-                    self.close_text(out);
+                    out.close_open_text(&mut self.text);
                 }
                 let params = signature.and_then(|signature| {
                     rig_core::providers::gemini::text_signature_extras(
@@ -169,20 +163,19 @@ impl<'id> GrpcAdapter<'id> {
                 });
                 if !text.is_empty() || params.is_some() {
                     self.thoughts.boundary();
-                    let part = self.text.get_or_insert_with(|| out.text());
-                    out.push_text(part, text);
+                    let part = out.extend_text(&mut self.text, text);
                     if let Some(params) = params {
                         out.text_params(part, params);
                     }
                 }
                 if signed {
-                    self.close_text(out);
+                    out.close_open_text(&mut self.text);
                 }
             }
             Some(proto::part::Data::FunctionCall(function_call)) => {
                 self.delivered = true;
                 self.thoughts.boundary();
-                self.close_text(out);
+                out.close_open_text(&mut self.text);
                 let name = ToolName::new(function_call.name.clone()).map_err(|error| {
                     ProviderError::Response(format!("Gemini returned a function call: {error}"))
                 })?;
@@ -203,7 +196,7 @@ impl<'id> GrpcAdapter<'id> {
             Some(proto::part::Data::InlineData(inline_data)) => {
                 self.delivered = true;
                 self.thoughts.boundary();
-                self.close_text(out);
+                out.close_open_text(&mut self.text);
                 let media_type = message::MediaType::from_mime_type(&inline_data.mime_type);
                 let Some(message::MediaType::Image(media_type)) = media_type else {
                     return Err(ProviderError::Response(format!(

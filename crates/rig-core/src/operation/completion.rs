@@ -866,6 +866,26 @@ impl<'id> Out<'id, Completion> {
         fold.close_text(items, part.slot);
     }
 
+    /// Append to the text part `open` holds, opening one there first. For a
+    /// wire whose text chunks continue one part until other output
+    /// interleaves it.
+    pub fn extend_text<'p>(
+        &mut self,
+        open: &'p mut Option<TextPart<'id>>,
+        text: &str,
+    ) -> &'p TextPart<'id> {
+        let part = open.get_or_insert_with(|| self.text());
+        self.push_text(part, text);
+        part
+    }
+
+    /// Close the text part `open` holds, if any, leaving it empty.
+    pub fn close_open_text(&mut self, open: &mut Option<TextPart<'id>>) {
+        if let Some(part) = open.take() {
+            self.close_text(part);
+        }
+    }
+
     /// Open a reasoning part. Nothing is emitted until its first fragment.
     pub fn reasoning(&mut self) -> ReasoningPart<'id> {
         let slot = self.lock().fold.draft(Draft::Reasoning {

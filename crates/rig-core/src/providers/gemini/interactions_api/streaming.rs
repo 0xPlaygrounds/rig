@@ -116,19 +116,13 @@ enum Chunk {
 }
 
 impl<'id> InteractionsDecoder<'id> {
-    fn close_text(&mut self, out: &mut Out<'id, Completion>) {
-        if let Some(part) = self.text.take() {
-            out.close_text(part);
-        }
-    }
-
     /// Write one content item: thoughts, the boundary text or a call
     /// makes, text, then the call.
     fn write(&mut self, chunk: Chunk, out: &mut Out<'id, Completion>) -> Result<(), ProviderError> {
         match chunk {
             Chunk::Thought { text, signature } => {
                 if !text.is_empty() {
-                    self.close_text(out);
+                    out.close_open_text(&mut self.text);
                 }
                 self.thoughts.fragment(out, &text);
                 if let Some(signature) = signature {
@@ -140,8 +134,7 @@ impl<'id> InteractionsDecoder<'id> {
                     return Ok(());
                 }
                 self.thoughts.boundary();
-                let part = self.text.get_or_insert_with(|| out.text());
-                out.push_text(part, &text);
+                out.extend_text(&mut self.text, &text);
             }
             Chunk::Call {
                 name,
@@ -149,7 +142,7 @@ impl<'id> InteractionsDecoder<'id> {
                 id,
             } => {
                 self.thoughts.boundary();
-                self.close_text(out);
+                out.close_open_text(&mut self.text);
                 shared_parts::function_call(
                     out,
                     name,
@@ -160,7 +153,7 @@ impl<'id> InteractionsDecoder<'id> {
             }
             Chunk::Raw(params) => {
                 self.thoughts.boundary();
-                self.close_text(out);
+                out.close_open_text(&mut self.text);
                 let part = out.text();
                 out.text_params(&part, params);
                 out.close_text(part);
@@ -253,7 +246,7 @@ impl<'id> Decoder<'id, Completion> for InteractionsDecoder<'id> {
                     // The call stays open: its arguments may arrive in later
                     // deltas.
                     self.thoughts.boundary();
-                    self.close_text(&mut out);
+                    out.close_open_text(&mut self.text);
                     let index = index as usize;
                     out.call_fragment(
                         index,
@@ -297,7 +290,7 @@ impl<'id> Decoder<'id, Completion> for InteractionsDecoder<'id> {
                     );
                     out.close_pending(index, IfMalformed::Fail)?;
                 }
-                self.close_text(&mut out);
+                out.close_open_text(&mut self.text);
                 self.thoughts.close(&mut out, None);
 
                 // Lifecycle status supplies the finish reason; absent status stays unknown.
