@@ -60,15 +60,16 @@ impl fmt::Display for FastembedError {
 
 impl StdError for FastembedError {}
 
-/// The local embedding wire of `model` at `ndims` dimensions, named
-/// `fastembed` and addressing the model by its `fastembed` name. `None`
-/// takes the width from the model metadata, which errors for models
-/// `fastembed` does not know.
+/// The local embedding wire of `model`, named `fastembed` and addressing
+/// the model by its `fastembed` name. A local model cannot change its
+/// width, so `Some(ndims)` is the width expected and a vector of any other
+/// width fails. `None` takes the width from the model metadata, which errors
+/// for models `fastembed` does not know.
 pub fn text_embeddings(
     model: &FastembedModel,
     ndims: Option<usize>,
 ) -> Result<Local<Embedding>, FastembedError> {
-    let ndims = match ndims {
+    let width = match ndims {
         Some(ndims) => ndims,
         None => TextEmbedding::get_model_info(model)
             .map(|info| info.dim)
@@ -76,7 +77,7 @@ pub fn text_embeddings(
     };
     Ok(Local::new("fastembed")
         .with_id(format!("{model:?}"))
-        .with_capabilities(Capabilities::embedding(1024, ndims)))
+        .with_capabilities(Capabilities::embedding(1024, width).declaring(ndims)))
 }
 
 /// A loaded Fastembed model: the transport that embeds in the calling
@@ -104,9 +105,9 @@ impl Fastembed {
         })
     }
 
-    /// The embedding model of `model` at `ndims` dimensions, on this
-    /// runtime: the [`text_embeddings`] wire, which fails for a model
-    /// `fastembed` does not know when `ndims` is `None`. `model` names what
+    /// The embedding model of `model` on this runtime: the
+    /// [`text_embeddings`] wire, which fails for a model `fastembed` does
+    /// not know when `ndims` is `None`. `model` names what
     /// spans and capabilities report; this runtime embeds with whatever it
     /// loaded.
     pub fn embedding(
@@ -157,3 +158,6 @@ impl Transport<Local<Embedding>> for Fastembed {
         })
     }
 }
+
+#[cfg(test)]
+mod tests;

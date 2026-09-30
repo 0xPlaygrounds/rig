@@ -100,7 +100,9 @@ impl BedrockRuntime {
         Model::new(Converse::new(model), self.clone())
     }
 
-    /// The embedding model for `model`, `ndims` wide when set.
+    /// The embedding model for `model`. `Some(ndims)` asks for vectors that
+    /// wide and fails a reply of any other width; `None` takes the model's
+    /// default width.
     pub fn embedding(
         &self,
         model: impl Into<String>,

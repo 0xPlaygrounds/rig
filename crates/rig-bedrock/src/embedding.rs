@@ -23,7 +23,9 @@ use crate::types::errors::AwsSdkInvokeModelError;
 #[serde(rename_all = "camelCase")]
 pub struct EmbeddingRequest {
     pub input_text: String,
-    pub dimensions: usize,
+    /// The requested width. `None` leaves the model's default.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub dimensions: Option<usize>,
     pub normalize: bool,
 }
 
@@ -42,14 +44,28 @@ pub use crate::completion::{
     COHERE_EMBED_MULTILINGUAL as COHERE_EMBED_MULTILINGUAL_V3,
 };
 
-/// The embedding endpoint for one model, at a caller-chosen width.
+/// The default output width of the Titan text-embedding models.
+fn model_default_ndims(model: &str) -> Option<usize> {
+    match model {
+        AMAZON_TITAN_EMBED_TEXT_V2_0 => Some(1024),
+        AMAZON_TITAN_EMBED_TEXT_V1 => Some(1536),
+        _ => None,
+    }
+}
+
+/// The embedding endpoint for one model, at the caller's width or the
+/// model's default.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Embeddings {
+    /// The model to invoke.
     pub model: String,
+    /// The width the caller asked for, sent as `dimensions`. `None` takes
+    /// the model's default.
     pub ndims: Option<usize>,
 }
 
 impl Embeddings {
+    /// The wire for `model`, asking for `ndims`-wide vectors when set.
     pub fn new(model: impl Into<String>, ndims: Option<usize>) -> Self {
         Self {
             model: model.into(),
@@ -83,10 +99,15 @@ impl Wire for Embeddings {
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(PROVIDER_NAME)
             .model(self.model.as_str())
-            .capabilities(Capabilities::embedding(
-                1024,
-                self.ndims.unwrap_or_default(),
-            ))
+            .capabilities(
+                Capabilities::embedding(
+                    1024,
+                    self.ndims
+                        .or_else(|| model_default_ndims(&self.model))
+                        .unwrap_or_default(),
+                )
+                .declaring(self.ndims),
+            )
     }
 
     fn encode(&self, texts: Vec<String>, _mode: Mode) -> Result<EmbeddingBatch, EncodeError> {
@@ -95,7 +116,7 @@ impl Wire for Embeddings {
             .map(|text| {
                 let body = serde_json::to_string(&EmbeddingRequest {
                     input_text: text.clone(),
-                    dimensions: self.ndims.unwrap_or_default(),
+                    dimensions: self.ndims,
                     normalize: true,
                 })?;
                 Ok((text, body))
@@ -205,3 +226,6 @@ impl<'id> Decoder<'id, rig_core::operation::Embedding, EmbeddingFrame> for Embed
         }))
     }
 }
+
+#[cfg(test)]
+mod tests;

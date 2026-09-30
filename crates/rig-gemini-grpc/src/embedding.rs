@@ -23,19 +23,39 @@ use rig_core::wire::{Capabilities, Decoder, Descriptor, Flow, Mode, Out, Wire, W
 use super::GeminiGrpc;
 use super::proto::{self, EmbedContentRequest};
 
-/// The embedding endpoint for one model, at a chosen width.
+/// The default output width of the Gemini embedding models this crate knows.
+fn model_default_ndims(model: &str) -> Option<usize> {
+    match model {
+        "gemini-embedding-001" => Some(3072),
+        EMBEDDING_004 => Some(768),
+        _ => None,
+    }
+}
+
+/// The embedding endpoint for one model, at the caller's width or the
+/// model's default.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Embeddings {
+    /// The model to address.
     pub model: String,
-    pub ndims: usize,
+    /// The width the caller asked for. `None` takes the model's default.
+    pub ndims: Option<usize>,
 }
 
 impl Embeddings {
-    pub fn new(model: impl Into<String>, dims: Option<usize>) -> Self {
+    /// The wire for `model`, asking for `ndims`-wide vectors when set.
+    pub fn new(model: impl Into<String>, ndims: Option<usize>) -> Self {
         Self {
             model: model.into(),
-            ndims: dims.unwrap_or(768), // Default embedding size for text-embedding-004
+            ndims,
         }
+    }
+
+    /// The `output_dimensionality` each call asks for: the caller's width,
+    /// else the model's known default. `None` for an unknown model leaves
+    /// the width to the API.
+    fn width(&self) -> Option<usize> {
+        self.ndims.or_else(|| model_default_ndims(&self.model))
     }
 }
 
@@ -48,7 +68,10 @@ impl Wire for Embeddings {
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(super::completion::PROVIDER_NAME)
             .model(self.model.as_str())
-            .capabilities(Capabilities::embedding(100, self.ndims))
+            .capabilities(
+                Capabilities::embedding(100, self.width().unwrap_or_default())
+                    .declaring(self.ndims),
+            )
     }
 
     fn encode(
@@ -56,6 +79,14 @@ impl Wire for Embeddings {
         texts: Vec<String>,
         _mode: Mode,
     ) -> Result<Vec<(String, EmbedContentRequest)>, EncodeError> {
+        let width = self
+            .width()
+            .map(|width| {
+                i32::try_from(width).map_err(|_| {
+                    EncodeError::request(format!("embedding width {width} exceeds gRPC's i32"))
+                })
+            })
+            .transpose()?;
         Ok(texts
             .into_iter()
             .map(|text| {
@@ -67,7 +98,7 @@ impl Wire for Embeddings {
                     }),
                     task_type: None,
                     title: None,
-                    output_dimensionality: Some(self.ndims as i32),
+                    output_dimensionality: width,
                 };
                 (text, request)
             })
