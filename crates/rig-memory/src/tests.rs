@@ -16,23 +16,23 @@ fn assistant(text: &str) -> Message {
 fn tool_call_msg() -> Message {
     Message::Assistant {
         id: None,
-        content: rig_core::NonEmpty::new(AssistantContent::ToolCall(ToolCall::new(
+        content: vec![AssistantContent::ToolCall(ToolCall::new(
             CallId::from_wire("call_1"),
             ToolFunction::new(
                 rig_core::message::ToolName::new("t").expect("tool name"),
                 serde_json::json!({}),
             ),
-        ))),
+        ))],
     }
 }
 
 fn tool_result_msg() -> Message {
     Message::User {
-        content: rig_core::NonEmpty::new(UserContent::ToolResult(ToolResult {
+        content: vec![UserContent::ToolResult(ToolResult {
             call: rig_core::message::CallId::from_wire("call_1"),
             name: rig_core::message::ToolName::new("t").expect("tool name"),
-            content: rig_core::NonEmpty::new(ToolResultContent::text("ok")),
-        })),
+            content: vec![ToolResultContent::text("ok")],
+        })],
     }
 }
 
@@ -80,7 +80,7 @@ fn sliding_window_drops_leading_orphan_tool_result() {
 
     assert_eq!(out.len(), 2);
     assert!(matches!(out.first(), Some(Message::User { content })
-        if matches!(content.first(), UserContent::Text(_))));
+        if matches!(content.first(), Some(UserContent::Text(_)))));
 }
 
 #[test]
@@ -112,7 +112,7 @@ fn token_window_drops_leading_orphan_tool_result() {
         .unwrap();
     assert_eq!(out.len(), 1);
     assert!(matches!(out.first(), Some(Message::User { content })
-        if matches!(content.first(), UserContent::Text(_))));
+        if matches!(content.first(), Some(UserContent::Text(_)))));
 }
 
 fn mixed_tool_exchange() -> Vec<Message> {
@@ -129,9 +129,7 @@ fn mixed_tool_exchange() -> Vec<Message> {
                 ),
             ))
         })
-        .collect::<Vec<_>>()
-        .try_into()
-        .expect("non-empty");
+        .collect::<Vec<_>>();
     let mut results = vec![UserContent::text("Results follow:")];
     // Canonical results may be interleaved with text and answer calls in
     // a different order, but all calls must be answered in one user message.
@@ -139,7 +137,7 @@ fn mixed_tool_exchange() -> Vec<Message> {
         results.push(UserContent::tool_result(
             id,
             rig_core::message::ToolName::new("t").expect("tool name"),
-            rig_core::NonEmpty::new(ToolResultContent::text("ok")),
+            vec![ToolResultContent::text("ok")],
         ));
         results.push(UserContent::text("Result received."));
     }
@@ -148,9 +146,7 @@ fn mixed_tool_exchange() -> Vec<Message> {
             id: None,
             content: calls,
         },
-        Message::User {
-            content: rig_core::NonEmpty::from_vec(results).expect("non-empty"),
-        },
+        Message::User { content: results },
     ]
 }
 
@@ -210,14 +206,14 @@ fn window_policies_demote_all_neighboring_orphan_result_messages() {
     history.truncate(1);
     history.push(tool_result_msg());
     history.push(Message::User {
-        content: rig_core::NonEmpty::with_rest(
+        content: vec![
             UserContent::text("Another result:"),
-            [UserContent::tool_result(
+            UserContent::tool_result(
                 CallId::from_wire("call_2"),
                 rig_core::message::ToolName::new("t").expect("tool name"),
-                rig_core::NonEmpty::new(ToolResultContent::text("second result")),
-            )],
-        ),
+                vec![ToolResultContent::text("second result")],
+            ),
+        ],
     });
     history.extend([tool_call_msg(), tool_result_msg(), assistant("done")]);
     assert!(validate_canonical(&history).is_err());
@@ -456,7 +452,7 @@ fn sliding_window_demotes_orphan_tool_result_with_prefix() {
         .unwrap();
     assert_eq!(kept.len(), 2);
     assert!(matches!(kept.first(), Some(Message::User { content })
-        if matches!(content.first(), UserContent::Text(_))));
+        if matches!(content.first(), Some(UserContent::Text(_)))));
     assert_eq!(demoted.len(), 2);
 }
 
@@ -1072,7 +1068,7 @@ async fn compacting_splices_summary_when_demoted() {
     let Message::User { content } = &loaded[1] else {
         panic!("expected kept user message");
     };
-    let UserContent::Text(t) = content.first() else {
+    let Some(UserContent::Text(t)) = content.first() else {
         panic!("expected text");
     };
     assert_eq!(t.text, "third");
@@ -1514,14 +1510,12 @@ async fn template_compactor_renders_tool_call_marker() {
 async fn template_compactor_separates_parts_asymmetrically_around_empty_text() {
     let compactor = TemplateCompactor::new();
     let evicted = vec![Message::User {
-        content: rig_core::NonEmpty::with_rest(
+        content: vec![
             UserContent::text(""),
-            [
-                UserContent::text("a"),
-                UserContent::text(""),
-                UserContent::text("b"),
-            ],
-        ),
+            UserContent::text("a"),
+            UserContent::text(""),
+            UserContent::text("b"),
+        ],
     }];
     let summary = compactor
         .compact(&"c".into(), &evicted, None)

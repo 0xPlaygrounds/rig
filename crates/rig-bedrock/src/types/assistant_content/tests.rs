@@ -758,14 +758,12 @@ fn claude_on_bedrock_shares_anthropic_reasoning() {
             Message::user("hi"),
             Message::Assistant {
                 id: None,
-                content: rig_core::NonEmpty::with_rest(
+                content: vec![
                     signed("anthropic"),
-                    [
-                        signed("gcp.gemini"),
-                        signed(super::PROVIDER_NAME),
-                        AssistantContent::text("hello"),
-                    ],
-                ),
+                    signed("gcp.gemini"),
+                    signed(super::PROVIDER_NAME),
+                    AssistantContent::text("hello"),
+                ],
             },
         ]
     };
@@ -773,7 +771,7 @@ fn claude_on_bedrock_shares_anthropic_reasoning() {
     let kept = |model: &str| {
         let request = rig_core::completion::CompletionRequest {
             model: None,
-            chat_history: rig_core::NonEmpty::from_vec(history()).expect("non-empty"),
+            chat_history: history(),
             documents: vec![],
             tools: vec![],
             temperature: None,
@@ -851,16 +849,14 @@ fn decoded_bedrock_reasoning_records_the_models_issuer_and_replays_to_it() {
 
     let request = rig_core::completion::CompletionRequest {
         model: None,
-        chat_history: rig_core::NonEmpty::with_rest(
+        chat_history: vec![
             Message::user("hi"),
-            [
-                Message::Assistant {
-                    id: None,
-                    content: rig_core::NonEmpty::from_vec(response.choice).expect("non-empty"),
-                },
-                Message::user("again"),
-            ],
-        ),
+            Message::Assistant {
+                id: None,
+                content: response.choice,
+            },
+            Message::user("again"),
+        ],
         documents: vec![],
         tools: vec![],
         temperature: None,

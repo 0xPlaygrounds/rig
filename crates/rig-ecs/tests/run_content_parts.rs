@@ -42,51 +42,47 @@ fn all_user_kinds_nested_results_and_metadata_round_trip() {
         )]),
     };
     let parts = MessageParts::User {
-        content: rig_core::NonEmpty::with_rest(
+        content: vec![
             UserContent::Text(text.clone()),
-            [
-                UserContent::Image(image.clone()),
-                UserContent::Text(text.clone()),
-                UserContent::Image(image.clone()),
-                UserContent::Audio(Audio {
-                    data: DocumentSourceKind::Raw(b"f".to_vec()),
-                    media_type: Some(AudioMediaType::MP3),
-                    additional_params: AdditionalParams::from_entries([(
-                        "audio_metadata",
-                        serde_json::json!(true),
-                    )]),
-                }),
-                UserContent::Video(Video {
-                    data: DocumentSourceKind::Url("https://invalid.invalid/video".into()),
-                    media_type: Some(VideoMediaType::MP4),
-                    additional_params: AdditionalParams::from_entries([(
-                        "video_metadata",
-                        serde_json::json!(true),
-                    )]),
-                }),
-                UserContent::Document(Document {
-                    data: DocumentSourceKind::FileId("file-1".into()),
-                    media_type: Some(DocumentMediaType::PDF),
-                    additional_params: AdditionalParams::from_entries([(
-                        "document_metadata",
-                        serde_json::json!(true),
-                    )]),
-                }),
-                UserContent::ToolResult(ToolResult {
-                    call: CallId::from_dual_wire("item-1", "provider-call-1"),
-                    name: rig_core::message::ToolName::new("read").expect("tool name"),
-                    content: rig_core::NonEmpty::with_rest(
-                        ToolResultContent::Text(text),
-                        [
-                            ToolResultContent::Image(image),
-                            ToolResultContent::Json {
-                                value: serde_json::json!({"error":false,"items":[1,"two"]}),
-                            },
-                        ],
-                    ),
-                }),
-            ],
-        ),
+            UserContent::Image(image.clone()),
+            UserContent::Text(text.clone()),
+            UserContent::Image(image.clone()),
+            UserContent::Audio(Audio {
+                data: DocumentSourceKind::Raw(b"f".to_vec()),
+                media_type: Some(AudioMediaType::MP3),
+                additional_params: AdditionalParams::from_entries([(
+                    "audio_metadata",
+                    serde_json::json!(true),
+                )]),
+            }),
+            UserContent::Video(Video {
+                data: DocumentSourceKind::Url("https://invalid.invalid/video".into()),
+                media_type: Some(VideoMediaType::MP4),
+                additional_params: AdditionalParams::from_entries([(
+                    "video_metadata",
+                    serde_json::json!(true),
+                )]),
+            }),
+            UserContent::Document(Document {
+                data: DocumentSourceKind::FileId("file-1".into()),
+                media_type: Some(DocumentMediaType::PDF),
+                additional_params: AdditionalParams::from_entries([(
+                    "document_metadata",
+                    serde_json::json!(true),
+                )]),
+            }),
+            UserContent::ToolResult(ToolResult {
+                call: CallId::from_dual_wire("item-1", "provider-call-1"),
+                name: rig_core::message::ToolName::new("read").expect("tool name"),
+                content: vec![
+                    ToolResultContent::Text(text),
+                    ToolResultContent::Image(image),
+                    ToolResultContent::Json {
+                        value: serde_json::json!({"error":false,"items":[1,"two"]}),
+                    },
+                ],
+            }),
+        ],
     };
     let (mut world, entity) = world(parts.clone());
     assert_eq!(
@@ -128,7 +124,7 @@ fn assistant_signatures_reasoning_ids_and_images_round_trip() {
     };
     let parts = MessageParts::Assistant {
         id: Some("message-1".into()),
-        content: rig_core::NonEmpty::with_rest(
+        content: vec![
             AssistantContent::Reasoning(
                 Reasoning {
                     id: Some("reasoning-1".into()),
@@ -146,15 +142,13 @@ fn assistant_signatures_reasoning_ids_and_images_round_trip() {
                 }
                 .sealed("test"),
             ),
-            [
-                AssistantContent::Text(Text::new("answer")),
-                AssistantContent::ToolCall(call),
-                AssistantContent::Image(Image {
-                    data: DocumentSourceKind::Raw(vec![1, 2, 3]),
-                    ..Default::default()
-                }),
-            ],
-        ),
+            AssistantContent::Text(Text::new("answer")),
+            AssistantContent::ToolCall(call),
+            AssistantContent::Image(Image {
+                data: DocumentSourceKind::Raw(vec![1, 2, 3]),
+                ..Default::default()
+            }),
+        ],
     };
     let (mut world, entity) = world(parts.clone());
     assert_eq!(
@@ -168,10 +162,7 @@ fn assistant_signatures_reasoning_ids_and_images_round_trip() {
 #[test]
 fn part_edits_do_not_change_siblings_and_order_is_semantic() {
     let parts = MessageParts::User {
-        content: rig_core::NonEmpty::with_rest(
-            UserContent::text("first"),
-            [UserContent::text("second")],
-        ),
+        content: vec![UserContent::text("first"), UserContent::text("second")],
     };
     let (mut world, entity) = world(parts);
     let children: Vec<_> = world.get::<Children>(entity).unwrap().iter().collect();
@@ -189,10 +180,7 @@ fn part_edits_do_not_change_siblings_and_order_is_semantic() {
     assert_eq!(
         read_message(&world, entity).unwrap(),
         MessageParts::User {
-            content: rig_core::NonEmpty::with_rest(
-                UserContent::text("second"),
-                [UserContent::text("edited")]
-            )
+            content: vec![UserContent::text("second"), UserContent::text("edited")]
         }
     );
 }
@@ -200,7 +188,7 @@ fn part_edits_do_not_change_siblings_and_order_is_semantic() {
 #[test]
 fn missing_or_wrong_role_components_are_rejected() {
     let (mut world, entity) = world(MessageParts::User {
-        content: rig_core::NonEmpty::new(UserContent::text("text")),
+        content: vec![UserContent::text("text")],
     });
     let child = world
         .get::<Children>(entity)
@@ -221,7 +209,7 @@ fn missing_or_wrong_role_components_are_rejected() {
 #[test]
 fn replacing_a_variant_cannot_leave_a_conflicting_payload() {
     let (mut world, entity) = world(MessageParts::User {
-        content: rig_core::NonEmpty::new(UserContent::text("text")),
+        content: vec![UserContent::text("text")],
     });
     let child = world
         .get::<Children>(entity)
@@ -240,10 +228,10 @@ fn replacing_a_variant_cannot_leave_a_conflicting_payload() {
     assert_eq!(
         read_message(&world, entity).unwrap(),
         MessageParts::User {
-            content: rig_core::NonEmpty::new(UserContent::Image(Image {
+            content: vec![UserContent::Image(Image {
                 data: DocumentSourceKind::Url("https://example.org/image".into()),
                 ..Default::default()
-            })),
+            })],
         }
     );
     assert_eq!(world.query::<&ContentPart>().iter(&world).count(), 1);
@@ -256,11 +244,11 @@ fn leaf_children_and_nested_results_are_rejected_even_when_removed() {
 
     for nested_result in [false, true] {
         let (mut world, utterance) = world(MessageParts::User {
-            content: rig_core::NonEmpty::new(UserContent::ToolResult(ToolResult {
+            content: vec![UserContent::ToolResult(ToolResult {
                 call: CallId::from_wire("call"),
                 name: rig_core::message::ToolName::new("tool").expect("tool name"),
-                content: rig_core::NonEmpty::new(ToolResultContent::text("child")),
-            })),
+                content: vec![ToolResultContent::text("child")],
+            })],
         });
         let parent = world
             .get::<Children>(utterance)
@@ -321,14 +309,14 @@ fn adding_a_payload_exposes_its_parent_and_sibling_membership() {
         &mut world,
         utterance,
         MessageParts::User {
-            content: rig_core::NonEmpty::with_rest(
+            content: vec![
                 UserContent::text("outer"),
-                [UserContent::tool_result(
+                UserContent::tool_result(
                     rig_core::message::CallId::from_wire("call"),
                     rig_core::message::ToolName::new("tool").expect("tool name"),
-                    rig_core::NonEmpty::new(ToolResultContent::text("nested")),
-                )],
-            ),
+                    vec![ToolResultContent::text("nested")],
+                ),
+            ],
         },
     )
     .unwrap();
@@ -341,14 +329,14 @@ fn removal_cannot_hide_a_missing_nested_binary() {
     use std::collections::BTreeMap;
 
     let (mut world, utterance) = world(MessageParts::User {
-        content: rig_core::NonEmpty::new(UserContent::tool_result(
+        content: vec![UserContent::tool_result(
             rig_core::message::CallId::from_wire("call"),
             rig_core::message::ToolName::new("tool").expect("tool name"),
-            rig_core::NonEmpty::new(ToolResultContent::Image(Image {
+            vec![ToolResultContent::Image(Image {
                 data: DocumentSourceKind::Raw(vec![1, 2, 3]),
                 ..Default::default()
-            })),
-        )),
+            })],
+        )],
     });
     let result = world.get::<Children>(utterance).unwrap()[0];
     let image = world.get::<Children>(result).unwrap()[0];
@@ -369,28 +357,28 @@ fn removal_cannot_hide_a_missing_nested_binary() {
 fn late_preparation_failure_preserves_assistant_id_and_children() {
     let original = MessageParts::Assistant {
         id: Some("retained-message".into()),
-        content: rig_core::NonEmpty::new(AssistantContent::text("retained")),
+        content: vec![AssistantContent::text("retained")],
     };
     let (mut world, utterance) = world(original.clone());
     let children: Vec<_> = world.get::<Children>(utterance).unwrap().iter().collect();
     let rejected = MessageParts::User {
-        content: rig_core::NonEmpty::with_rest(
+        content: vec![
             UserContent::text("prepared first"),
-            [UserContent::tool_result(
+            UserContent::tool_result(
                 rig_core::message::CallId::from_wire("call"),
                 rig_core::message::ToolName::new("tool").expect("tool name"),
-                rig_core::NonEmpty::with_rest(
+                vec![
                     ToolResultContent::Image(Image {
                         data: DocumentSourceKind::Raw(vec![1, 2, 3]),
                         ..Default::default()
                     }),
-                    [ToolResultContent::Image(Image {
+                    ToolResultContent::Image(Image {
                         data: DocumentSourceKind::Base64("invalid!".into()),
                         ..Default::default()
-                    })],
-                ),
-            )],
-        ),
+                    }),
+                ],
+            ),
+        ],
     };
     assert_eq!(
         write_message(&mut world, utterance, rejected),
@@ -410,15 +398,15 @@ fn late_preparation_failure_preserves_assistant_id_and_children() {
 #[test]
 fn failed_persistent_edit_leaves_existing_children_unchanged() {
     let parts = MessageParts::User {
-        content: rig_core::NonEmpty::new(UserContent::text("retained")),
+        content: vec![UserContent::text("retained")],
     };
     let (mut world, entity) = world(parts.clone());
     let before: Vec<_> = world.get::<Children>(entity).unwrap().iter().collect();
     let rejected = MessageParts::User {
-        content: rig_core::NonEmpty::new(UserContent::Image(Image {
+        content: vec![UserContent::Image(Image {
             data: DocumentSourceKind::Base64("invalid!".into()),
             ..Default::default()
-        })),
+        })],
     };
     assert_eq!(
         write_message(&mut world, entity, rejected),
@@ -442,10 +430,10 @@ fn failed_persistent_edit_leaves_existing_children_unchanged() {
 #[test]
 fn shared_assets_survive_one_owner_despawn_and_host_pins() {
     let parts = MessageParts::User {
-        content: rig_core::NonEmpty::new(UserContent::Image(Image {
+        content: vec![UserContent::Image(Image {
             data: DocumentSourceKind::Raw(vec![1, 2, 3]),
             ..Default::default()
-        })),
+        })],
     };
     let (mut world, first) = world(parts.clone());
     let second = world.spawn(Utterance).id();
@@ -465,7 +453,7 @@ fn shared_assets_survive_one_owner_despawn_and_host_pins() {
 fn system_reader_observes_the_same_graph_without_a_message_cache() {
     use bevy_ecs::system::SystemState;
     let parts = MessageParts::User {
-        content: rig_core::NonEmpty::new(UserContent::text("read through system param")),
+        content: vec![UserContent::text("read through system param")],
     };
     let (mut world, entity) = world(parts.clone());
     let mut state: SystemState<ContentGraph> = SystemState::new(&mut world);
@@ -489,7 +477,7 @@ fn new_runtime_stores_parts_as_children_and_folds_the_same_request() {
     assert_eq!(
         read_message(&world, utterance).unwrap(),
         MessageParts::User {
-            content: rig_core::NonEmpty::new(UserContent::text("hello"))
+            content: vec![UserContent::text("hello")]
         }
     );
     assert_eq!(
@@ -510,7 +498,7 @@ fn new_runtime_stores_parts_as_children_and_folds_the_same_request() {
         .unwrap();
     assert_eq!(
         request.chat_history,
-        rig_core::NonEmpty::new(rig_core::message::Message::user("hello"))
+        vec![rig_core::message::Message::user("hello")]
     );
 }
 

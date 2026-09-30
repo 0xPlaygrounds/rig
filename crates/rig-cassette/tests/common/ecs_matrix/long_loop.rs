@@ -1036,10 +1036,9 @@ pub(crate) fn assert_log(cell: &Cell, thinking: ThinkingWire, log: &EffectLog) {
                         "{}: request {n}'s result {i} ({name}) answers the turn's {i}th call, in call order",
                         cell.name
                     );
-                    let replayed =
-                        rig_core::tool::ToolOutput::content(part.content.clone().into_vec())
-                            .expect("a tool-result part carries content")
-                            .render();
+                    let replayed = rig_core::tool::ToolOutput::content(part.content.clone())
+                        .expect("a tool-result part carries content")
+                        .render();
                     assert_eq!(
                         replayed,
                         dispatched_result(record).output().render(),

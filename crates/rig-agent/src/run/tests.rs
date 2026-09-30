@@ -260,7 +260,7 @@ fn tool_result(id: &str, output: &str) -> UserContent {
     UserContent::tool_result(
         rig_core::message::CallId::from_wire(id),
         rig_core::message::ToolName::new("add").expect("tool name"),
-        rig_core::NonEmpty::new(ToolResultContent::text(output)),
+        vec![ToolResultContent::text(output)],
     )
 }
 
@@ -688,7 +688,7 @@ fn invalid_tool_call_retry_rolls_back_with_feedback() {
     assert!(matches!(
         prompt,
         Message::User { ref content }
-            if matches!(content.first(), UserContent::ToolResult(_))
+            if matches!(content.first(), Some(UserContent::ToolResult(_)))
     ));
 
     // Budget of one: a second retry fails with UnknownToolCall.
@@ -988,7 +988,7 @@ fn serialized_run_alone_carries_pending_tool_calls() {
             UserContent::tool_result(
                 call.tool_call.id.clone(),
                 call.tool_call.function.name.clone(),
-                rig_core::NonEmpty::new(ToolResultContent::text("2")),
+                vec![ToolResultContent::text("2")],
             )
         })
         .collect::<Vec<_>>();
@@ -1764,10 +1764,7 @@ fn from_spec_matches_the_builder_chain() {
 }
 
 fn assistant(content: Vec<AssistantContent>) -> Message {
-    Message::Assistant {
-        id: None,
-        content: rig_core::NonEmpty::from_vec(content).expect("non-empty"),
-    }
+    Message::Assistant { id: None, content }
 }
 
 #[test]
@@ -1832,5 +1829,21 @@ fn a_truncated_reasoning_only_turn_commits_nothing() {
             .all(|message| !matches!(message, Message::Assistant { .. })),
         "the reasoning-only turn is not history: {:?}",
         run.new_messages
+    );
+}
+
+/// An empty choice, or a retry with no tool calls to answer, builds no
+/// message, so nothing empty is appended to history.
+#[test]
+fn transcript_helpers_build_no_message_from_nothing() {
+    assert_eq!(transcript::assistant_message(None, Vec::new()), None);
+    assert_eq!(transcript::assistant_turn(None, Vec::new()), None);
+    assert_eq!(
+        transcript::invalid_tool_retry_user_message(
+            &[AssistantContent::text("no calls here")],
+            &rig_core::message::CallId::from_wire("call_1"),
+            "feedback",
+        ),
+        None
     );
 }

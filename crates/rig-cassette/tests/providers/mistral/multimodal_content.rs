@@ -84,9 +84,7 @@ fn speech_audio() -> UserContent {
 }
 
 fn user_message(content: Vec<UserContent>) -> Message {
-    Message::User {
-        content: rig_core::NonEmpty::from_vec(content).expect("non-empty"),
-    }
+    Message::User { content }
 }
 
 /// Read a recorded cassette back. Called *after* the wrapper returns, because

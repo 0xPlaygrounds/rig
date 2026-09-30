@@ -2486,7 +2486,7 @@ fn say_assistant(
 ) -> Result<(), ContentError> {
     let feedback_utterance = |commands: &mut Commands, assets: &mut BinaryAssets, feedback| {
         let user = MessageParts::User {
-            content: rig_core::NonEmpty::new(UserContent::text(feedback)),
+            content: vec![UserContent::text(feedback)],
         };
         spawn_deferred(commands, assets, run, user).map(drop)
     };
@@ -2658,9 +2658,9 @@ fn reprompt_for(
             }
             let feedback = policy::reprompt_missing_fields(name, &missing);
             let reprompt = MessageParts::User {
-                content: rig_core::NonEmpty::new(UserContent::ToolResult(
-                    call.result(ToolResultContent::text(feedback)),
-                )),
+                content: vec![UserContent::ToolResult(
+                    call.result(vec![ToolResultContent::text(feedback)]),
+                )],
             };
             Some((reprompt, vec![ToolResultStatus::Skipped]))
         }
@@ -2669,9 +2669,7 @@ fn reprompt_for(
                 return None;
             }
             let reprompt = MessageParts::User {
-                content: rig_core::NonEmpty::new(UserContent::text(
-                    policy::text::reprompt_text_answer(name),
-                )),
+                content: vec![UserContent::text(policy::text::reprompt_text_answer(name))],
             };
             Some((reprompt, Vec::new()))
         }

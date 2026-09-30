@@ -122,7 +122,7 @@ fn tool_result_message(tool_call: &ToolCall, output: ToolOutput) -> Message {
         content,
     );
     Message::User {
-        content: rig::NonEmpty::new(result),
+        content: vec![result],
     }
 }
 

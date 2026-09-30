@@ -265,7 +265,7 @@ fn completion_kind(stream: bool) -> EffectKind {
     EffectKind::Completion {
         request: CompletionRequest {
             model: None,
-            chat_history: rig_core::NonEmpty::new(Message::user("hi")),
+            chat_history: vec![Message::user("hi")],
             documents: vec![],
             tools: vec![],
             temperature: None,

@@ -195,10 +195,10 @@ impl AwsCompletionRequest {
                 .collect::<Vec<_>>()
                 .join(" | ");
 
-            let content = rig_core::NonEmpty::new(UserContent::document(
+            let content = vec![UserContent::document(
                 messages,
                 Some(DocumentMediaType::TXT),
-            ));
+            )];
 
             full_history.push(Message::User { content });
         }

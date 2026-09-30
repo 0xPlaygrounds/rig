@@ -55,10 +55,10 @@ async fn image_analysis_prompt() {
 
         let response = agent
             .prompt(Message::User {
-                content: rig_core::NonEmpty::with_rest(
+                content: vec![
                     UserContent::text("What do you see in this image? Describe it in detail."),
-                    [UserContent::Image(image_message())],
-                ),
+                    UserContent::Image(image_message()),
+                ],
             })
             .await
             .expect("image prompt should succeed");
@@ -77,10 +77,10 @@ async fn pdf_analysis_prompt() {
 
         let response = agent
             .prompt(Message::User {
-                content: rig_core::NonEmpty::with_rest(
+                content: vec![
                     UserContent::text("Please summarize the key points of this document."),
-                    [UserContent::Document(pdf_document())],
-                ),
+                    UserContent::Document(pdf_document()),
+                ],
             })
             .await
             .expect("pdf prompt should succeed");
@@ -99,14 +99,12 @@ async fn mixed_multimodal_prompt() {
 
         let response = agent
             .prompt(Message::User {
-                content: rig_core::NonEmpty::with_rest(
+                content: vec![
                     UserContent::text("I have two questions:"),
-                    [
-                        UserContent::text("1. What colors do you see in this image?"),
-                        UserContent::Image(image_message()),
-                        UserContent::text("2. What is the main subject?"),
-                    ],
-                ),
+                    UserContent::text("1. What colors do you see in this image?"),
+                    UserContent::Image(image_message()),
+                    UserContent::text("2. What is the main subject?"),
+                ],
             })
             .await
             .expect("mixed content prompt should succeed");
@@ -125,10 +123,10 @@ async fn video_analysis_prompt() {
 
         let response = agent
             .prompt(Message::User {
-                content: rig_core::NonEmpty::with_rest(
+                content: vec![
                     UserContent::text("What do you see in this short video? Describe it briefly."),
-                    [video_content()],
-                ),
+                    video_content(),
+                ],
             })
             .await
             .expect("video prompt should succeed");
@@ -147,10 +145,10 @@ async fn audio_analysis_prompt() {
 
         let response = agent
             .prompt(Message::User {
-                content: rig_core::NonEmpty::with_rest(
+                content: vec![
                     UserContent::text("What is said in this audio clip? Transcribe it briefly."),
-                    [audio_content()],
-                ),
+                    audio_content(),
+                ],
             })
             .await
             .expect("audio prompt should succeed");

@@ -1665,7 +1665,7 @@ impl TryFrom<OpenAIRequestParams> for CompletionRequest {
             ..
         } = req;
 
-        let partial_history = chat_history.into_vec();
+        let partial_history = chat_history;
 
         let tool_ids = crate::providers::internal::wire_ids::WireIds::new(&partial_history);
 

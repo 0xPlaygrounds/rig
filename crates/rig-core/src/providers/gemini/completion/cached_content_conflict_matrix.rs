@@ -13,16 +13,13 @@ const HANDLE: &str = "cachedContents/matrix";
 
 fn build(system: bool, tools: bool, tool_choice: bool) -> GenerateContentRequest {
     super::create_request_body(CompletionRequest {
-        chat_history: crate::NonEmpty::from_vec(
-            system
-                .then(|| Message::system("you are terse"))
-                .into_iter()
-                .chain([Message::User {
-                    content: crate::NonEmpty::new(UserContent::text("hi")),
-                }])
-                .collect::<Vec<_>>(),
-        )
-        .expect("non-empty"),
+        chat_history: system
+            .then(|| Message::system("you are terse"))
+            .into_iter()
+            .chain([Message::User {
+                content: vec![UserContent::text("hi")],
+            }])
+            .collect::<Vec<_>>(),
         documents: vec![],
         tools: if tools {
             vec![ToolDefinition {

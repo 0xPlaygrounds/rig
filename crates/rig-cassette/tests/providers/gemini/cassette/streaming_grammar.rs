@@ -756,7 +756,7 @@ async fn interactions_requires_action_roundtrip() {
                     CompletionRequest::new(Message::from(UserContent::tool_result(
                         tool_call.id.clone(),
                         tool_call.function.name.clone(),
-                        rig_core::NonEmpty::new(ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)),
+                        vec![ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)],
                     )))
                     .additional_params(
                         serde_json::to_value(interactions_api::AdditionalParameters {
@@ -997,7 +997,7 @@ async fn chat_sourced_history_replays_the_tool_name_not_the_identifier() {
                 ),
                 rig::message::Message::Assistant {
                     id: None,
-                    content: rig_core::NonEmpty::new(AssistantContent::ToolCall(ToolCall {
+                    content: vec![AssistantContent::ToolCall(ToolCall {
                         id: cross_provider_handle.clone(),
                         function: rig::message::ToolFunction {
                             name: rig_core::message::ToolName::new("add").expect("tool name"),
@@ -1005,17 +1005,15 @@ async fn chat_sourced_history_replays_the_tool_name_not_the_identifier() {
                         },
                         signature: None,
                         additional_params: None,
-                    })),
+                    })],
                 },
                 rig::message::Message::User {
-                    content: rig_core::NonEmpty::new(UserContent::ToolResult(
-                        rig::message::ToolResult {
-                            call: cross_provider_handle,
-                            name: rig_core::message::ToolName::new("add".to_owned())
-                                .expect("tool name"),
-                            content: rig_core::NonEmpty::new(ToolResultContent::text("5")),
-                        },
-                    )),
+                    content: vec![UserContent::ToolResult(rig::message::ToolResult {
+                        call: cross_provider_handle,
+                        name: rig_core::message::ToolName::new("add".to_owned())
+                            .expect("tool name"),
+                        content: vec![ToolResultContent::text("5")],
+                    })],
                 },
             ];
             let request = CompletionRequest::new("State the final result in one short sentence.")

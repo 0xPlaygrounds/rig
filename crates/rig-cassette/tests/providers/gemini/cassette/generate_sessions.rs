@@ -215,19 +215,17 @@ async fn long_history_replay_nonstreaming() {
             .message(Message::user("Now look up the harbor label with the tool."))
             .message(Message::Assistant {
                 id: None,
-                content: rig_core::NonEmpty::with_rest(
+                content: vec![
                     AssistantContent::text("Checking the harbor label now."),
-                    [
-                        // Gemini issues no functionCall ids: an empty wire id
-                        // records no provider id and mints the correlation
-                        // handle, which never reaches the wire.
-                        AssistantContent::tool_call(
-                            "",
-                            rig_core::message::ToolName::new(AlphaSignal::NAME).expect("tool name"),
-                            serde_json::json!({}),
-                        ),
-                    ],
-                ),
+                    // Gemini issues no functionCall ids: an empty wire id
+                    // records no provider id and mints the correlation
+                    // handle, which never reaches the wire.
+                    AssistantContent::tool_call(
+                        "",
+                        rig_core::message::ToolName::new(AlphaSignal::NAME).expect("tool name"),
+                        serde_json::json!({}),
+                    ),
+                ],
             })
             .message(Message::tool_result(
                 rig_core::message::CallId::from_wire(""),

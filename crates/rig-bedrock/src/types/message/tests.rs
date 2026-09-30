@@ -5,7 +5,7 @@ use rig_core::message::{Message, UserContent};
 #[test]
 fn message_to_aws_message() {
     let message = Message::User {
-        content: rig_core::NonEmpty::new(UserContent::Text("text".into())),
+        content: vec![UserContent::Text("text".into())],
     };
     let aws_message: Result<aws_bedrock::Message, _> = RigMessage(message).into_aws(&"test".into());
     assert!(aws_message.is_ok());

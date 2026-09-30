@@ -203,9 +203,7 @@ async fn tool_result_roundtrip() {
                     CompletionRequest::new(Message::from(UserContent::tool_result(
                         tool_call.id.clone(),
                         tool_call.function.name.clone(),
-                        rig_core::NonEmpty::new(ToolResultContent::json(
-                            serde_json::json!({ "sum": 18.0 }),
-                        )),
+                        vec![ToolResultContent::json(serde_json::json!({ "sum": 18.0 }))],
                     )))
                     .additional_params(
                         serde_json::to_value(AdditionalParameters {

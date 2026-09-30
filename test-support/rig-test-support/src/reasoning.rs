@@ -272,14 +272,14 @@ pub async fn run_reasoning_roundtrip_streaming_with_final<F>(
     F: FnMut(&completion::CompletionResponse),
 {
     let turn1_prompt = Message::User {
-        content: rig_core::NonEmpty::new(UserContent::text(ROUNDTRIP_TURN1_TEXT)),
+        content: vec![UserContent::text(ROUNDTRIP_TURN1_TEXT)],
     };
 
     let request = completion::CompletionRequest {
-        chat_history: rig_core::NonEmpty::with_rest(
+        chat_history: vec![
             Message::system(agent.preamble.clone()),
-            [turn1_prompt.clone()],
-        ),
+            turn1_prompt.clone(),
+        ],
         documents: vec![],
         tools: vec![],
         temperature: None,
@@ -363,18 +363,20 @@ pub async fn run_reasoning_roundtrip_streaming_with_final<F>(
     assistant_content.push(AssistantContent::text(&streamed_text));
     let turn1_assistant = Message::Assistant {
         id: response.message_id.clone(),
-        content: rig_core::NonEmpty::from_vec(assistant_content).expect("non-empty"),
+        content: assistant_content,
     };
 
     let turn2_prompt = Message::User {
-        content: rig_core::NonEmpty::new(UserContent::text(ROUNDTRIP_TURN2_TEXT)),
+        content: vec![UserContent::text(ROUNDTRIP_TURN2_TEXT)],
     };
 
     let request2 = completion::CompletionRequest {
-        chat_history: rig_core::NonEmpty::with_rest(
+        chat_history: vec![
             Message::system(agent.preamble.clone()),
-            [turn1_prompt, turn1_assistant, turn2_prompt],
-        ),
+            turn1_prompt,
+            turn1_assistant,
+            turn2_prompt,
+        ],
         documents: vec![],
         tools: vec![],
         temperature: None,
@@ -416,14 +418,14 @@ pub async fn run_reasoning_roundtrip_streaming_with_final<F>(
 /// Run and assert the two-turn nonstreaming reasoning-history roundtrip.
 pub async fn run_reasoning_roundtrip_nonstreaming(agent: ReasoningRoundtripAgent) {
     let turn1_prompt = Message::User {
-        content: rig_core::NonEmpty::new(UserContent::text(ROUNDTRIP_TURN1_TEXT)),
+        content: vec![UserContent::text(ROUNDTRIP_TURN1_TEXT)],
     };
 
     let request = completion::CompletionRequest {
-        chat_history: rig_core::NonEmpty::with_rest(
+        chat_history: vec![
             Message::system(agent.preamble.clone()),
-            [turn1_prompt.clone()],
-        ),
+            turn1_prompt.clone(),
+        ],
         documents: vec![],
         tools: vec![],
         temperature: None,
@@ -456,18 +458,20 @@ pub async fn run_reasoning_roundtrip_nonstreaming(agent: ReasoningRoundtripAgent
 
     let turn1_assistant = Message::Assistant {
         id: response.message_id,
-        content: rig_core::NonEmpty::from_vec(response.choice).expect("non-empty"),
+        content: response.choice,
     };
 
     let turn2_prompt = Message::User {
-        content: rig_core::NonEmpty::new(UserContent::text(ROUNDTRIP_TURN2_TEXT)),
+        content: vec![UserContent::text(ROUNDTRIP_TURN2_TEXT)],
     };
 
     let request2 = completion::CompletionRequest {
-        chat_history: rig_core::NonEmpty::with_rest(
+        chat_history: vec![
             Message::system(agent.preamble.clone()),
-            [turn1_prompt, turn1_assistant, turn2_prompt],
-        ),
+            turn1_prompt,
+            turn1_assistant,
+            turn2_prompt,
+        ],
         documents: vec![],
         tools: vec![],
         temperature: None,

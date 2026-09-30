@@ -342,15 +342,14 @@ impl Wire for MockScript {
         let issuers = [crate::message::Issuer::from(self.name.clone())];
         let mut request = request.replayable_to(&issuers)?;
         for message in request.chat_history.iter_mut() {
-            if let crate::message::Message::Assistant { content, .. } = message
-                && let Some(kept) = content.clone().filter(|part| match part {
+            // `replayable_to` left only messages with a part to keep.
+            if let crate::message::Message::Assistant { content, .. } = message {
+                content.retain(|part| match part {
                     AssistantContent::Reasoning(reasoning) => {
                         reasoning.open_for(&issuers).is_some()
                     }
                     _ => true,
-                })
-            {
-                *content = kept;
+                });
             }
         }
         Ok(request)

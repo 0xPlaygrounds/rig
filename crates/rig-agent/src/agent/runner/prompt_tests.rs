@@ -765,10 +765,10 @@ fn validate_follow_up_tool_history(request: &CompletionRequest) {
 
     assert!(matches!(
         history.first(),
-        Message::User { content }
+        Some(Message::User { content })
             if matches!(
                 content.first(),
-                UserContent::Text(text) if text.text == "do tool work"
+                Some(UserContent::Text(text)) if text.text == "do tool work"
             )
     ));
 
@@ -779,7 +779,7 @@ fn validate_follow_up_tool_history(request: &CompletionRequest) {
         Some(Message::Assistant { content, .. })
             if matches!(
                 content.first(),
-                AssistantContent::ToolCall(tool_call)
+                Some(AssistantContent::ToolCall(tool_call))
                     if tool_call.id.provider().map(|provider| provider.call_id.as_str()) == Some("call_1")
             )
     ));
@@ -789,7 +789,7 @@ fn validate_follow_up_tool_history(request: &CompletionRequest) {
         Some(Message::User { content })
             if matches!(
                 content.first(),
-                UserContent::ToolResult(tool_result)
+                Some(UserContent::ToolResult(tool_result))
                     if tool_result.call.provider().map(|provider| provider.call_id.as_str()) == Some("call_1")
             )
     ));
@@ -1761,7 +1761,7 @@ async fn prompt_request_stops_cleanly_on_empty_terminal_turn() {
         Some(Message::User { content })
             if matches!(
                 content.first(),
-                UserContent::Text(text) if text.text == "do tool work"
+                Some(UserContent::Text(text)) if text.text == "do tool work"
             )
     ));
     assert!(history.iter().any(|message| matches!(
@@ -1769,7 +1769,7 @@ async fn prompt_request_stops_cleanly_on_empty_terminal_turn() {
         Message::Assistant { content, .. }
             if matches!(
                 content.first(),
-                AssistantContent::ToolCall(tool_call)
+                Some(AssistantContent::ToolCall(tool_call))
                     if tool_call.id.provider().map(|provider| provider.call_id.as_str()) == Some("call_1")
                         && tool_call.id.provider().as_ref().is_some_and(
                             |provider| provider.call_id == "call_1"
@@ -1781,7 +1781,7 @@ async fn prompt_request_stops_cleanly_on_empty_terminal_turn() {
         Message::User { content }
             if matches!(
                 content.first(),
-                UserContent::ToolResult(tool_result)
+                Some(UserContent::ToolResult(tool_result))
                     if tool_result.call.provider().map(|provider| provider.call_id.as_str()) == Some("call_1")
                         && tool_result.call.provider().as_ref().is_some_and(
                             |provider| provider.call_id == "call_1"
@@ -1855,7 +1855,7 @@ async fn prompt_request_preserves_metadata_only_text_turn_in_history() {
         Message::Assistant { content, .. }
             if matches!(
                 content.first(),
-                AssistantContent::Text(text)
+                Some(AssistantContent::Text(text))
                     if text.text.is_empty()
                         && text.additional_params.as_ref() == Some(&metadata)
             )
@@ -1953,8 +1953,8 @@ async fn explicit_with_history_overrides_memory() {
     assert_eq!(received.len(), 2, "caller history (1) + current prompt");
     assert!(matches!(
         received.first(),
-        Message::User { content }
-            if matches!(content.first(), UserContent::Text(t) if t.text == "from-caller")
+        Some(Message::User { content })
+            if matches!(content.first(), Some(UserContent::Text(t)) if t.text == "from-caller")
     ));
 }
 
@@ -2058,7 +2058,7 @@ async fn append_persists_only_newly_committed_messages() {
         matches!(
             stored.first(),
             Some(Message::User { content })
-                if matches!(content.first(), UserContent::Text(t) if t.text == "old-q")
+                if matches!(content.first(), Some(UserContent::Text(t)) if t.text == "old-q")
         ),
         "loaded history is preserved once at the front: {stored:?}"
     );

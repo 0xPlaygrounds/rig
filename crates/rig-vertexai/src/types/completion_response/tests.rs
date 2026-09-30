@@ -536,7 +536,7 @@ fn answer_text_signature_is_kept_and_replayed_on_its_part() {
     let replayed: vertexai::model::Content =
         crate::types::message::RigMessage(rig_core::message::Message::Assistant {
             id: None,
-            content: rig_core::NonEmpty::from_vec(response.choice.clone()).expect("non-empty"),
+            content: response.choice.clone(),
         })
         .try_into()
         .expect("the turn replays");

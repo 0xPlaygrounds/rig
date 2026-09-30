@@ -262,9 +262,9 @@ async fn main() -> Result<()> {
                                 }
                                 _ => {
                                     println!("     ! no valid JSON; denying instead");
-                                    results.push(UserContent::tool_result(id, name, rig::NonEmpty::new(ToolResultContent::text(
+                                    results.push(UserContent::tool_result(id, name, vec![ToolResultContent::text(
                                             "denied: the reviewer supplied no valid JSON to edit with",
-                                        ))));
+                                        )]));
                                 }
                             }
                         }
@@ -286,7 +286,7 @@ async fn main() -> Result<()> {
                             results.push(UserContent::tool_result(
                                 id,
                                 name,
-                                rig::NonEmpty::new(ToolResultContent::text(reason)),
+                                vec![ToolResultContent::text(reason)],
                             ));
                         }
                     }

@@ -255,8 +255,9 @@ pub fn fold_request(
         | (OutputKind::Auto | OutputKind::Tool | OutputKind::Prompted, _) => None,
     };
 
-    let chat_history = rig_core::NonEmpty::from_vec(chat_history)
-        .map_err(|_| crate::agent::content::parts::ContentError::Missing)?;
+    if chat_history.is_empty() {
+        return Err(crate::agent::content::parts::ContentError::Missing);
+    }
     Ok(CompletionRequest {
         model: None,
         chat_history,
@@ -505,7 +506,7 @@ pub fn answer_text(content: &[AssistantContent]) -> String {
 /// A user message of one text part.
 pub fn user_text(text: &str) -> Message {
     Message::User {
-        content: rig_core::NonEmpty::new(UserContent::text(text)),
+        content: vec![UserContent::text(text)],
     }
 }
 

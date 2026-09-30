@@ -277,13 +277,15 @@ where
     }
 
     /// The one entry to the driver: the operation's fold for the reply,
-    /// the encoded payload, and the transport's reply, in `mode`.
+    /// the encoded payload, and the transport's reply, in `mode`. A request
+    /// the operation rejects fails here, before it is encoded.
     pub(crate) fn open(
         &self,
         request: Request<W>,
         mode: Mode,
         observation: Option<AdapterContext>,
     ) -> Result<Streamed<W::Op>, ProviderError> {
+        <W::Op as Operation>::validate(&request)?;
         let describe = self.wire.describe();
         let provider = describe.name.to_owned();
         let mut call = Call::new(&describe, mode);

@@ -306,7 +306,7 @@ async fn streamed_skip_abandons_the_turn_and_recovers() {
                         assert!(is_tool_result_user_message(prompt));
                     }
                     let retry = &turns[1].request.chat_history;
-                    let Message::User { content } = retry.last() else {
+                    let Some(Message::User { content }) = retry.last() else {
                         panic!("tool results are a user message")
                     };
                     let result = content

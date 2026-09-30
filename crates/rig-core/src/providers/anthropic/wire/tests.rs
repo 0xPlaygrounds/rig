@@ -39,9 +39,9 @@ fn wire() -> Messages {
 fn request() -> CompletionRequest {
     CompletionRequest {
         model: None,
-        chat_history: crate::NonEmpty::new(crate::message::Message::user(
+        chat_history: vec![crate::message::Message::user(
             "Reply with exactly: parity probe",
-        )),
+        )],
         documents: Vec::new(),
         tools: Vec::new(),
         temperature: None,

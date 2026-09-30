@@ -187,7 +187,7 @@ fn typed_validators_reject_bad_structured_output_and_protocol_leaks() {
 
     let messages = vec![Message::Assistant {
         id: None,
-        content: rig_core::NonEmpty::new(AssistantContent::text("visible <tool_call>")),
+        content: vec![AssistantContent::text("visible <tool_call>")],
     }];
     let hygiene = validate_protocol_hygiene(
         "protocol_hygiene",
@@ -202,11 +202,11 @@ fn typed_validators_reject_bad_structured_output_and_protocol_leaks() {
 fn invalid_tool_diagnostics_require_rejected_call_history() {
     let history = vec![Message::Assistant {
         id: None,
-        content: rig_core::NonEmpty::new(tool_call(
+        content: vec![tool_call(
             "bad_call",
             "missing",
             serde_json::json!({"value": 1}),
-        )),
+        )],
     }];
     let error = PromptError::UnknownToolCall {
         tool_name: "missing".to_string(),

@@ -261,7 +261,7 @@ impl Wire for Echo {
 fn prompt() -> CompletionRequest {
     CompletionRequest {
         model: None,
-        chat_history: crate::NonEmpty::new(crate::message::Message::user("say hi")),
+        chat_history: vec![crate::message::Message::user("say hi")],
         documents: Vec::new(),
         tools: Vec::new(),
         temperature: None,
@@ -1221,4 +1221,75 @@ fn a_stream_the_driver_cannot_send_is_a_request_failure() {
     );
     assert!(!error.is_retryable());
     assert!(http.requests().is_empty(), "nothing was sent");
+}
+
+// ── request validation ─────────────────────────────────────────────────
+
+/// An operation that rejects an empty request, over a runtime that counts
+/// the requests it is sent.
+struct Guarded;
+
+impl crate::wire::Operation for Guarded {
+    type Request = String;
+    type Event = std::convert::Infallible;
+    type End = String;
+    type Response = String;
+    type Fold = crate::operation::Whole<Self>;
+    type Emit = crate::wire::Free;
+
+    fn fold(_request: &String, _call: &mut crate::wire::Call<'_>) -> Self::Fold {
+        crate::operation::Whole::new()
+    }
+
+    fn validate(request: &String) -> Result<(), ProviderError> {
+        if request.is_empty() {
+            return Err(ProviderError::request("the request is empty"));
+        }
+        Ok(())
+    }
+}
+
+#[derive(Clone, Default)]
+struct CountingRuntime(Arc<std::sync::atomic::AtomicUsize>);
+
+impl Transport<super::Local<Guarded>> for CountingRuntime {
+    fn send(
+        &self,
+        request: String,
+        _exchange: super::Exchange,
+    ) -> super::Opening<super::Step<Guarded>> {
+        self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        super::Opening::ready(super::Opened::new(futures::stream::iter([Ok(
+            super::Step::End(request),
+        )])))
+    }
+}
+
+/// A request the operation rejects fails every entry to the driver before
+/// the transport is called; one it accepts is sent.
+#[tokio::test]
+async fn a_request_the_operation_rejects_never_reaches_the_transport() {
+    let runtime = CountingRuntime::default();
+    let model = Model::new(super::Local::<Guarded>::new("guarded"), runtime.clone());
+
+    let error = model
+        .call(String::new())
+        .await
+        .expect_err("the call is rejected");
+    assert_eq!(error.kind(), crate::error::ErrorKind::Request);
+    assert!(
+        model.stream(String::new()).is_err(),
+        "the stream is rejected"
+    );
+    let erased = model.clone().erase();
+    assert!(erased.call(String::new()).await.is_err());
+    assert!(erased.stream(String::new()).is_err());
+    assert_eq!(runtime.0.load(std::sync::atomic::Ordering::SeqCst), 0);
+
+    let response = model
+        .call("hello".to_owned())
+        .await
+        .expect("the call is sent");
+    assert_eq!(response, "hello");
+    assert_eq!(runtime.0.load(std::sync::atomic::Ordering::SeqCst), 1);
 }

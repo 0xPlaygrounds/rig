@@ -97,7 +97,7 @@ fn phase_survives_history_and_is_resent_on_the_assistant_item() {
     let content = super::tests::folded_choice(vec![output]);
     let history = completion::Message::Assistant {
         id: Some("msg_1".to_string()),
-        content: crate::NonEmpty::from_vec(content).expect("non-empty"),
+        content,
     };
 
     let items = Vec::<InputItem>::try_from(history).expect("history converts");
@@ -128,7 +128,7 @@ fn phase_survives_history_and_is_resent_on_the_assistant_item() {
 fn history_without_phase_replays_without_the_key() {
     let history = completion::Message::Assistant {
         id: Some("msg_1".to_string()),
-        content: crate::NonEmpty::new(message::AssistantContent::Text(Text::new("plain"))),
+        content: vec![message::AssistantContent::Text(Text::new("plain"))],
     };
     let items = Vec::<InputItem>::try_from(history).expect("history converts");
     let wire = serde_json::to_value(&items[0]).expect("item serializes");
@@ -256,20 +256,18 @@ fn text_blocks_of_one_item_join_it_and_no_id_repeats() {
     };
     let history = completion::Message::Assistant {
         id: Some("msg_2".to_owned()),
-        content: crate::NonEmpty::with_rest(
+        content: vec![
             block("one", json!({"message_id": "msg_1", "phase": "commentary"})),
-            [
-                block(
-                    "two",
-                    json!({"message_id": "msg_2", "phase": "final_answer"}),
-                ),
-                block(
-                    "three",
-                    json!({"message_id": "msg_1", "phase": "commentary"}),
-                ),
-                message::AssistantContent::Text(Text::new("four")),
-            ],
-        ),
+            block(
+                "two",
+                json!({"message_id": "msg_2", "phase": "final_answer"}),
+            ),
+            block(
+                "three",
+                json!({"message_id": "msg_1", "phase": "commentary"}),
+            ),
+            message::AssistantContent::Text(Text::new("four")),
+        ],
     };
     let items = replayed(history);
     assert_eq!(
@@ -299,7 +297,7 @@ fn text_blocks_of_one_item_join_it_and_no_id_repeats() {
 fn idless_text_replays_its_phase_without_an_id() {
     let history = completion::Message::Assistant {
         id: None,
-        content: crate::NonEmpty::with_rest(
+        content: vec![
             message::AssistantContent::Text(Text {
                 text: "Let me think.".to_owned(),
                 additional_params: message::AdditionalParams::from_entries(Some((
@@ -307,8 +305,8 @@ fn idless_text_replays_its_phase_without_an_id() {
                     json!({"phase": "commentary", "annotations": [{"type": "url_citation"}]}),
                 ))),
             }),
-            [message::AssistantContent::Text(Text::new("Apple."))],
-        ),
+            message::AssistantContent::Text(Text::new("Apple.")),
+        ],
     };
     let items = replayed(history);
     assert_eq!(
@@ -333,10 +331,10 @@ fn phase_never_rides_user_or_system_messages() {
         json!({"phase": "final_answer", "message_id": "msg_1"}),
     )));
     let user = completion::Message::User {
-        content: crate::NonEmpty::new(message::UserContent::Text(Text {
+        content: vec![message::UserContent::Text(Text {
             text: "hi".to_owned(),
             additional_params: phased,
-        })),
+        })],
     };
     let system = completion::Message::system("be brief");
     for history in [user, system] {

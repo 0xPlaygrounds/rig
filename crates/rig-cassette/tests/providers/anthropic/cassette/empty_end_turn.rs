@@ -146,13 +146,13 @@ async fn raw_followup_empty_end_turn_normalizes_to_an_empty_choice() {
             // The conversation is plain values: the recorded follow-up sent
             // the preamble, the first turn's reply and the tool result (the
             // prompt was not repeated), so that is the history here.
-            let mut history = rig::NonEmpty::new(Message::system(TERMINAL_NOTIFY_PREAMBLE));
+            let mut history = vec![Message::system(TERMINAL_NOTIFY_PREAMBLE)];
             let first_turn = model
                 .call(
-                    CompletionRequest::from(rig::NonEmpty::with_rest(
+                    CompletionRequest::from(vec![
                         Message::system(TERMINAL_NOTIFY_PREAMBLE),
-                        [Message::user(TERMINAL_NOTIFY_PROMPT)],
-                    ))
+                        Message::user(TERMINAL_NOTIFY_PROMPT),
+                    ])
                     .max_tokens(1024)
                     .tool(notify_tool_definition()),
                 )

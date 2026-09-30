@@ -8,7 +8,7 @@ use serde_json::json;
 fn streaming_request() -> crate::completion::CompletionRequest {
     crate::completion::CompletionRequest {
         model: None,
-        chat_history: crate::NonEmpty::new(crate::message::Message::user("hello")),
+        chat_history: vec![crate::message::Message::user("hello")],
         documents: Vec::new(),
         tools: Vec::new(),
         temperature: None,

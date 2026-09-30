@@ -11,7 +11,7 @@ use std::{any::Any, fmt};
 
 use serde::Serialize;
 
-use crate::{NonEmpty, message::ToolResultContent, tool::ToolExecutionError};
+use crate::{message::ToolResultContent, tool::ToolExecutionError};
 
 /// The canonical model-visible output produced by a tool.
 ///
@@ -24,7 +24,7 @@ use crate::{NonEmpty, message::ToolResultContent, tool::ToolExecutionError};
 /// guess whether it represents rich content.
 #[derive(Clone, PartialEq)]
 pub struct ToolOutput {
-    content: NonEmpty<ToolResultContent>,
+    content: Vec<ToolResultContent>,
 }
 
 // Serde is the content list itself; deserialization goes through
@@ -79,19 +79,19 @@ impl ToolOutput {
     /// Constructs explicit model content, rejecting an empty block list.
     /// Use [`Self::text`] with `""` to represent an empty text result.
     pub fn content(content: Vec<ToolResultContent>) -> Result<Self, ToolExecutionError> {
-        let content = NonEmpty::from_vec(content).map_err(|_| {
-            ToolExecutionError::other(
+        if content.is_empty() {
+            return Err(ToolExecutionError::other(
                 "tool output has no content blocks; return at least one block — \
                  an empty text block is valid",
-            )
-        })?;
+            ));
+        }
         Ok(Self { content })
     }
 
     /// Construct one explicit model-content block.
     pub fn one(content: ToolResultContent) -> Self {
         Self {
-            content: NonEmpty::new(content),
+            content: vec![content],
         }
     }
 
@@ -101,7 +101,7 @@ impl ToolOutput {
             return None;
         }
 
-        match self.content.first() {
+        match self.content.first()? {
             // `Some` params always carry data (`AdditionalParams` is
             // non-empty by construction), so plain `is_none` is the whole
             // annotation check.
@@ -118,7 +118,7 @@ impl ToolOutput {
             return None;
         }
 
-        match self.content.first() {
+        match self.content.first()? {
             ToolResultContent::Json { value } => Some(value),
             ToolResultContent::Text(_) | ToolResultContent::Image(_) => None,
         }
@@ -130,7 +130,7 @@ impl ToolOutput {
     }
 
     /// Convert this output into the canonical message content sent to a model.
-    pub fn into_content(self) -> NonEmpty<ToolResultContent> {
+    pub fn into_content(self) -> Vec<ToolResultContent> {
         self.content
     }
 

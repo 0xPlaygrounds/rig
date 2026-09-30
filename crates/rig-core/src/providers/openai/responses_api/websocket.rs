@@ -496,6 +496,8 @@ impl ResponsesWebSocketSession {
         &self,
         completion_request: crate::completion::CompletionRequest,
     ) -> Result<crate::providers::openai::responses_api::CompletionRequest, ProviderError> {
+        // The session sends without the driver, so it runs the driver's check.
+        completion_request.validate_message_content()?;
         let (completion_request, issuers) = crate::providers::openai::wire::scope_reasoning(
             &self.wire.provider.dialect,
             &self.wire.model,

@@ -227,7 +227,7 @@ fn server_tool_assistant_message_from_response(content: Vec<AssistantContent>) -
 
     Message::Assistant {
         id: None,
-        content: rig_core::NonEmpty::from_vec(raw_blocks).expect("non-empty"),
+        content: raw_blocks,
     }
 }
 

@@ -384,7 +384,7 @@ async fn a_one_byte_change_is_refused_by_hash_or_by_pointer() {
     let mut changed = request.clone();
     // The preamble is the system message the request begins with.
     match changed.chat_history.first_mut() {
-        rig_core::message::Message::System { content } => content.push('!'),
+        Some(rig_core::message::Message::System { content }) => content.push('!'),
         other => panic!("the request begins with its preamble, not {other:?}"),
     }
     let changed = EffectKind::Completion {

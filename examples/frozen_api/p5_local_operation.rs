@@ -1,5 +1,4 @@
 use futures::{StreamExt, stream};
-use rig::NonEmpty;
 use rig::driver::{Exchange, Local, Model, Opened, Opening, Step, Transport};
 use rig::error::ProviderError;
 use rig::streaming::Item;
@@ -25,9 +24,9 @@ impl Frame {
     }
 }
 
-/// At least one frame, by type.
+/// At least one frame: [`PoseEstimation`] rejects a request without one.
 pub struct PoseRequest {
-    pub frames: NonEmpty<Frame>,
+    pub frames: Vec<Frame>,
 }
 
 #[derive(Clone, Debug)]
@@ -63,6 +62,16 @@ impl Operation for PoseEstimation {
 
     fn fold(_request: &PoseRequest, _call: &mut Call<'_>) -> PoseTrack {
         PoseTrack::default()
+    }
+
+    // Checked before the request reaches the runtime.
+    fn validate(request: &PoseRequest) -> Result<(), ProviderError> {
+        if request.frames.is_empty() {
+            return Err(ProviderError::request(
+                "a pose request needs at least one frame",
+            ));
+        }
+        Ok(())
     }
 }
 
@@ -114,7 +123,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Local::<PoseEstimation>::new("candle-pose"),
         PoseRuntime { threshold: 0.5 },
     );
-    let frames = NonEmpty::from_vec(vec![Frame::black(640, 480), Frame::black(640, 480)])?;
+    let frames = vec![Frame::black(640, 480), Frame::black(640, 480)];
 
     let mut stream = model.stream(PoseRequest { frames })?;
     while let Some(item) = stream.next().await {

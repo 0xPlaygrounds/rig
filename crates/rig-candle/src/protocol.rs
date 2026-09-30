@@ -329,7 +329,7 @@ fn validate_tool_definition(tool: &ToolDefinition) -> Result<(), CandleError> {
 }
 
 fn messages_with_documents(request: &CompletionRequest) -> Vec<Message> {
-    let mut messages = request.chat_history.clone().into_vec();
+    let mut messages = request.chat_history.clone();
     if !request.documents.is_empty() {
         let context = request
             .documents
