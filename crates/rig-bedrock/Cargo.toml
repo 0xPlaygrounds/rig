@@ -2,6 +2,7 @@
 name = "rig-bedrock"
 version.workspace = true
 edition = { workspace = true }
+rust-version = { workspace = true }
 license = "MIT"
 readme = "README.md"
 description = "AWS Bedrock model provider for Rig integration."

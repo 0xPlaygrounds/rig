@@ -2,6 +2,7 @@
 name = "rig"
 version.workspace = true
 edition = { workspace = true }
+rust-version = { workspace = true }
 license = "MIT"
 readme = "README.md"
 description = "An opinionated library for building LLM powered applications."
@@ -209,6 +210,9 @@ opt-level = "s"
 [workspace.package]
 version = "0.42.0"
 edition = "2024"
+# The toolchain in rust-toolchain.toml, the only one CI builds with. Bevy 0.19,
+# rig-ecs's floor, declares the same minimum.
+rust-version = "1.95.0"
 
 [workspace.dependencies]
 # Every requirement below is a FLOOR, not a pin: `tokio = "1"` means `^1`,

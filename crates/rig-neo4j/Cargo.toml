@@ -2,6 +2,7 @@
 name = "rig-neo4j"
 version.workspace = true
 edition = { workspace = true }
+rust-version = { workspace = true }
 license = "MIT"
 readme = "README.md"
 description = "Neo4j implementation of a Rig vector store."

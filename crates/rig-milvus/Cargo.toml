@@ -2,6 +2,7 @@
 name = "rig-milvus"
 version.workspace = true
 edition = { workspace = true }
+rust-version = { workspace = true }
 description = "Milvus vector store implementation for the rig framework"
 license = "MIT"
 

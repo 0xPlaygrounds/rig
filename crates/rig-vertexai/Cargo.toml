@@ -2,6 +2,7 @@
 name = "rig-vertexai"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license = "MIT"
 readme = "README.md"
 description = "VertexAI model provider for Rig integration."

@@ -2,6 +2,7 @@
 name = "rig-derive"
 version.workspace = true
 edition = { workspace = true }
+rust-version = { workspace = true }
 license = "MIT"
 description = "Internal crate that implements Rig derive macros."
 repository = "https://github.com/0xPlaygrounds/rig"

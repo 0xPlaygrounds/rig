@@ -2,6 +2,7 @@
 name = "rig-typesafeai"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license = "MIT"
 readme = "README.md"
 description = "Typed TypeSafe Jev judgments for Rig"
