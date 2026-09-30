@@ -77,10 +77,11 @@ pub async fn mixed_delivery(
 /// account tools.
 pub fn tool_loop_preamble() -> String {
     format!(
-        "{}\n\n## Account investigations\n\nFor an account investigation, call \
-         `order_history` for every account the customer names, all in one turn, then call \
+        "{}\n\n## Account investigations\n\nFor an account investigation, first call \
+         `order_history` for every account the customer names, as parallel calls in one \
+         response (never one account per response). When the histories are back, call \
          `shipping_log` with the tracking number of the newest order in the first account's \
-         history, then answer in two sentences.\n",
+         history. Then answer in two sentences.\n",
         super::SUPPORT_PREAMBLE
     )
 }
@@ -248,8 +249,8 @@ impl rig_core::tool::Tool for ShippingLog {
 /// then the newest parcel of the first.
 pub fn investigation(turn: usize) -> String {
     format!(
-        "Account investigation: accounts C{turn:03}-a and C{turn:03}-b. Where is the newest \
-         parcel of C{turn:03}-a?"
+        "Account investigation: accounts C{turn:03}-a and C{turn:03}-b (look both up at \
+         once). Where is the newest parcel of C{turn:03}-a?"
     )
 }
 

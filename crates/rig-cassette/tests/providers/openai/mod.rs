@@ -65,6 +65,7 @@ mod cassette {
     mod image_params_matrix;
     mod lifecycle_matrix;
     mod long_run_caching;
+    mod long_run_workloads;
     mod max_completion_tokens_matrix;
     mod models;
     mod multi_extract;
