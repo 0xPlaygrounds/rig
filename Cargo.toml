@@ -212,8 +212,8 @@ convert_case = "0.11"
 dotenvy = "0.15"
 epub = "2"
 ethers = "2"
-# 4.5: the `hf-hub-*` feature split rig-fastembed forwards.
-fastembed = { version = "4.5", default-features = false }
+# 4.6: encoded image embedding via `ImageEmbedding::embed_bytes`.
+fastembed = { version = "4.6", default-features = false }
 fastrand = "2"
 futures = "0.3"
 # Runtime-agnostic executor used by the `agent_no_tokio` example, and the
