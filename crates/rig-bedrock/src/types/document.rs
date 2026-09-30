@@ -1,56 +1,62 @@
 use aws_sdk_bedrockruntime::types as aws_bedrock;
 use rig_core::error::ProviderError;
-use rig_core::message::{Document, DocumentSourceKind};
+use rig_core::message::{Document, DocumentMediaType, DocumentSourceKind, MimeType};
 
-pub(crate) use crate::types::media_types::RigDocumentMediaType;
 use base64::{Engine, prelude::BASE64_STANDARD};
 use sha2::{Digest, Sha256};
 
-use super::converse_output::{DocumentBlock, DocumentSource};
+/// The Converse document block for `document`.
+pub(crate) fn to_aws(
+    Document {
+        data, media_type, ..
+    }: Document,
+) -> Result<aws_bedrock::DocumentBlock, ProviderError> {
+    let document_media_type = media_type.map(document_format).transpose()?;
 
-#[derive(Clone)]
-pub struct RigDocument(pub Document);
+    let document_source = match data {
+        DocumentSourceKind::Base64(blob) => {
+            let bytes = BASE64_STANDARD
+                .decode(blob)
+                .map_err(ProviderError::request)?;
 
-impl TryFrom<RigDocument> for aws_bedrock::DocumentBlock {
-    type Error = ProviderError;
+            aws_bedrock::DocumentSource::Bytes(aws_smithy_types::Blob::new(bytes))
+        }
+        // Use the byte source for string documents to avoid SDK text-source
+        // compatibility limitations.
+        DocumentSourceKind::String(str) => {
+            aws_bedrock::DocumentSource::Bytes(aws_smithy_types::Blob::new(str.as_bytes()))
+        }
+        doc => {
+            return Err(ProviderError::request(format!(
+                "Unsupported document kind: {doc}"
+            )));
+        }
+    };
 
-    fn try_from(
-        RigDocument(Document {
-            data, media_type, ..
-        }): RigDocument,
-    ) -> Result<Self, Self::Error> {
-        let document_media_type = media_type
-            .map(|doc| RigDocumentMediaType(doc).try_into())
-            .transpose()?;
+    let document_name = document_name(&document_source);
+    aws_bedrock::DocumentBlock::builder()
+        .source(document_source)
+        .name(document_name)
+        .set_format(document_media_type)
+        .build()
+        .map_err(|e| ProviderError::Provider(e.to_string()))
+}
 
-        let document_source = match data {
-            DocumentSourceKind::Base64(blob) => {
-                let bytes = BASE64_STANDARD
-                    .decode(blob)
-                    .map_err(ProviderError::request)?;
-
-                aws_bedrock::DocumentSource::Bytes(aws_smithy_types::Blob::new(bytes))
-            }
-            // Use the byte source for string documents to avoid SDK text-source
-            // compatibility limitations.
-            DocumentSourceKind::String(str) => {
-                aws_bedrock::DocumentSource::Bytes(aws_smithy_types::Blob::new(str.as_bytes()))
-            }
-            doc => {
-                return Err(ProviderError::request(format!(
-                    "Unsupported document kind: {doc}"
-                )));
-            }
-        };
-
-        let document_name = document_name(&document_source);
-        let result = aws_bedrock::DocumentBlock::builder()
-            .source(document_source)
-            .name(document_name)
-            .set_format(document_media_type)
-            .build()
-            .map_err(|e| ProviderError::Provider(e.to_string()))?;
-        Ok(result)
+/// The Converse format for `media_type`: PDF, plain text, HTML, Markdown or
+/// CSV.
+fn document_format(
+    media_type: DocumentMediaType,
+) -> Result<aws_bedrock::DocumentFormat, ProviderError> {
+    match media_type {
+        DocumentMediaType::PDF => Ok(aws_bedrock::DocumentFormat::Pdf),
+        DocumentMediaType::TXT => Ok(aws_bedrock::DocumentFormat::Txt),
+        DocumentMediaType::HTML => Ok(aws_bedrock::DocumentFormat::Html),
+        DocumentMediaType::MARKDOWN => Ok(aws_bedrock::DocumentFormat::Md),
+        DocumentMediaType::CSV => Ok(aws_bedrock::DocumentFormat::Csv),
+        e => Err(ProviderError::Provider(format!(
+            "Unsupported media type {}",
+            e.to_mime_type()
+        ))),
     }
 }
 
@@ -90,32 +96,6 @@ pub(crate) fn disambiguate_document_names(messages: &mut [aws_bedrock::Message])
                 }
             }
         }
-    }
-}
-
-impl TryFrom<DocumentBlock> for RigDocument {
-    type Error = ProviderError;
-
-    fn try_from(value: DocumentBlock) -> Result<Self, Self::Error> {
-        let media_type: RigDocumentMediaType = value.format.try_into()?;
-        let media_type = media_type.0;
-
-        let data = match value.source {
-            Some(DocumentSource::Bytes(blob)) => {
-                let encoded_data = BASE64_STANDARD.encode(blob.inner);
-                Ok(DocumentSourceKind::Base64(encoded_data))
-            }
-            Some(DocumentSource::Text(str)) => Ok(DocumentSourceKind::String(str)),
-            doc => Err(ProviderError::Provider(format!(
-                "Unsupported document type: {doc:?}"
-            ))),
-        }?;
-
-        Ok(RigDocument(Document {
-            data,
-            media_type: Some(media_type),
-            additional_params: None,
-        }))
     }
 }
 

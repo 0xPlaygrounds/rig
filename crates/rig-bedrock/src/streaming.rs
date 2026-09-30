@@ -3,7 +3,7 @@ use crate::types::assistant_content::{
     PROVIDER_NAME, map_stop_reason, normalize_usage, reasoning_issuer,
 };
 use crate::types::converse_output::{InternalConverseOutput, StopReason, TokenUsage};
-use crate::types::message::RigMessage;
+use crate::types::message;
 use aws_sdk_bedrockruntime::types as aws_bedrock;
 use base64::{Engine, prelude::BASE64_STANDARD};
 use rig_core::error::ProviderError;
@@ -297,9 +297,9 @@ fn whole(
 fn assistant_content(
     output: &InternalConverseOutput,
 ) -> Result<Vec<rig_core::message::AssistantContent>, ProviderError> {
-    let message: RigMessage = output
+    let reply = output
         .output
-        .clone()
+        .as_ref()
         .ok_or(ProviderError::Provider(
             "Model didn't return any output".into(),
         ))?
@@ -307,14 +307,8 @@ fn assistant_content(
         .map_err(|_| {
             ProviderError::Provider("Failed to extract message from converse output".into())
         })?
-        .to_owned()
-        .try_into()?;
-    match message.0 {
-        rig_core::completion::Message::Assistant { content, .. } => Ok(content),
-        _ => Err(ProviderError::Response(
-            "Converse output message was not an assistant message".to_owned(),
-        )),
-    }
+        .to_owned();
+    message::assistant_reply(reply)
 }
 
 impl<'id> rig_core::wire::Decoder<'id, Completion, ConverseFrame> for StreamState<'id> {
