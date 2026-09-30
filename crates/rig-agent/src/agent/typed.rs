@@ -276,7 +276,8 @@ macro_rules! forward_runner_setters {
         /// Set the total model-call budget, including the initial call and every
         /// retry or continuation. Zero emits no model calls; one permits only the
         /// initial call. Exceeding the budget returns a
-        /// [`StructuredOutputError::Prompt`] wrapping a `MaxTurns`.
+        /// [`StructuredOutputError::Prompt`] wrapping
+        /// [`PromptError::MaxTurns`](crate::completion::PromptError::MaxTurns).
         pub fn max_turns(mut self, max_turns: usize) -> Self {
             self.runner = self.runner.max_turns(max_turns);
             self

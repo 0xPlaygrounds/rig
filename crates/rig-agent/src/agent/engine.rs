@@ -655,11 +655,9 @@ where
             Vec::with_capacity(call_count.saturating_mul(2));
         for slot in collected {
             let Some(CollectedToolResult { content, surface }) = slot else {
-                yield Err(PromptError::Provider(
-                    ProviderError::Response(
-                        "tool execution finished without producing every result".to_string(),
-                    ),
-                ));
+                yield Err(PromptError::Provider(ProviderError::Response(
+                    "tool execution finished without producing every result".to_string(),
+                )));
                 return;
             };
             if forward_items {
@@ -873,7 +871,7 @@ impl TurnSource for StreamingTurnSource {
                                 // cancelled here, before the error surfaces, so the
                                 // record is the same cancel on every transport.
                                 drop(stream);
-                                yield Err(run.cancel_error(reason),);
+                                yield Err(run.cancel_error(reason));
                                 return;
                             }
                             if self.observes_reasoning_delta
@@ -901,7 +899,7 @@ impl TurnSource for StreamingTurnSource {
                                 // cancelled here, before the error surfaces, so the
                                 // record is the same cancel on every transport.
                                 drop(stream);
-                                yield Err(run.cancel_error(reason),);
+                                yield Err(run.cancel_error(reason));
                                 return;
                             }
                             if let Some(item) = item_slot.take() {
@@ -942,7 +940,7 @@ impl TurnSource for StreamingTurnSource {
                                     // cancelled here, before the error surfaces, so the
                                     // record is the same cancel on every transport.
                                     drop(stream);
-                                    yield Err(run.cancel_error(reason),);
+                                    yield Err(run.cancel_error(reason));
                                     return;
                                 }
                                 yield Ok(MultiTurnStreamItem::stream_item(Item::Event(event)));
@@ -1793,7 +1791,7 @@ impl TurnSource for UnaryTurnSource {
                                 Ok(ModelTurnDecision::Retried) => break,
                                 Ok(ModelTurnDecision::Terminate(reason)) => {
                                     record_accepted_turn(run);
-                                    yield Err(run.cancel_error(reason),);
+                                    yield Err(run.cancel_error(reason));
                                     return;
                                 }
                                 Err(err) => {
