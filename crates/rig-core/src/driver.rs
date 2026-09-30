@@ -448,6 +448,8 @@ fn read<W: Wire>(
 /// response or the error that ended it.
 #[cfg(any(test, feature = "websocket", feature = "test-utils"))]
 pub(crate) struct Decoded<Op: Operation> {
+    /// Read only by relays and tests; a websocket session needs the outcome.
+    #[cfg(any(test, feature = "test-utils"))]
     pub(crate) items: Vec<Result<crate::streaming::Item<Op::Event>, ProviderError>>,
     pub(crate) outcome: Result<Op::Response, ProviderError>,
 }
@@ -544,13 +546,21 @@ pub(crate) fn settle<Op: Operation>(
         };
         crate::wire::Fold::finish(fold, end.ok_or(ProviderError::Truncated)?, reply)
     });
-    let mut items: Vec<_> = items.into_iter().collect();
-    if let Err(error) = &outcome
-        && !items.iter().any(Result::is_err)
-    {
-        items.push(Err(error.clone()));
+    #[cfg(any(test, feature = "test-utils"))]
+    let items = {
+        let mut items: Vec<_> = items.into_iter().collect();
+        if let Err(error) = &outcome
+            && !items.iter().any(Result::is_err)
+        {
+            items.push(Err(error.clone()));
+        }
+        items
+    };
+    Decoded {
+        #[cfg(any(test, feature = "test-utils"))]
+        items,
+        outcome,
     }
-    Decoded { items, outcome }
 }
 
 /// Decode a reply whose frames are already in hand through `wire`'s

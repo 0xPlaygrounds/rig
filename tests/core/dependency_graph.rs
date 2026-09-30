@@ -66,9 +66,24 @@ const GRAPHS: &[Graph] = &[
         "bevy_reflect bevy_asset bevy_app",
     ),
     ("rig-rmcp", "", "rig-agent rig-cassette", ""),
+    // `rig::cassette` is opt-in: the classic agent alone does not bring the
+    // recorder in.
     (
         "rig",
         "--no-default-features --features agent,derive",
+        "tokio reqwest rmcp rig-ecs rig-cassette",
+        "rig-core rig-agent",
+    ),
+    ("rig", "", "rig-cassette", "rig-core rig-agent"),
+    (
+        "rig",
+        "--no-default-features --features cassette",
+        "tokio reqwest rig-agent rig-ecs",
+        "rig-core rig-cassette",
+    ),
+    (
+        "rig",
+        "--no-default-features --features agent,cassette",
         "tokio reqwest rmcp rig-ecs",
         "rig-core rig-agent rig-cassette",
     ),

@@ -3,6 +3,7 @@ autotests = false
 name = "rig-ecs"
 version.workspace = true
 edition = { workspace = true }
+rust-version = { workspace = true }
 license = "MIT"
 description = "rig inside a Bevy World: effects as entities, handlers as entities, the driver as a system."
 repository = "https://github.com/0xPlaygrounds/rig"

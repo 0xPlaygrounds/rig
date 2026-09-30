@@ -2,6 +2,7 @@
 name = "rig-vectorize"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license = "MIT"
 readme = "README.md"
 description = "Cloudflare Vectorize vector store implementation for the Rig framework"

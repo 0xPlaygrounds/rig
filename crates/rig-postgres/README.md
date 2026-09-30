@@ -123,7 +123,7 @@ Example usage
         .await?;
 
     // Create your index
-    let vector_store = PostgresVectorStore::default(model, pool);
+    let vector_store = PostgresVectorStore::with_defaults(model, pool);
 
     // store documents
     vector_store.insert_documents(documents).await?;

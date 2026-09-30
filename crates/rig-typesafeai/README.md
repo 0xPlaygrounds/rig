@@ -12,7 +12,8 @@ Implement `Query` on a generic named struct. Its associated `Output` replaces
 question fields with their answer types while preserving their names and layout:
 
 ```rust
-use rig_typesafeai::{Error, Noul, NoulAnswer, Query};
+use rig_core::error::ProviderError;
+use rig_typesafeai::{Noul, NoulAnswer, Query};
 use serde::{Serialize, Deserialize};
 
 // The fields are declared once, for both questions and answers.
@@ -26,7 +27,7 @@ impl<R: Query, V: Query> Query for Assessment<R, V> {
     type Response = Assessment<R::Response, V::Response>;
     type Output = Assessment<R::Output, V::Output>;
 
-    fn decode(&self, response: Self::Response) -> Result<Self::Output, Error> {
+    fn decode(&self, response: Self::Response) -> Result<Self::Output, ProviderError> {
         Ok(Assessment {
             ready: self.ready.decode(response.ready)?,
             needs_review: self.needs_review.decode(response.needs_review)?,
@@ -38,7 +39,7 @@ let query = Assessment {
     ready: Noul::new("Is this ready to ship?")?,
     needs_review: Noul::new("Does this need human review?")?,
 };
-# Ok::<(), Error>(())
+# Ok::<(), ProviderError>(())
 ```
 
 With a Jev model (`Jev::from_env()?.evaluation()`), evaluate it directly:

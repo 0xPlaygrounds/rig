@@ -156,10 +156,11 @@ More examples live in [`examples`](./examples) and each crate's `examples` direc
 
 ## Recording and replay
 
-`rig::cassette::effect_log` provides logs, recorders, replay handlers and
-checkpoints. Keep an `EffectLogRecorder` handle and attach its clone with
-`AgentBuilder::record_to`; import `rig::cassette::agent::AgentReplayExt` to stamp
-the resulting log or check replay compatibility.
+With the `cassette` feature, `rig::cassette::effect_log` provides logs,
+recorders, replay handlers and checkpoints. Keep an `EffectLogRecorder` handle
+and attach its clone with `AgentBuilder::record_to`; import
+`rig::cassette::agent::AgentReplayExt` to stamp the resulting log or check
+replay compatibility.
 
 For transport-free consumers, depend directly on `rig-cassette` with default
 features disabled. Its optional `agent` and `ecs` adapters are independent of

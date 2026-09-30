@@ -2,6 +2,7 @@
 name = "rig-http"
 version.workspace = true
 edition = { workspace = true }
+rust-version = { workspace = true }
 license = "MIT"
 readme = "README.md"
 description = "Rig's transport contracts: the HTTP client and websocket traits a transport implements, and the wasm-compatible bounds they are written with."

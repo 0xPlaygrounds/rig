@@ -22,6 +22,7 @@ all_root = [
     "rig/test-utils",
     "rig/bedrock",
     "rig/candle",
+    "rig/cassette",
     "rig/fastembed",
     "rig/fastembed-hf-hub",
     "rig/fastembed-ort-download-binaries",

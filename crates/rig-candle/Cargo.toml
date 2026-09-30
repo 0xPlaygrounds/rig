@@ -2,6 +2,7 @@
 name = "rig-candle"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license = "MIT"
 readme = "README.md"
 description = "Local Candle Llama, SmolLM2, and Qwen3 completion models and YOLOv8 pose estimation for Rig"

@@ -2,6 +2,7 @@
 name = "rig-qdrant"
 version.workspace = true
 edition = { workspace = true }
+rust-version = { workspace = true }
 license = "MIT"
 readme = "README.md"
 description = "Rig vector store index integration for Qdrant. https://qdrant.tech"

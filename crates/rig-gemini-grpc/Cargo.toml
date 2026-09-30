@@ -2,6 +2,7 @@
 name = "rig-gemini-grpc"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license = "MIT"
 readme = "README.md"
 description = "Google Gemini gRPC API integration for Rig"

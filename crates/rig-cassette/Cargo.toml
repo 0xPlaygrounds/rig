@@ -2,6 +2,7 @@
 name = "rig-cassette"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license = "MIT"
 readme = "README.md"
 description = "Effect-log and provider HTTP recording, replay, scrubbing and verification for Rig."
@@ -83,6 +84,7 @@ rig = { path = "../..", default-features = false, features = [
   "agent",
   "audio",
   "bedrock",
+  "cassette",
   "derive",
   "image",
   "reqwest",

@@ -1,9 +1,10 @@
 //! `check-packaging`: what the workspace publishes, and what it claims to need.
 //!
-//! Checks three properties no build catches: that the facade tarball ships only
-//! its own source and registry documents rather than the workspace root, that
-//! every declared dependency is actually used, and that the facade feature guard
-//! lists every facade feature.
+//! Checks properties no build catches: that the facade tarball ships only its
+//! own source and registry documents rather than the workspace root, that every
+//! declared dependency is actually used, that the facade feature guard lists
+//! every facade feature, and that docs.rs documents every facade feature not
+//! excluded here with a reason.
 //!
 //! Manifest data comes from `cargo metadata` and the file list from
 //! `cargo package --list`, which reports what Cargo will do without building a
@@ -41,6 +42,14 @@ const FACADE_ALLOWED_FILES: &[&str] = &[
     "README.md",
 ];
 
+/// Facade features the docs.rs build leaves out, each with the reason. Every
+/// other feature except `default` must be in `[package.metadata.docs.rs]
+/// features`.
+const DOCS_RS_EXCLUDED: &[(&str, &str)] = &[(
+    "surrealdb",
+    "surrealdb's `diskann` dependency does not compile on the nightly docs.rs uses",
+)];
+
 /// crates.io's documented hard cap, on the *compressed* tarball. Not the gate:
 /// the thing the gate exists to keep the workspace away from.
 const CRATES_IO_CAP: u64 = 10 * 1024 * 1024;
@@ -71,12 +80,14 @@ pub(crate) fn check(workspace: &Path) -> Result<(), String> {
     failures.extend(packages_stay_under_the_ceiling(workspace, &packages)?);
     failures.extend(dependencies_are_used(&packages)?);
     failures.extend(facade_guard_covers_every_feature(workspace, &packages)?);
+    failures.extend(docs_rs_documents_every_feature(&metadata, &packages)?);
 
     if failures.is_empty() {
         println!(
             "ok: the facade publishes only its allowlist, {} published crates are under \
-             {SIZE_CEILING} B uncompressed and name only dependencies their sources use, and \
-             the facade guard covers every root feature",
+             {SIZE_CEILING} B uncompressed and name only dependencies their sources use, \
+             the facade guard covers every root feature, and docs.rs documents every \
+             feature not excluded",
             packages.len()
         );
         return Ok(());
@@ -254,6 +265,89 @@ fn facade_guard_covers_every_feature(
         missing.len(),
         indent(&missing)
     )])
+}
+
+/// 5. docs.rs documents every facade feature except `default` and the
+///    exclusions in [`DOCS_RS_EXCLUDED`].
+fn docs_rs_documents_every_feature(
+    metadata: &Value,
+    packages: &BTreeMap<String, Package>,
+) -> Result<Vec<String>, String> {
+    let facade = packages
+        .get("rig")
+        .ok_or_else(|| "the workspace has no `rig` package".to_string())?;
+    let docs_rs = field(metadata, "packages")
+        .as_array()
+        .into_iter()
+        .flatten()
+        .find(|package| field(package, "name").as_str() == Some("rig"))
+        // TOML reads `[package.metadata.docs.rs]` as a `docs` table holding `rs`.
+        .map(|package| field(field(field(package, "metadata"), "docs"), "rs"))
+        .ok_or_else(|| "cargo metadata has no `rig` package".to_string())?;
+    let documented: BTreeSet<String> = field(docs_rs, "features")
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .map(str::to_owned)
+        .collect();
+    let all_features = field(docs_rs, "all-features").as_bool().unwrap_or(false);
+    let features: BTreeSet<&str> = facade.features.keys().map(String::as_str).collect();
+    let excluded: BTreeSet<&str> = DOCS_RS_EXCLUDED.iter().map(|(name, _)| *name).collect();
+    Ok(docs_rs_gaps(
+        &features,
+        &documented,
+        all_features,
+        &excluded,
+    ))
+}
+
+/// The mismatches between the facade's features and its docs.rs feature list.
+fn docs_rs_gaps(
+    features: &BTreeSet<&str>,
+    documented: &BTreeSet<String>,
+    all_features: bool,
+    excluded: &BTreeSet<&str>,
+) -> Vec<String> {
+    let mut failures = Vec::new();
+    if all_features {
+        // `all-features` documents everything, which is right once nothing is excluded.
+        if !excluded.is_empty() {
+            failures.push(format!(
+                "  rig: `[package.metadata.docs.rs] all-features = true` also builds the excluded \
+                 feature(s) {}; list the features instead",
+                excluded.iter().copied().collect::<Vec<_>>().join(", ")
+            ));
+        }
+        return failures;
+    }
+    let missing: Vec<&str> = features
+        .iter()
+        .copied()
+        .filter(|feature| {
+            *feature != "default" && !excluded.contains(feature) && !documented.contains(*feature)
+        })
+        .collect();
+    if !missing.is_empty() {
+        failures.push(format!(
+            "  rig: {} facade feature(s) are missing from `[package.metadata.docs.rs] features` \
+             in the root manifest; add them, or exclude them in DOCS_RS_EXCLUDED with a reason:\n{}",
+            missing.len(),
+            indent(&missing)
+        ));
+    }
+    let stray: Vec<&str> = documented
+        .iter()
+        .map(String::as_str)
+        .filter(|feature| excluded.contains(feature) || !features.contains(feature))
+        .collect();
+    if !stray.is_empty() {
+        failures.push(format!(
+            "  rig: `[package.metadata.docs.rs] features` lists excluded or unknown feature(s):\n{}",
+            indent(&stray)
+        ));
+    }
+    failures
 }
 
 /// Whether `source` uses `identifier` as a crate name: a whole word, not a

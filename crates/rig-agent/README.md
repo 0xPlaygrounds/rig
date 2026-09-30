@@ -109,23 +109,26 @@ and `tests/fixtures/agent_run_stepper` is that host in miniature.
 
 ## Runtime model routing
 
-High-level agents are concrete values: the provider model is erased once into
-an opaque, cloneable `ModelHandle`, whose `ProviderCapabilities` snapshot is
-captured by value at erasure. The typed `Model<W, T>` and its erased twin
+High-level agents are concrete values: models are registered on the agent's
+bus under a `ModelRef` label, and each model's `ProviderCapabilities` snapshot
+is captured by value at registration. `AgentBuilder::new` registers its model
+as `default`; `AgentBuilder::named_model` and `model_route` register models
+under labels of your choice. The typed `Model<W, T>` and its erased twin
 `DynModel<Completion>` stay available for direct `call` and `stream`, and a
 backend is a wire plus a transport rather than a trait implementation.
 
-Replace the default on one agent value with `set_model` or
-`set_model_handle`, or change one run's default candidate with `using_model`.
-Implement `AgentHook::on_model_select` to route before every model call. Model
+Replace the default on one agent value with `set_model` (a model value) or
+`set_model_label` (a registered label), or change one run's default candidate
+with `using_model(label)` or `using_model_value(model)`. Implement
+`AgentHook::on_model_select` to route before every model call. Model
 selection hooks chain in registration order, with the last selection winning
 and a stop terminating the run. Per model-call boundary, completion-call hooks
 resolve first and their merged `RequestPatch` is passed to the selection event
 (`ModelSelection::request_patch`); only then does request preparation run
 against the selected model's captured capabilities and issue the attempt. A
-selected handle cannot change while its future or stream is in flight. Retries
+selected model cannot change while its future or stream is in flight. Retries
 and calls after tool execution are new boundaries and may select another
-handle.
+model.
 
 Hooks attached through `AgentBuilder::add_hook` apply to every later runner
 from that agent; hooks appended to a prompt or runner apply only to that run.
@@ -136,17 +139,14 @@ cancels before request preparation and provider execution, and dropping an
 in-flight attempt still cancels it by dropping its retained future or stream.
 
 Extractors support the same run-local choice: `extract(...)` returns a
-`TypedRun`, so `extractor.extract(text).using_model(handle)` or
-`.using_model_value(model)` sets that run's default candidate. That handle is
+`TypedRun`, so `extractor.extract(text).using_model(label)` or
+`.using_model_value(model)` sets that run's default candidate. That model is
 the default candidate for each extraction retry, routing hooks may replace it,
 and the extractor's default is unchanged for later calls.
 
 ```rust,ignore
 #[derive(Clone)]
-struct RouteModels {
-    fast: ModelHandle,
-    strong: ModelHandle,
-}
+struct RouteModels;
 
 impl AgentHook for RouteModels {
     fn on_model_select(
@@ -155,32 +155,28 @@ impl AgentHook for RouteModels {
         _event: ModelSelection<'_>,
     ) -> ModelSelectionAction {
         if context.turn() == 1 {
-            ModelSelectionAction::select(self.fast.clone())
+            ModelSelectionAction::select("fast")
         } else {
-            ModelSelectionAction::select(self.strong.clone())
+            ModelSelectionAction::select("strong")
         }
     }
 }
 
-let fast = ModelHandle::named("fast", fast_model);
-let strong = ModelHandle::named("strong", strong_model);
-let agent = AgentBuilder::from_model_handle(fast.clone())
+let agent = AgentBuilder::named_model("fast", fast_model)
+    .model_route("strong", strong_model)
     .tool(search_tool)
     .build();
 
 let answer = agent
     .prompt("Research, then synthesize")
     .max_turns(3)
-    .add_hook(RouteModels {
-        fast: fast.clone(),
-        strong: strong.clone(),
-    })
+    .add_hook(RouteModels)
     .await?;
 ```
 
-Handles and routing hooks contain live clients, callbacks, and policy state, so
-handles, hook stacks, and hook actions are deliberately not serializable;
-persist an application model identifier and resolve it to a handle at runtime.
+Registered models and routing hooks contain live clients, callbacks, and policy
+state, so hook stacks and hook actions are deliberately not serializable;
+persist the model's label and register the model again at runtime.
 Clones share the retained model safely, while replacing an agent clone has
 ordinary value semantics. Concurrent runs keep independent default and
 hook-stack snapshots; explicitly synchronized state captured by a hook follows

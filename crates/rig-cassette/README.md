@@ -41,9 +41,10 @@ dependencies in the same build.
 
 The dependency direction is cassette → runtime → core. Neither runtime depends
 on cassette, including through optional features. The `rig` facade re-exports
-this crate as `rig::cassette`; its `agent` feature enables the cassette agent
-adapter. Direct minimal consumers should depend on `rig-cassette`, rather than
-the facade's default transport configuration.
+this crate as `rig::cassette` behind its opt-in `cassette` feature; with the
+facade's `agent` feature it also enables the cassette agent adapter. Direct
+minimal consumers should depend on `rig-cassette`, rather than the facade's
+default transport configuration.
 
 The facade and provider helpers needed by this package's tests remain
 version-less path dev-dependencies, omitted from its published manifest.

@@ -2,6 +2,7 @@
 name = "rig-memory"
 version.workspace = true
 edition = { workspace = true }
+rust-version = { workspace = true }
 license = "MIT"
 readme = "README.md"
 description = "Conversation memory policies (sliding window, token budget, ...) for the Rig agent framework."

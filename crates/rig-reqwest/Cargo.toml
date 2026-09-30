@@ -2,6 +2,7 @@
 name = "rig-reqwest"
 version.workspace = true
 edition = { workspace = true }
+rust-version = { workspace = true }
 license = "MIT"
 readme = "README.md"
 description = "The bundled reqwest HTTP transport for Rig."
