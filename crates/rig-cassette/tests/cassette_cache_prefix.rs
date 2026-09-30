@@ -60,6 +60,12 @@ use cache_prefix::{EndpointKind, PrefixBlock, Violation};
 /// records that someone silenced the check, not why it is correct.
 const MOVES_CACHE_PREFIX: &[(&str, &str)] = &[
     (
+        "anthropic/long_run_caching/dynamic_tools_30.yaml",
+        "the long run's request patch changes the active tools on turn 11; the \
+         changed tool list is the behavior being recorded (Claude Opus 5.5 \
+         refuses it with the thinking-block binding 400)",
+    ),
+    (
         "anthropic/corpus_shaping/active_tools_none_second_turn.yaml",
         "the effect corpus's per-turn shaping matrix: a request patch drops \
          every tool on the second turn — moving the prefix is the behavior \
