@@ -1530,7 +1530,7 @@ impl rig_agent::agent::AgentHook for RerankDocs {
         let host = ctx.bind(&key).expect("the host serves reranking");
         let query = event.prompt.rag_text().expect("a text prompt");
         let ranked = host
-            .dispatch(rig_core::effect::RerankRequest {
+            .dispatch(rig_core::operation::RerankRequest {
                 query,
                 documents: RERANK_DOCUMENTS
                     .iter()

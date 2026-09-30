@@ -19,6 +19,7 @@ use crate::{
     embeddings::{EmbeddingResponse, ImageEmbeddingResponse},
     error::ErrorReport,
     id::ConversationId,
+    operation::RerankRequest,
     rerank::RerankResponse,
     streaming::Transcript,
     tool::ToolResult,
@@ -412,12 +413,12 @@ pub mod family {
 
     use super::{
         CustomEffect, EffectFamily, EffectKind, EmbedInputs, EmbedOutputs, Family, MemoryOp,
-        MemoryOutcome, Outcome, RerankRequest, RetrieveQuery, RetrievedDocuments, ToolCallRequest,
-        sealed::Sealed,
+        MemoryOutcome, Outcome, RetrieveQuery, RetrievedDocuments, ToolCallRequest, sealed::Sealed,
     };
     use crate::{
         completion::{CompletionRequest, CompletionResponse},
         error::{ErrorKind, ErrorReport},
+        operation::RerankRequest,
         rerank::RerankResponse,
         tool::ToolResult,
     };
@@ -792,16 +793,6 @@ pub enum EmbedInputs {
     Texts(Vec<String>),
     /// Image bytes.
     Images(Vec<Vec<u8>>),
-}
-
-/// A reranking request: the query and documents a rerank model's call
-/// orders.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct RerankRequest {
-    /// The query the documents are ranked against.
-    pub query: String,
-    /// The documents, in input order.
-    pub documents: Vec<String>,
 }
 
 /// A conversation-memory operation: the transcription of
