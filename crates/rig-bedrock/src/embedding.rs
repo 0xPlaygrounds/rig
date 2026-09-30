@@ -232,3 +232,7 @@ impl<'id> Decoder<'id, rig_core::operation::Embedding, EmbeddingFrame> for Embed
         }))
     }
 }
+
+#[cfg(test)]
+#[allow(clippy::expect_used)]
+mod tests;

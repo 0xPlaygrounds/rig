@@ -301,6 +301,43 @@ async fn an_embedding_reply_pairs_its_vectors_with_the_texts_that_were_sent() {
     assert_eq!(response.usage.output_tokens, None);
 }
 
+/// The daemon is sent no width, so a named width is only a claim about the
+/// model; a reply that contradicts it fails instead of reaching a vector
+/// store sized from it. A unit test because the check is rig's own: no
+/// recording can make the daemon return a width other than its model's.
+#[tokio::test]
+async fn a_reply_of_another_width_than_the_named_one_is_refused() {
+    let model = |ndims| {
+        crate::driver::Model::new(
+            OllamaConfig::new()
+                .embedding("all-minilm")
+                .with_ndims(ndims),
+            RecordingHttpClient::new(EMBED_BODY),
+        )
+    };
+    let texts = || vec!["first".to_owned(), "second".to_owned()];
+
+    let error = model(384)
+        .call(texts())
+        .await
+        .expect_err("the reply's vectors are 2 wide");
+    assert!(
+        matches!(
+            error,
+            ProviderError::MismatchedDimensions {
+                requested: 384,
+                returned: 2,
+                ..
+            }
+        ),
+        "{error:?}"
+    );
+    model(2)
+        .call(texts())
+        .await
+        .expect("a reply of the named width decodes");
+}
+
 #[test]
 fn an_embedding_wire_reports_the_models_published_width() {
     assert_eq!(
