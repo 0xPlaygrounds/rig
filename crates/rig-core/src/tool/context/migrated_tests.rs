@@ -102,12 +102,12 @@ fn remove_missing_type_returns_none() {
 fn require_present_returns_value() {
     let mut c = ToolContext::new();
     c.insert(Num(42)).unwrap();
-    assert_eq!(c.require::<Num>(), Ok(Num(42)));
+    assert_eq!(c.require::<Num>().unwrap(), Num(42));
 }
 #[test]
 fn require_missing_names_key() {
     let e = ToolContext::new().require::<Num>().unwrap_err();
-    assert_eq!(e, ToolContextError::Missing(Num::KEY));
+    assert!(matches!(e, ToolContextError::Missing(Num::KEY)));
     assert!(e.to_string().contains("`test.num`"));
 }
 #[test]
@@ -120,7 +120,7 @@ fn result_metadata_round_trips_and_requires() {
     let mut c = ToolContext::new();
     c.insert_result(Id(7)).unwrap();
     assert_eq!(c.result::<Id>().unwrap(), Some(Id(7)));
-    assert_eq!(c.require_result::<Id>(), Ok(Id(7)));
+    assert_eq!(c.require_result::<Id>().unwrap(), Id(7));
     assert_eq!(c.get::<Id>().unwrap(), None);
 }
 #[test]
