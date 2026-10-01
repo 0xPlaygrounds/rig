@@ -3,7 +3,9 @@
 //! exchanges go to the attempt root, and the ledger names what was created.
 
 use super::*;
+use futures::FutureExt;
 use serde_json::json;
+use std::panic::AssertUnwindSafe;
 
 fn client() -> rig_reqwest::reqwest::Client {
     rig_reqwest::reqwest::Client::builder()

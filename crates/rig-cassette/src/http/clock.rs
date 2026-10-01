@@ -14,7 +14,7 @@ use std::sync::{Arc, Mutex};
 
 use serde::{Deserialize, Serialize};
 
-use super::CassetteMode;
+use super::{CassetteError, CassetteMode};
 
 /// The longest pause [`super::ProviderCassette::pause`] accepts.
 pub const MAX_PAUSE: std::time::Duration = std::time::Duration::from_secs(60);
@@ -56,29 +56,31 @@ pub fn clock_sidecar(cassette_path: &Path) -> PathBuf {
 impl CassetteClock {
     /// The clock for the fixture at `cassette_path`. Replay loads the
     /// recorded readings; a fixture recorded without a clock replays none.
-    pub(crate) fn start(mode: CassetteMode, cassette_path: &Path) -> Self {
+    pub(crate) fn start(mode: CassetteMode, cassette_path: &Path) -> Result<Self, CassetteError> {
         let sidecar = clock_sidecar(cassette_path);
         let readings = match mode {
             CassetteMode::Record => Vec::new(),
-            CassetteMode::Replay => std::fs::read_to_string(&sidecar)
-                .ok()
-                .map(|text| {
+            CassetteMode::Replay => match std::fs::read_to_string(&sidecar) {
+                Ok(text) => {
                     serde_json::from_str::<Readings>(&text)
-                        .unwrap_or_else(|error| {
-                            panic!("clock readings {} should parse: {error}", sidecar.display())
-                        })
+                        .map_err(|source| CassetteError::MalformedClock {
+                            path: cassette_path.to_path_buf(),
+                            sidecar: sidecar.clone(),
+                            source,
+                        })?
                         .readings
-                })
-                .unwrap_or_default(),
+                }
+                Err(_) => Vec::new(),
+            },
         };
-        Self {
+        Ok(Self {
             state: Arc::new(ClockState {
                 mode,
                 sidecar,
                 readings: Mutex::new(readings),
                 next: AtomicUsize::new(0),
             }),
-        }
+        })
     }
 
     /// Unix seconds. Recording reads wall time and saves it; replay returns
@@ -129,7 +131,7 @@ impl CassetteClock {
 
     /// Save the readings beside the fixture (recording) or check that
     /// replay used every one of them.
-    pub(crate) async fn finish(&self) {
+    pub(crate) async fn finish(&self, cassette_path: &Path) -> Result<(), CassetteError> {
         let readings = self
             .state
             .readings
@@ -140,28 +142,29 @@ impl CassetteClock {
             CassetteMode::Record => {
                 if readings.is_empty() {
                     let _ = tokio::fs::remove_file(&self.state.sidecar).await;
-                    return;
+                    return Ok(());
                 }
-                let text = serde_json::to_string_pretty(&Readings { readings })
-                    .unwrap_or_else(|error| panic!("clock readings should serialize: {error}"));
-                tokio::fs::write(&self.state.sidecar, text + "\n")
-                    .await
-                    .unwrap_or_else(|error| {
-                        panic!(
-                            "clock readings {} should be writable: {error}",
-                            self.state.sidecar.display()
-                        )
-                    });
+                let write = async {
+                    let text = serde_json::to_string_pretty(&Readings { readings })?;
+                    tokio::fs::write(&self.state.sidecar, text + "\n").await
+                };
+                write.await.map_err(|source| CassetteError::ClockWrite {
+                    path: cassette_path.to_path_buf(),
+                    sidecar: self.state.sidecar.clone(),
+                    source,
+                })
             }
             CassetteMode::Replay => {
                 let used = self.state.next.load(Ordering::SeqCst);
-                assert!(
-                    used >= readings.len(),
-                    "replay read {used} of the {} clock readings in {}: the code under test \
-                     reads time differently from its recording; re-record the fixture",
-                    readings.len(),
-                    self.state.sidecar.display()
-                );
+                if used < readings.len() {
+                    return Err(CassetteError::UnusedClockReadings {
+                        path: cassette_path.to_path_buf(),
+                        sidecar: self.state.sidecar.clone(),
+                        used,
+                        recorded: readings.len(),
+                    });
+                }
+                Ok(())
             }
         }
     }
