@@ -20,6 +20,7 @@ use rmcp::ServiceExt;
 use rmcp::model::{ClientRequest, ListToolsRequest, PaginatedRequestParams, ServerResult};
 use tokio::sync::{Mutex, RwLock};
 
+use rig_core::message::EmptyToolName;
 use rig_core::tool::{DynamicTool, ManagedToolSink, ManagedToolToken};
 
 use crate::{
@@ -105,10 +106,10 @@ where
         &self,
         tool: rmcp::model::Tool,
         client: rmcp::service::ServerSink,
-    ) -> DynamicTool {
+    ) -> Result<DynamicTool, EmptyToolName> {
         McpTool::from_mcp_server(tool, client)
             .with_timeout(self.timeout)
-            .into()
+            .try_into()
     }
 
     pub(crate) fn begin_refresh(&self) -> u64 {
@@ -154,10 +155,10 @@ where
             }
         }
 
-        Ok(tools
+        tools
             .into_iter()
-            .map(|tool| self.build_tool(tool, peer.clone()))
-            .collect())
+            .map(|tool| Ok(self.build_tool(tool, peer.clone())?))
+            .collect()
     }
 
     pub(crate) async fn try_start_refresh(&self) -> bool {

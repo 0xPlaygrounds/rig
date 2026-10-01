@@ -18,6 +18,7 @@ use rig_core::{
     },
     embeddings::{embed::EmbedError, tool::ToolSchema},
     error::{ErrorKind, ErrorReport},
+    message::ToolName,
     tool::{
         DynamicTool, LivenessFn, Tool, ToolContext, ToolEmbedding, ToolExecutionError, ToolResult,
         tool_definition,
@@ -109,6 +110,15 @@ impl RegisteredTool {
                 ),
             ));
         };
+        let name = ToolName::new(name).map_err(|_| {
+            ErrorReport::new(
+                ErrorKind::HandlerUnavailable,
+                format!(
+                    "handler `{}` serves a tool with an empty name",
+                    descriptor.key
+                ),
+            )
+        })?;
         Ok(Self {
             definition: ToolDefinition {
                 name,
@@ -153,7 +163,7 @@ impl RegisteredTool {
 
     /// The tool's name.
     pub fn name(&self) -> String {
-        self.definition.name.clone()
+        self.definition.name.to_string()
     }
 
     /// The key the handler is served under: a tool key, proven at
@@ -167,19 +177,15 @@ impl RegisteredTool {
         &self.handler
     }
 
-    /// The definition, advertised under `name`.
-    pub(crate) fn definition_with_name(&self, name: impl Into<String>) -> ToolDefinition {
-        ToolDefinition {
-            name: name.into(),
-            description: self.definition.description.clone(),
-            parameters: self.definition.parameters.clone(),
-        }
+    /// The definition advertised to the model.
+    pub(crate) fn definition(&self) -> ToolDefinition {
+        self.definition.clone()
     }
 
     /// The family-keyed descriptor of this registration.
     pub fn descriptor(&self) -> FamilyDescriptor {
         FamilyDescriptor::Tool {
-            name: self.definition.name.clone(),
+            name: self.definition.name.to_string(),
             description: self.definition.description.clone(),
             parameters: self.definition.parameters.clone(),
             embedding: self.embedding.clone(),
@@ -202,7 +208,7 @@ impl RegisteredTool {
     /// the future mid-call leaves the caller's entire context unchanged.
     /// Handler errors and wrong-family outcomes become failed tool results.
     pub async fn execute(&self, args: String, context: &mut ToolContext) -> ToolResult {
-        let name = self.definition.name.clone();
+        let name = self.definition.name.to_string();
         // Context travels outside the serializable effect payload.
         let published = rig_core::tool::PublishedContext::new();
         let outcome = rig_core::serve::serve_inline_with(
@@ -444,7 +450,7 @@ impl ToolSet {
     pub fn tool_definitions(&self) -> Vec<ToolDefinition> {
         self.tools
             .iter()
-            .map(|(name, registration)| registration.tool.definition_with_name(name.clone()))
+            .map(|(_, registration)| registration.tool.definition())
             .collect()
     }
 
@@ -467,7 +473,7 @@ impl ToolSet {
         self.tools
             .iter()
             .map(|(name, registration)| {
-                let definition = registration.tool.definition_with_name(name.clone());
+                let definition = registration.tool.definition();
                 let serialized =
                     serde_json::to_string_pretty(&definition).unwrap_or_else(|error| {
                         tracing::warn!(

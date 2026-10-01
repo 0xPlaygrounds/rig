@@ -411,7 +411,7 @@ impl Tool for BetaSignal {
 /// Build a named tool definition accepting an empty JSON object.
 pub fn zero_arg_tool_definition(name: &str) -> ToolDefinition {
     ToolDefinition {
-        name: name.to_owned(),
+        name: rig_core::message::ToolName::new(name).expect("tool name"),
         description: format!("A zero-argument tool named {name}."),
         parameters: json!({
             "type": "object",

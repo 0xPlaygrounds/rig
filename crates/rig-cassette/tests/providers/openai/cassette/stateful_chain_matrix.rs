@@ -22,7 +22,7 @@ const CODE: &str = "amber-5521";
 
 fn lookup_tool() -> ToolDefinition {
     ToolDefinition {
-        name: "lookup_code".to_owned(),
+        name: rig_core::message::ToolName::new("lookup_code").expect("tool name"),
         description: "Return the code stored for a record.".to_owned(),
         parameters: json!({
             "type": "object",

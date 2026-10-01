@@ -1560,10 +1560,12 @@ async fn retiring_an_older_name_cannot_remove_the_latest_explicit_key_binding() 
         rig_agent::tool::RegisteredTool::from_tool(Slow::default())
             .with_key(rig_core::effect::Key::new_unchecked(key.clone())),
     );
-    let replacement =
-        rig_core::tool::DynamicTool::new("other", "replacement", json!({"type": "object"}), |_| {
-            Box::pin(async { Ok(rig_core::tool::ToolOutput::text("latest")) })
-        });
+    let replacement = rig_core::tool::DynamicTool::new(
+        rig_core::message::ToolName::new("other").expect("tool name"),
+        "replacement",
+        json!({"type": "object"}),
+        |_| Box::pin(async { Ok(rig_core::tool::ToolOutput::text("latest")) }),
+    );
     server.add_registered_tool(
         rig_agent::tool::RegisteredTool::from_dynamic(replacement)
             .with_key(rig_core::effect::Key::new_unchecked(key.clone())),
@@ -1600,7 +1602,7 @@ fn attaching_a_bus_preserves_the_latest_explicit_key_owner() {
     let key = HandlerKey::from("host/tool:shared");
     for name in ["first", "second", "first"] {
         let tool = rig_core::tool::DynamicTool::new(
-            name,
+            rig_core::message::ToolName::new(name).expect("tool name"),
             "test binding",
             json!({"type": "object"}),
             |_| Box::pin(async { Ok(rig_core::tool::ToolOutput::text("answer")) }),

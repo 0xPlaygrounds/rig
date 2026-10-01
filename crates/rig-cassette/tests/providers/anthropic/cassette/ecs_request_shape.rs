@@ -150,7 +150,9 @@ async fn tool_choice_specific_effect_log() {
                     .world_mut()
                     .entity_mut(ecs.agent)
                     .insert(ToolChoiceSpec(Some(ToolChoice::Specific {
-                        function_names: vec!["add".into()],
+                        function_names: vec![
+                            rig_core::message::ToolName::new("add").expect("tool name"),
+                        ],
                     })));
                 let history = vec![];
                 let run =

@@ -15,7 +15,7 @@ fn prepared_request_round_trips_through_serde() {
         &ProviderCapabilities::default(),
         &[Message::user("hi")],
         vec![ToolDefinition {
-            name: "add".to_string(),
+            name: rig_core::message::ToolName::new("add").expect("tool name"),
             description: "adds".to_string(),
             parameters: serde_json::json!({"type": "object"}),
         }],
@@ -72,7 +72,7 @@ fn allowed_tool_names_none_allows_no_tools() {
 fn allowed_tool_names_specific_allows_requested_executable_tools() {
     let executable = tool_names(&["add", "subtract"]);
     let choice = ToolChoice::Specific {
-        function_names: vec!["add".to_string()],
+        function_names: vec![rig_core::message::ToolName::new("add").expect("tool name")],
     };
 
     assert_eq!(
@@ -85,7 +85,7 @@ fn allowed_tool_names_specific_allows_requested_executable_tools() {
 fn allowed_tool_names_specific_rejects_missing_tools() {
     let executable = tool_names(&["add"]);
     let choice = ToolChoice::Specific {
-        function_names: vec!["missing".to_string()],
+        function_names: vec![rig_core::message::ToolName::new("missing").expect("tool name")],
     };
 
     let err = allowed_tool_names_for_choice(&executable, Some(&choice), None, None)
@@ -171,7 +171,7 @@ fn specific_naming_a_filtered_out_tool_is_a_local_error_with_hint() {
     // the now-filtered-out `subtract`.
     let executable = tool_names(&["add"]);
     let choice = ToolChoice::Specific {
-        function_names: vec!["subtract".to_string()],
+        function_names: vec![rig_core::message::ToolName::new("subtract").expect("tool name")],
     };
     let err = allowed_tool_names_for_choice(
         &executable,
@@ -196,7 +196,7 @@ fn specific_may_name_the_output_tool() {
     // The effective advertised set includes the synthetic output tool.
     let empty = tool_names(&[]);
     let choice = ToolChoice::Specific {
-        function_names: vec!["final_result".to_string()],
+        function_names: vec![rig_core::message::ToolName::new("final_result").expect("tool name")],
     };
     let allowed = allowed_tool_names_for_choice(&empty, Some(&choice), Some("final_result"), None)
         .expect("Specific naming the output tool is valid");
@@ -210,7 +210,7 @@ fn specific_typo_is_not_blamed_on_active_tools() {
     // because the filter never had that tool to drop.
     let executable = tool_names(&["add"]);
     let choice = ToolChoice::Specific {
-        function_names: vec!["nonexistent".to_string()],
+        function_names: vec![rig_core::message::ToolName::new("nonexistent").expect("tool name")],
     };
     let err = allowed_tool_names_for_choice(
         &executable,

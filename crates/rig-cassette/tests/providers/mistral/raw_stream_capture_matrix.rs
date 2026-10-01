@@ -64,7 +64,7 @@ fn request() -> CompletionRequest {
 
 fn lookup_city_tool() -> ToolDefinition {
     ToolDefinition {
-        name: TOOL_NAME.to_owned(),
+        name: rig_core::message::ToolName::new(TOOL_NAME).expect("tool name"),
         description: "Look up a city by name.".to_owned(),
         parameters: json!({
             "type": "object",

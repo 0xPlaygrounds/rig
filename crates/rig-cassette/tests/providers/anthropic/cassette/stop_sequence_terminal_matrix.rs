@@ -101,7 +101,7 @@ fn request(prompt: &str, stop_sequences: &[&str], max_tokens: u64) -> Completion
 
 fn weather_tool() -> ToolDefinition {
     ToolDefinition {
-        name: "get_weather".to_string(),
+        name: rig_core::message::ToolName::new("get_weather").expect("tool name"),
         description: "Get the current weather for a city.".to_string(),
         parameters: json!({
             "type": "object",

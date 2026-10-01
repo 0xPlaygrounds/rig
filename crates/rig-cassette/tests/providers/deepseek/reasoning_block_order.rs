@@ -48,7 +48,7 @@ fn non_thinking_params() -> Value {
 
 fn weather_tool_definition() -> ToolDefinition {
     ToolDefinition {
-        name: "get_weather".to_owned(),
+        name: rig_core::message::ToolName::new("get_weather").expect("tool name"),
         description: "Get the current weather for a city. Must be called for weather questions."
             .to_owned(),
         parameters: json!({
@@ -63,7 +63,7 @@ fn weather_tool_definition() -> ToolDefinition {
 
 fn air_quality_tool_definition() -> ToolDefinition {
     ToolDefinition {
-        name: "get_air_quality".to_owned(),
+        name: rig_core::message::ToolName::new("get_air_quality").expect("tool name"),
         description: "Get the current air quality index for a city.".to_owned(),
         parameters: json!({
             "type": "object",

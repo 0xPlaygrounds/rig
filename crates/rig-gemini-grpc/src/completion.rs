@@ -272,7 +272,7 @@ pub(crate) fn create_grpc_request(
             .into_iter()
             .map(|tool| {
                 Ok(proto::FunctionDeclaration {
-                    name: tool.name,
+                    name: tool.name.into(),
                     description: tool.description,
                     parameters: tool_parameters_to_proto_schema(&tool.parameters)?,
                     ..Default::default()

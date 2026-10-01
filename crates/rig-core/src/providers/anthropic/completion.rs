@@ -1157,7 +1157,7 @@ impl TryFrom<message::ToolChoice> for ToolChoice {
                     ));
                 };
 
-                Self::Tool { name }
+                Self::Tool { name: name.into() }
             }
         };
 
@@ -2260,7 +2260,7 @@ pub(super) fn build_tool_definitions(
         .map(|tool| {
             let input_schema = tool.parameters;
             let mut tool = ToolDefinition {
-                name: tool.name,
+                name: tool.name.into(),
                 description: Some(tool.description),
                 input_schema,
                 strict: false,

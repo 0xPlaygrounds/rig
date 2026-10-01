@@ -325,7 +325,7 @@ fn unsupported_tool_choices_are_rejected_before_the_request_is_sent() {
     for unsupported in [
         ToolChoice::Auto,
         ToolChoice::Specific {
-            function_names: vec!["subtract".to_string()],
+            function_names: vec![crate::message::ToolName::new("subtract").expect("tool name")],
         },
     ] {
         let error = ProviderError::from(

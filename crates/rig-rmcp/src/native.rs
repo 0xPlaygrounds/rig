@@ -14,7 +14,7 @@ use rmcp::model::{
 };
 use rmcp::service::PeerRequestOptions;
 
-use rig_core::message::{ImageMediaType, MimeType, ToolResultContent};
+use rig_core::message::{EmptyToolName, ImageMediaType, MimeType, ToolName, ToolResultContent};
 use rig_core::tool::{
     ContextValue, DynamicTool, ToolContext, ToolContextError, ToolExecutionError, ToolOutput,
 };
@@ -438,6 +438,10 @@ pub enum McpClientError {
     /// The server did not finish returning its tool list before the deadline.
     #[error("Timed out fetching MCP tool list after {0:?}")]
     ToolFetchTimeout(Duration),
+
+    /// The server listed a tool with an empty name.
+    #[error("MCP server listed a tool with an empty name")]
+    EmptyToolName(#[from] EmptyToolName),
 }
 
 /// Wrap every tool of an MCP server's list as an [`McpTool`] sharing one
@@ -478,10 +482,12 @@ pub fn preserve_mcp_result(
 /// response's `structuredContent`, response `Meta`, and raw [`CallToolResult`]
 /// are published to the context's result map ([`preserve_mcp_result`]). A tool
 /// that reports `is_error` becomes a failed call whose error carries the tool's
-/// output.
-impl From<McpTool> for DynamicTool {
-    fn from(tool: McpTool) -> Self {
-        let name = tool.definition.name.to_string();
+/// output. Fails with [`EmptyToolName`] when the server gave the tool no name.
+impl TryFrom<McpTool> for DynamicTool {
+    type Error = EmptyToolName;
+
+    fn try_from(tool: McpTool) -> Result<Self, EmptyToolName> {
+        let name = ToolName::new(tool.definition.name.to_string())?;
         let description = tool
             .definition
             .description
@@ -491,7 +497,7 @@ impl From<McpTool> for DynamicTool {
         let parameters = tool.definition.schema_as_json_value();
         let liveness_client = tool.client.clone();
         let tool = Arc::new(tool);
-        DynamicTool::new_with_context(
+        Ok(DynamicTool::new_with_context(
             name,
             description,
             parameters,
@@ -517,7 +523,7 @@ impl From<McpTool> for DynamicTool {
                 })
             },
         )
-        .with_liveness(move || !liveness_client.is_transport_closed())
+        .with_liveness(move || !liveness_client.is_transport_closed()))
     }
 }
 

@@ -1472,7 +1472,7 @@ fn cache_probe_preamble_for(label: &str) -> String {
 fn cache_probe_tools() -> Vec<ToolDefinition> {
     vec![
         ToolDefinition {
-            name: "lookup_cache_policy".to_string(),
+            name: rig_core::message::ToolName::new("lookup_cache_policy").expect("tool name"),
             description: format!(
                 "Return internal prompt cache policy notes. {}",
                 cache_padding(CACHE_PADDING_REPETITIONS / 2)
@@ -1489,7 +1489,7 @@ fn cache_probe_tools() -> Vec<ToolDefinition> {
             }),
         },
         ToolDefinition {
-            name: "lookup_cache_fixture".to_string(),
+            name: rig_core::message::ToolName::new("lookup_cache_fixture").expect("tool name"),
             description: format!(
                 "Return prompt cache fixture notes. {}",
                 cache_padding(CACHE_PADDING_REPETITIONS / 2)
@@ -1511,7 +1511,7 @@ fn cache_probe_tools() -> Vec<ToolDefinition> {
 fn cache_probe_tools_for(label: &str) -> Vec<ToolDefinition> {
     vec![
         ToolDefinition {
-            name: "lookup_cache_policy".to_string(),
+            name: rig_core::message::ToolName::new("lookup_cache_policy").expect("tool name"),
             description: format!(
                 "Return {label} internal prompt cache policy notes. {}",
                 cache_padding(CACHE_PADDING_REPETITIONS / 2)
@@ -1528,7 +1528,7 @@ fn cache_probe_tools_for(label: &str) -> Vec<ToolDefinition> {
             }),
         },
         ToolDefinition {
-            name: "lookup_cache_fixture".to_string(),
+            name: rig_core::message::ToolName::new("lookup_cache_fixture").expect("tool name"),
             description: format!(
                 "Return prompt cache fixture notes. {}",
                 cache_padding(CACHE_PADDING_REPETITIONS / 2)

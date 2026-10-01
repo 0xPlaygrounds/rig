@@ -103,7 +103,7 @@ fn reasoning_request() -> CompletionRequest {
 
 fn ping_tool() -> ToolDefinition {
     ToolDefinition {
-        name: "ping".to_owned(),
+        name: rig_core::message::ToolName::new("ping").expect("tool name"),
         description: "Matrix tool ping".to_owned(),
         parameters: json!({ "type": "object", "properties": {}, "additionalProperties": false }),
     }

@@ -1498,7 +1498,7 @@ fn renders_smollm2_history_default_system_and_generation_suffix()
 fn rejects_unsupported_request_features() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let mut tools = request(vec![Message::user("hello")]);
     tools.tools.push(ToolDefinition {
-        name: "tool".to_string(),
+        name: rig_core::message::ToolName::new("tool").expect("tool name"),
         description: "tool".to_string(),
         parameters: serde_json::json!({}),
     });

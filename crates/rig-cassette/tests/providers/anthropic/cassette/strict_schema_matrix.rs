@@ -24,7 +24,7 @@ async fn assert_strict_schema_rejected(
         .max_tokens(64)
         .tool_choice(ToolChoice::Required)
         .tool(ToolDefinition {
-            name: tool_name.to_string(),
+            name: rig_core::message::ToolName::new(tool_name).expect("tool name"),
             description: "Exercise a schema the strict compiler rejects.".to_string(),
             parameters,
         });
@@ -1093,7 +1093,7 @@ async fn required_and_optional_property_order_schema_is_accepted() {
             .max_tokens(1024)
             .tool_choice(ToolChoice::Required)
             .tool(ToolDefinition {
-                name: "record_order".to_string(),
+                name: rig_core::message::ToolName::new("record_order").expect("tool name"),
                 description: "Record required and optional properties.".to_string(),
                 parameters: json!({
                     "type": "object",

@@ -856,3 +856,26 @@ mod additional_params_precedence {
         assert_eq!(cleared.additional_params, Some(json!({"b": 2})));
     }
 }
+
+/// A definition and a specific tool choice carry validated names, so an
+/// empty name is rejected when either is read back from JSON.
+#[test]
+fn tool_definitions_and_specific_choices_reject_empty_names() {
+    let definition = serde_json::json!({
+        "name": "",
+        "description": "d",
+        "parameters": {"type": "object"},
+    });
+    assert!(serde_json::from_value::<super::ToolDefinition>(definition).is_err());
+
+    let choice = serde_json::json!({"specific": {"function_names": ["add", ""]}});
+    assert!(serde_json::from_value::<crate::message::ToolChoice>(choice).is_err());
+
+    let choice = serde_json::json!({"specific": {"function_names": ["add"]}});
+    assert_eq!(
+        serde_json::from_value::<crate::message::ToolChoice>(choice).ok(),
+        Some(crate::message::ToolChoice::Specific {
+            function_names: vec![crate::message::ToolName::new("add").expect("tool name")],
+        })
+    );
+}

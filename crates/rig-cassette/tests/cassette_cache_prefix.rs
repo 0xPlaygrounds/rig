@@ -678,7 +678,7 @@ const IGNORED_RESPONSE: &str = "{}";
 /// likely place for iteration order to leak.
 fn determinism_probe_request() -> CompletionRequest {
     let tool = |name: &str, first: &str, second: &str| ToolDefinition {
-        name: name.to_owned(),
+        name: rig_core::message::ToolName::new(name).expect("tool name"),
         description: format!("Deterministic ordering probe tool {name}."),
         parameters: serde_json::json!({
             "type": "object",

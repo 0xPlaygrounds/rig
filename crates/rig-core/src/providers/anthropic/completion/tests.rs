@@ -301,7 +301,7 @@ fn test_cache_control_serialization() {
 
 fn generic_tool(name: &str) -> completion::ToolDefinition {
     completion::ToolDefinition {
-        name: name.to_string(),
+        name: crate::message::ToolName::new(name).expect("tool name"),
         description: format!("{name} description"),
         parameters: json!({
             "type": "object",

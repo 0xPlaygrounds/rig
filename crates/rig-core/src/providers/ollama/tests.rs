@@ -271,7 +271,7 @@ fn unsupported_user_content_returns_a_conversion_error() {
 fn test_tool_definition_conversion() {
     // Internal tool definition from the completion module.
     let internal_tool = crate::completion::ToolDefinition {
-        name: "get_current_weather".to_owned(),
+        name: crate::message::ToolName::new("get_current_weather").expect("tool name"),
         description: "Get the current weather for a location".to_owned(),
         parameters: json!({
             "type": "object",

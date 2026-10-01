@@ -375,7 +375,7 @@ fn tool_choice_is_dropped_when_no_tool_is_advertised() {
 
     let with_tool =
         serde_json::to_value(convert(request(vec![crate::completion::ToolDefinition {
-            name: "add".to_string(),
+            name: crate::message::ToolName::new("add").expect("tool name"),
             description: "add two numbers".to_string(),
             parameters: json!({"type": "object", "properties": {}}),
         }])))
@@ -1028,7 +1028,7 @@ fn test_max_tokens_omitted_when_none() {
 fn additional_params_function_tools_merge_and_native_tools_stay() {
     let request = CoreCompletionRequest::new("Hello")
         .tools(vec![crate::completion::ToolDefinition {
-            name: "builder_tool".to_string(),
+            name: crate::message::ToolName::new("builder_tool").expect("tool name"),
             description: "from the builder".to_string(),
             parameters: serde_json::json!({"type": "object", "properties": {}}),
         }])
@@ -1114,7 +1114,7 @@ fn request_conversion_omits_response_format_on_initial_tool_turn() {
             .expect("schema should deserialize"),
         )
         .tools(vec![completion::ToolDefinition {
-            name: "weather".to_string(),
+            name: crate::message::ToolName::new("weather").expect("tool name"),
             description: "Get the weather".to_string(),
             parameters: serde_json::json!({
                 "type": "object",
@@ -1178,7 +1178,7 @@ fn request_conversion_restores_response_format_after_tool_result() {
         .expect("schema should deserialize"),
     )
     .tools(vec![completion::ToolDefinition {
-        name: "weather".to_string(),
+        name: crate::message::ToolName::new("weather").expect("tool name"),
         description: "Get the weather".to_string(),
         parameters: serde_json::json!({
             "type": "object",

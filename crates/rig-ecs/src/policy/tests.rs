@@ -144,7 +144,9 @@ fn output_resolution_follows_the_goldens() {
     ));
     assert!(output_tool_callable(
         Some(&ToolChoice::Specific {
-            function_names: vec!["final_result".to_owned()]
+            function_names: vec![
+                rig_core::message::ToolName::new("final_result").expect("tool name")
+            ]
         }),
         "final_result"
     ));

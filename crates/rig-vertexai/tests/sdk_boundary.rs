@@ -98,7 +98,7 @@ async fn unary_completion_converts_the_request_and_maps_the_response() {
     request.max_tokens = Some(64);
     request.tool_choice = Some(ToolChoice::Required);
     request.tools = vec![ToolDefinition {
-        name: "lookup_weather".to_string(),
+        name: rig_core::message::ToolName::new("lookup_weather").expect("tool name"),
         description: "look up the weather".to_string(),
         parameters: serde_json::json!({
             "type": "object",

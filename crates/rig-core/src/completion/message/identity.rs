@@ -35,6 +35,13 @@ impl ToolName {
         }
     }
 
+    /// `name` without the emptiness check. Callers prove `name` is not empty,
+    /// for example with a compile-time assertion on a `Tool::NAME`.
+    pub(crate) fn new_unchecked(name: &str) -> Self {
+        debug_assert!(!name.is_empty());
+        Self(name.to_owned())
+    }
+
     /// The name.
     pub fn as_str(&self) -> &str {
         &self.0
