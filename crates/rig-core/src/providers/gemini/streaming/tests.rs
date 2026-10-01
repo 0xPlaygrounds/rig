@@ -6,18 +6,7 @@ use serde_json::json;
 /// exercise, so the request only has to be well-formed.
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 fn streaming_request() -> crate::completion::CompletionRequest {
-    crate::completion::CompletionRequest {
-        model: None,
-        chat_history: vec![crate::message::Message::user("hello")],
-        documents: Vec::new(),
-        tools: Vec::new(),
-        temperature: None,
-        max_tokens: None,
-        tool_choice: None,
-        additional_params: None,
-        output_schema: None,
-        record_telemetry_content: false,
-    }
+    crate::completion::CompletionRequest::new("hello")
 }
 
 /// The GenerateContent wire for `model`, bound to a transport that answers

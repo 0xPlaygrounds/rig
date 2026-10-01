@@ -567,18 +567,7 @@ fn tool_result_file_id_image_uses_the_native_wire_field() {
 }
 
 fn weather_tool_request() -> completion::CompletionRequest {
-    completion::CompletionRequest {
-        model: None,
-        chat_history: vec![message::Message::user("what's the weather?")],
-        documents: Vec::new(),
-        tools: vec![weather_tool_definition()],
-        temperature: None,
-        max_tokens: None,
-        tool_choice: None,
-        additional_params: None,
-        output_schema: None,
-        record_telemetry_content: false,
-    }
+    completion::CompletionRequest::new("what's the weather?").tools(vec![weather_tool_definition()])
 }
 
 #[test]
@@ -736,36 +725,14 @@ fn responses_strict_function_tools_sanitize_schema() {
 }
 
 fn request_with_preamble(preamble: &str) -> completion::CompletionRequest {
-    completion::CompletionRequest {
-        model: None,
-        chat_history: vec![
-            message::Message::system(preamble),
-            message::Message::user("Hello"),
-        ],
-        documents: Vec::new(),
-        tools: Vec::new(),
-        temperature: None,
-        max_tokens: None,
-        tool_choice: None,
-        additional_params: None,
-        output_schema: None,
-        record_telemetry_content: false,
-    }
+    completion::CompletionRequest::from(vec![
+        message::Message::system(preamble),
+        message::Message::user("Hello"),
+    ])
 }
 
 fn system_only_request(system_text: &str) -> completion::CompletionRequest {
-    completion::CompletionRequest {
-        model: None,
-        chat_history: vec![completion::Message::system(system_text)],
-        documents: Vec::new(),
-        tools: Vec::new(),
-        temperature: None,
-        max_tokens: None,
-        tool_choice: None,
-        additional_params: None,
-        output_schema: None,
-        record_telemetry_content: false,
-    }
+    completion::CompletionRequest::new(completion::Message::system(system_text))
 }
 
 #[test]
@@ -1208,23 +1175,13 @@ fn responses_request_keeps_documents_after_lifted_system_messages() {
 
 #[test]
 fn responses_direct_request_keeps_mid_conversation_system_messages_in_input() {
-    let request = crate::completion::CompletionRequest {
-        model: None,
-        chat_history: vec![
-            completion::Message::system("System prompt"),
-            completion::Message::assistant("Earlier assistant turn"),
-            completion::Message::system("Mid-conversation instruction"),
-            completion::Message::user("Prompt"),
-        ],
-        documents: vec![test_document("doc1", "Document text.")],
-        tools: vec![],
-        temperature: None,
-        max_tokens: None,
-        tool_choice: None,
-        additional_params: None,
-        output_schema: None,
-        record_telemetry_content: false,
-    };
+    let request = crate::completion::CompletionRequest::from(vec![
+        completion::Message::system("System prompt"),
+        completion::Message::assistant("Earlier assistant turn"),
+        completion::Message::system("Mid-conversation instruction"),
+        completion::Message::user("Prompt"),
+    ])
+    .documents(vec![test_document("doc1", "Document text.")]);
 
     let responses_request = CompletionRequest::try_from(("gpt-4o-mini".to_string(), request))
         .expect("request conversion should succeed");
@@ -2150,48 +2107,38 @@ fn assistant_reasoning_text_tool_call_convert_in_responses_replay_order() {
 
 #[test]
 fn mocked_second_turn_request_omits_unreplayable_reasoning() {
-    let request = crate::completion::CompletionRequest {
-        model: None,
-        chat_history: vec![
-            completion::Message::system("You are concise."),
-            completion::Message::User {
-                content: vec![message::UserContent::Text(Text::new(
-                    "Think briefly, then answer.",
-                ))],
-            },
-            completion::Message::Assistant {
-                id: Some("msg_123".to_string()),
-                content: vec![
-                    message::AssistantContent::Reasoning(
-                        message::Reasoning::new("provider reasoning").sealed("openai"),
-                    ),
-                    message::AssistantContent::Text(Text::new("final answer")),
-                ],
-            },
-            completion::Message::Assistant {
-                id: None,
-                content: vec![
-                    message::AssistantContent::Reasoning(
-                        message::Reasoning::new("provider reasoning only").sealed("openai"),
-                    ),
-                    message::AssistantContent::Text(Text::new("")),
-                ],
-            },
-            completion::Message::User {
-                content: vec![message::UserContent::Text(Text::new(
-                    "/no_think Reply with exactly: OK",
-                ))],
-            },
-        ],
-        documents: Vec::new(),
-        tools: Vec::new(),
-        temperature: None,
-        max_tokens: Some(64),
-        tool_choice: None,
-        additional_params: None,
-        output_schema: None,
-        record_telemetry_content: false,
-    };
+    let request = crate::completion::CompletionRequest::from(vec![
+        completion::Message::system("You are concise."),
+        completion::Message::User {
+            content: vec![message::UserContent::Text(Text::new(
+                "Think briefly, then answer.",
+            ))],
+        },
+        completion::Message::Assistant {
+            id: Some("msg_123".to_string()),
+            content: vec![
+                message::AssistantContent::Reasoning(
+                    message::Reasoning::new("provider reasoning").sealed("openai"),
+                ),
+                message::AssistantContent::Text(Text::new("final answer")),
+            ],
+        },
+        completion::Message::Assistant {
+            id: None,
+            content: vec![
+                message::AssistantContent::Reasoning(
+                    message::Reasoning::new("provider reasoning only").sealed("openai"),
+                ),
+                message::AssistantContent::Text(Text::new("")),
+            ],
+        },
+        completion::Message::User {
+            content: vec![message::UserContent::Text(Text::new(
+                "/no_think Reply with exactly: OK",
+            ))],
+        },
+    ])
+    .max_tokens(64);
 
     let request = CompletionRequest::try_from(("Qwen/Qwen3-4B".to_string(), request))
         .expect("request should convert");
@@ -2657,18 +2604,7 @@ fn url_pdf_via_input_item_path_omits_filename() {
 
 #[test]
 fn url_pdf_in_full_completion_request_omits_filename() {
-    let core_request = crate::completion::CompletionRequest {
-        model: None,
-        chat_history: vec![url_pdf_message()],
-        documents: Vec::new(),
-        tools: Vec::new(),
-        temperature: None,
-        max_tokens: None,
-        tool_choice: None,
-        additional_params: None,
-        output_schema: None,
-        record_telemetry_content: false,
-    };
+    let core_request = crate::completion::CompletionRequest::new(url_pdf_message());
 
     let request = CompletionRequest::try_from(("gpt-4o".to_string(), core_request))
         .expect("request should convert");

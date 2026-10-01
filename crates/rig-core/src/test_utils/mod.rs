@@ -31,6 +31,19 @@ pub use tracing_isolation::{
     scoped_tracing_subscriber_guard, scoped_tracing_subscriber_guard_blocking,
 };
 
+/// The JSON document an encoded request sends.
+///
+/// # Panics
+///
+/// When the body is multipart or is not JSON.
+#[cfg(test)]
+pub(crate) fn json_body(request: &http::Request<crate::wire::Body>) -> serde_json::Value {
+    let crate::wire::Body::Bytes(bytes) = request.body() else {
+        panic!("the request body is multipart, not JSON");
+    };
+    serde_json::from_slice(bytes).expect("the request body is JSON")
+}
+
 /// Decode one reply of `wire` to `request` from frames already in hand,
 /// folded as `mode` folds it: the one decoder and fold a live call runs.
 #[cfg(test)]

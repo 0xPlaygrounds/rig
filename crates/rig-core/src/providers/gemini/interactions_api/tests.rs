@@ -9,18 +9,10 @@ fn test_create_request_body_simple() {
         content: vec![message::UserContent::text("Hello")],
     };
 
-    let request = CompletionRequest {
-        record_telemetry_content: false,
-        model: None,
-        chat_history: vec![Message::system("Be precise."), prompt],
-        documents: vec![],
-        tools: vec![],
-        temperature: Some(0.7),
-        max_tokens: Some(128),
-        tool_choice: Some(MessageToolChoice::Required),
-        additional_params: None,
-        output_schema: None,
-    };
+    let request = CompletionRequest::from(vec![Message::system("Be precise."), prompt])
+        .temperature(0.7)
+        .max_tokens(128)
+        .tool_choice(MessageToolChoice::Required);
 
     let result = create_request_body("gemini-2.5-flash".to_string(), request, Some(false))
         .expect("request should build");
@@ -87,32 +79,21 @@ fn tool_result_serializes_the_executed_name_not_an_identifier() {
         }],
     };
 
-    let request = CompletionRequest {
-        record_telemetry_content: false,
-        model: None,
-        chat_history: vec![
-            // A driver-built result carries the executed name (a repair
-            // hook renamed the call: `sum` ran, not `add`).
-            call(None, "call_1", "sum"),
-            result(None, "call_1", "sum"), // An OpenAI-shaped correlator travels as the call id while
-            // the required `name` field carries the executed name —
-            // `call_abc` must never reach the wire as a name.
-            call(None, "call_abc", "get_weather"),
-            result(None, "call_abc", "get_weather"), // A dual-identifier result (OpenAI Responses: item id `fc_…`
-            // + `call_id` `call_…`) keeps the correlator on the wire and
-            // the executed name in `name` — `fc_1` must never reach the
-            // wire as a name.
-            call(Some("fc_1"), "call_9", "get_time"),
-            result(Some("fc_1"), "call_9", "get_time"),
-        ],
-        documents: vec![],
-        tools: vec![],
-        temperature: None,
-        max_tokens: None,
-        tool_choice: None,
-        additional_params: None,
-        output_schema: None,
-    };
+    let request = CompletionRequest::from(vec![
+        // A driver-built result carries the executed name (a repair
+        // hook renamed the call: `sum` ran, not `add`).
+        call(None, "call_1", "sum"),
+        result(None, "call_1", "sum"), // An OpenAI-shaped correlator travels as the call id while
+        // the required `name` field carries the executed name —
+        // `call_abc` must never reach the wire as a name.
+        call(None, "call_abc", "get_weather"),
+        result(None, "call_abc", "get_weather"), // A dual-identifier result (OpenAI Responses: item id `fc_…`
+        // + `call_id` `call_…`) keeps the correlator on the wire and
+        // the executed name in `name` — `fc_1` must never reach the
+        // wire as a name.
+        call(Some("fc_1"), "call_9", "get_time"),
+        result(Some("fc_1"), "call_9", "get_time"),
+    ]);
 
     let body = create_request_body("gemini-2.5-flash".to_string(), request, None)
         .expect("request should build");
@@ -315,20 +296,9 @@ fn test_tool_result_images_and_text_serialize_as_ordered_tagged_content() {
             }),
         ],
     });
-    let request = CompletionRequest {
-        record_telemetry_content: false,
-        model: None,
-        chat_history: vec![Message::User {
-            content: vec![tool_result],
-        }],
-        documents: vec![],
-        tools: vec![],
-        temperature: None,
-        max_tokens: None,
-        tool_choice: None,
-        additional_params: None,
-        output_schema: None,
-    };
+    let request = CompletionRequest::new(Message::User {
+        content: vec![tool_result],
+    });
 
     let request = create_request_body("gemini-2.5-flash".to_string(), request, None)
         .expect("request should build");
@@ -1092,18 +1062,7 @@ fn a_tool_round_trip_is_top_level_steps() {
     ));
     let body = create_request_body(
         "gemini-2.5-flash".to_owned(),
-        CompletionRequest {
-            record_telemetry_content: false,
-            model: None,
-            chat_history: vec![Message::user("Add 17 and 25."), assistant, result],
-            documents: vec![],
-            tools: vec![],
-            temperature: None,
-            max_tokens: None,
-            tool_choice: None,
-            additional_params: None,
-            output_schema: None,
-        },
+        CompletionRequest::from(vec![Message::user("Add 17 and 25."), assistant, result]),
         None,
     )
     .expect("the request builds");
@@ -1193,18 +1152,7 @@ fn interactions_wire() -> Interactions {
 }
 
 fn probe() -> CompletionRequest {
-    CompletionRequest {
-        record_telemetry_content: false,
-        model: None,
-        chat_history: vec![Message::user("probe")],
-        documents: vec![],
-        tools: vec![],
-        temperature: None,
-        max_tokens: None,
-        tool_choice: None,
-        additional_params: None,
-        output_schema: None,
-    }
+    CompletionRequest::new("probe")
 }
 
 /// Fold an interaction resource, as the unary reply's body, through the
@@ -1340,11 +1288,7 @@ fn the_mode_chooses_the_query_and_the_framing_and_the_key_is_a_header() {
     assert_eq!(streaming.request_id_header, None);
 
     // `stream` rides the body on this wire as well as the query.
-    let body = match sole(&streaming).body() {
-        crate::wire::Body::Bytes(bytes) => bytes.clone(),
-        crate::wire::Body::Multipart(_) => panic!("interactions posts JSON"),
-    };
-    let body: serde_json::Value = serde_json::from_slice(&body).expect("the request body is JSON");
+    let body = crate::test_utils::json_body(sole(&streaming));
     assert_eq!(body.get("stream"), Some(&json!(true)));
 }
 

@@ -32,18 +32,7 @@ fn a_serialized_config_carries_no_key_material() {
 
     // …and it is still the key that goes out on the request, so the
     // redaction above is a serialization property, not a lost credential.
-    let request = crate::completion::CompletionRequest {
-        model: None,
-        chat_history: vec!["probe".into()],
-        documents: vec![],
-        tools: vec![],
-        temperature: None,
-        max_tokens: None,
-        tool_choice: None,
-        additional_params: None,
-        output_schema: None,
-        record_telemetry_content: false,
-    };
+    let request = crate::completion::CompletionRequest::new("probe");
     let encoded = wire
         .encode(request, crate::wire::Mode::Unary)
         .expect("the request encodes");

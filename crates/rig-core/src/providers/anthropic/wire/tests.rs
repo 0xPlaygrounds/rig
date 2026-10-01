@@ -8,6 +8,7 @@
 
 use super::*;
 use crate::message::AssistantContent;
+use crate::test_utils::json_body;
 use crate::wire::secret::tests::a_config_reloads_without_its_credential;
 use crate::wire::{Framing, Mode, Wire};
 
@@ -37,20 +38,7 @@ fn wire() -> Messages {
 }
 
 fn request() -> CompletionRequest {
-    CompletionRequest {
-        model: None,
-        chat_history: vec![crate::message::Message::user(
-            "Reply with exactly: parity probe",
-        )],
-        documents: Vec::new(),
-        tools: Vec::new(),
-        temperature: None,
-        max_tokens: Some(32),
-        tool_choice: None,
-        additional_params: None,
-        output_schema: None,
-        record_telemetry_content: false,
-    }
+    CompletionRequest::new("Reply with exactly: parity probe").max_tokens(32)
 }
 
 /// Fold a recorded reply body through the wire's own decoder, read in the
@@ -102,7 +90,7 @@ fn the_streaming_request_asks_for_a_stream_and_the_unary_one_does_not() {
         .encode(request(), Mode::Unary)
         .expect("the request encodes");
     assert_eq!(unary.framing, Framing::Whole);
-    let unary_body = body_of(&unary);
+    let unary_body = json_body(&unary.request);
     assert_eq!(unary_body.get("stream"), None);
 
     let streaming = wire()
@@ -110,7 +98,7 @@ fn the_streaming_request_asks_for_a_stream_and_the_unary_one_does_not() {
         .expect("the request encodes");
     assert_eq!(streaming.framing, Framing::Sse);
     assert_eq!(
-        body_of(&streaming).get("stream"),
+        json_body(&streaming.request).get("stream"),
         Some(&serde_json::Value::Bool(true))
     );
 }
@@ -137,16 +125,6 @@ fn the_request_carries_the_key_version_and_endpoint() {
         Some(super::super::completion::ANTHROPIC_VERSION_LATEST)
     );
     assert_eq!(encoded.request_id_header, Some("request-id"));
-}
-
-fn body_of(encoded: &Encoded) -> serde_json::Value {
-    let request = &encoded.request;
-    match request.body() {
-        Body::Bytes(bytes) => {
-            serde_json::from_slice(bytes).expect("the body is the JSON the wire built")
-        }
-        Body::Multipart(_) => panic!("the Messages endpoint takes JSON"),
-    }
 }
 
 #[test]

@@ -583,303 +583,83 @@ fn test_thinking_with_tool_calls() {
     }
 }
 
-// Test that `think` and `keep_alive` are extracted as top-level params, not in `options`
+/// The Ollama request built from a two-message turn whose
+/// `additional_params` carry `think`, `keep_alive` and `num_ctx`.
+fn request_with_think(think: serde_json::Value) -> Result<OllamaCompletionRequest, EncodeError> {
+    use crate::completion::Message as CompletionMessage;
+    use crate::message::{Text, UserContent};
+
+    let completion_request = CompletionRequest::from(vec![
+        CompletionMessage::system("You are a helpful assistant."),
+        CompletionMessage::User {
+            content: vec![UserContent::Text(Text::new("What is 2 + 2?".to_string()))],
+        },
+    ])
+    .temperature(0.7)
+    .max_tokens(1024)
+    .additional_params(json!({
+        "think": think,
+        "keep_alive": "-1m",
+        "num_ctx": 4096
+    }));
+    OllamaCompletionRequest::try_from(("qwen3:8b", completion_request))
+}
+
+/// Assert that `think` and `keep_alive` are extracted as top-level params,
+/// not in `options`, while `num_ctx` stays in `options` as a model parameter.
+/// `tools` is skipped when empty.
+fn assert_think_is_top_level(think: serde_json::Value) {
+    let ollama_request =
+        request_with_think(think.clone()).expect("Failed to create Ollama request");
+    let serialized = serde_json::to_value(&ollama_request).expect("Failed to serialize request");
+    let expected = json!({
+        "model": "qwen3:8b",
+        "messages": [
+            {
+                "role": "system",
+                "content": "You are a helpful assistant."
+            },
+            {
+                "role": "user",
+                "content": "What is 2 + 2?"
+            }
+        ],
+        "stream": false,
+        "think": think,
+        "keep_alive": "-1m",
+        "options": {
+            "temperature": 0.7,
+            "num_predict": 1024,
+            "num_ctx": 4096
+        }
+    });
+
+    assert_eq!(serialized, expected);
+}
+
 #[test]
 fn test_completion_request_with_think_param() {
-    use crate::completion::Message as CompletionMessage;
-    use crate::message::{Text, UserContent};
-
-    // Create a CompletionRequest with "think": true, "keep_alive", and "num_ctx" in additional_params
-    let completion_request = CompletionRequest {
-        model: None,
-        chat_history: vec![
-            CompletionMessage::system("You are a helpful assistant."),
-            CompletionMessage::User {
-                content: vec![UserContent::Text(Text::new("What is 2 + 2?".to_string()))],
-            },
-        ],
-        documents: vec![],
-        tools: vec![],
-        temperature: Some(0.7),
-        max_tokens: Some(1024),
-        tool_choice: None,
-        additional_params: Some(json!({
-            "think": true,
-            "keep_alive": "-1m",
-            "num_ctx": 4096
-        })),
-        output_schema: None,
-        record_telemetry_content: false,
-    };
-
-    // Convert to OllamaCompletionRequest
-    let ollama_request = OllamaCompletionRequest::try_from(("qwen3:8b", completion_request))
-        .expect("Failed to create Ollama request");
-
-    // Serialize to JSON
-    let serialized = serde_json::to_value(&ollama_request).expect("Failed to serialize request");
-
-    // Assert equality with expected JSON
-    // - "tools" is skipped when empty (skip_serializing_if)
-    // - "think" should be a top-level boolean, NOT in options
-    // - "keep_alive" should be a top-level string, NOT in options
-    // - "num_ctx" should be in options (it's a model parameter)
-    let expected = json!({
-        "model": "qwen3:8b",
-        "messages": [
-            {
-                "role": "system",
-                "content": "You are a helpful assistant."
-            },
-            {
-                "role": "user",
-                "content": "What is 2 + 2?"
-            }
-        ],
-        "stream": false,
-        "think": true,
-        "keep_alive": "-1m",
-        "options": {
-            "temperature": 0.7,
-            "num_predict": 1024,
-            "num_ctx": 4096
-        }
-    });
-
-    assert_eq!(serialized, expected);
+    assert_think_is_top_level(json!(true));
 }
 
-// Test that `think` and `keep_alive` are extracted as top-level params, not in `options`
 #[test]
 fn test_completion_request_with_level_low_think_param() {
-    use crate::completion::Message as CompletionMessage;
-    use crate::message::{Text, UserContent};
-
-    // Create a CompletionRequest with "think": true, "keep_alive", and "num_ctx" in additional_params
-    let completion_request = CompletionRequest {
-        model: None,
-        chat_history: vec![
-            CompletionMessage::system("You are a helpful assistant."),
-            CompletionMessage::User {
-                content: vec![UserContent::Text(Text::new("What is 2 + 2?".to_string()))],
-            },
-        ],
-        documents: vec![],
-        tools: vec![],
-        temperature: Some(0.7),
-        max_tokens: Some(1024),
-        tool_choice: None,
-        additional_params: Some(json!({
-            "think": "low",
-            "keep_alive": "-1m",
-            "num_ctx": 4096
-        })),
-        output_schema: None,
-        record_telemetry_content: false,
-    };
-
-    // Convert to OllamaCompletionRequest
-    let ollama_request = OllamaCompletionRequest::try_from(("qwen3:8b", completion_request))
-        .expect("Failed to create Ollama request");
-
-    // Serialize to JSON
-    let serialized = serde_json::to_value(&ollama_request).expect("Failed to serialize request");
-
-    // Assert equality with expected JSON
-    // - "tools" is skipped when empty (skip_serializing_if)
-    // - "think" should be a top-level boolean, NOT in options
-    // - "keep_alive" should be a top-level string, NOT in options
-    // - "num_ctx" should be in options (it's a model parameter)
-    let expected = json!({
-        "model": "qwen3:8b",
-        "messages": [
-            {
-                "role": "system",
-                "content": "You are a helpful assistant."
-            },
-            {
-                "role": "user",
-                "content": "What is 2 + 2?"
-            }
-        ],
-        "stream": false,
-        "think": "low",
-        "keep_alive": "-1m",
-        "options": {
-            "temperature": 0.7,
-            "num_predict": 1024,
-            "num_ctx": 4096
-        }
-    });
-
-    assert_eq!(serialized, expected);
+    assert_think_is_top_level(json!("low"));
 }
 
-// Test that `think` and `keep_alive` are extracted as top-level params, not in `options`
 #[test]
 fn test_completion_request_with_level_medium_think_param() {
-    use crate::completion::Message as CompletionMessage;
-    use crate::message::{Text, UserContent};
-
-    // Create a CompletionRequest with "think": true, "keep_alive", and "num_ctx" in additional_params
-    let completion_request = CompletionRequest {
-        model: None,
-        chat_history: vec![
-            CompletionMessage::system("You are a helpful assistant."),
-            CompletionMessage::User {
-                content: vec![UserContent::Text(Text::new("What is 2 + 2?".to_string()))],
-            },
-        ],
-        documents: vec![],
-        tools: vec![],
-        temperature: Some(0.7),
-        max_tokens: Some(1024),
-        tool_choice: None,
-        additional_params: Some(json!({
-            "think": "medium",
-            "keep_alive": "-1m",
-            "num_ctx": 4096
-        })),
-        output_schema: None,
-        record_telemetry_content: false,
-    };
-
-    // Convert to OllamaCompletionRequest
-    let ollama_request = OllamaCompletionRequest::try_from(("qwen3:8b", completion_request))
-        .expect("Failed to create Ollama request");
-
-    // Serialize to JSON
-    let serialized = serde_json::to_value(&ollama_request).expect("Failed to serialize request");
-
-    // Assert equality with expected JSON
-    // - "tools" is skipped when empty (skip_serializing_if)
-    // - "think" should be a top-level boolean, NOT in options
-    // - "keep_alive" should be a top-level string, NOT in options
-    // - "num_ctx" should be in options (it's a model parameter)
-    let expected = json!({
-        "model": "qwen3:8b",
-        "messages": [
-            {
-                "role": "system",
-                "content": "You are a helpful assistant."
-            },
-            {
-                "role": "user",
-                "content": "What is 2 + 2?"
-            }
-        ],
-        "stream": false,
-        "think": "medium",
-        "keep_alive": "-1m",
-        "options": {
-            "temperature": 0.7,
-            "num_predict": 1024,
-            "num_ctx": 4096
-        }
-    });
-
-    assert_eq!(serialized, expected);
+    assert_think_is_top_level(json!("medium"));
 }
 
-// Test that `think` and `keep_alive` are extracted as top-level params, not in `options`
 #[test]
 fn test_completion_request_with_level_high_think_param() {
-    use crate::completion::Message as CompletionMessage;
-    use crate::message::{Text, UserContent};
-
-    // Create a CompletionRequest with "think": true, "keep_alive", and "num_ctx" in additional_params
-    let completion_request = CompletionRequest {
-        model: None,
-        chat_history: vec![
-            CompletionMessage::system("You are a helpful assistant."),
-            CompletionMessage::User {
-                content: vec![UserContent::Text(Text::new("What is 2 + 2?".to_string()))],
-            },
-        ],
-        documents: vec![],
-        tools: vec![],
-        temperature: Some(0.7),
-        max_tokens: Some(1024),
-        tool_choice: None,
-        additional_params: Some(json!({
-            "think": "high",
-            "keep_alive": "-1m",
-            "num_ctx": 4096
-        })),
-        output_schema: None,
-        record_telemetry_content: false,
-    };
-
-    // Convert to OllamaCompletionRequest
-    let ollama_request = OllamaCompletionRequest::try_from(("qwen3:8b", completion_request))
-        .expect("Failed to create Ollama request");
-
-    // Serialize to JSON
-    let serialized = serde_json::to_value(&ollama_request).expect("Failed to serialize request");
-
-    // Assert equality with expected JSON
-    // - "tools" is skipped when empty (skip_serializing_if)
-    // - "think" should be a top-level boolean, NOT in options
-    // - "keep_alive" should be a top-level string, NOT in options
-    // - "num_ctx" should be in options (it's a model parameter)
-    let expected = json!({
-        "model": "qwen3:8b",
-        "messages": [
-            {
-                "role": "system",
-                "content": "You are a helpful assistant."
-            },
-            {
-                "role": "user",
-                "content": "What is 2 + 2?"
-            }
-        ],
-        "stream": false,
-        "think": "high",
-        "keep_alive": "-1m",
-        "options": {
-            "temperature": 0.7,
-            "num_predict": 1024,
-            "num_ctx": 4096
-        }
-    });
-
-    assert_eq!(serialized, expected);
+    assert_think_is_top_level(json!("high"));
 }
 
-// Test that `think` and `keep_alive` are extracted as top-level params, not in `options`
 #[test]
 fn test_completion_request_with_level_invalid_think_param() {
-    use crate::completion::Message as CompletionMessage;
-    use crate::message::{Text, UserContent};
-
-    // Create a CompletionRequest with "think": true, "keep_alive", and "num_ctx" in additional_params
-    let completion_request = CompletionRequest {
-        model: None,
-        chat_history: vec![
-            CompletionMessage::system("You are a helpful assistant."),
-            CompletionMessage::User {
-                content: vec![UserContent::Text(Text::new("What is 2 + 2?".to_string()))],
-            },
-        ],
-        documents: vec![],
-        tools: vec![],
-        temperature: Some(0.7),
-        max_tokens: Some(1024),
-        tool_choice: None,
-        additional_params: Some(json!({
-            "think": "invalid",
-            "keep_alive": "-1m",
-            "num_ctx": 4096
-        })),
-        output_schema: None,
-        record_telemetry_content: false,
-    };
-
-    // Convert to OllamaCompletionRequest
-    let ollama_request = OllamaCompletionRequest::try_from(("qwen3:8b", completion_request));
-
-    assert!(ollama_request.is_err());
+    assert!(request_with_think(json!("invalid")).is_err());
 }
 
 // Test that `think` is omitted when not specified, so Ollama applies the
@@ -890,23 +670,13 @@ fn test_completion_request_with_think_omitted_by_default() {
     use crate::message::{Text, UserContent};
 
     // Create a CompletionRequest WITHOUT "think" in additional_params
-    let completion_request = CompletionRequest {
-        model: None,
-        chat_history: vec![
-            CompletionMessage::system("You are a helpful assistant."),
-            CompletionMessage::User {
-                content: vec![UserContent::Text(Text::new("Hello!".to_string()))],
-            },
-        ],
-        documents: vec![],
-        tools: vec![],
-        temperature: Some(0.5),
-        max_tokens: None,
-        tool_choice: None,
-        additional_params: None,
-        output_schema: None,
-        record_telemetry_content: false,
-    };
+    let completion_request = CompletionRequest::from(vec![
+        CompletionMessage::system("You are a helpful assistant."),
+        CompletionMessage::User {
+            content: vec![UserContent::Text(Text::new("Hello!".to_string()))],
+        },
+    ])
+    .temperature(0.5);
 
     // Convert to OllamaCompletionRequest
     let ollama_request = OllamaCompletionRequest::try_from(("llama3.2", completion_request))
@@ -946,20 +716,11 @@ fn test_completion_request_num_predict_from_additional_params_wins() {
     use crate::completion::Message as CompletionMessage;
     use crate::message::{Text, UserContent};
 
-    let completion_request = CompletionRequest {
-        model: None,
-        chat_history: vec![CompletionMessage::User {
-            content: vec![UserContent::Text(Text::new("Hello!".to_string()))],
-        }],
-        documents: vec![],
-        tools: vec![],
-        temperature: None,
-        max_tokens: Some(1024),
-        tool_choice: None,
-        additional_params: Some(json!({ "num_predict": 42 })),
-        output_schema: None,
-        record_telemetry_content: false,
-    };
+    let completion_request = CompletionRequest::new(CompletionMessage::User {
+        content: vec![UserContent::Text(Text::new("Hello!".to_string()))],
+    })
+    .max_tokens(1024)
+    .additional_params(json!({ "num_predict": 42 }));
 
     let ollama_request = OllamaCompletionRequest::try_from(("llama3.2", completion_request))
         .expect("Failed to create Ollama request");
@@ -978,20 +739,11 @@ fn test_completion_request_num_predict_without_additional_params() {
     use crate::completion::Message as CompletionMessage;
     use crate::message::{Text, UserContent};
 
-    let completion_request = CompletionRequest {
-        model: None,
-        chat_history: vec![CompletionMessage::User {
-            content: vec![UserContent::Text(Text::new("Hello!".to_string()))],
-        }],
-        documents: vec![],
-        tools: vec![],
-        temperature: Some(0.7),
-        max_tokens: Some(1024),
-        tool_choice: None,
-        additional_params: None,
-        output_schema: None,
-        record_telemetry_content: false,
-    };
+    let completion_request = CompletionRequest::new(CompletionMessage::User {
+        content: vec![UserContent::Text(Text::new("Hello!".to_string()))],
+    })
+    .temperature(0.7)
+    .max_tokens(1024);
 
     let ollama_request = OllamaCompletionRequest::try_from(("llama3.2", completion_request))
         .expect("Failed to create Ollama request");
@@ -1014,20 +766,9 @@ fn test_completion_request_options_omit_unset_parameters() {
     use crate::completion::Message as CompletionMessage;
     use crate::message::{Text, UserContent};
 
-    let completion_request = CompletionRequest {
-        model: None,
-        chat_history: vec![CompletionMessage::User {
-            content: vec![UserContent::Text(Text::new("Hello!".to_string()))],
-        }],
-        documents: vec![],
-        tools: vec![],
-        temperature: None,
-        max_tokens: None,
-        tool_choice: None,
-        additional_params: None,
-        output_schema: None,
-        record_telemetry_content: false,
-    };
+    let completion_request = CompletionRequest::new(CompletionMessage::User {
+        content: vec![UserContent::Text(Text::new("Hello!".to_string()))],
+    });
 
     let ollama_request = OllamaCompletionRequest::try_from(("llama3.2", completion_request))
         .expect("Failed to create Ollama request");
@@ -1051,22 +792,13 @@ fn test_completion_request_with_output_schema() {
     }))
     .expect("Failed to parse schema");
 
-    let completion_request = CompletionRequest {
-        model: Some("llama3.1".to_string()),
-        chat_history: vec![CompletionMessage::User {
-            content: vec![UserContent::Text(Text::new(
-                "How old is Ollama?".to_string(),
-            ))],
-        }],
-        documents: vec![],
-        tools: vec![],
-        temperature: None,
-        max_tokens: None,
-        tool_choice: None,
-        additional_params: None,
-        output_schema: Some(schema),
-        record_telemetry_content: false,
-    };
+    let completion_request = CompletionRequest::new(CompletionMessage::User {
+        content: vec![UserContent::Text(Text::new(
+            "How old is Ollama?".to_string(),
+        ))],
+    })
+    .model("llama3.1".to_string())
+    .output_schema(schema);
 
     let ollama_request = OllamaCompletionRequest::try_from(("llama3.1", completion_request))
         .expect("Failed to create Ollama request");
@@ -1094,20 +826,10 @@ fn test_completion_request_without_output_schema() {
     use crate::completion::Message as CompletionMessage;
     use crate::message::{Text, UserContent};
 
-    let completion_request = CompletionRequest {
-        model: Some("llama3.1".to_string()),
-        chat_history: vec![CompletionMessage::User {
-            content: vec![UserContent::Text(Text::new("Hello!".to_string()))],
-        }],
-        documents: vec![],
-        tools: vec![],
-        temperature: None,
-        max_tokens: None,
-        tool_choice: None,
-        additional_params: None,
-        output_schema: None,
-        record_telemetry_content: false,
-    };
+    let completion_request = CompletionRequest::new(CompletionMessage::User {
+        content: vec![UserContent::Text(Text::new("Hello!".to_string()))],
+    })
+    .model("llama3.1".to_string());
 
     let ollama_request = OllamaCompletionRequest::try_from(("llama3.1", completion_request))
         .expect("Failed to create Ollama request");

@@ -4,7 +4,7 @@
 use super::*;
 use crate::providers::openai::Route;
 use crate::providers::openai::responses_api::SystemInstructionsPlacement;
-use crate::test_utils::RecordingHttpClient;
+use crate::test_utils::{RecordingHttpClient, json_body};
 
 /// A transport that sends nothing: every assertion here is about what is
 /// built, never about a reply.
@@ -524,11 +524,7 @@ fn the_configured_instruction_placement_reaches_the_request_body() {
         let encoded = wire
             .encode(request(), Mode::Unary)
             .expect("the request encodes");
-        let request = encoded.request;
-        let crate::wire::Body::Bytes(bytes) = request.into_body() else {
-            panic!("the Responses endpoint sends a serialized body");
-        };
-        serde_json::from_slice::<serde_json::Value>(&bytes).expect("and it is JSON")
+        json_body(&encoded.request)
     };
 
     let openai = ProviderId::resolve("openai/openai").unwrap();
