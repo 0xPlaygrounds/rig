@@ -2440,7 +2440,7 @@ fn test_plaintext_rig_to_anthropic_conversion() {
     use crate::completion::message as msg;
 
     let rig_message = msg::Message::User {
-        content: vec![msg::UserContent::document(
+        content: vec![msg::UserContent::document_text(
             "Some plain text content".to_string(),
             Some(msg::DocumentMediaType::TXT),
         )],

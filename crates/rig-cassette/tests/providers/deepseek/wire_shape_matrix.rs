@@ -214,7 +214,7 @@ async fn blocking_audio_part_reaches_the_wire() {
             let model = client.completion(MODEL);
             let error = model
                 .call(
-                    CompletionRequest::new(multimodal_prompt(UserContent::audio(
+                    CompletionRequest::new(multimodal_prompt(UserContent::audio_base64(
                         "aGVsbG8=",
                         Some(rig::message::AudioMediaType::MP3),
                     )))

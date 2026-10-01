@@ -381,7 +381,10 @@ async fn a_video_part_is_refused_even_though_props_advertises_video() {
                     CompletionRequest::new(Message::User {
                         content: vec![
                             UserContent::text("Describe this video in one sentence."),
-                            UserContent::video(base64_encode(&bytes), Some(VideoMediaType::MP4)),
+                            UserContent::video_base64(
+                                base64_encode(&bytes),
+                                Some(VideoMediaType::MP4),
+                            ),
                         ],
                     })
                     .max_tokens(64),

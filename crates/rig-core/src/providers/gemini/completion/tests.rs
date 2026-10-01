@@ -972,7 +972,7 @@ fn test_txt_document_conversion_to_text_part() {
     // Test that TXT documents are converted to plain text parts, not inline data
     use crate::message::{DocumentMediaType, UserContent};
 
-    let doc = UserContent::document(
+    let doc = UserContent::document_text(
         "Note: test.md\nPath: /test.md\nContent: Hello World!",
         Some(DocumentMediaType::TXT),
     );
@@ -1330,7 +1330,7 @@ fn test_markdown_document_conversion_to_text_part() {
     // Test that MARKDOWN documents are converted to plain text parts
     use crate::message::{DocumentMediaType, UserContent};
 
-    let doc = UserContent::document(
+    let doc = UserContent::document_text(
         "# Heading\n\n* List item",
         Some(DocumentMediaType::MARKDOWN),
     );

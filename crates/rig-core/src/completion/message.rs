@@ -774,22 +774,22 @@ pub enum DocumentSourceKind {
 
 impl DocumentSourceKind {
     /// Create a URL-backed source.
-    pub fn url(url: &str) -> Self {
-        Self::Url(url.to_string())
+    pub fn url(url: impl Into<String>) -> Self {
+        Self::Url(url.into())
     }
 
     /// Create a base64-backed source.
-    pub fn base64(base64_string: &str) -> Self {
-        Self::Base64(base64_string.to_string())
+    pub fn base64(base64_string: impl Into<String>) -> Self {
+        Self::Base64(base64_string.into())
     }
 
     /// Create a provider file ID-backed source.
-    pub fn file_id(file_id: &str) -> Self {
-        Self::FileId(file_id.to_string())
+    pub fn file_id(file_id: impl Into<String>) -> Self {
+        Self::FileId(file_id.into())
     }
 
     /// Create a string-backed source.
-    pub fn string(input: &str) -> Self {
+    pub fn string(input: impl Into<String>) -> Self {
         Self::String(input.into())
     }
 
@@ -1086,31 +1086,27 @@ impl UserContent {
         /// Creates user image content referencing a URL.
         image_url => Image(Url: String);
         /// Creates user audio content from base64-encoded data.
-        audio => Audio(AudioMediaType, Base64: String);
+        audio_base64 => Audio(AudioMediaType, Base64: String);
         /// Creates user audio content from unencoded bytes.
         audio_raw => Audio(AudioMediaType, Raw: Vec<u8>);
         /// Creates user audio content referencing a URL.
         audio_url => Audio(AudioMediaType, Url: String);
         /// Creates user video content from base64-encoded data.
-        video => Video(VideoMediaType, Base64: String);
+        video_base64 => Video(VideoMediaType, Base64: String);
         /// Creates user video content from unencoded bytes.
         video_raw => Video(VideoMediaType, Raw: Vec<u8>);
         /// Creates user video content referencing a URL.
         video_url => Video(VideoMediaType, Url: String);
+        /// Creates user document content from base64-encoded data.
+        document_base64 => Document(DocumentMediaType, Base64: String);
         /// Creates user document content from unencoded bytes.
         document_raw => Document(DocumentMediaType, Raw: Vec<u8>);
         /// Creates user document content referencing a URL.
         document_url => Document(DocumentMediaType, Url: String);
-    }
-
-    /// Creates document content from a string without decoding or fetching it.
-    pub fn document(data: impl Into<String>, media_type: Option<DocumentMediaType>) -> Self {
-        let data: String = data.into();
-        UserContent::Document(Document {
-            data: DocumentSourceKind::string(&data),
-            media_type,
-            additional_params: None,
-        })
+        /// Creates user document content from literal text, such as a plain
+        /// text or Markdown file. Binary formats belong in
+        /// [`Self::document_base64`] or [`Self::document_raw`].
+        document_text => Document(DocumentMediaType, String: String);
     }
 
     /// Creates a tool result answering the call `call` to the tool `name`.

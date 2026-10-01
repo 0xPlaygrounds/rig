@@ -1,7 +1,4 @@
-use rig_core::{
-    completion::message::Document,
-    message::{DocumentMediaType, DocumentSourceKind},
-};
+use rig_core::message::{DocumentMediaType, UserContent};
 
 use base64::{Engine, prelude::BASE64_STANDARD};
 use rig_agent::prelude::*;
@@ -34,11 +31,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let document_bytes = response.bytes().await?;
     let bytes_base64 = BASE64_STANDARD.encode(document_bytes);
 
-    let document = Document {
-        data: DocumentSourceKind::Base64(bytes_base64),
-        media_type: Some(DocumentMediaType::PDF),
-        additional_params: None,
-    };
+    let document = UserContent::document_base64(bytes_base64, Some(DocumentMediaType::PDF));
 
     let response = agent.prompt(document).await?.output;
     info!("{}", response);

@@ -545,8 +545,8 @@ fn document_request(prompt_document: bool) -> CompletionRequest {
     if prompt_document {
         request.chat_history.push(Message::User {
             content: vec![
-                UserContent::document("A repeated attachment.", Some(DocumentMediaType::TXT)),
-                UserContent::document("A repeated attachment.", Some(DocumentMediaType::TXT)),
+                UserContent::document_text("A repeated attachment.", Some(DocumentMediaType::TXT)),
+                UserContent::document_text("A repeated attachment.", Some(DocumentMediaType::TXT)),
                 UserContent::text("According to the document, what is the ordering token?"),
             ],
         });

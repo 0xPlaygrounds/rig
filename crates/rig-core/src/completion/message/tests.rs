@@ -376,3 +376,43 @@ fn an_empty_tool_name_does_not_parse() {
     assert!(super::ToolName::new("").is_err());
     assert!(serde_json::from_str::<super::ToolName>(r#""""#).is_err());
 }
+
+#[test]
+fn media_constructors_name_their_source_encoding() {
+    use super::{
+        AudioMediaType, DocumentMediaType, DocumentSourceKind, UserContent, VideoMediaType,
+    };
+
+    let source = |content: UserContent| match content {
+        UserContent::Audio(audio) => audio.data,
+        UserContent::Video(video) => video.data,
+        UserContent::Document(document) => document.data,
+        other => DocumentSourceKind::string(format!("not media: {other:?}")),
+    };
+
+    assert_eq!(
+        source(UserContent::audio_base64(
+            "UklGRg==",
+            Some(AudioMediaType::WAV)
+        )),
+        DocumentSourceKind::base64("UklGRg==")
+    );
+    assert_eq!(
+        source(UserContent::video_base64("AAAA", Some(VideoMediaType::MP4))),
+        DocumentSourceKind::base64("AAAA")
+    );
+    assert_eq!(
+        source(UserContent::document_base64(
+            "JVBERi0=",
+            Some(DocumentMediaType::PDF)
+        )),
+        DocumentSourceKind::base64("JVBERi0=")
+    );
+    assert_eq!(
+        source(UserContent::document_text(
+            "# Notes",
+            Some(DocumentMediaType::MARKDOWN)
+        )),
+        DocumentSourceKind::string("# Notes")
+    );
+}

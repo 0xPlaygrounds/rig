@@ -1537,7 +1537,7 @@ fn rejects_unsupported_request_features() -> Result<(), Box<dyn std::error::Erro
     assert!(render_prompt(&request(vec![image])).is_err());
 
     let audio = Message::User {
-        content: vec![UserContent::audio("data", Some(AudioMediaType::WAV))],
+        content: vec![UserContent::audio_base64("data", Some(AudioMediaType::WAV))],
     };
     assert!(render_prompt(&request(vec![audio])).is_err());
     Ok(())

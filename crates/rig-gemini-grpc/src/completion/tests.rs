@@ -365,7 +365,7 @@ fn create_grpc_request_transcodes_the_shared_gemini_content() {
 
     let request = encode(vec![
         UserContent::Image(image.clone()),
-        UserContent::document("notes", Some(DocumentMediaType::TXT)),
+        UserContent::document_text("notes", Some(DocumentMediaType::TXT)),
     ])
     .expect("request build");
     let data: Vec<_> = request

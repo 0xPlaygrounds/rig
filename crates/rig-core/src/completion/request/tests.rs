@@ -534,11 +534,11 @@ fn test_normalize_documents_with_documents() {
 
     let expected = Message::User {
         content: vec![
-            UserContent::document(
+            UserContent::document_text(
                 "<file id: doc1>\nDocument 1 text.\n</file>\n".to_string(),
                 Some(DocumentMediaType::TXT),
             ),
-            UserContent::document(
+            UserContent::document_text(
                 "<file id: doc2>\nDocument 2 text.\n</file>\n".to_string(),
                 Some(DocumentMediaType::TXT),
             ),
