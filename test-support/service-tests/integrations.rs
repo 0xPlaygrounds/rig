@@ -5,6 +5,10 @@
     clippy::unwrap_used
 )]
 
+// Each suite uses a subset of the shared scaffolding.
+#[allow(dead_code)]
+mod common;
+
 #[cfg(feature = "lancedb")]
 #[path = "../../tests/integrations/lancedb/mod.rs"]
 mod lancedb;

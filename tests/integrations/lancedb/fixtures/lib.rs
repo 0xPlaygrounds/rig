@@ -29,6 +29,17 @@ pub fn words() -> Vec<Word> {
     ]
 }
 
+/// A definition repeated to pad the table: an IVF-PQ index needs at least 256 rows.
+pub const FLUMBUZZLE: &str = "Definition of *flumbuzzle (noun)*: A sudden, inexplicable urge to rearrange or reorganize small objects, such as desk items or books, for no apparent reason.";
+
+/// 256 rows of [`FLUMBUZZLE`], with ids `doc0`..`doc255`.
+pub fn flumbuzzles() -> impl Iterator<Item = Word> {
+    (0..256).map(|i| Word {
+        id: format!("doc{i}"),
+        definition: FLUMBUZZLE.to_string(),
+    })
+}
+
 // Convert Word objects and their embedding to a RecordBatch.
 pub fn as_record_batch(
     records: Vec<(Word, Vec<Embedding>)>,

@@ -1,3 +1,4 @@
+use crate::common::{WORD_DEFINITIONS, axis_embedding, mock_embeddings, openai_client};
 use rig::providers::openai;
 use rig::scylladb::{ScyllaDbVectorStore, create_session};
 use rig::vector_store::request::VectorSearchRequest;
@@ -15,14 +16,6 @@ use testcontainers::{
 };
 
 const SCYLLA_PORT: u16 = 9042;
-
-fn create_embedding_vector(index: usize) -> Vec<f64> {
-    let mut vec = vec![0.0; 1536];
-    if index < 1536 {
-        vec[index] = 1.0;
-    }
-    vec
-}
 
 #[derive(Embed, Clone, Serialize, Deserialize, Debug, PartialEq)]
 struct Word {
@@ -73,27 +66,18 @@ async fn vector_search_test() {
 
     // Init fake openai service
     let openai_mock = create_openai_mock_service().await;
-    let openai_client = openai::OpenAIConfig::new("TEST")
-        .with_base_url(openai_mock.base_url())
-        .client();
+    let openai_client = openai_client(&openai_mock);
 
     let model = openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None);
 
     // Create test documents with mocked embeddings
-    let words = vec![
-        Word {
-            id: "doc0".to_string(),
-            definition: "Definition of a *flurbo*: A flurbo is a green alien that lives on cold planets".to_string(),
-        },
-        Word {
-            id: "doc1".to_string(),
-            definition: "Definition of a *glarb-glarb*: A glarb-glarb is an ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.".to_string(),
-        },
-        Word {
-            id: "doc2".to_string(),
-            definition: "Definition of a *linglingdong*: A term used by inhabitants of the far side of the moon to describe humans.".to_string(),
-        }
-    ];
+    let words = WORD_DEFINITIONS
+        .iter()
+        .enumerate()
+        .map(|(i, definition)| Word {
+            id: format!("doc{i}"),
+            definition: definition.to_string(),
+        });
 
     let documents = EmbeddingsBuilder::new(model.clone())
         .documents(words)
@@ -211,130 +195,27 @@ async fn start_container() -> testcontainers::ContainerAsync<GenericImage> {
 async fn create_openai_mock_service() -> httpmock::MockServer {
     let server = httpmock::MockServer::start();
 
-    // Mock for multiple documents (integration test)
-    server.mock(|when, then| {
-        when.method(httpmock::Method::POST)
-            .path("/embeddings")
-            .header("Authorization", "Bearer TEST")
-            .json_body(json!({
-                "input": [
-                    "Definition of a *flurbo*: A flurbo is a green alien that lives on cold planets",
-                    "Definition of a *glarb-glarb*: A glarb-glarb is an ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.",
-                    "Definition of a *linglingdong*: A term used by inhabitants of the far side of the moon to describe humans."
-                ],
-                "model": "text-embedding-ada-002",
-            }));
-        then.status(200)
-            .header("content-type", "application/json")
-            .json_body(json!({
-                "object": "list",
-                "data": [
-                  {
-                    "object": "embedding",
-                    "embedding": create_embedding_vector(0),
-                    "index": 0
-                  },
-                  {
-                    "object": "embedding",
-                    "embedding": create_embedding_vector(1),
-                    "index": 1
-                  },
-                  {
-                    "object": "embedding",
-                    "embedding": create_embedding_vector(2),
-                    "index": 2
-                  }
-                ],
-                "model": "text-embedding-ada-002",
-                "usage": {
-                  "prompt_tokens": 8,
-                  "total_tokens": 8
-                }
-            }));
-    });
-
-    // Mock for single document (unit test)
-    server.mock(|when, then| {
-        when.method(httpmock::Method::POST)
-            .path("/embeddings")
-            .header("Authorization", "Bearer TEST")
-            .json_body(json!({
-                "input": ["Test definition"],
-                "model": "text-embedding-ada-002",
-            }));
-        then.status(200)
-            .header("content-type", "application/json")
-            .json_body(json!({
-                "object": "list",
-                "data": [
-                  {
-                    "object": "embedding",
-                    "embedding": create_embedding_vector(0),
-                    "index": 0
-                  }
-                ],
-                "model": "text-embedding-ada-002",
-                "usage": {
-                  "prompt_tokens": 8,
-                  "total_tokens": 8
-                }
-            }));
-    });
-
-    // Mock for search queries
-    server.mock(|when, then| {
-        when.method(httpmock::Method::POST)
-            .path("/embeddings")
-            .header("Authorization", "Bearer TEST")
-            .json_body(json!({
-                "input": ["What is a glarb?"],
-                "model": "text-embedding-ada-002",
-            }));
-        then.status(200)
-            .header("content-type", "application/json")
-            .json_body(json!({
-                "object": "list",
-                "data": [
-                  {
-                    "object": "embedding",
-                    "embedding": create_embedding_vector(1), // Match doc1
-                    "index": 0
-                  }
-                ],
-                "model": "text-embedding-ada-002",
-                "usage": {
-                  "prompt_tokens": 8,
-                  "total_tokens": 8
-                }
-            }));
-    });
-
-    server.mock(|when, then| {
-        when.method(httpmock::Method::POST)
-            .path("/embeddings")
-            .header("Authorization", "Bearer TEST")
-            .json_body(json!({
-                "input": ["What is a linglingdong?"],
-                "model": "text-embedding-ada-002",
-            }));
-        then.status(200)
-            .header("content-type", "application/json")
-            .json_body(json!({
-                "object": "list",
-                "data": [
-                  {
-                    "object": "embedding",
-                    "embedding": create_embedding_vector(2), // Match doc2
-                    "index": 0
-                  }
-                ],
-                "model": "text-embedding-ada-002",
-                "usage": {
-                  "prompt_tokens": 8,
-                  "total_tokens": 8
-                }
-            }));
-    });
+    mock_embeddings(
+        &server,
+        json!({ "input": WORD_DEFINITIONS, "model": "text-embedding-ada-002" }),
+        (0..3).map(axis_embedding),
+    );
+    mock_embeddings(
+        &server,
+        json!({ "input": ["Test definition"], "model": "text-embedding-ada-002" }),
+        [axis_embedding(0)],
+    );
+    // Each query embeds onto the axis of the document it should match.
+    mock_embeddings(
+        &server,
+        json!({ "input": ["What is a glarb?"], "model": "text-embedding-ada-002" }),
+        [axis_embedding(1)],
+    );
+    mock_embeddings(
+        &server,
+        json!({ "input": ["What is a linglingdong?"], "model": "text-embedding-ada-002" }),
+        [axis_embedding(2)],
+    );
 
     server
 }
@@ -343,9 +224,7 @@ async fn create_openai_mock_service() -> httpmock::MockServer {
 async fn test_mock_server_setup() {
     // Test that our mock server setup works without requiring ScyllaDB
     let server = create_openai_mock_service().await;
-    let openai_client = openai::OpenAIConfig::new("TEST")
-        .with_base_url(server.base_url())
-        .client();
+    let openai_client = openai_client(&server);
 
     let model = openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None);
 
