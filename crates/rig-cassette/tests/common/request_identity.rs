@@ -11,41 +11,10 @@ use std::sync::{Arc, Mutex};
 use futures::StreamExt;
 use rig::completion::CompletionRequest;
 use rig::error::ProviderError;
+use rig::test_utils::TraceCapture;
 use serde_json::Value;
-use tracing::field::{Field, Visit};
-use tracing::span::{Attributes, Id, Record};
-use tracing_subscriber::layer::{Context, Layer, SubscriberExt};
 
 const FIELD: &str = rig::telemetry::PROVIDER_REQUEST_ID_FIELD;
-
-#[derive(Clone, Default)]
-struct Recorded(Arc<Mutex<Vec<String>>>);
-
-struct Visitor<'a>(&'a Recorded);
-
-impl Visit for Visitor<'_> {
-    fn record_str(&mut self, field: &Field, value: &str) {
-        if field.name() == FIELD
-            && let Ok(mut values) = self.0.0.lock()
-        {
-            values.push(value.to_owned());
-        }
-    }
-
-    fn record_debug(&mut self, _field: &Field, _value: &dyn std::fmt::Debug) {}
-}
-
-struct Capture(Recorded);
-
-impl<S: tracing::Subscriber> Layer<S> for Capture {
-    fn on_new_span(&self, attrs: &Attributes<'_>, _id: &Id, _ctx: Context<'_, S>) {
-        attrs.record(&mut Visitor(&self.0));
-    }
-
-    fn on_record(&self, _span: &Id, values: &Record<'_>, _ctx: Context<'_, S>) {
-        values.record(&mut Visitor(&self.0));
-    }
-}
 
 /// What Rig reported for the three calls, in call order.
 pub struct Observed {
@@ -85,9 +54,8 @@ pub async fn run<W, T, Wm, Tr>(
     Wm: rig::wire::Wire<Op = rig::operation::Completion>,
     Tr: rig::driver::Transport<Wm>,
 {
-    let recorded = Recorded::default();
-    let subscriber = tracing_subscriber::registry().with(Capture(recorded.clone()));
-    let _guard = tracing::subscriber::set_default(subscriber);
+    let capture = TraceCapture::default();
+    let _guard = tracing::subscriber::set_default(capture.subscriber());
 
     let unary = model
         .call(
@@ -120,11 +88,12 @@ pub async fn run<W, T, Wm, Tr>(
         .await
         .expect_err("the provider rejects the model");
 
-    let spans = recorded
-        .0
-        .lock()
-        .map(|values| values.clone())
-        .unwrap_or_default();
+    let spans = capture
+        .values_of(FIELD)
+        .iter()
+        .filter_map(Value::as_str)
+        .map(str::to_owned)
+        .collect();
     let observed = Observed {
         unary: unary.provider_request_id,
         unary_raw: unary.raw,

@@ -1,4 +1,14 @@
 //! A `tracing` layer that records spans and events for test assertions.
+//!
+//! ```
+//! use rig_core::test_utils::TraceCapture;
+//!
+//! let capture = TraceCapture::default();
+//! tracing::subscriber::with_default(capture.subscriber(), || {
+//!     let _span = tracing::info_span!("work", answer = 42_u64).entered();
+//! });
+//! assert_eq!(capture.spans()[0].u64("answer"), Some(42));
+//! ```
 
 use std::sync::{Arc, Mutex, PoisonError};
 
@@ -76,13 +86,13 @@ impl CapturedSpan {
         self.value(field).and_then(Value::as_u64)
     }
 
-    /// The latest value recorded after creation, ignoring initial values.
-    pub fn recorded_value(&self, field: &str) -> Option<&Value> {
+    /// Every value of `field` recorded after creation, in order, as text.
+    pub fn recorded_texts(&self, field: &str) -> Vec<String> {
         self.recorded
             .iter()
-            .rev()
-            .find(|(name, _)| name == field)
-            .map(|(_, value)| value)
+            .filter(|(name, _)| name == field)
+            .map(|(_, value)| text(value))
+            .collect()
     }
 
     /// How many times `field` was recorded after creation.

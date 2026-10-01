@@ -131,7 +131,6 @@ syn = { workspace = true, features = ["full", "visit"] }
 tokio = { workspace = true, features = ["full"] }
 tokio-test = { workspace = true }
 tracing = { workspace = true }
-tracing-subscriber = { workspace = true, features = ["env-filter"] }
 
 [[test]]
 name = "verify"

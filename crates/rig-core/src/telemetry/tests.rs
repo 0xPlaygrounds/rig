@@ -272,7 +272,7 @@ fn unrelated_ambient_span_is_parent_not_adopted() {
         panic!("completion span was not captured");
     };
     assert_eq!(span.target, "rig::completions");
-    assert_eq!(span.parent_name.as_deref(), Some("ambient"));
+    assert_eq!(span.parent_name, Some("ambient"));
 }
 
 #[test]
@@ -321,7 +321,7 @@ fn marker_span_missing_required_fields_is_not_adopted() {
     // A canonical child span is created and parented under the marker span,
     // and it carries the completion fields the marker span could not absorb.
     assert_eq!(span.target, "rig::completions");
-    assert_eq!(span.parent_name.as_deref(), Some("chat"));
+    assert_eq!(span.parent_name, Some("chat"));
     for (field, value) in [
         ("gen_ai.operation.name", "chat"),
         ("gen_ai.provider.name", "openai"),
