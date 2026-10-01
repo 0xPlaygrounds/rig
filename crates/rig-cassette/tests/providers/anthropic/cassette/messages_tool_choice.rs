@@ -124,7 +124,9 @@ async fn specific_tool_targets_named_tool() {
                 .tool(rig::tool::tool_definition(&Adder))
                 .tool(rig::tool::tool_definition(&Subtract))
                 .tool_choice(ToolChoice::Specific {
-                    function_names: vec![Subtract::NAME.to_string()],
+                    function_names: vec![
+                        rig_core::message::ToolName::new(Subtract::NAME).expect("tool name"),
+                    ],
                 });
 
             let response = model

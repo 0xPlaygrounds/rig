@@ -410,7 +410,7 @@ async fn dynamic_tool_preserves_concrete_error() {
     struct Boom;
 
     let tool = DynamicTool::new(
-        "dynamic",
+        rig_core::message::ToolName::new("dynamic").expect("tool name"),
         "fails",
         serde_json::json!({"type":"object"}),
         |_args| Box::pin(async { Err(ToolExecutionError::provider("upstream").with_source(Boom)) }),
@@ -518,7 +518,7 @@ async fn typed_failures_and_refusals_preserve_rich_model_output() {
 async fn dynamic_failures_and_refusals_preserve_rich_model_output() {
     for refuse in [false, true] {
         let tool = DynamicTool::new(
-            "dynamic_rich_error",
+            rig_core::message::ToolName::new("dynamic_rich_error").expect("tool name"),
             "returns rich failure feedback",
             serde_json::json!({"type": "object"}),
             move |_args| {

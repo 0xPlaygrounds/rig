@@ -274,7 +274,7 @@ fn turn_one_history() -> Vec<rig::completion::Message> {
 
 fn add_tool_definition() -> rig::completion::ToolDefinition {
     rig::completion::ToolDefinition {
-        name: "add".to_string(),
+        name: rig_core::message::ToolName::new("add").expect("tool name"),
         description: "Add two integers.".to_string(),
         parameters: serde_json::json!({
             "type": "object",

@@ -49,7 +49,7 @@ const COMPLETE_CAP: u64 = 256;
 
 fn record_tool() -> rig::completion::ToolDefinition {
     rig::completion::ToolDefinition {
-        name: "record".to_string(),
+        name: rig_core::message::ToolName::new("record").expect("tool name"),
         description: "Record a long note.".to_string(),
         parameters: serde_json::json!({
             "type": "object",

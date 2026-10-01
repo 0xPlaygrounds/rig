@@ -1045,7 +1045,7 @@ async fn disallowed_specific_tool_call_fails_before_non_streaming_second_request
         .tool(MockAddTool)
         .tool(MockSubtractTool)
         .tool_choice(ToolChoice::Specific {
-            function_names: vec!["add".to_string()],
+            function_names: vec![rig_core::message::ToolName::new("add").expect("tool name")],
         })
         .build();
 
@@ -1449,7 +1449,7 @@ async fn skip_under_specific_tool_choice_returns_synthetic_feedback() {
     let agent = AgentBuilder::new(model)
         .tool(MockAddTool)
         .tool_choice(ToolChoice::Specific {
-            function_names: vec!["add".to_string()],
+            function_names: vec![rig_core::message::ToolName::new("add").expect("tool name")],
         })
         .build();
 
@@ -1496,7 +1496,7 @@ async fn repair_to_disallowed_specific_tool_fails() {
         .tool(MockAddTool)
         .tool(MockSubtractTool)
         .tool_choice(ToolChoice::Specific {
-            function_names: vec!["add".to_string()],
+            function_names: vec![rig_core::message::ToolName::new("add").expect("tool name")],
         })
         .build();
 
@@ -1685,7 +1685,7 @@ async fn invalid_specific_tool_choice_fails_before_non_streaming_provider_reques
     let agent = AgentBuilder::new(model)
         .tool(MockAddTool)
         .tool_choice(ToolChoice::Specific {
-            function_names: vec!["missing".to_string()],
+            function_names: vec![rig_core::message::ToolName::new("missing").expect("tool name")],
         })
         .build();
 
@@ -1715,7 +1715,7 @@ async fn allowed_specific_tool_call_executes_normally() {
     let agent = AgentBuilder::new(model)
         .tool(MockAddTool)
         .tool_choice(ToolChoice::Specific {
-            function_names: vec!["add".to_string()],
+            function_names: vec![rig_core::message::ToolName::new("add").expect("tool name")],
         })
         .build();
 

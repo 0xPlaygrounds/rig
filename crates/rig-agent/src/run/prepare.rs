@@ -14,7 +14,7 @@ use rig_core::completion::{
     CompletionRequest, Document, Message, ProviderCapabilities, ToolDefinition,
 };
 use rig_core::error::ProviderError;
-use rig_core::message::ToolChoice;
+use rig_core::message::{ToolChoice, ToolName};
 use rig_core::structured_output::{
     AUGMENTATION_SEPARATOR, OUTPUT_TOOL_DESCRIPTION, output_tool_augmentation,
     output_tool_callable, output_tool_name, prompted_augmentation,
@@ -158,7 +158,7 @@ pub fn prepare_request(
     // Reserve output names against the full tool set because filtered tools may
     // return on later turns while the output name remains pinned.
     let pre_filter_tool_names: Option<BTreeSet<String>> =
-        active_tools.map(|_| tools.iter().map(|tool| tool.name.clone()).collect());
+        active_tools.map(|_| tools.iter().map(|tool| tool.name.to_string()).collect());
 
     // Filter before computing executable names so request advertisements and
     // runtime validation agree. Synthetic output remains independent of this filter.
@@ -166,19 +166,19 @@ pub fn prepare_request(
     if let Some(allow) = active_tools {
         if let Some(missing) = allow
             .iter()
-            .find(|name| !tooldefs.iter().any(|tool| &tool.name == *name))
+            .find(|name| !tooldefs.iter().any(|tool| tool.name == **name))
         {
             return Err(PrepareError::Request(format!(
                 "active_tools requested tool `{missing}`, which is not available this turn"
             )));
         }
         let allowed: BTreeSet<String> = allow.iter().cloned().collect();
-        tooldefs.retain(|tool| allowed.contains(&tool.name));
+        tooldefs.retain(|tool| allowed.contains(tool.name.as_str()));
     }
 
     // The synthetic output tool must never enter the executable set.
     let executable_tool_names: BTreeSet<String> =
-        tooldefs.iter().map(|tool| tool.name.clone()).collect();
+        tooldefs.iter().map(|tool| tool.name.to_string()).collect();
 
     // Resolve against the actual candidate name so Specific choices can permit
     // the output tool. A committed name prevents changing output mode mid-run.
@@ -265,7 +265,9 @@ pub fn prepare_request(
 
     if let (Some(name), Some(schema)) = (&output_tool_name, output_schema) {
         tooldefs.push(ToolDefinition {
-            name: name.clone(),
+            name: ToolName::new(name.clone()).map_err(|_| {
+                PrepareError::Request("the output tool name cannot be empty".to_string())
+            })?,
             description: output_tool_description
                 .unwrap_or(OUTPUT_TOOL_DESCRIPTION)
                 .to_string(),
@@ -393,10 +395,13 @@ pub fn allowed_tool_names_for_choice(
                 ));
             }
 
-            let requested = function_names.iter().cloned().collect::<BTreeSet<String>>();
+            let requested = function_names
+                .iter()
+                .map(ToString::to_string)
+                .collect::<BTreeSet<String>>();
             let missing = function_names
                 .iter()
-                .map(String::as_str)
+                .map(ToolName::as_str)
                 .filter(|name| {
                     !executable_tool_names.contains(*name) && Some(*name) != output_tool_name
                 })

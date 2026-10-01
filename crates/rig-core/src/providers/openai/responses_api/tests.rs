@@ -176,7 +176,7 @@ fn test_document(id: &str, text: &str) -> crate::completion::Document {
 
 fn weather_tool_definition() -> completion::ToolDefinition {
     completion::ToolDefinition {
-        name: "get_weather".to_string(),
+        name: crate::message::ToolName::new("get_weather").expect("tool name"),
         description: "Get the weather".to_string(),
         parameters: json!({
             "type": "object",
@@ -588,7 +588,7 @@ fn responses_tool_choice_modes_serialize_as_plain_strings() {
 #[test]
 fn responses_tool_choice_specific_single_name_serializes_as_named_function() {
     let converted = ToolChoice::try_from(message::ToolChoice::Specific {
-        function_names: vec!["get_weather".to_string()],
+        function_names: vec![crate::message::ToolName::new("get_weather").expect("tool name")],
     })
     .expect("single specific tool should convert");
 
@@ -601,7 +601,10 @@ fn responses_tool_choice_specific_single_name_serializes_as_named_function() {
 #[test]
 fn responses_tool_choice_specific_multiple_names_serialize_as_allowed_tools() {
     let converted = ToolChoice::try_from(message::ToolChoice::Specific {
-        function_names: vec!["add".to_string(), "subtract".to_string()],
+        function_names: vec![
+            crate::message::ToolName::new("add").expect("tool name"),
+            crate::message::ToolName::new("subtract").expect("tool name"),
+        ],
     })
     .expect("multiple specific tools should convert");
 
@@ -635,7 +638,7 @@ fn responses_tool_choice_specific_empty_names_error() {
 fn responses_request_with_specific_tool_choice_serializes_named_function() {
     let mut request = weather_tool_request();
     request.tool_choice = Some(message::ToolChoice::Specific {
-        function_names: vec!["get_weather".to_string()],
+        function_names: vec![crate::message::ToolName::new("get_weather").expect("tool name")],
     });
 
     let request = CompletionRequest::try_from(("gpt-test".to_string(), request)).expect("convert");
@@ -905,7 +908,7 @@ fn responses_wire_strict_tools_opt_in_sanitizes_all_function_tools() {
         openai_wire("gpt-4o-mini")
             .with_strict_tools()
             .with_tool(completion::ToolDefinition {
-                name: "lookup".to_string(),
+                name: crate::message::ToolName::new("lookup").expect("tool name"),
                 description: "Look something up".to_string(),
                 parameters: json!({
                     "type": "object",

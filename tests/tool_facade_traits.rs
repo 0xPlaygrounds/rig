@@ -93,7 +93,7 @@ fn portable_tool_registers_with_classic_toolset() {
     let names: Vec<String> = set
         .tool_definitions()
         .into_iter()
-        .map(|definition| definition.name)
+        .map(|definition| definition.name.into())
         .collect();
     assert!(names.iter().any(|name| name == "portable_adder"));
 }

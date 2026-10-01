@@ -4344,7 +4344,7 @@ async fn specific_naming_filtered_out_tool_errors_locally_without_provider_call(
         .tool(MockAddTool)
         .tool(MockSubtractTool)
         .tool_choice(ToolChoice::Specific {
-            function_names: vec!["subtract".to_string()],
+            function_names: vec![rig_core::message::ToolName::new("subtract").expect("tool name")],
         })
         .add_hook(FilterToAddHook)
         .build()
@@ -7383,7 +7383,9 @@ async fn late_output_tool_collision_fails_before_blocking_provider_for_all_choic
         (
             "specific",
             Some(RequestPatch::new().tool_choice(ToolChoice::Specific {
-                function_names: vec!["final_result".to_string()],
+                function_names: vec![
+                    rig_core::message::ToolName::new("final_result").expect("tool name"),
+                ],
             })),
         ),
     ];

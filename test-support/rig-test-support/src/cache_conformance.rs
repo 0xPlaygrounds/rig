@@ -296,7 +296,7 @@ const TOOL_PADDING_REPETITIONS: usize = 3;
 pub fn cache_probe_tools(label: &str) -> Vec<ToolDefinition> {
     vec![
         ToolDefinition {
-            name: "lookup_cache_policy".to_string(),
+            name: rig_core::message::ToolName::new("lookup_cache_policy").expect("tool name"),
             description: format!(
                 "Return {label} internal prompt cache policy notes. {}",
                 cache_padding(TOOL_PADDING_REPETITIONS)
@@ -310,7 +310,7 @@ pub fn cache_probe_tools(label: &str) -> Vec<ToolDefinition> {
             }),
         },
         ToolDefinition {
-            name: "lookup_cache_fixture".to_string(),
+            name: rig_core::message::ToolName::new("lookup_cache_fixture").expect("tool name"),
             description: format!(
                 "Return {label} prompt cache fixture notes. {}",
                 cache_padding(TOOL_PADDING_REPETITIONS)

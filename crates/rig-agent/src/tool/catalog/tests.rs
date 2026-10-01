@@ -4,7 +4,7 @@ use crate::tool::{DynamicTool, ToolOutput, ToolSet};
 fn dynamic(name: &str) -> DynamicTool {
     let reply = format!("{name}!");
     DynamicTool::new(
-        name,
+        rig_core::message::ToolName::new(name).expect("tool name"),
         format!("the {name} tool"),
         serde_json::json!({"type": "object"}),
         move |_| {

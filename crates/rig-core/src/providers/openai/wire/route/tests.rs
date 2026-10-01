@@ -34,7 +34,7 @@ fn request() -> CompletionRequest {
         },
     ])
     .tools(vec![ToolDefinition {
-        name: "lookup".to_owned(),
+        name: crate::message::ToolName::new("lookup").expect("tool name"),
         description: "look something up".to_owned(),
         parameters: serde_json::json!({
             "type": "object",

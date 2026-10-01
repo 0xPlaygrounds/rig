@@ -610,7 +610,9 @@ async fn tool_choice_specific_is_refused_before_the_request_is_sent() {
                 .tool(rig::tool::tool_definition(&Adder))
                 .tool(rig::tool::tool_definition(&Subtract))
                 .tool_choice(ToolChoice::Specific {
-                    function_names: vec!["subtract".to_string()],
+                    function_names: vec![
+                        rig_core::message::ToolName::new("subtract").expect("tool name"),
+                    ],
                 })
                 .max_tokens(256),
         )
@@ -660,7 +662,9 @@ async fn tool_choice_specific_is_refused_on_the_streaming_path_too() {
                 .tool(rig::tool::tool_definition(&Adder))
                 .tool(rig::tool::tool_definition(&Subtract))
                 .tool_choice(ToolChoice::Specific {
-                    function_names: vec!["subtract".to_string()],
+                    function_names: vec![
+                        rig_core::message::ToolName::new("subtract").expect("tool name"),
+                    ],
                 })
                 .max_tokens(256),
         )

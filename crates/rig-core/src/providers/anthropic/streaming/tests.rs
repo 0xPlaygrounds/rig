@@ -143,7 +143,7 @@ fn test_streaming_tool_build_marks_final_combined_tool() {
 
     let mut tools = build_tool_definitions(
         vec![crate::completion::ToolDefinition {
-            name: "rig_tool".to_string(),
+            name: crate::message::ToolName::new("rig_tool").expect("tool name"),
             description: "Rig tool".to_string(),
             parameters: json!({"type": "object", "properties": {}}),
         }],
@@ -266,7 +266,7 @@ fn streaming_body_keeps_explicit_tool_choice_auto_when_tools_present_but_unset()
     let request = CompletionRequest::new(RigMessage::user("Add 2 and 3"))
         .max_tokens(64)
         .tools(vec![crate::completion::ToolDefinition {
-            name: "add".to_string(),
+            name: crate::message::ToolName::new("add").expect("tool name"),
             description: "Add x and y".to_string(),
             parameters: json!({
                 "type": "object",
@@ -289,7 +289,7 @@ fn streaming_body_applies_strict_tool_opt_in() {
     let request = CompletionRequest::new(RigMessage::user("Look this up"))
         .max_tokens(64)
         .tools(vec![crate::completion::ToolDefinition {
-            name: "lookup".to_string(),
+            name: crate::message::ToolName::new("lookup").expect("tool name"),
             description: "Look up a value".to_string(),
             parameters: json!({
                 "type": "object",
@@ -341,7 +341,7 @@ fn test_streaming_prompt_cache_control_uses_raw_top_level_ttl() {
         resolve_top_level_cache_control(false, None, &mut additional_params).unwrap();
     let mut tools = build_tool_definitions(
         vec![crate::completion::ToolDefinition {
-            name: "rig_tool".to_string(),
+            name: crate::message::ToolName::new("rig_tool").expect("tool name"),
             description: "Rig tool".to_string(),
             parameters: json!({"type": "object", "properties": {}}),
         }],

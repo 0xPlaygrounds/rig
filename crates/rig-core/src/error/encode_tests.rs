@@ -94,15 +94,15 @@ fn provider_encode_failures_classify_as_request_building() {
     let gemini = GeminiConfig::new("k").with_base_url(BAD);
     let specific_tool = CompletionRequest::new("hi")
         .tool(ToolDefinition {
-            name: "f".into(),
+            name: crate::message::ToolName::new("f").expect("tool name"),
             description: "d".into(),
             parameters: json!({"type": "object"}),
         })
         .tool_choice(ToolChoice::Specific {
-            function_names: vec!["f".into()],
+            function_names: vec![crate::message::ToolName::new("f").expect("tool name")],
         });
     let unflattenable_schema = CompletionRequest::new("hi").tool(ToolDefinition {
-        name: "f".into(),
+        name: crate::message::ToolName::new("f").expect("tool name"),
         description: "d".into(),
         parameters: json!({
             "type": "object",

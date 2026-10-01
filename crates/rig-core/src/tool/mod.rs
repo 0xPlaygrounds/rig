@@ -19,7 +19,9 @@ mod result;
 pub use context::{
     ContextValue, PublishedContext, ToolContext, ToolContextError, ToolResultContext,
 };
-pub use contextual::{DynamicTool, ErasedTool, LivenessFn, Tool, ToolEmbedding, tool_definition};
+pub use contextual::{
+    DynamicTool, ErasedTool, LivenessFn, Tool, ToolEmbedding, tool_definition, tool_name,
+};
 pub use managed::{ManagedToolSink, ManagedToolToken};
 pub use output::{IntoToolOutput, ToolOutput};
 pub use portable::{PortableTool, PortableToolEmbedding};

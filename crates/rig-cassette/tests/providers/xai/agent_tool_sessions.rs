@@ -639,7 +639,7 @@ async fn tool_choice_required_specific_and_none() -> Result<()> {
                         .tool(rig::tool::tool_definition(&AlphaSignal))
                         .tool(rig::tool::tool_definition(&BetaSignal))
                         .tool_choice(ToolChoice::Specific {
-                            function_names: vec![BetaSignal::NAME.to_string()],
+                            function_names: vec![rig_core::message::ToolName::new(BetaSignal::NAME).expect("tool name")],
                         }))
                 .await?;
             let specific_calls = specific

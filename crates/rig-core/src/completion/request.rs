@@ -57,7 +57,7 @@ impl std::fmt::Display for Document {
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct ToolDefinition {
     /// Tool name exposed to the model. It must match the registered tool name.
-    pub name: String,
+    pub name: ToolName,
     /// Human-readable description sent to the model.
     pub description: String,
     /// JSON Schema describing tool arguments.
@@ -73,7 +73,7 @@ impl ToolDefinition {
         parameters: serde_json::Value,
     ) -> Self {
         Self {
-            name: name.into(),
+            name,
             description: description.into(),
             parameters,
         }

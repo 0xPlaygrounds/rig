@@ -396,7 +396,7 @@ async fn a_schema_alongside_tools_is_deferred_so_the_tool_stays_reachable() {
                 .call(
                     CompletionRequest::new(format!("{NO_THINK}Look up Paris."))
                         .tool(rig::completion::ToolDefinition {
-                            name: "lookup".to_string(),
+                            name: rig_core::message::ToolName::new("lookup").expect("tool name"),
                             description: "Look up a city.".to_string(),
                             parameters: json!({
                                 "type": "object",

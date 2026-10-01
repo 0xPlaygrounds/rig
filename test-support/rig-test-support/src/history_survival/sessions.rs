@@ -37,7 +37,7 @@ const CODE: &str = "amber-5521";
 
 fn tool() -> ToolDefinition {
     ToolDefinition {
-        name: "lookup_code".to_owned(),
+        name: rig_core::message::ToolName::new("lookup_code").expect("tool name"),
         description: "Return the code stored for a record. Always call it before answering."
             .to_owned(),
         parameters: serde_json::json!({

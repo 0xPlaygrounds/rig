@@ -140,7 +140,7 @@ fn adaptive_thinking() -> serde_json::Value {
 
 fn multiply_tool() -> ToolDefinition {
     ToolDefinition {
-        name: "multiply".to_string(),
+        name: rig_core::message::ToolName::new("multiply").expect("tool name"),
         description: "Multiply two integers.".to_string(),
         parameters: json!({
             "type": "object",

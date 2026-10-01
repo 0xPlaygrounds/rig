@@ -909,7 +909,7 @@ impl TryFrom<message::ToolChoice> for ToolChoice {
             message::ToolChoice::None => Self::Mode(super::completion::ToolChoice::None),
             message::ToolChoice::Required => Self::Mode(super::completion::ToolChoice::Required),
             message::ToolChoice::Specific { function_names } => {
-                let mut names = function_names.into_iter();
+                let mut names = function_names.into_iter().map(String::from);
                 let Some(first) = names.next() else {
                     return Err(EncodeError::request(
                         "ToolChoice::Specific requires at least one function name",
