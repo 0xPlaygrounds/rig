@@ -20,14 +20,10 @@ fn compaction_output_item_round_trips_verbatim() {
         "future_field": {"nested": [1, 2, 3]}
     });
     let output: Output = serde_json::from_value(wire.clone()).expect("compaction decodes");
-    let Output::Compaction(fields) = &output else {
-        panic!("expected Output::Compaction, got {output:?}");
+    let Output::Unknown(item) = &output else {
+        panic!("expected Output::Unknown, got {output:?}");
     };
-    assert_eq!(fields.get("id"), Some(&json!("cmp_123")));
-    assert!(
-        fields.get("type").is_none(),
-        "the tag must not be duplicated inside the payload"
-    );
+    assert_eq!(item, &wire, "the item is kept exactly as sent");
 
     let back = serde_json::to_value(&output).expect("compaction re-serializes");
     assert_eq!(back, wire);
@@ -41,7 +37,7 @@ fn compaction_input_item_round_trips_verbatim() {
         "encrypted_content": "opaque-bytes"
     });
     let item: InputItem = serde_json::from_value(wire.clone()).expect("compaction input decodes");
-    assert!(matches!(item.input, InputContent::Compaction(_)));
+    assert!(matches!(item.input, InputContent::Provider(_)));
     let back = serde_json::to_value(&item).expect("compaction input re-serializes");
     assert_eq!(back, wire);
 }
@@ -58,7 +54,7 @@ fn compacted_window_decodes_with_every_item_typed() {
          "arguments": "{}", "status": "completed"}
     ]))
     .expect("window decodes");
-    assert!(matches!(output[0], Output::Compaction(_)));
+    assert!(matches!(output[0], Output::Unknown(_)));
     assert!(matches!(output[1], Output::Message(_)));
     assert!(matches!(output[2], Output::FunctionCall(_)));
 }
@@ -246,13 +242,8 @@ fn a_commentary_message_replays_before_its_function_call() {
 #[test]
 fn text_blocks_of_one_item_join_it_and_no_id_repeats() {
     let block = |text: &str, extras: serde_json::Value| {
-        message::AssistantContent::Text(Text {
-            text: text.to_owned(),
-            additional_params: message::AdditionalParams::from_entries(Some((
-                OPENAI_RESPONSES_EXTRAS_KEY,
-                extras,
-            ))),
-        })
+        let extras: TextExtras = serde_json::from_value(extras).expect("typed extras");
+        message::AssistantContent::Text(Text::new(text).with_provider(extras.into()))
     };
     let history = completion::Message::Assistant {
         id: Some("msg_2".to_owned()),
@@ -298,13 +289,19 @@ fn idless_text_replays_its_phase_without_an_id() {
     let history = completion::Message::Assistant {
         id: None,
         content: vec![
-            message::AssistantContent::Text(Text {
-                text: "Let me think.".to_owned(),
-                additional_params: message::AdditionalParams::from_entries(Some((
-                    OPENAI_RESPONSES_EXTRAS_KEY,
-                    json!({"phase": "commentary", "annotations": [{"type": "url_citation"}]}),
-                ))),
-            }),
+            message::AssistantContent::Text(
+                Text::new("Let me think.").with_provider(
+                    TextExtras {
+                        phase: Some("commentary".to_owned()),
+                        part: json!({"annotations": [{"type": "url_citation"}]})
+                            .as_object()
+                            .cloned()
+                            .unwrap_or_default(),
+                        ..TextExtras::default()
+                    }
+                    .into(),
+                ),
+            ),
             message::AssistantContent::Text(Text::new("Apple.")),
         ],
     };
@@ -326,15 +323,15 @@ fn idless_text_replays_its_phase_without_an_id() {
 /// the user item, and a system message has no seat for it.
 #[test]
 fn phase_never_rides_user_or_system_messages() {
-    let phased = message::AdditionalParams::from_entries(Some((
-        OPENAI_RESPONSES_EXTRAS_KEY,
-        json!({"phase": "final_answer", "message_id": "msg_1"}),
-    )));
+    let phased = TextExtras {
+        phase: Some("final_answer".to_owned()),
+        message_id: Some("msg_1".to_owned()),
+        ..TextExtras::default()
+    };
     let user = completion::Message::User {
-        content: vec![message::UserContent::Text(Text {
-            text: "hi".to_owned(),
-            additional_params: phased,
-        })],
+        content: vec![message::UserContent::Text(
+            Text::new("hi").with_provider(phased.into()),
+        )],
     };
     let system = completion::Message::system("be brief");
     for history in [user, system] {

@@ -50,8 +50,8 @@ fn wire_request(
 #[test]
 fn output_text_extras_survive_generic_conversion_and_replay() {
     // Ingest capture is unconditional: the wire's sibling keys ride the
-    // generic block under this wire's params key. Replay is gated: only
-    // this wire's serializer reads them back, value-equal.
+    // generic block as this dialect's typed extras. Replay is gated: only
+    // this dialect's serializer reads them back, value-equal.
     let mut extras = Map::new();
     extras.insert(
         "annotations".to_string(),
@@ -66,50 +66,46 @@ fn output_text_extras_survive_generic_conversion_and_replay() {
         panic!("expected a text block, got: {generic:?}");
     };
     assert_eq!(
-        text.additional_params
-            .as_ref()
-            .and_then(|params| params.get(OPENAI_RESPONSES_EXTRAS_KEY)),
-        Some(&Value::Object(extras.clone()))
+        own_extras(text).map(|extras| &extras.part),
+        Some(&extras),
+        "the part fields ride the block as Responses extras"
     );
+    assert_eq!(text.additional_params, None, "no string-keyed tunnel");
 
-    let replayed = OutputText::from_message_text(text.text.clone(), text.additional_params.clone());
-    assert_eq!(replayed.text, "cited");
-    assert_eq!(replayed.extras, extras);
+    let replay = |text: &message::Text| {
+        let message = assistant_text_replay_message(Some("msg_1"), text).expect("replays");
+        serde_json::to_value(message).expect("serialize")
+    };
+    let replayed = replay(text);
+    assert_eq!(replayed["content"][0]["text"], "cited");
+    assert_eq!(replayed["content"][0]["annotations"], extras["annotations"]);
 
-    // Extras ride a serde flatten, so the reserved keys the named field
-    // and the tag own must never replay from history — a duplicate JSON
-    // key would let persisted data shadow the block's real text or tag.
-    let hostile = message::AdditionalParams::try_from_value(json!({
-        OPENAI_RESPONSES_EXTRAS_KEY: {
-            "text": "evil",
-            "type": "evil_type",
-            "annotations": ["kept"],
+    // Persisted part fields cannot shadow the block's real text or tag: a
+    // duplicate JSON key would let history override them.
+    let hostile = message::Text::new("real").with_provider(
+        TextExtras {
+            part: json!({"text": "evil", "type": "evil_type", "annotations": ["kept"]})
+                .as_object()
+                .cloned()
+                .unwrap_or_default(),
+            ..TextExtras::default()
         }
-    }))
-    .expect("object params");
-    let replayed = OutputText::from_message_text("real", hostile);
-    assert_eq!(replayed.text, "real");
-    assert!(replayed.extras.get("text").is_none());
-    assert!(replayed.extras.get("type").is_none());
-    assert_eq!(replayed.extras.get("annotations"), Some(&json!(["kept"])));
-    let wire = serde_json::to_value(&replayed).expect("serialize");
-    assert_eq!(wire.get("text"), Some(&json!("real")));
+        .into(),
+    );
+    let replayed = replay(&hostile);
+    assert_eq!(replayed["content"][0]["text"], "real");
+    assert_eq!(replayed["content"][0]["type"], "output_text");
+    assert_eq!(replayed["content"][0]["annotations"], json!(["kept"]));
 
-    // Replay honors only this wire's extras: an empty text block
-    // annotated with a *foreign* wire's extras (the shape anthropic
-    // ingest writes for raw server-tool content) produces no Responses
-    // item at all — its extras cannot reach this wire, and an empty
-    // assistant item the wire never sent risks a rejection — while an
-    // `openai_responses`-annotated empty block still replays.
+    // Another dialect's extras never reach this wire: an empty block that
+    // carries only Anthropic citations produces no Responses item.
     let foreign = message::Message::Assistant {
         id: None,
-        content: vec![completion::AssistantContent::Text(message::Text {
-            text: String::new(),
-            additional_params: message::AdditionalParams::try_from_value(json!({
-                "anthropic_content": {"type": "server_tool_use", "id": "srv_1"}
-            }))
-            .expect("object params"),
-        })],
+        content: vec![completion::AssistantContent::Text(
+            message::Text::new("").with_provider(
+                crate::providers::anthropic::completion::TextExtras::default().into(),
+            ),
+        )],
     };
     let items: Vec<InputItem> = foreign.try_into().expect("convert");
     assert!(
@@ -119,13 +115,18 @@ fn output_text_extras_survive_generic_conversion_and_replay() {
 
     let own_annotated_empty = |id: Option<String>| message::Message::Assistant {
         id,
-        content: vec![completion::AssistantContent::Text(message::Text {
-            text: String::new(),
-            additional_params: message::AdditionalParams::try_from_value(json!({
-                OPENAI_RESPONSES_EXTRAS_KEY: {"annotations": ["kept"]}
-            }))
-            .expect("object params"),
-        })],
+        content: vec![completion::AssistantContent::Text(
+            message::Text::new("").with_provider(
+                TextExtras {
+                    part: json!({"annotations": ["kept"]})
+                        .as_object()
+                        .cloned()
+                        .unwrap_or_default(),
+                    ..TextExtras::default()
+                }
+                .into(),
+            ),
+        )],
     };
     // With a message id, the Assistant form carries the extras.
     let items: Vec<InputItem> = own_annotated_empty(Some("msg_1".to_string()))
@@ -157,12 +158,10 @@ fn output_text_extras_survive_generic_conversion_and_replay() {
     let completion::AssistantContent::Text(text) = &bare else {
         panic!("expected a text block, got: {bare:?}");
     };
-    assert_eq!(text.additional_params, None);
-    assert!(
-        OutputText::from_message_text("plain", None)
-            .extras
-            .is_empty(),
-        "no params, no extras"
+    assert_eq!(text.provider, None);
+    assert_eq!(
+        replay(text)["content"][0],
+        json!({"type": "output_text", "text": "plain"})
     );
 }
 

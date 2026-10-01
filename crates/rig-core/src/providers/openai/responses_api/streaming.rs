@@ -532,27 +532,13 @@ impl<'id> ResponsesDecoder<'id> {
             .collect();
         let several = self.message_items.len() > 1;
         for (part, item) in parts {
-            let mut extras = serde_json::Map::new();
-            if let Some(phase) = &item.phase {
-                extras.insert(
-                    super::OPENAI_RESPONSES_PHASE_KEY.to_owned(),
-                    serde_json::Value::String(phase.clone()),
-                );
-            }
-            if several && !item.id.is_empty() {
-                extras.insert(
-                    super::OPENAI_RESPONSES_MESSAGE_ID_KEY.to_owned(),
-                    serde_json::Value::String(item.id.clone()),
-                );
-            }
-            if extras.is_empty() {
-                continue;
-            }
-            if let Some(params) = crate::message::AdditionalParams::from_entries(Some((
-                super::OPENAI_RESPONSES_EXTRAS_KEY,
-                serde_json::Value::Object(extras),
-            ))) {
-                out.text_params(part, params);
+            let extras = super::TextExtras {
+                phase: item.phase.clone(),
+                message_id: (several && !item.id.is_empty()).then(|| item.id.clone()),
+                ..super::TextExtras::default()
+            };
+            if extras != super::TextExtras::default() {
+                out.text_extras(part, extras.into());
             }
         }
     }
@@ -607,8 +593,8 @@ impl<'id> ResponsesDecoder<'id> {
             let text = super::text_block(content);
             let part = self.text_part(output_index, Some(&message.id), out);
             out.push_text(part, &text.text);
-            if let Some(additional_params) = text.additional_params {
-                out.text_params(part, additional_params);
+            if let Some(extras) = text.provider {
+                out.text_extras(part, extras);
             }
         }
     }
@@ -643,13 +629,13 @@ impl<'id> ResponsesDecoder<'id> {
             .content
             .iter()
             .cloned()
-            .filter_map(|content| super::text_block(content).additional_params)
+            .filter_map(|content| super::text_block(content).provider)
             .reduce(|mut extras, next| {
                 extras.merge(next);
                 extras
             });
         if let Some(extras) = extras {
-            out.text_params(part, extras);
+            out.text_extras(part, extras);
         }
         self.note_extras(output_index, &message.id);
     }
@@ -844,21 +830,20 @@ impl<'id> ResponsesDecoder<'id> {
                     out.message_id(message.id);
                 }
             }
-            // An unmodeled output item (e.g. a hosted-tool result such as
-            // `web_search_call`): surfaced raw to the consumer, as the
-            // non-streaming decode preserves it on `CompletionResponse.output`.
+            // Every other typed item (a compaction, a hosted-tool call, a
+            // type added later) is kept whole in its place for replay. Both
+            // the stream's `output_item.done` and a whole body land here.
+            Output::Unknown(serde_json::Value::Object(item))
+                if item.get("type").is_some_and(serde_json::Value::is_string) =>
+            {
+                out.provider_item(crate::message::ProviderItem::OpenAiResponses(
+                    crate::message::Verbatim::new(item),
+                ));
+            }
+            // An item without a type tag cannot be replayed: it reaches the
+            // consumer raw.
             Output::Unknown(value) => {
                 out.unknown(value.into());
-            }
-            // A compaction item: surfaced raw like an unmodeled item so a
-            // stateless consumer can capture it from the stream.
-            Output::Compaction(fields) => {
-                let mut map = fields;
-                map.insert(
-                    "type".to_string(),
-                    serde_json::Value::String("compaction".to_string()),
-                );
-                out.unknown(serde_json::Value::Object(map).into());
             }
         }
         Ok(())

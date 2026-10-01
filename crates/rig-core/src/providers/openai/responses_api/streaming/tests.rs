@@ -934,11 +934,10 @@ fn reasoning_text_delta_emits_reasoning_delta() {
 }
 
 #[test]
-fn unknown_output_item_surfaces_as_raw_unknown_choice() {
+fn unknown_output_item_is_kept_as_a_provider_part() {
     // A hosted-tool item (web_search_call) arriving on
-    // `response.output_item.done` reaches stream consumers as an unmodeled
-    // item carrying the verbatim item, mirroring how the non-streaming
-    // decode preserves it on `CompletionResponse.output`.
+    // `response.output_item.done` ends a provider part carrying the
+    // verbatim item, in its output position, so history replays it.
     let item = json!({
         "type": "web_search_call",
         "id": "ws_001",
@@ -955,14 +954,24 @@ fn unknown_output_item_surfaces_as_raw_unknown_choice() {
         })]),
         None,
     );
-    let unknown = decoded.items.iter().find_map(|event| match event {
-        Ok(Item::Unknown(value)) => Some(value),
-        _ => None,
-    });
+    let ended = decoded.ended();
+    let [AssistantContent::Provider(sealed)] = ended.as_slice() else {
+        panic!("one provider part: {:?}", decoded.events());
+    };
+    assert_eq!(sealed.issuer().as_str(), "openai");
     assert_eq!(
-        unknown,
-        Some(&item.into()),
-        "the raw web_search_call item should reach the consumer verbatim",
+        sealed.value(),
+        &crate::message::ProviderItem::OpenAiResponses(
+            crate::message::Verbatim::try_from(item).expect("an object")
+        ),
+        "the web_search_call item is kept verbatim",
+    );
+    assert!(
+        !decoded
+            .items
+            .iter()
+            .any(|event| matches!(event, Ok(Item::Unknown(_)))),
+        "a kept item is not also surfaced raw"
     );
 }
 
@@ -2229,12 +2238,10 @@ fn ended_texts(decoded: &Decoded<Completion>) -> Vec<crate::message::Text> {
 
 /// The Responses-owned annotations a text block carries.
 fn annotations_of(text: &crate::message::Text) -> Option<&serde_json::Value> {
-    text.additional_params
-        .as_ref()
-        .and_then(|params| {
-            params.wire_extras(crate::providers::openai::responses_api::OPENAI_RESPONSES_EXTRAS_KEY)
-        })
-        .and_then(|extras| extras.get("annotations"))
+    match &text.provider {
+        Some(crate::message::TextExtras::OpenAiResponses(extras)) => extras.part.get("annotations"),
+        _ => None,
+    }
 }
 
 /// The streamed text part carries the annotations its `output_item.done`
@@ -2498,11 +2505,20 @@ fn item_added(output_index: u64, sequence: u64, mut item: serde_json::Value) -> 
     })
 }
 
-/// The Responses-owned extras a text block carries.
-fn own_extras(text: &crate::message::Text) -> Option<&serde_json::Map<String, serde_json::Value>> {
-    text.additional_params.as_ref().and_then(|params| {
-        params.wire_extras(crate::providers::openai::responses_api::OPENAI_RESPONSES_EXTRAS_KEY)
-    })
+/// The Responses-owned extras a text block carries, as one object: the
+/// message item's `phase` and id beside the part's fields.
+fn own_extras(text: &crate::message::Text) -> Option<serde_json::Map<String, serde_json::Value>> {
+    let Some(crate::message::TextExtras::OpenAiResponses(extras)) = &text.provider else {
+        return None;
+    };
+    let mut object = extras.part.clone();
+    if let Some(phase) = &extras.phase {
+        object.insert("phase".to_owned(), json!(phase));
+    }
+    if let Some(message_id) = &extras.message_id {
+        object.insert("message_id".to_owned(), json!(message_id));
+    }
+    Some(object)
 }
 
 /// The unary body whose `output` is `output`, decoded as a buffered replay.
@@ -2545,7 +2561,7 @@ fn streamed_text_carries_its_message_phase_from_any_restatement() {
         assert_eq!(texts[0].text, "Hello.", "{label}");
         assert_eq!(
             own_extras(&texts[0]),
-            json!({ "phase": "commentary" }).as_object(),
+            json!({ "phase": "commentary" }).as_object().cloned(),
             "{label}"
         );
     }
@@ -2621,7 +2637,7 @@ fn phase_attaches_beside_interleaved_reasoning_and_tool_call() {
     assert_eq!(texts[0].text, "Checking the weather.");
     assert_eq!(
         own_extras(&texts[0]),
-        json!({ "phase": "commentary" }).as_object()
+        json!({ "phase": "commentary" }).as_object().cloned()
     );
     let response = decoded.outcome.expect("the stream decodes");
     let calls = calls_of(&response);
@@ -2661,7 +2677,7 @@ fn several_messages_each_keep_their_phase_and_id() {
     let unary = unary_of(json!([commentary, answer]));
     for (label, decoded) in [("streamed", &streamed), ("unary", &unary)] {
         let texts = ended_texts(decoded);
-        let facts: Vec<(&str, Option<&serde_json::Map<String, serde_json::Value>>)> = texts
+        let facts: Vec<(&str, Option<serde_json::Map<String, serde_json::Value>>)> = texts
             .iter()
             .map(|text| (text.text.as_str(), own_extras(text)))
             .collect();
@@ -2670,11 +2686,15 @@ fn several_messages_each_keep_their_phase_and_id() {
             [
                 (
                     "Let me think.",
-                    json!({ "phase": "commentary", "message_id": "msg_1" }).as_object()
+                    json!({ "phase": "commentary", "message_id": "msg_1" })
+                        .as_object()
+                        .cloned()
                 ),
                 (
                     "Apple.",
-                    json!({ "phase": "final_answer", "message_id": "msg_2" }).as_object()
+                    json!({ "phase": "final_answer", "message_id": "msg_2" })
+                        .as_object()
+                        .cloned()
                 ),
             ],
             "{label}"
@@ -2702,7 +2722,7 @@ fn phase_follows_the_output_slot_when_delta_ids_differ() {
     assert_eq!(texts.len(), 1, "{texts:?}");
     assert_eq!(
         own_extras(&texts[0]),
-        json!({ "phase": "final_answer" }).as_object()
+        json!({ "phase": "final_answer" }).as_object().cloned()
     );
 }
 
@@ -2735,7 +2755,9 @@ fn streamed_and_unary_text_carry_equal_phase() {
     assert_eq!(unary_texts.len(), 1, "{unary_texts:?}");
     assert_eq!(
         own_extras(&unary_texts[0]),
-        json!({ "annotations": [citation], "phase": "final_answer" }).as_object()
+        json!({ "annotations": [citation], "phase": "final_answer" })
+            .as_object()
+            .cloned()
     );
     for (label, decoded) in [("streamed", &streamed), ("snapshot only", &snapshot_only)] {
         assert_eq!(ended_texts(decoded), unary_texts, "{label}");
@@ -2776,9 +2798,8 @@ fn terminal_phase_follows_the_item_id_when_positions_shift() {
         .iter()
         .map(|text| {
             let phase = own_extras(text)
-                .and_then(|extras| extras.get("phase"))
-                .and_then(serde_json::Value::as_str)
-                .map(str::to_owned);
+                .and_then(|extras| extras.get("phase").cloned())
+                .and_then(|phase| phase.as_str().map(str::to_owned));
             (text.text.clone(), phase)
         })
         .collect();
@@ -2893,7 +2914,7 @@ fn repaired_indices_keep_each_message_phase_by_id() {
             None,
         );
         let texts = ended_texts(&decoded);
-        let facts: Vec<(&str, Option<&serde_json::Map<String, serde_json::Value>>)> = texts
+        let facts: Vec<(&str, Option<serde_json::Map<String, serde_json::Value>>)> = texts
             .iter()
             .map(|text| (text.text.as_str(), own_extras(text)))
             .collect();
@@ -2902,11 +2923,15 @@ fn repaired_indices_keep_each_message_phase_by_id() {
             [
                 (
                     "Let me think.",
-                    json!({ "phase": "commentary", "message_id": "msg_1" }).as_object()
+                    json!({ "phase": "commentary", "message_id": "msg_1" })
+                        .as_object()
+                        .cloned()
                 ),
                 (
                     "Apple.",
-                    json!({ "phase": "final_answer", "message_id": "msg_2" }).as_object()
+                    json!({ "phase": "final_answer", "message_id": "msg_2" })
+                        .as_object()
+                        .cloned()
                 ),
             ],
             "with_added = {with_added}"
@@ -2926,7 +2951,9 @@ fn a_text_beside_an_empty_message_item_keeps_its_own_id() {
     assert_eq!(texts.len(), 1, "{texts:?}");
     assert_eq!(
         own_extras(&texts[0]),
-        json!({ "phase": "commentary", "message_id": "msg_1" }).as_object()
+        json!({ "phase": "commentary", "message_id": "msg_1" })
+            .as_object()
+            .cloned()
     );
     let response = decoded.outcome.expect("the body decodes");
     assert_eq!(response.message_id.as_deref(), Some("msg_2"));
