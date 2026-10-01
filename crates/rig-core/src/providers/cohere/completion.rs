@@ -373,6 +373,8 @@ impl TryFrom<message::Message> for Vec<Message> {
                                 }),
                             });
                         }
+                        // Native items of another wire are not replayed.
+                        message::AssistantContent::Native(_) => {}
                         message::AssistantContent::Reasoning(reasoning) => {
                             // Reasoning another service issued is not replayed.
                             if let Some(reasoning) = reasoning.open(&super::wire::ISSUER) {

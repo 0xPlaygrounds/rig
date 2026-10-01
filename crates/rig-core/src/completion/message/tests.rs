@@ -416,3 +416,101 @@ fn media_constructors_name_their_source_encoding() {
         DocumentSourceKind::string("# Notes")
     );
 }
+
+/// Native items under the block-level edits history goes through.
+mod native_edits {
+    use super::super::{
+        AssistantContent, Format, Issuer, Message, Native, Reasoning, Sealed, ToolCall,
+        ToolFunction, ToolName, canonical_streamed_choice, turn_delivered_no_answer,
+    };
+    use serde_json::json;
+
+    fn native(issuer: &'static str, kind: &str) -> AssistantContent {
+        AssistantContent::Native(Sealed::new(
+            issuer,
+            Native::verbatim(Format::from_static("alpha-wire"), json!({ "type": kind })),
+        ))
+    }
+
+    fn call() -> AssistantContent {
+        AssistantContent::ToolCall(ToolCall::from_wire(
+            "call_1",
+            ToolFunction::new(ToolName::new("f").expect("a name"), json!({})),
+        ))
+    }
+
+    fn reasoning() -> AssistantContent {
+        AssistantContent::Reasoning(Reasoning::new("think").sealed("alpha"))
+    }
+
+    #[test]
+    fn regrouping_keeps_natives_in_order_with_the_text_they_precede() {
+        let choice = vec![
+            native("alpha", "hosted_call"),
+            call(),
+            native("alpha", "hosted_result"),
+            AssistantContent::text("cited answer"),
+            reasoning(),
+        ];
+        assert_eq!(
+            canonical_streamed_choice(choice),
+            vec![
+                reasoning(),
+                native("alpha", "hosted_call"),
+                native("alpha", "hosted_result"),
+                AssistantContent::text("cited answer"),
+                call(),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_turn_of_only_unreadable_natives_is_left_out_like_reasoning() {
+        let message = Message::Assistant {
+            id: None,
+            content: vec![native("alpha", "hosted_call"), reasoning()],
+        };
+        assert!(message.replays_to(&[Issuer::from("alpha")]));
+        assert!(!message.replays_to(&[Issuer::from("beta")]));
+        // A native item is not an answer.
+        assert!(turn_delivered_no_answer(&[native("alpha", "x")]));
+    }
+
+    #[test]
+    fn natives_survive_serde_and_older_histories_still_load() -> anyhow::Result<()> {
+        let message = Message::Assistant {
+            id: Some("msg_1".into()),
+            content: vec![native("alpha", "hosted_call"), AssistantContent::text("hi")],
+        };
+        let encoded = serde_json::to_value(&message)?;
+        anyhow::ensure!(
+            encoded["content"][0]
+                == json!({
+                    "type": "native",
+                    "issuer": "alpha",
+                    "format": "alpha-wire",
+                    "value": {"type": "hosted_call"}
+                }),
+            "the native part's shape changed: {encoded}"
+        );
+        anyhow::ensure!(
+            encoded["content"][1].get("native").is_none(),
+            "absent residue is not serialized"
+        );
+        anyhow::ensure!(serde_json::from_value::<Message>(encoded)? == message);
+
+        // A history written before native parts existed, tunnel key and all.
+        let older: Message = serde_json::from_value(json!({
+            "role": "assistant", "id": null,
+            "content": [{"type": "text", "text": "",
+                         "additional_params": {"anthropic_content": {"type": "server_tool_use"}}}]
+        }))?;
+        let Message::Assistant { content, .. } = older else {
+            anyhow::bail!("an assistant message");
+        };
+        anyhow::ensure!(
+            matches!(content.first(), Some(AssistantContent::Text(text)) if text.native.is_none())
+        );
+        Ok(())
+    }
+}

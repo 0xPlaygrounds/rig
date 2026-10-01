@@ -135,6 +135,7 @@ fn assistant_content(
                             signature,
                         )
                     }),
+                    native: None,
                 }));
             }
         } else if let Some(inline_data) = part.inline_data() {

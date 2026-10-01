@@ -52,6 +52,9 @@ pub enum ContentPart {
     },
     /// Structured JSON under a tool result; never implicitly parsed from text.
     Json(#[reflect(remote = super::reflect::JsonPartReflect)] serde_json::Value),
+    /// An assistant output item Rig has no canonical type for, kept verbatim
+    /// and sealed to the wire format and service that produced it.
+    Native(#[reflect(remote = super::reflect::NativePartReflect)] message::Sealed<message::Native>),
 }
 
 /// A request-only edit on an ordered link entity owned by a fresh turn.
@@ -286,6 +289,7 @@ fn prepare(
                         AssistantContent::Image(value) => ContentPart::Image(image(assets, value)?),
                         AssistantContent::ToolCall(value) => ContentPart::ToolCall(value),
                         AssistantContent::Reasoning(value) => ContentPart::Reasoning(value),
+                        AssistantContent::Native(value) => ContentPart::Native(value),
                     };
                     Ok((part, Vec::new()))
                 })
@@ -599,6 +603,7 @@ fn read_message_from<'a>(
                         }
                         ContentPart::ToolCall(value) => AssistantContent::ToolCall(value),
                         ContentPart::Reasoning(value) => AssistantContent::Reasoning(value),
+                        ContentPart::Native(value) => AssistantContent::Native(value),
                         _ => return Err(ContentError::Shape),
                     })
                 })

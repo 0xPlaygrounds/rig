@@ -22,8 +22,8 @@ use std::marker::PhantomData;
 use crate::completion::{CompletionRequest, CompletionResponse, FinishReason, Usage};
 use crate::error::{MalformedToolInput, ProviderError};
 use crate::message::{
-    AdditionalParams, AssistantContent, CallId, Image, Issuer, LocalCallId, ProviderCallId,
-    Reasoning, ReasoningContent, Text, ToolCall, ToolFunction, ToolName,
+    AdditionalParams, AssistantContent, CallId, Image, Issuer, LocalCallId, Native, ProviderCallId,
+    Reasoning, ReasoningContent, Sealed, Text, ToolCall, ToolFunction, ToolName,
 };
 use crate::streaming::{Item, Part, PartKind, StreamEvent};
 use crate::telemetry::{GenAiOperation, SpanBuilder, SpanCombinator};
@@ -133,6 +133,7 @@ enum Draft {
         part: Option<Part>,
         text: String,
         params: Option<AdditionalParams>,
+        native: Option<Sealed<Native>>,
     },
     Reasoning {
         part: Option<Part>,
@@ -144,6 +145,10 @@ enum Draft {
         arguments: Arguments,
         signature: Option<String>,
         additional_params: Option<serde_json::Value>,
+    },
+    Native {
+        part: Part,
+        native: Sealed<Native>,
     },
     Closed,
 }
@@ -296,6 +301,15 @@ pub struct ReasoningPart<'id> {
     brand: Brand<'id>,
 }
 
+/// An open native item of one reply. Its position is fixed when it opens;
+/// it ends with the value it holds when it closes.
+#[must_use = "an open part is closed when the reply ends"]
+#[derive(Debug)]
+pub struct NativePart<'id> {
+    slot: usize,
+    brand: Brand<'id>,
+}
+
 /// An open tool call of one reply. It has its id and its name, and becomes
 /// visible when it closes.
 ///
@@ -392,7 +406,12 @@ impl Turn {
     }
 
     fn close_text(&mut self, items: &mut Items, slot: usize) {
-        let Some(Draft::Text { part, text, params }) = self
+        let Some(Draft::Text {
+            part,
+            text,
+            params,
+            native,
+        }) = self
             .drafts
             .get_mut(slot)
             .map(|draft| std::mem::replace(draft, Draft::Closed))
@@ -400,7 +419,7 @@ impl Turn {
             return;
         };
         // A text part survives with text or with the metadata it carries.
-        if text.is_empty() && params.is_none() {
+        if text.is_empty() && params.is_none() && native.is_none() {
             return;
         }
         let part = part.unwrap_or_else(|| self.start(items, PartKind::Text));
@@ -411,7 +430,48 @@ impl Turn {
                 content: AssistantContent::Text(Text {
                     text,
                     additional_params: params,
+                    native,
                 }),
+            },
+        );
+    }
+
+    /// Start the text part in `slot` if no fragment started it: metadata is
+    /// content.
+    fn start_text(&mut self, items: &mut Items, slot: usize) {
+        if matches!(self.drafts.get(slot), Some(Draft::Text { part: None, .. })) {
+            let started = self.start(items, PartKind::Text);
+            if let Some(Draft::Text { part, .. }) = self.drafts.get_mut(slot) {
+                *part = Some(started);
+            }
+        }
+    }
+
+    /// A whole native item, already sealed, in its position.
+    fn push_native(&mut self, items: &mut Items, native: Sealed<Native>) {
+        let part = self.start(items, PartKind::Native);
+        emit(
+            items,
+            StreamEvent::End {
+                part,
+                content: AssistantContent::Native(native),
+            },
+        );
+    }
+
+    fn close_native(&mut self, items: &mut Items, slot: usize) {
+        let Some(Draft::Native { part, native }) = self
+            .drafts
+            .get_mut(slot)
+            .map(|draft| std::mem::replace(draft, Draft::Closed))
+        else {
+            return;
+        };
+        emit(
+            items,
+            StreamEvent::End {
+                part,
+                content: AssistantContent::Native(native),
             },
         );
     }
@@ -658,6 +718,7 @@ impl Turn {
                 Some(Draft::Call { .. }) => {
                     let _ = self.close_call(items, slot, IfMalformed::Drop);
                 }
+                Some(Draft::Native { .. }) => self.close_native(items, slot),
                 Some(Draft::Closed) | None => {}
             }
         }
@@ -822,6 +883,7 @@ impl<'id> Out<'id, Completion> {
             part: None,
             text: String::new(),
             params: None,
+            native: None,
         });
         TextPart {
             slot,
@@ -841,22 +903,76 @@ impl<'id> Out<'id, Completion> {
     pub fn text_params(&mut self, part: &TextPart<'id>, additional_params: AdditionalParams) {
         let mut shared = self.lock();
         let Shared { fold, items, .. } = &mut *shared;
-        let unstarted = matches!(
-            fold.drafts.get(part.slot),
-            Some(Draft::Text { part: None, .. })
-        );
-        if unstarted {
-            let started = fold.start(items, PartKind::Text);
-            if let Some(Draft::Text { part, .. }) = fold.drafts.get_mut(part.slot) {
-                *part = Some(started);
-            }
-        }
+        fold.start_text(items, part.slot);
         if let Some(Draft::Text { params, .. }) = fold.drafts.get_mut(part.slot) {
             match params {
                 Some(params) => params.merge(additional_params),
                 None => *params = Some(additional_params),
             }
         }
+    }
+
+    /// Set the native residue of an open text part: the fields of its wire
+    /// block the canonical text has no place for, sealed to this reply's
+    /// provider. It replaces any residue set before. Residue is content: the
+    /// part starts here if no text started it.
+    pub fn text_native(&mut self, part: &TextPart<'id>, native: Native) {
+        let mut shared = self.lock();
+        let Shared { fold, items, .. } = &mut *shared;
+        fold.start_text(items, part.slot);
+        let sealed = Sealed::new(fold.provider.clone(), native);
+        if let Some(Draft::Text { native, .. }) = fold.drafts.get_mut(part.slot) {
+            *native = Some(sealed);
+        }
+    }
+
+    /// The text an open text part holds so far, for residue bound to it
+    /// ([`TextBound`](crate::message::TextBound)).
+    pub fn text_so_far(&self, part: &TextPart<'id>) -> String {
+        match self.lock().fold.drafts.get(part.slot) {
+            Some(Draft::Text { text, .. }) => text.clone(),
+            _ => String::new(),
+        }
+    }
+
+    /// A whole output item Rig has no canonical type for, in its position,
+    /// sealed to this reply's provider: the service whose ids it carries.
+    pub fn native(&mut self, native: Native) {
+        let mut shared = self.lock();
+        let Shared { fold, items, .. } = &mut *shared;
+        let sealed = Sealed::new(fold.provider.clone(), native);
+        fold.push_native(items, sealed);
+    }
+
+    /// Open a native item whose value is still arriving. Its position is
+    /// fixed here; it ends with the last value [`Self::set_native`] gave it,
+    /// when it closes or the reply ends.
+    pub fn open_native(&mut self, native: Native) -> NativePart<'id> {
+        let mut shared = self.lock();
+        let Shared { fold, items, .. } = &mut *shared;
+        let part = fold.start(items, PartKind::Native);
+        let native = Sealed::new(fold.provider.clone(), native);
+        let slot = fold.draft(Draft::Native { part, native });
+        NativePart {
+            slot,
+            brand: PhantomData,
+        }
+    }
+
+    /// Replace the value of an open native item.
+    pub fn set_native(&mut self, part: &NativePart<'id>, native: Native) {
+        let mut shared = self.lock();
+        let provider = shared.fold.provider.clone();
+        if let Some(Draft::Native { native: open, .. }) = shared.fold.drafts.get_mut(part.slot) {
+            *open = Sealed::new(provider, native);
+        }
+    }
+
+    /// Close a native item: it ends with the value it holds.
+    pub fn close_native(&mut self, part: NativePart<'id>) {
+        let mut shared = self.lock();
+        let Shared { fold, items, .. } = &mut *shared;
+        fold.close_native(items, part.slot);
     }
 
     /// Close a text part. One with neither text nor metadata is dropped.
@@ -1042,7 +1158,20 @@ impl<'id> Out<'id, Completion> {
                 if let Some(params) = text.additional_params {
                     self.text_params(&part, params);
                 }
+                if let Some(native) = text.native {
+                    let mut shared = self.lock();
+                    let Shared { fold, items, .. } = &mut *shared;
+                    fold.start_text(items, part.slot);
+                    if let Some(Draft::Text { native: slot, .. }) = fold.drafts.get_mut(part.slot) {
+                        *slot = Some(native);
+                    }
+                }
                 self.close_text(part);
+            }
+            AssistantContent::Native(native) => {
+                let mut shared = self.lock();
+                let Shared { fold, items, .. } = &mut *shared;
+                fold.push_native(items, native);
             }
             AssistantContent::Reasoning(reasoning) => {
                 let issuer = reasoning.issuer().clone();
@@ -1306,6 +1435,7 @@ impl Turn {
             part: None,
             text: String::new(),
             params: None,
+            native: None,
         })
     }
 

@@ -98,6 +98,8 @@ pub(crate) fn content_from_message(
                     AssistantContent::Reasoning(reasoning) => reasoning
                         .open(&crate::types::completion_response::ISSUER)
                         .is_some(),
+                    // Native items of another wire are not replayed.
+                    AssistantContent::Native(_) => false,
                     _ => true,
                 })
                 .map(|assistant_content| match assistant_content {
@@ -153,6 +155,10 @@ pub(crate) fn content_from_message(
 
                         Ok(part)
                     }
+                    AssistantContent::Native(native) => Err(ProviderError::request(format!(
+                        "Vertex cannot replay a `{}` native item",
+                        native.issuer()
+                    ))),
                     AssistantContent::Reasoning(reasoning) => {
                         let reasoning = reasoning
                             .open(&crate::types::completion_response::ISSUER)

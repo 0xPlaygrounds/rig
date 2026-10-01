@@ -28,10 +28,12 @@ pub enum Message {
 }
 
 mod identity;
+mod native;
 
 pub use identity::{
     CallId, EmptyCallId, EmptyToolName, Issuer, LocalCallId, ProviderCallId, Sealed, ToolName,
 };
+pub use native::{Fingerprint, Format, InvalidFingerprint, Native, NativeData, TextBound};
 
 /// Shared error text for an invalid empty response choice.
 /// Provider decoders must exempt legal empty outcomes, including recognized
@@ -87,14 +89,16 @@ pub fn turn_delivered_no_answer(choice: &[AssistantContent]) -> bool {
         AssistantContent::Text(text) => !text.text.is_empty(),
         AssistantContent::ToolCall(_) => true,
         AssistantContent::Image(_) => true,
-        // The one exclusion: scratch work, not an answer.
-        AssistantContent::Reasoning(_) => false,
+        // Scratch work and provider-native items are not an answer.
+        AssistantContent::Reasoning(_) | AssistantContent::Native(_) => false,
     })
 }
 
 /// Groups streamed choices as reasoning, text, tool calls, then images,
-/// preserving order within each group. Choices without reasoning or tool calls
-/// retain their original order.
+/// preserving order within each group. Native items stay in the text group in
+/// arrival order, so a hosted tool's call, its result and the text citing it
+/// keep their sequence. Choices without reasoning or tool calls retain their
+/// original order.
 pub fn canonical_streamed_choice(choice: Vec<AssistantContent>) -> Vec<AssistantContent> {
     let regroup = choice.iter().any(|part| {
         matches!(
@@ -112,7 +116,7 @@ pub fn canonical_streamed_choice(choice: Vec<AssistantContent>) -> Vec<Assistant
     for part in choice {
         match part {
             AssistantContent::Reasoning(block) => reasoning.push(block),
-            AssistantContent::Text(_) => text.push(part),
+            AssistantContent::Text(_) | AssistantContent::Native(_) => text.push(part),
             AssistantContent::ToolCall(_) => calls.push(part),
             AssistantContent::Image(_) => images.push(part),
         }
@@ -153,6 +157,10 @@ pub enum AssistantContent {
     Reasoning(Sealed<Reasoning>),
     /// Image content emitted by the assistant.
     Image(Image),
+    /// An output item Rig has no canonical type for, kept verbatim in its
+    /// position and replayed only to the wire format and service that
+    /// produced it ([`Native`]).
+    Native(Sealed<Native>),
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
@@ -709,6 +717,11 @@ pub struct Text {
         skip_serializing_if = "Option::is_none"
     )]
     pub additional_params: Option<AdditionalParams>,
+    /// The fields of the wire block this text came from that the canonical
+    /// block has no place for, such as citations or a message phase. Only
+    /// the wire format and service that produced them replay them.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub native: Option<Sealed<Native>>,
 }
 
 impl Text {
@@ -717,7 +730,20 @@ impl Text {
         Self {
             text: text.into(),
             additional_params: None,
+            native: None,
         }
+    }
+
+    /// The native residue in `T`'s format, when `issuers` may read it. An
+    /// error means the residue is in `T`'s format but not `T`'s shape.
+    pub fn native_for<T: NativeData>(
+        &self,
+        issuers: &[Issuer],
+    ) -> Option<Result<T, serde_json::Error>> {
+        self.native
+            .as_ref()?
+            .open_for(issuers)
+            .and_then(Native::decode::<T>)
     }
 
     /// Returns the inner text string.
@@ -978,13 +1004,14 @@ impl Message {
         }
     }
 
-    /// Whether a service replaying reasoning `issuers` issued has anything to
+    /// Whether a service replaying what `issuers` issued has anything to
     /// read in this message: false only for an assistant message whose every
-    /// part is reasoning none of them opens.
+    /// part is reasoning or a native item none of them opens.
     pub fn replays_to(&self, issuers: &[Issuer]) -> bool {
         match self {
             Message::Assistant { content, .. } => content.iter().any(|part| match part {
                 AssistantContent::Reasoning(reasoning) => reasoning.open_for(issuers).is_some(),
+                AssistantContent::Native(native) => native.open_for(issuers).is_some(),
                 _ => true,
             }),
             Message::System { .. } | Message::User { .. } => true,
@@ -1292,6 +1319,7 @@ macro_rules! text_from {
                 Text {
                     text: text.into(),
                     additional_params: None,
+                    native: None,
                 }
             }
         }

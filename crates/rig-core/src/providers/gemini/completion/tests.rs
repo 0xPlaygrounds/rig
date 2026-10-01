@@ -1743,6 +1743,7 @@ async fn a_trailing_thought_signature_stays_on_the_part_that_carried_it() {
                 super::super::GEMINI_TEXT_EXTRAS_KEY,
                 "signature_REDACTED_1".to_owned(),
             ),
+            native: None,
         })
     };
     assert_eq!(buffered.choice.to_vec(), vec![signed("289")]);
@@ -1802,6 +1803,7 @@ async fn a_signature_on_its_own_text_part_stays_on_that_text_on_both_transports(
             super::super::GEMINI_TEXT_EXTRAS_KEY,
             "signature_REDACTED_1".to_owned(),
         ),
+        native: None,
     })];
     assert_eq!(buffered.choice.to_vec(), expected);
     assert_eq!(streamed.choice.to_vec(), expected);
@@ -1952,6 +1954,7 @@ fn a_text_signature_reaches_no_other_wire() {
             super::super::GEMINI_TEXT_EXTRAS_KEY,
             "c2lnbmVkLWFuc3dlcg==".to_owned(),
         ),
+        native: None,
     };
     let request = CompletionRequest::from(vec![
         message::Message::user("q"),
@@ -2002,6 +2005,7 @@ fn a_signed_answer_text_round_trips_through_serde() {
                 super::super::GEMINI_TEXT_EXTRAS_KEY,
                 "c2lnbmVk".to_owned(),
             ),
+            native: None,
         })],
     };
     let json = serde_json::to_string(&message).expect("the message serializes");

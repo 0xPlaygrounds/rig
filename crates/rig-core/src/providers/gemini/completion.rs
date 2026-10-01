@@ -712,6 +712,8 @@ pub mod gemini_api_types {
                             message::AssistantContent::Reasoning(reasoning) => reasoning
                                 .open(&crate::providers::gemini::completion::ISSUER)
                                 .is_some(),
+                            // Native items of another wire are not replayed.
+                            message::AssistantContent::Native(_) => false,
                             _ => true,
                         })
                         .map(std::convert::TryInto::try_into)
@@ -1140,6 +1142,9 @@ pub mod gemini_api_types {
                 }
                 message::AssistantContent::Image(image) => image_to_part(image),
                 message::AssistantContent::ToolCall(tool_call) => Ok(tool_call.into()),
+                message::AssistantContent::Native(native) => Err(MessageError::ConversionError(
+                    format!("Gemini cannot replay a `{}` native item", native.issuer()),
+                )),
                 message::AssistantContent::Reasoning(reasoning) => {
                     let reasoning = reasoning
                         .open(&crate::providers::gemini::completion::ISSUER)

@@ -150,7 +150,8 @@ fn validate_protocol_inputs(
                                 protocol,
                             )?;
                         }
-                        AssistantContent::Image(_) => {}
+                        // Native items of another wire are not replayed.
+                        AssistantContent::Image(_) | AssistantContent::Native(_) => {}
                     }
                 }
             }
@@ -431,6 +432,8 @@ fn render_plain_message(message: &Message) -> Result<(&'static str, String), Can
                     AssistantContent::Image(_) => {
                         return Err(CandleError::UnsupportedPromptContent("image content"));
                     }
+                    // Native items of another wire are not replayed.
+                    AssistantContent::Native(_) => {}
                 }
             }
             Ok(("assistant", parts.join("\n")))
@@ -610,6 +613,8 @@ fn render_qwen_message(
                             "assistant image content",
                         ));
                     }
+                    // Native items of another wire are not replayed.
+                    AssistantContent::Native(_) => {}
                 }
             }
             Ok(RenderedMessage::Normal {

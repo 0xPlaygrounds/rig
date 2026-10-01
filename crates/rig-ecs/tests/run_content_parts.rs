@@ -572,3 +572,51 @@ fn a_content_failure_ends_its_run_and_the_next_run_is_read_in_the_same_pass() {
         Some("fine")
     );
 }
+
+#[test]
+fn native_items_and_text_residue_round_trip_and_survive_a_text_edit() {
+    let format = Format::from_static("alpha-wire");
+    let residue = Native::verbatim(format.clone(), serde_json::json!({"phase": "final"}));
+    let item = AssistantContent::Native(Sealed::new(
+        "alpha",
+        Native::verbatim(
+            format,
+            serde_json::json!({"type": "hosted_call", "ratio": 0.25}),
+        ),
+    ));
+    let text = AssistantContent::Text(Text {
+        text: "answer".into(),
+        additional_params: None,
+        native: Some(Sealed::new("alpha", residue.clone())),
+    });
+    let parts = MessageParts::Assistant {
+        id: Some("message-1".into()),
+        content: vec![item.clone(), text],
+    };
+    let (mut world, entity) = world(parts.clone());
+    assert_eq!(read_message(&world, entity).unwrap(), parts);
+    assert_checkpoint_round_trip(&mut world, &parts);
+
+    // An in-place edit keeps the block's residue: the encoder decides what
+    // the edit made stale.
+    let children: Vec<_> = world.get::<Children>(entity).unwrap().iter().collect();
+    let mut part = world.get_mut::<ContentPart>(children[1]).unwrap();
+    let ContentPart::Text(text) = &mut *part else {
+        panic!("a text part");
+    };
+    text.text = "edited".into();
+    assert_eq!(
+        read_message(&world, entity).unwrap(),
+        MessageParts::Assistant {
+            id: Some("message-1".into()),
+            content: vec![
+                item,
+                AssistantContent::Text(Text {
+                    text: "edited".into(),
+                    additional_params: None,
+                    native: Some(Sealed::new("alpha", residue)),
+                }),
+            ],
+        }
+    );
+}

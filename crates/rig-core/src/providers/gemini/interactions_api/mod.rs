@@ -1008,6 +1008,8 @@ pub mod interactions_api_types {
                             crate::message::AssistantContent::Reasoning(reasoning) => {
                                 reasoning.open(&super::ISSUER).is_some()
                             }
+                            // Native items of another wire are not replayed.
+                            crate::message::AssistantContent::Native(_) => false,
                             _ => true,
                         })
                         .map(Content::try_from)
@@ -1649,6 +1651,12 @@ pub mod interactions_api_types {
                         arguments: Some(tool_call.function.arguments),
                         id: Some(call_id),
                     }))
+                }
+                message::AssistantContent::Native(native) => {
+                    Err(message::MessageError::ConversionError(format!(
+                        "Gemini cannot replay a `{}` native item",
+                        native.issuer()
+                    )))
                 }
                 message::AssistantContent::Reasoning(reasoning) => {
                     let content = reasoning

@@ -198,6 +198,7 @@ fn the_two_turn_predicates_diverge_on_recordable_but_answerless_turns() {
             json!({"citations": ["ref"]}),
         )
         .expect("citation params should be a JSON object"),
+        native: None,
     })];
 
     // Divergent: recordable, but no answer was delivered.
@@ -258,6 +259,7 @@ fn metadata_only_text_is_not_an_answer() {
             json!({"citations": ["ref"]}),
         )
         .expect("citation params should be a JSON object"),
+        native: None,
     });
 
     assert!(turn_delivered_no_answer(std::slice::from_ref(
@@ -610,6 +612,7 @@ fn empty_turn_classification_survives_a_serde_round_trip() {
             {}
         ))
         .expect("object params"),
+        native: None,
     })];
     assert!(is_empty_assistant_turn(&canonical_absent));
     let restored: Vec<AssistantContent> =
@@ -1869,6 +1872,7 @@ async fn prompt_request_preserves_metadata_only_text_turn_in_history() {
         MockCompletionModel::from_turns([MockTurn::from_content(AssistantContent::Text(Text {
             text: String::new(),
             additional_params: Some(metadata.clone()),
+            native: None,
         }))]);
     let agent = AgentBuilder::new(model).build();
 
