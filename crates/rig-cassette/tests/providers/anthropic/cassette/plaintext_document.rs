@@ -84,10 +84,7 @@ fn collect_anthropic_citations(choice: &[rig::message::AssistantContent]) -> Vec
             rig::message::AssistantContent::Text(text) => Some(text),
             _ => None,
         })
-        .flat_map(|text| {
-            anthropic_completion::anthropic_citations(text)
-                .expect("citations should decode from Anthropic text metadata")
-        })
+        .flat_map(|text| anthropic_completion::anthropic_citations(text).to_vec())
         .collect()
 }
 

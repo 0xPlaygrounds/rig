@@ -223,3 +223,36 @@ fn a_run_with_two_spellings_of_one_image_round_trips_with_one_payload() {
     assert_eq!(read_message(&restored, utterance).unwrap(), expected);
     assert_eq!(restored.resource::<BinaryAssets>().byte_len(), 1);
 }
+
+/// An assistant turn holding provider items and dialect extras survives a
+/// checkpoint through reflection: each item is its own part, in order,
+/// with its dialect, its issuer and its verbatim object.
+#[test]
+fn provider_items_and_text_extras_survive_a_checkpoint() {
+    use rig_core::message::{AssistantContent, ProviderItem, Text, Verbatim};
+    let item = |block: serde_json::Value| {
+        AssistantContent::Provider(
+            ProviderItem::AnthropicMessages(Verbatim::try_from(block).unwrap()).sealed("anthropic"),
+        )
+    };
+    let extras = rig_core::providers::openai::responses_api::TextExtras {
+        phase: Some("final_answer".to_owned()),
+        ..Default::default()
+    };
+    let parts = MessageParts::Assistant {
+        id: Some("msg_1".to_owned()),
+        content: vec![
+            item(serde_json::json!({"type": "server_tool_use", "id": "srvtoolu_1", "input": {}})),
+            item(serde_json::json!({"type": "future_block", "nested": {"kept": [1, 2]}})),
+            AssistantContent::Text(Text::new("answer").with_provider(extras.into())),
+        ],
+    };
+    let mut world = bare_world();
+    let utterance = world.spawn(Utterance).id();
+    write_message(&mut world, utterance, parts.clone()).unwrap();
+    let saved = round_trip(&save_world(&mut world).unwrap());
+    let mut restored = bare_world();
+    let loaded = load_world(&saved, &mut restored, RestoreMode::Strict, []).unwrap();
+    let utterance = loaded.with::<Utterance>(&restored)[0];
+    assert_eq!(read_message(&restored, utterance).unwrap(), parts);
+}

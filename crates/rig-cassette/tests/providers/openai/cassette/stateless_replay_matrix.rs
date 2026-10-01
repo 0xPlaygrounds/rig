@@ -51,11 +51,12 @@
 
 use futures::StreamExt;
 use rig::completion::ToolDefinition;
-use rig::message::{AssistantContent, Message, Text, ToolResultContent, UserContent};
-use rig::providers::openai;
-use rig::providers::openai::responses_api::{
-    CompletionResponse as ProviderResponse, InputItem, Output,
+use rig::message::{
+    AssistantContent, Message, ProviderItem, Text, TextExtras, ToolResultContent, UserContent,
 };
+use rig::providers::openai;
+use rig::providers::openai::responses_api::{CompletionResponse as ProviderResponse, Output};
+use rig::wire::{Body, Mode, Wire};
 use rig_test_support::cassette_models::OpenAiModels;
 use serde::Deserialize;
 use serde_json::Value;
@@ -182,25 +183,73 @@ async fn compaction_item_decodes_on_the_response() {
                 .output
                 .iter()
                 .find_map(|item| match item {
-                    Output::Compaction(fields) => Some(fields.clone()),
+                    Output::Unknown(item) if item["type"] == "compaction" => Some(item.clone()),
                     _ => None,
                 })
-                .expect("turn 1's output must decode the compaction item as Output::Compaction");
-            assert_eq!(compaction.get("id"), Some(&Value::from("cmp_REDACTED_1")));
-            assert!(compaction.get("type").is_none());
+                .expect("turn 1's output must carry the compaction item");
+            assert_eq!(compaction["id"], Value::from("cmp_REDACTED_1"));
 
-            // The regular items beside it still decode and normalize.
-            assert!(!response.choice.is_empty());
+            // Loss 2: the compaction item is kept in history, verbatim, in
+            // its output position, sealed to the service that issued it.
+            let AssistantContent::Provider(kept) = &response.choice[0] else {
+                panic!(
+                    "the compaction item opens the choice: {:?}",
+                    response.choice
+                );
+            };
+            assert_eq!(kept.issuer().as_str(), "openai");
+            let ProviderItem::OpenAiResponses(item) = kept.open(kept.issuer()).expect("opens")
+            else {
+                panic!("a Responses item");
+            };
+            assert_eq!(Value::from(item.clone()), compaction);
+            assert!(matches!(&response.choice[1], AssistantContent::Text(_)));
 
-            // The same item, re-serialized, is accepted on the input side
-            // byte-for-byte — this is what a stateless client sends back.
-            let wire = serde_json::to_value(Output::Compaction(compaction)).expect("serializes");
-            let input: InputItem =
-                serde_json::from_value(wire.clone()).expect("the input side accepts the item");
-            assert_eq!(
-                serde_json::to_value(&input).expect("re-serializes"),
-                wire,
-                "the input item must re-emit the compaction item verbatim"
+            // The follow-up a stateless client sends replays it before the
+            // assistant message, exactly as the API returned it.
+            let mut history = vec![Message::user(TURN_ONE)];
+            history.extend(response.message());
+            history.push(Message::user(TURN_TWO));
+            let history_for_anthropic = history.clone();
+            let encoded = model
+                .wire
+                .encode(CompletionRequest::from(history), Mode::Unary)
+                .expect("turn 2 encodes");
+            let Body::Bytes(bytes) = encoded.request.body() else {
+                panic!("a JSON body");
+            };
+            let body: Value = serde_json::from_slice(bytes).expect("the body is JSON");
+            let input = body["input"].as_array().expect("an input array");
+            assert_eq!(input[1], compaction, "the item replays verbatim: {body}");
+            assert_eq!(input[2]["type"], "message");
+            assert_eq!(input[2]["role"], "assistant");
+            assert_eq!(input[2]["phase"], PHASE);
+
+            // Another dialect never receives it: the Anthropic request
+            // carries the answer text and nothing of the item.
+            let anthropic = rig_test_support::cassette_models::AnthropicModels::new(
+                rig::providers::anthropic::AnthropicConfig::new("sk-offline"),
+                crate::stream_faults::scripted(Vec::new()),
+            )
+            .completion(rig::providers::anthropic::CLAUDE_OPUS_4_8);
+            let encoded = anthropic
+                .wire
+                .encode(
+                    CompletionRequest::from(history_for_anthropic).max_tokens(64),
+                    Mode::Unary,
+                )
+                .expect("turn 2 encodes for Anthropic");
+            let Body::Bytes(bytes) = encoded.request.body() else {
+                panic!("a JSON body");
+            };
+            let body = String::from_utf8_lossy(bytes);
+            assert!(
+                !body.contains("compaction") && !body.contains("cmp_"),
+                "{body}"
+            );
+            assert!(
+                body.contains("ACK-1"),
+                "the answer text still replays: {body}"
             );
         },
     )
@@ -306,21 +355,18 @@ fn text_block_items(response: &rig::completion::CompletionResponse) -> Vec<(Stri
     texts(&response.choice)
         .into_iter()
         .map(|text| {
-            let extras = text
-                .additional_params
-                .as_ref()
-                .and_then(|params| params.wire_extras("openai_responses"));
-            let field = |key: &str| {
-                extras
-                    .and_then(|extras| extras.get(key))
-                    .and_then(Value::as_str)
-                    .map(str::to_owned)
+            let extras = match &text.provider {
+                Some(TextExtras::OpenAiResponses(extras)) => Some(extras),
+                _ => None,
             };
             (
-                field("message_id")
+                extras
+                    .and_then(|extras| extras.message_id.clone())
                     .or_else(|| response.message_id.clone())
                     .unwrap_or_default(),
-                field("phase").unwrap_or_default(),
+                extras
+                    .and_then(|extras| extras.phase.clone())
+                    .unwrap_or_default(),
             )
         })
         .collect()

@@ -1738,6 +1738,7 @@ async fn a_trailing_thought_signature_stays_on_the_part_that_carried_it() {
     let streamed = streamed("gemini-3-flash-preview", SIGNED_STREAM).await;
     let signed = |text: &str| {
         message::AssistantContent::Text(message::Text {
+            provider: None,
             text: text.to_owned(),
             additional_params: super::super::text_signature_extras(
                 super::super::GEMINI_TEXT_EXTRAS_KEY,
@@ -1797,6 +1798,7 @@ async fn a_signature_on_its_own_text_part_stays_on_that_text_on_both_transports(
     let streamed = streamed("gemini-3-flash-preview", SIGNED_ONE_PART_STREAM).await;
 
     let expected = vec![message::AssistantContent::Text(message::Text {
+        provider: None,
         text: "done".to_owned(),
         additional_params: super::super::text_signature_extras(
             super::super::GEMINI_TEXT_EXTRAS_KEY,
@@ -1947,6 +1949,7 @@ fn a_text_signature_reaches_no_other_wire() {
     }
 
     let signed = message::Text {
+        provider: None,
         text: "the answer".to_owned(),
         additional_params: super::super::text_signature_extras(
             super::super::GEMINI_TEXT_EXTRAS_KEY,
@@ -1997,6 +2000,7 @@ fn a_signed_answer_text_round_trips_through_serde() {
     let message = message::Message::Assistant {
         id: None,
         content: vec![message::AssistantContent::Text(message::Text {
+            provider: None,
             text: "the answer".to_owned(),
             additional_params: super::super::text_signature_extras(
                 super::super::GEMINI_TEXT_EXTRAS_KEY,

@@ -276,10 +276,16 @@ pub fn project(streaming: bool, outcome: &Result<CompletionResponse, ErrorKind>)
 
 fn project_content(content: &AssistantContent) -> Value {
     match content {
-        AssistantContent::Text(text) => json!({
-            "text": text.text,
-            "additional_params": text.additional_params,
-        }),
+        AssistantContent::Text(text) => {
+            let mut projected = json!({
+                "text": text.text,
+                "additional_params": text.additional_params,
+            });
+            if let Some(extras) = &text.provider {
+                projected["provider"] = json!(extras);
+            }
+            projected
+        }
         AssistantContent::ToolCall(call) => {
             let (id, item_id) = match call.id.provider() {
                 Some(provider) => (provider.call_id.clone(), provider.item_id.clone()),
@@ -316,6 +322,7 @@ fn project_content(content: &AssistantContent) -> Value {
             })
         }
         AssistantContent::Image(image) => json!({ "image": image }),
+        AssistantContent::Provider(item) => json!({ "provider": item }),
     }
 }
 

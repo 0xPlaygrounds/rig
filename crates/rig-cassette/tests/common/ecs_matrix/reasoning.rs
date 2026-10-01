@@ -138,7 +138,7 @@ pub(crate) fn completions(log: &EffectLog) -> Vec<&CompletionResponse> {
 fn rank(part: &AssistantContent) -> u8 {
     match part {
         AssistantContent::Reasoning(_) => 0,
-        AssistantContent::Text(_) => 1,
+        AssistantContent::Text(_) | AssistantContent::Provider(_) => 1,
         AssistantContent::ToolCall(_) => 2,
         AssistantContent::Image(_) => 3,
     }

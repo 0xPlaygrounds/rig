@@ -584,13 +584,10 @@ async fn streamed_phase_round_trips_on_follow_up() {
         .choice
         .iter()
         .filter_map(|content| match content {
-            AssistantContent::Text(text) => Some(
-                text.additional_params
-                    .as_ref()
-                    .and_then(|params| params.wire_extras("openai_responses"))
-                    .and_then(|extras| extras.get("phase"))
-                    .and_then(serde_json::Value::as_str),
-            ),
+            AssistantContent::Text(text) => Some(match &text.provider {
+                Some(rig::message::TextExtras::OpenAiResponses(extras)) => extras.phase.as_deref(),
+                _ => None,
+            }),
             _ => None,
         })
         .collect();

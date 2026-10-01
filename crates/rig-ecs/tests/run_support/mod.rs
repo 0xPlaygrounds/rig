@@ -193,7 +193,8 @@ pub fn texts(request: &CompletionRequest) -> Vec<String> {
                         AssistantContent::Text(text) => Some(text.text.clone()),
                         AssistantContent::ToolCall(_)
                         | AssistantContent::Reasoning(_)
-                        | AssistantContent::Image(_) => None,
+                        | AssistantContent::Image(_)
+                        | AssistantContent::Provider(_) => None,
                     })
                     .collect::<String>()
             ),

@@ -730,8 +730,9 @@ pub async fn anthropic(
         .await;
         let cited = history[from..].iter().any(|message| match message {
             Message::Assistant { content, .. } => content.iter().any(|part| match part {
-                AssistantContent::Text(text) => anthropic::completion::anthropic_citations(text)
-                    .is_ok_and(|citations| !citations.is_empty()),
+                AssistantContent::Text(text) => {
+                    !anthropic::completion::anthropic_citations(text).is_empty()
+                }
                 _ => false,
             }),
             _ => false,
@@ -957,17 +958,12 @@ pub async fn anthropic(
     use futures::StreamExt;
     while let Some(item) = stream.next().await {
         if let rig_core::streaming::Item::Event(rig_core::streaming::StreamEvent::End {
-            content: AssistantContent::Text(text),
+            content: AssistantContent::Provider(item),
             ..
         }) = item.unwrap_or_else(|error| panic!("{}: web search item: {error}", session.run))
-            && let Some(kind) = text
-                .additional_params
-                .as_ref()
-                .and_then(|params| params.get("anthropic_content"))
-                .and_then(|raw| raw.get("type"))
-                .and_then(Value::as_str)
+            && let Some(item) = item.open(item.issuer())
         {
-            raw_types.push(kind.to_owned());
+            raw_types.push(item.kind().to_owned());
         }
     }
     let terminal = stream

@@ -81,6 +81,7 @@ fn block_kinds(choice: &[AssistantContent]) -> Vec<&'static str> {
             AssistantContent::ToolCall(_) => "tool_call",
             AssistantContent::Reasoning(_) => "reasoning",
             AssistantContent::Image(_) => "image",
+            AssistantContent::Provider(_) => "provider",
         })
         .collect()
 }
