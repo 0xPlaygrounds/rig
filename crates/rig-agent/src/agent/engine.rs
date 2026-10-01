@@ -2,11 +2,11 @@
 //! streaming [`TurnSource`] implementations supply model responses; the engine
 //! applies lifecycle policy and advances the sans-I/O [`AgentRun`].
 
+use std::collections::VecDeque;
 use std::sync::{
     Arc,
     atomic::{AtomicU64, Ordering},
 };
-use std::collections::VecDeque;
 
 use futures::{Stream, StreamExt, stream};
 use tracing::{Instrument, span::Id};
