@@ -2,9 +2,9 @@
 //! [`Cell`] over the same `Program` table the happy paths use, plus the
 //! fault the cell drives ([`Fault`]) and the scene it saves ([`Scene`]).
 //! The per-wire file specialises a cell's fault with the wire's own facts
-//! (the recorded status, the body's code) by struct update, and builds the
-//! transport the fault needs: a cassette for a recorded fault, the
-//! sequenced transport over labelled frames for a scripted one.
+//! (the recorded status, the body's code) by struct update and serves a
+//! recorded fault from its cassette. A scripted fault runs here, over the
+//! sequenced transport and labelled frames the wire's [`Scripted`] names.
 
 use rig_core::effect::EffectFamily;
 
@@ -16,11 +16,21 @@ use rig_core::effect::EffectFamily::Tool;
 
 use rig_core::error::ErrorKind;
 
+use super::Wire;
 use super::cells::{
     BASIC_PREAMBLE, BASIC_PROMPT, CELL, Cell, ENDINGS_TOOL_OUTCOME_CANCELLED, Memory, READY_PROMPT,
     TOOLS_PREAMBLE, TWO_TOOL_STREAM_PREAMBLE, ToolKind,
 };
 use super::corpus::{CONVERSATION, Ending, Program};
+use super::extra::{Cut, cancel_at};
+use super::world::{run_scripted, run_world};
+use crate::goldens::capture_world_programs;
+use rig_cassette::effect_log::EffectLog;
+use rig_core::http_client::DynHttpClient;
+use rig_core::test_utils::{MockHttpResponse, SequencedHttpClient};
+use rig_test_support::stream_faults::{
+    SseShape, recorded_sse_frames, scripted, sse_bytes, status_reply,
+};
 
 /// The fault a cell drives, and what the world must say about it beyond
 /// the record (the record itself is the oracle's).
@@ -390,29 +400,160 @@ pub(crate) const SCENE_TOOL_IN_FLIGHT: Cell = Cell {
     ..CELL
 };
 
-/// Every cell of the failure rows, for a per-wire file to iterate.
-#[allow(dead_code)]
-pub(crate) const ALL: &[&Cell] = &[
-    &SETUP_UNARY,
-    &SETUP_STREAMED,
-    &STATUS_429,
-    &STATUS_503,
-    &STATUS_503_RETRIED,
-    &TRUNCATED_AFTER_TEXT,
-    &TRUNCATED_AFTER_TOOL_CALL,
-    &ERROR_AFTER_TEXT,
-    &REFUSAL,
-    &FILTERED_WITH_TEXT,
-    &FILTERED_EMPTY,
-    &TOOL_ERROR,
-    &TOOL_ERROR_STREAMED,
-    &BATCH_SECOND_FAILS,
-    &BATCH_SECOND_FAILS_CONCURRENT,
-    &STOP_WHILE_TOOL_RUNS,
-    &FAILING_LOAD,
-    &FAILING_LOAD_STREAMED,
-    &SCENE_TOOL_IN_FLIGHT,
-];
+/// A wire's scripted rows: the faults served by the sequenced transport
+/// over labelled frames cut or rewritten from the wire's own recordings,
+/// each run by the rig-agent runner and the world over the same frames.
+/// Every row takes the caller's literal world golden.
+pub(crate) struct Scripted<M> {
+    /// The provider directory the frames and the status reply are read from.
+    pub(crate) provider: &'static str,
+    pub(crate) shape: SseShape,
+    /// The streamed text answer the text rows cut, on the wire's own model.
+    pub(crate) text_stream: &'static str,
+    /// The streamed tool call the tool rows cut, on the wire's own model.
+    pub(crate) tool_stream: &'static str,
+    /// The recorded setup failure the status rows rewrite, and its body's code.
+    pub(crate) setup_reply: &'static str,
+    pub(crate) code: Option<&'static str>,
+    /// The wire over a scripted transport. The client's key must never reach
+    /// a recording or a trace.
+    pub(crate) wire: fn(DynHttpClient) -> Wire<M>,
+}
+
+impl<W, T> Scripted<rig::driver::Model<W, T>>
+where
+    W: rig::wire::Wire<Op = rig::operation::Completion>,
+    T: rig::driver::Transport<W>,
+{
+    /// The frames of `scenario`'s first interaction.
+    pub(crate) fn recorded(&self, scenario: &str) -> Vec<String> {
+        recorded_sse_frames(self.provider, scenario, 0)
+    }
+
+    /// The wire over a transport that answers one streaming request with
+    /// `frames`, then EOF.
+    pub(crate) fn stream(&self, frames: &[String]) -> Wire<rig::driver::Model<W, T>> {
+        (self.wire)(DynHttpClient::new(scripted(vec![sse_bytes(frames)])))
+    }
+
+    /// The wire over a transport that answers each unary request with the
+    /// next of `replies`.
+    fn unary(&self, replies: Vec<MockHttpResponse>) -> Wire<rig::driver::Model<W, T>> {
+        (self.wire)(DynHttpClient::new(SequencedHttpClient::new(replies)))
+    }
+
+    fn status_cell(&self, status: u16, retry_after: bool, cell: Cell) -> Cell {
+        Cell {
+            fault: Some(Fault::Status {
+                status,
+                code: self.code,
+                retry_after,
+            }),
+            ..cell
+        }
+    }
+
+    fn reply(&self, status: u16, retry_after: bool) -> MockHttpResponse {
+        status_reply(self.provider, self.setup_reply, status, retry_after)
+    }
+
+    async fn stream_row(&self, cell: &Cell, frames: Vec<String>, golden: impl FnOnce(&EffectLog)) {
+        capture_world_programs(run_scripted(cell, || self.stream(&frames), golden)).await;
+    }
+
+    pub(crate) async fn truncated_after_text(&self, golden: impl FnOnce(&EffectLog)) {
+        let frames = self.shape.text_prefix(&self.recorded(self.text_stream));
+        self.stream_row(&TRUNCATED_AFTER_TEXT, frames, golden).await;
+    }
+
+    pub(crate) async fn truncated_after_tool_call(&self, golden: impl FnOnce(&EffectLog)) {
+        let frames = self.shape.tool_prefix(&self.recorded(self.tool_stream));
+        self.stream_row(&TRUNCATED_AFTER_TOOL_CALL, frames, golden)
+            .await;
+    }
+
+    /// The in-band error frame's facts, as the funnel reports them on this
+    /// shape (`SseShape::error_{code,message,status}`).
+    pub(crate) async fn error_after_text(&self, golden: impl FnOnce(&EffectLog)) {
+        let cell = Cell {
+            fault: Some(Fault::ErrorAfterText {
+                code: self.shape.error_code(),
+                message: self.shape.error_message(),
+                status: self.shape.error_status(),
+            }),
+            ..ERROR_AFTER_TEXT
+        };
+        let frames = self.shape.error_frames(&self.recorded(self.text_stream));
+        self.stream_row(&cell, frames, golden).await;
+    }
+
+    pub(crate) async fn filtered_with_text(&self, golden: impl FnOnce(&EffectLog)) {
+        let frames = self.shape.filtered(&self.recorded(self.text_stream), true);
+        self.stream_row(&FILTERED_WITH_TEXT, frames, golden).await;
+    }
+
+    pub(crate) async fn filtered_empty(&self, golden: impl FnOnce(&EffectLog)) {
+        let frames = self.shape.filtered(&self.recorded(self.text_stream), false);
+        self.stream_row(&FILTERED_EMPTY, frames, golden).await;
+    }
+
+    /// Row 10: no request reaches the wire; the transport answers nothing.
+    pub(crate) async fn failing_load(&self, golden: impl FnOnce(&EffectLog)) {
+        self.stream_row(&FAILING_LOAD, Vec::new(), golden).await;
+    }
+
+    pub(crate) async fn failing_load_streamed(&self, golden: impl FnOnce(&EffectLog)) {
+        self.stream_row(&FAILING_LOAD_STREAMED, Vec::new(), golden)
+            .await;
+    }
+
+    /// Row 11: a bare `Cancelled` at the first tool-call delta; the stream is
+    /// left to its handler, the tool never dispatched. The recorded tool turn
+    /// is served whole by the sequenced transport: a cancelled run makes one
+    /// request, and the recording holds two.
+    pub(crate) async fn cancel_at_first_tool_call_delta(&self, golden: impl FnOnce(&EffectLog)) {
+        let wire = self.stream(&self.recorded(self.tool_stream));
+        capture_world_programs(cancel_at(
+            &wire,
+            &super::cells::HOOKS_PATCH_TOOL_ARGS_STREAMED,
+            Cut::FirstToolCallDelta,
+            golden,
+        ))
+        .await;
+    }
+
+    pub(crate) async fn status_429(&self, golden: impl FnOnce(&EffectLog)) {
+        let cell = self.status_cell(429, true, STATUS_429);
+        let wire = || self.unary(vec![self.reply(429, true)]);
+        capture_world_programs(run_scripted(&cell, wire, golden)).await;
+    }
+
+    pub(crate) async fn status_503(&self, golden: impl FnOnce(&EffectLog)) {
+        let cell = self.status_cell(503, false, STATUS_503);
+        let wire = || self.unary(vec![self.reply(503, false)]);
+        capture_world_programs(run_scripted(&cell, wire, golden)).await;
+    }
+
+    /// World-only: the default budget re-issues the completion three times.
+    pub(crate) async fn status_503_retried(&self, golden: impl FnOnce(&EffectLog)) {
+        let cell = self.status_cell(503, false, STATUS_503_RETRIED);
+        let wire = self.unary((0..4).map(|_| self.reply(503, false)).collect());
+        capture_world_programs(run_world(&wire, &cell, golden)).await;
+    }
+}
+
+/// Row 11 once the terminal record has landed and before `Fold`: a whole
+/// completion, the run cancelled, despawned at once.
+pub(crate) async fn cancel_after_terminal<W, T>(
+    wire: &Wire<rig::driver::Model<W, T>>,
+    cell: &Cell,
+    golden: impl FnOnce(&EffectLog),
+) where
+    W: rig::wire::Wire<Op = rig::operation::Completion>,
+    T: rig::driver::Transport<W>,
+{
+    cancel_at(wire, cell, Cut::AfterTerminal, golden).await;
+}
 
 /// `lookup_orchard_label` that fails every call (row 8's second tool).
 #[derive(Clone)]

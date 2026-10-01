@@ -18,9 +18,9 @@
 //!   cut and resumed in a fresh world over replayers of the log's tail.
 //!
 //! The failure rows ([`faults`]) are the same shape: a cell names the
-//! fault it drives, the per-wire file supplies the transport (a cassette,
-//! or the sequenced transport over labelled frames) and the wire's own
-//! facts, and the two drivers assert the failure, the record and the
+//! fault it drives, the per-wire file supplies its cassettes and the wire's
+//! own facts, [`faults::Scripted`] serves the scripted rows over labelled
+//! frames, and the two drivers assert the failure, the record and the
 //! history beside the ending.
 //!
 //! A per-provider file (`tests/providers/<p>/cassette/{corpus,ecs}_matrix*.rs`)
