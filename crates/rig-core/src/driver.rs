@@ -28,7 +28,7 @@ use tracing::Instrument;
 
 use crate::error::ProviderError;
 use crate::observe::{AdapterContext, AdapterEnding, AdapterSlot};
-use crate::streaming::Streamed;
+use crate::streaming::{Item, Streamed};
 use crate::wasm_compat::{WasmBoxedFuture, WasmBoxedStream, WasmCompatSend, WasmCompatSync};
 use crate::wire::{
     Call, Capabilities, Decoder, Flow, Mode, Operation, Out, Request, Response, Shared, Wire,
@@ -339,7 +339,7 @@ fn read<W: Wire>(
         } = match opened {
             Ok(opened) => opened,
             Err(error) => {
-                fail(reply, slot_none(), error);
+                fail(reply, None, error);
                 return;
             }
         };
@@ -359,59 +359,21 @@ fn read<W: Wire>(
             Mode::Streaming => error,
         };
         let mut decoder = wire.decoder();
-        // Frames counted for observation's EOF and corruption positions.
-        let mut counted = 0usize;
+        let mut tally = slot.as_ref().map(|slot| Tally {
+            slot,
+            analysis_only,
+            counted: 0,
+        });
         loop {
-            let step = match frames.next().await {
-                Some(Ok(frame)) => {
-                    let analysis = slot.is_some()
-                        && analysis_only.is_some_and(|analysis_only| analysis_only(&frame));
-                    let classified = decoder.classify(frame);
-                    // A corrupt frame is never exempt, whatever its shape.
-                    let corrupt = matches!(classified, WireEvent::Corrupt(_));
-                    if slot.is_some() && (corrupt || !analysis) {
-                        counted += 1;
-                    }
-                    match classified {
-                        WireEvent::Known(event) => decoder.decode(event, Out::new(reply)),
-                        // Unmodeled, but always delivered: the consumer sees
-                        // it, and aggregation never folds it into the answer.
-                        WireEvent::Unknown { event_type, value } => {
-                            warn_unmodeled(&event_type, &value);
-                            Out::new(reply).unknown(value);
-                            Ok(Flow::More)
-                        }
-                        WireEvent::Corrupt(error) => {
-                            if let Some(slot) = &slot {
-                                slot.corrupt(counted);
-                            }
-                            Err(ProviderError::from(error))
-                        }
-                    }
-                }
+            let flow = match frames.next().await {
+                Some(Ok(frame)) => step(&mut decoder, reply, frame, tally.as_mut()),
                 Some(Err(error)) => {
                     fail(reply, slot.as_ref(), error);
                     return;
                 }
-                None => {
-                    if let Some(slot) = &slot {
-                        slot.transport_eof(counted);
-                    }
-                    // A decoder that saw the provider's end ends the reply
-                    // here; otherwise the frames ran out on it.
-                    let step = decoder.eof(Out::new(reply));
-                    if !matches!(step, Ok(Flow::Ended(_)))
-                        && let Some(slot) = &slot
-                    {
-                        slot.eof(counted);
-                    }
-                    match step {
-                        Ok(Flow::More) => Err(ProviderError::Truncated),
-                        step => step,
-                    }
-                }
+                None => eof(&mut decoder, reply, tally.as_ref()),
             };
-            match step {
+            match flow {
                 Ok(Flow::More) => yield (),
                 Ok(Flow::Ended(_)) => break,
                 Err(error) => {
@@ -456,42 +418,93 @@ pub(crate) struct Decoded<Op: Operation> {
     pub(crate) outcome: Result<Op::Response, ProviderError>,
 }
 
+/// Observation's count of one observed reply's frames, for its EOF and
+/// corruption positions.
+pub(crate) struct Tally<'a, F> {
+    slot: &'a AdapterSlot,
+    /// Frames observation does not count, unless they are corrupt.
+    analysis_only: Option<fn(&F) -> bool>,
+    counted: usize,
+}
+
 /// What the driver does with a classified frame: a known event is decoded,
-/// an unmodeled payload is warned about and delivered, and a corrupt frame
-/// is the error that ends the reply.
-#[cfg(any(test, feature = "websocket", feature = "test-utils"))]
-pub(crate) fn triage<E>(event: WireEvent<E>) -> Result<crate::streaming::Item<E>, ProviderError> {
+/// an unmodeled payload is warned about and delivered (aggregation never
+/// folds it into the answer), and a corrupt frame is the error that ends
+/// the reply.
+pub(crate) fn triage<E>(event: WireEvent<E>) -> Result<Item<E>, ProviderError> {
     match event {
-        WireEvent::Known(event) => Ok(crate::streaming::Item::Event(event)),
+        WireEvent::Known(event) => Ok(Item::Event(event)),
         WireEvent::Unknown { event_type, value } => {
             warn_unmodeled(&event_type, &value);
-            Ok(crate::streaming::Item::Unknown(value))
+            Ok(Item::Unknown(value))
         }
         WireEvent::Corrupt(error) => Err(ProviderError::from(error)),
     }
 }
 
-/// Decode one frame already in hand into `reply`, as [`read`] does.
-#[cfg(any(test, feature = "websocket", feature = "test-utils"))]
+/// Classify one frame and decode it into `reply`, counting it in `tally`
+/// when the reply is observed.
 pub(crate) fn step<'id, Op, F, D>(
     decoder: &mut D,
     reply: &'id Mutex<Shared<Op>>,
     frame: F,
+    tally: Option<&mut Tally<'_, F>>,
 ) -> Result<Flow, ProviderError>
 where
     Op: Operation,
-    D: crate::wire::Decoder<'id, Op, F>,
+    D: Decoder<'id, Op, F>,
 {
-    match triage(decoder.classify(frame))? {
-        crate::streaming::Item::Event(event) => decoder.decode(event, Out::new(reply)),
-        crate::streaming::Item::Unknown(value) => {
+    let exempt = tally
+        .as_ref()
+        .and_then(|tally| tally.analysis_only)
+        .is_some_and(|analysis_only| analysis_only(&frame));
+    let classified = decoder.classify(frame);
+    if let Some(tally) = tally {
+        // A corrupt frame is never exempt, whatever its shape.
+        let corrupt = matches!(classified, WireEvent::Corrupt(_));
+        if corrupt || !exempt {
+            tally.counted += 1;
+        }
+        if corrupt {
+            tally.slot.corrupt(tally.counted);
+        }
+    }
+    match triage(classified)? {
+        Item::Event(event) => decoder.decode(event, Out::new(reply)),
+        Item::Unknown(value) => {
             Out::new(reply).unknown(value);
             Ok(Flow::More)
         }
     }
 }
 
-/// Feed frames already in hand through `decoder` into `reply` as [`read`]
+/// The frames ran out: a decoder that saw the provider's end ends the reply
+/// here; otherwise it is [`ProviderError::Truncated`].
+fn eof<'id, Op, F, D>(
+    decoder: &mut D,
+    reply: &'id Mutex<Shared<Op>>,
+    tally: Option<&Tally<'_, F>>,
+) -> Result<Flow, ProviderError>
+where
+    Op: Operation,
+    D: Decoder<'id, Op, F>,
+{
+    if let Some(tally) = tally {
+        tally.slot.transport_eof(tally.counted);
+    }
+    let step = decoder.eof(Out::new(reply));
+    if !matches!(step, Ok(Flow::Ended(_)))
+        && let Some(tally) = tally
+    {
+        tally.slot.eof(tally.counted);
+    }
+    match step {
+        Ok(Flow::More) => Err(ProviderError::Truncated),
+        step => step,
+    }
+}
+
+/// Feed frames already in hand through `decoder` into `reply`, as [`read`]
 /// does: the reply ends at the provider's end, or the decoder decides at EOF.
 #[cfg(any(test, feature = "websocket", feature = "test-utils"))]
 fn feed<'id, Op, F, D>(
@@ -501,63 +514,51 @@ fn feed<'id, Op, F, D>(
 ) -> Result<(), ProviderError>
 where
     Op: Operation,
-    D: crate::wire::Decoder<'id, Op, F>,
+    D: Decoder<'id, Op, F>,
 {
     for frame in frames {
-        if let Flow::Ended(_) = step(decoder, reply, frame)? {
+        if let Flow::Ended(_) = step(decoder, reply, frame, None)? {
             return Ok(());
         }
     }
-    match decoder.eof(Out::new(reply))? {
-        Flow::Ended(_) => Ok(()),
-        Flow::More => Err(ProviderError::Truncated),
-    }
+    eof(decoder, reply, None).map(drop)
 }
 
-/// Fold a fed reply: its items, then its response, or the error that ended
-/// it. `reply.raw` stands unless it is null, when the decoder's record does.
+/// Fold a fed reply as a stream does: its items, then its response, or the
+/// error that ended it. `reply.raw` stands unless it is null, when the
+/// decoder's record does.
 #[cfg(any(test, feature = "websocket", feature = "test-utils"))]
 pub(crate) fn settle<Op: Operation>(
     shared: Mutex<Shared<Op>>,
     fed: Result<(), ProviderError>,
     reply: crate::wire::Reply,
 ) -> Decoded<Op> {
-    let Shared {
-        mut fold,
-        items,
-        end,
-        raw,
-        ..
-    } = shared
+    let mut shared = shared
         .into_inner()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
-    let mut absorbed = Ok(());
-    for item in &items {
-        if let (Ok(crate::streaming::Item::Event(event)), Ok(())) = (item, &absorbed) {
-            absorbed = crate::wire::Fold::absorb(&mut fold, event);
+    if let Err(error) = fed {
+        shared.items.push_back(Err(error));
+    }
+    shared.document = Some(reply.raw).filter(|raw| !raw.is_null());
+    shared.request_id = reply.provider_request_id;
+    let mut items = Vec::new();
+    while let Some(item) = shared.take() {
+        let failed = item.is_err();
+        items.push(item);
+        if failed {
+            break;
         }
     }
-    let outcome = fed.and(absorbed).and_then(|()| {
-        let reply = crate::wire::Reply {
-            raw: if reply.raw.is_null() {
-                raw.unwrap_or(serde_json::Value::Null)
-            } else {
-                reply.raw
-            },
-            ..reply
-        };
-        crate::wire::Fold::finish(fold, end.ok_or(ProviderError::Truncated)?, reply)
-    });
-    #[cfg(any(test, feature = "test-utils"))]
-    let items = {
-        let mut items: Vec<_> = items.into_iter().collect();
-        if let Err(error) = &outcome
-            && !items.iter().any(Result::is_err)
-        {
-            items.push(Err(error.clone()));
-        }
-        items
+    let outcome = match items.last() {
+        Some(Err(error)) => Err(error.clone()),
+        _ => shared.conclude(&reply.provider),
     };
+    #[cfg(any(test, feature = "test-utils"))]
+    if let Err(error) = &outcome
+        && !matches!(items.last(), Some(Err(_)))
+    {
+        items.push(Err(error.clone()));
+    }
     Decoded {
         #[cfg(any(test, feature = "test-utils"))]
         items,
@@ -720,7 +721,7 @@ impl<'id, Op: Operation> Replying<'id, Op> {
     }
 
     /// Feed frames through `decoder`, as the driver does.
-    pub(crate) fn feed<F, D: crate::wire::Decoder<'id, Op, F>>(
+    pub(crate) fn feed<F, D: Decoder<'id, Op, F>>(
         &self,
         decoder: &mut D,
         frames: impl IntoIterator<Item = F>,
@@ -749,11 +750,6 @@ pub(crate) fn decode_with<Op: Operation>(
             provider_request_id: None,
         },
     )
-}
-
-/// No observation slot, for a reply that failed before it opened.
-fn slot_none() -> Option<&'static AdapterSlot> {
-    None
 }
 
 /// The reply failed: the error is its last item.

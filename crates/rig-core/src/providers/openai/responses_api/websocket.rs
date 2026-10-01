@@ -714,7 +714,7 @@ fn feed<'id>(
     reply: &'id std::sync::Mutex<Shared<Completion>>,
     payload: String,
 ) -> Result<bool, ProviderError> {
-    crate::driver::step(decoder, reply, WireFrame::Text(payload))
+    crate::driver::step(decoder, reply, WireFrame::Text(payload), None)
         .map(|step| matches!(step, Flow::Ended(_)))
 }
 
