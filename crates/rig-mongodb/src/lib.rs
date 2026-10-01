@@ -379,16 +379,10 @@ impl MongoDbSearchFilter {
     }
 }
 
-impl From<Filter<serde_json::Value>> for MongoDbSearchFilter {
-    /// Values that cannot be represented in BSON become `Bson::Null`.
-    fn from(value: Filter<serde_json::Value>) -> Self {
-        value.interpret_with(|v| to_bson(&v).unwrap_or(Bson::Null))
-    }
-}
-
 impl DynamicSearchFilter for MongoDbSearchFilter {
+    /// Values that cannot be represented in BSON become `Bson::Null`.
     fn from_dynamic_filter(filter: Filter<serde_json::Value>) -> Result<Self, FilterError> {
-        Ok(filter.into())
+        Ok(filter.interpret_with(|v| to_bson(&v).unwrap_or(Bson::Null)))
     }
 }
 
