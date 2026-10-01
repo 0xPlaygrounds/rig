@@ -27,7 +27,7 @@ use rig_ecs::{
     bus::{
         EffectOutcome, Handlers, IdCounter, InFlight, Issued, PendingEffect, Reserved, RigSchedule,
     },
-    checkpoint::{Checkpoint, RestoreMode, load_world, save_world},
+    checkpoint::{Checkpoint, CheckpointError, RestoreMode, load_world, save_world},
     systems::RunCommands,
 };
 use run_support::{GUARD, NeverAnswers};
@@ -602,7 +602,13 @@ fn malformed_run_graph_is_rejected_before_spawning() {
         let (mut destination, _) = run_support::open_model_world();
         let initial = destination.entities().len();
         let error = load_world(&bad, &mut destination, RestoreMode::Strict, []).expect_err(fault);
-        assert_eq!(error.kind, rig_core::error::ErrorKind::Request, "{fault}");
+        assert!(
+            matches!(
+                error,
+                CheckpointError::InvalidGraph(_) | CheckpointError::Deserialize { .. }
+            ),
+            "{fault}: {error:?}"
+        );
         assert_eq!(
             destination.entities().len(),
             initial,

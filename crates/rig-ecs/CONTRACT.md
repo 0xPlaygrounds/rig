@@ -532,7 +532,9 @@ as the index of that entity in the checkpoint), `counters` (`next_run`, `next_id
 `load_world(&Checkpoint, &mut World, RestoreMode, handlers)` validates its
 complete implementation set, spawns it and returns `Loaded` (the entities by checkpoint index;
 `Loaded::with::<C>` filters them). `Checkpoint::{to_json, from_json}` are the
-wire form. `checkpoint::register_types` registers every component and wrapper
+wire form. Every refusal from these entry points is a `CheckpointError` variant
+naming its cause, with the offending key, entity index or type path and any
+underlying JSON, content or binary error as its source. `checkpoint::register_types` registers every component and wrapper
 of the crate; `RigPlugin` calls it. The envelope's `format` is 2; format 1's
 separate content payload components are refused without compatibility adapters.
 

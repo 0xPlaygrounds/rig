@@ -29,7 +29,7 @@ use rig_core::{
 };
 use rig_ecs::{
     bus::{EffectOutcome, Handlers, InFlight, Issued, PendingEffect, Reserved, Streamed, Typed},
-    checkpoint::{Checkpoint, Counters as SavedCounters, RestoreMode, load_world},
+    checkpoint::{Checkpoint, CheckpointError, Counters as SavedCounters, RestoreMode, load_world},
 };
 
 /// A golden log from the corpus.
@@ -98,7 +98,10 @@ fn unfinished_stream_with_observed_progress_is_refused_before_spawning() {
     let before = restored.world().entities().len();
     let error = load_world(&saved, restored.world_mut(), RestoreMode::Strict, [])
         .expect_err("no cursor to prevent duplicate delivery");
-    assert!(error.message.contains("unfinished stream"), "{error:?}");
+    assert!(
+        matches!(error, CheckpointError::UnresumableStream),
+        "{error:?}"
+    );
     assert_eq!(restored.world().entities().len(), before);
 }
 
@@ -782,7 +785,10 @@ fn a_malformed_checkpoint_is_refused_before_world_mutation() {
         let count = restored.world().entities().len();
         let error =
             load_world(&bad, restored.world_mut(), RestoreMode::Strict, []).expect_err(fault);
-        assert_eq!(error.kind, rig_core::error::ErrorKind::Request, "{fault}");
+        assert!(
+            !matches!(error, CheckpointError::NotInstalled(_)),
+            "{fault}: {error:?}"
+        );
         assert_eq!(
             restored.world().entities().len(),
             count,
