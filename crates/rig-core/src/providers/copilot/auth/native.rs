@@ -48,14 +48,8 @@ impl Authenticator {
         let _refresh = self.refresh_lock.lock().await;
         let record: ApiKeyRecord = read_json_record(self.api_key_file.as_deref())?;
         let cached_access_token = self.read_access_token().ok().flatten();
-        let api_base = record.api_base();
-        if record.can_reuse_for_oauth(cached_access_token.as_deref())
-            && let Some(token) = record.token
-        {
-            return Ok(AuthContext {
-                api_key: token.into(),
-                api_base,
-            });
+        if record.can_reuse_for_oauth(cached_access_token.as_deref()) {
+            return Ok(record.into_context());
         }
 
         let access_token = if let Some(token) = cached_access_token {
@@ -91,14 +85,8 @@ impl Authenticator {
     {
         let _refresh = self.refresh_lock.lock().await;
         let record: ApiKeyRecord = read_json_record(self.api_key_file.as_deref())?;
-        let api_base = record.api_base();
-        if record.can_reuse_for_bootstrap_token(access_token)
-            && let Some(token) = record.token
-        {
-            return Ok(AuthContext {
-                api_key: token.into(),
-                api_base,
-            });
+        if record.can_reuse_for_bootstrap_token(access_token) {
+            return Ok(record.into_context());
         }
 
         let record = refresh_api_key(http, access_token)
