@@ -10,7 +10,7 @@ fn every_parameterised_operator_uses_dollar_placeholders() {
     let gte = PgSearchFilter::gte("price", json!(5));
     let lte = PgSearchFilter::lte("price", json!(10));
 
-    let (cond, values) = gte.and(lte).into_clause();
+    let (cond, values) = gte.and(lte).0.into_parts();
     assert_eq!(cond, "(price >= $) AND (price <= $)");
     assert!(!cond.contains('?'));
     assert_eq!(cond.matches('$').count(), values.len());
@@ -18,7 +18,8 @@ fn every_parameterised_operator_uses_dollar_placeholders() {
     let member = PgSearchFilter::member("id", vec![json!(1), json!(2)]);
     let (cond, values) = PgSearchFilter::eq("kind", json!("fruit"))
         .and(member)
-        .into_clause();
+        .0
+        .into_parts();
     assert!(!cond.contains('?'));
     assert_eq!(cond.matches('$').count(), values.len());
 }
@@ -158,4 +159,69 @@ fn outer_query_orders_by_distance_and_limits_on_second_parameter() {
     assert!(compact.contains("SELECT id, document, distance FROM ("));
     assert!(compact.contains("embedding <-> $1 as distance FROM docs ORDER BY id, distance"));
     assert!(compact.ends_with(") as d ORDER BY distance LIMIT $2"));
+}
+
+/// A `$` inside spliced text, such as a key, is not a placeholder. Only real
+/// placeholders are numbered, so later parameters keep their positions.
+#[test]
+fn dollar_in_spliced_key_is_not_renumbered() {
+    let filter = PgSearchFilter::eq("document->>'$price'", json!(5))
+        .and(PgSearchFilter::is_null("col$1"))
+        .and(PgSearchFilter::eq("kind", json!("fruit")));
+    let req = thresholded(0.5, Some(filter));
+    let (clause, params) = rendered_where(PgVectorDistanceFunction::Cosine, &req);
+    assert_eq!(
+        clause.as_deref(),
+        Some(
+            "WHERE (1 - (embedding <=> $1) >= $3) AND \
+             (((document->>'$price' = $4) AND (col$1 is null)) AND (kind = $5))"
+        )
+    );
+    assert_eq!(params, vec![json!(0.5), json!(5), json!("fruit")]);
+}
+
+/// A `$` inside a bound `like` pattern stays in the parameter, and the
+/// placeholders after it keep their numbers.
+#[test]
+fn dollar_in_like_pattern_is_bound_not_renumbered() {
+    let filter = PgSearchFilter::like("document->>'$name'", "%$%")
+        .and(PgSearchFilter::eq("kind", json!("fruit")));
+    let req = thresholded(0.5, Some(filter));
+    let (clause, params) = rendered_where(PgVectorDistanceFunction::Cosine, &req);
+    assert_eq!(
+        clause.as_deref(),
+        Some(
+            "WHERE (1 - (embedding <=> $1) >= $3) AND \
+             ((document->>'$name' like $4) AND (kind = $5))"
+        )
+    );
+    assert_eq!(params, vec![json!(0.5), json!("%$%"), json!("fruit")]);
+}
+
+/// `like` and `similar_to` take runtime patterns and bind them unquoted.
+#[test]
+fn like_and_similar_to_bind_runtime_patterns() {
+    let prefix = String::from("app");
+    let filter = PgSearchFilter::like("name", format!("{prefix}%"))
+        .or(PgSearchFilter::similar_to("name", "(pear|plum)"));
+    let (clause, params) = rendered_where(PgVectorDistanceFunction::Cosine, &filtered(filter));
+    assert_eq!(
+        clause.as_deref(),
+        Some("WHERE ((name like $3) OR (name similar to $4))")
+    );
+    assert_eq!(params, vec![json!("app%"), json!("(pear|plum)")]);
+}
+
+/// `between` binds both bounds like `gte`/`lte`, accepts floats, and binds a
+/// non-finite float as `NULL` instead of splicing `NaN` into the SQL.
+#[test]
+fn between_binds_its_bounds() {
+    let filter = PgSearchFilter::between("price", 5..=10)
+        .and(PgSearchFilter::between("score", 0.5..=f64::NAN));
+    let (clause, params) = rendered_where(PgVectorDistanceFunction::Cosine, &filtered(filter));
+    assert_eq!(
+        clause.as_deref(),
+        Some("WHERE ((price between $3 and $4) AND (score between $5 and $6))")
+    );
+    assert_eq!(params, vec![json!(5), json!(10), json!(0.5), json!(null)]);
 }
