@@ -1,7 +1,6 @@
 use crate::completion::Usage;
 use crate::error::ProviderError;
 use crate::transcription;
-use crate::transcription::NormalizeTranscriptionResponse;
 use serde::{Deserialize, Serialize};
 
 pub const WHISPER_1: &str = "whisper-1";
@@ -74,8 +73,10 @@ pub struct TranscriptionInputTokenDetails {
     pub text_tokens: u64,
 }
 
-impl NormalizeTranscriptionResponse for TranscriptionResponse {
-    fn normalize(self) -> Result<transcription::TranscriptionResponse, ProviderError> {
+impl TranscriptionResponse {
+    /// Convert this payload into Rig's transcription response. The driver
+    /// writes the provider, request id and `raw` afterwards.
+    pub fn normalize(self) -> Result<transcription::TranscriptionResponse, ProviderError> {
         let usage = match &self.usage {
             Some(TranscriptionUsage::Tokens {
                 input_tokens,

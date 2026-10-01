@@ -491,7 +491,6 @@ impl<'id> Decoder<'id, Transcription> for TranscriptionsDecoder {
         event: Self::Event,
         out: Out<'id, Transcription>,
     ) -> Result<Flow, ProviderError> {
-        use crate::transcription::NormalizeTranscriptionResponse;
         Ok(out.end(event.normalize()?))
     }
 }
