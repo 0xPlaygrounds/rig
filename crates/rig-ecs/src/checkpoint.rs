@@ -11,7 +11,7 @@
 //! app.add_plugins(RigPlugin::default());
 //! let checkpoint = save_world(app.world_mut())?;
 //! load_world(&checkpoint, app.world_mut(), RestoreMode::Strict, [])?;
-//! # Ok::<(), rig_core::error::ErrorReport>(())
+//! # Ok::<(), rig_ecs::checkpoint::CheckpointError>(())
 //! ```
 
 mod restore;
@@ -32,13 +32,16 @@ use bevy_reflect::{
         TypedReflectDeserializer,
     },
 };
-use rig_core::error::{ErrorKind, ErrorReport};
+use rig_core::effect::{EffectFamily, HandlerKey};
 use serde::{Deserialize, Serialize, de::DeserializeSeed};
 
 use crate::{
     agent::{
         self, Utterance,
-        content::{binary::BinaryAssets, parts::*},
+        content::{
+            binary::{BinaryAssets, BinaryError},
+            parts::*,
+        },
     },
     bus::{
         self, Bound, EffectOutcome, HandlerIndex, IdCounter, InFlight, Issued, PendingEffect,
@@ -126,8 +129,123 @@ impl Loaded {
     }
 }
 
-fn refused(message: impl Into<String>) -> ErrorReport {
-    ErrorReport::new(ErrorKind::Request, message)
+/// Why a checkpoint cannot be saved, parsed, validated, or restored.
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum CheckpointError {
+    /// The world lacks a resource that [`RigPlugin`](crate::RigPlugin) installs.
+    #[error("the world has no {0}: install RigPlugin first")]
+    NotInstalled(&'static str),
+    /// The envelope is a format other than [`CHECKPOINT_FORMAT`].
+    #[error("the checkpoint is format {found}, this rig reads format {CHECKPOINT_FORMAT}")]
+    UnsupportedFormat {
+        /// The envelope's format.
+        found: u32,
+    },
+    /// The checkpoint carries a component this format no longer persists.
+    #[error(
+        "the checkpoint contains removed `{path}`: migrate provider launch settings to the host"
+    )]
+    RemovedComponent {
+        /// The removed component's type path.
+        path: String,
+    },
+    /// The checkpoint envelope does not serialize to or parse from JSON.
+    #[error("checkpoint JSON: {0}")]
+    Json(#[from] serde_json::Error),
+    /// A live component does not serialize through reflection.
+    #[error("`{path}` does not serialize: {source}")]
+    Serialize {
+        /// The component's type path.
+        path: String,
+        /// The serializer's error.
+        #[source]
+        source: serde_json::Error,
+    },
+    /// A saved component does not deserialize as its registered type.
+    #[error("checkpoint entity {entity}: `{path}`: {source}")]
+    Deserialize {
+        /// The entity's index in [`Checkpoint::entities`].
+        entity: usize,
+        /// The component's type path.
+        path: String,
+        /// The deserializer's error.
+        #[source]
+        source: serde_json::Error,
+    },
+    /// A saved type path is not a component registered in the destination.
+    #[error("checkpoint entity {entity}: `{path}` is not a registered component")]
+    Unregistered {
+        /// The entity's index in [`Checkpoint::entities`].
+        entity: usize,
+        /// The unknown type path.
+        path: String,
+    },
+    /// A saved handler's binding key differs from its descriptor's key.
+    #[error("saved handler `{key}` has a different descriptor key")]
+    HandlerKeyMismatch {
+        /// The binding key.
+        key: HandlerKey,
+    },
+    /// Two saved handlers share a key.
+    #[error("duplicate saved handler `{key}`")]
+    DuplicateSavedHandler {
+        /// The repeated key.
+        key: HandlerKey,
+    },
+    /// The host supplied two handlers for one key.
+    #[error("duplicate supplied handler `{key}`")]
+    DuplicateSuppliedHandler {
+        /// The repeated key.
+        key: HandlerKey,
+    },
+    /// The host supplied a handler the checkpoint does not require.
+    #[error("supplied handler `{key}` is not required by this checkpoint")]
+    UnrequiredHandler {
+        /// The supplied key.
+        key: HandlerKey,
+    },
+    /// A required handler is neither supplied nor installed in the destination.
+    #[error("no implementation supplied for `{key}`")]
+    MissingHandler {
+        /// The required key.
+        key: HandlerKey,
+    },
+    /// An unfinished effect names a handler the checkpoint did not save.
+    #[error("unfinished effect requires missing saved handler `{key}`")]
+    MissingSavedHandler {
+        /// The effect's handler key.
+        key: HandlerKey,
+    },
+    /// A handler serves a different effect family than the saved one.
+    #[error("handler `{key}` serves {found}; the checkpoint's serves {saved}")]
+    FamilyChanged {
+        /// The handler key.
+        key: HandlerKey,
+        /// The saved family.
+        saved: EffectFamily,
+        /// The destination's family.
+        found: EffectFamily,
+    },
+    /// Under [`RestoreMode::Strict`], a handler's descriptor differs from the
+    /// saved one. [`RestoreMode::Replace`] accepts the change.
+    #[error("handler `{key}` differs from its original saved descriptor")]
+    DescriptorChanged {
+        /// The handler key.
+        key: HandlerKey,
+    },
+    /// An unfinished stream already delivered progress and has no provider cursor.
+    #[error("an unfinished stream with delivered progress cannot resume")]
+    UnresumableStream,
+    /// A saved utterance does not convert to a message.
+    #[error("invalid saved content: {0}")]
+    Content(#[from] ContentError),
+    /// The saved binary store is invalid or conflicts with the destination's.
+    #[error("invalid saved binary store: {0}")]
+    Binary(#[from] BinaryError),
+    /// The saved graph violates a structural invariant.
+    #[error("invalid checkpoint graph: {0}")]
+    InvalidGraph(&'static str),
 }
 
 /// The relationship targets: rebuilt by their sources' hooks, never saved.
@@ -175,10 +293,10 @@ fn ordered_entities(world: &mut World) -> Vec<Entity> {
 /// Save registered reflected components, binary assets, and execution counters.
 /// Returns an error if the type registry is absent or reflection serialization fails.
 #[must_use = "saving a checkpoint does not remove anything from the world"]
-pub fn save_world(world: &mut World) -> Result<Checkpoint, ErrorReport> {
+pub fn save_world(world: &mut World) -> Result<Checkpoint, CheckpointError> {
     let registry = world
         .get_resource::<AppTypeRegistry>()
-        .ok_or_else(|| refused("the world has no type registry: install RigPlugin first"))?
+        .ok_or(CheckpointError::NotInstalled("type registry"))?
         .clone();
     let registry = registry.read();
     let mut components: Vec<(&str, &ReflectComponent)> = registry
@@ -234,13 +352,16 @@ fn reflect_to_json(
     value: &dyn PartialReflect,
     registry: &TypeRegistry,
     indexed: &Indexed,
-) -> Result<serde_json::Value, ErrorReport> {
+) -> Result<serde_json::Value, CheckpointError> {
     let path = value
         .get_represented_type_info()
         .map(|info| info.type_path().to_owned())
         .unwrap_or_default();
     let json = serde_json::to_value(ReflectSerializer::with_processor(value, registry, indexed))
-        .map_err(|error| refused(format!("{path}: {error}")))?;
+        .map_err(|source| CheckpointError::Serialize {
+            path: path.clone(),
+            source,
+        })?;
     // `ReflectSerializer` wraps the value in a one-key map by type path.
     Ok(match json {
         serde_json::Value::Object(mut map) if map.len() == 1 => {
@@ -303,7 +424,10 @@ impl ReflectDeserializerProcessor for Remapped<'_> {
 
 /// Reuse destination entities for matching dispatch keys. Implementation
 /// selection and original-descriptor validation belong to restoration preflight.
-fn aliases(checkpoint: &Checkpoint, world: &World) -> Result<HashMap<usize, Entity>, ErrorReport> {
+fn aliases(
+    checkpoint: &Checkpoint,
+    world: &World,
+) -> Result<HashMap<usize, Entity>, CheckpointError> {
     let Some(index) = world.get_resource::<HandlerIndex>() else {
         return Ok(HashMap::new());
     };
@@ -312,23 +436,30 @@ fn aliases(checkpoint: &Checkpoint, world: &World) -> Result<HashMap<usize, Enti
         let Some(bound) = entity.get(Bound::type_path()) else {
             continue;
         };
-        let bound: Bound = serde_json::from_value(bound.clone())
-            .map_err(|error| refused(format!("checkpoint entity {row}: Bound: {error}")))?;
+        let bound = saved_bound(row, bound)?;
         if let Some(existing) = index.entity(&bound.key) {
             if let Some(served) = world.get::<Bound>(existing)
                 && served.family() != bound.family()
             {
-                return Err(refused(format!(
-                    "`{}` is bound to a {} handler here; the checkpoint's is a {}",
-                    bound.key,
-                    served.family(),
-                    bound.family()
-                )));
+                return Err(CheckpointError::FamilyChanged {
+                    saved: bound.family(),
+                    found: served.family(),
+                    key: bound.key,
+                });
             }
             aliases.insert(row, existing);
         }
     }
     Ok(aliases)
+}
+
+/// Parse a saved [`Bound`] component of checkpoint entity `row`.
+fn saved_bound(row: usize, value: &serde_json::Value) -> Result<Bound, CheckpointError> {
+    serde_json::from_value(value.clone()).map_err(|source| CheckpointError::Deserialize {
+        entity: row,
+        path: Bound::type_path().to_owned(),
+        source,
+    })
 }
 
 /// Spawn `checkpoint` into `world` (no validation, no merging of the
@@ -337,10 +468,10 @@ fn spawn_into(
     checkpoint: &Checkpoint,
     world: &mut World,
     aliases: &HashMap<usize, Entity>,
-) -> Result<Vec<Entity>, ErrorReport> {
+) -> Result<Vec<Entity>, CheckpointError> {
     let registry = world
         .get_resource::<AppTypeRegistry>()
-        .ok_or_else(|| refused("the world has no type registry: install RigPlugin first"))?
+        .ok_or(CheckpointError::NotInstalled("type registry"))?
         .clone();
     let registry = registry.read();
     let entities: Vec<Entity> = (0..checkpoint.entities.len())
@@ -366,31 +497,31 @@ fn spawn_into(
         };
         let merged = aliases.contains_key(&row);
         for (path, value) in components {
-            let registration = registry.get_with_type_path(path).ok_or_else(|| {
-                refused(format!(
-                    "checkpoint entity {row}: `{path}` is not a registered type"
-                ))
-            })?;
+            let unregistered = || CheckpointError::Unregistered {
+                entity: row,
+                path: path.clone(),
+            };
+            let registration = registry.get_with_type_path(path).ok_or_else(unregistered)?;
             if is_relationship_target(registration.type_id()) {
                 continue;
             }
             if merged && registration.type_id() == TypeId::of::<Bound>() {
                 continue;
             }
-            let component = registration.data::<ReflectComponent>().ok_or_else(|| {
-                refused(format!(
-                    "checkpoint entity {row}: `{path}` is not a component"
-                ))
-            })?;
+            let component = registration
+                .data::<ReflectComponent>()
+                .ok_or_else(unregistered)?;
+            let malformed = |source| CheckpointError::Deserialize {
+                entity: row,
+                path: path.clone(),
+                source,
+            };
             let reflected =
                 TypedReflectDeserializer::with_processor(registration, &registry, &mut remap)
                     .deserialize(value)
-                    .map_err(|error| {
-                        refused(format!("checkpoint entity {row}: `{path}`: {error}"))
-                    })?;
+                    .map_err(malformed)?;
             if registration.type_id() == TypeId::of::<Seq>() {
-                let seq: Seq = serde_json::from_value(value.clone())
-                    .map_err(|error| refused(format!("checkpoint entity {row}: Seq: {error}")))?;
+                let seq: Seq = serde_json::from_value(value.clone()).map_err(malformed)?;
                 effects.push((seq.0, entity));
                 continue;
             }
@@ -428,7 +559,7 @@ fn spawn_into(
 }
 
 /// Every invariant a loaded graph must hold, checked in the scratch world.
-fn validate(world: &mut World, entities: &[Entity]) -> Result<(), ErrorReport> {
+fn validate(world: &mut World, entities: &[Entity]) -> Result<(), CheckpointError> {
     for &entity in entities {
         // Resuming requires a saved handler contract, but advertised families
         // cannot restrict world handlers that accept arbitrary effects.
@@ -439,11 +570,8 @@ fn validate(world: &mut World, entities: &[Entity]) -> Result<(), ErrorReport> {
                 .resource::<HandlerIndex>()
                 .entity(&pending.key)
                 .and_then(|handler| world.get::<Bound>(handler))
-                .ok_or_else(|| {
-                    refused(format!(
-                        "unfinished effect requires missing saved handler `{}`",
-                        pending.key
-                    ))
+                .ok_or_else(|| CheckpointError::MissingSavedHandler {
+                    key: pending.key.clone(),
                 })?;
         }
         if world
@@ -451,17 +579,15 @@ fn validate(world: &mut World, entities: &[Entity]) -> Result<(), ErrorReport> {
             .is_some_and(|streamed| !streamed.events.is_empty() || !streamed.errors.is_empty())
             && world.get::<EffectOutcome>(entity).is_none()
         {
-            return Err(refused(
-                "an unfinished stream with delivered progress cannot resume: no provider cursor",
-            ));
+            return Err(CheckpointError::UnresumableStream);
         }
         if world.get::<Utterance>(entity).is_some() {
-            read_message(world, entity).map_err(|error| refused(error.to_string()))?;
+            read_message(world, entity)?;
         }
         if world.get::<ContentPart>(entity).is_some() {
             let parent = world
                 .get::<ChildOf>(entity)
-                .ok_or_else(|| refused("content part has no parent"))?
+                .ok_or(CheckpointError::InvalidGraph("content part has no parent"))?
                 .parent();
             if world.get::<Utterance>(parent).is_none()
                 && !matches!(
@@ -469,7 +595,9 @@ fn validate(world: &mut World, entities: &[Entity]) -> Result<(), ErrorReport> {
                     Some(ContentPart::ToolResult { .. })
                 )
             {
-                return Err(refused("content part has an invalid parent"));
+                return Err(CheckpointError::InvalidGraph(
+                    "content part has an invalid parent",
+                ));
             }
         }
         if world.get::<ToolResultStatus>(entity).is_some()
@@ -478,29 +606,33 @@ fn validate(world: &mut World, entities: &[Entity]) -> Result<(), ErrorReport> {
                 Some(ContentPart::ToolResult { .. })
             )
         {
-            return Err(refused("tool result status is not on a tool result part"));
+            return Err(CheckpointError::InvalidGraph(
+                "tool result status is not on a tool result part",
+            ));
         }
         if world.get::<agent::Run>(entity).is_none() {
             if world.get::<agent::Ready>(entity).is_some() {
-                return Err(refused("ready is not on a run"));
+                return Err(CheckpointError::InvalidGraph("ready is not on a run"));
             }
             if world.get::<agent::Prompt>(entity).is_some() {
-                return Err(refused("prompt is not on a run"));
+                return Err(CheckpointError::InvalidGraph("prompt is not on a run"));
             }
         }
         if world.get::<RequestPartEdit>(entity).is_some() {
             let parent = world
                 .get::<ChildOf>(entity)
-                .ok_or_else(|| refused("request edit has no turn"))?
+                .ok_or(CheckpointError::InvalidGraph("request edit has no turn"))?
                 .parent();
             let target = world
                 .get::<EditTarget>(entity)
-                .ok_or_else(|| refused("request edit has no target"))?
+                .ok_or(CheckpointError::InvalidGraph("request edit has no target"))?
                 .0;
             if world.get::<agent::Turn>(parent).is_none()
                 || world.get::<ContentPart>(target).is_none()
             {
-                return Err(refused("invalid request edit relationship"));
+                return Err(CheckpointError::InvalidGraph(
+                    "invalid request edit relationship",
+                ));
             }
         }
         if world.get::<PendingEffect>(entity).is_some()
@@ -509,7 +641,9 @@ fn validate(world: &mut World, entities: &[Entity]) -> Result<(), ErrorReport> {
                 .is_some_and(|owners| owners.owners().any(|owner| owner.name == "rig-ecs/batch"))
             && world.get::<crate::systems::BatchHeld>(entity).is_none()
         {
-            return Err(refused("batch owner is missing its runtime hold marker"));
+            return Err(CheckpointError::InvalidGraph(
+                "batch owner is missing its runtime hold marker",
+            ));
         }
         if world.get::<crate::systems::BatchHeld>(entity).is_some()
             && (world.get::<bus::Held>(entity).is_none()
@@ -518,7 +652,7 @@ fn validate(world: &mut World, entities: &[Entity]) -> Result<(), ErrorReport> {
                     owners.owners().any(|owner| owner.name == "rig-ecs/batch")
                 }))
         {
-            return Err(refused(
+            return Err(CheckpointError::InvalidGraph(
                 "batch hold is missing its barrier, owner or tool slot",
             ));
         }
@@ -529,13 +663,13 @@ fn validate(world: &mut World, entities: &[Entity]) -> Result<(), ErrorReport> {
 }
 
 /// Every binary reference in the graph resolves in the store.
-fn wire_expansion(world: &mut World) -> Result<(), ErrorReport> {
+fn wire_expansion(world: &mut World) -> Result<(), CheckpointError> {
     let ids: Vec<Entity> = world
         .query_filtered::<Entity, With<Utterance>>()
         .iter(world)
         .collect();
     for entity in ids {
-        read_message(world, entity).map_err(|error| refused(error.to_string()))?;
+        read_message(world, entity)?;
     }
     Ok(())
 }
@@ -545,12 +679,11 @@ fn wire_expansion(world: &mut World) -> Result<(), ErrorReport> {
 fn validated_state(
     checkpoint: &Checkpoint,
     world: &World,
-) -> Result<(BinaryAssets, HashMap<usize, Entity>), ErrorReport> {
+) -> Result<(BinaryAssets, HashMap<usize, Entity>), CheckpointError> {
     if checkpoint.format != CHECKPOINT_FORMAT {
-        return Err(refused(format!(
-            "load refused: the checkpoint is format {}, this rig reads format {CHECKPOINT_FORMAT}",
-            checkpoint.format
-        )));
+        return Err(CheckpointError::UnsupportedFormat {
+            found: checkpoint.format,
+        });
     }
     // These rejected wire identifiers must stay fixed across Rust module renames.
     for entity in &checkpoint.entities {
@@ -560,27 +693,21 @@ fn validated_state(
                 "rig_ecs::bus::binding::ProviderBinding" | "rig_ecs::bus::binding::CredentialRef"
             )
         }) {
-            return Err(refused(format!(
-                "format-{} checkpoint contains removed `{path}`: migrate provider launch settings to the host, then validate the execution-only checkpoint",
-                checkpoint.format
-            )));
+            return Err(CheckpointError::RemovedComponent { path: path.clone() });
         }
     }
     if !world.contains_resource::<SeqCounter>() || !world.contains_resource::<IdCounter>() {
-        return Err(refused(
-            "the world has no execution counters: install RigPlugin first",
-        ));
+        return Err(CheckpointError::NotInstalled("execution counters"));
     }
     let registry = world
         .get_resource::<AppTypeRegistry>()
-        .ok_or_else(|| refused("the world has no type registry: install RigPlugin first"))?
+        .ok_or(CheckpointError::NotInstalled("type registry"))?
         .clone();
     let empty = BinaryAssets::default();
     let assets = world
         .get_resource::<BinaryAssets>()
         .unwrap_or(&empty)
-        .merged(&checkpoint.binaries)
-        .map_err(|error| refused(error.to_string()))?;
+        .merged(&checkpoint.binaries)?;
     let aliases = aliases(checkpoint, world)?;
     // Validate the original graph, including every saved descriptor. Aliasing
     // in the destination must not hide malformed or inconsistent saved data.
@@ -594,7 +721,9 @@ fn validated_state(
     validate(&mut scratch, &scratch_entities)?;
     let assets = scratch
         .remove_resource::<BinaryAssets>()
-        .ok_or_else(|| refused("validated asset store missing"))?;
+        .ok_or(CheckpointError::InvalidGraph(
+            "validated binary store missing",
+        ))?;
     Ok((assets, aliases))
 }
 
@@ -603,7 +732,7 @@ fn load_state(
     world: &mut World,
     assets: BinaryAssets,
     aliases: HashMap<usize, Entity>,
-) -> Result<Loaded, ErrorReport> {
+) -> Result<Loaded, CheckpointError> {
     world.insert_resource(assets);
     let entities = spawn_into(checkpoint, world, &aliases)?;
     Ok(Loaded { entities })
@@ -615,19 +744,29 @@ impl Checkpoint {
     /// Returns an error for invalid saved contracts, graphs, or binaries, or missing
     /// destination registry/counters. [`load_world`] checks handler compatibility
     /// and completeness.
-    pub fn validate(&self, world: &World) -> Result<(), ErrorReport> {
+    pub fn validate(&self, world: &World) -> Result<(), CheckpointError> {
         self.requirements()?;
         validated_state(self, world).map(|_| ())
     }
 
-    /// Serialize the checkpoint to JSON, returning serialization failures as reports.
-    pub fn to_json(&self) -> Result<String, ErrorReport> {
-        serde_json::to_string(self).map_err(|error| refused(error.to_string()))
+    /// Serialize the checkpoint to JSON.
+    pub fn to_json(&self) -> Result<String, CheckpointError> {
+        Ok(serde_json::to_string(self)?)
     }
 
-    /// Parse checkpoint JSON, rejecting invalid data, unknown fields, or unsupported formats.
-    pub fn from_json(json: &str) -> Result<Self, ErrorReport> {
-        serde_json::from_str(json).map_err(|error| refused(error.to_string()))
+    /// Parse checkpoint JSON. Returns [`CheckpointError::UnsupportedFormat`]
+    /// for another envelope format and [`CheckpointError::Json`] for invalid
+    /// data or unknown fields.
+    pub fn from_json(json: &str) -> Result<Self, CheckpointError> {
+        #[derive(Deserialize)]
+        struct Envelope {
+            format: u32,
+        }
+        let Envelope { format } = serde_json::from_str(json)?;
+        if format != CHECKPOINT_FORMAT {
+            return Err(CheckpointError::UnsupportedFormat { found: format });
+        }
+        Ok(serde_json::from_str(json)?)
     }
 }
 

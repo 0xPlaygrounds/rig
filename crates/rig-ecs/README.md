@@ -367,7 +367,11 @@ Use `Strict` and `[]` to retain matching preinstalled handlers, including replay
 Every unfinished effect must have an original saved handler contract; a destination
 binding does not invent one. Saving captures data for inspection, not proof of
 resumability. Inspect `requirements()` and call `validate(world)` before assembly;
-actual implementation compatibility is checked at `load_world`.
+actual implementation compatibility is checked at `load_world`. Refusals are
+`CheckpointError` variants a host can act on: `MissingHandler { key }` asks for
+an implementation, `DescriptorChanged { key }` is accepted under `Replace`, and
+`FamilyChanged`, `UnresumableStream` or `UnsupportedFormat` mean the checkpoint
+cannot resume here.
 
 [`host_resume`](examples/host_resume.rs) demonstrates host construction, strict
 reconstruction and independent effect replay with an explicitly offline transport.
