@@ -2,12 +2,12 @@
 //! Every live cell reuses the producer's recording with strict matching; the
 //! row-1 unary recording is also cut at tool turns 1, 2, 3 and last and
 //! resumed live in a fresh world. The scripted row-4 cells serve that same
-//! recording through the sequenced transport (`long_loop::scripted_replies`),
-//! no cassette and no golden; the negative probe mutates the streamed
-//! recording's last tool result and proves the strict matcher refuses it.
+//! recording through the sequenced transport (`long_loop::Scripted`), no
+//! cassette; the negative probe mutates the streamed recording's last tool
+//! result and proves the strict matcher refuses it.
 
 use rig::providers::anthropic::wire::AnthropicConfig;
-use rig::test_utils::{MockHttpResponse, SequencedHttpClient};
+use rig::test_utils::MockHttpResponse;
 use rig_test_support::cassette_models::AnthropicModels;
 use rig_test_support::cassette_models::MapWire;
 
@@ -103,39 +103,25 @@ crate::matrix::resume_matrix! {
     task_inventory_restore: ("long_task_matrix/inventory", crate::ecs_matrix::long_tasks::INVENTORY, Some(5), "anthropic_long_task_inventory_restore");
 }
 
-/// A key the scripted cells send: it must never reach a recording or a
-/// trace.
-const SCRIPTED_KEY: &str = "sk-ant-scripted-fault-key-7f3a9c";
-
-/// The wire over a transport that answers each unary request with the
-/// next of `replies`.
-fn scripted_unary(
-    replies: Vec<MockHttpResponse>,
-) -> Wire<rig::Model<rig::providers::anthropic::wire::Messages>> {
-    let client = AnthropicConfig::new(SCRIPTED_KEY);
-    let http = SequencedHttpClient::new(replies);
-    Wire {
-        thinking: THINKING,
-        model: AnthropicModels::new(client, http.clone()).completion("claude-haiku-4-5-20251001"),
-        route: None,
-        temperature: Some(0.0),
-        additional_params: None,
-    }
-}
-
 /// This wire has no recorded setup failure to rewrite: the scripted provider
 /// fault answers the Anthropic Messages error envelope the adapter's own
 /// tests pin (`crates/rig-core/src/providers/anthropic/completion/tests.rs`,
 /// `overloaded_error`), under a retryable 503.
-const OVERLOADED_BODY: &str =
-    r#"{"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}"#;
-
-fn fault_reply() -> MockHttpResponse {
-    MockHttpResponse::error(
-        rig::http_client::StatusCode::SERVICE_UNAVAILABLE,
-        OVERLOADED_BODY,
-    )
-}
+const SCRIPTED: long_loop::Scripted<rig::Model<rig::providers::anthropic::wire::Messages>> =
+    long_loop::Scripted {
+        wire: |http| {
+            wire(&AnthropicModels::new(
+                AnthropicConfig::new("sk-ant-scripted-fault-key-7f3a9c"),
+                http,
+            ))
+        },
+        fault_reply: || {
+            MockHttpResponse::error(
+                rig::http_client::StatusCode::SERVICE_UNAVAILABLE,
+                r#"{"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}"#,
+            )
+        },
+    };
 
 crate::matrix::resume_matrix! {
     wrapper: with_anthropic_cassette, wire: wire, run: long_loop_world::run_world;
@@ -163,46 +149,19 @@ crate::matrix::resume_matrix! {
     tool_error_midway: ("long_loop_matrix/tool_error_midway", long_loop::TOOL_ERROR_MIDWAY, long_loop::TOOL_ERROR_MIDWAY.resume_after, "anthropic_tool_error_midway");
     #[tokio::test]
     max_turns_midway: ("long_loop_matrix/max_turns_midway", long_loop::MAX_TURNS_MIDWAY, long_loop::MAX_TURNS_MIDWAY.resume_after, "anthropic_max_turns_midway");
-}
-
-#[tokio::test]
-async fn output_cap_midway() {
-    crate::goldens::capture_world_programs(async {
-        with_anthropic_cassette("long_loop_matrix/output_cap_midway", |client| async move {
-            long_loop_world::run_world(
-                &wire(&client),
-                // Answer: on this wire the cap cuts a text preamble at turn 1
-                // (`stop_reason: max_tokens`), no call is dispatched, and the
-                // run settles `Ok` on a `Length` finish (recording confirms).
-                &long_loop::OUTPUT_CAP_MIDWAY_LENGTH_ANSWER,
-                |log| {
-                    crate::goldens::world_golden_effects(
-                        "anthropic_matrix_long_loop_output_cap_midway",
-                        log,
-                    )
-                },
-            )
-            .await;
-        })
-        .await;
-    })
-    .await
+    /// Answer: on this wire the cap cuts a text preamble at turn 1
+    /// (`stop_reason: max_tokens`), no call is dispatched, and the run
+    /// settles `Ok` on a `Length` finish (recording confirms).
+    #[tokio::test]
+    output_cap_midway: ("long_loop_matrix/output_cap_midway", long_loop::OUTPUT_CAP_MIDWAY_LENGTH_ANSWER, long_loop::OUTPUT_CAP_MIDWAY_LENGTH_ANSWER.resume_after, "anthropic_matrix_long_loop_output_cap_midway");
 }
 
 crate::matrix::case_matrix! {
-    family: wire_matrix_case;
-    /// Row 4, scripted (`long_loop`'s module doc): the row-1 unary recording
-    /// with turn `FAULT_TURN`'s arguments rewritten to the wrong type; both
-    /// interpreters answer `invalid_args`, run nothing, and go on.
+    family: ecs_faults_case;
     #[tokio::test]
-    invalid_args_midway: invalid_args_midway_13 => "anthropic_matrix_long_loop_invalid_args_midway";
-    /// Row 4, scripted and world-only (`long_loop`'s module doc): a retryable
-    /// 503 before turn `FAULT_TURN`'s completion, re-issued under the default
-    /// budget (CONTRACT §5) with the same history; rig-agent has no budget, so
-    /// there is no producer and no golden — `long_loop::assert_log` is the
-    /// oracle.
+    invalid_args_midway: SCRIPTED => "anthropic_matrix_long_loop_invalid_args_midway";
     #[tokio::test]
-    provider_fault_midway: provider_fault_midway_14 => "anthropic_matrix_long_loop_provider_fault_midway";
+    provider_fault_midway: SCRIPTED => "anthropic_matrix_long_loop_provider_fault_midway";
 }
 
 /// Negative matcher probe against the streamed loop the native consumers

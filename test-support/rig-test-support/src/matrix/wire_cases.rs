@@ -57,32 +57,6 @@ macro_rules! wire_matrix_case {
             .await;
         }
     };
-    ($(#[$attribute:meta])* $name:ident, invalid_args_midway_13, $golden:expr) => {
-        $(#[$attribute])*
-        async fn $name() {
-            $crate::goldens::capture_world_programs(async {
-            let replies = long_loop::scripted_replies(THINKING, &long_loop::INVALID_ARGS_MIDWAY, None);
-            long_loop::run_scripted(&long_loop::INVALID_ARGS_MIDWAY, || {
-                scripted_unary(replies.clone())
-            }, |log| $crate::goldens::world_golden_effects($golden, log))
-            .await;
-            }).await;
-        }
-    };
-    ($(#[$attribute:meta])* $name:ident, provider_fault_midway_14, $golden:expr) => {
-        $(#[$attribute])*
-        async fn $name() {
-            $crate::goldens::capture_world_programs(async {
-            let replies = long_loop::scripted_replies(
-                THINKING,
-                &long_loop::PROVIDER_FAULT_MIDWAY,
-                Some(fault_reply()),
-            );
-            long_loop_world::run_world(&scripted_unary(replies), &long_loop::PROVIDER_FAULT_MIDWAY, |log| $crate::goldens::world_golden_effects($golden, log))
-                .await;
-            }).await;
-        }
-    };
     ($(#[$attribute:meta])* $name:ident, $wrapper:path, $scenario:literal, batch_held_call_approved_by_removing_held_15, $golden:expr) => {
         $(#[$attribute])*
         async fn $name() {

@@ -65,6 +65,12 @@ use rig_core::tool::ToolErrorKind;
 
 use rig_core::tool::ToolExecutionError;
 
+use rig_core::http_client::DynHttpClient;
+
+use rig_core::test_utils::{MockHttpResponse, SequencedHttpClient};
+
+use crate::goldens::capture_world_programs;
+
 use serde::{Deserialize, Serialize};
 
 use super::cells::{CELL, Cell, ThinkingWire, ToolKind};
@@ -2034,10 +2040,8 @@ impl UnaryShape {
 pub(crate) fn scripted_replies(
     thinking: ThinkingWire,
     cell: &Cell,
-    fault_reply: Option<rig_agent::test_utils::MockHttpResponse>,
-) -> Vec<rig_agent::test_utils::MockHttpResponse> {
-    use rig_agent::test_utils::MockHttpResponse;
-
+    fault_reply: Option<MockHttpResponse>,
+) -> Vec<MockHttpResponse> {
     let (provider, scenario) = scenario(thinking, &LONG_UNARY);
     let recorded = crate::cassettes::recorded_statuses_and_bodies(provider, &scenario);
     assert!(
@@ -2066,6 +2070,57 @@ pub(crate) fn scripted_replies(
         replies.push(MockHttpResponse::success(body));
     }
     replies
+}
+
+/// A wire's scripted row-4 cells: its row-1 unary recording served by the
+/// sequenced transport with the row's fault applied ([`scripted_replies`]).
+/// Every row takes the caller's literal world golden.
+pub(crate) struct Scripted<M> {
+    /// The wire over a scripted transport. The client's key must never reach
+    /// a recording or a trace.
+    pub(crate) wire: fn(DynHttpClient) -> super::Wire<M>,
+    /// The retryable 503 the provider fault inserts, in the wire's own
+    /// error envelope.
+    pub(crate) fault_reply: fn() -> MockHttpResponse,
+}
+
+impl<W, T> Scripted<rig::driver::Model<W, T>>
+where
+    W: rig::wire::Wire<Op = rig::operation::Completion>,
+    T: rig::driver::Transport<W>,
+{
+    /// The wire over a transport that answers each unary request with the
+    /// next of `replies`.
+    fn unary(&self, replies: Vec<MockHttpResponse>) -> super::Wire<rig::driver::Model<W, T>> {
+        (self.wire)(DynHttpClient::new(SequencedHttpClient::new(replies)))
+    }
+
+    /// `cell`'s replies on this wire's dialect, read off a wire never driven.
+    fn replies(&self, cell: &Cell, fault_reply: Option<MockHttpResponse>) -> Vec<MockHttpResponse> {
+        scripted_replies(self.unary(Vec::new()).thinking, cell, fault_reply)
+    }
+
+    /// Turn [`FAULT_TURN`]'s arguments rewritten to the wrong type: both
+    /// interpreters answer `invalid_args`, run nothing, and go on.
+    pub(crate) async fn invalid_args_midway(&self, golden: impl FnOnce(&EffectLog)) {
+        let replies = self.replies(&INVALID_ARGS_MIDWAY, None);
+        let wire = || self.unary(replies.clone());
+        capture_world_programs(run_scripted(&INVALID_ARGS_MIDWAY, wire, golden)).await;
+    }
+
+    /// World-only: a retryable 503 before turn [`FAULT_TURN`]'s completion,
+    /// re-issued under the default budget (CONTRACT §5) with the same
+    /// history. rig-agent has no budget, so it does not run this row.
+    pub(crate) async fn provider_fault_midway(&self, golden: impl FnOnce(&EffectLog)) {
+        let replies = self.replies(&PROVIDER_FAULT_MIDWAY, Some((self.fault_reply)()));
+        let wire = self.unary(replies);
+        capture_world_programs(super::long_loop_world::run_world(
+            &wire,
+            &PROVIDER_FAULT_MIDWAY,
+            golden,
+        ))
+        .await;
+    }
 }
 
 // -- the negative matcher probe ------------------------------------------------
