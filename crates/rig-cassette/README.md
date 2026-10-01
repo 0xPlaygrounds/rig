@@ -136,7 +136,10 @@ returns early cannot pass on a recording it never played to the end. The guard
 stays silent while the thread is already panicking, for a fully played session,
 and after `finish_after_test_result` returns a test's own error. Invalid
 fixtures and failed assertions panic, preserving the original test-support
-behavior.
+behavior. Applications that record or replay outside a test use
+`ProviderCassette::try_start_at` and `try_finish`, which return a
+`CassetteError` for each of those failures instead. `try_finish` shuts the
+session down whatever its outcome, so dropping it afterwards never panics.
 
 `RIG_PROVIDER_TEST_MODE` defaults to `replay`. `record` contacts the configured
 upstream and overwrites the selected fixture after scrubbing; `start` and

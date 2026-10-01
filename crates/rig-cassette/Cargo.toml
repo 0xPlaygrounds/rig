@@ -50,6 +50,7 @@ http = [
     "dep:httpdate",
     "dep:httpmock",
     "dep:serde_yaml",
+    "dep:thiserror",
     "dep:tokio",
     "dep:url",
     "serde_json/float_roundtrip",
@@ -74,6 +75,7 @@ httpmock = { workspace = true, features = ["record", "proxy"], optional = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 serde_yaml = { workspace = true, optional = true }
+thiserror = { workspace = true, optional = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "net", "sync", "io-util", "fs", "time"], optional = true }
 url = { workspace = true, optional = true }
 
