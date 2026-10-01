@@ -13,9 +13,9 @@ use bevy_ecs::{
     prelude::*,
 };
 use rig_core::{
-    effect::{EffectId, EffectKind, HandlerDescriptor, HandlerKey, Outcome},
+    effect::{Delivery, DeliveryKind, EffectId, EffectKind, HandlerDescriptor, Outcome},
     error::ErrorReport,
-    serve::{Origin, Recorder, cancelled},
+    serve::{Recorder, cancelled},
     streaming::{Item, Relayed, StreamEvent},
 };
 
@@ -29,7 +29,8 @@ use bevy_ecs::component::Component;
 /// `Collect` closes it as the outcome lands, a despawn in flight closes it
 /// as cancelled, and every `Bound` insert describes its handler. Install
 /// with [`Recording::install`] (which also describes the handlers bound so
-/// far) or as a plain resource before any handler is bound.
+/// far) or as a plain resource before any handler is bound. It derefs to
+/// the [`Recorder`] it records into.
 #[derive(Resource, Clone)]
 pub struct Recording(Arc<dyn Recorder + Send + Sync>);
 
@@ -43,7 +44,7 @@ impl Recording {
     /// and install `recorder` as the world's recording resource.
     pub fn install(world: &mut World, recorder: impl Recorder + Send + Sync) {
         let recording = Self::new(recorder);
-        recording.0.begin_delivery_tracking();
+        recording.begin_delivery_tracking();
         let mut bound: Vec<HandlerDescriptor> = world
             .query::<&Bound>()
             .iter(world)
@@ -53,56 +54,13 @@ impl Recording {
         recording.handlers(bound);
         world.insert_resource(recording);
     }
+}
 
-    /// Handlers the world serves.
-    pub fn handlers(&self, handlers: Vec<HandlerDescriptor>) {
-        self.0.handlers(handlers);
-    }
+impl std::ops::Deref for Recording {
+    type Target = dyn Recorder + Send + Sync;
 
-    /// A dispatch begins.
-    pub fn begin(&self, id: EffectId, key: HandlerKey, kind: EffectKind, origin: Origin) {
-        self.0.begin(id, key, kind, origin);
-    }
-
-    /// Whether streamed events are wanted verbatim.
-    pub fn keep_events(&self) -> bool {
-        self.0.keep_events()
-    }
-
-    /// One streamed item of `id`.
-    pub fn event(&self, id: EffectId, item: &Item<StreamEvent>) {
-        self.0.event(id, item);
-    }
-
-    /// An error item at its original position in a kept stream.
-    pub fn stream_error(&self, id: EffectId, error: &ErrorReport) {
-        self.0.stream_error(id, error);
-    }
-
-    /// A consumer-visible transition in the current schedule pass.
-    pub fn delivery(&self, batch: u64, id: EffectId, kind: rig_core::effect::DeliveryKind) {
-        self.0
-            .delivery(rig_core::effect::Delivery { batch, id, kind });
-    }
-
-    /// The outcome of `id`.
-    pub fn resolve(&self, id: EffectId, outcome: Result<Outcome, ErrorReport>) {
-        self.0.resolve(id, outcome);
-    }
-
-    /// Durable output published before this dispatch's terminal outcome.
-    pub fn tool_output(&self, id: EffectId, output: rig_core::tool::ToolResultContext) {
-        self.0.tool_output(id, output);
-    }
-
-    /// A layer decided `id` before any handler served it: no record.
-    pub fn discard(&self, id: EffectId) {
-        self.0.discard(id);
-    }
-
-    /// A layer served `kind` in place of what began: the record's request.
-    pub fn patch(&self, id: EffectId, kind: EffectKind) {
-        self.0.patch(id, kind);
+    fn deref(&self) -> &Self::Target {
+        &*self.0
     }
 }
 
@@ -127,9 +85,13 @@ pub fn record_outcome(
         && let Ok((Issued(id), collected)) = issued.get(added.event().entity)
     {
         if !collected {
-            recording.0.unsupported_delivery("an in-flight EffectOutcome bypassed Collect; submit world answers with WorldOutcome or typed Answer instead");
+            recording.unsupported_delivery("an in-flight EffectOutcome bypassed Collect; submit world answers with WorldOutcome or typed Answer instead");
         }
-        recording.delivery(batch.0, *id, rig_core::effect::DeliveryKind::Outcome);
+        recording.delivery(Delivery {
+            batch: batch.0,
+            id: *id,
+            kind: DeliveryKind::Outcome,
+        });
     }
 }
 
@@ -261,7 +223,9 @@ impl rig_core::serve::Observe for WorldObserver {
     }
 
     fn keep_events(&self) -> bool {
-        self.recording.as_ref().is_some_and(Recording::keep_events)
+        self.recording
+            .as_ref()
+            .is_some_and(|recording| recording.keep_events())
     }
 
     fn stream_item(
@@ -386,7 +350,11 @@ pub fn record_cancelled(
                     .as_ref()
                     .is_err_and(|error| error.kind == rig_core::error::ErrorKind::Cancelled)
             }) {
-                recording.delivery(batch.0, *id, rig_core::effect::DeliveryKind::Cancelled);
+                recording.delivery(Delivery {
+                    batch: batch.0,
+                    id: *id,
+                    kind: DeliveryKind::Cancelled,
+                });
             }
             recording.resolve(*id, original.unwrap_or_else(|| Err(cancelled())));
         }

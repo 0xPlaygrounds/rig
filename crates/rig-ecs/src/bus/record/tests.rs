@@ -1,6 +1,6 @@
 #![allow(clippy::unwrap_used)]
 use super::*;
-use rig_core::serve::Observe;
+use rig_core::serve::{Observe, Origin};
 
 #[test]
 fn cancellation_and_terminal_observation_have_one_recording_boundary() {

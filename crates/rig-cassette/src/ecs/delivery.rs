@@ -759,11 +759,11 @@ fn deliver_stream(
     if count != 0
         && let Some(recording) = recording
     {
-        recording.delivery(
-            world.resource::<DeliveryBatch>().0,
+        recording.delivery(Delivery {
+            batch: world.resource::<DeliveryBatch>().0,
             id,
-            DeliveryKind::Stream { items: count },
-        );
+            kind: DeliveryKind::Stream { items: count },
+        });
     }
     if let Some(delivery) = delivery {
         deliveries.push(move |world: &mut World| world.trigger(delivery));
