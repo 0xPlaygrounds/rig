@@ -25,7 +25,6 @@ use serde::{Deserialize, Serialize};
 use crate::completion::CompletionResponse;
 use crate::driver::{lock, record_request_id};
 use crate::error::{ErrorReport, ProviderError};
-use crate::message::ToolResult;
 use crate::operation::{Completion, Turn};
 use crate::wasm_compat::WasmBoxedStream;
 use crate::wire::{Operation, Shared};
@@ -282,24 +281,6 @@ impl<Op: Operation> Stream for Streamed<Op> {
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         self.get_mut().poll_item(cx)
-    }
-}
-
-/// Streamed user content. This content is primarily used to represent tool results from tool calls made during a multi-turn/step agent prompt.
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
-#[serde(untagged)]
-pub enum StreamedUserContent {
-    /// Tool result emitted during a multi-turn streaming agent loop.
-    ToolResult {
-        /// The result; `tool_result.call` is the id of the call it answers.
-        tool_result: ToolResult,
-    },
-}
-
-impl StreamedUserContent {
-    /// A streamed tool result.
-    pub fn tool_result(tool_result: ToolResult) -> Self {
-        Self::ToolResult { tool_result }
     }
 }
 

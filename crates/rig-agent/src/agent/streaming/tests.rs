@@ -70,6 +70,45 @@ async fn public_streaming_request_constructor_preserves_agent_hooks() {
 }
 
 #[tokio::test]
+async fn stream_to_stdout_returns_the_run_error() {
+    let model = MockCompletionModel::from_stream_turns([[
+        MockStreamEvent::text("should not run"),
+        MockStreamEvent::final_response(Usage::default()),
+    ]]);
+    let agent = AgentBuilder::new(model)
+        .add_hook(StopAgentStreamingBeforeCompletion)
+        .build();
+
+    let mut stream = agent.prompt("go").stream();
+    let error = stream_to_stdout(&mut stream)
+        .await
+        .expect_err("a failed run is not an empty answer");
+
+    assert!(matches!(
+        error,
+        StreamToStdoutError::Run(PromptError::Cancelled { reason, .. })
+            if reason == "agent streaming stopped"
+    ));
+}
+
+#[tokio::test]
+async fn stream_to_stdout_returns_the_final_response() {
+    let model = MockCompletionModel::from_stream_turns([[
+        MockStreamEvent::text("done"),
+        MockStreamEvent::final_response(Usage::default()),
+    ]]);
+    let agent = AgentBuilder::new(model).build();
+
+    let mut stream = agent.prompt("go").stream();
+    let response = stream_to_stdout(&mut stream)
+        .await
+        .expect("the run succeeds");
+
+    assert_eq!(response.output(), "done");
+    assert_eq!(response.messages().len(), 2);
+}
+
+#[tokio::test]
 async fn text_only_stream_without_terminal_record_is_rejected_as_truncated() {
     let model = MockCompletionModel::from_stream_turns([[MockStreamEvent::text("partial answer")]]);
     let agent = Arc::new(AgentBuilder::new(model.clone()).build());
@@ -676,9 +715,7 @@ async fn execution_commit_items_are_not_emitted_when_run_commit_fails() {
     while let Some(item) = stream.next().await {
         match item {
             Ok(MultiTurnStreamItem::ToolExecutionCommitted { .. }) => saw_commit = true,
-            Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult { .. })) => {
-                saw_result = true
-            }
+            Ok(MultiTurnStreamItem::ToolResult { .. }) => saw_result = true,
             Err(_) => saw_error = true,
             _ => {}
         }
@@ -1277,7 +1314,7 @@ fn final_response_serializes_completion_calls_with_missing_usage() {
             CompletionCall::new(0, Usage::default(), serde_json::json!({"id": "resp_0"})),
             CompletionCall::new(1, usage(3, 4), serde_json::json!({"id": "resp_1"})),
         ],
-        None,
+        Vec::new(),
     );
 
     if let MultiTurnStreamItem::FinalResponse(response) = &item {
@@ -1775,7 +1812,7 @@ async fn stream_prompt_continues_after_tool_call_turn() {
             Ok(MultiTurnStreamItem::ToolCall { .. }) => {
                 saw_tool_call = true;
             }
-            Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult { .. })) => {
+            Ok(MultiTurnStreamItem::ToolResult { .. }) => {
                 saw_tool_result = true;
             }
             Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Text {
@@ -1787,9 +1824,7 @@ async fn stream_prompt_continues_after_tool_call_turn() {
             Ok(MultiTurnStreamItem::FinalResponse(res)) => {
                 saw_final_response = true;
                 final_response_text = Some(res.output().to_owned());
-                final_history = res
-                    .messages()
-                    .map(<[rig_core::completion::Message]>::to_vec);
+                final_history = Some(res.messages().to_vec());
                 break;
             }
             Ok(_) => {}
@@ -2028,10 +2063,7 @@ async fn invalid_tool_call_hook_can_repair_streaming_tool_name() {
                 assert_eq!(tool_call.function.name, "add");
                 saw_repaired_tool_call = true;
             }
-            Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult {
-                tool_result,
-                ..
-            })) => {
+            Ok(MultiTurnStreamItem::ToolResult { tool_result, .. }) => {
                 assert!(tool_result.content.iter().any(|content| {
                     matches!(
                         content,
@@ -2146,9 +2178,7 @@ async fn invalid_tool_call_hook_skip_emits_streaming_tool_result() {
 
     while let Some(item) = stream.next().await {
         match item {
-            Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult {
-                tool_result,
-            })) => {
+            Ok(MultiTurnStreamItem::ToolResult { tool_result }) => {
                 skipped_tool_result = Some(tool_result);
             }
             Ok(MultiTurnStreamItem::FinalResponse(response)) => {
@@ -2374,10 +2404,7 @@ async fn invalid_tool_call_hook_skips_mixed_streaming_turn_without_executing_val
 
     while let Some(item) = stream.next().await {
         match item {
-            Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult {
-                tool_result,
-                ..
-            })) => {
+            Ok(MultiTurnStreamItem::ToolResult { tool_result, .. }) => {
                 skipped_tool_result = Some(tool_result);
             }
             Ok(MultiTurnStreamItem::FinalResponse(response)) => {
@@ -2872,9 +2899,7 @@ async fn invalid_tool_call_delta_skip_uses_structured_tool_feedback() {
             }))) if call.function.name == "default_api" => {
                 panic!("an invalid tool call should not be emitted")
             }
-            Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult {
-                tool_result,
-            })) => {
+            Ok(MultiTurnStreamItem::ToolResult { tool_result }) => {
                 skipped_tool_result = Some(tool_result);
             }
             Ok(MultiTurnStreamItem::FinalResponse(response)) => {
@@ -3124,7 +3149,7 @@ async fn completed_unknown_tool_call_after_text_fails_before_finish_hook_or_late
             Ok(MultiTurnStreamItem::ToolCall { .. }) => {
                 saw_tool_call = true;
             }
-            Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult { .. })) => {
+            Ok(MultiTurnStreamItem::ToolResult { .. }) => {
                 saw_tool_result = true;
             }
             Ok(_) => {}
@@ -3203,7 +3228,7 @@ async fn mixed_streaming_tool_calls_fail_before_any_tool_execution() {
             Ok(MultiTurnStreamItem::ToolCall { .. }) => {
                 saw_tool_call = true;
             }
-            Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult { .. })) => {
+            Ok(MultiTurnStreamItem::ToolResult { .. }) => {
                 saw_tool_result = true;
             }
             Ok(_) => {}
@@ -3277,10 +3302,7 @@ async fn multiple_valid_streaming_tool_calls_execute_after_batch_validation() {
             Ok(MultiTurnStreamItem::ToolCall { tool_call, .. }) => {
                 tool_call_names.push(tool_call.function.name);
             }
-            Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult {
-                tool_result,
-                ..
-            })) => {
+            Ok(MultiTurnStreamItem::ToolResult { tool_result, .. }) => {
                 tool_result_ids.push(
                     tool_result
                         .call
@@ -3425,7 +3447,7 @@ async fn mixed_specific_tool_calls_fail_before_any_tool_execution() {
             Ok(MultiTurnStreamItem::ToolCall { .. }) => {
                 saw_tool_call = true;
             }
-            Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult { .. })) => {
+            Ok(MultiTurnStreamItem::ToolResult { .. }) => {
                 saw_tool_result = true;
             }
             Ok(_) => {}
@@ -4455,9 +4477,7 @@ async fn final_response_history_preserves_structured_text_metadata() {
     }
 
     let final_response = final_response.expect("expected final response");
-    let history = final_response
-        .messages()
-        .expect("with_history should include final history");
+    let history = final_response.messages();
     let assistant_content = history
         .iter()
         .find_map(|message| match message {
@@ -5079,9 +5099,7 @@ async fn test_chat_history_in_final_response() -> anyhow::Result<()> {
                 response_text.push_str(&text);
             }
             Ok(MultiTurnStreamItem::FinalResponse(res)) => {
-                final_history = res
-                    .messages()
-                    .map(<[rig_core::completion::Message]>::to_vec);
+                final_history = Some(res.messages().to_vec());
                 break;
             }
             Err(e) => {
@@ -5136,9 +5154,7 @@ async fn streaming_appends_to_memory_after_final_response() {
     while let Some(item) = stream.next().await {
         match item {
             Ok(MultiTurnStreamItem::FinalResponse(res)) => {
-                history_in_final = res
-                    .messages()
-                    .map(<[rig_core::completion::Message]>::to_vec);
+                history_in_final = Some(res.messages().to_vec());
                 memory_append = res.memory_append.clone();
                 break;
             }
@@ -5189,7 +5205,7 @@ async fn streaming_reports_a_refused_append_on_the_final_response() {
         }
     }
     let response = final_response.expect("the answer stands when the append is refused");
-    assert_eq!(response.messages().map(<[_]>::len), Some(2));
+    assert_eq!(response.messages().len(), 2);
     let report = response
         .memory_append()
         .and_then(crate::run::MemoryAppend::failure)
@@ -5216,9 +5232,7 @@ async fn streaming_reasoning_without_tools_does_not_duplicate_final_history() {
     while let Some(item) = stream.next().await {
         match item {
             Ok(MultiTurnStreamItem::FinalResponse(res)) => {
-                history_in_final = res
-                    .messages()
-                    .map(<[rig_core::completion::Message]>::to_vec);
+                history_in_final = Some(res.messages().to_vec());
                 break;
             }
             Ok(_) => {}
@@ -5441,10 +5455,11 @@ async fn run_channel_forwards_events_and_resolves() {
             .iter()
             .any(|item| matches!(item, MultiTurnStreamItem::ToolCall { .. }))
     );
-    assert!(items.iter().any(|item| matches!(
-        item,
-        MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult { .. })
-    )));
+    assert!(
+        items
+            .iter()
+            .any(|item| matches!(item, MultiTurnStreamItem::ToolResult { .. }))
+    );
     match items.last() {
         Some(MultiTurnStreamItem::FinalResponse(last)) => {
             assert_eq!(last.output(), response.output());

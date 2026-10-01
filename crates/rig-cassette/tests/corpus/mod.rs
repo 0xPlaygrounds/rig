@@ -4100,9 +4100,7 @@ async fn hand_drive(program: &Program, resume: Resume) {
         };
         if let (Some((handle, id)), None) = (&memory, program.history) {
             // As the engine: a failed append is logged and the answer stands.
-            if let Err(report) =
-                within(handle.append(id.clone(), response.messages.clone().unwrap_or_default()))
-                    .await
+            if let Err(report) = within(handle.append(id.clone(), response.messages.clone())).await
             {
                 assert_eq!(report.kind, rig_core::error::ErrorKind::MemoryBackend);
             }

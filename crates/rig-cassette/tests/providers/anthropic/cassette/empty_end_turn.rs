@@ -218,9 +218,7 @@ async fn prompt_loop_accepts_empty_terminal_turn_after_tool_result() {
                 "notify should be called at least once"
             );
 
-            let messages = response
-                .messages
-                .expect("extended details should include history");
+            let messages = response.messages;
             assert!(
                 messages.iter().any(assistant_message_has_notify_tool_call),
                 "expected notify tool call in history, got {messages:?}"
@@ -265,8 +263,7 @@ async fn prompt_loop_preserves_pre_tool_text_when_terminal_followup_is_empty() {
     );
 
     let messages = response
-        .messages
-        .expect("extended details should include history");
+        .messages;
     assert!(
         messages
             .iter()

@@ -43,9 +43,7 @@ async fn on_tool_call_skip_returns_reason_without_executing() {
 
             assert_eq!(counter.count(), 0, "the skipped tool should never execute");
 
-            let messages = response
-                .messages
-                .expect("extended details should carry the run's messages");
+            let messages = response.messages;
             let texts: Vec<String> = messages.iter().flat_map(tool_result_texts).collect();
             assert_eq!(
                 texts,

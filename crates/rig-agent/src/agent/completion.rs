@@ -696,9 +696,7 @@ impl Agent {
         let response = AgentRunner::from_agent(self, prompt)
             .history(chat_history.clone())
             .await?;
-        if let Some(messages) = &response.messages {
-            chat_history.extend(messages.iter().cloned());
-        }
+        chat_history.extend(response.messages.iter().cloned());
         Ok(response)
     }
 

@@ -457,14 +457,7 @@ where
             );
         }
         for response in &responses {
-            super::reasoning::assert_history(
-                cell,
-                &log,
-                response
-                    .messages
-                    .as_deref()
-                    .expect("a run has a transcript"),
-            );
+            super::reasoning::assert_history(cell, &log, &response.messages);
             assert_eq!(
                 response.output,
                 corpus::golden_answer(&log),
@@ -480,14 +473,7 @@ where
         super::long_loop::write_attempt(cell, &log);
         super::long_loop::assert_log(cell, wire.thinking, &log);
         for response in &responses {
-            super::long_loop::assert_transcript(
-                cell,
-                &log,
-                response
-                    .messages
-                    .as_deref()
-                    .expect("a run has a transcript"),
-            );
+            super::long_loop::assert_transcript(cell, &log, &response.messages);
         }
     }
     if cell.image.is_some() {
@@ -495,10 +481,7 @@ where
         for (n, response) in responses.iter().enumerate() {
             super::image::assert_history(
                 cell,
-                response
-                    .messages
-                    .as_deref()
-                    .expect("a run has a transcript"),
+                &response.messages,
                 &format!("{}: run {n} history", cell.name),
             );
         }

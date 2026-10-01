@@ -311,7 +311,7 @@ async fn a_denied_tool_dispatch_is_the_skipped_result_the_model_sees() {
         .expect("run");
     assert_eq!(response.output, "done");
     assert!(tool.completed.lock().expect("lock").is_empty(), "never ran");
-    let history = response.messages.expect("history");
+    let history = response.messages;
     let saw_skip = history.iter().any(|message| {
         serde_json::to_string(message)
             .expect("serializes")
@@ -2014,7 +2014,7 @@ async fn id_less_calls_across_turns_keep_the_history_canonical() {
         .await
         .expect("run");
     assert_eq!(response.output, "done");
-    expected_call_ids(response.messages().expect("history"));
+    expected_call_ids(response.messages());
     assert_eq!(tool.completed.lock().expect("lock").len(), 4);
 
     // The streaming surface issues the ids at the stream boundary, and the
@@ -2040,7 +2040,7 @@ async fn id_less_calls_across_turns_keep_the_history_canonical() {
     let mut messages = None;
     while let Some(item) = within(stream.next()).await {
         if let Ok(rig_agent::agent::MultiTurnStreamItem::FinalResponse(done)) = item {
-            messages = done.messages().map(<[Message]>::to_vec);
+            messages = Some(done.messages().to_vec());
         }
     }
     expected_call_ids(&messages.expect("streamed history"));

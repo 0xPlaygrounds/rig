@@ -1055,9 +1055,7 @@ async fn blocking_and_streaming_switch_after_tools_with_equivalent_semantics() {
                     events.push("tool-commit");
                     call_ids.push(tool_call.id);
                 }
-                rig_agent::agent::MultiTurnStreamItem::StreamUserItem(
-                    rig_agent::streaming::StreamedUserContent::ToolResult { tool_result },
-                ) => {
+                rig_agent::agent::MultiTurnStreamItem::ToolResult { tool_result } => {
                     events.push("tool-result");
                     call_ids.push(tool_result.call);
                 }
@@ -1287,10 +1285,8 @@ async fn normalized_stream_preserves_events_message_id_and_usage() {
     let final_response = final_response.expect("agent final response");
     assert_eq!(final_response.output, "final text");
     assert_eq!(final_response.usage, usage(13));
-    assert!(final_response.messages.is_some_and(|messages| {
-        messages.iter().any(|message| {
-            matches!(message, Message::Assistant { id: Some(id), .. } if id == "rich-message-id")
-        })
+    assert!(final_response.messages.iter().any(|message| {
+        matches!(message, Message::Assistant { id: Some(id), .. } if id == "rich-message-id")
     }));
 }
 

@@ -56,9 +56,7 @@ async fn nonstreaming_multi_turn_executes_tools_and_reports_usage() {
                 response.usage
             );
 
-            let messages = response
-                .messages
-                .expect("extended details should carry the run's messages");
+            let messages = response.messages;
             assert!(
                 messages.iter().any(is_tool_result_user_message),
                 "history should carry tool results: {messages:?}"

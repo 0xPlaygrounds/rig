@@ -5,7 +5,7 @@
 //! proving what the *model* sees on the next request — the observable
 //! contract — and that the default is still fail-fast.
 
-use super::{MultiTurnStreamItem, StreamedUserContent};
+use super::MultiTurnStreamItem;
 use crate::agent::AgentBuilder;
 use crate::agent::hook::{AgentHook, HookContext};
 use crate::agent::{InvalidToolCallAction, InvalidToolCallContext, InvalidToolCallReason};
@@ -176,10 +176,7 @@ async fn malformed_arguments_skip_feeds_the_parse_failure_back() {
         .items
         .iter()
         .find_map(|item| match item {
-            MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult {
-                tool_result,
-                ..
-            }) => Some(tool_result.clone()),
+            MultiTurnStreamItem::ToolResult { tool_result, .. } => Some(tool_result.clone()),
             _ => None,
         })
         .expect("skip must emit a synthetic tool result");

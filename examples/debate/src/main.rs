@@ -48,11 +48,8 @@ impl Debater {
                 .prompt(prompt_a.as_str())
                 .history(&history_a)
                 .await?;
-            // Extract updated history for next iteration
-            history_a = resp_a
-                .messages
-                .map(|m| m.into_iter().collect())
-                .unwrap_or_default();
+            // Append this round to the history for the next one.
+            history_a.extend(resp_a.messages);
             println!("GPT-4:\n{}", resp_a.output);
             println!("================================================================");
             let resp_b = self
@@ -60,11 +57,8 @@ impl Debater {
                 .prompt(resp_a.output.as_str())
                 .history(&history_b)
                 .await?;
-            // Extract updated history for next iteration
-            history_b = resp_b
-                .messages
-                .map(|m| m.into_iter().collect())
-                .unwrap_or_default();
+            // Append this round to the history for the next one.
+            history_b.extend(resp_b.messages);
             println!("Coral:\n{}", resp_b.output);
             println!("================================================================");
             last_resp_b = Some(resp_b.output);

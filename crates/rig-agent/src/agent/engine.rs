@@ -48,7 +48,7 @@ use crate::run::UnhandledInvalidToolCall;
 use crate::{
     completion::{PromptError, Usage},
     json_utils,
-    streaming::{Item, StreamEvent, StreamedUserContent},
+    streaming::{Item, StreamEvent},
     tool::{ToolCatalog, ToolResult},
 };
 
@@ -420,7 +420,7 @@ where
                         &runner,
                         &hook_ctx,
                         memory_handle.as_ref(),
-                        response.messages.as_deref().unwrap_or_default(),
+                        &response.messages,
                     )
                     .await;
                     let response = response.with_memory_append(memory_append);
@@ -464,7 +464,7 @@ where
 ///   new tool starts, not-yet-started concurrent siblings are dropped,
 ///   already-started ones are drained, and the deterministic lowest call-index
 ///   error is surfaced with **no** successful [`ToolExecutionCommitted`] /
-///   [`StreamUserItem`](MultiTurnStreamItem::StreamUserItem) items and **no**
+///   [`ToolResult`](MultiTurnStreamItem::ToolResult) items and **no**
 ///   history commit.
 /// - Only if the whole batch settles successfully are the per-tool
 ///   [`ToolExecutionCommitted`](MultiTurnStreamItem::ToolExecutionCommitted) + result
@@ -670,11 +670,9 @@ where
                 if surface_result
                     && let UserContent::ToolResult(tool_result) = &content
                 {
-                    surface_items.push(MultiTurnStreamItem::StreamUserItem(
-                        StreamedUserContent::ToolResult {
-                            tool_result: tool_result.clone(),
-                        },
-                    ));
+                    surface_items.push(MultiTurnStreamItem::ToolResult {
+                        tool_result: tool_result.clone(),
+                    });
                 }
             }
             committed.push(content);
@@ -1038,9 +1036,7 @@ impl TurnSource for StreamingTurnSource {
                                         }
                                     }
                                     if let Some(tool_result) = skipped_tool_result {
-                                        yield Ok(MultiTurnStreamItem::StreamUserItem(
-                                            StreamedUserContent::ToolResult { tool_result },
-                                        ));
+                                        yield Ok(MultiTurnStreamItem::ToolResult { tool_result });
                                     }
                                     return;
                                 }
@@ -1203,16 +1199,12 @@ impl TurnSource for StreamingTurnSource {
                 }
                 self.last_final_choice.clone()
             });
-        // Always surface the accumulated messages, regardless of whether the
-        // caller supplied input history.
-        let final_messages: Option<Vec<Message>> =
-            Some(response.messages.clone().unwrap_or_default());
         Some(
             MultiTurnStreamItem::final_response_with_completion_calls(
                 final_choice,
                 response.usage,
                 response.completion_calls.clone(),
-                final_messages,
+                response.messages.clone(),
             )
             .with_memory_append(response.memory_append.clone()),
         )

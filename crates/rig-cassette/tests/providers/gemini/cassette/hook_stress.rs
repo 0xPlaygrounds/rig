@@ -32,7 +32,7 @@ use rig::agent::{
 };
 use rig::completion::Document;
 use rig::providers::gemini;
-use rig::streaming::{StreamEvent, StreamedUserContent};
+use rig::streaming::StreamEvent;
 use rig::tool::Tool;
 
 use super::super::support::with_gemini_cassette;
@@ -559,9 +559,7 @@ async fn streaming_lifecycle_ordering_and_context_streaming_flag() {
                     Ok(MultiTurnStreamItem::ToolExecutionCommitted { .. }) => {
                         events.push("tool_execution_committed");
                     }
-                    Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult {
-                        ..
-                    })) => events.push("tool_result"),
+                    Ok(MultiTurnStreamItem::ToolResult { .. }) => events.push("tool_result"),
                     Ok(MultiTurnStreamItem::FinalResponse(response)) => {
                         saw_final = true;
                         final_text = response.output().to_owned();

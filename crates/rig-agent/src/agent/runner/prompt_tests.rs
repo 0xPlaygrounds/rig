@@ -753,6 +753,12 @@ async fn typed_prompt_response_preserves_completion_calls() {
         response.completion_calls(),
         &[CompletionCall::new(0, call_usage, raw)]
     );
+    assert_eq!(
+        response.messages.len(),
+        2,
+        "the accepted attempt's prompt and answer: {:?}",
+        response.messages
+    );
 }
 
 #[tokio::test]
@@ -1122,7 +1128,7 @@ async fn invalid_tool_call_hook_can_repair_non_streaming_tool_name() {
         .expect("repaired tool call should execute");
 
     assert_eq!(response.output, "done");
-    let messages = response.messages.expect("messages should be present");
+    let messages = response.messages;
     assert!(history_contains_tool_call(&messages, "add"));
     assert!(!history_contains_tool_call(&messages, "default_api"));
     assert!(messages.iter().any(|message| {
@@ -1165,7 +1171,7 @@ async fn invalid_tool_call_hook_retry_adds_feedback_and_retries_non_streaming() 
 
     assert_eq!(response.output, "retried");
     assert_eq!(recorded.request_count(), 2);
-    let messages = response.messages.expect("messages should be present");
+    let messages = response.messages;
     assert!(messages.iter().any(|message| {
         matches!(
             message,
@@ -1324,7 +1330,7 @@ async fn invalid_tool_call_hook_skips_mixed_non_streaming_turn_without_executing
 
     assert_eq!(response.output, "skipped");
     assert_eq!(add_calls.load(Ordering::SeqCst), 0);
-    let messages = response.messages.expect("messages should be present");
+    let messages = response.messages;
     assert!(history_contains_tool_call(&messages, "add"));
     assert!(history_contains_tool_call(&messages, "default_api"));
     assert!(matches!(
@@ -1411,7 +1417,7 @@ async fn invalid_tool_call_hook_can_skip_structured_non_streaming_call() {
         .expect("skip should continue with synthetic tool result");
 
     assert_eq!(response.output, "skipped");
-    let messages = response.messages.expect("messages should be present");
+    let messages = response.messages;
     assert!(history_contains_tool_call(&messages, "default_api"));
     assert!(messages.iter().any(|message| {
         matches!(
@@ -1455,7 +1461,7 @@ async fn skip_under_specific_tool_choice_returns_synthetic_feedback() {
         .expect("skip should produce synthetic feedback under Specific");
 
     assert_eq!(response.output, "skipped");
-    let messages = response.messages.expect("messages should be present");
+    let messages = response.messages;
     assert!(history_contains_tool_call(&messages, "default_api"));
     assert!(messages.iter().any(|message| {
         matches!(
@@ -1770,9 +1776,7 @@ async fn prompt_request_stops_cleanly_on_empty_terminal_turn() {
         ]
     );
 
-    let history = response
-        .messages
-        .expect("extended response should include history");
+    let history = response.messages;
     assert_eq!(history.len(), 3);
     assert!(matches!(
         history.first(),
@@ -1865,9 +1869,7 @@ async fn prompt_request_preserves_metadata_only_text_turn_in_history() {
         .expect("metadata-only text turn should succeed");
 
     assert!(response.output.is_empty());
-    let history = response
-        .messages
-        .expect("extended response should include history");
+    let history = response.messages;
     assert!(history.iter().any(|message| matches!(
         message,
         Message::Assistant { content, .. }
@@ -1933,8 +1935,8 @@ async fn memory_appends_full_turn_after_success() {
         "the response acknowledges the append"
     );
     assert_eq!(
-        response.messages.as_deref(),
-        Some(stored.as_slice()),
+        response.messages.as_slice(),
+        stored.as_slice(),
         "what was appended is the response's transcript"
     );
 }
@@ -2282,8 +2284,8 @@ async fn memory_append_error_does_not_drop_response() {
 
     assert_eq!(response.output, "ack");
     assert_eq!(
-        response.messages.as_ref().map(Vec::len),
-        Some(2),
+        response.messages.len(),
+        2,
         "the transcript the run tried to persist"
     );
     let report = response

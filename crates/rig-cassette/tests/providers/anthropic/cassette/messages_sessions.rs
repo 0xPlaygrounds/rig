@@ -392,7 +392,7 @@ async fn usage_accumulates_across_streaming_multi_turn() {
 
             while let Some(item) = stream.next().await {
                 match item.expect("stream item should be ok") {
-                    MultiTurnStreamItem::StreamUserItem(_) => saw_tool_result = true,
+                    MultiTurnStreamItem::ToolResult { .. } => saw_tool_result = true,
                     MultiTurnStreamItem::FinalResponse(response) => {
                         final_usage = Some(response.usage());
                     }

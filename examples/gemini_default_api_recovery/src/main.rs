@@ -17,7 +17,7 @@ use rig::providers::gemini::{
     completion::gemini_api_types::{AdditionalParameters, GenerationConfig, ThinkingConfig},
 };
 use rig::streaming::Item;
-use rig::streaming::{StreamEvent, StreamedUserContent};
+use rig::streaming::StreamEvent;
 use rig::tool::Tool;
 use schemars::{JsonSchema, schema_for};
 use serde::{Deserialize, Serialize};
@@ -275,10 +275,7 @@ async fn consume_workspace_like_stream(
                 observation.events.push("tool_call_delta");
                 observation.tool_call_deltas += 1;
             }
-            MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult {
-                tool_result,
-                ..
-            }) => {
+            MultiTurnStreamItem::ToolResult { tool_result, .. } => {
                 observation.events.push("tool_result");
                 let value = match tool_result.content.first() {
                     Some(ToolResultContent::Json { value }) => value.clone(),
