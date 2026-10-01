@@ -270,7 +270,12 @@ impl PostgresVectorStore {
             .collect::<Vec<f32>>()
             .into();
 
-        let (search_query, params) = self.search_query(with_document, req);
+        let (search_query, params) = render_search_query(
+            &self.distance_function,
+            &self.documents_table,
+            with_document,
+            req,
+        );
         let builder = sqlx::query_as(sqlx::AssertSqlSafe(search_query))
             .bind(embedded_query)
             .bind(req.samples() as i64);
@@ -281,19 +286,6 @@ impl PostgresVectorStore {
             .fetch_all(&self.pg_pool)
             .await
             .map_err(VectorStoreError::datastore)
-    }
-
-    fn search_query(
-        &self,
-        with_document: bool,
-        req: &VectorSearchRequest<PgSearchFilter>,
-    ) -> (String, Vec<serde_json::Value>) {
-        render_search_query(
-            &self.distance_function,
-            &self.documents_table,
-            with_document,
-            req,
-        )
     }
 }
 

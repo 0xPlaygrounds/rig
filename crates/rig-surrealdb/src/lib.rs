@@ -146,17 +146,9 @@ impl SurrealSearchFilter {
     }
 }
 
-impl TryFrom<Filter<serde_json::Value>> for SurrealSearchFilter {
-    type Error = FilterError;
-
-    fn try_from(value: Filter<serde_json::Value>) -> Result<Self, Self::Error> {
-        value.try_interpret(|v| Ok(Value::from_t(v)))
-    }
-}
-
 impl DynamicSearchFilter for SurrealSearchFilter {
     fn from_dynamic_filter(filter: Filter<serde_json::Value>) -> Result<Self, FilterError> {
-        Self::try_from(filter)
+        filter.try_interpret(|v| Ok(Value::from_t(v)))
     }
 }
 

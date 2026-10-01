@@ -164,17 +164,9 @@ impl ScyllaSearchFilter {
     }
 }
 
-impl TryFrom<Filter<serde_json::Value>> for ScyllaSearchFilter {
-    type Error = FilterError;
-
-    fn try_from(value: Filter<serde_json::Value>) -> Result<Self, Self::Error> {
-        value.try_interpret(cql_value_from_json)
-    }
-}
-
 impl DynamicSearchFilter for ScyllaSearchFilter {
     fn from_dynamic_filter(filter: Filter<serde_json::Value>) -> Result<Self, FilterError> {
-        Self::try_from(filter)
+        filter.try_interpret(cql_value_from_json)
     }
 }
 

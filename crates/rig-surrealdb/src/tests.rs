@@ -1,7 +1,10 @@
 use super::{Mem, SurrealSearchFilter, SurrealVectorStore};
 use rig_core::{
     embeddings::Embedding,
-    vector_store::{VectorStoreIndex, request::Filter},
+    vector_store::{
+        VectorStoreIndex,
+        request::{DynamicSearchFilter, Filter},
+    },
 };
 use serde_json::json;
 use surrealdb::Surreal;
@@ -49,7 +52,7 @@ impl rig_core::driver::Transport<rig_core::driver::Local<rig_core::operation::Em
 #[allow(clippy::panic)]
 #[test]
 fn filter_from_json_preserves_nested_values() {
-    let filter = match SurrealSearchFilter::try_from(Filter::Eq(
+    let filter = match SurrealSearchFilter::from_dynamic_filter(Filter::Eq(
         "metadata".to_string(),
         json!({
             "name": "rig",
