@@ -580,22 +580,25 @@ async fn streamed_phase_round_trips_on_follow_up() {
     assert_eq!(delivered.len(), 1, "one message item: {delivered:?}");
     let (id, phase) = &delivered[0];
 
-    let texts: Vec<Option<&str>> = first
+    let texts: Vec<Option<String>> = first
         .choice
         .iter()
         .filter_map(|content| match content {
             AssistantContent::Text(text) => Some(
-                text.additional_params
-                    .as_ref()
-                    .and_then(|params| params.wire_extras("openai_responses"))
-                    .and_then(|extras| extras.get("phase"))
-                    .and_then(serde_json::Value::as_str),
+                text.native_for::<rig::providers::openai::responses_api::NativeText>(&[
+                    "chatgpt".into()
+                ])
+                .and_then(Result::ok)
+                .and_then(|residue| residue.phase),
             ),
             _ => None,
         })
         .collect();
     assert!(
-        !texts.is_empty() && texts.iter().all(|text| *text == Some(phase.as_str())),
+        !texts.is_empty()
+            && texts
+                .iter()
+                .all(|text| text.as_deref() == Some(phase.as_str())),
         "the streamed text carries the message's phase: {texts:?}"
     );
 

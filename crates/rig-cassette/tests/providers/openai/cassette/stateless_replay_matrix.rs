@@ -8,8 +8,9 @@
 //! replayed as one item under one id and one `phase`. OpenAI documents a
 //! dropped `phase` as a quality regression on follow-ups.
 //!
-//! **Fix.** `InputContent::Compaction` / `Output::Compaction` round-trip
-//! the item verbatim; `OutputMessage.phase` is captured on unary and
+//! **Fix.** A `compaction` item is kept whole in rig history as a native
+//! item, in its position, and replayed verbatim to the service that issued
+//! it; `OutputMessage.phase` is captured on unary and
 //! streamed text alike, rides rig history on the text block's own-wire
 //! extras (with the item's id when a reply has several message items), and
 //! is lifted back onto each assistant input item at replay. Exposing the
@@ -41,7 +42,7 @@
 //! | # | cell | transport | proves | fixture |
 //! |---|------|-----------|--------|---------|
 //! | 1 | `phase_round_trips_on_follow_up` | blocking, 2 turns | turn-2 request carries turn-1's `phase` | recorded |
-//! | 2 | `compaction_item_decodes_on_the_response` | blocking | compaction on `output[]` decodes typed; the same item re-serialized is accepted on the input side verbatim | derived from 1 |
+//! | 2 | `compaction_item_decodes_on_the_response` | blocking | compaction on `output[]` reaches history as a native item and turn 2's request sends it back verbatim, first | derived from 1 |
 //! | 3 | `streamed_phase_round_trips_on_follow_up` | streamed, 2 turns | a streamed turn's `phase` reaches its text and the follow-up, as unary text carries it | recorded |
 //! | 4 | `commentary_and_final_answer_replay_as_two_items` | streamed, 2 turns | two message items keep their own id and `phase`, in order, and the follow-up is accepted | recorded |
 //! | 5 | `commentary_before_a_tool_call_replays_with_its_phase` | streamed, 2 turns | a commentary message keeps its `phase` and its place before the call | recorded |
@@ -54,8 +55,9 @@ use rig::completion::ToolDefinition;
 use rig::message::{AssistantContent, Message, Text, ToolResultContent, UserContent};
 use rig::providers::openai;
 use rig::providers::openai::responses_api::{
-    CompletionResponse as ProviderResponse, InputItem, Output,
+    CompletionResponse as ProviderResponse, NativeText, Output, RESPONSES,
 };
+use rig::wire::{Body, Mode, Wire};
 use rig_test_support::cassette_models::OpenAiModels;
 use serde::Deserialize;
 use serde_json::Value;
@@ -178,30 +180,51 @@ async fn compaction_item_decodes_on_the_response() {
                 .await
                 .expect("a response carrying a compaction item must decode");
             let first = provider_reply(&response);
-            let compaction = first
-                .output
-                .iter()
-                .find_map(|item| match item {
-                    Output::Compaction(fields) => Some(fields.clone()),
-                    _ => None,
-                })
-                .expect("turn 1's output must decode the compaction item as Output::Compaction");
-            assert_eq!(compaction.get("id"), Some(&Value::from("cmp_REDACTED_1")));
-            assert!(compaction.get("type").is_none());
+            let recorded = serde_json::to_value(&first.output[0]).expect("the item serializes");
+            assert_eq!(recorded["type"], "compaction");
 
-            // The regular items beside it still decode and normalize.
-            assert!(!response.choice.is_empty());
-
-            // The same item, re-serialized, is accepted on the input side
-            // byte-for-byte — this is what a stateless client sends back.
-            let wire = serde_json::to_value(Output::Compaction(compaction)).expect("serializes");
-            let input: InputItem =
-                serde_json::from_value(wire.clone()).expect("the input side accepts the item");
-            assert_eq!(
-                serde_json::to_value(&input).expect("re-serializes"),
-                wire,
-                "the input item must re-emit the compaction item verbatim"
+            // The item reaches history whole, in its position, sealed to
+            // the service that issued it.
+            let Some(AssistantContent::Native(native)) = response.choice.first() else {
+                panic!(
+                    "the compaction item leads the choice: {:?}",
+                    response.choice
+                );
+            };
+            assert_eq!(native.issuer().as_str(), "openai");
+            let opened = native
+                .open(native.issuer())
+                .expect("it opens for its issuer");
+            assert!(opened.is(&RESPONSES));
+            assert_eq!(opened.value(), &recorded);
+            assert!(
+                response.choice.len() > 1,
+                "the regular items beside it still normalize"
             );
+
+            // Turn 2's request sends it back verbatim, before the answer.
+            let history = response.message().expect("the reply has content");
+            let follow_up =
+                CompletionRequest::new(TURN_TWO).messages([Message::user(TURN_ONE), history]);
+            let encoded = model
+                .wire
+                .encode(follow_up, Mode::Unary)
+                .expect("the follow-up encodes");
+            let Body::Bytes(bytes) = encoded.request.body() else {
+                panic!("a JSON body");
+            };
+            let body: Value = serde_json::from_slice(bytes).expect("the body is JSON");
+            let input = body["input"].as_array().expect("an input array");
+            let at = input
+                .iter()
+                .position(|item| item["type"] == "compaction")
+                .expect("turn 2 replays the compaction item");
+            assert_eq!(input[at], recorded, "byte for byte");
+            let answer = input
+                .iter()
+                .position(|item| item["role"] == "assistant")
+                .expect("turn 2 replays the answer");
+            assert!(at < answer, "the item keeps its place before the answer");
         },
     )
     .await;
@@ -306,21 +329,17 @@ fn text_block_items(response: &rig::completion::CompletionResponse) -> Vec<(Stri
     texts(&response.choice)
         .into_iter()
         .map(|text| {
-            let extras = text
-                .additional_params
-                .as_ref()
-                .and_then(|params| params.wire_extras("openai_responses"));
-            let field = |key: &str| {
-                extras
-                    .and_then(|extras| extras.get(key))
-                    .and_then(Value::as_str)
-                    .map(str::to_owned)
-            };
+            let residue = text
+                .native_for::<NativeText>(&["openai".into()])
+                .transpose()
+                .expect("the residue decodes")
+                .unwrap_or_default();
             (
-                field("message_id")
+                residue
+                    .message_id
                     .or_else(|| response.message_id.clone())
                     .unwrap_or_default(),
-                field("phase").unwrap_or_default(),
+                residue.phase.unwrap_or_default(),
             )
         })
         .collect()

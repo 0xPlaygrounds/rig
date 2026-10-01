@@ -20,14 +20,10 @@ fn compaction_output_item_round_trips_verbatim() {
         "future_field": {"nested": [1, 2, 3]}
     });
     let output: Output = serde_json::from_value(wire.clone()).expect("compaction decodes");
-    let Output::Compaction(fields) = &output else {
-        panic!("expected Output::Compaction, got {output:?}");
+    let Output::Unknown(item) = &output else {
+        panic!("expected the item kept whole, got {output:?}");
     };
-    assert_eq!(fields.get("id"), Some(&json!("cmp_123")));
-    assert!(
-        fields.get("type").is_none(),
-        "the tag must not be duplicated inside the payload"
-    );
+    assert_eq!(item, &wire);
 
     let back = serde_json::to_value(&output).expect("compaction re-serializes");
     assert_eq!(back, wire);
@@ -41,7 +37,7 @@ fn compaction_input_item_round_trips_verbatim() {
         "encrypted_content": "opaque-bytes"
     });
     let item: InputItem = serde_json::from_value(wire.clone()).expect("compaction input decodes");
-    assert!(matches!(item.input, InputContent::Compaction(_)));
+    assert!(matches!(item.input, InputContent::Native(_)));
     let back = serde_json::to_value(&item).expect("compaction input re-serializes");
     assert_eq!(back, wire);
 }
@@ -58,7 +54,7 @@ fn compacted_window_decodes_with_every_item_typed() {
          "arguments": "{}", "status": "completed"}
     ]))
     .expect("window decodes");
-    assert!(matches!(output[0], Output::Compaction(_)));
+    assert!(matches!(output[0], Output::Unknown(_)));
     assert!(matches!(output[1], Output::Message(_)));
     assert!(matches!(output[2], Output::FunctionCall(_)));
 }
@@ -100,7 +96,9 @@ fn phase_survives_history_and_is_resent_on_the_assistant_item() {
         content,
     };
 
-    let items = Vec::<InputItem>::try_from(history).expect("history converts");
+    // The issuer-free conversion replays nothing sealed; the wire replays
+    // what its own service issued.
+    let items = super::input_items(history, &["openai".into()]).expect("history converts");
     assert_eq!(items.len(), 1);
     let InputContent::Message(Message::Assistant {
         phase, content, id, ..
@@ -138,6 +136,11 @@ fn history_without_phase_replays_without_the_key() {
 /// The assistant turn a unary reply with `output` folds into, as history
 /// holds it: the fold's choice under the fold's message id.
 fn history_of(output: serde_json::Value) -> completion::Message {
+    history_from("openai", output)
+}
+
+/// The assistant message `provider`'s reply with `output` folds into.
+fn history_from(provider: &str, output: serde_json::Value) -> completion::Message {
     let response: CompletionResponse = serde_json::from_value(json!({
         "id": "resp_1", "object": "response", "created_at": 0, "status": "completed",
         "error": null, "incomplete_details": null, "instructions": null,
@@ -145,7 +148,7 @@ fn history_of(output: serde_json::Value) -> completion::Message {
         "output": output,
     }))
     .expect("reply decodes");
-    wire::fold_body("openai", response)
+    wire::fold_body(provider, response)
         .expect("the body folds")
         .message()
         .expect("the reply has content")
@@ -161,6 +164,18 @@ fn message_item(id: &str, phase: &str, text: &str) -> serde_json::Value {
 
 /// The serialized input items `history` replays as, replaying OpenAI's own
 /// reasoning.
+/// Text carrying Responses residue sealed to OpenAI.
+fn residue_text(text: &str, residue: NativeText) -> Text {
+    Text {
+        text: text.to_owned(),
+        additional_params: None,
+        native: Some(message::Sealed::new(
+            "openai",
+            message::Native::new(&residue).expect("residue serializes"),
+        )),
+    }
+}
+
 fn replayed(history: completion::Message) -> Vec<serde_json::Value> {
     super::input_items(history, &["openai".into()])
         .expect("history converts")
@@ -245,27 +260,22 @@ fn a_commentary_message_replays_before_its_function_call() {
 /// repeats.
 #[test]
 fn text_blocks_of_one_item_join_it_and_no_id_repeats() {
-    let block = |text: &str, extras: serde_json::Value| {
-        message::AssistantContent::Text(Text {
-            text: text.to_owned(),
-            additional_params: message::AdditionalParams::from_entries(Some((
-                OPENAI_RESPONSES_EXTRAS_KEY,
-                extras,
-            ))),
-        })
+    let block = |text: &str, message_id: &str, phase: &str| {
+        message::AssistantContent::Text(residue_text(
+            text,
+            NativeText {
+                message_id: Some(message_id.to_owned()),
+                phase: Some(phase.to_owned()),
+                part: None,
+            },
+        ))
     };
     let history = completion::Message::Assistant {
         id: Some("msg_2".to_owned()),
         content: vec![
-            block("one", json!({"message_id": "msg_1", "phase": "commentary"})),
-            block(
-                "two",
-                json!({"message_id": "msg_2", "phase": "final_answer"}),
-            ),
-            block(
-                "three",
-                json!({"message_id": "msg_1", "phase": "commentary"}),
-            ),
+            block("one", "msg_1", "commentary"),
+            block("two", "msg_2", "final_answer"),
+            block("three", "msg_1", "commentary"),
             message::AssistantContent::Text(Text::new("four")),
         ],
     };
@@ -298,13 +308,17 @@ fn idless_text_replays_its_phase_without_an_id() {
     let history = completion::Message::Assistant {
         id: None,
         content: vec![
-            message::AssistantContent::Text(Text {
-                text: "Let me think.".to_owned(),
-                additional_params: message::AdditionalParams::from_entries(Some((
-                    OPENAI_RESPONSES_EXTRAS_KEY,
-                    json!({"phase": "commentary", "annotations": [{"type": "url_citation"}]}),
-                ))),
-            }),
+            message::AssistantContent::Text(residue_text(
+                "Let me think.",
+                NativeText {
+                    message_id: None,
+                    phase: Some("commentary".to_owned()),
+                    part: json!({"annotations": [{"type": "url_citation"}]})
+                        .as_object()
+                        .cloned()
+                        .map(|extras| message::TextBound::new("Let me think.", extras)),
+                },
+            )),
             message::AssistantContent::Text(Text::new("Apple.")),
         ],
     };
@@ -326,15 +340,15 @@ fn idless_text_replays_its_phase_without_an_id() {
 /// the user item, and a system message has no seat for it.
 #[test]
 fn phase_never_rides_user_or_system_messages() {
-    let phased = message::AdditionalParams::from_entries(Some((
-        OPENAI_RESPONSES_EXTRAS_KEY,
-        json!({"phase": "final_answer", "message_id": "msg_1"}),
-    )));
     let user = completion::Message::User {
-        content: vec![message::UserContent::Text(Text {
-            text: "hi".to_owned(),
-            additional_params: phased,
-        })],
+        content: vec![message::UserContent::Text(residue_text(
+            "hi",
+            NativeText {
+                message_id: Some("msg_1".to_owned()),
+                phase: Some("final_answer".to_owned()),
+                part: None,
+            },
+        ))],
     };
     let system = completion::Message::system("be brief");
     for history in [user, system] {
@@ -362,11 +376,15 @@ fn every_responses_dialect_resends_phase() {
         ("copilot", &crate::providers::copilot::wire::DIALECT),
         ("openrouter", &OPENROUTER),
     ];
-    let history = history_of(json!([
-        message_item("msg_1", "commentary", "Let me think."),
-        message_item("msg_2", "final_answer", "Apple."),
-    ]));
     for (name, dialect) in dialects {
+        // Each dialect replays the phase its own service issued.
+        let history = history_from(
+            name,
+            json!([
+                message_item("msg_1", "commentary", "Let me think."),
+                message_item("msg_2", "final_answer", "Apple."),
+            ]),
+        );
         let wire = OpenAIConfig::with_key(dialect, "dummy-key").responses("gpt-5.3-codex");
         let request = completion::CompletionRequest::new("One more fruit?")
             .messages([completion::Message::user("Three fruits?"), history.clone()]);

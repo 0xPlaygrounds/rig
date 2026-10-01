@@ -6,11 +6,9 @@
 
 use futures::StreamExt;
 use rig_core::message::{AssistantContent, Text};
+use rig_core::providers::openai::responses_api::NativeText;
 use rig_core::streaming::{CompletionStream, Item, StreamEvent};
 use serde_json::{Map, Value};
-
-/// The key the Responses wire files its own text extras under.
-const EXTRAS_KEY: &str = "openai_responses";
 
 /// What a drained stream delivered.
 pub struct Drained {
@@ -65,14 +63,14 @@ pub fn choice_texts(choice: &[AssistantContent]) -> Vec<Text> {
         .collect()
 }
 
-/// The Responses-owned extras on a text block, without `phase`.
+/// The `output_text` extras on a text block's Responses residue, while they
+/// are bound to its text.
 pub fn content_extras(text: &Text) -> Option<Map<String, Value>> {
-    let mut extras = text
-        .additional_params
-        .as_ref()
-        .and_then(|params| params.wire_extras(EXTRAS_KEY))
-        .cloned()?;
-    extras.remove("phase");
+    let sealed = text.native.as_ref()?;
+    let residue = text
+        .native_for::<NativeText>(std::slice::from_ref(sealed.issuer()))?
+        .expect("the residue decodes");
+    let extras = residue.part?.into_for_text(&text.text)?;
     (!extras.is_empty()).then_some(extras)
 }
 

@@ -15,7 +15,8 @@ use crate::error::EncodeError;
 use crate::json_utils;
 use crate::json_utils::string_or_vec;
 use crate::message::{
-    Document, DocumentMediaType, DocumentSourceKind, ImageDetail, MessageError, MimeType, Text,
+    Document, DocumentMediaType, DocumentSourceKind, Format, ImageDetail, MessageError, MimeType,
+    Native, NativeData, Text, TextBound,
 };
 use crate::{completion, message};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -175,9 +176,10 @@ pub enum InputContent {
     Reasoning(OpenAIReasoning),
     FunctionCall(OutputFunctionCall),
     FunctionCallOutput(ToolResult),
-    /// Opaque compaction data for replaying a compacted context. All fields
-    /// other than the separately serialized `type` tag are preserved.
-    Compaction(Map<String, Value>),
+    /// An item this crate does not model, such as a `compaction` item or a
+    /// hosted tool's call, sent back exactly as the API returned it.
+    #[serde(untagged)]
+    Native(NativeItem),
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
@@ -515,15 +517,21 @@ fn input_items(
 
                 for assistant_content in content {
                     match assistant_content {
-                        crate::message::AssistantContent::Text(Text {
-                            text,
-                            additional_params,
-                        }) => {
-                            let Some(message) = assistant_text_replay_message(
-                                id.as_deref(),
-                                text,
-                                additional_params,
-                            ) else {
+                        crate::message::AssistantContent::Text(block) => {
+                            let residue = match block.native_for::<NativeText>(issuers) {
+                                Some(Ok(residue)) => Some(residue),
+                                Some(Err(error)) => {
+                                    tracing::warn!(
+                                        %error,
+                                        "malformed Responses text residue; replaying the text without it"
+                                    );
+                                    None
+                                }
+                                None => None,
+                            };
+                            let Some(message) =
+                                assistant_text_replay_message(id.as_deref(), block.text, residue)
+                            else {
                                 continue;
                             };
                             let joined = match &message {
@@ -600,6 +608,18 @@ fn input_items(
                                 "Assistant image content is not supported in OpenAI Responses API"
                                     .to_string(),
                             ));
+                        }
+                        // An item another wire or service issued is not replayed.
+                        crate::message::AssistantContent::Native(native) => {
+                            if let Some(item) = native
+                                .open_for(issuers)
+                                .and_then(Native::decode::<NativeItem>)
+                            {
+                                other_items.push(InputItem {
+                                    role: None,
+                                    input: InputContent::Native(item?),
+                                });
+                            }
                         }
                     }
                 }
@@ -1900,14 +1920,10 @@ pub enum Output {
         signature: Option<String>,
         status: Option<ToolStatus>,
     },
-    /// An opaque compaction item (`"type": "compaction"`), preserved verbatim
-    /// so it can be sent back as an input item on the next request. Kept
-    /// distinct from [`Output::Unknown`] because OpenAI documents it as a
-    /// must-replay item, and [`InputContent::Compaction`] is its input twin.
-    Compaction(Map<String, Value>),
-    /// Catch-all for output item types this version does not model. Holds the
-    /// raw item object exactly as it appeared in the provider's `output[]`
-    /// array, so hosted-tool payloads survive the typed decode.
+    /// Catch-all for output item types this version does not model, such as
+    /// `compaction` or a hosted tool's call. Holds the raw item exactly as it
+    /// appeared in the provider's `output[]` array; the decoder keeps it in
+    /// history as a native item.
     Unknown(Value),
 }
 
@@ -1990,11 +2006,6 @@ impl Serialize for Output {
                 }
                 Ok(value)
             }
-            Output::Compaction(fields) => {
-                let mut map = fields.clone();
-                map.insert("type".to_string(), Value::String("compaction".to_string()));
-                return Value::Object(map).serialize(serializer);
-            }
             Output::Unknown(value) => return value.serialize(serializer),
         };
         value
@@ -2024,13 +2035,6 @@ impl<'de> Deserialize<'de> for Output {
             "reasoning" => serde_json::from_value::<ReasoningFields>(value)
                 .map(Output::from)
                 .map_err(serde::de::Error::custom),
-            "compaction" => {
-                let Value::Object(mut map) = value else {
-                    return Ok(Output::Unknown(value));
-                };
-                map.remove("type");
-                Ok(Output::Compaction(map))
-            }
             _ => Ok(Output::Unknown(value)),
         }
     }
@@ -2211,89 +2215,48 @@ impl OutputText {
         }
     }
 
-    /// Rebuild a wire block from a rig text block, re-attaching only the
-    /// extras this wire recognizes as its own: the sibling keys captured off
-    /// an `output_text` block at ingest (see
-    /// [`From<AssistantContent> for completion::AssistantContent`]).
-    fn from_message_text(
-        text: impl Into<String>,
-        additional_params: Option<crate::message::AdditionalParams>,
-    ) -> Self {
-        let Some(params) = additional_params else {
-            return Self::new(text);
-        };
-        // The caller diagnoses malformed extras before this conversion drops them.
-        let extras = params
-            .into_wire_extras(OPENAI_RESPONSES_EXTRAS_KEY)
-            .map(|map| {
-                map.into_iter()
-                    // Reserved keys would duplicate the block's text or tag.
-                    // Phase and the item id belong on the message, not the
-                    // content block.
-                    .filter(|(key, _)| {
-                        key != "text"
-                            && key != "type"
-                            && key != OPENAI_RESPONSES_PHASE_KEY
-                            && key != OPENAI_RESPONSES_MESSAGE_ID_KEY
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
+    /// A wire block for `text` with the `output_text` sibling fields its
+    /// native residue kept.
+    fn with_extras(text: impl Into<String>, extras: Map<String, Value>) -> Self {
         Self {
             text: text.into(),
-            extras,
+            extras: extras
+                .into_iter()
+                // Reserved keys would duplicate the block's text or tag.
+                .filter(|(key, _)| key != "text" && key != "type")
+                .collect(),
         }
     }
 }
 
-/// Builds the assistant input one text block replays as, using only
-/// Responses-owned extras. The item is the block's own message item when its
-/// extras name one, and `id` otherwise; its `phase` comes from the extras.
-/// Empty text is skipped unless the item has an id and owned extras. Without
-/// an id the text replays id-less: `phase` rides it, content-part extras do
-/// not. Malformed or dropped extras warn.
+/// Builds the assistant input one text block replays as. The item is the
+/// block's own message item when its residue names one, and `id` otherwise;
+/// its `phase` comes from the residue. Empty text is skipped unless the item
+/// has an id and residue. Without an id the text replays id-less: `phase`
+/// rides it, content-part extras do not. Extras bound to text that was
+/// edited since are left out.
 fn assistant_text_replay_message(
     id: Option<&str>,
     text: String,
-    additional_params: Option<crate::message::AdditionalParams>,
+    residue: Option<NativeText>,
 ) -> Option<Message> {
-    // Diagnose malformed extras before normalization makes them indistinguishable
-    // from absent extras, including when empty text is skipped.
-    if let Some(non_object) = additional_params
-        .as_ref()
-        .and_then(|params| params.get(OPENAI_RESPONSES_EXTRAS_KEY))
-        .filter(|value| !value.is_object())
-    {
-        tracing::warn!(
-            %non_object,
-            "`additional_params[\"{OPENAI_RESPONSES_EXTRAS_KEY}\"]` must be a JSON \
-             object — replaying without these extras"
-        );
-    }
-    let own_extras = additional_params
-        .as_ref()
-        .and_then(|params| params.wire_extras(OPENAI_RESPONSES_EXTRAS_KEY));
-    // `phase` and the item id ride the text block's own-wire extras on
-    // ingest; they belong to the message, so they are lifted here and
-    // filtered from the block.
-    let message_field = |key: &str| {
-        own_extras
-            .and_then(|extras| extras.get(key))
-            .and_then(Value::as_str)
-            .filter(|value| !value.is_empty())
-            .map(str::to_owned)
-    };
-    let phase = message_field(OPENAI_RESPONSES_PHASE_KEY);
-    let id = message_field(OPENAI_RESPONSES_MESSAGE_ID_KEY).or_else(|| id.map(str::to_owned));
-    let content_extras = own_extras.is_some_and(|extras| {
-        extras
-            .keys()
-            .any(|key| key != OPENAI_RESPONSES_PHASE_KEY && key != OPENAI_RESPONSES_MESSAGE_ID_KEY)
-    });
-    if text.is_empty() && !(own_extras.is_some() && id.is_some()) {
+    let has_residue = residue.is_some();
+    let NativeText {
+        message_id,
+        phase,
+        part,
+    } = residue.unwrap_or_default();
+    let id = message_id
+        .filter(|id| !id.is_empty())
+        .or_else(|| id.map(str::to_owned));
+    let phase = phase.filter(|phase| !phase.is_empty());
+    let extras = part
+        .and_then(|part| part.into_for_text(&text))
+        .unwrap_or_default();
+    if text.is_empty() && !(has_residue && id.is_some()) {
         return None;
     }
-    if id.is_none() && content_extras {
+    if id.is_none() && !extras.is_empty() {
         tracing::warn!(
             "own-wire extras cannot ride the id-less assistant form — \
              replaying the text without them"
@@ -2302,7 +2265,7 @@ fn assistant_text_replay_message(
     match (id, phase) {
         (Some(id), phase) => Some(Message::Assistant {
             content: vec![AssistantContentType::Text(AssistantContent::OutputText(
-                OutputText::from_message_text(text, additional_params),
+                OutputText::with_extras(text, extras),
             ))],
             id,
             name: None,
@@ -2327,33 +2290,59 @@ fn assistant_text_replay_message(
     }
 }
 
-/// Responses-owned extras in [`Text::additional_params`](crate::message::Text).
-/// Both paths capture these fields for replay: streamed text takes them from
-/// its message item's snapshot, not from `output_text.annotation.added`.
-pub(crate) const OPENAI_RESPONSES_EXTRAS_KEY: &str = "openai_responses";
+/// The Responses wire format, shared by every Responses-format dialect. A
+/// native value replays only to the dialect whose service issued it.
+pub const RESPONSES: Format = Format::from_static("openai-responses");
 
-/// Key inside the [`OPENAI_RESPONSES_EXTRAS_KEY`] object that carries the
-/// output message's `phase`. It is message-level on the wire but rides the
-/// text block's extras in rig history (the only own-wire seat), and is
-/// lifted back onto the assistant input item at replay.
-pub(crate) const OPENAI_RESPONSES_PHASE_KEY: &str = "phase";
+/// A Responses output item this crate does not model, kept exactly as the
+/// API sent it and replayed as an input item.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct NativeItem(pub Map<String, Value>);
 
-/// Key inside the [`OPENAI_RESPONSES_EXTRAS_KEY`] object that carries the
-/// id of the message item a text block came from. Recorded only when a
-/// reply carries several message items, which one rig assistant message
-/// id cannot name; lifted back onto the assistant input item at replay.
-pub(crate) const OPENAI_RESPONSES_MESSAGE_ID_KEY: &str = "message_id";
+impl NativeData for NativeItem {
+    const FORMAT: Format = RESPONSES;
+}
 
-/// Converts output text or a refusal to a Rig text block, retaining nonempty
-/// output-text extras under the Responses key.
-pub(crate) fn text_block(value: AssistantContent) -> Text {
+impl NativeItem {
+    /// The item's `type`.
+    pub fn kind(&self) -> Option<&str> {
+        self.0.get("type").and_then(Value::as_str)
+    }
+}
+
+/// The fields of a Responses `message` item and its `output_text` part that
+/// [`Text`] has no place for.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct NativeText {
+    /// The id of the message item the text came from, recorded when a reply
+    /// carries several message items, which one assistant message id cannot
+    /// name.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub message_id: Option<String>,
+    /// The message's generation phase, such as `"final_answer"`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub phase: Option<String>,
+    /// The `output_text` sibling fields (annotations, logprobs), bound to the
+    /// text they index into.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub part: Option<TextBound<Map<String, Value>>>,
+}
+
+impl NativeData for NativeText {
+    const FORMAT: Format = RESPONSES;
+}
+
+/// The text of output text or a refusal, and the `output_text` sibling
+/// fields worth replaying.
+pub(crate) fn output_text_parts(value: AssistantContent) -> (String, Map<String, Value>) {
     match value {
-        AssistantContent::Refusal { refusal } => Text::new(refusal),
+        AssistantContent::Refusal { refusal } => (refusal, Map::new()),
         // Keep this destructuring exhaustive so new wire fields force an
         // explicit capture-or-drop decision.
         AssistantContent::OutputText(OutputText { text, extras }) => {
             // Empty metadata must not change replayed request bytes.
-            let extras: Map<String, Value> = extras
+            let extras = extras
                 .into_iter()
                 .filter(|(_, value)| {
                     !(value.is_null()
@@ -2361,20 +2350,14 @@ pub(crate) fn text_block(value: AssistantContent) -> Text {
                         || value.as_object().is_some_and(Map::is_empty))
                 })
                 .collect();
-            Text {
-                text,
-                additional_params: crate::message::AdditionalParams::from_entries(
-                    (!extras.is_empty())
-                        .then_some((OPENAI_RESPONSES_EXTRAS_KEY, Value::Object(extras))),
-                ),
-            }
+            (text, extras)
         }
     }
 }
 
 impl From<AssistantContent> for completion::AssistantContent {
     fn from(value: AssistantContent) -> Self {
-        completion::AssistantContent::Text(text_block(value))
+        completion::AssistantContent::Text(Text::new(output_text_parts(value).0))
     }
 }
 

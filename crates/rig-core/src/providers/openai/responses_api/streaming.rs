@@ -6,6 +6,7 @@
 //! ```
 
 use crate::error::ProviderError;
+use crate::message::{AdditionalParams, Native, TextBound};
 use crate::operation::{
     CallFragment, Completion, Finish, IfMalformed, ReasoningPart, Seal, TextPart,
 };
@@ -16,7 +17,7 @@ use crate::providers::openai::responses_api::{
 use crate::wire::{Decoder, Flow, Out, WireEvent, WireFrame};
 use serde::{Deserialize, Serialize};
 
-use super::{CompletionResponse, Output};
+use super::{CompletionResponse, NativeText, Output, RESPONSES};
 
 /// Response lifecycle event or output-item event.
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -319,6 +320,10 @@ pub struct ResponsesDecoder<'id> {
     /// first attaches.
     extras_items: std::collections::HashSet<String>,
     extras_slots: std::collections::HashSet<u64>,
+    /// The `output_text` sibling fields of each text part, by the part's
+    /// item id (`None` for the anonymous part), merged across its content
+    /// parts and written as its native residue when the reply ends.
+    part_extras: std::collections::HashMap<Option<String>, AdditionalParams>,
     /// The reasoning part of each output slot, fixed by its first fragment.
     reasoning: std::collections::HashMap<u64, ReasoningPart<'id>>,
     /// The output slot of each keyed text part, and of the anonymous one.
@@ -368,6 +373,7 @@ impl<'id> ResponsesDecoder<'id> {
             unattributed_text_delta: false,
             extras_items: std::collections::HashSet::new(),
             extras_slots: std::collections::HashSet::new(),
+            part_extras: std::collections::HashMap::new(),
             reasoning: std::collections::HashMap::new(),
             text_slots: std::collections::HashMap::new(),
             anonymous_text_slot: None,
@@ -424,6 +430,32 @@ impl<'id> ResponsesDecoder<'id> {
             },
             |data| wire::classify_or(data, body, envelope),
         )
+    }
+
+    /// The key of the text part a fragment of the message item `item_id`
+    /// extends: the item's id, or `None` for the anonymous part.
+    fn text_key(&self, item_id: Option<&str>) -> Option<String> {
+        item_id
+            .filter(|id| !id.is_empty())
+            .map(str::to_owned)
+            .or_else(|| self.current_text_item.clone())
+    }
+
+    /// Merge `extras` into the residue of the text part `key` names.
+    fn merge_part_extras(
+        &mut self,
+        key: Option<String>,
+        extras: serde_json::Map<String, serde_json::Value>,
+    ) {
+        let Some(extras) = AdditionalParams::new(extras) else {
+            return;
+        };
+        match self.part_extras.get_mut(&key) {
+            Some(existing) => existing.merge(extras),
+            None => {
+                self.part_extras.insert(key, extras);
+            }
+        }
     }
 
     /// The text part a fragment of the message item `item_id` at
@@ -502,13 +534,17 @@ impl<'id> ResponsesDecoder<'id> {
         item.done |= statement == Statement::Done;
     }
 
-    /// Put each message item's `phase` on the text part its content built,
-    /// once, at the end of the reply, when every statement has been read. A
-    /// part is its item's by id, or else by output slot: a gateway may name
-    /// a message's deltas with ids its item events do not use. When the
-    /// reply carries several message items, each part also records its
-    /// item's id, so replay can send each item back as itself.
-    fn attach_message_items(&mut self, out: &mut Out<'id, Completion>) {
+    /// Write each text part's native residue once, at the end of the reply,
+    /// when every statement has been read: its message item's `phase`, and
+    /// its `output_text` extras bound to its final text. A part is its
+    /// item's by id, or else by output slot: a gateway may name a message's
+    /// deltas with ids its item events do not use. When the reply carries
+    /// several message items, each part also records its item's id, so
+    /// replay can send each item back as itself.
+    fn attach_message_items(
+        &mut self,
+        out: &mut Out<'id, Completion>,
+    ) -> Result<(), ProviderError> {
         let item_of = |key: Option<&str>, slot: Option<u64>| {
             key.and_then(|key| {
                 self.message_items
@@ -518,43 +554,39 @@ impl<'id> ResponsesDecoder<'id> {
             .or_else(|| self.message_slots.get(&slot?).copied())
             .and_then(|at| self.message_items.get(at))
         };
-        let parts: Vec<(&TextPart<'id>, &MessageItem)> = self
+        let parts: Vec<(&TextPart<'id>, Option<&MessageItem>, Option<String>)> = self
             .texts
             .iter()
-            .filter_map(|(key, part)| {
-                Some((part, item_of(Some(key), self.text_slots.get(key).copied())?))
+            .map(|(key, part)| {
+                (
+                    part,
+                    item_of(Some(key), self.text_slots.get(key).copied()),
+                    Some(key.clone()),
+                )
             })
             .chain(
                 self.anonymous_text
                     .as_ref()
-                    .and_then(|part| Some((part, item_of(None, self.anonymous_text_slot)?))),
+                    .map(|part| (part, item_of(None, self.anonymous_text_slot), None)),
             )
             .collect();
         let several = self.message_items.len() > 1;
-        for (part, item) in parts {
-            let mut extras = serde_json::Map::new();
-            if let Some(phase) = &item.phase {
-                extras.insert(
-                    super::OPENAI_RESPONSES_PHASE_KEY.to_owned(),
-                    serde_json::Value::String(phase.clone()),
-                );
-            }
-            if several && !item.id.is_empty() {
-                extras.insert(
-                    super::OPENAI_RESPONSES_MESSAGE_ID_KEY.to_owned(),
-                    serde_json::Value::String(item.id.clone()),
-                );
-            }
-            if extras.is_empty() {
-                continue;
-            }
-            if let Some(params) = crate::message::AdditionalParams::from_entries(Some((
-                super::OPENAI_RESPONSES_EXTRAS_KEY,
-                serde_json::Value::Object(extras),
-            ))) {
-                out.text_params(part, params);
+        for (part, item, key) in parts {
+            let residue = NativeText {
+                message_id: item
+                    .filter(|item| several && !item.id.is_empty())
+                    .map(|item| item.id.clone()),
+                phase: item.and_then(|item| item.phase.clone()),
+                part: self
+                    .part_extras
+                    .get(&key)
+                    .map(|extras| TextBound::new(&out.text_so_far(part), extras.as_map().clone())),
+            };
+            if residue != NativeText::default() {
+                out.text_native(part, Native::new(&residue)?);
             }
         }
+        Ok(())
     }
 
     /// Record that a delta delivered the visible text of a message item.
@@ -604,12 +636,11 @@ impl<'id> ResponsesDecoder<'id> {
         }
         self.note_extras(output_index, &message.id);
         for content in message.content.iter().cloned() {
-            let text = super::text_block(content);
+            let (text, extras) = super::output_text_parts(content);
+            let key = self.text_key(Some(&message.id));
             let part = self.text_part(output_index, Some(&message.id), out);
-            out.push_text(part, &text.text);
-            if let Some(additional_params) = text.additional_params {
-                out.text_params(part, additional_params);
-            }
+            out.push_text(part, &text);
+            self.merge_part_extras(key, extras);
         }
     }
 
@@ -622,34 +653,21 @@ impl<'id> ResponsesDecoder<'id> {
         }
     }
 
-    /// Attach a message item's content-part extras, such as its citation
-    /// annotations, to the text part its deltas built, in content-part order.
+    /// Record a message item's content-part extras, such as its citation
+    /// annotations, for the text part its deltas built, in content-part order.
     /// Nothing attaches when a snapshot already did or no delta built a part
     /// for the item: text stated only by a snapshot publishes its extras
     /// with it.
-    fn attach_message_extras(
-        &mut self,
-        output_index: u64,
-        message: &super::OutputMessage,
-        out: &mut Out<'id, Completion>,
-    ) {
+    fn attach_message_extras(&mut self, output_index: u64, message: &super::OutputMessage) {
         if self.extras_slots.contains(&output_index) || self.extras_items.contains(&message.id) {
             return;
         }
-        let Some(part) = self.texts.get(&message.id) else {
+        if !self.texts.contains_key(&message.id) {
             return;
-        };
-        let extras = message
-            .content
-            .iter()
-            .cloned()
-            .filter_map(|content| super::text_block(content).additional_params)
-            .reduce(|mut extras, next| {
-                extras.merge(next);
-                extras
-            });
-        if let Some(extras) = extras {
-            out.text_params(part, extras);
+        }
+        for content in message.content.iter().cloned() {
+            let (_, extras) = super::output_text_parts(content);
+            self.merge_part_extras(Some(message.id.clone()), extras);
         }
         self.note_extras(output_index, &message.id);
     }
@@ -675,7 +693,7 @@ impl<'id> ResponsesDecoder<'id> {
                 continue;
             }
             if self.delta_delivered_text(output_index, &message.id) {
-                self.attach_message_extras(output_index, message, out);
+                self.attach_message_extras(output_index, message);
             } else {
                 self.publish_message_text(output_index, message, out);
             }
@@ -839,26 +857,20 @@ impl<'id> ResponsesDecoder<'id> {
             }
             Output::Message(message) => {
                 self.note_message_item(output_index, &message, Statement::Done);
-                self.attach_message_extras(output_index, &message, out);
+                self.attach_message_extras(output_index, &message);
                 if !message.id.is_empty() {
                     out.message_id(message.id);
                 }
             }
-            // An unmodeled output item (e.g. a hosted-tool result such as
-            // `web_search_call`): surfaced raw to the consumer, as the
-            // non-streaming decode preserves it on `CompletionResponse.output`.
+            // An item this crate does not model (`compaction`, a hosted
+            // tool's call) stays in history in its position, for replay to
+            // the service that issued it.
+            Output::Unknown(item @ serde_json::Value::Object(_)) => {
+                out.native(Native::verbatim(RESPONSES, item));
+            }
+            // Not an item at all: surfaced to the consumer, not kept.
             Output::Unknown(value) => {
                 out.unknown(value.into());
-            }
-            // A compaction item: surfaced raw like an unmodeled item so a
-            // stateless consumer can capture it from the stream.
-            Output::Compaction(fields) => {
-                let mut map = fields;
-                map.insert(
-                    "type".to_string(),
-                    serde_json::Value::String("compaction".to_string()),
-                );
-                out.unknown(serde_json::Value::Object(map).into());
             }
         }
         Ok(())
@@ -905,7 +917,7 @@ impl<'id> ResponsesDecoder<'id> {
         for index in out.pending_calls() {
             out.close_pending(index, IfMalformed::Drop)?;
         }
-        self.attach_message_items(&mut out);
+        self.attach_message_items(&mut out)?;
         if let Some(document) = self.document.take() {
             out.raw(document);
         }

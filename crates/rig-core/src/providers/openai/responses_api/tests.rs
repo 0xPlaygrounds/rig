@@ -48,46 +48,27 @@ fn wire_request(
 }
 
 #[test]
-fn output_text_extras_survive_generic_conversion_and_replay() {
-    // Ingest capture is unconditional: the wire's sibling keys ride the
-    // generic block under this wire's params key. Replay is gated: only
-    // this wire's serializer reads them back, value-equal.
+fn output_text_extras_survive_decode_and_replay() {
+    // Decode keeps the wire's sibling keys as typed residue, bound to the
+    // text; only this wire's serializer reads them back, value-equal.
     let mut extras = Map::new();
     extras.insert(
         "annotations".to_string(),
         json!([{"type": "url_citation", "url": "https://example.com"}]),
     );
-    let wire = OutputText {
+    let (text, kept) = output_text_parts(AssistantContent::OutputText(OutputText {
         text: "cited".to_string(),
         extras: extras.clone(),
-    };
-    let generic: completion::AssistantContent = AssistantContent::OutputText(wire).into();
-    let completion::AssistantContent::Text(text) = &generic else {
-        panic!("expected a text block, got: {generic:?}");
-    };
-    assert_eq!(
-        text.additional_params
-            .as_ref()
-            .and_then(|params| params.get(OPENAI_RESPONSES_EXTRAS_KEY)),
-        Some(&Value::Object(extras.clone()))
-    );
-
-    let replayed = OutputText::from_message_text(text.text.clone(), text.additional_params.clone());
-    assert_eq!(replayed.text, "cited");
-    assert_eq!(replayed.extras, extras);
+    }));
+    assert_eq!(text, "cited");
+    assert_eq!(kept, extras);
 
     // Extras ride a serde flatten, so the reserved keys the named field
-    // and the tag own must never replay from history — a duplicate JSON
+    // and the tag own must never replay from history: a duplicate JSON
     // key would let persisted data shadow the block's real text or tag.
-    let hostile = message::AdditionalParams::try_from_value(json!({
-        OPENAI_RESPONSES_EXTRAS_KEY: {
-            "text": "evil",
-            "type": "evil_type",
-            "annotations": ["kept"],
-        }
-    }))
-    .expect("object params");
-    let replayed = OutputText::from_message_text("real", hostile);
+    let hostile = json!({"text": "evil", "type": "evil_type", "annotations": ["kept"]});
+    let replayed =
+        OutputText::with_extras("real", hostile.as_object().cloned().unwrap_or_default());
     assert_eq!(replayed.text, "real");
     assert!(replayed.extras.get("text").is_none());
     assert!(replayed.extras.get("type").is_none());
@@ -95,23 +76,24 @@ fn output_text_extras_survive_generic_conversion_and_replay() {
     let wire = serde_json::to_value(&replayed).expect("serialize");
     assert_eq!(wire.get("text"), Some(&json!("real")));
 
-    // Replay honors only this wire's extras: an empty text block
-    // annotated with a *foreign* wire's extras (the shape anthropic
-    // ingest writes for raw server-tool content) produces no Responses
-    // item at all — its extras cannot reach this wire, and an empty
-    // assistant item the wire never sent risks a rejection — while an
-    // `openai_responses`-annotated empty block still replays.
+    let openai = [crate::message::Issuer::from("openai")];
+    // An empty text block carrying another wire's residue produces no
+    // Responses item at all: its residue cannot reach this wire.
     let foreign = message::Message::Assistant {
         id: None,
         content: vec![completion::AssistantContent::Text(message::Text {
             text: String::new(),
-            additional_params: message::AdditionalParams::try_from_value(json!({
-                "anthropic_content": {"type": "server_tool_use", "id": "srv_1"}
-            }))
-            .expect("object params"),
+            additional_params: None,
+            native: Some(message::Sealed::new(
+                "anthropic",
+                message::Native::verbatim(
+                    crate::providers::anthropic::completion::MESSAGES,
+                    json!({"citations": []}),
+                ),
+            )),
         })],
     };
-    let items: Vec<InputItem> = foreign.try_into().expect("convert");
+    let items = input_items(foreign, &openai).expect("convert");
     assert!(
         items.is_empty(),
         "foreign-annotated empty block must produce no Responses item: {items:?}"
@@ -121,16 +103,23 @@ fn output_text_extras_survive_generic_conversion_and_replay() {
         id,
         content: vec![completion::AssistantContent::Text(message::Text {
             text: String::new(),
-            additional_params: message::AdditionalParams::try_from_value(json!({
-                OPENAI_RESPONSES_EXTRAS_KEY: {"annotations": ["kept"]}
-            }))
-            .expect("object params"),
+            additional_params: None,
+            native: Some(message::Sealed::new(
+                "openai",
+                message::Native::new(&NativeText {
+                    part: json!({"annotations": ["kept"]})
+                        .as_object()
+                        .cloned()
+                        .map(|extras| message::TextBound::new("", extras)),
+                    ..NativeText::default()
+                })
+                .expect("residue serializes"),
+            )),
         })],
     };
     // With a message id, the Assistant form carries the extras.
-    let items: Vec<InputItem> = own_annotated_empty(Some("msg_1".to_string()))
-        .try_into()
-        .expect("convert");
+    let items =
+        input_items(own_annotated_empty(Some("msg_1".to_string())), &openai).expect("convert");
     assert_eq!(
         items.len(),
         1,
@@ -143,9 +132,9 @@ fn output_text_extras_survive_generic_conversion_and_replay() {
         "the replayed item must carry the extras: {serialized}"
     );
     // Without an id the only form is the bare-string `AssistantInput`,
-    // which cannot carry extras — an empty block is skipped rather than
+    // which cannot carry extras: an empty block is skipped rather than
     // sent as a content-free item with its extras dropped.
-    let items: Vec<InputItem> = own_annotated_empty(None).try_into().expect("convert");
+    let items = input_items(own_annotated_empty(None), &openai).expect("convert");
     assert!(
         items.is_empty(),
         "undeliverable annotated empty block must be skipped: {items:?}"
@@ -158,12 +147,7 @@ fn output_text_extras_survive_generic_conversion_and_replay() {
         panic!("expected a text block, got: {bare:?}");
     };
     assert_eq!(text.additional_params, None);
-    assert!(
-        OutputText::from_message_text("plain", None)
-            .extras
-            .is_empty(),
-        "no params, no extras"
-    );
+    assert_eq!(text.native, None);
 }
 
 fn test_document(id: &str, text: &str) -> crate::completion::Document {
