@@ -140,9 +140,10 @@ fn tool_changes(recording: &Recording) -> Vec<(usize, u64, Option<u64>)> {
 /// thinking blocks are bound to the tools they were produced with: the first
 /// request after the change (turn 11) replays earlier thinking blocks under a
 /// different `tools` list and is refused with a 400, the documented
-/// thinking-block binding. The ten turns before it cache as usual. Dropping
-/// the blocks instead needs the binding-controls beta and a request field
-/// rig has no typed setting for.
+/// thinking-block binding. The ten turns before it cache as usual. The long
+/// runs send no `thinking.block_binding` (`ThinkingPrefixMismatch::Reject`),
+/// so this keeps the refusal on record; `thinking_block_binding` records rig's
+/// default dropping the stale block instead.
 #[tokio::test]
 async fn dynamic_tools_30() {
     let run = with_anthropic_long_run_cassette(
