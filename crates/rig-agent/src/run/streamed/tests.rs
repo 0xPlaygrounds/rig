@@ -353,10 +353,13 @@ fn finish_keeps_start_order_without_ignored_calls_and_with_repaired_names() {
     ));
 
     let reasoning = AssistantContent::Reasoning(Reasoning::new("later").sealed("mock"));
+    // A native item beside the edited calls is untouched by the edit.
+    let native = native_item();
     let turn = asm.finish(
         None,
         &response(vec![
             AssistantContent::text("hi"),
+            native.clone(),
             AssistantContent::ToolCall(ignored),
             AssistantContent::ToolCall(repaired.clone()),
             reasoning.clone(),
@@ -368,10 +371,27 @@ fn finish_keeps_start_order_without_ignored_calls_and_with_repaired_names() {
         turn.choice,
         vec![
             AssistantContent::text("hi"),
+            native,
             AssistantContent::ToolCall(renamed),
             reasoning,
         ]
     );
+}
+
+/// A native item, as a decoder writes one for an item with no canonical
+/// meaning.
+fn native_item() -> AssistantContent {
+    struct Probe;
+    impl rig_core::message::NativeDialect for Probe {
+        const FORMAT: rig_core::message::WireFormat =
+            rig_core::message::WireFormat::from_static("probe.v1");
+        type Item = serde_json::Value;
+    }
+    AssistantContent::Native(rig_core::message::Sealed::new(
+        "mock",
+        rig_core::message::Native::new::<Probe>(&json!({"type": "compaction", "id": "cmp_1"}))
+            .expect("serializes"),
+    ))
 }
 
 /// An ignored call stays out of the turn across a checkpoint.

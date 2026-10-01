@@ -645,11 +645,11 @@ fn input_items(
                         crate::message::AssistantContent::Native(native) => {
                             if let Some(item) = native
                                 .open_for(issuers)
-                                .and_then(message::Native::decode::<ResponsesItems>)
+                                .and_then(message::Native::item_for::<ResponsesItems>)
                             {
                                 other_items.push(InputItem {
                                     role: None,
-                                    input: InputContent::Unknown(serde_json::to_value(item?)?),
+                                    input: InputContent::Unknown(item.clone()),
                                 });
                             }
                         }

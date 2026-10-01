@@ -572,3 +572,29 @@ fn a_content_failure_ends_its_run_and_the_next_run_is_read_in_the_same_pass() {
         Some("fine")
     );
 }
+
+/// A native item is one content entity, in its position, and survives the
+/// graph and a reflected checkpoint unchanged.
+#[test]
+fn native_items_round_trip_through_the_graph_and_a_checkpoint() {
+    struct Probe;
+    impl NativeDialect for Probe {
+        const FORMAT: WireFormat = WireFormat::from_static("probe.v1");
+        type Item = serde_json::Value;
+    }
+    let native = AssistantContent::Native(Sealed::new(
+        "openai",
+        Native::new::<Probe>(&serde_json::json!({
+            "type": "compaction", "id": "cmp_1", "encrypted_content": "opaque", "n": 1.5
+        }))
+        .unwrap(),
+    ));
+    let expected = MessageParts::assistant(
+        Some("msg_1".to_owned()),
+        vec![native, AssistantContent::text("answer")],
+    )
+    .unwrap();
+    let (mut world, entity) = world(expected.clone());
+    assert_eq!(read_message(&world, entity).unwrap(), expected);
+    assert_checkpoint_round_trip(&mut world, &expected);
+}

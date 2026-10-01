@@ -88,6 +88,12 @@ impl Native {
         (self.format == D::FORMAT).then(|| D::Item::deserialize(&self.item))
     }
 
+    /// The item as the provider sent it, or `None` when it belongs to another
+    /// format. Encoders replay this, verbatim.
+    pub fn item_for<D: NativeDialect>(&self) -> Option<&serde_json::Value> {
+        (self.format == D::FORMAT).then_some(&self.item)
+    }
+
     /// The wire format the item belongs to.
     pub fn format(&self) -> &WireFormat {
         &self.format

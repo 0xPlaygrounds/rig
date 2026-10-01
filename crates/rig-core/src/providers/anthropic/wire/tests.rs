@@ -183,3 +183,286 @@ fn a_base_url_that_already_names_the_endpoint_is_trimmed() {
         assert_eq!(normalize_base_url(pasted), "https://example.invalid");
     }
 }
+
+// ── totality: every block survives decode, history and replay ───────────
+
+/// The index of `content`'s variant. Exhaustive and wildcard-free, so a new
+/// [`Content`] variant does not compile until it is numbered here, and the
+/// coverage check below then fails until a sample decodes to it.
+fn variant_index(content: &Content) -> usize {
+    match content {
+        Content::Text { .. } => 0,
+        Content::Image { .. } => 1,
+        Content::ToolUse { .. } => 2,
+        Content::ToolResult { .. } => 3,
+        Content::Document { .. } => 4,
+        Content::Thinking { .. } => 5,
+        Content::RedactedThinking { .. } => 6,
+        Content::Unknown(_) => 7,
+    }
+}
+
+const CONTENT_VARIANTS: usize = 8;
+
+/// One block of a reply: the whole block a unary reply states, and the
+/// opening block and deltas a stream states it with.
+struct Sample {
+    block: serde_json::Value,
+    start: serde_json::Value,
+    deltas: Vec<serde_json::Value>,
+}
+
+fn whole(block: serde_json::Value) -> Sample {
+    Sample {
+        start: block.clone(),
+        block,
+        deltas: Vec::new(),
+    }
+}
+
+/// A block for every variant, every hosted-tool kind the context lists as
+/// failing the reply, and a block type no Anthropic API has sent yet.
+fn samples() -> Vec<Sample> {
+    use serde_json::json;
+    vec![
+        Sample {
+            block: json!({"type": "text", "text": "hi"}),
+            start: json!({"type": "text", "text": ""}),
+            deltas: vec![json!({"type": "text_delta", "text": "hi"})],
+        },
+        Sample {
+            block: json!({"type": "thinking", "thinking": "hmm", "signature": "sig"}),
+            start: json!({"type": "thinking", "thinking": "", "signature": ""}),
+            deltas: vec![
+                json!({"type": "thinking_delta", "thinking": "hmm"}),
+                json!({"type": "signature_delta", "signature": "sig"}),
+            ],
+        },
+        whole(json!({"type": "redacted_thinking", "data": "opaque"})),
+        Sample {
+            block: json!({"type": "tool_use", "id": "toolu_1", "name": "lookup", "input": {"q": "x"}}),
+            start: json!({"type": "tool_use", "id": "toolu_1", "name": "lookup", "input": {}}),
+            deltas: vec![json!({"type": "input_json_delta", "partial_json": "{\"q\":\"x\"}"})],
+        },
+        // Request-side kinds a reply should not carry: kept, not dropped.
+        whole(
+            json!({"type": "image", "source": {"type": "url", "url": "https://example.invalid/a.png"}}),
+        ),
+        whole(
+            json!({"type": "tool_result", "tool_use_id": "toolu_0", "content": [{"type": "text", "text": "r"}]}),
+        ),
+        whole(
+            json!({"type": "document", "source": {"type": "url", "url": "https://example.invalid/a.pdf"}}),
+        ),
+        // Hosted tools: a streamed call and the results that used to fail
+        // the whole reply.
+        Sample {
+            block: json!({"type": "server_tool_use", "id": "srvtoolu_1", "name": "web_fetch",
+                          "input": {"url": "https://example.invalid"}, "caller": {"type": "direct"}}),
+            start: json!({"type": "server_tool_use", "id": "srvtoolu_1", "name": "web_fetch",
+                          "input": {}, "caller": {"type": "direct"}}),
+            deltas: vec![
+                json!({"type": "input_json_delta", "partial_json": "{\"url\":\"https://example.invalid\"}"}),
+            ],
+        },
+        whole(
+            json!({"type": "web_fetch_tool_result", "tool_use_id": "srvtoolu_1",
+                     "content": {"type": "web_fetch_result", "url": "https://example.invalid",
+                                 "content": {"type": "document", "source": {"type": "text", "media_type": "text/plain", "data": "page"}}}}),
+        ),
+        whole(
+            json!({"type": "bash_code_execution_tool_result", "tool_use_id": "srvtoolu_2",
+                     "content": {"type": "bash_code_execution_result", "stdout": "42\n", "stderr": "", "return_code": 0, "content": []}}),
+        ),
+        whole(
+            json!({"type": "mcp_tool_use", "id": "mcptoolu_1", "name": "search", "server_name": "docs", "input": {"q": "rig"}}),
+        ),
+        whole(json!({"type": "container_upload", "file_id": "file_1"})),
+        // A block type invented after this crate was written, with a text
+        // field its stream fills by delta.
+        Sample {
+            block: json!({"type": "novel_block_2027", "id": "nb_1", "payload": {"nested": [1, 2]}, "text": "abc"}),
+            start: json!({"type": "novel_block_2027", "id": "nb_1", "payload": {"nested": [1, 2]}, "text": ""}),
+            deltas: vec![json!({"type": "text_delta", "text": "abc"})],
+        },
+    ]
+}
+
+/// `blocks` as one unary reply body.
+fn unary_body(blocks: &[serde_json::Value]) -> String {
+    serde_json::json!({
+        "type": "message", "id": "msg_1", "model": "claude-haiku-4-5", "role": "assistant",
+        "content": blocks, "stop_reason": "end_turn", "stop_sequence": null,
+        "usage": {"input_tokens": 3, "output_tokens": 5}
+    })
+    .to_string()
+}
+
+/// `samples` as one SSE body, block by block.
+fn streamed_body(samples: &[&Sample]) -> String {
+    use serde_json::json;
+    let mut events = vec![json!({"type": "message_start", "message": {
+        "id": "msg_1", "type": "message", "role": "assistant", "model": "claude-haiku-4-5",
+        "content": [], "stop_reason": null, "stop_sequence": null,
+        "usage": {"input_tokens": 3, "output_tokens": 1}}})];
+    for (index, sample) in samples.iter().enumerate() {
+        events.push(
+            json!({"type": "content_block_start", "index": index, "content_block": sample.start}),
+        );
+        for delta in &sample.deltas {
+            events.push(json!({"type": "content_block_delta", "index": index, "delta": delta}));
+        }
+        events.push(json!({"type": "content_block_stop", "index": index}));
+    }
+    events.push(
+        json!({"type": "message_delta", "delta": {"stop_reason": "end_turn", "stop_sequence": null},
+                       "usage": {"output_tokens": 5}}),
+    );
+    events.push(json!({"type": "message_stop"}));
+    events
+        .iter()
+        .map(|event| {
+            format!(
+                "event: {}\ndata: {event}\n\n",
+                event["type"].as_str().unwrap_or_default()
+            )
+        })
+        .collect()
+}
+
+/// `turn` replayed on `wire` as history, and the assistant message it sent.
+fn replayed(wire: &Messages, turn: Vec<AssistantContent>) -> Option<serde_json::Value> {
+    let request = CompletionRequest::new(Message::user("next"))
+        .messages([
+            Message::user("first"),
+            Message::Assistant {
+                id: None,
+                content: turn,
+            },
+        ])
+        .max_tokens(32);
+    let body = json_body(
+        &wire
+            .encode(request, Mode::Unary)
+            .expect("the follow-up encodes")
+            .request,
+    );
+    body["messages"]
+        .as_array()
+        .and_then(|messages| {
+            messages
+                .iter()
+                .find(|message| message["role"] == "assistant")
+        })
+        .cloned()
+}
+
+use super::super::completion::Content;
+use crate::completion::Message;
+
+#[test]
+fn every_block_survives_decode_history_and_replay_in_both_modes() {
+    let samples = samples();
+    let mut covered = [false; CONTENT_VARIANTS];
+    for sample in &samples {
+        let typed: Content =
+            serde_json::from_value(sample.block.clone()).expect("every block decodes");
+        let index = variant_index(&typed);
+        assert!(
+            index < CONTENT_VARIANTS,
+            "number the new variant within CONTENT_VARIANTS"
+        );
+        covered[index] = true;
+
+        let buffered = fold(
+            &unary_body(std::slice::from_ref(&sample.block)),
+            Mode::Unary,
+        );
+        let streamed = fold(&streamed_body(&[sample]), Mode::Streaming);
+        assert_eq!(
+            buffered.choice, streamed.choice,
+            "{}: both modes agree",
+            sample.block["type"]
+        );
+        assert_eq!(
+            buffered.choice.len(),
+            1,
+            "{}: one part, never dropped",
+            sample.block["type"]
+        );
+
+        let assistant = replayed(&wire(), buffered.choice).expect("the turn replays");
+        assert_eq!(
+            assistant["content"],
+            serde_json::json!([sample.block]),
+            "replayed verbatim"
+        );
+    }
+    assert!(
+        covered.iter().all(|seen| *seen),
+        "a sample for every variant: {covered:?}"
+    );
+}
+
+#[test]
+fn a_reply_mixing_every_block_keeps_their_order() {
+    let samples = samples();
+    let blocks: Vec<_> = samples.iter().map(|sample| sample.block.clone()).collect();
+    let buffered = fold(&unary_body(&blocks), Mode::Unary);
+    let streamed = fold(
+        &streamed_body(&samples.iter().collect::<Vec<_>>()),
+        Mode::Streaming,
+    );
+    assert_eq!(buffered.choice, streamed.choice);
+    let assistant = replayed(&wire(), buffered.choice).expect("the turn replays");
+    assert_eq!(assistant["content"], serde_json::Value::Array(blocks));
+}
+
+#[test]
+fn native_items_never_reach_another_issuer_or_wire_format() {
+    let hosted = samples()
+        .into_iter()
+        .find(|sample| sample.block["type"] == "web_fetch_tool_result")
+        .expect("a hosted-tool sample");
+    let turn = fold(
+        &unary_body(&[
+            hosted.block.clone(),
+            serde_json::json!({"type": "text", "text": "answer"}),
+        ]),
+        Mode::Unary,
+    )
+    .choice;
+    assert!(matches!(turn[0], AssistantContent::Native(_)));
+
+    // The same Messages format under another issuer: the item is left out.
+    let zai = AnthropicConfig::with_key(&ZAI, "k").completion("glm-4.6");
+    let assistant = replayed(&zai, turn.clone()).expect("the text still replays");
+    assert_eq!(
+        assistant["content"],
+        serde_json::json!([{"type": "text", "text": "answer"}])
+    );
+
+    // A native-only turn has nothing for that issuer: the message is gone.
+    let native_only = vec![turn[0].clone()];
+    assert_eq!(replayed(&zai, native_only.clone()), None);
+
+    // Another wire format with the same issuer name never opens it either.
+    let responses = crate::providers::openai::OpenAIConfig::new("k").responses("gpt-5.2");
+    let request = CompletionRequest::new(Message::user("next")).messages([
+        Message::user("first"),
+        Message::Assistant {
+            id: None,
+            content: turn,
+        },
+    ]);
+    let body = json_body(
+        &responses
+            .encode(request, Mode::Unary)
+            .expect("encodes")
+            .request,
+    );
+    assert!(
+        !body.to_string().contains("web_fetch_tool_result"),
+        "a Messages item never reaches a Responses request: {body}"
+    );
+}

@@ -1858,3 +1858,36 @@ fn transcript_helpers_build_no_message_from_nothing() {
         None
     );
 }
+
+/// Output-tool finalisation replaces calls and prose with the output text
+/// and keeps every other part in place, native items included.
+#[test]
+fn output_tool_finalisation_keeps_native_items() {
+    struct Probe;
+    impl rig_core::message::NativeDialect for Probe {
+        const FORMAT: rig_core::message::WireFormat =
+            rig_core::message::WireFormat::from_static("probe.v1");
+        type Item = serde_json::Value;
+    }
+    let native = AssistantContent::Native(rig_core::message::Sealed::new(
+        "mock",
+        rig_core::message::Native::new::<Probe>(&json!({"type": "web_search_call", "id": "ws_1"}))
+            .expect("serializes"),
+    ));
+    let call = AssistantContent::ToolCall(rig_core::message::ToolCall::new(
+        rig_core::message::CallId::from_wire("call_1"),
+        ToolFunction::new(
+            rig_core::message::ToolName::new("submit").expect("name"),
+            json!({"answer": 42}),
+        ),
+    ));
+    let finalized = response::finalize_output_tool_choice(
+        &[native.clone(), AssistantContent::text("prose"), call],
+        "{\"answer\":42}",
+    )
+    .expect("an output-tool turn");
+    assert_eq!(
+        finalized,
+        vec![native, AssistantContent::text("{\"answer\":42}")]
+    );
+}

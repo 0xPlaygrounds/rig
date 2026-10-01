@@ -811,20 +811,14 @@ fn anthropic_content_from_assistant_content(
             }
             Ok(vec![anthropic_text_content_from_message_text(text)?])
         }
-        message::AssistantContent::Native(native) => {
-            // A native item replays only to a Messages-format wire its issuer opens.
-            match native
-                .open_for(issuers)
-                .and_then(message::Native::decode::<MessagesFormat>)
-            {
-                Some(block) => Ok(vec![block.map_err(|err| {
-                    MessageError::ConversionError(format!(
-                        "native Messages item is not a valid content block: {err}"
-                    ))
-                })?]),
-                None => Ok(Vec::new()),
-            }
-        }
+        // A native item replays verbatim, only to a Messages-format wire its
+        // issuer opens. It stays opaque: never a client call or result.
+        message::AssistantContent::Native(native) => Ok(native
+            .open_for(issuers)
+            .and_then(message::Native::item_for::<MessagesFormat>)
+            .map(|item| Content::Unknown(item.clone()))
+            .into_iter()
+            .collect()),
         message::AssistantContent::Image(_) => Err(MessageError::ConversionError(
             "Anthropic currently doesn't support images.".to_string(),
         )),

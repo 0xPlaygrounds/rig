@@ -260,7 +260,7 @@ impl PromptResponse {
 }
 
 /// Replace calls and prose in a finished output-tool turn with final output text,
-/// retaining reasoning and images. Call only after finalization, when remaining
+/// retaining reasoning, images and native items. Call only after finalization, when remaining
 /// calls are output-tool calls. Persisted history retains prose independently;
 /// returns `None` if no call is present.
 pub(crate) fn finalize_output_tool_choice(
@@ -275,11 +275,11 @@ pub(crate) fn finalize_output_tool_choice(
     }
     let mut items: Vec<AssistantContent> = choice
         .iter()
-        .filter(|item| {
-            !matches!(
-                item,
-                AssistantContent::ToolCall(_) | AssistantContent::Text(_)
-            )
+        .filter(|item| match item {
+            AssistantContent::ToolCall(_) | AssistantContent::Text(_) => false,
+            AssistantContent::Reasoning(_)
+            | AssistantContent::Image(_)
+            | AssistantContent::Native(_) => true,
         })
         .cloned()
         .collect();
