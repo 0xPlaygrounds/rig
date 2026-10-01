@@ -383,6 +383,8 @@ macro_rules! forward_provider_response_helpers {
     };
 }
 
+pub(crate) use forward_provider_response_helpers;
+
 forward_provider_response_helpers!(PromptError, Provider, "completion error", report = Report);
 
 impl PromptError {
