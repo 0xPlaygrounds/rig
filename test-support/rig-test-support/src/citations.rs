@@ -9,9 +9,6 @@ use rig_core::message::{AssistantContent, Text};
 use rig_core::streaming::{CompletionStream, Item, StreamEvent};
 use serde_json::{Map, Value};
 
-/// The key the Responses wire files its own text extras under.
-const EXTRAS_KEY: &str = "openai_responses";
-
 /// What a drained stream delivered.
 pub struct Drained {
     /// The text blocks its parts ended with, in order.
@@ -65,15 +62,22 @@ pub fn choice_texts(choice: &[AssistantContent]) -> Vec<Text> {
         .collect()
 }
 
-/// The Responses-owned extras on a text block, without `phase`.
+/// The Responses block fields on a text block. They describe the text the
+/// block ended with, so their fingerprint matches it.
 pub fn content_extras(text: &Text) -> Option<Map<String, Value>> {
-    let mut extras = text
-        .additional_params
-        .as_ref()
-        .and_then(|params| params.wire_extras(EXTRAS_KEY))
-        .cloned()?;
-    extras.remove("phase");
-    (!extras.is_empty()).then_some(extras)
+    let extras = text
+        .extension::<rig_core::providers::openai::responses_api::ResponsesText>()
+        .expect("well-formed Responses data")?;
+    if extras.block.is_empty() {
+        return None;
+    }
+    assert!(
+        extras
+            .text_fingerprint
+            .is_some_and(|fingerprint| fingerprint.matches(&text.text)),
+        "block fields carry the fingerprint of their text"
+    );
+    Some(extras.block)
 }
 
 /// The extras a recorded message item's content parts state, in part
