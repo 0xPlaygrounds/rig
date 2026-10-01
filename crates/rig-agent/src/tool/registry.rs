@@ -223,7 +223,7 @@ impl RegisteredTool {
                 "tool handler answered with a {} outcome",
                 other.family()
             ))),
-            Err(report) => ToolResult::failed(ToolExecutionError::other(report.message)),
+            Err(report) => ToolResult::failed(report.into()),
         }
     }
 }

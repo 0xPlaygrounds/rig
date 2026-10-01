@@ -224,14 +224,14 @@ pub trait ContextValue: Serialize + DeserializeOwned + 'static {
 fn encode<T: ContextValue>(value: &T) -> Result<serde_json::Value, ToolContextError> {
     serde_json::to_value(value).map_err(|error| ToolContextError::Encode {
         key: T::KEY,
-        message: error.to_string(),
+        source: error,
     })
 }
 
 fn decode<T: ContextValue>(value: &serde_json::Value) -> Result<T, ToolContextError> {
     serde_json::from_value(value.clone()).map_err(|error| ToolContextError::Decode {
         key: T::KEY,
-        message: error.to_string(),
+        source: error,
     })
 }
 
@@ -441,26 +441,28 @@ impl PublishedContext {
 }
 
 /// A [`ToolContext`] slot could not be read or written.
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[derive(Debug, thiserror::Error)]
 pub enum ToolContextError {
     /// A required typed value was absent.
     #[error("required tool context value `{0}` was not found")]
     Missing(&'static str),
     /// A value could not be represented as JSON.
-    #[error("tool context value `{key}` could not be encoded: {message}")]
+    #[error("tool context value `{key}` could not be encoded: {source}")]
     Encode {
         /// The slot's type name.
         key: &'static str,
-        /// The serializer's message.
-        message: String,
+        /// The serializer's failure.
+        #[source]
+        source: serde_json::Error,
     },
     /// A stored value could not be decoded as the requested type.
-    #[error("tool context value `{key}` could not be decoded: {message}")]
+    #[error("tool context value `{key}` could not be decoded: {source}")]
     Decode {
         /// The slot's type name.
         key: &'static str,
-        /// The deserializer's message.
-        message: String,
+        /// The deserializer's failure.
+        #[source]
+        source: serde_json::Error,
     },
 }
 

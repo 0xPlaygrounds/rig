@@ -255,6 +255,18 @@ async fn initial_tool_fetch_is_bounded_by_the_refresh_timeout() {
 }
 
 #[tokio::test]
+async fn failed_handshake_keeps_the_typed_rmcp_error() {
+    let (c2s, sfc) = tokio::io::duplex(8192);
+    let (s2c, cfs) = tokio::io::duplex(8192);
+    drop((sfc, s2c));
+    let result = McpClientHandler::new(ClientInfo::default(), ToolServer::new().run())
+        .connect((cfs, c2s))
+        .await;
+
+    assert!(matches!(result, Err(McpClientError::Connection(_))));
+}
+
+#[tokio::test]
 async fn refresh_activity_is_bounded_and_coalesces_excess_notifications() {
     let handler = McpClientHandler::new(ClientInfo::default(), ToolServer::new().run());
 

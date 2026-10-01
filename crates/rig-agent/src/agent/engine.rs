@@ -2140,10 +2140,7 @@ pub(crate) async fn dispatch_tool_call(
         }
         Err(report) => ToolCallDispatch {
             executed,
-            result: ToolResult::failed(
-                crate::tool::ToolExecutionError::other(report.message.clone())
-                    .with_model_feedback(report.message),
-            ),
+            result: ToolResult::failed(report.into()),
             context: tool_context.for_dispatch(),
             args: effective_args,
         },

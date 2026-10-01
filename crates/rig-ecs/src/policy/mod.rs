@@ -247,13 +247,15 @@ pub fn tool_result_part(
             ToolResult::skipped(report.message.clone()),
             ToolResultStatus::Denied,
         ),
-        Err(report) => (
-            ToolResult::failed(
-                ToolExecutionError::other(report.message.clone())
-                    .with_model_feedback(report.message.clone()),
-            ),
-            ToolResultStatus::Error,
-        ),
+        Err(report) => {
+            let result = ToolResult::failed(report.clone().into());
+            let status = if result.is_refused() {
+                ToolResultStatus::Refused
+            } else {
+                ToolResultStatus::Error
+            };
+            (result, status)
+        }
     };
     Ok((
         tool_result_output(id, name, result.output().clone()),

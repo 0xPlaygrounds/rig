@@ -140,10 +140,10 @@ where
                 rmcp::ServiceError::Timeout { .. } => {
                     McpClientError::ToolFetchTimeout(self.refresh_timeout)
                 }
-                error => McpClientError::ToolFetchError(error),
+                error => McpClientError::ToolFetch(error),
             })?;
             let ServerResult::ListToolsResult(page) = response else {
-                return Err(McpClientError::ToolFetchError(
+                return Err(McpClientError::ToolFetch(
                     rmcp::ServiceError::UnexpectedResponse,
                 ));
             };
@@ -223,9 +223,7 @@ where
         T: rmcp::transport::IntoTransport<rmcp::service::RoleClient, E, A>,
         E: std::error::Error + Send + Sync + 'static,
     {
-        let service = ServiceExt::serve(self, transport)
-            .await
-            .map_err(|e| McpClientError::ConnectionError(e.to_string()))?;
+        let service = ServiceExt::serve(self, transport).await?;
 
         let handler = service.service();
         let refresh = handler.begin_refresh();
