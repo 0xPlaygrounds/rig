@@ -7,7 +7,10 @@
 //! ```
 
 use rig_core::error::ProviderError;
-use rig_core::{message::AssistantContent, wasm_compat::WasmCompatSend};
+use rig_core::{
+    message::AssistantContent,
+    wasm_compat::{WasmBoxedStream, WasmCompatSend},
+};
 
 use crate::{
     agent::engine::{DriveItem, StreamingTurnSource, drive_agent},
@@ -25,16 +28,8 @@ use crate::run::response::{CompletionCall, PromptResponse};
 use crate::run::transcript::assistant_text_from_choice;
 use rig_core::message::Message;
 
-// Match core's browser-only relaxed bounds; a bare wasm32 check would also
-// relax Send on WASI, where core still requires it.
 /// The stream a streamed run yields: its items, then its ending.
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
-pub type StreamingResult =
-    Pin<Box<dyn Stream<Item = Result<MultiTurnStreamItem, PromptError>> + Send>>;
-
-/// The stream a streamed run yields: its items, then its ending.
-#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
-pub type StreamingResult = Pin<Box<dyn Stream<Item = Result<MultiTurnStreamItem, PromptError>>>>;
+pub type StreamingResult = WasmBoxedStream<'static, Result<MultiTurnStreamItem, PromptError>>;
 
 #[derive(Serialize, Debug, Clone)]
 #[serde(tag = "type", rename_all = "camelCase")]

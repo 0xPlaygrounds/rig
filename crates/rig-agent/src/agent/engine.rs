@@ -2,11 +2,11 @@
 //! streaming [`TurnSource`] implementations supply model responses; the engine
 //! applies lifecycle policy and advances the sans-I/O [`AgentRun`].
 
+use std::collections::VecDeque;
 use std::sync::{
     Arc,
     atomic::{AtomicU64, Ordering},
 };
-use std::{collections::VecDeque, pin::Pin};
 
 use futures::{Stream, StreamExt, stream};
 use tracing::{Instrument, span::Id};
@@ -19,7 +19,7 @@ use rig_core::{
     error::{ErrorKind, ErrorReport},
     message::{AssistantContent, Message, ToolCall, UserContent},
     telemetry::SpanCombinator,
-    wasm_compat::WasmCompatSend,
+    wasm_compat::{WasmBoxedStream, WasmCompatSend},
 };
 
 use super::{
@@ -55,14 +55,7 @@ use crate::{
 /// A boxed, medium-specific item stream for one engine step (model turn or tool
 /// batch). Boxed so a generic [`drive_agent`] can forward it without the
 /// per-step future leaking into the engine's own (`Send`) inference.
-// Browser streams may capture non-Send provider futures.
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
-pub(crate) type DriveStream<'a> =
-    Pin<Box<dyn Stream<Item = Result<MultiTurnStreamItem, PromptError>> + Send + 'a>>;
-
-#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
-pub(crate) type DriveStream<'a> =
-    Pin<Box<dyn Stream<Item = Result<MultiTurnStreamItem, PromptError>> + 'a>>;
+pub(crate) type DriveStream<'a> = WasmBoxedStream<'a, Result<MultiTurnStreamItem, PromptError>>;
 
 /// Engine output: stream items for forwarding or a canonical terminal response.
 pub(crate) enum DriveItem {
