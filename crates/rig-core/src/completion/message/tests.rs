@@ -416,3 +416,110 @@ fn media_constructors_name_their_source_encoding() {
         DocumentSourceKind::string("# Notes")
     );
 }
+
+mod provider_items {
+    use super::super::{
+        AssistantContent, Issuer, Message, ProviderItem, Text, TextExtras, ToolCall, ToolFunction,
+        ToolName, Verbatim, canonical_streamed_choice, turn_delivered_no_answer,
+    };
+    use serde_json::json;
+
+    fn item(kind: &str) -> AssistantContent {
+        let block = json!({"type": kind, "id": format!("{kind}_1")});
+        AssistantContent::Provider(
+            ProviderItem::AnthropicMessages(Verbatim::try_from(block).expect("an object"))
+                .sealed("anthropic"),
+        )
+    }
+
+    fn call(id: &str) -> AssistantContent {
+        AssistantContent::ToolCall(ToolCall::from_wire(
+            id,
+            ToolFunction::new(ToolName::new("lookup").expect("a name"), json!({})),
+        ))
+    }
+
+    #[test]
+    fn a_provider_item_round_trips_through_serde_with_its_dialect_and_issuer() {
+        let content = item("web_fetch_tool_result");
+        let value = serde_json::to_value(&content).expect("serializes");
+        assert_eq!(
+            value,
+            json!({
+                "type": "provider",
+                "issuer": "anthropic",
+                "dialect": "anthropic_messages",
+                "item": {"type": "web_fetch_tool_result", "id": "web_fetch_tool_result_1"},
+            })
+        );
+        let back: AssistantContent = serde_json::from_value(value).expect("deserializes");
+        assert_eq!(back, content);
+    }
+
+    #[test]
+    fn older_text_without_provider_extras_still_loads() {
+        let text: Text = serde_json::from_value(json!({"text": "hi"})).expect("loads");
+        assert_eq!(text, Text::new("hi"));
+        assert_eq!(
+            serde_json::to_value(&text).expect("serializes"),
+            json!({"text": "hi"})
+        );
+    }
+
+    /// Stream-fold regrouping keeps a provider item in the text group, so
+    /// its place relative to the text around it does not move.
+    #[test]
+    fn regrouping_keeps_provider_items_beside_their_text() {
+        let choice = vec![
+            item("server_tool_use"),
+            call("call_1"),
+            item("web_search_tool_result"),
+            AssistantContent::text("answer"),
+        ];
+        assert_eq!(
+            canonical_streamed_choice(choice),
+            vec![
+                item("server_tool_use"),
+                item("web_search_tool_result"),
+                AssistantContent::text("answer"),
+                call("call_1"),
+            ]
+        );
+    }
+
+    /// Dropping an invalid or ignored tool call is a block edit: the
+    /// provider items around it keep their data and their order.
+    #[test]
+    fn removing_a_tool_call_leaves_provider_items_untouched() {
+        let mut content = vec![item("server_tool_use"), call("call_1"), item("compaction")];
+        content.retain(|part| !matches!(part, AssistantContent::ToolCall(_)));
+        assert_eq!(content, vec![item("server_tool_use"), item("compaction")]);
+    }
+
+    /// A text edit keeps the block's extras as decoded: the documented
+    /// staleness rule.
+    #[test]
+    fn a_text_edit_keeps_the_extras_as_decoded() {
+        let extras: TextExtras = crate::providers::openai::responses_api::TextExtras {
+            phase: Some("final_answer".to_owned()),
+            ..Default::default()
+        }
+        .into();
+        let mut text = Text::new("original").with_provider(extras.clone());
+        text.text = "edited".to_owned();
+        assert_eq!(text.provider, Some(extras));
+    }
+
+    /// A provider item is not an answer, and a message holding only items
+    /// another service issued is left out of a request, like reasoning.
+    #[test]
+    fn provider_items_follow_the_reasoning_replay_rules() {
+        assert!(turn_delivered_no_answer(&[item("server_tool_use")]));
+        let only_items = Message::Assistant {
+            id: None,
+            content: vec![item("server_tool_use"), item("web_search_tool_result")],
+        };
+        assert!(only_items.replays_to(&[Issuer::from("anthropic")]));
+        assert!(!only_items.replays_to(&[Issuer::from("zai")]));
+    }
+}

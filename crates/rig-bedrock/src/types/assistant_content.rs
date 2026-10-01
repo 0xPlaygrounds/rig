@@ -258,6 +258,8 @@ pub(crate) fn to_aws(
         AssistantContent::Image(_) => Err(ProviderError::Provider(
             "AWS Bedrock does not support image content in assistant messages".to_owned(),
         )),
+        // Another dialect's provider item is not replayed.
+        AssistantContent::Provider(_) => Ok(None),
     }
 }
 

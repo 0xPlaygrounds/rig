@@ -340,6 +340,10 @@ impl HeuristicTokenCounter {
                 self.bytes_to_tokens(name_bytes + args_bytes)
             }
             AssistantContent::Image(_) => self.per_attachment_tokens,
+            AssistantContent::Provider(item) => self.bytes_to_tokens(
+                item.open(item.issuer())
+                    .map_or(0, |item| item.verbatim().to_string().len()),
+            ),
         }
     }
 }

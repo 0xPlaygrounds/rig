@@ -41,6 +41,12 @@ pub enum ContentPart {
         #[reflect(remote = super::reflect::ReasoningPartReflect)]
         message::Sealed<message::Reasoning>,
     ),
+    /// An item with no canonical meaning, kept verbatim for the dialect and
+    /// service that produced it.
+    Provider(
+        #[reflect(remote = super::reflect::ProviderPartReflect)]
+        message::Sealed<message::ProviderItem>,
+    ),
     /// A tool result whose children must be Text, Image or Json parts.
     ToolResult {
         /// The call answered by this result.
@@ -286,6 +292,7 @@ fn prepare(
                         AssistantContent::Image(value) => ContentPart::Image(image(assets, value)?),
                         AssistantContent::ToolCall(value) => ContentPart::ToolCall(value),
                         AssistantContent::Reasoning(value) => ContentPart::Reasoning(value),
+                        AssistantContent::Provider(value) => ContentPart::Provider(value),
                     };
                     Ok((part, Vec::new()))
                 })
@@ -599,6 +606,7 @@ fn read_message_from<'a>(
                         }
                         ContentPart::ToolCall(value) => AssistantContent::ToolCall(value),
                         ContentPart::Reasoning(value) => AssistantContent::Reasoning(value),
+                        ContentPart::Provider(value) => AssistantContent::Provider(value),
                         _ => return Err(ContentError::Shape),
                     })
                 })

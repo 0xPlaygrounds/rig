@@ -619,6 +619,8 @@ fn assistant_parts(content: &[AssistantContent]) -> Vec<TelemetryPart> {
             }],
             AssistantContent::Reasoning(reasoning) => reasoning_parts(reasoning.value()),
             AssistantContent::Image(image) => image_part(image).into_iter().collect(),
+            // Verbatim provider data is not telemetry content.
+            AssistantContent::Provider(_) => Vec::new(),
         })
         .collect()
 }

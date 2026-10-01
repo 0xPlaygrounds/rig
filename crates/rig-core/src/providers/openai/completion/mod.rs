@@ -946,6 +946,8 @@ pub fn assistant_content_to_messages(
         match content {
             message::AssistantContent::Text(text) => text_content.push(text),
             message::AssistantContent::ToolCall(tool_call) => tool_calls.push(tool_call),
+            // Another dialect's provider item is not replayed.
+            message::AssistantContent::Provider(_) => {}
             // Reasoning another service issued is not replayed here.
             message::AssistantContent::Reasoning(sealed) => {
                 let Some(reasoning) = sealed.open_for(issuers) else {

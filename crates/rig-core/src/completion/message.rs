@@ -28,10 +28,12 @@ pub enum Message {
 }
 
 mod identity;
+mod provider;
 
 pub use identity::{
     CallId, EmptyCallId, EmptyToolName, Issuer, LocalCallId, ProviderCallId, Sealed, ToolName,
 };
+pub use provider::{NotAnObject, ProviderItem, TextExtras, Verbatim};
 
 /// Shared error text for an invalid empty response choice.
 /// Provider decoders must exempt legal empty outcomes, including recognized
@@ -87,14 +89,15 @@ pub fn turn_delivered_no_answer(choice: &[AssistantContent]) -> bool {
         AssistantContent::Text(text) => !text.text.is_empty(),
         AssistantContent::ToolCall(_) => true,
         AssistantContent::Image(_) => true,
-        // The one exclusion: scratch work, not an answer.
-        AssistantContent::Reasoning(_) => false,
+        // Scratch work and provider items are not an answer.
+        AssistantContent::Reasoning(_) | AssistantContent::Provider(_) => false,
     })
 }
 
 /// Groups streamed choices as reasoning, text, tool calls, then images,
-/// preserving order within each group. Choices without reasoning or tool calls
-/// retain their original order.
+/// preserving order within each group. Provider items stay in the text group,
+/// so their order relative to text is unchanged. Choices without reasoning or
+/// tool calls retain their original order.
 pub fn canonical_streamed_choice(choice: Vec<AssistantContent>) -> Vec<AssistantContent> {
     let regroup = choice.iter().any(|part| {
         matches!(
@@ -112,7 +115,7 @@ pub fn canonical_streamed_choice(choice: Vec<AssistantContent>) -> Vec<Assistant
     for part in choice {
         match part {
             AssistantContent::Reasoning(block) => reasoning.push(block),
-            AssistantContent::Text(_) => text.push(part),
+            AssistantContent::Text(_) | AssistantContent::Provider(_) => text.push(part),
             AssistantContent::ToolCall(_) => calls.push(part),
             AssistantContent::Image(_) => images.push(part),
         }
@@ -153,6 +156,9 @@ pub enum AssistantContent {
     Reasoning(Sealed<Reasoning>),
     /// Image content emitted by the assistant.
     Image(Image),
+    /// An output item with no canonical meaning, kept verbatim in its place
+    /// and replayed only to the dialect and service that produced it.
+    Provider(Sealed<ProviderItem>),
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
@@ -495,33 +501,7 @@ impl AdditionalParams {
     /// citation deltas), objects merge recursively, scalars take the
     /// incoming value.
     pub fn merge(&mut self, incoming: Self) {
-        fn merge_maps(
-            existing: &mut serde_json::Map<String, serde_json::Value>,
-            incoming: serde_json::Map<String, serde_json::Value>,
-        ) {
-            for (key, incoming_value) in incoming {
-                match existing.get_mut(&key) {
-                    Some(existing_value) => merge_value(existing_value, incoming_value),
-                    None => {
-                        existing.insert(key, incoming_value);
-                    }
-                }
-            }
-        }
-        fn merge_value(existing: &mut serde_json::Value, incoming: serde_json::Value) {
-            match (existing, incoming) {
-                (
-                    serde_json::Value::Object(existing_map),
-                    serde_json::Value::Object(incoming_map),
-                ) => merge_maps(existing_map, incoming_map),
-                (
-                    serde_json::Value::Array(existing_array),
-                    serde_json::Value::Array(mut incoming_array),
-                ) => existing_array.append(&mut incoming_array),
-                (existing, incoming) => *existing = incoming,
-            }
-        }
-        merge_maps(&mut self.0, incoming.0);
+        merge_objects(&mut self.0, incoming.0);
     }
 
     /// Returns the object under the provider's own key, or `None` for absent
@@ -593,6 +573,33 @@ impl<'de> Deserialize<'de> for AdditionalParams {
             Err(_) => Err(serde::de::Error::custom(
                 "`additional_params` must be a non-empty JSON object",
             )),
+        }
+    }
+}
+
+/// Deep-merge `incoming` into `existing`: arrays concatenate, objects merge
+/// recursively, scalars take the incoming value.
+pub(crate) fn merge_objects(
+    existing: &mut serde_json::Map<String, serde_json::Value>,
+    incoming: serde_json::Map<String, serde_json::Value>,
+) {
+    fn merge_value(existing: &mut serde_json::Value, incoming: serde_json::Value) {
+        match (existing, incoming) {
+            (serde_json::Value::Object(existing_map), serde_json::Value::Object(incoming_map)) => {
+                merge_objects(existing_map, incoming_map);
+            }
+            (serde_json::Value::Array(existing_array), serde_json::Value::Array(mut incoming)) => {
+                existing_array.append(&mut incoming);
+            }
+            (existing, incoming) => *existing = incoming,
+        }
+    }
+    for (key, incoming_value) in incoming {
+        match existing.get_mut(&key) {
+            Some(existing_value) => merge_value(existing_value, incoming_value),
+            None => {
+                existing.insert(key, incoming_value);
+            }
         }
     }
 }
@@ -696,19 +703,24 @@ where
     }
 }
 
-/// Text with optional provider metadata under the named `additional_params` key.
+/// Text with optional caller metadata and the metadata one wire dialect
+/// attached when it produced the block.
 /// Unknown sibling fields are ignored on decode, not captured for replay.
 #[derive(Default, Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct Text {
     /// Text content.
     pub text: String,
-    /// Provider-specific text fields.
+    /// Caller-supplied text fields.
     #[serde(
         default,
         deserialize_with = "optional_additional_params",
         skip_serializing_if = "Option::is_none"
     )]
     pub additional_params: Option<AdditionalParams>,
+    /// Metadata the producing dialect attached, replayed only to that
+    /// dialect. An edit that keeps the block keeps it as decoded.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider: Option<TextExtras>,
 }
 
 impl Text {
@@ -717,7 +729,14 @@ impl Text {
         Self {
             text: text.into(),
             additional_params: None,
+            provider: None,
         }
+    }
+
+    /// This block with the metadata `extras` its dialect attached.
+    pub fn with_provider(mut self, extras: TextExtras) -> Self {
+        self.provider = Some(extras);
+        self
     }
 
     /// Returns the inner text string.
@@ -980,11 +999,12 @@ impl Message {
 
     /// Whether a service replaying reasoning `issuers` issued has anything to
     /// read in this message: false only for an assistant message whose every
-    /// part is reasoning none of them opens.
+    /// part is reasoning or a provider item none of them opens.
     pub fn replays_to(&self, issuers: &[Issuer]) -> bool {
         match self {
             Message::Assistant { content, .. } => content.iter().any(|part| match part {
                 AssistantContent::Reasoning(reasoning) => reasoning.open_for(issuers).is_some(),
+                AssistantContent::Provider(item) => item.open_for(issuers).is_some(),
                 _ => true,
             }),
             Message::System { .. } | Message::User { .. } => true,
@@ -1292,6 +1312,7 @@ macro_rules! text_from {
                 Text {
                     text: text.into(),
                     additional_params: None,
+                    provider: None,
                 }
             }
         }

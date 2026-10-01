@@ -23,7 +23,7 @@ use crate::completion::{CompletionRequest, CompletionResponse, FinishReason, Usa
 use crate::error::{MalformedToolInput, ProviderError};
 use crate::message::{
     AdditionalParams, AssistantContent, CallId, Image, Issuer, LocalCallId, ProviderCallId,
-    Reasoning, ReasoningContent, Text, ToolCall, ToolFunction, ToolName,
+    ProviderItem, Reasoning, ReasoningContent, Text, TextExtras, ToolCall, ToolFunction, ToolName,
 };
 use crate::streaming::{Item, Part, PartKind, StreamEvent};
 use crate::telemetry::{GenAiOperation, SpanBuilder, SpanCombinator};
@@ -133,6 +133,7 @@ enum Draft {
         part: Option<Part>,
         text: String,
         params: Option<AdditionalParams>,
+        extras: Option<TextExtras>,
     },
     Reasoning {
         part: Option<Part>,
@@ -392,7 +393,12 @@ impl Turn {
     }
 
     fn close_text(&mut self, items: &mut Items, slot: usize) {
-        let Some(Draft::Text { part, text, params }) = self
+        let Some(Draft::Text {
+            part,
+            text,
+            params,
+            extras,
+        }) = self
             .drafts
             .get_mut(slot)
             .map(|draft| std::mem::replace(draft, Draft::Closed))
@@ -400,7 +406,7 @@ impl Turn {
             return;
         };
         // A text part survives with text or with the metadata it carries.
-        if text.is_empty() && params.is_none() {
+        if text.is_empty() && params.is_none() && extras.is_none() {
             return;
         }
         let part = part.unwrap_or_else(|| self.start(items, PartKind::Text));
@@ -411,6 +417,7 @@ impl Turn {
                 content: AssistantContent::Text(Text {
                     text,
                     additional_params: params,
+                    provider: extras,
                 }),
             },
         );
@@ -700,12 +707,7 @@ impl Turn {
                         .map(|text| AssistantContent::text(text.clone()))
                 })
             })
-            .map(|part| match part {
-                AssistantContent::Reasoning(reasoning) => {
-                    AssistantContent::Reasoning(reasoning.reseal(self.issuer()))
-                }
-                part => part,
-            })
+            .map(|part| reseal(part, &self.issuer()))
             .collect();
         response
     }
@@ -715,12 +717,7 @@ impl Turn {
         let choice = self
             .snapshot()
             .into_iter()
-            .map(|part| match part {
-                AssistantContent::Reasoning(reasoning) => {
-                    AssistantContent::Reasoning(reasoning.reseal(issuer.clone()))
-                }
-                part => part,
-            })
+            .map(|part| reseal(part, &issuer))
             .collect();
         let Finish {
             usage,
@@ -745,6 +742,18 @@ pub(crate) type Items = std::collections::VecDeque<Result<Item<StreamEvent>, Pro
 
 fn emit(items: &mut Items, event: StreamEvent) {
     items.push_back(Ok(Item::Event(event)));
+}
+
+/// `part` sealed to the reply's final issuer: reasoning and provider items
+/// are service-bound, and a gateway may name the issuer only at the end.
+fn reseal(part: AssistantContent, issuer: &Issuer) -> AssistantContent {
+    match part {
+        AssistantContent::Reasoning(reasoning) => {
+            AssistantContent::Reasoning(reasoning.reseal(issuer.clone()))
+        }
+        AssistantContent::Provider(item) => AssistantContent::Provider(item.reseal(issuer.clone())),
+        part => part,
+    }
 }
 
 /// Attach a signature to the last unsigned reasoning text, or add a
@@ -784,9 +793,15 @@ impl Fold<Completion> for Turn {
                 if let Some(slot) = self.choice.get_mut(part.index()) {
                     *slot = Some(content.clone());
                 }
-                // A relayed reply's reasoning names its issuer on its seal.
-                if let (None, AssistantContent::Reasoning(reasoning)) = (&self.issuer, content) {
-                    self.issuer = Some(reasoning.issuer().clone());
+                // A relayed reply's sealed parts name their issuer.
+                match (&self.issuer, content) {
+                    (None, AssistantContent::Reasoning(reasoning)) => {
+                        self.issuer = Some(reasoning.issuer().clone());
+                    }
+                    (None, AssistantContent::Provider(item)) => {
+                        self.issuer = Some(item.issuer().clone());
+                    }
+                    _ => {}
                 }
                 self.open_text.remove(&part.index());
             }
@@ -822,6 +837,7 @@ impl<'id> Out<'id, Completion> {
             part: None,
             text: String::new(),
             params: None,
+            extras: None,
         });
         TextPart {
             slot,
@@ -857,6 +873,39 @@ impl<'id> Out<'id, Completion> {
                 None => *params = Some(additional_params),
             }
         }
+    }
+
+    /// Merge the metadata the wire's dialect attaches to an open text part
+    /// ([`TextExtras::merge`]). Like other metadata, it starts the part.
+    pub fn text_extras(&mut self, part: &TextPart<'id>, incoming: TextExtras) {
+        let mut shared = self.lock();
+        let Shared { fold, items, .. } = &mut *shared;
+        let unstarted = matches!(
+            fold.drafts.get(part.slot),
+            Some(Draft::Text { part: None, .. })
+        );
+        if unstarted {
+            let started = fold.start(items, PartKind::Text);
+            if let Some(Draft::Text { part, .. }) = fold.drafts.get_mut(part.slot) {
+                *part = Some(started);
+            }
+        }
+        if let Some(Draft::Text { extras, .. }) = fold.drafts.get_mut(part.slot) {
+            match extras {
+                Some(extras) => extras.merge(incoming),
+                None => *extras = Some(incoming),
+            }
+        }
+    }
+
+    /// An item with no canonical meaning, as a whole part in its place,
+    /// sealed to the reply's issuer.
+    pub fn provider_item(&mut self, item: ProviderItem) {
+        let mut shared = self.lock();
+        let Shared { fold, items, .. } = &mut *shared;
+        let part = fold.start(items, PartKind::Provider);
+        let content = AssistantContent::Provider(item.sealed(fold.issuer()));
+        emit(items, StreamEvent::End { part, content });
     }
 
     /// Close a text part. One with neither text nor metadata is dropped.
@@ -1042,7 +1091,17 @@ impl<'id> Out<'id, Completion> {
                 if let Some(params) = text.additional_params {
                     self.text_params(&part, params);
                 }
+                if let Some(extras) = text.provider {
+                    self.text_extras(&part, extras);
+                }
                 self.close_text(part);
+            }
+            AssistantContent::Provider(item) => {
+                let issuer = item.issuer().clone();
+                self.issued_by(issuer.clone());
+                if let Some(item) = item.open(&issuer) {
+                    self.provider_item(item.clone());
+                }
             }
             AssistantContent::Reasoning(reasoning) => {
                 let issuer = reasoning.issuer().clone();
@@ -1306,6 +1365,7 @@ impl Turn {
             part: None,
             text: String::new(),
             params: None,
+            extras: None,
         })
     }
 

@@ -643,6 +643,11 @@ fn emit_parsed_items(
                     "text-only Qwen output parser produced image content".to_string(),
                 ));
             }
+            AssistantContent::Provider(_) => {
+                return Err(CandleError::Inference(
+                    "the local Qwen output parser produced a provider item".to_string(),
+                ));
+            }
         }
     }
     Ok(())

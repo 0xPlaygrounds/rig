@@ -385,6 +385,8 @@ impl TryFrom<message::Message> for Vec<Message> {
                                 "Cohere currently doesn't support images.".to_owned(),
                             ));
                         }
+                        // Another dialect's provider item is not replayed.
+                        message::AssistantContent::Provider(_) => {}
                     }
                 }
 

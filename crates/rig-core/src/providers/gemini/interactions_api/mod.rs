@@ -1003,11 +1003,13 @@ pub mod interactions_api_types {
                 crate::completion::Message::Assistant { content, .. } => {
                     let contents = content
                         .into_iter()
-                        // Reasoning another service issued is not replayed.
+                        // Reasoning another service issued is not replayed,
+                        // nor is another dialect's provider item.
                         .filter(|part| match part {
                             crate::message::AssistantContent::Reasoning(reasoning) => {
                                 reasoning.open(&super::ISSUER).is_some()
                             }
+                            crate::message::AssistantContent::Provider(_) => false,
                             _ => true,
                         })
                         .map(Content::try_from)
@@ -1641,6 +1643,11 @@ pub mod interactions_api_types {
                         text,
                         annotations: None,
                     }))
+                }
+                message::AssistantContent::Provider(_) => {
+                    Err(message::MessageError::ConversionError(
+                        "Interactions cannot replay another dialect's provider item".to_owned(),
+                    ))
                 }
                 message::AssistantContent::ToolCall(tool_call) => {
                     let call_id = tool_call.id.wire().into_owned();

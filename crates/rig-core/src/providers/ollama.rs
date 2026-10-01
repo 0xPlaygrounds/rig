@@ -724,6 +724,8 @@ impl TryFrom<crate::message::Message> for Vec<Message> {
                                 "Ollama currently doesn't support images.".into(),
                             ));
                         }
+                        // Another dialect's provider item is not replayed.
+                        crate::message::AssistantContent::Provider(_) => {}
                     }
                 }
 

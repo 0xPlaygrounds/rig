@@ -15,6 +15,8 @@ crate::reflect::opaque_reflect! {
     struct ToolCallPartReflect(message::ToolCall): PartialEq;
     /// Reflected shared transport value `message::Reasoning`.
     struct ReasoningPartReflect(message::Sealed<message::Reasoning>): PartialEq;
+    /// Reflected shared transport value `message::ProviderItem`.
+    struct ProviderPartReflect(message::Sealed<message::ProviderItem>): PartialEq;
     /// Reflected shared transport value `serde_json::Value`.
     struct JsonPartReflect(serde_json::Value): PartialEq;
     /// Reflected shared transport value `Option<message::ImageMediaType>`.

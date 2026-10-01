@@ -93,8 +93,10 @@ pub(crate) fn content_from_message(
         Message::Assistant { content, .. } => {
             let parts: Result<Vec<vertexai::model::Part>, _> = content
                 .into_iter()
-                // Reasoning another service issued is not replayed.
+                // Reasoning another service issued is not replayed, nor is
+                // another dialect's provider item.
                 .filter(|part| match part {
+                    AssistantContent::Provider(_) => false,
                     AssistantContent::Reasoning(reasoning) => reasoning
                         .open(&crate::types::completion_response::ISSUER)
                         .is_some(),
@@ -178,6 +180,9 @@ pub(crate) fn content_from_message(
 
                         Ok(part)
                     }
+                    AssistantContent::Provider(_) => Err(ProviderError::request(
+                        "Vertex cannot replay another dialect's provider item",
+                    )),
                 })
                 .collect();
 
