@@ -28,7 +28,7 @@ use tracing::Instrument;
 
 use crate::error::ProviderError;
 use crate::observe::{AdapterContext, AdapterEnding, AdapterSlot};
-use crate::streaming::Streamed;
+use crate::streaming::{Item, Streamed};
 use crate::wasm_compat::{WasmBoxedFuture, WasmBoxedStream, WasmCompatSend, WasmCompatSync};
 use crate::wire::{
     Call, Capabilities, Decoder, Flow, Mode, Operation, Out, Request, Response, Shared, Wire,
@@ -372,22 +372,16 @@ fn read<W: Wire>(
                     if slot.is_some() && (corrupt || !analysis) {
                         counted += 1;
                     }
-                    match classified {
-                        WireEvent::Known(event) => decoder.decode(event, Out::new(reply)),
-                        // Unmodeled, but always delivered: the consumer sees
-                        // it, and aggregation never folds it into the answer.
-                        WireEvent::Unknown { event_type, value } => {
-                            warn_unmodeled(&event_type, &value);
+                    if corrupt && let Some(slot) = &slot {
+                        slot.corrupt(counted);
+                    }
+                    triage(classified).and_then(|item| match item {
+                        Item::Event(event) => decoder.decode(event, Out::new(reply)),
+                        Item::Unknown(value) => {
                             Out::new(reply).unknown(value);
                             Ok(Flow::More)
                         }
-                        WireEvent::Corrupt(error) => {
-                            if let Some(slot) = &slot {
-                                slot.corrupt(counted);
-                            }
-                            Err(ProviderError::from(error))
-                        }
-                    }
+                    })
                 }
                 Some(Err(error)) => {
                     fail(reply, slot.as_ref(), error);
@@ -457,15 +451,15 @@ pub(crate) struct Decoded<Op: Operation> {
 }
 
 /// What the driver does with a classified frame: a known event is decoded,
-/// an unmodeled payload is warned about and delivered, and a corrupt frame
-/// is the error that ends the reply.
-#[cfg(any(test, feature = "websocket", feature = "test-utils"))]
-pub(crate) fn triage<E>(event: WireEvent<E>) -> Result<crate::streaming::Item<E>, ProviderError> {
+/// an unmodeled payload is warned about and delivered (aggregation never
+/// folds it into the answer), and a corrupt frame is the error that ends
+/// the reply.
+pub(crate) fn triage<E>(event: WireEvent<E>) -> Result<Item<E>, ProviderError> {
     match event {
-        WireEvent::Known(event) => Ok(crate::streaming::Item::Event(event)),
+        WireEvent::Known(event) => Ok(Item::Event(event)),
         WireEvent::Unknown { event_type, value } => {
             warn_unmodeled(&event_type, &value);
-            Ok(crate::streaming::Item::Unknown(value))
+            Ok(Item::Unknown(value))
         }
         WireEvent::Corrupt(error) => Err(ProviderError::from(error)),
     }
@@ -483,8 +477,8 @@ where
     D: crate::wire::Decoder<'id, Op, F>,
 {
     match triage(decoder.classify(frame))? {
-        crate::streaming::Item::Event(event) => decoder.decode(event, Out::new(reply)),
-        crate::streaming::Item::Unknown(value) => {
+        Item::Event(event) => decoder.decode(event, Out::new(reply)),
+        Item::Unknown(value) => {
             Out::new(reply).unknown(value);
             Ok(Flow::More)
         }
