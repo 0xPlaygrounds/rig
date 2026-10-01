@@ -180,10 +180,7 @@ impl Serve for ModelAdapter<Rerank> {
         match kind {
             EffectKind::Rerank { request } => Reply::Outcome(
                 model
-                    .call(crate::operation::RerankRequest {
-                        query: request.query,
-                        documents: request.documents,
-                    })
+                    .call(request)
                     .await
                     .map(Outcome::Reranked)
                     .map_err(ErrorReport::from),

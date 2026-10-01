@@ -534,11 +534,10 @@ fn answer_text_signature_is_kept_and_replayed_on_its_part() {
     );
 
     let replayed: vertexai::model::Content =
-        crate::types::message::RigMessage(rig_core::message::Message::Assistant {
+        crate::types::message::content_from_message(rig_core::message::Message::Assistant {
             id: None,
             content: response.choice.clone(),
         })
-        .try_into()
         .expect("the turn replays");
     assert_eq!(replayed.parts.len(), 1);
     assert_eq!(replayed.parts[0].thought_signature.to_vec(), raw.to_vec());

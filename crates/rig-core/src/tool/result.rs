@@ -133,7 +133,6 @@ impl std::fmt::Display for ToolErrorKind {
 /// exposes safe kind-level feedback. Use [`Self::with_model_feedback`] or
 /// [`Self::with_model_output`] to provide a purpose-built presentation.
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
-#[serde(from = "ToolExecutionErrorRepr", into = "ToolExecutionErrorRepr")]
 pub struct ToolExecutionError {
     kind: ToolErrorKind,
     message: String,
@@ -145,52 +144,11 @@ pub struct ToolExecutionError {
     /// The concrete source, kept for downcasting on native. Browser wasm
     /// retains none: its errors are not `Send + Sync`, and this type must be
     /// (it crosses the effect bus and the wire as part of an `Outcome`).
+    /// Live process state never crosses a wire, so a deserialized error has
+    /// none.
     #[cfg(not(target_family = "wasm"))]
+    #[serde(skip)]
     source: Option<Arc<dyn Error + Send + Sync + 'static>>,
-}
-
-/// The wire form of [`ToolExecutionError`]: every field but `source`. A
-/// source is live process state (a boxed error); it does not cross a wire
-/// and a report reconstructed from one has none.
-#[derive(serde::Serialize, serde::Deserialize)]
-struct ToolExecutionErrorRepr {
-    kind: ToolErrorKind,
-    message: String,
-    model_output: ToolOutput,
-    retryable: Option<bool>,
-    code: Option<String>,
-    http_status: Option<u16>,
-    refusal: bool,
-}
-
-impl From<ToolExecutionError> for ToolExecutionErrorRepr {
-    fn from(error: ToolExecutionError) -> Self {
-        Self {
-            kind: error.kind,
-            message: error.message,
-            model_output: error.model_output,
-            retryable: error.retryable,
-            code: error.code,
-            http_status: error.http_status,
-            refusal: error.refusal,
-        }
-    }
-}
-
-impl From<ToolExecutionErrorRepr> for ToolExecutionError {
-    fn from(repr: ToolExecutionErrorRepr) -> Self {
-        Self {
-            kind: repr.kind,
-            message: repr.message,
-            model_output: repr.model_output,
-            retryable: repr.retryable,
-            code: repr.code,
-            http_status: repr.http_status,
-            refusal: repr.refusal,
-            #[cfg(not(target_family = "wasm"))]
-            source: None,
-        }
-    }
 }
 
 impl ToolExecutionError {

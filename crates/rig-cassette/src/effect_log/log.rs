@@ -9,6 +9,7 @@ use std::collections::BTreeMap;
 
 use rig_core::effect::{EffectId, EffectRecord, EffectRow, HandlerDescriptor};
 use rig_core::error::{ErrorKind, ErrorReport};
+use rig_core::json_utils::to_canonical_string;
 use rig_core::serve::ServingPolicy;
 use serde::{Deserialize, Serialize};
 
@@ -261,9 +262,9 @@ impl<'a> IntoIterator for &'a EffectLog {
 /// sorted object keys, or a serialization error.
 /// Sorting makes identity independent of JSON map insertion order.
 pub fn stable_hash<T: Serialize>(value: &T) -> Result<u64, serde_json::Error> {
-    let json = serde_json::to_vec(&Canonical::from(serde_json::to_value(value)?))?;
+    let json = to_canonical_string(&serde_json::to_value(value)?);
     let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
-    for byte in json {
+    for byte in json.into_bytes() {
         hash ^= u64::from(byte);
         hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
     }
@@ -339,42 +340,8 @@ pub fn canonical_local_ids(mut log: serde_json::Value) -> serde_json::Value {
 /// `serde_json`'s `preserve_order` feature is unified into it.
 pub(crate) fn canonical_tool_args(args: &str) -> String {
     serde_json::from_str::<serde_json::Value>(args)
-        .ok()
-        .and_then(|value| serde_json::to_string(&Canonical::from(value)).ok())
-        .unwrap_or_else(|| args.to_owned())
-}
-
-/// A JSON value whose objects serialize with sorted keys whatever
-/// `serde_json`'s map type is.
-#[derive(Serialize)]
-#[serde(untagged)]
-enum Canonical {
-    Null,
-    Bool(bool),
-    Number(serde_json::Number),
-    String(String),
-    Array(Vec<Canonical>),
-    Object(BTreeMap<String, Canonical>),
-}
-
-impl From<serde_json::Value> for Canonical {
-    fn from(value: serde_json::Value) -> Self {
-        match value {
-            serde_json::Value::Null => Self::Null,
-            serde_json::Value::Bool(bool) => Self::Bool(bool),
-            serde_json::Value::Number(number) => Self::Number(number),
-            serde_json::Value::String(string) => Self::String(string),
-            serde_json::Value::Array(items) => {
-                Self::Array(items.into_iter().map(Self::from).collect())
-            }
-            serde_json::Value::Object(fields) => Self::Object(
-                fields
-                    .into_iter()
-                    .map(|(key, value)| (key, Self::from(value)))
-                    .collect(),
-            ),
-        }
-    }
+        .map(|value| to_canonical_string(&value))
+        .unwrap_or_else(|_| args.to_owned())
 }
 
 // A log serializes and crosses threads on every target.

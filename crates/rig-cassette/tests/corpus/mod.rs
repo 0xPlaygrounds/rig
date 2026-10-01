@@ -2077,8 +2077,8 @@ pub fn rerank_key() -> rig_core::effect::Key<rig_core::effect::family::Rerank> {
     rig_core::effect::Key::new_unchecked(HandlerKey::from(RERANK_KEY))
 }
 
-pub fn rerank_request(query: &str) -> rig_core::effect::RerankRequest {
-    rig_core::effect::RerankRequest {
+pub fn rerank_request(query: &str) -> rig_core::operation::RerankRequest {
+    rig_core::operation::RerankRequest {
         query: query.to_owned(),
         documents: RERANK_DOCUMENTS
             .iter()

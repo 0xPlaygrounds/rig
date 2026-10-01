@@ -1,4 +1,4 @@
-use crate::types::message::RigMessage;
+use crate::types::message::content_from_message;
 use google_cloud_aiplatform_v1 as vertexai;
 use rig_core::error::ProviderError;
 use rig_core::providers::gemini::completion::gemini_api_types::{
@@ -17,8 +17,7 @@ impl VertexCompletionRequest {
             if matches!(message, rig_core::completion::Message::System { .. }) {
                 continue;
             }
-            let content = RigMessage(message).try_into()?;
-            contents.push(content);
+            contents.push(content_from_message(message)?);
         }
 
         Ok(contents)
