@@ -10,6 +10,7 @@ use std::sync::Arc;
 
 use bytes::Bytes;
 use futures::StreamExt;
+use serde_json::json;
 
 use super::{Model, Transport};
 use crate::completion::CompletionRequest;
@@ -24,7 +25,7 @@ use crate::operation::{Completion, Finish, ModelListing, ModelPage, TextPart};
 use crate::streaming::Streamed;
 use crate::test_utils::{
     HttpErrorStreamingClient, MockHttpResponse, MockStreamingClient, NonSuccessStreamingClient,
-    RecordingHttpClient, SequencedHttpClient, SequencedStreamingHttpClient,
+    RecordingHttpClient, SequencedHttpClient, SequencedStreamingHttpClient, TraceCapture,
 };
 use crate::wire::{
     Body, Decoder, Descriptor, Encoded, Flow, Mode, ObservationSink, Out, Wire, WireEvent,
@@ -880,38 +881,10 @@ async fn a_listing_whose_cursor_keeps_changing_stops_at_the_page_ceiling() {
 
 /// Every warning a body emits, by message.
 fn warnings_of(body: impl std::future::Future<Output = ()>) -> Vec<String> {
-    #[derive(Clone, Default)]
-    struct Warnings(Arc<std::sync::Mutex<Vec<String>>>);
-    impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for Warnings {
-        fn on_event(
-            &self,
-            event: &tracing::Event<'_>,
-            _: tracing_subscriber::layer::Context<'_, S>,
-        ) {
-            if *event.metadata().level() == tracing::Level::WARN {
-                let mut fields = Vec::new();
-                event.record(&mut Visit(&mut fields));
-                if let Ok(mut warnings) = self.0.lock() {
-                    warnings.extend(
-                        fields
-                            .into_iter()
-                            .filter(|(name, _)| name == "message")
-                            .map(|(_, message)| message),
-                    );
-                }
-            }
-        }
-    }
-    use tracing_subscriber::layer::SubscriberExt;
-    let warnings = Warnings::default();
-    let subscriber = tracing_subscriber::registry().with(warnings.clone());
-    let _guard = tracing::subscriber::set_default(subscriber);
+    let capture = TraceCapture::default();
+    let _guard = tracing::subscriber::set_default(capture.subscriber());
     futures::executor::block_on(body);
-    warnings
-        .0
-        .lock()
-        .map(|warnings| warnings.clone())
-        .unwrap_or_default()
+    capture.warnings()
 }
 
 /// A repeated cursor stops after the repeated page and a cursor that keeps
@@ -997,13 +970,9 @@ async fn a_streamed_embedding_finishes_to_the_call() {
 #[test]
 fn the_completion_operation_names_its_span_by_mode() {
     use tracing::subscriber::with_default;
-    use tracing_subscriber::layer::SubscriberExt;
 
-    let recorded = Arc::new(std::sync::Mutex::new(Vec::<(String, String)>::new()));
-    let subscriber = tracing_subscriber::registry().with(RecordFields {
-        recorded: recorded.clone(),
-    });
-    with_default(subscriber, || {
+    let capture = TraceCapture::default();
+    with_default(capture.subscriber(), || {
         let unary = Model::new(Echo::unary(), RecordingHttpClient::new(UNARY_BODY));
         futures::executor::block_on(unary.call(prompt())).expect("the reply decodes");
         let streaming = Model::new(
@@ -1015,44 +984,32 @@ fn the_completion_operation_names_its_span_by_mode() {
         let stream = streaming.stream(prompt()).expect("the stream opens");
         futures::executor::block_on(stream.collect::<Vec<_>>());
     });
-    let names: Vec<_> = recorded
-        .lock()
-        .expect("no panic held the lock")
-        .iter()
-        .filter(|(field, _)| field == "gen_ai.operation.name")
-        .map(|(_, value)| value.clone())
-        .collect();
-    assert_eq!(names, vec!["chat", "chat_streaming"]);
+    assert_eq!(
+        capture.values_of("gen_ai.operation.name"),
+        vec![json!("chat"), json!("chat_streaming")]
+    );
 }
 
 #[tokio::test]
 async fn the_driver_records_the_folded_responses_metadata() {
     use tracing::subscriber::with_default;
-    use tracing_subscriber::layer::SubscriberExt;
 
-    let recorded = Arc::new(std::sync::Mutex::new(Vec::<(String, String)>::new()));
-    let layer = RecordFields {
-        recorded: recorded.clone(),
-    };
-    let subscriber = tracing_subscriber::registry().with(layer);
+    let capture = TraceCapture::default();
     let bound = Model::new(Echo::unary(), RecordingHttpClient::new(UNARY_BODY));
-    let response = with_default(subscriber, || {
+    let response = with_default(capture.subscriber(), || {
         futures::executor::block_on(bound.call(prompt()))
     })
     .expect("the reply decodes");
     assert_eq!(response.model.as_deref(), Some("echo-1"));
-    let recorded = recorded.lock().expect("no panic held the lock").clone();
     assert!(
-        recorded
-            .iter()
-            .any(|(field, value)| field == "gen_ai.response.model" && value == "echo-1"),
-        "expected the response model on the span: {recorded:?}"
+        capture
+            .values_of("gen_ai.response.model")
+            .contains(&json!("echo-1")),
+        "expected the response model on the span"
     );
     assert!(
-        recorded
-            .iter()
-            .any(|(field, _)| field == "gen_ai.usage.output_tokens"),
-        "expected usage on the span: {recorded:?}"
+        !capture.values_of("gen_ai.usage.output_tokens").is_empty(),
+        "expected usage on the span"
     );
 }
 
@@ -1061,111 +1018,49 @@ async fn the_driver_records_the_folded_responses_metadata() {
 #[test]
 fn a_streamed_embedding_records_its_response_on_the_span() {
     use tracing::subscriber::with_default;
-    use tracing_subscriber::layer::SubscriberExt;
 
     const REPLY: &str = r#"{"object":"list","model":"text-embedding-3-small","data":[{"object":"embedding","index":0,"embedding":[0.1]}],"usage":{"prompt_tokens":2,"total_tokens":2}}"#;
-    let recorded = Arc::new(std::sync::Mutex::new(Vec::<(String, String)>::new()));
-    let layer = RecordFields {
-        recorded: recorded.clone(),
-    };
-    let subscriber = tracing_subscriber::registry().with(layer);
+    let capture = TraceCapture::default();
     let wire = crate::providers::openai::wire::OpenAIConfig::new("sk-test")
         .embedding("text-embedding-3-small", None);
     let model = Model::new(
         wire,
         SequencedHttpClient::new([MockHttpResponse::success(REPLY)]),
     );
-    with_default(subscriber, || {
+    with_default(capture.subscriber(), || {
         let stream = model
             .stream(vec!["a".to_owned()])
             .expect("the embedding opens");
         futures::executor::block_on(stream.finish()).expect("the reply folds")
     });
-    let recorded = recorded.lock().expect("no panic held the lock").clone();
     assert!(
-        recorded
-            .iter()
-            .any(|(field, value)| field == "gen_ai.response.model"
-                && value == "text-embedding-3-small"),
-        "expected the response model on the span: {recorded:?}"
+        capture
+            .values_of("gen_ai.response.model")
+            .contains(&json!("text-embedding-3-small")),
+        "expected the response model on the span"
     );
 }
 
 #[tokio::test]
 async fn the_span_names_the_requests_model_override_not_the_wires() {
     use tracing::subscriber::with_default;
-    use tracing_subscriber::layer::SubscriberExt;
 
-    let recorded = Arc::new(std::sync::Mutex::new(Vec::<(String, String)>::new()));
-    let layer = RecordFields {
-        recorded: recorded.clone(),
-    };
-    let subscriber = tracing_subscriber::registry().with(layer);
+    let capture = TraceCapture::default();
     let bound = Model::new(Echo::unary(), RecordingHttpClient::new(UNARY_BODY));
     let request = CompletionRequest {
         model: Some("echo-override".to_owned()),
         ..prompt()
     };
-    with_default(subscriber, || {
+    with_default(capture.subscriber(), || {
         futures::executor::block_on(bound.call(request))
     })
     .expect("the reply decodes");
-    let recorded = recorded.lock().expect("no panic held the lock").clone();
     assert!(
-        recorded
-            .iter()
-            .any(|(field, value)| field == "gen_ai.request.model" && value == "echo-override"),
-        "expected the override on the span: {recorded:?}"
+        capture
+            .values_of("gen_ai.request.model")
+            .contains(&json!("echo-override")),
+        "expected the override on the span"
     );
-}
-
-/// Captures every field recorded on a span, so the driver's telemetry is
-/// asserted through `tracing` rather than through its own call sites.
-struct RecordFields {
-    recorded: Arc<std::sync::Mutex<Vec<(String, String)>>>,
-}
-
-impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for RecordFields {
-    fn on_new_span(
-        &self,
-        attrs: &tracing::span::Attributes<'_>,
-        _id: &tracing::Id,
-        _ctx: tracing_subscriber::layer::Context<'_, S>,
-    ) {
-        let mut recorded = self
-            .recorded
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        attrs.record(&mut Visit(&mut recorded));
-    }
-
-    fn on_record(
-        &self,
-        _id: &tracing::Id,
-        values: &tracing::span::Record<'_>,
-        _ctx: tracing_subscriber::layer::Context<'_, S>,
-    ) {
-        let mut recorded = self
-            .recorded
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        values.record(&mut Visit(&mut recorded));
-    }
-}
-
-struct Visit<'a>(&'a mut Vec<(String, String)>);
-impl tracing::field::Visit for Visit<'_> {
-    fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
-        self.0.push((field.name().to_owned(), format!("{value:?}")));
-    }
-
-    fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
-        self.0.push((field.name().to_owned(), value.to_owned()));
-    }
-
-    fn record_u64(&mut self, field: &tracing::field::Field, value: u64) {
-        self.0.push((field.name().to_owned(), value.to_string()));
-    }
 }
 
 /// The text a folded response carries, for the assertions below.

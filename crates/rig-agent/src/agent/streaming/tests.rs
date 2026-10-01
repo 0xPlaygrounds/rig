@@ -14,9 +14,9 @@ use crate::run::transcript::TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER;
 use crate::run::transcript::tool_result_output;
 use crate::streaming::{Item, StreamEvent};
 use crate::test_utils::{
-    AppendFailingMemory, FailingMemory, MockAddTool, MockBarrierTool, MockCompletionModel,
-    MockContextProbeTool, MockStreamEvent, MockSubtractTool, MockToolError, MockTurn, SessionId,
-    mock_final,
+    AppendFailingMemory, CapturedSpan, FailingMemory, MockAddTool, MockBarrierTool,
+    MockCompletionModel, MockContextProbeTool, MockStreamEvent, MockSubtractTool, MockToolError,
+    MockTurn, SessionId, TraceCapture, mock_final,
 };
 use crate::tool::{Tool, ToolContext};
 use futures::{StreamExt, TryStreamExt};
@@ -27,14 +27,10 @@ use rig_core::message::{
 use rig_core::operation::Finish;
 use rig_core::providers::anthropic;
 use serde::Deserialize;
-use std::collections::{BTreeSet, HashMap};
+use std::collections::BTreeSet;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use tracing::field::{Field, Visit};
-use tracing::{Id, Subscriber};
-use tracing_subscriber::layer::{Context, SubscriberExt};
-use tracing_subscriber::{Layer, Registry, registry::LookupSpan};
 
 struct StopAgentStreamingBeforeCompletion;
 
@@ -696,170 +692,6 @@ async fn execution_commit_items_are_not_emitted_when_run_commit_fails() {
     assert!(!saw_result, "an uncommitted result cannot be surfaced");
 }
 
-#[derive(Clone, Debug, Default)]
-struct CapturedSpan {
-    id: u64,
-    name: String,
-    target: String,
-    parent_id: Option<u64>,
-    fields: HashMap<String, u64>,
-    string_fields: HashMap<String, String>,
-    record_counts: HashMap<String, usize>,
-}
-
-#[derive(Clone, Default)]
-struct CapturedSpans(Arc<Mutex<Vec<CapturedSpan>>>);
-
-impl CapturedSpans {
-    fn clear(&self) {
-        if let Ok(mut spans) = self.0.lock() {
-            spans.clear();
-        }
-    }
-
-    fn insert(&self, id: &Id, name: &str, target: &str, parent_id: Option<u64>) {
-        let id = id.into_u64();
-        if let Ok(mut spans) = self.0.lock() {
-            spans.push(CapturedSpan {
-                id,
-                name: name.to_string(),
-                target: target.to_string(),
-                parent_id,
-                fields: HashMap::new(),
-                string_fields: HashMap::new(),
-                record_counts: HashMap::new(),
-            });
-        }
-    }
-
-    fn record(&self, id: &Id, fields: Vec<CapturedField>) {
-        if let Ok(mut spans) = self.0.lock()
-            && let Some(span) = spans.iter_mut().rev().find(|span| span.id == id.into_u64())
-        {
-            for field in fields {
-                match field {
-                    CapturedField::Number(name, value) => {
-                        *span.record_counts.entry(name.clone()).or_insert(0) += 1;
-                        span.fields.insert(name, value);
-                    }
-                    CapturedField::Text(name, value) => {
-                        *span.record_counts.entry(name.clone()).or_insert(0) += 1;
-                        span.fields.insert(name.clone(), 0);
-                        span.string_fields.insert(name, value);
-                    }
-                }
-            }
-        }
-    }
-
-    fn record_strings(&self, id: &Id, fields: Vec<(String, String)>) {
-        if let Ok(mut spans) = self.0.lock()
-            && let Some(span) = spans.iter_mut().rev().find(|span| span.id == id.into_u64())
-        {
-            span.string_fields.extend(fields);
-        }
-    }
-
-    fn snapshot(&self) -> Vec<CapturedSpan> {
-        self.0.lock().map(|spans| spans.clone()).unwrap_or_default()
-    }
-}
-
-struct SpanCaptureLayer {
-    spans: CapturedSpans,
-}
-
-impl<S> Layer<S> for SpanCaptureLayer
-where
-    S: Subscriber,
-    S: for<'lookup> LookupSpan<'lookup>,
-{
-    fn on_new_span(&self, attrs: &tracing::span::Attributes<'_>, id: &Id, ctx: Context<'_, S>) {
-        // An explicit root (`parent: None`) has no parent even when a span
-        // is current; only a contextual span inherits the current one.
-        let parent_id = if attrs.is_root() {
-            None
-        } else {
-            attrs
-                .parent()
-                .map(Id::into_u64)
-                .or_else(|| ctx.current_span().id().map(Id::into_u64))
-        };
-        self.spans.insert(
-            id,
-            attrs.metadata().name(),
-            attrs.metadata().target(),
-            parent_id,
-        );
-        let mut string_fields = Vec::new();
-        attrs.record(&mut SpanStringCaptureVisitor {
-            fields: &mut string_fields,
-        });
-        self.spans.record_strings(id, string_fields);
-    }
-
-    fn on_record(&self, span: &Id, values: &tracing::span::Record<'_>, _ctx: Context<'_, S>) {
-        let mut fields = Vec::new();
-        values.record(&mut SpanFieldCaptureVisitor {
-            fields: &mut fields,
-        });
-        self.spans.record(span, fields);
-        let mut string_fields = Vec::new();
-        values.record(&mut SpanStringCaptureVisitor {
-            fields: &mut string_fields,
-        });
-        self.spans.record_strings(span, string_fields);
-    }
-}
-
-enum CapturedField {
-    Number(String, u64),
-    Text(String, String),
-}
-
-struct SpanFieldCaptureVisitor<'a> {
-    fields: &'a mut Vec<CapturedField>,
-}
-
-struct SpanStringCaptureVisitor<'a> {
-    fields: &'a mut Vec<(String, String)>,
-}
-
-impl Visit for SpanStringCaptureVisitor<'_> {
-    fn record_str(&mut self, field: &Field, value: &str) {
-        self.fields
-            .push((field.name().to_string(), value.to_string()));
-    }
-
-    fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
-        self.fields
-            .push((field.name().to_string(), format!("{value:?}")));
-    }
-}
-
-impl Visit for SpanFieldCaptureVisitor<'_> {
-    fn record_u64(&mut self, field: &Field, value: u64) {
-        self.fields
-            .push(CapturedField::Number(field.name().to_string(), value));
-    }
-
-    // Capture the *presence* of non-numeric fields (e.g. `gen_ai.completion`)
-    // with a placeholder value so tests can assert whether they were recorded.
-    fn record_str(&mut self, field: &Field, value: &str) {
-        self.fields.push(CapturedField::Text(
-            field.name().to_string(),
-            value.to_string(),
-        ));
-    }
-
-    fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
-        self.fields.push(CapturedField::Text(
-            field.name().to_string(),
-            format!("{value:?}"),
-        ));
-    }
-}
-
 async fn assert_stream_usage_recorded_on_chat_spans(
     agent: crate::agent::Agent,
     prompt: &str,
@@ -871,11 +703,8 @@ async fn assert_stream_usage_recorded_on_chat_spans(
     // guard's own docs carry that recipe plus the rule it cannot enforce:
     // an absence assertion needs a positive anchor, or it passes vacuously.
     let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
-    let spans = CapturedSpans::default();
-    let subscriber = Registry::default().with(SpanCaptureLayer {
-        spans: spans.clone(),
-    });
-    let _default = tracing::subscriber::set_default(subscriber);
+    let spans = TraceCapture::default();
+    let _default = tracing::subscriber::set_default(spans.subscriber());
 
     // Span callsites in the driver are shared with every other test in
     // this binary. The FIRST thread to hit a callsite caches its interest
@@ -926,7 +755,7 @@ async fn assert_stream_usage_recorded_on_chat_spans(
     .instrument(outer_span)
     .await;
 
-    let span_snapshot = spans.snapshot();
+    let span_snapshot = spans.spans();
     let outer_span_id = span_snapshot
         .iter()
         .find(|span| span.name == "outer")
@@ -944,18 +773,15 @@ async fn assert_stream_usage_recorded_on_chat_spans(
     );
 
     for (chat_span, expected_usage) in chat_spans.into_iter().zip(expected_usages) {
-        assert_eq!(chat_span.parent_id, Some(outer_span_id));
+        assert_eq!(chat_span.parent, Some(outer_span_id));
         // The provider's streaming span adopts the agent's chat span and
         // records its own operation onto it.
         assert_eq!(
-            chat_span
-                .string_fields
-                .get("gen_ai.operation.name")
-                .map(String::as_str),
+            chat_span.text("gen_ai.operation.name").as_deref(),
             Some("chat_streaming")
         );
         // A counter the provider did not report leaves its span field unset.
-        let field = |name: &str| chat_span.fields.get(name).copied();
+        let field = |name: &str| chat_span.u64(name);
         assert_eq!(
             field("gen_ai.usage.input_tokens"),
             expected_usage.input_tokens
@@ -988,13 +814,13 @@ async fn assert_stream_usage_recorded_on_chat_spans(
         .expect("outer span should be present");
     assert!(
         outer_span
-            .fields
-            .keys()
-            .all(|field| !field.starts_with("gen_ai.usage.")),
+            .recorded
+            .iter()
+            .all(|(field, _)| !field.starts_with("gen_ai.usage.")),
         "usage should not be recorded onto the caller's outer span"
     );
     assert!(
-        !outer_span.fields.contains_key("gen_ai.completion"),
+        outer_span.record_count("gen_ai.completion") == 0,
         "gen_ai.completion should not be recorded onto the caller's outer span \
              (parity with the blocking driver)"
     );
@@ -1004,11 +830,8 @@ async fn capture_stream_message_telemetry(
     record_telemetry_content: bool,
 ) -> (CapturedSpan, Vec<CompletionRequest>) {
     let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
-    let spans = CapturedSpans::default();
-    let subscriber = Registry::default().with(SpanCaptureLayer {
-        spans: spans.clone(),
-    });
-    let _default = tracing::subscriber::set_default(subscriber);
+    let spans = TraceCapture::default();
+    let _default = tracing::subscriber::set_default(spans.subscriber());
 
     let warmup_model = MockCompletionModel::from_stream_turns([[
         MockStreamEvent::text("warmup"),
@@ -1051,7 +874,7 @@ async fn capture_stream_message_telemetry(
     }
 
     let span = spans
-        .snapshot()
+        .spans()
         .into_iter()
         .find(|span| span.name == "chat_streaming")
         .expect("chat_streaming span should be captured");
@@ -1062,11 +885,8 @@ async fn capture_unary_message_telemetry(
     record_telemetry_content: bool,
 ) -> (CapturedSpan, CapturedSpan, Vec<CompletionRequest>) {
     let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
-    let spans = CapturedSpans::default();
-    let subscriber = Registry::default().with(SpanCaptureLayer {
-        spans: spans.clone(),
-    });
-    let _default = tracing::subscriber::set_default(subscriber);
+    let spans = TraceCapture::default();
+    let _default = tracing::subscriber::set_default(spans.subscriber());
 
     let warmup_agent = crate::agent::AgentBuilder::new(MockCompletionModel::text("warmup")).build();
     warmup_agent
@@ -1090,7 +910,7 @@ async fn capture_unary_message_telemetry(
         .await
         .expect("prompt should not error");
 
-    let snapshot = spans.snapshot();
+    let snapshot = spans.spans();
     let chat_span = snapshot
         .iter()
         .find(|span| span.name == "chat")
@@ -1107,11 +927,11 @@ async fn capture_unary_message_telemetry(
 async fn stream_prompt_message_telemetry_is_opt_in() {
     let (default_span, default_requests) = capture_stream_message_telemetry(false).await;
     assert!(
-        !default_span.fields.contains_key("gen_ai.input.messages"),
+        default_span.record_count("gen_ai.input.messages") == 0,
         "default streaming prompt should not record input message contents"
     );
     assert!(
-        !default_span.fields.contains_key("gen_ai.output.messages"),
+        default_span.record_count("gen_ai.output.messages") == 0,
         "default streaming prompt should not record output message contents"
     );
 
@@ -1123,30 +943,22 @@ async fn stream_prompt_message_telemetry_is_opt_in() {
 
     let (opt_in_span, opt_in_requests) = capture_stream_message_telemetry(true).await;
     let input = opt_in_span
-        .string_fields
-        .get("gen_ai.input.messages")
+        .text("gen_ai.input.messages")
         .expect("opt-in should record input messages");
     assert!(input.contains("stream prompt secret"));
     assert!(input.contains("static stream context secret"));
     let output = opt_in_span
-        .string_fields
-        .get("gen_ai.output.messages")
+        .text("gen_ai.output.messages")
         .expect("opt-in should record output messages");
     assert!(output.contains("stream response secret"));
     assert_eq!(
-        opt_in_span
-            .record_counts
-            .get("gen_ai.input.messages")
-            .copied(),
-        Some(1),
+        opt_in_span.record_count("gen_ai.input.messages"),
+        1,
         "agent-owned input message telemetry should be recorded once"
     );
     assert_eq!(
-        opt_in_span
-            .record_counts
-            .get("gen_ai.output.messages")
-            .copied(),
-        Some(1),
+        opt_in_span.record_count("gen_ai.output.messages"),
+        1,
         "agent-owned output message telemetry should be recorded once"
     );
     assert_eq!(opt_in_requests.len(), 1);
@@ -1161,29 +973,19 @@ async fn unary_prompt_message_telemetry_records_accepted_output_when_opted_in() 
     let (default_span, default_agent_span, default_requests) =
         capture_unary_message_telemetry(false).await;
     assert!(
-        !default_span.fields.contains_key("gen_ai.input.messages"),
+        default_span.record_count("gen_ai.input.messages") == 0,
         "default blocking prompt should not record input message contents"
     );
     assert!(
-        !default_span.fields.contains_key("gen_ai.output.messages"),
+        default_span.record_count("gen_ai.output.messages") == 0,
         "default blocking prompt should not record output message contents"
     );
     assert!(
-        !default_span
-            .string_fields
-            .contains_key("gen_ai.system_instructions"),
+        default_span.value("gen_ai.system_instructions").is_none(),
         "default blocking prompt should not record system instructions"
     );
-    assert!(
-        !default_agent_span
-            .string_fields
-            .contains_key("gen_ai.prompt")
-    );
-    assert!(
-        !default_agent_span
-            .string_fields
-            .contains_key("gen_ai.completion")
-    );
+    assert!(default_agent_span.value("gen_ai.prompt").is_none());
+    assert!(default_agent_span.value("gen_ai.completion").is_none());
     assert_eq!(default_requests.len(), 1);
     assert!(
         !default_requests[0].record_telemetry_content,
@@ -1193,34 +995,23 @@ async fn unary_prompt_message_telemetry_records_accepted_output_when_opted_in() 
     let (opt_in_span, opt_in_agent_span, opt_in_requests) =
         capture_unary_message_telemetry(true).await;
     let input = opt_in_span
-        .string_fields
-        .get("gen_ai.input.messages")
+        .text("gen_ai.input.messages")
         .expect("opt-in should record blocking input messages");
     assert!(input.contains("blocking prompt secret"));
     let output = opt_in_span
-        .string_fields
-        .get("gen_ai.output.messages")
+        .text("gen_ai.output.messages")
         .expect("opt-in should record blocking output messages");
     assert!(output.contains("blocking response secret"));
     assert_eq!(
-        opt_in_span
-            .string_fields
-            .get("gen_ai.system_instructions")
-            .map(String::as_str),
+        opt_in_span.text("gen_ai.system_instructions").as_deref(),
         Some(r#"[{"type":"text","content":"blocking system secret"}]"#)
     );
     assert_eq!(
-        opt_in_agent_span
-            .string_fields
-            .get("gen_ai.prompt")
-            .map(String::as_str),
+        opt_in_agent_span.text("gen_ai.prompt").as_deref(),
         Some("blocking prompt secret")
     );
     assert_eq!(
-        opt_in_agent_span
-            .string_fields
-            .get("gen_ai.completion")
-            .map(String::as_str),
+        opt_in_agent_span.text("gen_ai.completion").as_deref(),
         Some("blocking response secret")
     );
     assert_eq!(opt_in_requests.len(), 1);
@@ -1232,11 +1023,8 @@ async fn unary_prompt_message_telemetry_records_accepted_output_when_opted_in() 
 
 async fn capture_tool_content_telemetry(record_telemetry_content: bool) -> CapturedSpan {
     let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
-    let spans = CapturedSpans::default();
-    let subscriber = Registry::default().with(SpanCaptureLayer {
-        spans: spans.clone(),
-    });
-    let _default = tracing::subscriber::set_default(subscriber);
+    let spans = TraceCapture::default();
+    let _default = tracing::subscriber::set_default(spans.subscriber());
 
     let warmup = AgentBuilder::new(MockCompletionModel::from_turns([
         MockTurn::tool_call("warmup", "add", serde_json::json!({"x": 1, "y": 2})),
@@ -1275,7 +1063,7 @@ async fn capture_tool_content_telemetry(record_telemetry_content: bool) -> Captu
         .expect("tool run should succeed");
 
     spans
-        .snapshot()
+        .spans()
         .into_iter()
         .find(|span| span.name == "execute_tool")
         .expect("execute_tool span should be captured")
@@ -1284,21 +1072,10 @@ async fn capture_tool_content_telemetry(record_telemetry_content: bool) -> Captu
 #[tokio::test]
 async fn tool_arguments_and_results_follow_content_telemetry_toggle() {
     let default_span = capture_tool_content_telemetry(false).await;
-    assert!(
-        !default_span
-            .string_fields
-            .contains_key("gen_ai.tool.call.arguments")
-    );
-    assert!(
-        !default_span
-            .string_fields
-            .contains_key("gen_ai.tool.call.result")
-    );
+    assert!(default_span.value("gen_ai.tool.call.arguments").is_none());
+    assert!(default_span.value("gen_ai.tool.call.result").is_none());
     assert_eq!(
-        default_span
-            .string_fields
-            .get("gen_ai.tool.name")
-            .map(String::as_str),
+        default_span.text("gen_ai.tool.name").as_deref(),
         Some("add"),
         "structural tool metadata should remain available"
     );
@@ -1306,14 +1083,12 @@ async fn tool_arguments_and_results_follow_content_telemetry_toggle() {
     let opt_in_span = capture_tool_content_telemetry(true).await;
     assert!(
         opt_in_span
-            .string_fields
-            .get("gen_ai.tool.call.arguments")
+            .text("gen_ai.tool.call.arguments")
             .is_some_and(|args| args.contains("12345") && args.contains("67890"))
     );
     assert!(
         opt_in_span
-            .string_fields
-            .get("gen_ai.tool.call.result")
+            .text("gen_ai.tool.call.result")
             .is_some_and(|result| result.contains("80235"))
     );
 }
@@ -1321,11 +1096,8 @@ async fn tool_arguments_and_results_follow_content_telemetry_toggle() {
 #[tokio::test]
 async fn streaming_rejected_message_telemetry_does_not_record_output() {
     let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
-    let spans = CapturedSpans::default();
-    let subscriber = Registry::default().with(SpanCaptureLayer {
-        spans: spans.clone(),
-    });
-    let _default = tracing::subscriber::set_default(subscriber);
+    let spans = TraceCapture::default();
+    let _default = tracing::subscriber::set_default(spans.subscriber());
 
     let warmup_model = MockCompletionModel::from_stream_turns([[
         MockStreamEvent::text("warmup"),
@@ -1375,16 +1147,16 @@ async fn streaming_rejected_message_telemetry_does_not_record_output() {
     );
 
     let chat_span = spans
-        .snapshot()
+        .spans()
         .into_iter()
         .find(|span| span.name == "chat_streaming")
         .expect("chat_streaming span should be captured");
     assert!(
-        chat_span.fields.contains_key("gen_ai.input.messages"),
+        chat_span.record_count("gen_ai.input.messages") > 0,
         "opt-in rejected stream should still record input messages"
     );
     assert!(
-        !chat_span.fields.contains_key("gen_ai.output.messages"),
+        chat_span.record_count("gen_ai.output.messages") == 0,
         "rejected streaming turn must not record output message contents"
     );
 }
@@ -1392,11 +1164,8 @@ async fn streaming_rejected_message_telemetry_does_not_record_output() {
 #[tokio::test]
 async fn unary_repaired_message_telemetry_records_canonical_output() {
     let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
-    let spans = CapturedSpans::default();
-    let subscriber = Registry::default().with(SpanCaptureLayer {
-        spans: spans.clone(),
-    });
-    let _default = tracing::subscriber::set_default(subscriber);
+    let spans = TraceCapture::default();
+    let _default = tracing::subscriber::set_default(spans.subscriber());
 
     let warmup_agent = crate::agent::AgentBuilder::new(MockCompletionModel::text("warmup")).build();
     warmup_agent
@@ -1429,10 +1198,10 @@ async fn unary_repaired_message_telemetry_records_canonical_output() {
     assert_eq!(output.output, "done");
 
     let output_messages: Vec<String> = spans
-        .snapshot()
+        .spans()
         .into_iter()
         .filter(|span| span.name == "chat" && span.target == "rig::agent_chat")
-        .filter_map(|span| span.string_fields.get("gen_ai.output.messages").cloned())
+        .filter_map(|span| span.text("gen_ai.output.messages"))
         .collect();
     assert!(
         output_messages.iter().any(|output| output.contains("add")),
@@ -5753,11 +5522,8 @@ async fn run_channel_reports_stream_errors_on_the_future() {
 #[tokio::test]
 async fn a_stream_runs_under_the_span_it_was_built_in() {
     let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
-    let spans = CapturedSpans::default();
-    let subscriber = Registry::default().with(SpanCaptureLayer {
-        spans: spans.clone(),
-    });
-    let _default = tracing::subscriber::set_default(subscriber);
+    let spans = TraceCapture::default();
+    let _default = tracing::subscriber::set_default(spans.subscriber());
 
     // Same callsite-interest warm-up as `assert_stream_usage_recorded_on_chat_spans`.
     let warmup_agent = AgentBuilder::new(streaming_tool_then_text_model()).build();
@@ -5789,7 +5555,7 @@ async fn a_stream_runs_under_the_span_it_was_built_in() {
         Some(MultiTurnStreamItem::FinalResponse(_))
     ));
 
-    let snapshot = spans.snapshot();
+    let snapshot = spans.spans();
     let outer_id = snapshot
         .iter()
         .find(|span| span.name == "outer")
@@ -5805,7 +5571,7 @@ async fn a_stream_runs_under_the_span_it_was_built_in() {
         .collect();
     assert_eq!(chat_spans.len(), 2, "two model turns: {snapshot:?}");
     for chat_span in chat_spans {
-        assert_eq!(chat_span.parent_id, Some(outer_id));
+        assert_eq!(chat_span.parent, Some(outer_id));
     }
 }
 
@@ -5815,11 +5581,8 @@ async fn a_stream_runs_under_the_span_it_was_built_in() {
 #[tokio::test]
 async fn run_channel_runs_under_the_span_it_was_split_in() {
     let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
-    let spans = CapturedSpans::default();
-    let subscriber = Registry::default().with(SpanCaptureLayer {
-        spans: spans.clone(),
-    });
-    let _default = tracing::subscriber::set_default(subscriber);
+    let spans = TraceCapture::default();
+    let _default = tracing::subscriber::set_default(spans.subscriber());
 
     let warmup_agent = AgentBuilder::new(streaming_tool_then_text_model()).build();
     let mut warmup_stream = warmup_agent.prompt("warmup").max_turns(1).stream();
@@ -5843,7 +5606,7 @@ async fn run_channel_runs_under_the_span_it_was_split_in() {
         Some(MultiTurnStreamItem::FinalResponse(_))
     ));
 
-    let snapshot = spans.snapshot();
+    let snapshot = spans.spans();
     let outer_id = snapshot
         .iter()
         .find(|span| span.name == "outer")
@@ -5856,7 +5619,7 @@ async fn run_channel_runs_under_the_span_it_was_split_in() {
         .collect();
     assert_eq!(chat_spans.len(), 2, "two model turns: {snapshot:?}");
     for chat_span in chat_spans {
-        assert_eq!(chat_span.parent_id, Some(outer_id));
+        assert_eq!(chat_span.parent, Some(outer_id));
     }
 }
 
@@ -5866,11 +5629,8 @@ async fn run_channel_runs_under_the_span_it_was_split_in() {
 #[tokio::test]
 async fn a_stream_built_outside_a_span_stays_a_root_when_polled_inside_one() {
     let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
-    let spans = CapturedSpans::default();
-    let subscriber = Registry::default().with(SpanCaptureLayer {
-        spans: spans.clone(),
-    });
-    let _default = tracing::subscriber::set_default(subscriber);
+    let spans = TraceCapture::default();
+    let _default = tracing::subscriber::set_default(spans.subscriber());
 
     let warmup_agent = AgentBuilder::new(streaming_tool_then_text_model()).build();
     let mut warmup_stream = warmup_agent.prompt("warmup").max_turns(1).stream();
@@ -5898,7 +5658,7 @@ async fn a_stream_built_outside_a_span_stays_a_root_when_polled_inside_one() {
         Some(MultiTurnStreamItem::FinalResponse(_))
     ));
 
-    let snapshot = spans.snapshot();
+    let snapshot = spans.spans();
     let poller_id = snapshot
         .iter()
         .find(|span| span.name == "poller")
@@ -5908,15 +5668,15 @@ async fn a_stream_built_outside_a_span_stays_a_root_when_polled_inside_one() {
         .iter()
         .find(|span| span.name == "invoke_agent")
         .unwrap_or_else(|| panic!("a root invoke_agent is created: {snapshot:?}"));
-    assert_eq!(invoke.parent_id, None, "not the poller's child");
+    assert_eq!(invoke.parent, None, "not the poller's child");
     let chat_spans: Vec<_> = snapshot
         .iter()
         .filter(|span| span.name == "chat_streaming")
         .collect();
     assert_eq!(chat_spans.len(), 2);
     for chat_span in chat_spans {
-        assert_eq!(chat_span.parent_id, Some(invoke.id));
-        assert_ne!(chat_span.parent_id, Some(poller_id));
+        assert_eq!(chat_span.parent, Some(invoke.id));
+        assert_ne!(chat_span.parent, Some(poller_id));
     }
 }
 
@@ -5928,11 +5688,8 @@ async fn a_stream_built_outside_a_span_stays_a_root_when_polled_inside_one() {
 #[tokio::test]
 async fn a_blocking_run_belongs_to_the_span_it_was_started_in() {
     let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
-    let spans = CapturedSpans::default();
-    let subscriber = Registry::default().with(SpanCaptureLayer {
-        spans: spans.clone(),
-    });
-    let _default = tracing::subscriber::set_default(subscriber);
+    let spans = TraceCapture::default();
+    let _default = tracing::subscriber::set_default(spans.subscriber());
 
     let warmup_agent = AgentBuilder::new(MockCompletionModel::text("warmup")).build();
     warmup_agent.prompt("warmup").await.expect("warmup");
@@ -5948,7 +5705,7 @@ async fn a_blocking_run_belongs_to_the_span_it_was_started_in() {
         .expect("run succeeds");
     assert_eq!(response.output(), "done");
 
-    let snapshot = spans.snapshot();
+    let snapshot = spans.spans();
     let outer_id = snapshot
         .iter()
         .find(|span| span.name == "outer")
@@ -5960,7 +5717,7 @@ async fn a_blocking_run_belongs_to_the_span_it_was_started_in() {
         .filter(|span| span.name == "chat" && span.target == "rig::agent_chat")
         .collect();
     assert_eq!(chat_spans.len(), 1, "one model turn: {snapshot:?}");
-    assert_eq!(chat_spans[0].parent_id, Some(outer_id));
+    assert_eq!(chat_spans[0].parent, Some(outer_id));
 }
 
 /// A typed run reaches the same rule through `IntoFuture`: the future is
@@ -5968,11 +5725,8 @@ async fn a_blocking_run_belongs_to_the_span_it_was_started_in() {
 #[tokio::test]
 async fn a_typed_run_belongs_to_the_span_it_was_started_in() {
     let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
-    let spans = CapturedSpans::default();
-    let subscriber = Registry::default().with(SpanCaptureLayer {
-        spans: spans.clone(),
-    });
-    let _default = tracing::subscriber::set_default(subscriber);
+    let spans = TraceCapture::default();
+    let _default = tracing::subscriber::set_default(spans.subscriber());
 
     let warmup_agent = AgentBuilder::new(MockCompletionModel::text("{\"n\": 0}")).build();
     warmup_agent
@@ -5993,7 +5747,7 @@ async fn a_typed_run_belongs_to_the_span_it_was_started_in() {
         .expect("typed run succeeds");
     assert_eq!(response.output["n"], 1);
 
-    let snapshot = spans.snapshot();
+    let snapshot = spans.spans();
     let outer_id = snapshot
         .iter()
         .find(|span| span.name == "outer")
@@ -6005,7 +5759,7 @@ async fn a_typed_run_belongs_to_the_span_it_was_started_in() {
         .filter(|span| span.name == "chat" && span.target == "rig::agent_chat")
         .collect();
     assert_eq!(chat_spans.len(), 1, "one model turn: {snapshot:?}");
-    assert_eq!(chat_spans[0].parent_id, Some(outer_id));
+    assert_eq!(chat_spans[0].parent, Some(outer_id));
 }
 
 /// The blocking counterpart of the stream root test: a run started outside
@@ -6014,11 +5768,8 @@ async fn a_typed_run_belongs_to_the_span_it_was_started_in() {
 #[tokio::test]
 async fn a_blocking_run_started_outside_a_span_stays_a_root_when_polled_inside_one() {
     let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
-    let spans = CapturedSpans::default();
-    let subscriber = Registry::default().with(SpanCaptureLayer {
-        spans: spans.clone(),
-    });
-    let _default = tracing::subscriber::set_default(subscriber);
+    let spans = TraceCapture::default();
+    let _default = tracing::subscriber::set_default(spans.subscriber());
 
     let warmup_agent = AgentBuilder::new(MockCompletionModel::text("warmup")).build();
     warmup_agent.prompt("warmup").await.expect("warmup");
@@ -6031,7 +5782,7 @@ async fn a_blocking_run_started_outside_a_span_stays_a_root_when_polled_inside_o
     let response = run.instrument(poller_span).await.expect("run succeeds");
     assert_eq!(response.output(), "done");
 
-    let snapshot = spans.snapshot();
+    let snapshot = spans.spans();
     let poller_id = snapshot
         .iter()
         .find(|span| span.name == "poller")
@@ -6041,14 +5792,14 @@ async fn a_blocking_run_started_outside_a_span_stays_a_root_when_polled_inside_o
         .iter()
         .find(|span| span.name == "invoke_agent")
         .unwrap_or_else(|| panic!("a root invoke_agent is created: {snapshot:?}"));
-    assert_eq!(invoke.parent_id, None, "not the poller's child");
+    assert_eq!(invoke.parent, None, "not the poller's child");
     let chat_spans: Vec<_> = snapshot
         .iter()
         .filter(|span| span.name == "chat" && span.target == "rig::agent_chat")
         .collect();
     assert_eq!(chat_spans.len(), 1, "one model turn: {snapshot:?}");
     assert_eq!(
-        chat_spans[0].parent_id,
+        chat_spans[0].parent,
         Some(invoke.id),
         "not the poller {poller_id}"
     );

@@ -2412,148 +2412,25 @@ mod structured_tool_results {
 /// streaming side is already pinned by `assert_stream_usage_recorded_on_chat_spans`.
 mod span_safety_net {
     use crate::agent::telemetry::build_chat_span;
-    use std::collections::{HashMap, HashSet};
-    use std::sync::{Arc, Mutex};
+    use std::collections::HashSet;
 
     use futures::StreamExt;
+    use serde_json::Value;
     use tracing::Instrument;
-    use tracing::field::{Field, Visit};
-    use tracing::span::{Attributes, Record};
-    use tracing::{Id, Subscriber};
-    use tracing_subscriber::layer::{Context, SubscriberExt};
-    use tracing_subscriber::{Layer, Registry, registry::LookupSpan};
+    use tracing_subscriber::Registry;
 
     use crate::agent::{
         AgentBuilder, HookContext, MultiTurnStreamItem, OutcomeAction, OutcomeEvent,
     };
     use crate::completion::{PromptError, Usage};
     use crate::test_utils::{
-        MockAddTool, MockCompletionModel, MockScript, MockStreamEvent, MockTurn,
+        CapturedSpan, MockAddTool, MockCompletionModel, MockScript, MockStreamEvent, MockTurn,
+        TraceCapture,
     };
     use crate::tool::{ToolContext, ToolExecutionError};
     use rig_core::driver::Model;
 
     use super::{BoundedResponseRetry, StopCompletedModelTurn, TestRetryMode};
-
-    #[derive(Clone)]
-    struct CapturedSpan {
-        id: u64,
-        name: String,
-        target: String,
-        field_names: HashSet<String>,
-        u64_fields: HashMap<String, u64>,
-        string_fields: HashMap<String, Vec<String>>,
-    }
-
-    #[derive(Clone, Default)]
-    struct Captured {
-        spans: Arc<Mutex<Vec<CapturedSpan>>>,
-        /// `(span, follows_from)` pairs recorded via `Span::follows_from`.
-        follows: Arc<Mutex<Vec<(u64, u64)>>>,
-    }
-
-    impl Captured {
-        fn insert(&self, id: &Id, name: &str, target: &str) {
-            self.spans.lock().expect("spans").push(CapturedSpan {
-                id: id.into_u64(),
-                name: name.to_string(),
-                target: target.to_string(),
-                field_names: HashSet::new(),
-                u64_fields: HashMap::new(),
-                string_fields: HashMap::new(),
-            });
-        }
-
-        fn record(
-            &self,
-            id: &Id,
-            names: HashSet<String>,
-            u64s: HashMap<String, u64>,
-            strings: HashMap<String, String>,
-        ) {
-            let id = id.into_u64();
-            if let Ok(mut spans) = self.spans.lock()
-                && let Some(span) = spans.iter_mut().find(|s| s.id == id)
-            {
-                span.field_names.extend(names);
-                span.u64_fields.extend(u64s);
-                for (name, value) in strings {
-                    span.string_fields.entry(name).or_default().push(value);
-                }
-            }
-        }
-
-        fn follows_from(&self, span: &Id, follows: &Id) {
-            self.follows
-                .lock()
-                .expect("follows")
-                .push((span.into_u64(), follows.into_u64()));
-        }
-
-        fn clear(&self) {
-            self.spans.lock().expect("spans").clear();
-            self.follows.lock().expect("follows").clear();
-        }
-
-        fn snapshot(&self) -> Vec<CapturedSpan> {
-            self.spans.lock().expect("spans").clone()
-        }
-
-        fn follows_edges(&self) -> Vec<(u64, u64)> {
-            self.follows.lock().expect("follows").clone()
-        }
-    }
-
-    struct CaptureLayer {
-        captured: Captured,
-    }
-
-    impl<S> Layer<S> for CaptureLayer
-    where
-        S: Subscriber + for<'l> LookupSpan<'l>,
-    {
-        fn on_new_span(&self, attrs: &Attributes<'_>, id: &Id, _ctx: Context<'_, S>) {
-            self.captured
-                .insert(id, attrs.metadata().name(), attrs.metadata().target());
-        }
-
-        fn on_record(&self, span: &Id, values: &Record<'_>, _ctx: Context<'_, S>) {
-            let mut visitor = FieldVisitor::default();
-            values.record(&mut visitor);
-            self.captured
-                .record(span, visitor.names, visitor.u64s, visitor.strings);
-        }
-
-        fn on_follows_from(&self, span: &Id, follows: &Id, _ctx: Context<'_, S>) {
-            self.captured.follows_from(span, follows);
-        }
-    }
-
-    #[derive(Default)]
-    struct FieldVisitor {
-        names: HashSet<String>,
-        u64s: HashMap<String, u64>,
-        strings: HashMap<String, String>,
-    }
-
-    impl Visit for FieldVisitor {
-        fn record_u64(&mut self, field: &Field, value: u64) {
-            self.names.insert(field.name().to_string());
-            self.u64s.insert(field.name().to_string(), value);
-        }
-
-        fn record_str(&mut self, field: &Field, value: &str) {
-            self.names.insert(field.name().to_string());
-            self.strings
-                .insert(field.name().to_string(), value.to_string());
-        }
-
-        fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
-            self.names.insert(field.name().to_string());
-            self.strings
-                .insert(field.name().to_string(), format!("{value:?}"));
-        }
-    }
 
     fn usage(input: u64, output: u64) -> Usage {
         Usage {
@@ -2747,11 +2624,8 @@ mod span_safety_net {
     #[tokio::test]
     async fn response_retry_records_only_accepted_content_on_both_surfaces() {
         let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
-        let captured = Captured::default();
-        let subscriber = Registry::default().with(CaptureLayer {
-            captured: captured.clone(),
-        });
-        let _default = tracing::subscriber::set_default(subscriber);
+        let captured = TraceCapture::default();
+        let _default = tracing::subscriber::set_default(captured.subscriber());
 
         // Register both transport callsites under this subscriber before
         // inspecting field recordings.
@@ -2761,7 +2635,7 @@ mod span_safety_net {
         captured.clear();
 
         run_blocking_response_retry_with_content_telemetry().await;
-        let blocking = captured.snapshot();
+        let blocking = captured.spans();
         let blocking_chats = blocking
             .iter()
             .filter(|span| span.name == "chat")
@@ -2773,21 +2647,14 @@ mod span_safety_net {
                 .all(|span| span.target == "rig::agent_chat")
         );
         assert!(
-            !blocking_chats[0]
-                .field_names
-                .contains("gen_ai.output.messages"),
+            blocking_chats[0].record_count("gen_ai.output.messages") == 0,
             "rejected blocking content must not be recorded as model output"
         );
         assert!(
-            blocking_chats[1]
-                .field_names
-                .contains("gen_ai.output.messages"),
+            blocking_chats[1].record_count("gen_ai.output.messages") > 0,
             "accepted blocking content must be recorded as model output"
         );
-        let blocking_output = blocking_chats[1]
-            .string_fields
-            .get("gen_ai.output.messages")
-            .expect("accepted blocking output value");
+        let blocking_output = blocking_chats[1].recorded_texts("gen_ai.output.messages");
         assert!(
             blocking_output
                 .iter()
@@ -2801,13 +2668,13 @@ mod span_safety_net {
         let blocking_completion = blocking
             .iter()
             .find(|span| span.name == "invoke_agent")
-            .and_then(|span| span.string_fields.get("gen_ai.completion"))
+            .map(|span| span.recorded_texts("gen_ai.completion"))
             .expect("accepted blocking run-level completion");
         assert_eq!(blocking_completion, &["accepted"]);
 
         captured.clear();
         run_streaming_response_retry_with_content_telemetry().await;
-        let streaming = captured.snapshot();
+        let streaming = captured.spans();
         let streaming_chats = streaming
             .iter()
             .filter(|span| span.name == "chat_streaming")
@@ -2819,21 +2686,14 @@ mod span_safety_net {
                 .all(|span| span.target == "rig::agent_chat")
         );
         assert!(
-            !streaming_chats[0]
-                .field_names
-                .contains("gen_ai.output.messages"),
+            streaming_chats[0].record_count("gen_ai.output.messages") == 0,
             "rejected streaming content must not be recorded as model output"
         );
         assert!(
-            streaming_chats[1]
-                .field_names
-                .contains("gen_ai.output.messages"),
+            streaming_chats[1].record_count("gen_ai.output.messages") > 0,
             "accepted streaming content must be recorded as model output"
         );
-        let streaming_output = streaming_chats[1]
-            .string_fields
-            .get("gen_ai.output.messages")
-            .expect("accepted streaming output value");
+        let streaming_output = streaming_chats[1].recorded_texts("gen_ai.output.messages");
         assert!(
             streaming_output
                 .iter()
@@ -2847,7 +2707,7 @@ mod span_safety_net {
         let streaming_completion = streaming
             .iter()
             .find(|span| span.name == "invoke_agent")
-            .and_then(|span| span.string_fields.get("gen_ai.completion"))
+            .map(|span| span.recorded_texts("gen_ai.completion"))
             .expect("accepted streaming run-level completion");
         assert_eq!(streaming_completion, &["accepted"]);
     }
@@ -2855,11 +2715,8 @@ mod span_safety_net {
     #[tokio::test]
     async fn model_turn_stop_preserves_completed_content_telemetry_on_both_surfaces() {
         let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
-        let captured = Captured::default();
-        let subscriber = Registry::default().with(CaptureLayer {
-            captured: captured.clone(),
-        });
-        let _default = tracing::subscriber::set_default(subscriber);
+        let captured = TraceCapture::default();
+        let _default = tracing::subscriber::set_default(captured.subscriber());
 
         run_blocking_model_turn_stop_with_content_telemetry().await;
         run_streaming_model_turn_stop_with_content_telemetry().await;
@@ -2867,11 +2724,11 @@ mod span_safety_net {
         captured.clear();
 
         run_blocking_model_turn_stop_with_content_telemetry().await;
-        let blocking = captured.snapshot();
+        let blocking = captured.spans();
         let blocking_output = blocking
             .iter()
             .find(|span| span.name == "chat")
-            .and_then(|span| span.string_fields.get("gen_ai.output.messages"))
+            .map(|span| span.recorded_texts("gen_ai.output.messages"))
             .expect("stopped blocking turn should retain output telemetry");
         assert!(
             blocking_output
@@ -2881,11 +2738,11 @@ mod span_safety_net {
 
         captured.clear();
         run_streaming_model_turn_stop_with_content_telemetry().await;
-        let streaming = captured.snapshot();
+        let streaming = captured.spans();
         let streaming_output = streaming
             .iter()
             .find(|span| span.name == "chat_streaming")
-            .and_then(|span| span.string_fields.get("gen_ai.output.messages"))
+            .map(|span| span.recorded_texts("gen_ai.output.messages"))
             .expect("stopped streaming turn should retain output telemetry");
         assert!(
             streaming_output
@@ -2895,7 +2752,7 @@ mod span_safety_net {
         let streaming_completion = streaming
             .iter()
             .find(|span| span.name == "invoke_agent")
-            .and_then(|span| span.string_fields.get("gen_ai.completion"))
+            .map(|span| span.recorded_texts("gen_ai.completion"))
             .expect("stopped streaming turn should retain run-level completion telemetry");
         assert_eq!(streaming_completion, &["stopped streaming response"]);
     }
@@ -2903,11 +2760,8 @@ mod span_safety_net {
     #[tokio::test]
     async fn run_records_usage_and_chains_chat_spans_on_a_created_agent_span() {
         let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
-        let captured = Captured::default();
-        let subscriber = Registry::default().with(CaptureLayer {
-            captured: captured.clone(),
-        });
-        let _default = tracing::subscriber::set_default(subscriber);
+        let captured = TraceCapture::default();
+        let _default = tracing::subscriber::set_default(captured.subscriber());
 
         warm_blocking_callsites().await;
         tracing::callsite::rebuild_interest_cache();
@@ -2925,7 +2779,7 @@ mod span_safety_net {
             .expect("blocking run should succeed");
         assert_eq!(response.output, "the answer is 5");
 
-        let spans = captured.snapshot();
+        let spans = captured.spans();
 
         // The blocking chat span is named "chat" (NOT "chat_streaming").
         let chat_spans: Vec<&CapturedSpan> = spans.iter().filter(|s| s.name == "chat").collect();
@@ -2942,16 +2796,10 @@ mod span_safety_net {
             .expect("blocking run should create an invoke_agent span");
 
         // ...and records aggregate usage + completion onto it (created_agent_span).
-        assert_eq!(
-            agent_span.u64_fields.get("gen_ai.usage.input_tokens"),
-            Some(&(7 + 13)),
-        );
-        assert_eq!(
-            agent_span.u64_fields.get("gen_ai.usage.output_tokens"),
-            Some(&(11 + 17)),
-        );
+        assert_eq!(agent_span.u64("gen_ai.usage.input_tokens"), Some(7 + 13));
+        assert_eq!(agent_span.u64("gen_ai.usage.output_tokens"), Some(11 + 17));
         assert!(
-            agent_span.field_names.contains("gen_ai.completion"),
+            agent_span.record_count("gen_ai.completion") > 0,
             "the created agent span records the final completion text"
         );
 
@@ -2963,7 +2811,10 @@ mod span_safety_net {
             .iter()
             .find(|s| s.name == "execute_tool")
             .expect("tool turn should emit an execute_tool span");
-        let edges = captured.follows_edges();
+        let edges: Vec<(u64, u64)> = spans
+            .iter()
+            .flat_map(|span| span.follows_from.iter().map(|from| (span.id, *from)))
+            .collect();
         assert!(
             edges.contains(&(tool_span.id, chat_spans[0].id)),
             "execute_tool should follow_from the first chat span; edges={edges:?}"
@@ -2977,11 +2828,8 @@ mod span_safety_net {
     #[tokio::test]
     async fn classic_completion_parent_is_enriched_without_duplicate_provider_span() {
         let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
-        let captured = Captured::default();
-        let subscriber = Registry::default().with(CaptureLayer {
-            captured: captured.clone(),
-        });
-        let _default = tracing::subscriber::set_default(subscriber);
+        let captured = TraceCapture::default();
+        let _default = tracing::subscriber::set_default(captured.subscriber());
 
         let warm = AgentBuilder::new(fixture_telemetry_model("warm")).build();
         let _ = warm.prompt("warm").await;
@@ -2992,7 +2840,7 @@ mod span_safety_net {
         let response = agent.prompt("hello").await.expect("prompt should succeed");
         assert_eq!(response.output, "done");
 
-        let spans = captured.snapshot();
+        let spans = captured.spans();
         let chat_spans = spans
             .iter()
             .filter(|span| span.name == "chat")
@@ -3005,17 +2853,15 @@ mod span_safety_net {
         );
         assert_eq!(
             chat_spans[0]
-                .string_fields
-                .get("gen_ai.provider.name")
-                .and_then(|values| values.first())
+                .recorded_texts("gen_ai.provider.name")
+                .first()
                 .map(String::as_str),
             Some("fixture-provider")
         );
         assert_eq!(
             chat_spans[0]
-                .string_fields
-                .get("gen_ai.request.model")
-                .and_then(|values| values.first())
+                .recorded_texts("gen_ai.request.model")
+                .first()
                 .map(String::as_str),
             Some("fixture-model")
         );
@@ -3024,11 +2870,8 @@ mod span_safety_net {
     #[tokio::test]
     async fn run_does_not_record_usage_onto_a_caller_supplied_outer_span() {
         let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
-        let captured = Captured::default();
-        let subscriber = Registry::default().with(CaptureLayer {
-            captured: captured.clone(),
-        });
-        let _default = tracing::subscriber::set_default(subscriber);
+        let captured = TraceCapture::default();
+        let _default = tracing::subscriber::set_default(captured.subscriber());
 
         warm_blocking_callsites().await;
         tracing::callsite::rebuild_interest_cache();
@@ -3057,7 +2900,7 @@ mod span_safety_net {
         .instrument(outer)
         .await;
 
-        let spans = captured.snapshot();
+        let spans = captured.spans();
         // Under an ambient span the driver adopts it; no invoke_agent is created.
         assert!(
             spans.iter().all(|s| s.name != "invoke_agent"),
@@ -3069,13 +2912,13 @@ mod span_safety_net {
             .expect("outer span should be captured");
         assert!(
             outer_span
-                .field_names
+                .recorded
                 .iter()
-                .all(|name| !name.starts_with("gen_ai.usage.")),
+                .all(|(name, _)| !name.starts_with("gen_ai.usage.")),
             "run-level usage must not be recorded onto a caller-supplied outer span"
         );
         assert!(
-            !outer_span.field_names.contains("gen_ai.completion"),
+            outer_span.record_count("gen_ai.completion") == 0,
             "run-level completion must not be recorded onto a caller-supplied outer span"
         );
     }
@@ -3126,57 +2969,19 @@ mod span_safety_net {
         }
     }
 
-    /// Captures every value recorded into the `gen_ai.tool.call.result` span
-    /// field, so tests can assert telemetry follows result-hook policy.
-    #[derive(Default)]
-    struct ResultValueVisitor {
-        values: Vec<String>,
-    }
-    impl Visit for ResultValueVisitor {
-        fn record_str(&mut self, field: &Field, value: &str) {
-            if field.name() == "gen_ai.tool.call.result" {
-                self.values.push(value.to_string());
-            }
-        }
-        fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
-            if field.name() == "gen_ai.tool.call.result" {
-                self.values.push(format!("{value:?}"));
-            }
-        }
-    }
-
-    struct ResultValueLayer {
-        values: Arc<Mutex<Vec<String>>>,
-    }
-    impl<S> Layer<S> for ResultValueLayer
-    where
-        S: Subscriber + for<'l> LookupSpan<'l>,
-    {
-        fn on_record(&self, _span: &Id, values: &Record<'_>, _ctx: Context<'_, S>) {
-            let mut visitor = ResultValueVisitor::default();
-            values.record(&mut visitor);
-            if !visitor.values.is_empty() {
-                self.values.lock().expect("values").extend(visitor.values);
-            }
-        }
-    }
-
     /// A `ToolResult` rewrite applies to both model presentation and
     /// telemetry so redaction hooks cannot leak the raw output through spans.
     #[tokio::test]
     async fn tool_result_rewrite_redacts_span_output() {
         let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
-        let values: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
-        let subscriber = Registry::default().with(ResultValueLayer {
-            values: values.clone(),
-        });
-        let _default = tracing::subscriber::set_default(subscriber);
+        let capture = TraceCapture::default();
+        let _default = tracing::subscriber::set_default(capture.subscriber());
 
         // Warm the `execute_tool` result callsite under this subscriber, then
         // reset — mirroring the usage tests' interest-cache warm-up.
         warm_blocking_callsites().await;
         tracing::callsite::rebuild_interest_cache();
-        values.lock().expect("values").clear();
+        capture.clear();
 
         let model = MockCompletionModel::from_turns([
             MockTurn::tool_call("tc1", "raw_output", serde_json::json!({})),
@@ -3194,7 +2999,8 @@ mod span_safety_net {
             .expect("run should succeed");
         assert_eq!(response.output, "ok");
 
-        let captured = values.lock().expect("values").clone();
+        let captured = capture.values_of("gen_ai.tool.call.result");
+        let captured: Vec<&str> = captured.iter().filter_map(Value::as_str).collect();
         assert!(
             captured.iter().any(|v| v.contains("[REDACTED]")),
             "the rewritten presentation must reach telemetry; captured: {captured:?}"
@@ -3212,15 +3018,12 @@ mod span_safety_net {
     #[tokio::test]
     async fn tool_result_stop_omits_span_output() {
         let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
-        let values: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
-        let subscriber = Registry::default().with(ResultValueLayer {
-            values: values.clone(),
-        });
-        let _default = tracing::subscriber::set_default(subscriber);
+        let capture = TraceCapture::default();
+        let _default = tracing::subscriber::set_default(capture.subscriber());
 
         warm_blocking_callsites().await;
         tracing::callsite::rebuild_interest_cache();
-        values.lock().expect("values").clear();
+        capture.clear();
 
         let result = AgentBuilder::new(MockCompletionModel::from_turns([MockTurn::tool_call(
             "tc1",
@@ -3236,7 +3039,8 @@ mod span_safety_net {
         .await;
         assert!(result.is_err(), "the result hook should stop the run");
 
-        let captured = values.lock().expect("values").clone();
+        let captured = capture.values_of("gen_ai.tool.call.result");
+        let captured: Vec<&str> = captured.iter().filter_map(Value::as_str).collect();
         assert!(
             !captured
                 .iter()
