@@ -19,36 +19,37 @@ use crate::embedding::Embeddings;
 use crate::image::Images;
 use rig_core::Model;
 
-pub const DEFAULT_AWS_REGION: &str = "us-east-1";
-
-#[derive(Clone)]
-pub struct Builder<'a> {
-    region: &'a str,
+/// Settings for a [`BedrockRuntime`]. Unset values fall back to the AWS SDK's
+/// default provider chain (environment, shared config files, instance
+/// metadata) when the runtime first loads its configuration.
+#[derive(Clone, Debug, Default)]
+pub struct Builder {
+    region: Option<String>,
+    profile_name: Option<String>,
 }
 
-impl<'a> Builder<'a> {
+impl Builder {
     /// Sets the AWS region. The selected model must be
     /// [available there](https://docs.aws.amazon.com/bedrock/latest/userguide/models-regions.html).
-    pub fn region(mut self, region: &'a str) -> Self {
-        self.region = region;
+    pub fn region(mut self, region: impl Into<String>) -> Self {
+        self.region = Some(region.into());
         self
     }
 
-    /// Loads AWS SDK configuration and constructs a runtime for the selected region.
-    /// Requests require permission to access the selected Bedrock model.
-    pub async fn build(self) -> BedrockRuntime {
-        let sdk_config = aws_config::defaults(BehaviorVersion::latest())
-            .region(Region::new(String::from(self.region)))
-            .load()
-            .await;
-        BedrockRuntime::from(aws_sdk_bedrockruntime::Client::new(&sdk_config))
+    /// Loads credentials and settings from the named profile in the shared
+    /// AWS config files. An explicit [`region`](Self::region) overrides the
+    /// profile's region.
+    pub fn profile_name(mut self, profile_name: impl Into<String>) -> Self {
+        self.profile_name = Some(profile_name.into());
+        self
     }
-}
 
-impl Default for Builder<'_> {
-    fn default() -> Self {
-        Self {
-            region: DEFAULT_AWS_REGION,
+    /// A runtime that loads its AWS configuration on first use.
+    /// Construction does not validate credentials.
+    pub fn build(self) -> BedrockRuntime {
+        BedrockRuntime {
+            settings: self,
+            aws_client: Arc::new(OnceCell::new()),
         }
     }
 }
@@ -58,40 +59,39 @@ impl Default for Builder<'_> {
 /// it was built from a configured SDK client.
 #[derive(Clone, Debug)]
 pub struct BedrockRuntime {
-    profile_name: Option<String>,
+    settings: Builder,
     aws_client: Arc<OnceCell<aws_sdk_bedrockruntime::Client>>,
 }
 
 impl From<aws_sdk_bedrockruntime::Client> for BedrockRuntime {
     fn from(aws_client: aws_sdk_bedrockruntime::Client) -> Self {
         Self {
-            profile_name: None,
+            settings: Builder::default(),
             aws_client: Arc::new(OnceCell::from(aws_client)),
         }
     }
 }
 
 impl BedrockRuntime {
-    /// A builder that loads AWS SDK configuration for a chosen region.
-    pub fn builder<'a>() -> Builder<'a> {
+    /// A builder for a runtime with an explicit region or profile.
+    ///
+    /// ```no_run
+    /// use rig_bedrock::client::BedrockRuntime;
+    ///
+    /// let runtime = BedrockRuntime::builder()
+    ///     .profile_name("bedrock")
+    ///     .region("eu-west-1")
+    ///     .build();
+    /// # let _ = runtime;
+    /// ```
+    pub fn builder() -> Builder {
         Builder::default()
     }
 
     /// A runtime that loads AWS SDK configuration from the environment on
     /// first use. Construction does not validate credentials.
     pub fn from_env() -> Self {
-        Self {
-            profile_name: None,
-            aws_client: Arc::new(OnceCell::new()),
-        }
-    }
-
-    /// A runtime that loads the named AWS profile on first use.
-    pub fn with_profile_name(profile_name: &str) -> Self {
-        Self {
-            profile_name: Some(profile_name.into()),
-            aws_client: Arc::new(OnceCell::new()),
-        }
+        Builder::default().build()
     }
 
     /// The Converse model for `model`. Wire options such as a guardrail go
@@ -118,16 +118,18 @@ impl BedrockRuntime {
     pub async fn inner(&self) -> &aws_sdk_bedrockruntime::Client {
         self.aws_client
             .get_or_init(|| async {
-                let config = if let Some(profile_name) = &self.profile_name {
-                    aws_config::defaults(BehaviorVersion::latest())
-                        .profile_name(profile_name)
-                        .load()
-                        .await
-                } else {
-                    aws_config::load_from_env().await
-                };
-                aws_sdk_bedrockruntime::Client::new(&config)
+                let mut loader = aws_config::defaults(BehaviorVersion::latest());
+                if let Some(profile_name) = &self.settings.profile_name {
+                    loader = loader.profile_name(profile_name);
+                }
+                if let Some(region) = self.settings.region.clone() {
+                    loader = loader.region(Region::new(region));
+                }
+                aws_sdk_bedrockruntime::Client::new(&loader.load().await)
             })
             .await
     }
 }
+
+#[cfg(test)]
+mod tests;
