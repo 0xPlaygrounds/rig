@@ -15,6 +15,10 @@ use rig_core::completion::{
 };
 use rig_core::error::ProviderError;
 use rig_core::message::ToolChoice;
+use rig_core::structured_output::{
+    AUGMENTATION_SEPARATOR, OUTPUT_TOOL_DESCRIPTION, output_tool_augmentation,
+    output_tool_callable, output_tool_name, prompted_augmentation,
+};
 
 use super::output::OutputMode;
 use super::patch::RequestPatch;
@@ -180,11 +184,10 @@ pub fn prepare_request(
     // the output tool. A committed name prevents changing output mode mid-run.
     let candidate_output_tool = committed_output_tool.map_or_else(
         || {
-            pick_output_tool_name(
-                pre_filter_tool_names
-                    .as_ref()
-                    .unwrap_or(&executable_tool_names),
-            )
+            let taken = pre_filter_tool_names
+                .as_ref()
+                .unwrap_or(&executable_tool_names);
+            output_tool_name(|name| taken.contains(name))
         },
         str::to_owned,
     );
@@ -232,27 +235,16 @@ pub fn prepare_request(
         let base = preamble.map(str::to_owned);
         let instruction = match &resolved_mode {
             OutputMode::Tool if augment_output_preamble => {
-                output_tool_name.as_deref().map(|name| {
-                    format!(
-                        "When you have gathered enough information to answer, call the `{name}` \
-                     tool exactly once with your final answer. Its arguments are the structured \
-                     result and must satisfy the required schema. Do not return the final answer \
-                     as plain text."
-                    )
-                })
+                output_tool_name.as_deref().map(output_tool_augmentation)
             }
             OutputMode::Tool => None,
             OutputMode::Prompted => output_schema.map(|schema| {
-                let schema_json = rig_core::json_utils::to_canonical_string(schema);
-                format!(
-                    "Respond with ONLY a single JSON object that conforms to this JSON Schema. \
-                     Do not include any prose, explanation, or markdown code fences.\n{schema_json}"
-                )
+                prompted_augmentation(&rig_core::json_utils::to_canonical_string(schema))
             }),
             OutputMode::Native | OutputMode::Auto => None,
         };
         match (base, instruction) {
-            (Some(b), Some(i)) => Some(format!("{b}\n\n{i}")),
+            (Some(b), Some(i)) => Some(format!("{b}{AUGMENTATION_SEPARATOR}{i}")),
             (Some(b), None) => Some(b),
             (None, Some(i)) => Some(i),
             (None, None) => None,
@@ -275,10 +267,7 @@ pub fn prepare_request(
         tooldefs.push(ToolDefinition {
             name: name.clone(),
             description: output_tool_description
-                .unwrap_or(
-                    "Call this tool exactly once with your final answer when you are done. \
-                     Its arguments are the structured result and must satisfy the output schema.",
-                )
+                .unwrap_or(OUTPUT_TOOL_DESCRIPTION)
                 .to_string(),
             parameters: schema.clone(),
         });
@@ -326,21 +315,6 @@ pub fn prepare_request(
     })
 }
 
-/// Base name of the synthetic output tool used by [`OutputMode::Tool`].
-const DEFAULT_OUTPUT_TOOL_NAME: &str = "final_result";
-
-/// Return whether tool choice permits the named output tool. Unspecified, auto,
-/// required, and specific choices naming it permit the call.
-fn output_tool_callable(tool_choice: Option<&ToolChoice>, output_tool_name: &str) -> bool {
-    match tool_choice {
-        None | Some(ToolChoice::Auto | ToolChoice::Required) => true,
-        Some(ToolChoice::None) => false,
-        Some(ToolChoice::Specific { function_names }) => function_names
-            .iter()
-            .any(|name| name.as_str() == output_tool_name),
-    }
-}
-
 /// Resolve to a non-auto mode. Without a schema, use native output. Auto selects
 /// tool output only with executable tools, a callable output tool, and no native
 /// composition support. Explicit tool mode falls back to native if uncallable;
@@ -367,18 +341,6 @@ fn resolve_output_mode(
         }
         OutputMode::Auto => OutputMode::Native,
     }
-}
-
-/// Pick a collision-safe name for the synthetic output tool, never shadowing a
-/// real executable tool (which would make the model's output call dispatchable).
-fn pick_output_tool_name(executable_tool_names: &BTreeSet<String>) -> String {
-    let mut name = DEFAULT_OUTPUT_TOOL_NAME.to_string();
-    let mut suffix = 1u32;
-    while executable_tool_names.contains(&name) {
-        name = format!("{DEFAULT_OUTPUT_TOOL_NAME}_{suffix}");
-        suffix += 1;
-    }
-    name
 }
 
 /// Validate tool choice and return permitted names. Auto and required choices

@@ -190,7 +190,9 @@ fn demand_done(
     mut commands: Commands,
 ) {
     for (turn, outs) in &turns {
-        if outs.done && !rig_ecs::policy::answer_text(&outs.content).contains("DONE") {
+        if outs.done
+            && !rig_core::transcript::assistant_text_from_choice(&outs.content).contains("DONE")
+        {
             commands.entity(turn).insert(Retry {
                 feedback: Some("End with DONE.".to_owned()),
             });

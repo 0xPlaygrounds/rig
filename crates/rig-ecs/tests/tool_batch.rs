@@ -924,7 +924,7 @@ fn a_system_retries_an_invalid_call_with_feedback() {
             ),
             (
                 "c2".to_owned(),
-                rig_ecs::policy::text::TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER.to_owned()
+                rig_core::transcript::TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER.to_owned()
             ),
         ],
         "the feedback for the invalid call, the notice for its peer"
@@ -1012,7 +1012,7 @@ fn retry_feedback_targets_only_the_invalid_identity_namespace() {
             let expected = if call.function.name == "multiply" {
                 "there is no tool named multiply; use add"
             } else {
-                rig_ecs::policy::text::TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER
+                rig_core::transcript::TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER
             };
             assert!(
                 matches!(result.content.as_slice(), [ToolResultContent::Text(text)] if text.text == expected)

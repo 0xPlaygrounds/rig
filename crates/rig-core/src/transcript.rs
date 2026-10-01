@@ -1,4 +1,5 @@
-//! Conversation validation and constructors for real or synthetic tool results.
+//! Conversation validation, assistant-turn classification, and constructors for
+//! real or synthetic tool results.
 //!
 //! ```
 //! use rig_core::{message::Message, transcript::validate_canonical};
@@ -117,6 +118,58 @@ pub fn tool_result_output(call: CallId, name: ToolName, output: ToolOutput) -> U
 /// or multimodal output.
 pub fn tool_result_message(call: CallId, name: ToolName, message: String) -> UserContent {
     UserContent::tool_result(call, name, vec![ToolResultContent::text(message)])
+}
+
+/// The result every other call of a turn gets when one call was retried or
+/// skipped: none of the turn's calls ran.
+pub const TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER: &str =
+    "Tool not executed because another tool call in the same assistant turn was invalid.";
+
+/// The tool results answering a turn with an invalid call, in call order:
+/// `feedback` for the call `invalid`, [`TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER`]
+/// for every other call. Empty when `content` has no tool calls.
+pub fn invalid_call_feedback(
+    content: &[AssistantContent],
+    invalid: &CallId,
+    feedback: &str,
+) -> Vec<UserContent> {
+    content
+        .iter()
+        .filter_map(|part| match part {
+            AssistantContent::ToolCall(call) => Some(tool_result_message(
+                call.id.clone(),
+                call.function.name.clone(),
+                if &call.id == invalid {
+                    feedback
+                } else {
+                    TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER
+                }
+                .to_owned(),
+            )),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Whether a generated assistant turn is empty: no parts, or exactly one
+/// empty, unannotated text part. An empty turn must not enter history.
+pub fn is_empty_assistant_turn(content: &[AssistantContent]) -> bool {
+    match content {
+        [] => true,
+        [AssistantContent::Text(text)] => text.text.is_empty() && text.additional_params.is_none(),
+        _ => false,
+    }
+}
+
+/// The text parts of an assistant turn, concatenated.
+pub fn assistant_text_from_choice(content: &[AssistantContent]) -> String {
+    content
+        .iter()
+        .filter_map(|part| match part {
+            AssistantContent::Text(text) => Some(text.text.as_str()),
+            _ => None,
+        })
+        .collect()
 }
 
 #[cfg(test)]

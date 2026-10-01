@@ -45,6 +45,7 @@ pub use policy::{
 pub use response::{CompletionCall, MemoryAppend, PromptError, PromptResponse};
 use rig_core::completion::message::turn_delivered_no_answer;
 use rig_core::json_utils;
+use rig_core::structured_output;
 use transcript::{
     TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER, TranscriptError, assistant_message,
     assistant_text_from_choice, assistant_turn, build_full_history, build_history_for_request,
@@ -591,37 +592,6 @@ impl AgentRun {
         self
     }
 
-    /// Top-level `required` schema fields absent from the output-tool arguments.
-    /// A lightweight structural check (not full JSON Schema validation): empty
-    /// when there is no schema, no `required` array, or every required field is
-    /// present. Non-object arguments (e.g. `null`) count every required field as
-    /// missing.
-    fn missing_required_output_fields(&self, args: &serde_json::Value) -> Vec<String> {
-        let Some(required) = self
-            .output_schema
-            .as_ref()
-            .and_then(|schema| schema.get("required"))
-            .and_then(|required| required.as_array())
-        else {
-            return Vec::new();
-        };
-        let object = args.as_object();
-        required
-            .iter()
-            .filter_map(|field| field.as_str())
-            .filter(|field| object.is_none_or(|object| !object.contains_key(*field)))
-            .map(str::to_owned)
-            .collect()
-    }
-
-    /// Whether text parses as JSON with no missing top-level required fields.
-    /// With no required fields, non-object JSON also passes.
-    fn text_satisfies_output_schema(&self, text: &str) -> bool {
-        serde_json::from_str::<serde_json::Value>(text.trim())
-            .ok()
-            .is_some_and(|value| self.missing_required_output_fields(&value).is_empty())
-    }
-
     /// The input chat history this run was created with, empty when none was
     /// set. This is the history preceding the initial prompt, not the run's
     /// accumulated messages.
@@ -940,15 +910,16 @@ impl AgentRun {
                     let tool_call_id = tool_call.id.clone();
                     let output = json_utils::serialize_json_value(&args);
 
-                    let missing = self.missing_required_output_fields(&args);
+                    let missing = self
+                        .output_schema
+                        .as_ref()
+                        .map(|schema| structured_output::missing_required_fields(schema, &args))
+                        .unwrap_or_default();
                     if !missing.is_empty() && self.can_reprompt_for_output() {
                         self.new_messages
                             .extend(assistant_message(message_id, items.clone()));
-                        let feedback = format!(
-                            "The `{output_tool_name}` arguments were missing required field(s): \
-                             {}. Call `{output_tool_name}` again with every required field.",
-                            missing.join(", ")
-                        );
+                        let feedback =
+                            structured_output::reprompt_missing_fields(&output_tool_name, &missing);
                         if let Some(user_message) =
                             invalid_tool_retry_user_message(&items, &tool_call_id, &feedback)
                         {
@@ -1005,13 +976,14 @@ impl AgentRun {
                     if let Some(output_tool_name) = self.output_tool_name.clone()
                         && !is_empty_assistant_turn(&items)
                         && self.can_reprompt_for_output()
-                        && !self.text_satisfies_output_schema(&assistant_text_from_choice(&items))
+                        && !structured_output::text_satisfies_schema(
+                            self.output_schema.as_ref(),
+                            &assistant_text_from_choice(&items),
+                        )
                     {
-                        let feedback = format!(
-                            "Provide your final answer by calling the `{output_tool_name}` tool \
-                             with the structured result as its arguments, not as plain text."
-                        );
-                        self.new_messages.push(Message::user(feedback));
+                        self.new_messages.push(Message::user(
+                            structured_output::reprompt_text_answer(&output_tool_name),
+                        ));
                         return self.reprompt_for_output();
                     }
 
