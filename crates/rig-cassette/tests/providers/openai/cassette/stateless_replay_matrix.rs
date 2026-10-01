@@ -192,6 +192,35 @@ async fn compaction_item_decodes_on_the_response() {
             // The regular items beside it still decode and normalize.
             assert!(!response.choice.is_empty());
 
+            // Loss 2: the item is kept in the history, first as the reply
+            // stated it, and a follow-up sends it back as stated.
+            let Some(AssistantContent::Native(native)) = response.choice.first() else {
+                panic!(
+                    "the compaction item leads the choice: {:?}",
+                    response.choice
+                );
+            };
+            assert_eq!(native.issuer().as_str(), "openai");
+            let request = CompletionRequest::new(TURN_TWO).messages([
+                Message::user(TURN_ONE),
+                response.message().expect("the reply has content"),
+            ]);
+            let encoded = rig::wire::Wire::encode(&model.wire, request, rig::wire::Mode::Unary)
+                .expect("the follow-up encodes");
+            let rig::wire::Body::Bytes(body) = encoded.request.body() else {
+                panic!("a JSON body");
+            };
+            let body: Value = serde_json::from_slice(body).expect("JSON");
+            let mut stated = recorded_responses(
+                "stateless_replay_matrix/compaction_item_decodes_on_the_response",
+            )[0]["output"][0]
+                .clone();
+            // `status: completed` is every replayed item's default.
+            if let Some(item) = stated.as_object_mut() {
+                item.remove("status");
+            }
+            assert_eq!(body["input"][1], stated, "{}", body["input"]);
+
             // The same item, re-serialized, is accepted on the input side
             // byte-for-byte — this is what a stateless client sends back.
             let wire = serde_json::to_value(Output::Compaction(compaction)).expect("serializes");

@@ -10,7 +10,7 @@
 
 
 # --- anthropic: content assembly, not frame triage -------------------------
-providers/anthropic/streaming.rs | citation: serde_json::from_value(citation) | Field decode inside the content-delta Deserialize impl: converts the `citation` value of an already-tag-matched `citations_delta` into its typed form; failure is a serde::de error and unrecognized tags fall to Self::Unknown, so no frame is triaged here.
+providers/anthropic/streaming.rs | citation: serde_json::from_value(citation.clone()) | Field decode inside the content-delta Deserialize impl: converts the `citation` value of an already-tag-matched `citations_delta` into its typed form; failure is a serde::de error and unrecognized tags fall to Self::Unknown, so no frame is triaged here.
 providers/anthropic/streaming.rs | let input: Value = serde_json::from_str(&self.input_json)?; | Assembles a block's accumulated input_json_delta fragments into the `input` of its provider item; malformed input surfaces as a ProviderError, no frame is triaged here.
 providers/anthropic/streaming.rs | serde_json::from_str::<Value>(data) | frame_field: reads one member of a frame the classifier already returned as Known, so the block is kept exactly as the wire stated it for replay; nothing is triaged here.
 

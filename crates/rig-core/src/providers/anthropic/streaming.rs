@@ -102,6 +102,8 @@ pub enum ContentDelta {
     },
     CitationsDelta {
         citation: super::completion::Citation,
+        /// The citation exactly as the frame stated it.
+        raw: Value,
     },
     /// An unrecognized nested delta tag, preserved for a warning and skipped.
     Unknown(serde_json::Value),
@@ -151,8 +153,9 @@ impl<'de> Deserialize<'de> for ContentDelta {
                         )
                     })?;
                     Ok(Self::CitationsDelta {
-                        citation: serde_json::from_value(citation)
+                        citation: serde_json::from_value(citation.clone())
                             .map_err(serde::de::Error::custom)?,
+                        raw: citation,
                     })
                 }
                 _ => Ok(Self::Unknown(value)),
@@ -255,16 +258,20 @@ impl Assembly {
                 self.signed = true;
             }
             ContentDelta::InputJsonDelta { partial_json } => self.input_json.push_str(partial_json),
-            ContentDelta::CitationsDelta { citation } => {
+            ContentDelta::CitationsDelta { citation, raw } => {
                 let citations = block
                     .entry("citations".to_owned())
                     .or_insert_with(|| Value::Array(Vec::new()));
                 if !citations.is_array() {
                     *citations = Value::Array(Vec::new());
                 }
-                if let (Value::Array(citations), Ok(citation)) =
-                    (citations, serde_json::to_value(citation))
-                {
+                // A delta built rather than read states its typed citation.
+                let citation = if raw.is_null() {
+                    serde_json::to_value(citation).unwrap_or(Value::Null)
+                } else {
+                    raw.clone()
+                };
+                if let Value::Array(citations) = citations {
                     citations.push(citation);
                 }
             }

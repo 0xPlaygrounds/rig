@@ -161,6 +161,40 @@ fn assistant_signatures_reasoning_ids_and_images_round_trip() {
     assert_checkpoint_round_trip(&mut world, &parts);
 }
 
+/// Provider items survive the content graph, a checkpoint and the scene
+/// format: an item with no canonical form is its own part, and the item a
+/// canonical block keeps rides inside that block's part, in place.
+#[test]
+fn provider_items_round_trip_in_place() {
+    let item = |value: serde_json::Value| {
+        Sealed::new(
+            Issuer::from("openai"),
+            NativeItem::new("openai.responses", value),
+        )
+    };
+    let parts = MessageParts::Assistant {
+        id: Some("msg_1".into()),
+        content: vec![
+            AssistantContent::Native(item(serde_json::json!({
+                "type": "compaction", "id": "cmp_1", "encrypted_content": "opaque"
+            }))),
+            AssistantContent::Text(Text {
+                native: Some(item(serde_json::json!({
+                    "type": "message", "id": "msg_1", "phase": "final_answer",
+                    "content": [{"type": "output_text", "text": "answer"}]
+                }))),
+                ..Text::new("answer")
+            }),
+            AssistantContent::Native(item(serde_json::json!({
+                "type": "hologram_call", "id": "hg_1", "projection": {"frames": [1, 2]}
+            }))),
+        ],
+    };
+    let (mut world, entity) = world(parts.clone());
+    assert_eq!(read_message(&world, entity).unwrap(), parts);
+    assert_checkpoint_round_trip(&mut world, &parts);
+}
+
 #[test]
 fn part_edits_do_not_change_siblings_and_order_is_semantic() {
     let parts = MessageParts::User {

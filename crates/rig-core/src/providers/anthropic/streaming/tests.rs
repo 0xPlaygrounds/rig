@@ -718,7 +718,7 @@ fn test_citations_delta_streaming_event_deserialization() {
         panic!("expected ContentBlockDelta");
     };
     assert_eq!(index, 0);
-    let ContentDelta::CitationsDelta { citation } = delta else {
+    let ContentDelta::CitationsDelta { citation, .. } = delta else {
         panic!("expected CitationsDelta");
     };
     let crate::providers::anthropic::completion::Citation::CharLocation(citation) = citation else {
@@ -751,7 +751,7 @@ fn test_search_result_citations_delta_streaming_event_deserialization() {
     let StreamingEvent::ContentBlockDelta { delta, .. } = event else {
         panic!("expected ContentBlockDelta");
     };
-    let ContentDelta::CitationsDelta { citation } = delta else {
+    let ContentDelta::CitationsDelta { citation, .. } = delta else {
         panic!("expected CitationsDelta");
     };
     assert!(matches!(
@@ -788,7 +788,7 @@ fn test_web_search_result_citations_delta_streaming_event_deserialization() {
     let StreamingEvent::ContentBlockDelta { delta, .. } = event else {
         panic!("expected ContentBlockDelta");
     };
-    let ContentDelta::CitationsDelta { citation } = delta else {
+    let ContentDelta::CitationsDelta { citation, .. } = delta else {
         panic!("expected CitationsDelta");
     };
     assert!(matches!(
@@ -820,7 +820,7 @@ fn test_web_search_result_citations_delta_allows_null_title() {
     let StreamingEvent::ContentBlockDelta { delta, .. } = event else {
         panic!("expected ContentBlockDelta");
     };
-    let ContentDelta::CitationsDelta { citation } = delta else {
+    let ContentDelta::CitationsDelta { citation, .. } = delta else {
         panic!("expected CitationsDelta");
     };
     assert!(matches!(
@@ -1049,6 +1049,7 @@ fn test_streaming_web_search_blocks_are_preserved_on_final_choice() {
         StreamingEvent::ContentBlockDelta {
             index: 2,
             delta: ContentDelta::CitationsDelta {
+                raw: serde_json::Value::Null,
                 citation:
                     crate::providers::anthropic::completion::Citation::WebSearchResultLocation(
                         crate::providers::anthropic::completion::WebSearchResultLocationCitation {
@@ -1112,6 +1113,7 @@ fn test_handle_citations_delta_event_preserves_metadata() {
         StreamingEvent::ContentBlockDelta {
             index: 0,
             delta: ContentDelta::CitationsDelta {
+                raw: serde_json::Value::Null,
                 citation: crate::providers::anthropic::completion::Citation::CharLocation(
                     crate::providers::anthropic::completion::CharLocationCitation {
                         cited_text: "The grass is green.".to_string(),
@@ -1168,6 +1170,7 @@ fn test_streaming_citation_deltas_are_preserved_on_final_text() {
         StreamingEvent::ContentBlockDelta {
             index: 0,
             delta: ContentDelta::CitationsDelta {
+                raw: serde_json::Value::Null,
                 citation: citation.clone(),
             },
         },

@@ -26,3 +26,6 @@ pub use completion::{
 pub use wire::{
     ANTHROPIC, AnthropicConfig, Dialect, MaxTokens, Messages, Models, Quirks, Verify, compatible,
 };
+
+#[cfg(test)]
+mod native_tests;

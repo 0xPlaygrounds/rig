@@ -2521,6 +2521,8 @@ impl FromStr for UserContent {
 }
 
 #[cfg(test)]
+mod native_tests;
+#[cfg(test)]
 mod stateless_replay_tests;
 #[cfg(test)]
 mod tests;
