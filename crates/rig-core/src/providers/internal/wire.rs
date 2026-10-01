@@ -184,6 +184,35 @@ pub fn classify_or<T>(
     }
 }
 
+/// The `{ "message": ... }` error envelope some APIs answer with HTTP 200.
+#[derive(serde::Deserialize)]
+struct MessageEnvelope {
+    #[allow(dead_code)]
+    message: String,
+}
+
+/// Classify a whole reply recognized by its `reply_marker` key, or the
+/// `{ "message": ... }` error envelope its API can send with HTTP 200 instead.
+/// The envelope yields its body verbatim as `Err`, so the decoder reports it
+/// and the driver adds the HTTP status. When neither shape decodes, the
+/// reply's diagnostic stands.
+pub fn classify_reply_or_message_envelope<T>(
+    data: &str,
+    reply_marker: &str,
+) -> WireEvent<Result<T, String>>
+where
+    T: serde::de::DeserializeOwned,
+{
+    classify_or(
+        data,
+        |data| classify_marker_keyed_frame::<T>(data, &[reply_marker, "message"]).map(Ok),
+        |data| {
+            classify_marker_keyed_frame::<MessageEnvelope>(data, &["message"])
+                .map(|_| Err(data.to_owned()))
+        },
+    )
+}
+
 /// [`classify_or`] for a wire whose events carry `tag`: only a frame without
 /// the tag falls back to `then`. A tagged frame that fails its typed decode
 /// stays corrupt, rather than passing for the fallback's shape.

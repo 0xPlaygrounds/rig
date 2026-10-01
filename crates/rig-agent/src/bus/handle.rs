@@ -29,7 +29,7 @@ use rig_core::{
         FamilyDescriptor, HandlerDescriptor, HandlerKey, MemoryOp, MemoryOutcome, RetrieveQuery,
         RetrievedDocuments, family,
     },
-    embeddings::{Embedding, EmbeddingResponse, ImageEmbeddingResponse},
+    embeddings::{Embedding, EmbeddingResponse},
     error::{ErrorKind, ErrorReport},
     id::ConversationId,
     message::Message,
@@ -635,10 +635,7 @@ impl EmbedHandle {
     }
 
     /// Embed image bytes.
-    pub fn embed_images(
-        &self,
-        images: Vec<Vec<u8>>,
-    ) -> Typed<family::Embed, ImageEmbeddingResponse> {
+    pub fn embed_images(&self, images: Vec<Vec<u8>>) -> Typed<family::Embed, EmbeddingResponse> {
         Typed::narrow(
             self.dispatch_wrapped(family::Embed::wrap(EmbedInputs::Images(images))),
             |outputs| match outputs {

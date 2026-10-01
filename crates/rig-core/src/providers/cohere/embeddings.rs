@@ -24,14 +24,6 @@ pub struct EmbeddingResponse {
     pub meta: Option<Meta>,
 }
 
-/// Provider error envelope accepted on HTTP 200. The decoder reports its
-/// original body rather than interpreting it as an embedding response.
-#[derive(Debug, Deserialize)]
-pub(super) struct ErrorEnvelope {
-    #[allow(dead_code)]
-    message: String,
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Meta {
     pub api_version: ApiVersion,
