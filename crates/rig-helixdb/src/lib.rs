@@ -1,8 +1,8 @@
 //! HelixDB vector store for Rig.
 //!
 //! [`HelixDBVectorStore`] runs the `VectorSearch` and `InsertVector` HelixDB
-//! queries through the [`HelixDB`] HTTP client. The `rig` facade re-exports this crate as `rig::helixdb` under the
-//! `helixdb` feature.
+//! queries through the [`HelixDB`] HTTP client. The `rig` facade re-exports
+//! this crate as `rig::helixdb` under the `helixdb` feature.
 
 use reqwest::{Client, StatusCode};
 use rig_core::{
