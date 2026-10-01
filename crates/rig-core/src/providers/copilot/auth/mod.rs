@@ -108,7 +108,7 @@ impl Authenticator {
     }
 }
 
-/// Copilot API key exchanged for a GitHub access token, as cached on disk.
+/// Copilot API key exchanged for a GitHub access token, and its native cache record.
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
 struct ApiKeyRecord {
     token: Option<String>,

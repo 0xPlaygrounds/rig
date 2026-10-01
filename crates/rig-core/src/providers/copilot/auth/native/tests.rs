@@ -1,6 +1,6 @@
 use super::{
     ApiKeyRecord, bootstrap_token_fingerprint, next_poll_interval_seconds,
-    normalize_poll_interval_seconds, should_retry_with_fresh_access_token_status,
+    normalize_poll_interval_seconds, refresh_api_key, should_retry_with_fresh_access_token_status,
 };
 use crate::providers::copilot::auth::{AuthSource, Authenticator, DeviceCodeHandler};
 use crate::test_utils::RecordingHttpClient;
@@ -178,4 +178,15 @@ async fn cached_credential_remains_persistent_and_reusable() -> anyhow::Result<(
     let persisted: serde_json::Value = serde_json::from_slice(&std::fs::read(path)?)?;
     anyhow::ensure!(persisted == fixture, "persisted cache changed");
     Ok(())
+}
+
+#[tokio::test]
+async fn api_key_exchange_rejects_a_blank_token() {
+    let http = RecordingHttpClient::new(r#"{"token": "  "}"#);
+    let err = refresh_api_key(&http, "synthetic-bootstrap")
+        .await
+        .expect_err("a blank API key cannot authenticate")
+        .to_string();
+
+    assert!(err.contains("did not include a token"), "{err}");
 }
