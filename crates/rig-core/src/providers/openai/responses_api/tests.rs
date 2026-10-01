@@ -103,13 +103,13 @@ fn output_text_extras_survive_generic_conversion_and_replay() {
     // `openai_responses`-annotated empty block still replays.
     let foreign = message::Message::Assistant {
         id: None,
-        content: crate::NonEmpty::new(completion::AssistantContent::Text(message::Text {
+        content: vec![completion::AssistantContent::Text(message::Text {
             text: String::new(),
             additional_params: message::AdditionalParams::try_from_value(json!({
                 "anthropic_content": {"type": "server_tool_use", "id": "srv_1"}
             }))
             .expect("object params"),
-        })),
+        })],
     };
     let items: Vec<InputItem> = foreign.try_into().expect("convert");
     assert!(
@@ -119,13 +119,13 @@ fn output_text_extras_survive_generic_conversion_and_replay() {
 
     let own_annotated_empty = |id: Option<String>| message::Message::Assistant {
         id,
-        content: crate::NonEmpty::new(completion::AssistantContent::Text(message::Text {
+        content: vec![completion::AssistantContent::Text(message::Text {
             text: String::new(),
             additional_params: message::AdditionalParams::try_from_value(json!({
                 OPENAI_RESPONSES_EXTRAS_KEY: {"annotations": ["kept"]}
             }))
             .expect("object params"),
-        })),
+        })],
     };
     // With a message id, the Assistant form carries the extras.
     let items: Vec<InputItem> = own_annotated_empty(Some("msg_1".to_string()))
@@ -176,7 +176,7 @@ fn test_document(id: &str, text: &str) -> crate::completion::Document {
 
 fn weather_tool_definition() -> completion::ToolDefinition {
     completion::ToolDefinition {
-        name: "get_weather".to_string(),
+        name: crate::message::ToolName::new("get_weather").expect("tool name"),
         description: "Get the weather".to_string(),
         parameters: json!({
             "type": "object",
@@ -191,28 +191,26 @@ fn weather_tool_definition() -> completion::ToolDefinition {
 
 fn rig_tool_result(content: message::ToolResultContent) -> message::Message {
     message::Message::User {
-        content: crate::NonEmpty::new(message::UserContent::ToolResult(message::ToolResult {
+        content: vec![message::UserContent::ToolResult(message::ToolResult {
             call: crate::message::CallId::from_dual_wire("result-id", "call-id"),
             name: crate::message::ToolName::new("tool".to_string()).expect("tool name"),
-            content: crate::NonEmpty::new(content),
-        })),
+            content: vec![content],
+        })],
     }
 }
 
 #[test]
 fn mixed_user_content_preserves_order_around_tool_results() {
     let input = message::Message::User {
-        content: crate::NonEmpty::with_rest(
+        content: vec![
             message::UserContent::text("before"),
-            [
-                message::UserContent::tool_result(
-                    crate::message::CallId::from_dual_wire("result-id", "call-id".to_string()),
-                    crate::message::ToolName::new("tool").expect("tool name"),
-                    crate::NonEmpty::new(message::ToolResultContent::text("tool output")),
-                ),
-                message::UserContent::text("after"),
-            ],
-        ),
+            message::UserContent::tool_result(
+                crate::message::CallId::from_dual_wire("result-id", "call-id".to_string()),
+                crate::message::ToolName::new("tool").expect("tool name"),
+                vec![message::ToolResultContent::text("tool output")],
+            ),
+            message::UserContent::text("after"),
+        ],
     };
 
     let items = super::input_items(input, &["openai".into()]).expect("input item conversion");
@@ -283,7 +281,7 @@ async fn cross_provider_minted_reasoning_ids_are_not_serialized_upstream() {
     let items = super::input_items(
         crate::completion::Message::Assistant {
             id: None,
-            content: crate::NonEmpty::from_vec(choice).expect("non-empty"),
+            content: choice,
         },
         &["openai".into()],
     )
@@ -297,7 +295,7 @@ async fn cross_provider_minted_reasoning_ids_are_not_serialized_upstream() {
     let items = super::input_items(
         crate::completion::Message::Assistant {
             id: None,
-            content: crate::NonEmpty::new(message::AssistantContent::Reasoning(
+            content: vec![message::AssistantContent::Reasoning(
                 message::Reasoning {
                     id: Some("rs_0123".to_string()),
                     content: vec![message::ReasoningContent::Text {
@@ -306,7 +304,7 @@ async fn cross_provider_minted_reasoning_ids_are_not_serialized_upstream() {
                     }],
                 }
                 .sealed("openai"),
-            )),
+            )],
         },
         &["openai".into()],
     )
@@ -367,7 +365,7 @@ async fn delta_only_stream_minted_output_ids_are_not_serialized_upstream() {
     let items = super::input_items(
         crate::completion::Message::Assistant {
             id: None,
-            content: crate::NonEmpty::from_vec(drained.choice).expect("non-empty"),
+            content: drained.choice,
         },
         &["openai".into()],
     )
@@ -416,11 +414,11 @@ fn multiple_text_tool_result_blocks_preserve_order_as_rich_function_output() {
     ];
 
     let input = message::Message::User {
-        content: crate::NonEmpty::new(message::UserContent::ToolResult(message::ToolResult {
+        content: vec![message::UserContent::ToolResult(message::ToolResult {
             call: crate::message::CallId::from_dual_wire("result-id", "call-id"),
             name: crate::message::ToolName::new("tool".to_string()).expect("tool name"),
-            content: crate::NonEmpty::from_vec(content).expect("non-empty"),
-        })),
+            content,
+        })],
     };
 
     let expected = ToolResultOutput::Content(vec![
@@ -509,11 +507,11 @@ fn tool_result_images_and_text_preserve_order_as_rich_function_output() {
         message::ToolResultContent::json(json!({ "after": true })),
     ];
     let input = message::Message::User {
-        content: crate::NonEmpty::new(message::UserContent::ToolResult(message::ToolResult {
+        content: vec![message::UserContent::ToolResult(message::ToolResult {
             call: crate::message::CallId::from_dual_wire("result-id", "call-id"),
             name: crate::message::ToolName::new("tool".to_string()).expect("tool name"),
-            content: crate::NonEmpty::from_vec(content).expect("non-empty"),
-        })),
+            content,
+        })],
     };
 
     let assert_output = |output: &ToolResultOutput| {
@@ -569,18 +567,7 @@ fn tool_result_file_id_image_uses_the_native_wire_field() {
 }
 
 fn weather_tool_request() -> completion::CompletionRequest {
-    completion::CompletionRequest {
-        model: None,
-        chat_history: crate::NonEmpty::new(message::Message::user("what's the weather?")),
-        documents: Vec::new(),
-        tools: vec![weather_tool_definition()],
-        temperature: None,
-        max_tokens: None,
-        tool_choice: None,
-        additional_params: None,
-        output_schema: None,
-        record_telemetry_content: false,
-    }
+    completion::CompletionRequest::new("what's the weather?").tools(vec![weather_tool_definition()])
 }
 
 #[test]
@@ -601,7 +588,7 @@ fn responses_tool_choice_modes_serialize_as_plain_strings() {
 #[test]
 fn responses_tool_choice_specific_single_name_serializes_as_named_function() {
     let converted = ToolChoice::try_from(message::ToolChoice::Specific {
-        function_names: vec!["get_weather".to_string()],
+        function_names: vec![crate::message::ToolName::new("get_weather").expect("tool name")],
     })
     .expect("single specific tool should convert");
 
@@ -614,7 +601,10 @@ fn responses_tool_choice_specific_single_name_serializes_as_named_function() {
 #[test]
 fn responses_tool_choice_specific_multiple_names_serialize_as_allowed_tools() {
     let converted = ToolChoice::try_from(message::ToolChoice::Specific {
-        function_names: vec!["add".to_string(), "subtract".to_string()],
+        function_names: vec![
+            crate::message::ToolName::new("add").expect("tool name"),
+            crate::message::ToolName::new("subtract").expect("tool name"),
+        ],
     })
     .expect("multiple specific tools should convert");
 
@@ -648,7 +638,7 @@ fn responses_tool_choice_specific_empty_names_error() {
 fn responses_request_with_specific_tool_choice_serializes_named_function() {
     let mut request = weather_tool_request();
     request.tool_choice = Some(message::ToolChoice::Specific {
-        function_names: vec!["get_weather".to_string()],
+        function_names: vec![crate::message::ToolName::new("get_weather").expect("tool name")],
     });
 
     let request = CompletionRequest::try_from(("gpt-test".to_string(), request)).expect("convert");
@@ -738,36 +728,14 @@ fn responses_strict_function_tools_sanitize_schema() {
 }
 
 fn request_with_preamble(preamble: &str) -> completion::CompletionRequest {
-    completion::CompletionRequest {
-        model: None,
-        chat_history: crate::NonEmpty::with_rest(
-            message::Message::system(preamble),
-            [message::Message::user("Hello")],
-        ),
-        documents: Vec::new(),
-        tools: Vec::new(),
-        temperature: None,
-        max_tokens: None,
-        tool_choice: None,
-        additional_params: None,
-        output_schema: None,
-        record_telemetry_content: false,
-    }
+    completion::CompletionRequest::from(vec![
+        message::Message::system(preamble),
+        message::Message::user("Hello"),
+    ])
 }
 
 fn system_only_request(system_text: &str) -> completion::CompletionRequest {
-    completion::CompletionRequest {
-        model: None,
-        chat_history: crate::NonEmpty::new(completion::Message::system(system_text)),
-        documents: Vec::new(),
-        tools: Vec::new(),
-        temperature: None,
-        max_tokens: None,
-        tool_choice: None,
-        additional_params: None,
-        output_schema: None,
-        record_telemetry_content: false,
-    }
+    completion::CompletionRequest::new(completion::Message::system(system_text))
 }
 
 #[test]
@@ -940,7 +908,7 @@ fn responses_wire_strict_tools_opt_in_sanitizes_all_function_tools() {
         openai_wire("gpt-4o-mini")
             .with_strict_tools()
             .with_tool(completion::ToolDefinition {
-                name: "lookup".to_string(),
+                name: crate::message::ToolName::new("lookup").expect("tool name"),
                 description: "Look something up".to_string(),
                 parameters: json!({
                     "type": "object",
@@ -1210,25 +1178,13 @@ fn responses_request_keeps_documents_after_lifted_system_messages() {
 
 #[test]
 fn responses_direct_request_keeps_mid_conversation_system_messages_in_input() {
-    let request = crate::completion::CompletionRequest {
-        model: None,
-        chat_history: crate::NonEmpty::with_rest(
-            completion::Message::system("System prompt"),
-            [
-                completion::Message::assistant("Earlier assistant turn"),
-                completion::Message::system("Mid-conversation instruction"),
-                completion::Message::user("Prompt"),
-            ],
-        ),
-        documents: vec![test_document("doc1", "Document text.")],
-        tools: vec![],
-        temperature: None,
-        max_tokens: None,
-        tool_choice: None,
-        additional_params: None,
-        output_schema: None,
-        record_telemetry_content: false,
-    };
+    let request = crate::completion::CompletionRequest::from(vec![
+        completion::Message::system("System prompt"),
+        completion::Message::assistant("Earlier assistant turn"),
+        completion::Message::system("Mid-conversation instruction"),
+        completion::Message::user("Prompt"),
+    ])
+    .documents(vec![test_document("doc1", "Document text.")]);
 
     let responses_request = CompletionRequest::try_from(("gpt-4o-mini".to_string(), request))
         .expect("request conversion should succeed");
@@ -1954,9 +1910,9 @@ fn completion_response_does_not_duplicate_structured_reasoning() {
 fn idless_reasoning_only_is_skipped_without_empty_input_item() {
     let assistant = completion::Message::Assistant {
         id: None,
-        content: crate::NonEmpty::new(message::AssistantContent::Reasoning(
+        content: vec![message::AssistantContent::Reasoning(
             message::Reasoning::new("provider reasoning").sealed("openai"),
-        )),
+        )],
     };
 
     let converted = super::input_items(assistant, &["openai".into()])
@@ -1969,12 +1925,12 @@ fn idless_reasoning_only_is_skipped_without_empty_input_item() {
 fn completion_history_idless_reasoning_plus_text_preserves_text_input_item() {
     let assistant = completion::Message::Assistant {
         id: Some("msg_123".to_string()),
-        content: crate::NonEmpty::with_rest(
+        content: vec![
             message::AssistantContent::Reasoning(
                 message::Reasoning::new("provider reasoning").sealed("openai"),
             ),
-            [message::AssistantContent::Text(Text::new("final answer"))],
-        ),
+            message::AssistantContent::Text(Text::new("final answer")),
+        ],
     };
 
     let converted = super::input_items(assistant, &["openai".into()])
@@ -1995,7 +1951,7 @@ fn completion_history_idless_reasoning_plus_text_preserves_text_input_item() {
 fn assistant_text_without_idless_reasoning_replays_as_output_text() {
     let assistant = completion::Message::Assistant {
         id: Some("msg_123".to_string()),
-        content: crate::NonEmpty::new(message::AssistantContent::Text(Text::new("final answer"))),
+        content: vec![message::AssistantContent::Text(Text::new("final answer"))],
     };
 
     let converted = super::input_items(assistant, &["openai".into()])
@@ -2011,17 +1967,16 @@ fn assistant_text_without_idless_reasoning_replays_as_output_text() {
     ));
 }
 
-/// A turn the wire delivered as several text parts (two `output_text`
-/// contents, or two message items folded under the first's id) replays as
-/// one message item: the wire refuses two input items with one id.
+/// Text blocks that name no message item of their own replay as one message
+/// item under the turn's id: the wire refuses two input items with one id.
 #[test]
 fn assistant_turn_with_several_text_parts_replays_as_one_message_item() {
     let assistant = completion::Message::Assistant {
         id: Some("msg_turn".to_string()),
-        content: crate::NonEmpty::with_rest(
+        content: vec![
             message::AssistantContent::Text(Text::new("first part")),
-            [message::AssistantContent::Text(Text::new("second part"))],
-        ),
+            message::AssistantContent::Text(Text::new("second part")),
+        ],
     };
 
     let converted = super::input_items(assistant, &["openai".into()])
@@ -2048,7 +2003,7 @@ fn assistant_turn_with_several_text_parts_replays_as_one_message_item() {
 fn idless_completion_assistant_text_replays_as_easy_input_message() {
     let assistant = completion::Message::Assistant {
         id: None,
-        content: crate::NonEmpty::new(message::AssistantContent::Text(Text::new("final answer"))),
+        content: vec![message::AssistantContent::Text(Text::new("final answer"))],
     };
 
     let converted = super::input_items(assistant, &["openai".into()])
@@ -2074,7 +2029,7 @@ fn idless_completion_assistant_text_replays_as_easy_input_message() {
 fn structured_reasoning_with_id_still_converts_to_input_item() {
     let assistant = completion::Message::Assistant {
         id: Some("msg_123".to_string()),
-        content: crate::NonEmpty::new(message::AssistantContent::Reasoning(
+        content: vec![message::AssistantContent::Reasoning(
             message::Reasoning {
                 id: Some("rs_123".to_string()),
                 content: vec![message::ReasoningContent::Summary(
@@ -2082,7 +2037,7 @@ fn structured_reasoning_with_id_still_converts_to_input_item() {
                 )],
             }
             .sealed("openai"),
-        )),
+        )],
     };
 
     let converted = super::input_items(assistant, &["openai".into()])
@@ -2100,7 +2055,7 @@ fn structured_reasoning_with_id_still_converts_to_input_item() {
 fn assistant_reasoning_text_tool_call_convert_in_responses_replay_order() {
     let assistant = completion::Message::Assistant {
         id: Some("msg_123".to_string()),
-        content: crate::NonEmpty::with_rest(
+        content: vec![
             message::AssistantContent::Reasoning(
                 message::Reasoning {
                     id: Some("rs_123".to_string()),
@@ -2110,16 +2065,14 @@ fn assistant_reasoning_text_tool_call_convert_in_responses_replay_order() {
                 }
                 .sealed("openai"),
             ),
-            [
-                message::AssistantContent::Text(Text::new("final answer")),
-                message::AssistantContent::tool_call_with_call_id(
-                    "fc_123",
-                    "call_123".to_string(),
-                    crate::message::ToolName::new("lookup").expect("tool name"),
-                    json!({"query": "rig"}),
-                ),
-            ],
-        ),
+            message::AssistantContent::Text(Text::new("final answer")),
+            message::AssistantContent::tool_call_with_call_id(
+                "fc_123",
+                "call_123".to_string(),
+                crate::message::ToolName::new("lookup").expect("tool name"),
+                json!({"query": "rig"}),
+            ),
+        ],
     };
 
     let converted = super::input_items(assistant, &["openai".into()])
@@ -2157,50 +2110,38 @@ fn assistant_reasoning_text_tool_call_convert_in_responses_replay_order() {
 
 #[test]
 fn mocked_second_turn_request_omits_unreplayable_reasoning() {
-    let request = crate::completion::CompletionRequest {
-        model: None,
-        chat_history: crate::NonEmpty::with_rest(
-            completion::Message::system("You are concise."),
-            [
-                completion::Message::User {
-                    content: crate::NonEmpty::new(message::UserContent::Text(Text::new(
-                        "Think briefly, then answer.",
-                    ))),
-                },
-                completion::Message::Assistant {
-                    id: Some("msg_123".to_string()),
-                    content: crate::NonEmpty::with_rest(
-                        message::AssistantContent::Reasoning(
-                            message::Reasoning::new("provider reasoning").sealed("openai"),
-                        ),
-                        [message::AssistantContent::Text(Text::new("final answer"))],
-                    ),
-                },
-                completion::Message::Assistant {
-                    id: None,
-                    content: crate::NonEmpty::with_rest(
-                        message::AssistantContent::Reasoning(
-                            message::Reasoning::new("provider reasoning only").sealed("openai"),
-                        ),
-                        [message::AssistantContent::Text(Text::new(""))],
-                    ),
-                },
-                completion::Message::User {
-                    content: crate::NonEmpty::new(message::UserContent::Text(Text::new(
-                        "/no_think Reply with exactly: OK",
-                    ))),
-                },
+    let request = crate::completion::CompletionRequest::from(vec![
+        completion::Message::system("You are concise."),
+        completion::Message::User {
+            content: vec![message::UserContent::Text(Text::new(
+                "Think briefly, then answer.",
+            ))],
+        },
+        completion::Message::Assistant {
+            id: Some("msg_123".to_string()),
+            content: vec![
+                message::AssistantContent::Reasoning(
+                    message::Reasoning::new("provider reasoning").sealed("openai"),
+                ),
+                message::AssistantContent::Text(Text::new("final answer")),
             ],
-        ),
-        documents: Vec::new(),
-        tools: Vec::new(),
-        temperature: None,
-        max_tokens: Some(64),
-        tool_choice: None,
-        additional_params: None,
-        output_schema: None,
-        record_telemetry_content: false,
-    };
+        },
+        completion::Message::Assistant {
+            id: None,
+            content: vec![
+                message::AssistantContent::Reasoning(
+                    message::Reasoning::new("provider reasoning only").sealed("openai"),
+                ),
+                message::AssistantContent::Text(Text::new("")),
+            ],
+        },
+        completion::Message::User {
+            content: vec![message::UserContent::Text(Text::new(
+                "/no_think Reply with exactly: OK",
+            ))],
+        },
+    ])
+    .max_tokens(64);
 
     let request = CompletionRequest::try_from(("Qwen/Qwen3-4B".to_string(), request))
         .expect("request should convert");
@@ -2267,11 +2208,11 @@ fn responses_usage_add_preserves_rhs_details_when_lhs_details_are_absent() {
 #[test]
 fn file_id_document_serializes_as_input_item_content() {
     let message = completion::Message::User {
-        content: crate::NonEmpty::new(message::UserContent::Document(message::Document {
+        content: vec![message::UserContent::Document(message::Document {
             data: DocumentSourceKind::FileId("file_abc".to_string()),
             media_type: None,
             additional_params: None,
-        })),
+        })],
     };
 
     let converted: Vec<InputItem> = message.try_into().expect("conversion should succeed");
@@ -2604,10 +2545,10 @@ const PDF_URL: &str = "https://example.com/resume.pdf";
 
 fn url_pdf_message() -> message::Message {
     message::Message::User {
-        content: crate::NonEmpty::new(message::UserContent::document_url(
+        content: vec![message::UserContent::document_url(
             PDF_URL,
             Some(message::DocumentMediaType::PDF),
-        )),
+        )],
     }
 }
 
@@ -2666,18 +2607,7 @@ fn url_pdf_via_input_item_path_omits_filename() {
 
 #[test]
 fn url_pdf_in_full_completion_request_omits_filename() {
-    let core_request = crate::completion::CompletionRequest {
-        model: None,
-        chat_history: crate::NonEmpty::new(url_pdf_message()),
-        documents: Vec::new(),
-        tools: Vec::new(),
-        temperature: None,
-        max_tokens: None,
-        tool_choice: None,
-        additional_params: None,
-        output_schema: None,
-        record_telemetry_content: false,
-    };
+    let core_request = crate::completion::CompletionRequest::new(url_pdf_message());
 
     let request = CompletionRequest::try_from(("gpt-4o".to_string(), core_request))
         .expect("request should convert");
@@ -2688,11 +2618,11 @@ fn url_pdf_in_full_completion_request_omits_filename() {
 #[test]
 fn base64_pdf_via_input_item_path_keeps_filename() {
     let input = message::Message::User {
-        content: crate::NonEmpty::new(message::UserContent::Document(message::Document {
+        content: vec![message::UserContent::Document(message::Document {
             data: DocumentSourceKind::base64("dGVzdA=="),
             media_type: Some(message::DocumentMediaType::PDF),
             additional_params: None,
-        })),
+        })],
     };
 
     let items = super::input_items(input, &["openai".into()])
@@ -2885,16 +2815,14 @@ fn a_tool_result_named_by_the_call_id_pairs_with_the_call_s_call_id() {
         completion::Message::user("Weather in Paris?"),
         completion::Message::Assistant {
             id: None,
-            content: crate::NonEmpty::from_vec(choice.clone()).expect("non-empty"),
+            content: choice.clone(),
         },
         result,
     ];
 
     let request = CompletionRequest::try_from((
         "gpt-4o-mini".to_string(),
-        crate::completion::CompletionRequest::from(
-            crate::NonEmpty::from_vec(history).expect("non-empty"),
-        ),
+        crate::completion::CompletionRequest::from(history),
     ))
     .expect("request conversion should succeed");
     let input = serde_json::to_value(&request).expect("request should serialize")["input"].clone();

@@ -87,7 +87,7 @@ impl Transport<MockScript> for Scripted {
             assert!(
                 matches!(
                     request.chat_history.first(),
-                    Message::System { content } if content == "be brief"
+                    Some(Message::System { content }) if content == "be brief"
                 ),
                 "the spec's preamble leads the prepared history"
             );
@@ -112,7 +112,7 @@ impl Transport<MockScript> for Scripted {
 
 fn add_tool() -> DynamicTool {
     DynamicTool::new(
-        "add",
+        ToolName::new("add").expect("tool name"),
         "Add x and y",
         serde_json::json!({
             "type": "object",
@@ -209,7 +209,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
                 run.tool_results(results)?;
             }
-            AgentRunStep::Done(response) => break response.output,
+            AgentRunStep::Done(response) => break response.output(),
         }
     };
 

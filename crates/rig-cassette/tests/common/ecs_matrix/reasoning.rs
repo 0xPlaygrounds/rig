@@ -406,12 +406,11 @@ pub(crate) fn assert_history(cell: &Cell, log: &EffectLog, history: &[Message]) 
                     .cloned()
                     .collect();
                 parts.push(AssistantContent::text(call.function.arguments.to_string()));
-                rig_core::NonEmpty::from_vec(parts).expect("non-empty")
+                parts
             } else if cell.program.streamed {
-                rig_core::NonEmpty::from_vec(canonical_streamed_choice(response.choice.clone()))
-                    .expect("non-empty")
+                canonical_streamed_choice(response.choice.clone())
             } else {
-                rig_core::NonEmpty::from_vec(response.choice.clone()).expect("non-empty")
+                response.choice.clone()
             },
         })
         .collect();

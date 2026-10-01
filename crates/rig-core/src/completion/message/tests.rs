@@ -11,7 +11,7 @@ mod vec_content_serde {
         // this migration changes no persisted history and no recorded
         // provider fixture. Pin the wire shape so that stays true.
         let message = Message::User {
-            content: crate::NonEmpty::new(UserContent::text("hi")),
+            content: vec![UserContent::text("hi")],
         };
         let json = serde_json::to_value(&message).expect("serialize");
         assert_eq!(
@@ -27,7 +27,7 @@ mod vec_content_serde {
     fn message_content_round_trips_byte_identically() {
         let message = Message::Assistant {
             id: Some("msg_1".to_owned()),
-            content: crate::NonEmpty::new(AssistantContent::text("hello")),
+            content: vec![AssistantContent::text("hello")],
         };
         let encoded = serde_json::to_string(&message).expect("serialize");
         let decoded: Message = serde_json::from_str(&encoded).expect("deserialize");
@@ -38,12 +38,15 @@ mod vec_content_serde {
     }
 
     #[test]
-    fn an_empty_content_array_does_not_deserialize() {
-        // Content is non-empty by type, so `[]` is not a message.
-        assert!(
-            serde_json::from_value::<Message>(serde_json::json!({"role": "user", "content": []}))
-                .is_err()
-        );
+    fn an_empty_content_array_deserializes() {
+        // The request boundary rejects it when it is sent, not serde.
+        for message in [
+            serde_json::json!({"role": "user", "content": []}),
+            serde_json::json!({"role": "assistant", "id": null, "content": []}),
+        ] {
+            let decoded = serde_json::from_value::<Message>(message.clone()).expect("parses");
+            assert_eq!(serde_json::to_value(&decoded).expect("serializes"), message);
+        }
     }
 }
 
@@ -351,7 +354,7 @@ fn a_result_is_built_from_the_call_it_answers() {
             serde_json::json!({}),
         ),
     );
-    let result = call.result(super::ToolResultContent::text("42"));
+    let result = call.result(vec![super::ToolResultContent::text("42")]);
     assert_eq!(result.call, call.id);
     assert_eq!(result.name, call.function.name);
 }
@@ -372,4 +375,44 @@ fn the_legacy_tool_call_id_shape_does_not_parse() {
 fn an_empty_tool_name_does_not_parse() {
     assert!(super::ToolName::new("").is_err());
     assert!(serde_json::from_str::<super::ToolName>(r#""""#).is_err());
+}
+
+#[test]
+fn media_constructors_name_their_source_encoding() {
+    use super::{
+        AudioMediaType, DocumentMediaType, DocumentSourceKind, UserContent, VideoMediaType,
+    };
+
+    let source = |content: UserContent| match content {
+        UserContent::Audio(audio) => audio.data,
+        UserContent::Video(video) => video.data,
+        UserContent::Document(document) => document.data,
+        other => DocumentSourceKind::string(format!("not media: {other:?}")),
+    };
+
+    assert_eq!(
+        source(UserContent::audio_base64(
+            "UklGRg==",
+            Some(AudioMediaType::WAV)
+        )),
+        DocumentSourceKind::base64("UklGRg==")
+    );
+    assert_eq!(
+        source(UserContent::video_base64("AAAA", Some(VideoMediaType::MP4))),
+        DocumentSourceKind::base64("AAAA")
+    );
+    assert_eq!(
+        source(UserContent::document_base64(
+            "JVBERi0=",
+            Some(DocumentMediaType::PDF)
+        )),
+        DocumentSourceKind::base64("JVBERi0=")
+    );
+    assert_eq!(
+        source(UserContent::document_text(
+            "# Notes",
+            Some(DocumentMediaType::MARKDOWN)
+        )),
+        DocumentSourceKind::string("# Notes")
+    );
 }

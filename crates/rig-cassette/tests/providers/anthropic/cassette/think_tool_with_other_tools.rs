@@ -310,9 +310,9 @@ async fn think_tool_with_other_tools() -> Result<()> {
         .max_turns(10)
         .await?;
 
-    assert_mentions_expected_number(&response.output, 25);
+    assert_mentions_expected_number(&response.output(), 25);
     assert_contains_any_case_insensitive(
-        &response.output,
+        &response.output(),
         &["out of stock", "express shipping", "110.99", "$110.99"],
     );
 
@@ -325,9 +325,7 @@ async fn think_tool_with_other_tools() -> Result<()> {
         "database lookup should be invoked for both shipping and inventory"
     );
 
-    let messages = response
-        .messages
-        .ok_or_else(|| anyhow::anyhow!("extended details should include messages"))?;
+    let messages = response.messages;
     let tool_calls = collect_assistant_tool_calls(&messages);
 
     for tool_name in ["think", "calculator", "database_lookup"] {

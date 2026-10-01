@@ -2,11 +2,11 @@
 //! streaming [`TurnSource`] implementations supply model responses; the engine
 //! applies lifecycle policy and advances the sans-I/O [`AgentRun`].
 
+use std::collections::VecDeque;
 use std::sync::{
     Arc,
     atomic::{AtomicU64, Ordering},
 };
-use std::{collections::VecDeque, pin::Pin};
 
 use futures::{Stream, StreamExt, stream};
 use tracing::{Instrument, span::Id};
@@ -14,12 +14,12 @@ use tracing::{Instrument, span::Id};
 use crate::bus::{DispatchOptions, MemoryHandle};
 use rig_core::error::ProviderError;
 use rig_core::{
-    completion::{FinishReason, ModelRef, ResponseIdentity},
+    completion::ModelRef,
     effect::{EffectId, EffectKind, Outcome},
     error::{ErrorKind, ErrorReport},
     message::{AssistantContent, Message, ToolCall, UserContent},
     telemetry::SpanCombinator,
-    wasm_compat::WasmCompatSend,
+    wasm_compat::{WasmBoxedStream, WasmCompatSend, WasmCompatSync},
 };
 
 use super::{
@@ -37,32 +37,25 @@ use super::{
         streamed::{StreamedResolution, StreamedTurnAssembler, StreamedTurnEvent},
     },
     run::{
-        response::{MemoryAppend, PromptResponse},
+        response::{MemoryAppend, PromptResponse, finalize_output_tool_choice},
         transcript::{assistant_text_from_choice, is_empty_assistant_turn, tool_result_output},
     },
     runner::AgentRunner,
-    streaming::{MultiTurnStreamItem, StreamingError, finalize_streamed_choice},
+    streaming::MultiTurnStreamItem,
     telemetry::{build_chat_span, new_execute_tool_span},
 };
 use crate::run::UnhandledInvalidToolCall;
 use crate::{
-    completion::{PromptError, Usage},
+    completion::PromptError,
     json_utils,
-    streaming::{Item, StreamEvent, StreamedUserContent},
+    streaming::{Item, StreamEvent},
     tool::{ToolCatalog, ToolResult},
 };
 
 /// A boxed, medium-specific item stream for one engine step (model turn or tool
 /// batch). Boxed so a generic [`drive_agent`] can forward it without the
 /// per-step future leaking into the engine's own (`Send`) inference.
-// Browser streams may capture non-Send provider futures.
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
-pub(crate) type DriveStream<'a> =
-    Pin<Box<dyn Stream<Item = Result<MultiTurnStreamItem, StreamingError>> + Send + 'a>>;
-
-#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
-pub(crate) type DriveStream<'a> =
-    Pin<Box<dyn Stream<Item = Result<MultiTurnStreamItem, StreamingError>> + 'a>>;
+pub(crate) type DriveStream<'a> = WasmBoxedStream<'a, Result<MultiTurnStreamItem, PromptError>>;
 
 /// Engine output: stream items for forwarding or a canonical terminal response.
 pub(crate) enum DriveItem {
@@ -74,10 +67,14 @@ pub(crate) enum DriveItem {
     Done(PromptResponse),
 }
 
-/// Medium-specific turn execution, telemetry, and final-item construction.
-/// Implementations resolve invalid calls during model ingestion and feed accepted
-/// turns or tool results back into the run.
-pub(crate) trait TurnSource: WasmCompatSend {
+/// Medium-specific model turns, span chaining, telemetry, and final-item
+/// construction. Implementations resolve invalid calls during model ingestion
+/// and feed accepted turns back into the run; the engine runs tool calls.
+pub(crate) trait TurnSource: WasmCompatSend + WasmCompatSync {
+    /// Whether the surface forwards intermediate items. The blocking fold
+    /// discards them, so its source skips building them.
+    const FORWARDS_ITEMS: bool;
+
     /// Build this medium's per-turn `chat` span (name + parenting + any
     /// `follows_from` chaining differ between blocking and streaming).
     fn open_chat_span(
@@ -100,16 +97,8 @@ pub(crate) trait TurnSource: WasmCompatSend {
         prompt: Message,
     ) -> DriveStream<'a>;
 
-    /// Execute a turn's tool calls, feeding the results into the machine and
-    /// yielding any intermediate items.
-    fn run_tool_calls<'a>(
-        &'a self,
-        runner: &'a AgentRunner,
-        hook_ctx: &'a HookContext,
-        run: &'a mut AgentRun,
-        calls: Vec<PendingToolCall>,
-        tool_snapshot: Arc<ToolCatalog>,
-    ) -> DriveStream<'a>;
+    /// Chain a chat or tool execute span into this medium's span sequence.
+    fn chain_span(&self, span: tracing::Span) -> tracing::Span;
 
     /// Record run-level telemetry onto the agent span at `Done`. Gated on
     /// `created_agent_span` so a caller-supplied outer span is never polluted.
@@ -123,17 +112,6 @@ pub(crate) trait TurnSource: WasmCompatSend {
     /// Build the final stream item surfaced at `Done`, or `None` when the
     /// surface discards it (the blocking fold) so the engine skips the work.
     fn final_item(&self, response: &PromptResponse) -> Option<MultiTurnStreamItem>;
-}
-
-/// Convert a [`StreamingError`] back into a [`PromptError`] for the blocking
-/// surface ([`AgentRunner::run`]), which folds the shared engine. Lossless:
-/// every streaming error originates as one of these.
-pub(crate) fn streaming_error_into_prompt(err: StreamingError) -> PromptError {
-    match err {
-        StreamingError::Completion(err) => PromptError::CompletionError(err),
-        StreamingError::Report(report) => PromptError::Report(report),
-        StreamingError::Prompt(err) => err,
-    }
 }
 
 pub(crate) fn store_error_usage(runner: &AgentRunner, run: &AgentRun) {
@@ -155,7 +133,7 @@ pub(crate) fn drive_agent<S>(
     created_agent_span: bool,
     memory_handle: Option<(MemoryHandle, rig_core::id::ConversationId)>,
     hook_ctx: HookContext,
-) -> impl Stream<Item = Result<DriveItem, StreamingError>>
+) -> impl Stream<Item = Result<DriveItem, PromptError>>
 where
     S: TurnSource,
 {
@@ -220,10 +198,9 @@ where
                 RunStartAction::Continue => None,
                 RunStartAction::Rewrite(prompt) => run
                     .rewrite_initial_prompt(prompt)
-                    .err()
-                    .map(StreamingError::Prompt),
+                    .err(),
                 RunStartAction::Stop(reason) => {
-                    Some(StreamingError::Prompt(run.cancel_error(reason)))
+                    Some(run.cancel_error(reason))
                 }
             };
             if let Some(err) = early_stop {
@@ -265,7 +242,6 @@ where
                 Ok(step) => step,
                 Err(err) => {
                     store_error_usage(&runner, &run);
-                    let err: StreamingError = err.into();
                     settle_error!(err);
                     yield Err(err);
                     break 'outer;
@@ -285,7 +261,7 @@ where
                         match resolve_completion_call(&runner.config.hooks, &hook_ctx, &prompt, &history, turn).await {
                             CompletionCallOutcome::Terminate(reason) => {
                                 store_error_usage(&runner, &run);
-                                let err = StreamingError::Prompt(run.cancel_error(reason));
+                                let err = run.cancel_error(reason);
                                 settle_error!(err);
                                 yield Err(err);
                                 break 'outer;
@@ -310,7 +286,7 @@ where
                         ModelSelectionAction::Select(model) => model,
                         ModelSelectionAction::Stop(reason) => {
                             store_error_usage(&runner, &run);
-                            let err = StreamingError::Prompt(run.cancel_error(reason));
+                            let err = run.cancel_error(reason);
                             settle_error!(err);
                             yield Err(err);
                             break 'outer;
@@ -327,7 +303,7 @@ where
                         Ok(model) => model,
                         Err(report) => {
                             store_error_usage(&runner, &run);
-                            let err = StreamingError::Report(report);
+                            let err = PromptError::Report(report);
                             settle_error!(err);
                             yield Err(err);
                             break 'outer;
@@ -358,7 +334,7 @@ where
                         Ok(prepared) => prepared,
                         Err(err) => {
                             store_error_usage(&runner, &run);
-                            let err: StreamingError = err.into();
+                            let err = PromptError::from(err);
                             settle_error!(err);
                             yield Err(err);
                             break 'outer;
@@ -402,7 +378,7 @@ where
                         let names: Vec<String> = advertised
                             .definitions
                             .iter()
-                            .map(|definition| definition.name.clone())
+                            .map(|definition| definition.name.to_string())
                             .collect();
                         pending_tool_snapshot = Some(Arc::new(
                             runner.tool_server_handle.snapshot_with_dynamic(&names),
@@ -410,7 +386,7 @@ where
                     }
                     let Some(tool_snapshot) = pending_tool_snapshot.take() else {
                         store_error_usage(&runner, &run);
-                        let err = StreamingError::Completion(ProviderError::Response(
+                        let err = PromptError::Provider(ProviderError::Response(
                             "agent requested tool execution without a prepared registry snapshot"
                                 .to_string(),
                         ));
@@ -418,12 +394,14 @@ where
                         yield Err(err);
                         break 'outer;
                     };
-                    drive_step!('outer, source.run_tool_calls(
+                    drive_step!('outer, drive_tool_calls(
                         &runner,
                         &hook_ctx,
                         &mut run,
                         calls,
                         tool_snapshot,
+                        |span| source.chain_span(span),
+                        S::FORWARDS_ITEMS,
                     ));
                 }
                 AgentRunStep::Done(response) => {
@@ -440,7 +418,7 @@ where
                         &runner,
                         &hook_ctx,
                         memory_handle.as_ref(),
-                        response.messages.as_deref().unwrap_or_default(),
+                        &response.messages,
                     )
                     .await;
                     let response = response.with_memory_append(memory_append);
@@ -484,7 +462,7 @@ where
 ///   new tool starts, not-yet-started concurrent siblings are dropped,
 ///   already-started ones are drained, and the deterministic lowest call-index
 ///   error is surfaced with **no** successful [`ToolExecutionCommitted`] /
-///   [`StreamUserItem`](MultiTurnStreamItem::StreamUserItem) items and **no**
+///   [`ToolResult`](MultiTurnStreamItem::ToolResult) items and **no**
 ///   history commit.
 /// - Only if the whole batch settles successfully are the per-tool
 ///   [`ToolExecutionCommitted`](MultiTurnStreamItem::ToolExecutionCommitted) + result
@@ -651,7 +629,7 @@ where
         // On termination surface only the deterministic error: no execution
         // commit, no result, and no history commit.
         if let Some((_, err)) = first_error {
-            yield Err(StreamingError::Prompt(err));
+            yield Err(err);
             return;
         }
 
@@ -668,10 +646,8 @@ where
             Vec::with_capacity(call_count.saturating_mul(2));
         for slot in collected {
             let Some(CollectedToolResult { content, surface }) = slot else {
-                yield Err(StreamingError::Prompt(PromptError::CompletionError(
-                    ProviderError::Response(
-                        "tool execution finished without producing every result".to_string(),
-                    ),
+                yield Err(PromptError::Provider(ProviderError::Response(
+                    "tool execution finished without producing every result".to_string(),
                 )));
                 return;
             };
@@ -692,18 +668,16 @@ where
                 if surface_result
                     && let UserContent::ToolResult(tool_result) = &content
                 {
-                    surface_items.push(MultiTurnStreamItem::StreamUserItem(
-                        StreamedUserContent::ToolResult {
-                            tool_result: tool_result.clone(),
-                        },
-                    ));
+                    surface_items.push(MultiTurnStreamItem::ToolResult {
+                        tool_result: tool_result.clone(),
+                    });
                 }
             }
             committed.push(content);
         }
 
         if let Err(err) = run.tool_results(committed) {
-            yield Err(err.into());
+            yield Err(err);
             return;
         }
 
@@ -777,6 +751,8 @@ impl StreamingTurnSource {
 }
 
 impl TurnSource for StreamingTurnSource {
+    const FORWARDS_ITEMS: bool = true;
+
     fn open_chat_span(
         &self,
         runner: &AgentRunner,
@@ -800,31 +776,18 @@ impl TurnSource for StreamingTurnSource {
             // prepared with, completion-call patches included.
             let attempt_max_tokens = prepared.max_tokens;
 
-            let request = prepared.request;
-            let model = prepared.model;
-            let (dispatch_id, dispatched_kind, mut stream) = match dispatch_completion(runner, hook_ctx, &model, request, true)
-                .instrument(chat_span.clone())
-                .await
-            {
-                Ok(CompletionDispatch::Stream { id, kind, stream }) => (id, kind, stream),
-                Ok(CompletionDispatch::Response { .. }) => {
-                    yield Err(StreamingError::Report(
-                        ErrorReport::new(
-                            ErrorKind::Internal,
-                            "a streaming completion dispatch answered unary",
-                        ),
-                    ));
-                    return;
-                }
-                Err(CompletionDispatchError::Cancelled(reason)) => {
-                    yield Err(StreamingError::Prompt(run.cancel_error(reason)));
-                    return;
-                }
-                Err(CompletionDispatchError::Failed(report)) => {
-                    yield Err(StreamingError::Report(report));
-                    return;
-                }
-            };
+            let dispatched =
+                dispatch_completion_stream(runner, hook_ctx, run, &prepared.model, prepared.request)
+                    .instrument(chat_span.clone())
+                    .await;
+            let CompletionDispatch { id: dispatch_id, kind: dispatched_kind, answer: mut stream } =
+                match dispatched {
+                    Ok(dispatched) => dispatched,
+                    Err(err) => {
+                        yield Err(err);
+                        return;
+                    }
+                };
             let mut assembler = StreamedTurnAssembler::new(
                 prepared.executable_tool_names.clone(),
                 prepared.allowed_tool_names.clone(),
@@ -886,9 +849,7 @@ impl TurnSource for StreamingTurnSource {
                                 // cancelled here, before the error surfaces, so the
                                 // record is the same cancel on every transport.
                                 drop(stream);
-                                yield Err(StreamingError::Prompt(
-                                    run.cancel_error(reason),
-                                ));
+                                yield Err(run.cancel_error(reason));
                                 return;
                             }
                             if self.observes_reasoning_delta
@@ -916,9 +877,7 @@ impl TurnSource for StreamingTurnSource {
                                 // cancelled here, before the error surfaces, so the
                                 // record is the same cancel on every transport.
                                 drop(stream);
-                                yield Err(StreamingError::Prompt(
-                                    run.cancel_error(reason),
-                                ));
+                                yield Err(run.cancel_error(reason));
                                 return;
                             }
                             if let Some(item) = item_slot.take() {
@@ -959,9 +918,7 @@ impl TurnSource for StreamingTurnSource {
                                     // cancelled here, before the error surfaces, so the
                                     // record is the same cancel on every transport.
                                     drop(stream);
-                                    yield Err(StreamingError::Prompt(
-                                        run.cancel_error(reason),
-                                    ));
+                                    yield Err(run.cancel_error(reason));
                                     return;
                                 }
                                 yield Ok(MultiTurnStreamItem::stream_item(Item::Event(event)));
@@ -982,7 +939,6 @@ impl TurnSource for StreamingTurnSource {
                                 stream.message_id(),
                                 &stream.partial().choice,
                             );
-                            eprintln!("PARTIAL {:?}", stream.partial().choice);
                             // Gated on `has_hooks`: building the diagnostic context
                             // clones the chat history, so an empty stack skips it and
                             // fails fast.
@@ -996,14 +952,14 @@ impl TurnSource for StreamingTurnSource {
                             } else {
                                 None
                             };
-                            // No hook resolved it: the runner's policy, as the
+                            // No hook resolved it: the run's policy, as the
                             // unary surface applies it (`Ignore` drops the call
                             // and goes on; `Fail` fails the run).
                             let resolved = match hook_action {
                                 Some(action) => {
                                     run.resolve_streamed_invalid_tool_call(&partial, &invalid, action)
                                 }
-                                None => match runner.unhandled_invalid_tool_call {
+                                None => match run.unhandled_invalid_tool_call() {
                                     UnhandledInvalidToolCall::Fail => run
                                         .resolve_streamed_invalid_tool_call(
                                             &partial,
@@ -1018,7 +974,7 @@ impl TurnSource for StreamingTurnSource {
                             let resolution = match resolved {
                                 Ok(resolution) => resolution,
                                 Err(err) => {
-                                    yield Err(err.into());
+                                    yield Err(err);
                                     return;
                                 }
                             };
@@ -1061,15 +1017,13 @@ impl TurnSource for StreamingTurnSource {
                                                 yield Ok(MultiTurnStreamItem::CompletionCall(call));
                                             }
                                             Err(err) => {
-                                                yield Err(err.into());
+                                                yield Err(err);
                                                 return;
                                             }
                                         }
                                     }
                                     if let Some(tool_result) = skipped_tool_result {
-                                        yield Ok(MultiTurnStreamItem::StreamUserItem(
-                                            StreamedUserContent::ToolResult { tool_result },
-                                        ));
+                                        yield Ok(MultiTurnStreamItem::ToolResult { tool_result });
                                     }
                                     return;
                                 }
@@ -1085,7 +1039,7 @@ impl TurnSource for StreamingTurnSource {
             // The reply's end: the response `call` would have returned for it.
             // A reply the provider did not end is truncated, and never a
             // successful zero-usage completion.
-            let response = match stream.finish().await {
+            let mut response = match stream.finish().await {
                 Ok(response) => response,
                 Err(err) => {
                     yield Err(err.into());
@@ -1101,76 +1055,67 @@ impl TurnSource for StreamingTurnSource {
             ) {
                 Ok(call) => yield Ok(MultiTurnStreamItem::CompletionCall(call)),
                 Err(err) => {
-                    yield Err(err.into());
+                    yield Err(err);
                     return;
                 }
             }
 
-            let mut final_turn_content = response.choice.clone();
             let streamed_turn = assembler.finish(response.message_id.clone(), &response);
-            let identity = response.identity();
             self.last_message_id.clone_from(&streamed_turn.message_id);
             // The hooks and run history see the assembled turn: the
             // response's choice without ignored calls, with repaired names.
-            let canonical_choice = streamed_turn.choice.clone();
-            // `streamed_turn` is moved into run state on the next line and the
-            // hooks fire after that. `FinishReason::Other` carries a `String`,
-            // so this is a clone rather than a copy.
-            let attempt_finish_reason = streamed_turn.finish_reason.clone();
+            // The final item keeps the provider's choice.
+            let mut final_turn_content =
+                std::mem::replace(&mut response.choice, streamed_turn.choice.clone());
             if let Err(err) = run.streamed_turn(streamed_turn) {
-                yield Err(err.into());
+                yield Err(err);
                 return;
             }
-            if !turn_recovered {
-                let settlement = settle_model_turn(
-                    &runner.config.hooks,
-                    hook_ctx,
-                    run,
-                    AssembledTurn {
-                        dispatch_id,
-                        dispatch_kind: &dispatched_kind,
-                        provider: &response.provider,
-                        content: &canonical_choice,
-                        usage: response.usage,
-                        identity: &identity,
-                        finish_reason: attempt_finish_reason.as_ref(),
-                        max_tokens: attempt_max_tokens,
-                        raw: &response.raw,
-                    },
-                )
-                .await;
-                match settlement {
-                    Ok(ModelTurnDecision::Advance { replaced }) => {
-                        // The run keeps the replacement, and so does the final
-                        // item the consumer receives: the fragments it saw were
-                        // the provider's, the answer is the hook's.
-                        if let Some(choice) = replaced {
-                            final_turn_content = choice;
-                        }
+            let turn = CompletionDispatch {
+                id: dispatch_id,
+                kind: dispatched_kind,
+                answer: response,
+            };
+            let settlement = settle_model_turn(
+                &runner.config.hooks,
+                hook_ctx,
+                run,
+                &turn,
+                attempt_max_tokens,
+                turn_recovered,
+            )
+            .await;
+            match settlement {
+                Ok(ModelTurnDecision::Advance { replaced }) => {
+                    // The run keeps the replacement, and so does the final
+                    // item the consumer receives: the fragments it saw were
+                    // the provider's, the answer is the hook's.
+                    if let Some(choice) = replaced {
+                        final_turn_content = choice;
                     }
-                    Ok(ModelTurnDecision::Retried) => {
-                        yield Ok(MultiTurnStreamItem::ModelTurnRetried {
-                            turn: hook_ctx.turn(),
-                        });
-                        return;
-                    }
-                    Ok(ModelTurnDecision::Terminate(reason)) => {
-                        // A stop observes an already completed provider turn:
-                        // its content telemetry stays visible before the
-                        // cancellation.
-                        self.record_turn_telemetry(
-                            agent_span,
-                            &chat_span,
-                            &canonical_choice,
-                            runner.config.record_telemetry_content,
-                        );
-                        yield Err(StreamingError::Prompt(run.cancel_error(reason)));
-                        return;
-                    }
-                    Err(err) => {
-                        yield Err(StreamingError::Prompt(err));
-                        return;
-                    }
+                }
+                Ok(ModelTurnDecision::Retried) => {
+                    yield Ok(MultiTurnStreamItem::ModelTurnRetried {
+                        turn: hook_ctx.turn(),
+                    });
+                    return;
+                }
+                Ok(ModelTurnDecision::Terminate(reason)) => {
+                    // A stop observes an already completed provider turn:
+                    // its content telemetry stays visible before the
+                    // cancellation.
+                    self.record_turn_telemetry(
+                        agent_span,
+                        &chat_span,
+                        &turn.answer.choice,
+                        runner.config.record_telemetry_content,
+                    );
+                    yield Err(run.cancel_error(reason));
+                    return;
+                }
+                Err(err) => {
+                    yield Err(err);
+                    return;
                 }
             }
 
@@ -1178,7 +1123,7 @@ impl TurnSource for StreamingTurnSource {
             self.record_turn_telemetry(
                 agent_span,
                 &chat_span,
-                &canonical_choice,
+                &turn.answer.choice,
                 runner.config.record_telemetry_content,
             );
 
@@ -1186,25 +1131,8 @@ impl TurnSource for StreamingTurnSource {
         })
     }
 
-    fn run_tool_calls<'a>(
-        &'a self,
-        runner: &'a AgentRunner,
-        hook_ctx: &'a HookContext,
-        run: &'a mut AgentRun,
-        calls: Vec<PendingToolCall>,
-        tool_snapshot: Arc<ToolCatalog>,
-    ) -> DriveStream<'a> {
-        // The streaming surface chains nothing onto its tool spans, and forwards
-        // the ToolCall/ToolResult items to the consumer.
-        drive_tool_calls(
-            runner,
-            hook_ctx,
-            run,
-            calls,
-            tool_snapshot,
-            |span| span,
-            true,
-        )
+    fn chain_span(&self, span: tracing::Span) -> tracing::Span {
+        span
     }
 
     fn record_run_level_telemetry(
@@ -1221,7 +1149,7 @@ impl TurnSource for StreamingTurnSource {
     fn final_item(&self, response: &PromptResponse) -> Option<MultiTurnStreamItem> {
         // In tool output mode, when the finishing turn made the output-tool call,
         // surface the run's structured output as the final content.
-        let final_choice = finalize_streamed_choice(&self.last_final_choice, &response.output)
+        let final_choice = finalize_output_tool_choice(&self.last_final_choice, &response.output())
             .unwrap_or_else(|| {
                 if is_empty_assistant_turn(&self.last_final_choice) {
                     tracing::warn!(
@@ -1232,16 +1160,12 @@ impl TurnSource for StreamingTurnSource {
                 }
                 self.last_final_choice.clone()
             });
-        // Always surface the accumulated messages, regardless of whether the
-        // caller supplied input history.
-        let final_messages: Option<Vec<Message>> =
-            Some(response.messages.clone().unwrap_or_default());
         Some(
             MultiTurnStreamItem::final_response_with_completion_calls(
                 final_choice,
                 response.usage,
                 response.completion_calls.clone(),
-                final_messages,
+                response.messages.clone(),
             )
             .with_memory_append(response.memory_append.clone()),
         )
@@ -1270,64 +1194,52 @@ pub(crate) enum ModelTurnDecision {
     Terminate(String),
 }
 
-/// One attempt's assembled response, as both drivers hand it to
-/// [`settle_model_turn`]: the unary response under `run()`, the finished
-/// stream under `stream()`. Every field belongs to this attempt, and a retry
-/// re-enters with a fresh response, so a stale attempt's ids or payload can
-/// never be attributed here.
-pub(crate) struct AssembledTurn<'a> {
-    /// The completion dispatch this attempt answers: the outcome hook's
-    /// correlation id and the effect that was dispatched.
-    pub(crate) dispatch_id: EffectId,
-    pub(crate) dispatch_kind: &'a EffectKind,
-    /// The provider that answered, as the response names it.
-    pub(crate) provider: &'a str,
-    pub(crate) content: &'a Vec<AssistantContent>,
-    pub(crate) usage: Usage,
-    pub(crate) identity: &'a ResponseIdentity,
-    pub(crate) finish_reason: Option<&'a FinishReason>,
-    /// The cap this attempt was prepared with, completion-call patches
-    /// included; read off the prepared request, never the agent config.
-    pub(crate) max_tokens: Option<u64>,
-    pub(crate) raw: &'a serde_json::Value,
-}
-
 /// Settle a parked model turn: fire [`AgentHook::on_outcome`] for the
 /// completion dispatch (a replacement lands on the parked turn, a
 /// `Cancelled` replacement terminates), then
 /// [`AgentHook::on_model_turn_finished`] and apply its action to the sans-IO
 /// run. The outcome hook fires here rather than at the dispatch so that both
 /// media fire it in one slot, after the run validated the answer's tool calls
-/// (a recovered turn fires neither hook, on either medium) and while the turn
-/// can still be replaced. Both drivers call this once per accepted attempt, so retry history,
-/// tool-turn rejection, and state transitions cannot diverge by medium. The
-/// callers own what happens next: the blocking driver records the accepted
-/// turn's telemetry; the streaming driver additionally surfaces or discards
-/// the buffered provisional `Final`.
+/// (a `recovered` turn fires neither hook, on either medium, and advances)
+/// and while the turn can still be replaced. Both drivers call this once per
+/// accepted attempt, so retry history, tool-turn rejection, and state
+/// transitions cannot diverge by medium. `turn` carries this attempt's
+/// response with the choice the hooks see, and `max_tokens` the cap it was
+/// prepared with. The callers own what happens next: both record the accepted
+/// turn's telemetry, and the streaming driver also keeps the content its
+/// final item surfaces.
 pub(crate) async fn settle_model_turn(
     hooks: &HookStack,
     hook_ctx: &HookContext,
     run: &mut AgentRun,
-    turn: AssembledTurn<'_>,
+    turn: &CompletionDispatch<rig_core::completion::CompletionResponse>,
+    max_tokens: Option<u64>,
+    recovered: bool,
 ) -> Result<ModelTurnDecision, PromptError> {
+    if recovered {
+        return Ok(ModelTurnDecision::Advance { replaced: None });
+    }
+    let response = &turn.answer;
+    let identity = response.identity();
+    let finish_reason = response.finish_reason();
     let mut folded = rig_core::completion::CompletionResponse::new(
-        turn.content.clone(),
-        turn.usage,
-        turn.provider,
-        turn.raw.clone(),
+        response.choice.clone(),
+        response.usage,
+        &response.provider,
+        response.raw.clone(),
     )
-    .with_optional_finish_reason(turn.finish_reason.cloned());
-    folded.message_id = turn.identity.message_id.clone();
-    folded.response_id = turn.identity.response_id.clone();
-    folded.provider_request_id = turn.identity.provider_request_id.clone();
+    .with_optional_finish_reason(finish_reason.clone());
+    folded.message_id = identity.message_id.clone();
+    folded.response_id = identity.response_id.clone();
+    folded.provider_request_id = identity.provider_request_id.clone();
     let outcome: Result<Outcome, ErrorReport> = Ok(Outcome::Completion(folded));
     let mut replaced: Option<Vec<AssistantContent>> = None;
     match hooks
         .on_outcome(
             hook_ctx,
             OutcomeEvent {
-                id: turn.dispatch_id,
-                kind: turn.dispatch_kind,
+                id: turn.id,
+                kind: &turn.kind,
                 outcome: &outcome,
                 turn: hook_ctx.turn(),
                 call_id: None,
@@ -1351,18 +1263,18 @@ pub(crate) async fn settle_model_turn(
             return Err(PromptError::Report(report));
         }
     }
-    let content = replaced.as_ref().unwrap_or(turn.content);
+    let content = replaced.as_ref().unwrap_or(&response.choice);
     let action = hooks
         .on_model_turn_finished(
             hook_ctx,
             ModelTurnFinished {
                 turn: hook_ctx.turn(),
                 content,
-                usage: turn.usage,
-                identity: turn.identity,
-                finish_reason: turn.finish_reason,
-                max_tokens: turn.max_tokens,
-                raw: turn.raw,
+                usage: response.usage,
+                identity: &identity,
+                finish_reason: finish_reason.as_ref(),
+                max_tokens,
+                raw: &response.raw,
             },
         )
         .await;
@@ -1592,10 +1504,7 @@ pub(crate) async fn run_single_tool(
     {
         Ok(dispatch) => dispatch,
         Err(ToolDispatchAbort::Cancelled(reason)) => {
-            return Err(PromptError::prompt_cancelled(
-                error_history.to_vec(),
-                reason,
-            ));
+            return Err(PromptError::cancelled(error_history.to_vec(), reason));
         }
         Err(ToolDispatchAbort::Failed(report)) => return Err(PromptError::Report(report)),
     };
@@ -1655,10 +1564,10 @@ pub(crate) struct UnaryTurnSource {
     /// streaming surface parents the same tree but does not chain).
     ///
     /// Atomic rather than `Cell` despite being driven by a single sequential
-    /// task: `run_tool_calls` passes `chain_span` as a closure into
-    /// `drive_tool_calls`, whose returned `DriveStream` is `Send`. That makes the
-    /// closure capture `&self`, so `&UnaryTurnSource` must be `Send`, i.e.
-    /// `UnaryTurnSource: Sync`, which `AtomicU64` provides and `Cell` does not.
+    /// task: the engine passes `chain_span` as a closure into
+    /// `drive_tool_calls`, whose returned `DriveStream` is `Send`. That closure
+    /// borrows the source, so every `TurnSource` must be `Sync`, which
+    /// `AtomicU64` provides and `Cell` does not.
     current_span_id: AtomicU64,
     record_telemetry_content: bool,
 }
@@ -1670,6 +1579,10 @@ impl UnaryTurnSource {
             record_telemetry_content,
         }
     }
+}
+
+impl TurnSource for UnaryTurnSource {
+    const FORWARDS_ITEMS: bool = false;
 
     /// Chain `span` onto the previous step's span and record it as the new chain
     /// head, preserving the blocking driver's linear causal trace.
@@ -1686,9 +1599,7 @@ impl UnaryTurnSource {
         }
         span
     }
-}
 
-impl TurnSource for UnaryTurnSource {
     fn open_chat_span(
         &self,
         runner: &AgentRunner,
@@ -1726,44 +1637,26 @@ impl TurnSource for UnaryTurnSource {
             // silently drop a completion-call hook's patch.
             let attempt_max_tokens = prepared.max_tokens;
 
-            let request = prepared.request;
-            let model = prepared.model;
-            let (dispatch_id, dispatched_kind, resp) = match dispatch_completion(runner, hook_ctx, &model, request, false)
-                .instrument(chat_span.clone())
-                .await
-            {
-                Ok(CompletionDispatch::Response { id, kind, response }) => (id, kind, response),
-                Ok(CompletionDispatch::Stream { .. }) => {
-                    yield Err(StreamingError::Report(
-                        ErrorReport::new(
-                            ErrorKind::Internal,
-                            "a unary completion dispatch answered with a stream",
-                        ),
-                    ));
-                    return;
-                }
-                Err(CompletionDispatchError::Cancelled(reason)) => {
-                    yield Err(StreamingError::Prompt(run.cancel_error(reason)));
-                    return;
-                }
-                Err(CompletionDispatchError::Failed(err)) => {
-                    yield Err(StreamingError::from(err));
+            let dispatched =
+                dispatch_completion_response(runner, hook_ctx, run, &prepared.model, prepared.request)
+                    .instrument(chat_span.clone())
+                    .await;
+            let dispatched = match dispatched {
+                Ok(dispatched) => dispatched,
+                Err(err) => {
+                    yield Err(err);
                     return;
                 }
             };
 
-            // Normalized once, then shared by run state and the per-turn hook, so
-            // the two cannot report different reasons for one attempt.
-            let attempt_finish_reason = resp.finish_reason();
-
             let mut outcome = match run.model_response(ModelTurn::from_response_parts(
-                &resp,
+                &dispatched.answer,
                 prepared.executable_tool_names,
                 prepared.allowed_tool_names,
             )) {
                 Ok(outcome) => outcome,
                 Err(err) => {
-                    yield Err(err.into());
+                    yield Err(err);
                     return;
                 }
             };
@@ -1782,7 +1675,7 @@ impl TurnSource for UnaryTurnSource {
                         outcome = match resolution {
                             Ok(outcome) => outcome,
                             Err(err) => {
-                                yield Err(err.into());
+                                yield Err(err);
                                 return;
                             }
                         };
@@ -1791,70 +1684,34 @@ impl TurnSource for UnaryTurnSource {
                     ModelTurnOutcome::Continue {
                         response_hook_suppressed,
                     } => {
-                        if !response_hook_suppressed {
-                            let identity = resp.identity();
-                            let settlement = settle_model_turn(
-                                &runner.config.hooks,
-                                hook_ctx,
-                                run,
-                                AssembledTurn {
-                                    dispatch_id,
-                                    dispatch_kind: &dispatched_kind,
-                                    provider: &resp.provider,
-                                    content: &resp.choice,
-                                    usage: resp.usage,
-                                    identity: &identity,
-                                    finish_reason: attempt_finish_reason.as_ref(),
-                                    max_tokens: attempt_max_tokens,
-                                    raw: &resp.raw,
-                                },
-                            )
-                            .await;
-                            match settlement {
-                                Ok(ModelTurnDecision::Advance { .. }) => {}
-                                Ok(ModelTurnDecision::Retried) => break,
-                                Ok(ModelTurnDecision::Terminate(reason)) => {
-                                    record_accepted_turn(run);
-                                    yield Err(StreamingError::Prompt(
-                                        run.cancel_error(reason),
-                                    ));
-                                    return;
-                                }
-                                Err(err) => {
-                                    yield Err(StreamingError::Prompt(err));
-                                    return;
-                                }
+                        let settlement = settle_model_turn(
+                            &runner.config.hooks,
+                            hook_ctx,
+                            run,
+                            &dispatched,
+                            attempt_max_tokens,
+                            response_hook_suppressed,
+                        )
+                        .await;
+                        match settlement {
+                            Ok(ModelTurnDecision::Advance { .. }) => {}
+                            Ok(ModelTurnDecision::Retried) => break,
+                            Ok(ModelTurnDecision::Terminate(reason)) => {
+                                record_accepted_turn(run);
+                                yield Err(run.cancel_error(reason));
+                                return;
+                            }
+                            Err(err) => {
+                                yield Err(err);
+                                return;
                             }
                         }
-
                         record_accepted_turn(run);
                         break;
                     }
                 }
             }
         })
-    }
-
-    fn run_tool_calls<'a>(
-        &'a self,
-        runner: &'a AgentRunner,
-        hook_ctx: &'a HookContext,
-        run: &'a mut AgentRun,
-        calls: Vec<PendingToolCall>,
-        tool_snapshot: Arc<ToolCatalog>,
-    ) -> DriveStream<'a> {
-        // The blocking surface chains tool spans into its linear `follows_from`
-        // sequence (chat -> tool -> chat), and discards the yielded items, so it
-        // skips building them.
-        drive_tool_calls(
-            runner,
-            hook_ctx,
-            run,
-            calls,
-            tool_snapshot,
-            |span| self.chain_span(span),
-            false,
-        )
     }
 
     fn record_run_level_telemetry(
@@ -1868,7 +1725,7 @@ impl TurnSource for UnaryTurnSource {
         // surface additionally records the final completion text.
         if created_agent_span {
             if self.record_telemetry_content {
-                agent_span.record("gen_ai.completion", &response.output);
+                agent_span.record("gen_ai.completion", response.output());
             }
             agent_span.record_token_usage(&response.usage);
         }
@@ -1885,32 +1742,14 @@ impl TurnSource for UnaryTurnSource {
 #[allow(irrefutable_let_patterns, unreachable_patterns)]
 mod tests;
 
-/// What a completion dispatch answered.
-pub(crate) enum CompletionDispatch {
-    /// A unary dispatch's answer. The outcome hook fires when the turn is
-    /// settled (after the run validated the answer's tool calls), so the id
-    /// and the dispatched effect travel with the response.
-    Response {
-        id: EffectId,
-        kind: EffectKind,
-        response: rig_core::completion::CompletionResponse,
-    },
-    /// A streaming dispatch: the outcome hook fires on its folded terminal,
-    /// which is why the id and the dispatched effect travel with the stream.
-    Stream {
-        id: EffectId,
-        kind: EffectKind,
-        stream: rig_core::streaming::CompletionStream,
-    },
-}
-
-/// Why a completion dispatch did not answer.
-pub(crate) enum CompletionDispatchError {
-    /// A hook denied it with a `Cancelled` report: the run is cancelled.
-    Cancelled(String),
-    /// The dispatch failed (a denial with any other kind, a bus or handler
-    /// failure, a wrong-family patch).
-    Failed(ErrorReport),
+/// A completion the bus accepted, with the effect it was dispatched as. The
+/// outcome hook fires when the turn is settled (after the run validated the
+/// answer's tool calls), so the id and the dispatched effect travel with the
+/// answer: the unary response or the provider stream.
+pub(crate) struct CompletionDispatch<A> {
+    pub(crate) id: EffectId,
+    pub(crate) kind: EffectKind,
+    pub(crate) answer: A,
 }
 
 fn wrong_family_patch(expected: &str, kind: &EffectKind) -> ErrorReport {
@@ -1923,23 +1762,24 @@ fn wrong_family_patch(expected: &str, kind: &EffectKind) -> ErrorReport {
     )
 }
 
-/// Dispatch a completion through the agent's bus at the dispatch boundary:
-/// `on_dispatch` before (patch or deny), then the bus. The outcome hook is
-/// not fired here: on either medium it fires in [`settle_model_turn`], once
-/// the run has validated the answer's tool calls and parked the turn. That is
-/// the slot where a hook can still replace what history keeps, on both media.
-pub(crate) async fn dispatch_completion(
+/// Fire `on_dispatch` for a completion and return the effect to send, with
+/// any same-family patch applied. A `Cancelled` denial cancels the run; any
+/// other denial or a wrong-family patch fails it. The outcome hook is not fired
+/// here: on either medium it fires in [`settle_model_turn`], once the run has
+/// validated the answer's tool calls and parked the turn. That is the slot
+/// where a hook can still replace what history keeps, on both media.
+async fn completion_effect(
     runner: &AgentRunner,
     ctx: &HookContext,
-    model: &ModelHandle,
+    run: &AgentRun,
     request: rig_core::completion::CompletionRequest,
     stream: bool,
-) -> Result<CompletionDispatch, CompletionDispatchError> {
-    let hooks = &runner.config.hooks;
-    let dispatcher = runner.config.bus.dispatcher();
-    let id = dispatcher.mint_id();
+) -> Result<(EffectId, EffectKind), PromptError> {
+    let id = runner.config.bus.dispatcher().mint_id();
     let kind = EffectKind::Completion { request, stream };
-    let kind = match hooks
+    let kind = match runner
+        .config
+        .hooks
         .on_dispatch(
             ctx,
             DispatchEvent {
@@ -1953,37 +1793,57 @@ pub(crate) async fn dispatch_completion(
         .await
     {
         DispatchAction::Proceed => kind,
-        DispatchAction::Patch(patched) => match patched {
-            EffectKind::Completion { request, .. } => EffectKind::Completion { request, stream },
-            other => {
-                return Err(CompletionDispatchError::Failed(wrong_family_patch(
-                    "completion",
-                    &other,
-                )));
-            }
-        },
-        DispatchAction::Deny(report) => {
-            return Err(if report.kind == ErrorKind::Cancelled {
-                CompletionDispatchError::Cancelled(report.message)
-            } else {
-                CompletionDispatchError::Failed(report)
-            });
+        DispatchAction::Patch(EffectKind::Completion { request, .. }) => {
+            EffectKind::Completion { request, stream }
         }
+        DispatchAction::Patch(other) => {
+            return Err(PromptError::Report(wrong_family_patch(
+                "completion",
+                &other,
+            )));
+        }
+        DispatchAction::Deny(report) if report.kind == ErrorKind::Cancelled => {
+            return Err(run.cancel_error(report.message));
+        }
+        DispatchAction::Deny(report) => return Err(PromptError::Report(report)),
     };
-    if stream {
-        let provider = model.label().to_string();
-        let events = dispatcher.dispatch_stream_with(
-            model.key(),
-            kind.clone(),
-            DispatchOptions::default().with_id(id),
-        );
-        return Ok(CompletionDispatch::Stream {
-            id,
-            kind,
-            stream: crate::bus::wrap_stream(provider, events),
-        });
-    }
-    let outcome = dispatcher
+    Ok((id, kind))
+}
+
+/// Dispatch a streaming completion through the agent's bus.
+pub(crate) async fn dispatch_completion_stream(
+    runner: &AgentRunner,
+    ctx: &HookContext,
+    run: &AgentRun,
+    model: &ModelHandle,
+    request: rig_core::completion::CompletionRequest,
+) -> Result<CompletionDispatch<rig_core::streaming::CompletionStream>, PromptError> {
+    let (id, kind) = completion_effect(runner, ctx, run, request, true).await?;
+    let events = runner.config.bus.dispatcher().dispatch_stream_with(
+        model.key(),
+        kind.clone(),
+        DispatchOptions::default().with_id(id),
+    );
+    Ok(CompletionDispatch {
+        id,
+        kind,
+        answer: crate::bus::wrap_stream(model.label().to_string(), events),
+    })
+}
+
+/// Dispatch a unary completion through the agent's bus and await its response.
+pub(crate) async fn dispatch_completion_response(
+    runner: &AgentRunner,
+    ctx: &HookContext,
+    run: &AgentRun,
+    model: &ModelHandle,
+    request: rig_core::completion::CompletionRequest,
+) -> Result<CompletionDispatch<rig_core::completion::CompletionResponse>, PromptError> {
+    let (id, kind) = completion_effect(runner, ctx, run, request, false).await?;
+    let outcome = runner
+        .config
+        .bus
+        .dispatcher()
         .dispatch_with(
             model.key(),
             kind.clone(),
@@ -1991,17 +1851,15 @@ pub(crate) async fn dispatch_completion(
         )
         .await;
     match outcome {
-        Ok(Outcome::Completion(response)) => {
-            Ok(CompletionDispatch::Response { id, kind, response })
-        }
-        Ok(other) => Err(CompletionDispatchError::Failed(ErrorReport::new(
+        Ok(Outcome::Completion(answer)) => Ok(CompletionDispatch { id, kind, answer }),
+        Ok(other) => Err(PromptError::Report(ErrorReport::new(
             ErrorKind::Internal,
             format!(
                 "the completion handler answered with a {} outcome",
                 other.family()
             ),
         ))),
-        Err(report) => Err(CompletionDispatchError::Failed(report)),
+        Err(report) => Err(PromptError::Report(report)),
     }
 }
 
@@ -2182,10 +2040,7 @@ pub(crate) async fn dispatch_tool_call(
         }
         Err(report) => ToolCallDispatch {
             executed,
-            result: ToolResult::failed(
-                crate::tool::ToolExecutionError::other(report.message.clone())
-                    .with_model_feedback(report.message),
-            ),
+            result: ToolResult::failed(report.into()),
             context: tool_context.for_dispatch(),
             args: effective_args,
         },

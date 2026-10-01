@@ -144,7 +144,7 @@ async fn main() -> Result<(), anyhow::Error> {
     // Prompt the agent and print the response
     let response = comedian_agent.prompt("Entertain me!").await?;
 
-    println!("{}", response.output);
+    println!("{}", response.output());
 
     Ok(())
 }
@@ -156,10 +156,11 @@ More examples live in [`examples`](./examples) and each crate's `examples` direc
 
 ## Recording and replay
 
-`rig::cassette::effect_log` provides logs, recorders, replay handlers and
-checkpoints. Keep an `EffectLogRecorder` handle and attach its clone with
-`AgentBuilder::record_to`; import `rig::cassette::agent::AgentReplayExt` to stamp
-the resulting log or check replay compatibility.
+With the `cassette` feature, `rig::cassette::effect_log` provides logs,
+recorders, replay handlers and checkpoints. Keep an `EffectLogRecorder` handle
+and attach its clone with `AgentBuilder::record_to`; import
+`rig::cassette::agent::AgentReplayExt` to stamp the resulting log or check
+replay compatibility.
 
 For transport-free consumers, depend directly on `rig-cassette` with default
 features disabled. Its optional `agent` and `ecs` adapters are independent of
@@ -175,6 +176,10 @@ Chat Completions, Responses, and Messages clients. Choose the protocol listed
 for your model in the [Zen](https://opencode.ai/docs/zen/#endpoints) or
 [Go](https://opencode.ai/docs/go/#endpoints) catalog. The module example shows
 how Go clients set an application user agent and a session ID per conversation.
+The built-in `rig::vector_store::in_memory_store::InMemoryVectorStore` stores
+serializable documents without requiring `Eq` or `Default`. Its custom ID
+callbacks accept closures that capture and mutate application state. See the
+[vector-search example](examples/vector_search/src/main.rs).
 
 The root `rig` facade exposes companion crates behind one feature per integration:
 

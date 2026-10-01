@@ -118,6 +118,19 @@ fn decode_mismatch_is_reported_by_require_and_get() {
 }
 
 #[test]
+fn decode_failure_keeps_the_serde_error_as_its_source() {
+    let mut context = ToolContext::new();
+    context
+        .inbound
+        .insert(Counter::KEY.to_string(), serde_json::json!("not a number"));
+    let error = context.require::<Counter>().unwrap_err();
+    let source = std::error::Error::source(&error)
+        .and_then(|source| source.downcast_ref::<serde_json::Error>())
+        .expect("decode failure should expose the serde error");
+    assert!(source.is_data());
+}
+
+#[test]
 fn get_reports_a_decode_failure_for_a_slot_holding_a_different_shape() {
     let mut context = ToolContext::new();
     context.insert(A(1)).unwrap();

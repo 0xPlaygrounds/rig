@@ -6,7 +6,8 @@ use rig_core::{
     Embed,
     embeddings::Embedding,
     vector_store::{
-        InsertDocuments, VectorStoreError, VectorStoreIndex,
+        InsertDocuments, VectorSearchIdResult, VectorSearchResult, VectorStoreError,
+        VectorStoreIndex,
         request::{SearchFilter, VectorSearchRequest},
     },
     wasm_compat::WasmCompatSend,
@@ -204,30 +205,37 @@ struct RowResult {
 impl VectorStoreIndex for Neo4jVectorIndex {
     type Filter = Neo4jSearchFilter;
 
-    /// Returns matches as `(score, node id, node)`. The node is deserialized as
+    /// Returns matches keyed by node element id. The node is deserialized as
     /// `T` without its embedding property.
     async fn top_n<T: DeserializeOwned + WasmCompatSend>(
         &self,
         req: VectorSearchRequest<Neo4jSearchFilter>,
-    ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
+    ) -> Result<Vec<VectorSearchResult<T>>, VectorStoreError> {
         let rows = self.run_search::<RowResultNode<T>>(&req).await?;
 
         Ok(rows
             .into_iter()
-            .map(|row| (row.score, row.element_id.to_string(), row.node))
+            .map(|row| VectorSearchResult {
+                score: row.score,
+                id: row.element_id.to_string(),
+                document: row.node,
+            })
             .collect())
     }
 
-    /// Like `top_n` but returns `(score, node id)` without deserializing nodes.
+    /// Like `top_n` but returns only scores and node ids, without deserializing nodes.
     async fn top_n_ids(
         &self,
         req: VectorSearchRequest<Neo4jSearchFilter>,
-    ) -> Result<Vec<(f64, String)>, VectorStoreError> {
+    ) -> Result<Vec<VectorSearchIdResult>, VectorStoreError> {
         let rows = self.run_search::<RowResult>(&req).await?;
 
         Ok(rows
             .into_iter()
-            .map(|row| (row.score, row.element_id.to_string()))
+            .map(|row| VectorSearchIdResult {
+                score: row.score,
+                id: row.element_id.to_string(),
+            })
             .collect())
     }
 }

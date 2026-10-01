@@ -9,7 +9,7 @@
 //!     .max_turns(3)
 //!     .run()
 //!     .await?;
-//! println!("{}", response.output);
+//! println!("{}", response.output());
 //! # Ok(())
 //! # }
 //! ```
@@ -21,7 +21,7 @@ use tracing_futures::Instrument;
 
 use super::{
     completion::{Agent, AgentConfig},
-    engine::{DriveItem, UnaryTurnSource, drive_agent, streaming_error_into_prompt},
+    engine::{DriveItem, UnaryTurnSource, drive_agent},
     hook::{AgentHook, HookContext, RunSettled, SettledOutcome, StepEventKind},
     run::{AgentRun, response::PromptResponse, spec::UnhandledInvalidToolCall},
     telemetry::acquire_agent_span,
@@ -46,8 +46,12 @@ use super::UNKNOWN_AGENT_NAME;
 /// runtime-composable list; `run()` and `stream()` share the same loop and fire
 /// the same events, so they behave identically apart from the streamed delta
 /// events the medium adds.
+///
+/// `O` is what `.await` recovers: `()` for the raw [`PromptResponse`], or a
+/// [`TypedOutput`](super::TypedOutput) for a [`TypedRun`](super::TypedRun).
 #[derive(Clone)]
-pub struct AgentRunner {
+#[must_use = "a run does nothing until awaited or driven"]
+pub struct AgentRunner<O = ()> {
     /// Run-local configuration; overrides never mutate the source agent.
     pub(crate) config: AgentConfig,
     /// Where the run starts: a prompt ([`Agent::prompt`]) or a persisted
@@ -64,6 +68,7 @@ pub struct AgentRunner {
     pub(crate) unhandled_invalid_tool_call: UnhandledInvalidToolCall,
     pub(crate) concurrency: usize,
     pub(crate) error_usage: Option<Arc<Mutex<Usage>>>,
+    pub(crate) output: O,
 }
 
 /// Where a run starts. A prompt builds a fresh [`AgentRun`] (after any
@@ -109,9 +114,32 @@ impl AgentRunner {
             unhandled_invalid_tool_call: UnhandledInvalidToolCall::Fail,
             concurrency: 1,
             error_usage: None,
+            output: (),
         }
     }
 
+    /// Configure the synthetic tool used by an internal Tool-output flow.
+    pub(crate) fn output_tool(
+        mut self,
+        name: impl Into<String>,
+        description: impl Into<String>,
+        augment_preamble: bool,
+    ) -> Self {
+        self.output_tool_name = Some(name.into());
+        self.output_tool_description = Some(description.into());
+        self.augment_output_preamble = augment_preamble;
+        self
+    }
+
+    /// Set the policy for invalid tool calls that no hook resolves. A resumed
+    /// run keeps the policy it persisted.
+    pub fn unhandled_invalid_tool_call(mut self, policy: UnhandledInvalidToolCall) -> Self {
+        self.unhandled_invalid_tool_call = policy;
+        self
+    }
+}
+
+impl<O> AgentRunner<O> {
     /// Append a hook to the stack (on top of any the agent already carries).
     /// Hooks run in registration order; how their results compose is
     /// event-dependent (model selections and `ToolCall`/`ToolResult` rewrites
@@ -126,12 +154,12 @@ impl AgentRunner {
         self.config.hooks.push(hook);
         self
     }
-}
 
-impl AgentRunner {
     /// Set the total model-call budget, including the initial call and every
     /// retry or continuation. Zero emits no model calls; one permits only the
-    /// initial call. Exceeding the budget returns [`PromptError::MaxTurnsError`].
+    /// initial call. Exceeding the budget returns [`PromptError::MaxTurns`],
+    /// which a typed run wraps in
+    /// [`StructuredOutputError::Prompt`](crate::completion::StructuredOutputError::Prompt).
     pub fn max_turns(mut self, max_turns: usize) -> Self {
         self.config.max_turns = max_turns;
         self
@@ -272,25 +300,6 @@ impl AgentRunner {
         self
     }
 
-    /// Configure the synthetic tool used by an internal Tool-output flow.
-    pub(crate) fn output_tool(
-        mut self,
-        name: impl Into<String>,
-        description: impl Into<String>,
-        augment_preamble: bool,
-    ) -> Self {
-        self.output_tool_name = Some(name.into());
-        self.output_tool_description = Some(description.into());
-        self.augment_output_preamble = augment_preamble;
-        self
-    }
-
-    /// Set the policy for invalid tool calls that no hook resolves.
-    pub fn unhandled_invalid_tool_call(mut self, policy: UnhandledInvalidToolCall) -> Self {
-        self.unhandled_invalid_tool_call = policy;
-        self
-    }
-
     /// Opt in or out of recording sensitive request, response, and tool content
     /// on GenAI telemetry spans for this run.
     ///
@@ -322,7 +331,7 @@ impl AgentRunner {
     ///
     /// With a memory backend configured, the run loads the conversation
     /// before its first model call (a load failure fails the run with
-    /// [`PromptError::MemoryError`] before any completion) and appends its
+    /// [`PromptError::Memory`] before any completion) and appends its
     /// `messages` once it finishes. The append is acknowledged on the
     /// response's [`memory_append`](PromptResponse::memory_append): a
     /// failed append does not invalidate the answer and does not prove that no
@@ -345,6 +354,41 @@ impl AgentRunner {
     pub fn max_invalid_tool_call_retries(mut self, retries: usize) -> Self {
         self.max_invalid_tool_call_retries = retries;
         self
+    }
+
+    /// This runner recovering `output` instead, and the output it replaced.
+    pub(crate) fn replace_output<P>(self, output: P) -> (AgentRunner<P>, O) {
+        let Self {
+            config,
+            origin,
+            chat_history,
+            max_invalid_tool_call_retries,
+            tool_server_handle,
+            tool_context,
+            output_tool_name,
+            output_tool_description,
+            augment_output_preamble,
+            unhandled_invalid_tool_call,
+            concurrency,
+            error_usage,
+            output: replaced,
+        } = self;
+        let runner = AgentRunner {
+            config,
+            origin,
+            chat_history,
+            max_invalid_tool_call_retries,
+            tool_server_handle,
+            tool_context,
+            output_tool_name,
+            output_tool_description,
+            augment_output_preamble,
+            unhandled_invalid_tool_call,
+            concurrency,
+            error_usage,
+            output,
+        };
+        (runner, replaced)
     }
 
     pub(crate) fn agent_name_or_default(&self) -> &str {
@@ -573,14 +617,13 @@ impl AgentRunner {
                     Err(err) => {
                         // Drain through termination so engine teardown completes
                         // rather than being dropped at the error yield.
-                        let error = streaming_error_into_prompt(err);
                         while driver.next().await.is_some() {}
-                        return Err(error);
+                        return Err(err);
                     }
                 }
             }
             response.ok_or_else(|| {
-                PromptError::CompletionError(ProviderError::Response(
+                PromptError::Provider(ProviderError::Response(
                     "agent run ended without producing a final response".to_string(),
                 ))
             })
@@ -599,6 +642,8 @@ impl std::future::IntoFuture for AgentRunner {
     }
 }
 
+#[cfg(test)]
+mod empty_turn_tests;
 #[cfg(test)]
 mod entry_tests;
 #[cfg(test)]

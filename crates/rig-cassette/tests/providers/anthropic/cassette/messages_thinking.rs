@@ -74,8 +74,7 @@ async fn redacted_thinking_roundtrip_nonstreaming() {
                     .message(Message::user(redacted_thinking_prompt()))
                     .message(Message::Assistant {
                         id: first_response.message_id.clone(),
-                        content: rig_core::NonEmpty::from_vec(first_response.choice.clone())
-                            .expect("non-empty"),
+                        content: first_response.choice.clone(),
                     });
 
             let second_response = model

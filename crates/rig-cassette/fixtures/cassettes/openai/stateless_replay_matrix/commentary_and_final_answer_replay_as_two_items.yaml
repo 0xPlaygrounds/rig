@@ -1,0 +1,232 @@
+when:
+  path: /v1/responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"include":["reasoning.encrypted_content"],"input":[{"content":[{"text":"Give me three fruit names.","type":"input_text"}],"role":"user","type":"message"}],"instructions":"Always start by sending the user a one-sentence progress update as a separate commentary message, then send your final answer as a separate message.","max_output_tokens":800,"model":"gpt-5.3-codex","reasoning":{"effort":"low"},"store":false,"stream":true}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  - name: x-request-id
+    value: req_88f45bf8f9a24825be93b156c991248f
+  body: |+
+    event: response.created
+    data: {"response":{"access_programs":null,"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_0c0c8fda2c061925016abc718bc0b087d0b414d07dddc9ee3d","incomplete_details":null,"instructions":"Always start by sending the user a one-sentence progress update as a separate commentary message, then send your final answer as a separate message.","max_output_tokens":800,"max_tool_calls":null,"metadata":{},"model":"gpt-5.3-codex","moderation":null,"object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"24h","reasoning":{"context":"current_turn","effort":"low","mode":"standard","summary":null},"safety_identifier":null,"service_tier":"auto","status":"in_progress","store":false,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[],"top_logprobs":0,"top_p":0.98,"truncation":"disabled","usage":null,"user":null},"sequence_number":0,"type":"response.created"}
+
+    event: response.in_progress
+    data: {"response":{"access_programs":null,"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_0c0c8fda2c061925016abc718bc0b087d0b414d07dddc9ee3d","incomplete_details":null,"instructions":"Always start by sending the user a one-sentence progress update as a separate commentary message, then send your final answer as a separate message.","max_output_tokens":800,"max_tool_calls":null,"metadata":{},"model":"gpt-5.3-codex","moderation":null,"object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"24h","reasoning":{"context":"current_turn","effort":"low","mode":"standard","summary":null},"safety_identifier":null,"service_tier":"auto","status":"in_progress","store":false,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[],"top_logprobs":0,"top_p":0.98,"truncation":"disabled","usage":null,"user":null},"sequence_number":1,"type":"response.in_progress"}
+
+    event: response.output_item.added
+    data: {"item":{"content":[],"id":"msg_0c0c8fda2c061925016abc718c93d487d08e2207989d5cc7e9","phase":"commentary","role":"assistant","status":"in_progress","type":"message"},"output_index":0,"sequence_number":2,"type":"response.output_item.added"}
+
+    event: response.content_part.added
+    data: {"content_index":0,"item_id":"msg_0c0c8fda2c061925016abc718c93d487d08e2207989d5cc7e9","output_index":0,"part":{"annotations":[],"logprobs":[],"text":"","type":"output_text"},"sequence_number":3,"type":"response.content_part.added"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"Quick","item_id":"msg_0c0c8fda2c061925016abc718c93d487d08e2207989d5cc7e9","logprobs":[],"obfuscation":"yUjhehTfHWU","output_index":0,"sequence_number":4,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" update","item_id":"msg_0c0c8fda2c061925016abc718c93d487d08e2207989d5cc7e9","logprobs":[],"obfuscation":"pSoEoldbV","output_index":0,"sequence_number":5,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":":","item_id":"msg_0c0c8fda2c061925016abc718c93d487d08e2207989d5cc7e9","logprobs":[],"obfuscation":"TBL4dKrMHSYRqdR","output_index":0,"sequence_number":6,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" I","item_id":"msg_0c0c8fda2c061925016abc718c93d487d08e2207989d5cc7e9","logprobs":[],"obfuscation":"VI3VDY73XMXSv3","output_index":0,"sequence_number":7,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"’m","item_id":"msg_0c0c8fda2c061925016abc718c93d487d08e2207989d5cc7e9","logprobs":[],"obfuscation":"rkvaiy2uRJnpMX","output_index":0,"sequence_number":8,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" generating","item_id":"msg_0c0c8fda2c061925016abc718c93d487d08e2207989d5cc7e9","logprobs":[],"obfuscation":"PZMBD","output_index":0,"sequence_number":9,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" a","item_id":"msg_0c0c8fda2c061925016abc718c93d487d08e2207989d5cc7e9","logprobs":[],"obfuscation":"uVSK6j5htfKZM3","output_index":0,"sequence_number":10,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" concise","item_id":"msg_0c0c8fda2c061925016abc718c93d487d08e2207989d5cc7e9","logprobs":[],"obfuscation":"tSImzusQ","output_index":0,"sequence_number":11,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" list","item_id":"msg_0c0c8fda2c061925016abc718c93d487d08e2207989d5cc7e9","logprobs":[],"obfuscation":"Fb8JjdrdGBY","output_index":0,"sequence_number":12,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" of","item_id":"msg_0c0c8fda2c061925016abc718c93d487d08e2207989d5cc7e9","logprobs":[],"obfuscation":"3RvbFKwevmmPl","output_index":0,"sequence_number":13,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" three","item_id":"msg_0c0c8fda2c061925016abc718c93d487d08e2207989d5cc7e9","logprobs":[],"obfuscation":"21sniC7fNr","output_index":0,"sequence_number":14,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" fruit","item_id":"msg_0c0c8fda2c061925016abc718c93d487d08e2207989d5cc7e9","logprobs":[],"obfuscation":"WSsiOk159a","output_index":0,"sequence_number":15,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" names","item_id":"msg_0c0c8fda2c061925016abc718c93d487d08e2207989d5cc7e9","logprobs":[],"obfuscation":"lqiwIHAF7B","output_index":0,"sequence_number":16,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" for","item_id":"msg_0c0c8fda2c061925016abc718c93d487d08e2207989d5cc7e9","logprobs":[],"obfuscation":"4q6zIEBSylMU","output_index":0,"sequence_number":17,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" you","item_id":"msg_0c0c8fda2c061925016abc718c93d487d08e2207989d5cc7e9","logprobs":[],"obfuscation":"zrGktwXOyB3I","output_index":0,"sequence_number":18,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" now","item_id":"msg_0c0c8fda2c061925016abc718c93d487d08e2207989d5cc7e9","logprobs":[],"obfuscation":"JF6nIlELtred","output_index":0,"sequence_number":19,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":".","item_id":"msg_0c0c8fda2c061925016abc718c93d487d08e2207989d5cc7e9","logprobs":[],"obfuscation":"DHropuWh83Qjgh2","output_index":0,"sequence_number":20,"type":"response.output_text.delta"}
+
+    event: response.output_text.done
+    data: {"content_index":0,"item_id":"msg_0c0c8fda2c061925016abc718c93d487d08e2207989d5cc7e9","logprobs":[],"output_index":0,"sequence_number":21,"text":"Quick update: I’m generating a concise list of three fruit names for you now.","type":"response.output_text.done"}
+
+    event: response.content_part.done
+    data: {"content_index":0,"item_id":"msg_0c0c8fda2c061925016abc718c93d487d08e2207989d5cc7e9","output_index":0,"part":{"annotations":[],"logprobs":[],"text":"Quick update: I’m generating a concise list of three fruit names for you now.","type":"output_text"},"sequence_number":22,"type":"response.content_part.done"}
+
+    event: response.output_item.done
+    data: {"item":{"content":[{"annotations":[],"logprobs":[],"text":"Quick update: I’m generating a concise list of three fruit names for you now.","type":"output_text"}],"id":"msg_0c0c8fda2c061925016abc718c93d487d08e2207989d5cc7e9","phase":"commentary","role":"assistant","status":"completed","type":"message"},"output_index":0,"sequence_number":23,"type":"response.output_item.done"}
+
+    event: response.output_item.added
+    data: {"item":{"content":[],"id":"msg_0c0c8fda2c061925016abc718cca8c87d08194f69e855f836a","phase":"final_answer","role":"assistant","status":"in_progress","type":"message"},"output_index":1,"sequence_number":24,"type":"response.output_item.added"}
+
+    event: response.content_part.added
+    data: {"content_index":0,"item_id":"msg_0c0c8fda2c061925016abc718cca8c87d08194f69e855f836a","output_index":1,"part":{"annotations":[],"logprobs":[],"text":"","type":"output_text"},"sequence_number":25,"type":"response.content_part.added"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"Apple","item_id":"msg_0c0c8fda2c061925016abc718cca8c87d08194f69e855f836a","logprobs":[],"obfuscation":"K4zuFxpl6H5","output_index":1,"sequence_number":26,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":",","item_id":"msg_0c0c8fda2c061925016abc718cca8c87d08194f69e855f836a","logprobs":[],"obfuscation":"MMlLN8D9uqPzkaK","output_index":1,"sequence_number":27,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" banana","item_id":"msg_0c0c8fda2c061925016abc718cca8c87d08194f69e855f836a","logprobs":[],"obfuscation":"7ozzvsgKm","output_index":1,"sequence_number":28,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":",","item_id":"msg_0c0c8fda2c061925016abc718cca8c87d08194f69e855f836a","logprobs":[],"obfuscation":"ty1SeGfvMV6um8p","output_index":1,"sequence_number":29,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" mango","item_id":"msg_0c0c8fda2c061925016abc718cca8c87d08194f69e855f836a","logprobs":[],"obfuscation":"CXj1UhtYSr","output_index":1,"sequence_number":30,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":".","item_id":"msg_0c0c8fda2c061925016abc718cca8c87d08194f69e855f836a","logprobs":[],"obfuscation":"MLR89bHA48PC1qK","output_index":1,"sequence_number":31,"type":"response.output_text.delta"}
+
+    event: response.output_text.done
+    data: {"content_index":0,"item_id":"msg_0c0c8fda2c061925016abc718cca8c87d08194f69e855f836a","logprobs":[],"output_index":1,"sequence_number":32,"text":"Apple, banana, mango.","type":"response.output_text.done"}
+
+    event: response.content_part.done
+    data: {"content_index":0,"item_id":"msg_0c0c8fda2c061925016abc718cca8c87d08194f69e855f836a","output_index":1,"part":{"annotations":[],"logprobs":[],"text":"Apple, banana, mango.","type":"output_text"},"sequence_number":33,"type":"response.content_part.done"}
+
+    event: response.output_item.done
+    data: {"item":{"content":[{"annotations":[],"logprobs":[],"text":"Apple, banana, mango.","type":"output_text"}],"id":"msg_0c0c8fda2c061925016abc718cca8c87d08194f69e855f836a","phase":"final_answer","role":"assistant","status":"completed","type":"message"},"output_index":1,"sequence_number":34,"type":"response.output_item.done"}
+
+    event: response.completed
+    data: {"response":{"access_programs":null,"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_0c0c8fda2c061925016abc718bc0b087d0b414d07dddc9ee3d","incomplete_details":null,"instructions":"Always start by sending the user a one-sentence progress update as a separate commentary message, then send your final answer as a separate message.","max_output_tokens":800,"max_tool_calls":null,"metadata":{},"model":"gpt-5.3-codex","moderation":null,"object":"response","output":[{"content":[{"annotations":[],"logprobs":[],"text":"Quick update: I’m generating a concise list of three fruit names for you now.","type":"output_text"}],"id":"msg_0c0c8fda2c061925016abc718c93d487d08e2207989d5cc7e9","phase":"commentary","role":"assistant","status":"completed","type":"message"},{"content":[{"annotations":[],"logprobs":[],"text":"Apple, banana, mango.","type":"output_text"}],"id":"msg_0c0c8fda2c061925016abc718cca8c87d08194f69e855f836a","phase":"final_answer","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"24h","reasoning":{"context":"current_turn","effort":"low","mode":"standard","summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":false,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[],"top_logprobs":0,"top_p":0.98,"truncation":"disabled","usage":{"input_tokens":44,"input_tokens_details":{"cache_write_tokens":0,"cached_tokens":0},"output_tokens":34,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":78},"user":null},"sequence_number":35,"type":"response.completed"}
+
+---
+when:
+  path: /v1/responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"include":["reasoning.encrypted_content"],"input":[{"content":[{"text":"Give me three fruit names.","type":"input_text"}],"role":"user","type":"message"},{"content":[{"text":"Quick update: I’m generating a concise list of three fruit names for you now.","type":"output_text"}],"id":"msg_0c0c8fda2c061925016abc718c93d487d08e2207989d5cc7e9","phase":"commentary","role":"assistant","status":"completed","type":"message"},{"content":[{"text":"Apple, banana, mango.","type":"output_text"}],"id":"msg_0c0c8fda2c061925016abc718cca8c87d08194f69e855f836a","phase":"final_answer","role":"assistant","status":"completed","type":"message"},{"content":[{"text":"Now name one more fruit. One word.","type":"input_text"}],"role":"user","type":"message"}],"instructions":"Always start by sending the user a one-sentence progress update as a separate commentary message, then send your final answer as a separate message.","max_output_tokens":800,"model":"gpt-5.3-codex","reasoning":{"effort":"low"},"store":false,"stream":true}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  - name: x-request-id
+    value: req_4d30cfa483d743f1851ca80d2e51b43b
+  body: |+
+    event: response.created
+    data: {"response":{"access_programs":null,"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_0c0c8fda2c061925016abc718d2ad087d0bf2858abfa945c24","incomplete_details":null,"instructions":"Always start by sending the user a one-sentence progress update as a separate commentary message, then send your final answer as a separate message.","max_output_tokens":800,"max_tool_calls":null,"metadata":{},"model":"gpt-5.3-codex","moderation":null,"object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"24h","reasoning":{"context":"current_turn","effort":"low","mode":"standard","summary":null},"safety_identifier":null,"service_tier":"auto","status":"in_progress","store":false,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[],"top_logprobs":0,"top_p":0.98,"truncation":"disabled","usage":null,"user":null},"sequence_number":0,"type":"response.created"}
+
+    event: response.in_progress
+    data: {"response":{"access_programs":null,"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_0c0c8fda2c061925016abc718d2ad087d0bf2858abfa945c24","incomplete_details":null,"instructions":"Always start by sending the user a one-sentence progress update as a separate commentary message, then send your final answer as a separate message.","max_output_tokens":800,"max_tool_calls":null,"metadata":{},"model":"gpt-5.3-codex","moderation":null,"object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"24h","reasoning":{"context":"current_turn","effort":"low","mode":"standard","summary":null},"safety_identifier":null,"service_tier":"auto","status":"in_progress","store":false,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[],"top_logprobs":0,"top_p":0.98,"truncation":"disabled","usage":null,"user":null},"sequence_number":1,"type":"response.in_progress"}
+
+    event: response.output_item.added
+    data: {"item":{"content":[],"id":"msg_0c0c8fda2c061925016abc718de76887d087f5bd2d74f34923","phase":"commentary","role":"assistant","status":"in_progress","type":"message"},"output_index":0,"sequence_number":2,"type":"response.output_item.added"}
+
+    event: response.content_part.added
+    data: {"content_index":0,"item_id":"msg_0c0c8fda2c061925016abc718de76887d087f5bd2d74f34923","output_index":0,"part":{"annotations":[],"logprobs":[],"text":"","type":"output_text"},"sequence_number":3,"type":"response.content_part.added"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"Quick","item_id":"msg_0c0c8fda2c061925016abc718de76887d087f5bd2d74f34923","logprobs":[],"obfuscation":"fU6x1IIoE8Q","output_index":0,"sequence_number":4,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" update","item_id":"msg_0c0c8fda2c061925016abc718de76887d087f5bd2d74f34923","logprobs":[],"obfuscation":"5G98VEp3a","output_index":0,"sequence_number":5,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":":","item_id":"msg_0c0c8fda2c061925016abc718de76887d087f5bd2d74f34923","logprobs":[],"obfuscation":"K7FaO76bDclKXNu","output_index":0,"sequence_number":6,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" I","item_id":"msg_0c0c8fda2c061925016abc718de76887d087f5bd2d74f34923","logprobs":[],"obfuscation":"x0Vtn5Osg3ld6N","output_index":0,"sequence_number":7,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"’m","item_id":"msg_0c0c8fda2c061925016abc718de76887d087f5bd2d74f34923","logprobs":[],"obfuscation":"CAFExPYWufqVBp","output_index":0,"sequence_number":8,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" adding","item_id":"msg_0c0c8fda2c061925016abc718de76887d087f5bd2d74f34923","logprobs":[],"obfuscation":"fWxjX0Q3C","output_index":0,"sequence_number":9,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" one","item_id":"msg_0c0c8fda2c061925016abc718de76887d087f5bd2d74f34923","logprobs":[],"obfuscation":"hnPxJqUr7jYL","output_index":0,"sequence_number":10,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" more","item_id":"msg_0c0c8fda2c061925016abc718de76887d087f5bd2d74f34923","logprobs":[],"obfuscation":"23EieO2Uc17","output_index":0,"sequence_number":11,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" fruit","item_id":"msg_0c0c8fda2c061925016abc718de76887d087f5bd2d74f34923","logprobs":[],"obfuscation":"j07yRADiIk","output_index":0,"sequence_number":12,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" name","item_id":"msg_0c0c8fda2c061925016abc718de76887d087f5bd2d74f34923","logprobs":[],"obfuscation":"FS3tx7wCfL7","output_index":0,"sequence_number":13,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" in","item_id":"msg_0c0c8fda2c061925016abc718de76887d087f5bd2d74f34923","logprobs":[],"obfuscation":"Y5INhDmZgChg0","output_index":0,"sequence_number":14,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" exactly","item_id":"msg_0c0c8fda2c061925016abc718de76887d087f5bd2d74f34923","logprobs":[],"obfuscation":"8OvD8MmW","output_index":0,"sequence_number":15,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" one","item_id":"msg_0c0c8fda2c061925016abc718de76887d087f5bd2d74f34923","logprobs":[],"obfuscation":"zGuSYq869c3V","output_index":0,"sequence_number":16,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" word","item_id":"msg_0c0c8fda2c061925016abc718de76887d087f5bd2d74f34923","logprobs":[],"obfuscation":"TqcrDuOHAJB","output_index":0,"sequence_number":17,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":".","item_id":"msg_0c0c8fda2c061925016abc718de76887d087f5bd2d74f34923","logprobs":[],"obfuscation":"VKfarPChtEO0hnp","output_index":0,"sequence_number":18,"type":"response.output_text.delta"}
+
+    event: response.output_text.done
+    data: {"content_index":0,"item_id":"msg_0c0c8fda2c061925016abc718de76887d087f5bd2d74f34923","logprobs":[],"output_index":0,"sequence_number":19,"text":"Quick update: I’m adding one more fruit name in exactly one word.","type":"response.output_text.done"}
+
+    event: response.content_part.done
+    data: {"content_index":0,"item_id":"msg_0c0c8fda2c061925016abc718de76887d087f5bd2d74f34923","output_index":0,"part":{"annotations":[],"logprobs":[],"text":"Quick update: I’m adding one more fruit name in exactly one word.","type":"output_text"},"sequence_number":20,"type":"response.content_part.done"}
+
+    event: response.output_item.done
+    data: {"item":{"content":[{"annotations":[],"logprobs":[],"text":"Quick update: I’m adding one more fruit name in exactly one word.","type":"output_text"}],"id":"msg_0c0c8fda2c061925016abc718de76887d087f5bd2d74f34923","phase":"commentary","role":"assistant","status":"completed","type":"message"},"output_index":0,"sequence_number":21,"type":"response.output_item.done"}
+
+    event: response.output_item.added
+    data: {"item":{"content":[],"id":"msg_0c0c8fda2c061925016abc718e2c8487d099f5dbbdd62c49f7","phase":"final_answer","role":"assistant","status":"in_progress","type":"message"},"output_index":1,"sequence_number":22,"type":"response.output_item.added"}
+
+    event: response.content_part.added
+    data: {"content_index":0,"item_id":"msg_0c0c8fda2c061925016abc718e2c8487d099f5dbbdd62c49f7","output_index":1,"part":{"annotations":[],"logprobs":[],"text":"","type":"output_text"},"sequence_number":23,"type":"response.content_part.added"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"Orange","item_id":"msg_0c0c8fda2c061925016abc718e2c8487d099f5dbbdd62c49f7","logprobs":[],"obfuscation":"OOLuertBrf","output_index":1,"sequence_number":24,"type":"response.output_text.delta"}
+
+    event: response.output_text.done
+    data: {"content_index":0,"item_id":"msg_0c0c8fda2c061925016abc718e2c8487d099f5dbbdd62c49f7","logprobs":[],"output_index":1,"sequence_number":25,"text":"Orange","type":"response.output_text.done"}
+
+    event: response.content_part.done
+    data: {"content_index":0,"item_id":"msg_0c0c8fda2c061925016abc718e2c8487d099f5dbbdd62c49f7","output_index":1,"part":{"annotations":[],"logprobs":[],"text":"Orange","type":"output_text"},"sequence_number":26,"type":"response.content_part.done"}
+
+    event: response.output_item.done
+    data: {"item":{"content":[{"annotations":[],"logprobs":[],"text":"Orange","type":"output_text"}],"id":"msg_0c0c8fda2c061925016abc718e2c8487d099f5dbbdd62c49f7","phase":"final_answer","role":"assistant","status":"completed","type":"message"},"output_index":1,"sequence_number":27,"type":"response.output_item.done"}
+
+    event: response.completed
+    data: {"response":{"access_programs":null,"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_0c0c8fda2c061925016abc718d2ad087d0bf2858abfa945c24","incomplete_details":null,"instructions":"Always start by sending the user a one-sentence progress update as a separate commentary message, then send your final answer as a separate message.","max_output_tokens":800,"max_tool_calls":null,"metadata":{},"model":"gpt-5.3-codex","moderation":null,"object":"response","output":[{"content":[{"annotations":[],"logprobs":[],"text":"Quick update: I’m adding one more fruit name in exactly one word.","type":"output_text"}],"id":"msg_0c0c8fda2c061925016abc718de76887d087f5bd2d74f34923","phase":"commentary","role":"assistant","status":"completed","type":"message"},{"content":[{"annotations":[],"logprobs":[],"text":"Orange","type":"output_text"}],"id":"msg_0c0c8fda2c061925016abc718e2c8487d099f5dbbdd62c49f7","phase":"final_answer","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"24h","reasoning":{"context":"current_turn","effort":"low","mode":"standard","summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":false,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[],"top_logprobs":0,"top_p":0.98,"truncation":"disabled","usage":{"input_tokens":93,"input_tokens_details":{"cache_write_tokens":0,"cached_tokens":0},"output_tokens":27,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":120},"user":null},"sequence_number":28,"type":"response.completed"}
+

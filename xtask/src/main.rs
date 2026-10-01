@@ -22,6 +22,7 @@
 mod bevy;
 mod cassette;
 mod packaging;
+mod support;
 mod test_layout;
 mod verify;
 mod wires;

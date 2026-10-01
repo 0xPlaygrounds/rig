@@ -159,7 +159,7 @@ async fn tool_result_roundtrip() {
         |client| async move {
             let model = client.interactions("gemini-3-flash-preview");
             let tool = rig::completion::ToolDefinition {
-                name: "add".to_string(),
+                name: rig_core::message::ToolName::new("add").expect("tool name"),
                 description: "Add two numbers together".to_string(),
                 parameters: serde_json::json!({
                     "type": "object",
@@ -203,9 +203,7 @@ async fn tool_result_roundtrip() {
                     CompletionRequest::new(Message::from(UserContent::tool_result(
                         tool_call.id.clone(),
                         tool_call.function.name.clone(),
-                        rig_core::NonEmpty::new(ToolResultContent::json(
-                            serde_json::json!({ "sum": 18.0 }),
-                        )),
+                        vec![ToolResultContent::json(serde_json::json!({ "sum": 18.0 }))],
                     )))
                     .additional_params(
                         serde_json::to_value(AdditionalParameters {

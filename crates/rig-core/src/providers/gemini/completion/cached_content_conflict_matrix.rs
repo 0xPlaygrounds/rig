@@ -13,33 +13,25 @@ const HANDLE: &str = "cachedContents/matrix";
 
 fn build(system: bool, tools: bool, tool_choice: bool) -> GenerateContentRequest {
     super::create_request_body(CompletionRequest {
-        chat_history: crate::NonEmpty::from_vec(
+        tool_choice: tool_choice.then_some(ToolChoice::Auto),
+        ..CompletionRequest::from(
             system
                 .then(|| Message::system("you are terse"))
                 .into_iter()
                 .chain([Message::User {
-                    content: crate::NonEmpty::new(UserContent::text("hi")),
+                    content: vec![UserContent::text("hi")],
                 }])
                 .collect::<Vec<_>>(),
         )
-        .expect("non-empty"),
-        documents: vec![],
-        tools: if tools {
+        .tools(if tools {
             vec![ToolDefinition {
-                name: "probe".to_owned(),
+                name: crate::message::ToolName::new("probe").expect("tool name"),
                 description: "probe".to_owned(),
                 parameters: serde_json::json!({"type": "object", "properties": {}}),
             }]
         } else {
             vec![]
-        },
-        temperature: None,
-        max_tokens: None,
-        tool_choice: tool_choice.then_some(ToolChoice::Auto),
-        additional_params: None,
-        model: None,
-        output_schema: None,
-        record_telemetry_content: false,
+        })
     })
     .expect("request should build")
 }

@@ -78,27 +78,11 @@ fn source_files(crates: &Path) -> Result<Vec<PathBuf>, String> {
         let entry = entry.map_err(|error| format!("could not read crate entry: {error}"))?;
         let src = entry.path().join("src");
         if src.is_dir() {
-            walk(&src, &mut out)?;
+            out.extend(crate::support::files_under(&src, Some("rs"))?);
         }
     }
     out.sort();
     Ok(out)
-}
-
-fn walk(dir: &Path, out: &mut Vec<PathBuf>) -> Result<(), String> {
-    let entries = std::fs::read_dir(dir)
-        .map_err(|error| format!("could not read {}: {error}", dir.display()))?;
-    for entry in entries {
-        let path = entry
-            .map_err(|error| format!("could not read entry in {}: {error}", dir.display()))?
-            .path();
-        if path.is_dir() {
-            walk(&path, out)?;
-        } else if path.extension().is_some_and(|ext| ext == "rs") {
-            out.push(path);
-        }
-    }
-    Ok(())
 }
 
 /// The set of files reachable only through a test-gated `mod x;` declaration,

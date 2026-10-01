@@ -23,12 +23,12 @@ async fn assistant_reasoning_content_roundtrips_in_history() {
         .completion(moonshot::KIMI_K3);
     let assistant = Message::Assistant {
         id: None,
-        content: rig_core::NonEmpty::with_rest(
+        content: vec![
             AssistantContent::Reasoning(
                 Reasoning::new("Remember the chosen color.").sealed("test"),
             ),
-            [AssistantContent::text("Understood. I will remember teal.")],
-        ),
+            AssistantContent::text("Understood. I will remember teal."),
+        ],
     };
 
     let response = model

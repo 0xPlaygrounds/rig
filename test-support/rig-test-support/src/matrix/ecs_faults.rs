@@ -1,21 +1,15 @@
-//! Shared ECS fault bodies with explicit scenario and world golden names.
+//! Scripted ECS fault rows over a wire's `faults::Scripted` or `long_loop::Scripted` suite.
 
-/// Emit a native cancellation cell and its world golden assertion.
+/// Emit a scripted fault row: the suite's method of the row's own name,
+/// asserted against the row's literal world golden.
 #[macro_export]
 macro_rules! ecs_faults_case {
-    ($(#[$attribute:meta])* $name:ident, $wrapper:path, $scenario:literal, cancel_after_terminal_6, $golden:expr) => {
+    ($(#[$attribute:meta])* $name:ident, $suite:ident, $golden:expr) => {
         $(#[$attribute])*
         async fn $name() {
-            $crate::goldens::capture_world_programs(async {
-                $wrapper($scenario, |client| async move {
-                    cancel_at(
-                        &wire(&client),
-                        &cells::ENDINGS_TEXT_DELTA_STOP,
-                        Cut::AfterTerminal,
-                        |log| $crate::goldens::world_golden_effects($golden, log),
-                    ).await;
-                }).await;
-            }).await;
+            $suite
+                .$name(|log| $crate::goldens::world_golden_effects($golden, log))
+                .await;
         }
     };
 }

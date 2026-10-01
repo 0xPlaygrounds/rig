@@ -544,7 +544,7 @@ fn assert_history_growth(log: &EffectLog, task: Task) {
             };
             assert_eq!(&result.call, id, "call/result association");
             assert_eq!(
-                rig_core::tool::ToolOutput::content(result.content.clone().into_vec())
+                rig_core::tool::ToolOutput::content(result.content.clone())
                     .expect("content")
                     .render(),
                 dispatched_result(record).output().render(),

@@ -32,7 +32,7 @@ async fn chat_baseline_effect_log_is_the_golden_fixture() {
         let mut output = None;
         while let Some(item) = stream.next().await {
             if let MultiTurnStreamItem::FinalResponse(response) = item.expect("the stream yields") {
-                output = Some(response.output);
+                output = Some(response.output());
             }
         }
         drop(stream);

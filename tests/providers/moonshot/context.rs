@@ -21,7 +21,7 @@ async fn context_smoke() {
         .prompt(CONTEXT_PROMPT)
         .await
         .expect("context prompt should succeed")
-        .output;
+        .output();
 
     assert_contains_any_case_insensitive(
         &response,

@@ -40,7 +40,7 @@ use rig::agent::{
 use rig::message::ToolChoice;
 use rig::prelude::*;
 use rig::providers::openai::{self, OpenAI};
-use rig::tool::{Tool, ToolContext, ToolErrorKind, ToolExecutionError, ToolResult};
+use rig::tool::{Tool, ToolContext, ToolErrorKind, ToolExecutionError, ToolResult, tool_name};
 
 #[derive(Clone, Copy, Debug, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -154,7 +154,7 @@ struct ForceSystemProbeOnFirstTurn;
 fn system_probe_patch(turn: usize) -> Option<RequestPatch> {
     (turn == 1).then(|| {
         RequestPatch::new().tool_choice(ToolChoice::Specific {
-            function_names: vec![SystemProbe::NAME.to_string()],
+            function_names: vec![tool_name::<SystemProbe>()],
         })
     })
 }
@@ -344,7 +344,7 @@ async fn main() -> Result<()> {
         .add_hook(FailureRecorder)
         .add_hook(FatalFailurePolicy)
         .await?
-        .output;
+        .output();
     println!("\nFinal response:\n{response}");
     Ok(())
 }
@@ -374,7 +374,7 @@ mod tests {
         assert_eq!(
             first_turn.and_then(|patch| patch.tool_choice),
             Some(ToolChoice::Specific {
-                function_names: vec![SystemProbe::NAME.to_string()],
+                function_names: vec![tool_name::<SystemProbe>()],
             })
         );
         assert!(system_probe_patch(2).is_none());

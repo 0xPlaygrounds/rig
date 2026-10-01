@@ -401,16 +401,12 @@ fn has_reasoning(history: &[Message], from: usize) -> bool {
 }
 
 fn user(parts: Vec<UserContent>) -> Message {
-    let mut parts = parts.into_iter();
-    let first = parts.next().unwrap_or_else(|| UserContent::text(""));
-    Message::User {
-        content: rig_core::NonEmpty::with_rest(first, parts),
-    }
+    Message::User { content: parts }
 }
 
 fn red_square() -> UserContent {
     UserContent::Image(Image {
-        data: DocumentSourceKind::base64(&BASE64_STANDARD.encode(RED_SQUARE)),
+        data: DocumentSourceKind::base64(BASE64_STANDARD.encode(RED_SQUARE)),
         media_type: Some(ImageMediaType::PNG),
         ..Default::default()
     })
@@ -1008,7 +1004,7 @@ pub async fn anthropic(
             ]))
             .await
             .unwrap_or_else(|error| panic!("{}: file id: {error}", session.run))
-            .output;
+            .output();
         assert!(
             answer.contains(PAGE_ONE_VERIFIER),
             "{}: page one's token: {answer:?}",

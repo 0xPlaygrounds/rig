@@ -8,7 +8,7 @@
 //! become `AssistantContent::Reasoning`); two other readers of the same
 //! payload did not:
 //!
-//! * `NormalizeTranscriptionResponse for GenerateContentResponse` read
+//! * the transcription reader of `GenerateContentResponse` read
 //!   `parts.first()`. With thoughts on, parts[0] is the reasoning — so
 //!   `response.text` was **the model's private reasoning** and the actual
 //!   transcript, sitting in parts[1], was dropped. A transcript split across
@@ -735,7 +735,7 @@ async fn text_response_on_a_tool_call_turn() {
                 .temperature(0.0)
                 .max_tokens(2000)
                 .tools(vec![rig::completion::ToolDefinition {
-                    name: "add".to_string(),
+                    name: rig_core::message::ToolName::new("add").expect("tool name"),
                     description: "Add x and y together".to_string(),
                     parameters: json!({
                         "type": "object",
@@ -1118,7 +1118,7 @@ mod unit {
     use rig::providers::gemini::GeminiConfig;
     use rig::providers::gemini::completion::gemini_api_types::GenerateContentResponse;
     use rig::test_utils::RecordingHttpClient;
-    use rig::transcription::{NormalizeTranscriptionResponse, TranscriptionResponse};
+    use rig::transcription::TranscriptionResponse;
     use serde_json::{Value, json};
 
     /// A thought part with the shape recorded in
@@ -1225,7 +1225,9 @@ mod unit {
             "model",
         );
 
-        let transcription = response.normalize().expect("transcription should convert");
+        let transcription = response
+            .normalize_transcription()
+            .expect("transcription should convert");
         assert_eq!(
             transcription.text,
             "The sun was setting slowly, casting long shadows across the empty field.",
@@ -1241,7 +1243,7 @@ mod unit {
     fn transcription_rejects_a_thought_only_candidate() {
         let response = response_with(vec![thought_part("Let me listen again...")], "model");
         assert_transcription_response_error(
-            response.normalize(),
+            response.normalize_transcription(),
             "a thought-only candidate has no transcript",
         );
     }
@@ -1268,7 +1270,7 @@ mod unit {
     fn transcription_keeps_an_empty_visible_text_part() {
         let response = response_with(vec![thought_part("hmm"), text_part("")], "model");
         let transcription = response
-            .normalize()
+            .normalize_transcription()
             .expect("an empty visible text part is still a (blank) transcript");
         assert_eq!(transcription.text, "");
     }
@@ -1290,7 +1292,7 @@ mod unit {
         }))
         .expect("recorded-shape payload should deserialize");
         assert_transcription_response_error(
-            response.normalize(),
+            response.normalize_transcription(),
             "a candidate with no parts at all has no transcript",
         );
     }
@@ -1305,7 +1307,7 @@ mod unit {
             "model",
         );
         assert_transcription_response_error(
-            response.normalize(),
+            response.normalize_transcription(),
             "a candidate with no text part has no transcript",
         );
     }

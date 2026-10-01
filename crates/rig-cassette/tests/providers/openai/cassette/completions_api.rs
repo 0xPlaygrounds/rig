@@ -29,7 +29,7 @@ async fn completions_api_agent_prompt() {
                 .prompt("Hello world!")
                 .await
                 .expect("completions api prompt should succeed")
-                .output;
+                .output();
 
             assert_nonempty_response(&response);
         },
@@ -231,11 +231,11 @@ async fn completions_api_raw_followup_uses_tool_result_without_new_tool_calls() 
                 .expect("raw completions api stream should yield lookup_harbor_label");
             let assistant_message = Message::Assistant {
                 id: None,
-                content: rig_core::NonEmpty::new(AssistantContent::ToolCall(tool_call.clone())),
+                content: vec![AssistantContent::ToolCall(tool_call.clone())],
             };
             let tool_result_message =
                 Message::User {
-        content: rig_core::NonEmpty::new(UserContent::tool_result(tool_call.id.clone(), tool_call.function.name.clone(), rig_core::NonEmpty::new(ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)))),
+        content: vec![UserContent::tool_result(tool_call.id.clone(), tool_call.function.name.clone(), vec![ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)])],
     };
             let followup_request = CompletionRequest::new(
                     "Now reply in one short sentence using the provided tool result. Do not call any tools.",

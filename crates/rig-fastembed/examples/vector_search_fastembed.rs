@@ -74,7 +74,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .top_n::<WordDefinition>(req.clone())
         .await?
         .into_iter()
-        .map(|(score, id, doc)| (score, id, doc.word))
+        .map(|result| (result.score, result.id, result.document.word))
         .collect::<Vec<_>>();
 
     println!("Results: {results:?}");

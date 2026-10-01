@@ -13,7 +13,8 @@ use rig_core::{
     Embed,
     embeddings::Embedding,
     vector_store::{
-        InsertDocuments, VectorStoreError, VectorStoreIndex,
+        InsertDocuments, VectorSearchIdResult, VectorSearchResult, VectorStoreError,
+        VectorStoreIndex,
         request::{SearchFilter, VectorSearchRequest},
     },
     wasm_compat::WasmCompatSend,
@@ -243,33 +244,40 @@ impl InsertDocuments for MilvusVectorStore {
 impl VectorStoreIndex for MilvusVectorStore {
     type Filter = Filter;
 
-    /// Returns matches as `(distance, id, document)` in the order Milvus reports.
+    /// Returns matches scored by distance, in the order Milvus reports.
     async fn top_n<T: DeserializeOwned + WasmCompatSend>(
         &self,
         req: VectorSearchRequest<Filter>,
-    ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
+    ) -> Result<Vec<VectorSearchResult<T>>, VectorStoreError> {
         let json: SearchResult<SearchResultData<T>> = self.search(&req, false).await?;
 
         let res = json
             .data
             .into_iter()
-            .map(|x| (x.distance, x.id.to_string(), x.document))
+            .map(|x| VectorSearchResult {
+                score: x.distance,
+                id: x.id.to_string(),
+                document: x.document,
+            })
             .collect();
 
         Ok(res)
     }
 
-    /// Like `top_n` but returns `(distance, id)` without requesting documents.
+    /// Like `top_n` but returns only scores and ids, without requesting documents.
     async fn top_n_ids(
         &self,
         req: VectorSearchRequest<Filter>,
-    ) -> Result<Vec<(f64, String)>, VectorStoreError> {
+    ) -> Result<Vec<VectorSearchIdResult>, VectorStoreError> {
         let json: SearchResult<SearchResultDataOnlyId> = self.search(&req, true).await?;
 
         let res = json
             .data
             .into_iter()
-            .map(|x| (x.distance, x.id.to_string()))
+            .map(|x| VectorSearchIdResult {
+                score: x.distance,
+                id: x.id.to_string(),
+            })
             .collect();
 
         Ok(res)

@@ -3,7 +3,7 @@ use crate::types::assistant_content::{
     PROVIDER_NAME, map_stop_reason, normalize_usage, reasoning_issuer,
 };
 use crate::types::converse_output::{InternalConverseOutput, StopReason, TokenUsage};
-use crate::types::message::RigMessage;
+use crate::types::message;
 use aws_sdk_bedrockruntime::types as aws_bedrock;
 use base64::{Engine, prelude::BASE64_STANDARD};
 use rig_core::error::ProviderError;
@@ -81,12 +81,6 @@ fn stop_reason_label(stop_reason: &StopReason) -> &'static str {
 }
 
 impl<'id> StreamState<'id> {
-    fn close_text(&mut self, out: &mut Out<'id, Completion>) {
-        if let Some(part) = self.text.take() {
-            out.close_text(part);
-        }
-    }
-
     /// Close the open reasoning block. A signature-only block is kept for
     /// replay; one with neither text nor signature is dropped.
     fn close_reasoning(&mut self, out: &mut Out<'id, Completion>) {
@@ -115,8 +109,7 @@ impl<'id> StreamState<'id> {
                 };
                 match delta {
                     aws_bedrock::ContentBlockDelta::Text(text) => {
-                        let part = self.text.get_or_insert_with(|| out.text());
-                        out.push_text(part, &text);
+                        out.extend_text(&mut self.text, &text);
                     }
                     aws_bedrock::ContentBlockDelta::ToolUse(tool) => {
                         let index = block_index(event.content_block_index);
@@ -133,14 +126,14 @@ impl<'id> StreamState<'id> {
                     aws_bedrock::ContentBlockDelta::ReasoningContent(reasoning) => {
                         match reasoning {
                             aws_bedrock::ReasoningContentBlockDelta::Text(text) => {
-                                self.close_text(&mut out);
+                                out.close_open_text(&mut self.text);
                                 let (part, _) = self
                                     .reasoning
                                     .get_or_insert_with(|| (out.reasoning(), None));
                                 out.push_reasoning(part, &text);
                             }
                             aws_bedrock::ReasoningContentBlockDelta::Signature(signature) => {
-                                self.close_text(&mut out);
+                                out.close_open_text(&mut self.text);
                                 self.reasoning
                                     .get_or_insert_with(|| (out.reasoning(), None))
                                     .1 = Some(signature);
@@ -148,7 +141,7 @@ impl<'id> StreamState<'id> {
                             aws_bedrock::ReasoningContentBlockDelta::RedactedContent(blob) => {
                                 // Close plaintext reasoning first, so redacted
                                 // content is a sibling rather than a replacement.
-                                self.close_text(&mut out);
+                                out.close_open_text(&mut self.text);
                                 self.close_reasoning(&mut out);
                                 out.reasoning_block(rig_core::message::Reasoning {
                                     id: None,
@@ -181,7 +174,7 @@ impl<'id> StreamState<'id> {
                 };
                 match start {
                     aws_bedrock::ContentBlockStart::ToolUse(tool_use) => {
-                        self.close_text(&mut out);
+                        out.close_open_text(&mut self.text);
                         out.call_fragment(
                             block_index(event.content_block_index),
                             CallFragment {
@@ -254,7 +247,7 @@ impl<'id> StreamState<'id> {
                     stop_reason: self.final_stop_reason.clone(),
                     provider_request_id: self.provider_request_id.clone(),
                 };
-                self.close_text(&mut out);
+                out.close_open_text(&mut self.text);
                 self.close_reasoning(&mut out);
                 out.raw(serde_json::to_value(&native)?);
                 return Ok(out.end(finish_of(&native)));
@@ -297,9 +290,9 @@ fn whole(
 fn assistant_content(
     output: &InternalConverseOutput,
 ) -> Result<Vec<rig_core::message::AssistantContent>, ProviderError> {
-    let message: RigMessage = output
+    let reply = output
         .output
-        .clone()
+        .as_ref()
         .ok_or(ProviderError::Provider(
             "Model didn't return any output".into(),
         ))?
@@ -307,14 +300,8 @@ fn assistant_content(
         .map_err(|_| {
             ProviderError::Provider("Failed to extract message from converse output".into())
         })?
-        .to_owned()
-        .try_into()?;
-    match message.0 {
-        rig_core::completion::Message::Assistant { content, .. } => Ok(content.into_vec()),
-        _ => Err(ProviderError::Response(
-            "Converse output message was not an assistant message".to_owned(),
-        )),
-    }
+        .to_owned();
+    message::assistant_reply(reply)
 }
 
 impl<'id> rig_core::wire::Decoder<'id, Completion, ConverseFrame> for StreamState<'id> {

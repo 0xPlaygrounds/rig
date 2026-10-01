@@ -18,6 +18,7 @@ use rig_cassette::agent::AgentReplayExt;
 use serde_json::json;
 
 use super::golden_recovery::Add;
+use super::{stream_turn, tool_result_texts};
 use crate::goldens::{RepairToAdd, RetryUnknownTool, SKIP_REASON, SkipUnknown, families};
 
 const PREAMBLE: &str = "Use the add tool.";
@@ -47,50 +48,15 @@ fn two_calls_turn() -> MockTurn {
     ])
 }
 
-fn stream_turn(events: Vec<MockStreamEvent>) -> Vec<MockStreamEvent> {
-    let mut events = events;
-    events.push(MockStreamEvent::final_response_with_default_usage());
-    events
-}
-
 async fn streamed_output(agent: &rig::agent::Agent, max_turns: usize) -> String {
     let mut stream = agent.prompt(PROMPT).max_turns(max_turns).stream();
     let mut output = None;
     while let Some(item) = stream.next().await {
         if let MultiTurnStreamItem::FinalResponse(response) = item.expect("the stream yields") {
-            output = Some(response.output);
+            output = Some(response.output());
         }
     }
     output.expect("a final response")
-}
-
-fn tool_result_texts(log: &rig::cassette::effect_log::EffectLog, at: usize) -> Vec<String> {
-    match &log.records[at].kind {
-        rig::effect::EffectKind::Completion { request, .. } => request
-            .chat_history
-            .iter()
-            .filter_map(|message| match message {
-                rig::message::Message::User { content } => Some(content.iter()),
-                _ => None,
-            })
-            .flatten()
-            .filter_map(|content| match content {
-                rig::message::UserContent::ToolResult(result) => Some(
-                    result
-                        .content
-                        .iter()
-                        .map(|part| match part {
-                            rig::message::ToolResultContent::Text(text) => text.text.clone(),
-                            rig::message::ToolResultContent::Json { value } => value.to_string(),
-                            other => format!("{other:?}"),
-                        })
-                        .collect::<String>(),
-                ),
-                _ => None,
-            })
-            .collect(),
-        other => panic!("a completion, not {other:?}"),
-    }
 }
 
 // -- retries, streamed ---------------------------------------------------------
@@ -123,7 +89,7 @@ async fn invalid_streamed_retry_once_effect_log_is_the_golden_fixture() {
     let mut output = None;
     while let Some(item) = stream.next().await {
         if let MultiTurnStreamItem::FinalResponse(response) = item.expect("the stream yields") {
-            output = Some(response.output);
+            output = Some(response.output());
         }
     }
     drop(stream);
@@ -170,7 +136,7 @@ async fn invalid_streamed_retry_twice_effect_log_is_the_golden_fixture() {
     let mut output = None;
     while let Some(item) = stream.next().await {
         if let MultiTurnStreamItem::FinalResponse(response) = item.expect("the stream yields") {
-            output = Some(response.output);
+            output = Some(response.output());
         }
     }
     drop(stream);
@@ -214,7 +180,8 @@ async fn invalid_ignore_unary_effect_log_is_the_golden_fixture() {
         .await
         .expect("the ignored call does not fail the run");
     assert_eq!(
-        response.output, "",
+        response.output(),
+        "",
         "an ignored-only turn is an empty answer"
     );
     let log = agent.stamp(recorder.take());
@@ -247,7 +214,7 @@ async fn invalid_ignore_streamed_effect_log_is_the_golden_fixture() {
     let mut output = None;
     while let Some(item) = stream.next().await {
         if let MultiTurnStreamItem::FinalResponse(response) = item.expect("the stream yields") {
-            output = Some(response.output);
+            output = Some(response.output());
         }
     }
     drop(stream);
@@ -281,7 +248,7 @@ async fn invalid_mixed_ignore_effect_log_is_the_golden_fixture() {
         .unhandled_invalid_tool_call(UnhandledInvalidToolCall::Ignore)
         .await
         .expect("the valid call runs");
-    assert_eq!(response.output, ANSWER);
+    assert_eq!(response.output(), ANSWER);
     let log = agent.stamp(recorder.take());
     assert_eq!(
         families(&log),
@@ -318,7 +285,7 @@ async fn invalid_mixed_ignore_streamed_effect_log_is_the_golden_fixture() {
     let mut output = None;
     while let Some(item) = stream.next().await {
         if let MultiTurnStreamItem::FinalResponse(response) = item.expect("the stream yields") {
-            output = Some(response.output);
+            output = Some(response.output());
         }
     }
     drop(stream);
@@ -382,7 +349,7 @@ async fn invalid_repair_to_add_effect_log_is_the_golden_fixture() {
         .max_turns(3)
         .await
         .expect("the repaired call runs");
-    assert_eq!(response.output, ANSWER);
+    assert_eq!(response.output(), ANSWER);
     let log = agent.stamp(recorder.take());
     assert_eq!(
         families(&log),
@@ -419,7 +386,7 @@ async fn invalid_skip_under_auto_effect_log_is_the_golden_fixture() {
         .max_turns(3)
         .await
         .expect("the skipped call does not fail the run");
-    assert_eq!(response.output, ANSWER);
+    assert_eq!(response.output(), ANSWER);
     let log = agent.stamp(recorder.take());
     assert_eq!(
         families(&log),
@@ -462,7 +429,7 @@ async fn invalid_skip_under_none_effect_log_is_the_golden_fixture() {
 
 /// A retry under `tool_choice: Required`: the retry is itself a forced
 /// call, and the per-run choice forces every later turn too, so the run
-/// ends in `MaxTurnsError` after the real call.
+/// ends in `MaxTurns` after the real call.
 #[tokio::test]
 async fn invalid_retry_under_required_effect_log_is_the_golden_fixture() {
     let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
@@ -485,7 +452,7 @@ async fn invalid_retry_under_required_effect_log_is_the_golden_fixture() {
         .await
         .expect_err("a forced choice never answers in text");
     assert!(
-        matches!(error, PromptError::MaxTurnsError { max_turns: 2, .. }),
+        matches!(error, PromptError::MaxTurns { max_turns: 2, .. }),
         "{error:?}"
     );
     let log = agent.stamp(recorder.take());

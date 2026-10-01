@@ -2,6 +2,7 @@
 name = "rig-vertexai"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license = "MIT"
 readme = "README.md"
 description = "VertexAI model provider for Rig integration."
@@ -14,7 +15,8 @@ base64 = { workspace = true }
 futures = { workspace = true }
 google-cloud-aiplatform-v1 = { workspace = true }
 google-cloud-auth = { workspace = true }
-rig-core = { path = "../rig-core", version = "0.42.0", default-features = false }
+google-cloud-gax = { workspace = true }
+rig-core = { path = "../rig-core", version = "0.43.0", default-features = false }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
@@ -22,12 +24,11 @@ tokio = { workspace = true, features = ["full"] }
 tracing = { workspace = true }
 
 [dev-dependencies]
-rig-core = { path = "../rig-core", version = "0.42.0", features = ["reqwest"] }
+rig-core = { path = "../rig-core", version = "0.43.0", features = ["reqwest"] }
 anyhow = { workspace = true }
-google-cloud-gax = { workspace = true }
 http = { workspace = true }
 rig-agent.workspace = true
-rig-ecs = { path = "../rig-ecs", version = "0.42.0", default-features = false }
+rig-ecs = { path = "../rig-ecs", version = "0.43.0", default-features = false }
 bevy_app = { workspace = true }
 schemars = { workspace = true }
 tracing-subscriber = { workspace = true }

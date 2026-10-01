@@ -16,9 +16,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     completion::{CompletionRequest, CompletionResponse, Message, ModelRef, ProviderCapabilities},
-    embeddings::{EmbeddingResponse, ImageEmbeddingResponse},
+    embeddings::EmbeddingResponse,
     error::ErrorReport,
     id::ConversationId,
+    operation::RerankRequest,
     rerank::RerankResponse,
     streaming::Transcript,
     tool::ToolResult,
@@ -412,12 +413,12 @@ pub mod family {
 
     use super::{
         CustomEffect, EffectFamily, EffectKind, EmbedInputs, EmbedOutputs, Family, MemoryOp,
-        MemoryOutcome, Outcome, RerankRequest, RetrieveQuery, RetrievedDocuments, ToolCallRequest,
-        sealed::Sealed,
+        MemoryOutcome, Outcome, RetrieveQuery, RetrievedDocuments, ToolCallRequest, sealed::Sealed,
     };
     use crate::{
         completion::{CompletionRequest, CompletionResponse},
         error::{ErrorKind, ErrorReport},
+        operation::RerankRequest,
         rerank::RerankResponse,
         tool::ToolResult,
     };
@@ -794,16 +795,6 @@ pub enum EmbedInputs {
     Images(Vec<Vec<u8>>),
 }
 
-/// A reranking request: the query and documents a rerank model's call
-/// orders.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct RerankRequest {
-    /// The query the documents are ranked against.
-    pub query: String,
-    /// The documents, in input order.
-    pub documents: Vec<String>,
-}
-
 /// A conversation-memory operation: the transcription of
 /// [`ConversationMemory`](crate::memory::ConversationMemory).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -897,7 +888,7 @@ pub enum EmbedOutputs {
     /// Text embeddings.
     Texts(EmbeddingResponse),
     /// Image embeddings.
-    Images(ImageEmbeddingResponse),
+    Images(EmbeddingResponse),
 }
 
 /// The answer to a [`MemoryOp`].

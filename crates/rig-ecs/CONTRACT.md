@@ -95,7 +95,7 @@ to its allocation limit. `run_content_binary` and `run_content_parts` cover sour
 all existing content variants, nested JSON/image results, metadata and shared
 asset lifetime.
 
-History is rendered from the entity graph every turn: `gather_turn` walks each
+History is rendered from the entity graph every turn: `fold_turn` walks each
 utterance's part subtree anew, so a graph edit is in the next request with no
 cache to invalidate.
 
@@ -234,7 +234,7 @@ A call to a granted tool is an effect entity `ChildOf` the turn; the turn's tool
 | a replaced result | history holds the replacement, the record the handler's answer (a `Judge` rewrite of the child's `EffectOutcome`) | `anthropic_hooks_replace_tool_result` `/records/1/outcome` (`42`) vs `/records/2/…/chat_history/3` (`99`) |
 | a patched call | the record holds the patched arguments, history the model's | `anthropic_hooks_patch_tool_args` `/records/1/kind/args` (`{"x":40,"y":2}`) vs `/records/2/…/chat_history/2` (`{17, 25}`) |
 | the status, as data | beside each `ContentPart::ToolResult` the batch lands, a `ToolResultStatus`: `Ok`, `Error` (a `status: error` result; any other `Err` report above), `Refused`, `Skipped` (a `skipped` result; every synthetic result — §8.2 feedback, the invalid-peer notice, an output-tool reprompt), `Denied`, `WrongFamily`. Graph data only: `read_message` and the request are the same whatever the status; a result written from a DTO (`write_message`, a memory load, prior history) has none; a scene saves it (`tool_result_status`) and refuses one off a tool-result part | `tool_result_status.rs`; the goldens above, unchanged |
-| the size policy | `ToolResultLimit { max_bytes, marker }` on the run (else the agent; absent is verbatim): `gather_turn` cuts each *text* item of each tool-result part longer than `max_bytes` to its head and tail — together at most `max_bytes`, each on a UTF-8 character boundary (the head floors, the tail start ceils; an odd budget gives the tail the extra byte) — around `marker` with `{omitted}` the omitted byte count (`TOOL_RESULT_LIMIT_MARKER` by default). JSON and image items, assistant and plain user text are never cut. Request shaping (like `RequestPatch`, §9.3): applied to the folded DTOs after the turn's `RequestPartEdit`s (an edited text is what is measured and cut; a removed part is gone) and before the fold; history, the graph, memory and a scene keep the full text (§1, §13); a `RequestPatch.history` replacement is the host's own and not cut; a change between turns affects later turns only; not replay identity (§10) | `tool_result_limit.rs`; `policy::tests::the_tool_result_cut_keeps_at_most_the_limit_on_character_boundaries` |
+| the size policy | `ToolResultLimit { max_bytes, marker }` on the run (else the agent; absent is verbatim): `fold_turn` cuts each *text* item of each tool-result part longer than `max_bytes` to its head and tail — together at most `max_bytes`, each on a UTF-8 character boundary (the head floors, the tail start ceils; an odd budget gives the tail the extra byte) — around `marker` with `{omitted}` the omitted byte count (`TOOL_RESULT_LIMIT_MARKER` by default). JSON and image items, assistant and plain user text are never cut. Request shaping (like `RequestPatch`, §9.3): applied to the folded DTOs after the turn's `RequestPartEdit`s (an edited text is what is measured and cut; a removed part is gone) and before the fold; history, the graph, memory and a scene keep the full text (§1, §13); a `RequestPatch.history` replacement is the host's own and not cut; a change between turns affects later turns only; not replay identity (§10) | `tool_result_limit.rs`; `policy::tests::the_tool_result_cut_keeps_at_most_the_limit_on_character_boundaries` |
 
 ### 8.2 Invalid calls beside the batch
 
@@ -338,7 +338,7 @@ snapshot. Effect denial uses the existing Gate outcome path and does not mutate
 content implicitly. `run_content_edits` covers targeting, ownership and remapping.
 
 
-`agent::RequestPatch` (the corpus's `rig_agent::agent::RequestPatch` as data: `preamble`, `temperature`, `max_tokens`, `tool_choice`, `active_tools`, `additional_params`, `extra_context`, `history`) inserted on the fresh turn before `Assemble` (a system on `Added<Fresh>`, reading `Cursor.turn` for the turn number); `gather_turn` folds it in as `prepare_request` did. Several hooks patching one turn merge in registration order (`RequestPatch::merge`: `extra_context` appends, object `additional_params` shallow-merge with later keys winning, `active_tools` intersect, scalars and `history` last-writer-wins); a user system that finds a patch on the turn merges over it.
+`agent::RequestPatch` (the corpus's `rig_agent::agent::RequestPatch` as data: `preamble`, `temperature`, `max_tokens`, `tool_choice`, `active_tools`, `additional_params`, `extra_context`, `history`) inserted on the fresh turn before `Assemble` (a system on `Added<Fresh>`, reading `Cursor.turn` for the turn number); `fold_turn` folds it in as `prepare_request` did. Several hooks patching one turn merge in registration order (`RequestPatch::merge`: `extra_context` appends, object `additional_params` shallow-merge with later keys winning, `active_tools` intersect, scalars and `history` last-writer-wins); a user system that finds a patch on the turn merges over it.
 
 | field | what the fold does | pinned by |
 |---|---|---|
@@ -532,7 +532,9 @@ as the index of that entity in the checkpoint), `counters` (`next_run`, `next_id
 `load_world(&Checkpoint, &mut World, RestoreMode, handlers)` validates its
 complete implementation set, spawns it and returns `Loaded` (the entities by checkpoint index;
 `Loaded::with::<C>` filters them). `Checkpoint::{to_json, from_json}` are the
-wire form. `checkpoint::register_types` registers every component and wrapper
+wire form. Every refusal from these entry points is a `CheckpointError` variant
+naming its cause, with the offending key, entity index or type path and any
+underlying JSON, content or binary error as its source. `checkpoint::register_types` registers every component and wrapper
 of the crate; `RigPlugin` calls it. The envelope's `format` is 2; format 1's
 separate content payload components are refused without compatibility adapters.
 

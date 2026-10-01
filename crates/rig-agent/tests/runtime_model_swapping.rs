@@ -17,7 +17,7 @@ use rig_agent::{
     agent::{
         AgentHook, AgentRunner, CompletionCallAction, DispatchAction, DispatchEvent, HookContext,
         InvalidToolCallAction, ModelSelection, ModelSelectionAction, ModelTurnAction,
-        ModelTurnFinished, NoToolConfig, OutcomeAction, OutcomeEvent, RequestPatch, StreamingError,
+        ModelTurnFinished, NoToolConfig, OutcomeAction, OutcomeEvent, RequestPatch,
         StreamingResult,
     },
     completion::{
@@ -424,21 +424,6 @@ fn beta_static(text: &str) -> FakeModel {
     scripted(Script::new("beta", [], Turn::text(text, 2, "beta-message")))
 }
 
-fn request(prompt: &str) -> CompletionRequest {
-    CompletionRequest {
-        model: None,
-        chat_history: rig_core::NonEmpty::new(Message::user(prompt)),
-        documents: Vec::new(),
-        tools: Vec::new(),
-        temperature: None,
-        max_tokens: None,
-        tool_choice: None,
-        additional_params: None,
-        output_schema: None,
-        record_telemetry_content: false,
-    }
-}
-
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
 struct ExtractedValue {
     value: String,
@@ -467,13 +452,13 @@ async fn downstream_models_keep_typed_low_level_apis_and_share_a_concrete_agent_
     assert_agent_stream(alpha_agent.prompt("stream type").stream());
 
     let unary = alpha
-        .call(request("low-level unary"))
+        .call(CompletionRequest::new("low-level unary"))
         .await
         .expect("direct unary response");
     assert_eq!(unary.provider, "alpha");
 
     let mut low_level_stream = beta
-        .stream(request("low-level stream"))
+        .stream(CompletionRequest::new("low-level stream"))
         .expect("direct provider stream");
     while let Some(item) = low_level_stream.next().await {
         item.expect("stream item");
@@ -537,7 +522,7 @@ async fn replacement_and_override_scopes_have_value_semantics() {
             .run()
             .await
             .expect("old runner")
-            .output,
+            .output(),
         "alpha"
     );
     assert_eq!(
@@ -545,7 +530,7 @@ async fn replacement_and_override_scopes_have_value_semantics() {
             .prompt("new runner")
             .await
             .expect("new default")
-            .output,
+            .output(),
         "beta"
     );
 
@@ -554,7 +539,11 @@ async fn replacement_and_override_scopes_have_value_semantics() {
         .build();
     let changed_clone = original.clone().with_model_label("beta");
     assert_eq!(
-        original.prompt("original").await.expect("original").output,
+        original
+            .prompt("original")
+            .await
+            .expect("original")
+            .output(),
         "alpha"
     );
     assert_eq!(
@@ -562,7 +551,7 @@ async fn replacement_and_override_scopes_have_value_semantics() {
             .prompt("clone")
             .await
             .expect("changed clone")
-            .output,
+            .output(),
         "beta"
     );
 
@@ -572,7 +561,7 @@ async fn replacement_and_override_scopes_have_value_semantics() {
             .using_model("beta")
             .await
             .expect("fixed override")
-            .output,
+            .output(),
         "beta"
     );
     assert_eq!(
@@ -580,7 +569,7 @@ async fn replacement_and_override_scopes_have_value_semantics() {
             .prompt("default remains")
             .await
             .expect("default")
-            .output,
+            .output(),
         "alpha"
     );
 
@@ -612,7 +601,7 @@ async fn replacement_and_override_scopes_have_value_semantics() {
             ))
             .await
             .expect("hook overrides run default")
-            .output,
+            .output(),
         "beta"
     );
     assert_eq!(
@@ -641,7 +630,7 @@ async fn agent_and_request_model_selection_hooks_have_expected_scope() {
             .prompt("agent hook")
             .await
             .expect("agent hook route")
-            .output,
+            .output(),
         "agent routed"
     );
 
@@ -656,7 +645,7 @@ async fn agent_and_request_model_selection_hooks_have_expected_scope() {
             ))
             .await
             .expect("request hook route")
-            .output,
+            .output(),
         "request routed"
     );
 
@@ -665,7 +654,7 @@ async fn agent_and_request_model_selection_hooks_have_expected_scope() {
             .prompt("agent hook remains")
             .await
             .expect("agent hook remains")
-            .output,
+            .output(),
         "agent routed"
     );
 }
@@ -686,7 +675,7 @@ async fn model_selection_stop_cancels_before_provider_execution() {
 
     assert!(matches!(
         error,
-        PromptError::PromptCancelled { reason, .. } if reason == "routing denied"
+        PromptError::Cancelled { reason, .. } if reason == "routing denied"
     ));
     assert!(blocking_script.requests().is_empty());
     // Completion-call hooks resolve BEFORE model selection, so the stop above
@@ -711,9 +700,7 @@ async fn model_selection_stop_cancels_before_provider_execution() {
 
     assert!(matches!(
         error,
-        StreamingError::Prompt(error)
-            if matches!(&error, PromptError::PromptCancelled { reason, .. }
-                if reason == "routing denied")
+        PromptError::Cancelled { reason, .. } if reason == "routing denied"
     ));
     assert!(streaming_script.requests().is_empty());
     assert_eq!(streaming_completion_calls.load(Ordering::SeqCst), 1);
@@ -961,7 +948,7 @@ async fn runner_default_is_used_for_every_attempt_without_a_selecting_hook() {
         .await
         .expect("default multi-turn run");
 
-    assert_eq!(output.output, "default final");
+    assert_eq!(output.output(), "default final");
     assert_eq!(script.requests().len(), 2);
 }
 
@@ -1072,9 +1059,7 @@ async fn blocking_and_streaming_switch_after_tools_with_equivalent_semantics() {
                     events.push("tool-commit");
                     call_ids.push(tool_call.id);
                 }
-                rig_agent::agent::MultiTurnStreamItem::StreamUserItem(
-                    rig_agent::streaming::StreamedUserContent::ToolResult { tool_result },
-                ) => {
+                rig_agent::agent::MultiTurnStreamItem::ToolResult { tool_result } => {
                     events.push("tool-result");
                     call_ids.push(tool_result.call);
                 }
@@ -1107,8 +1092,8 @@ async fn blocking_and_streaming_switch_after_tools_with_equivalent_semantics() {
         stream_call_ids,
     ) = run_streaming().await;
 
-    assert_eq!(blocking.output, "synthesized answer");
-    assert_eq!(blocking.output, streaming.output);
+    assert_eq!(blocking.output(), "synthesized answer");
+    assert_eq!(blocking.output(), streaming.output());
     assert_eq!(blocking.usage, usage(8));
     assert_eq!(blocking.usage, streaming.usage);
     assert_eq!(blocking.messages, streaming.messages);
@@ -1182,7 +1167,7 @@ async fn retries_reenter_selection_without_leaking_rejected_turn_state() {
         .await
         .expect("retry routed run");
 
-    assert_eq!(response.output, "accepted answer");
+    assert_eq!(response.output(), "accepted answer");
     assert_eq!(
         selections.lock().expect("selection lock").as_slice(),
         &[(1, None), (2, Some("alpha".to_owned()))]
@@ -1249,7 +1234,7 @@ async fn invalid_tool_retry_reenters_selection_exactly_once() {
         .await
         .expect("invalid-tool retry run");
 
-    assert_eq!(output.output, "recovered after invalid tool");
+    assert_eq!(output.output(), "recovered after invalid tool");
     assert_eq!(
         selections.lock().expect("selection lock").as_slice(),
         &[(1, None), (2, Some("alpha".to_owned()))]
@@ -1302,12 +1287,10 @@ async fn normalized_stream_preserves_events_message_id_and_usage() {
         Some("rich-message-id")
     );
     let final_response = final_response.expect("agent final response");
-    assert_eq!(final_response.output, "final text");
+    assert_eq!(final_response.output(), "final text");
     assert_eq!(final_response.usage, usage(13));
-    assert!(final_response.messages.is_some_and(|messages| {
-        messages.iter().any(|message| {
-            matches!(message, Message::Assistant { id: Some(id), .. } if id == "rich-message-id")
-        })
+    assert!(final_response.messages.iter().any(|message| {
+        matches!(message, Message::Assistant { id: Some(id), .. } if id == "rich-message-id")
     }));
 }
 
@@ -1451,7 +1434,7 @@ async fn routing_changes_cannot_rebind_an_in_flight_attempt_but_affect_the_next_
         task.await
             .expect("routing task join")
             .expect("routing task result")
-            .output,
+            .output(),
         "after tool"
     );
     assert_eq!(tool_calls.load(Ordering::SeqCst), 1);
@@ -1576,17 +1559,23 @@ async fn concurrent_runs_and_handle_calls_are_independent() {
     ));
     let (alpha, beta) = tokio::join!(alpha_run, beta_run);
     assert_eq!(
-        alpha.expect("alpha concurrent run").output,
+        alpha.expect("alpha concurrent run").output(),
         "alpha concurrent"
     );
-    assert_eq!(beta.expect("beta concurrent run").output, "beta concurrent");
+    assert_eq!(
+        beta.expect("beta concurrent run").output(),
+        "beta concurrent"
+    );
 
     let shared = agent.register_model("shared", alpha_static("shared handle"));
     let first = agent.prompt("first shared").using_model(shared.clone());
     let second = agent.prompt("second shared").using_model(shared);
     let (first, second) = tokio::join!(first, second);
-    assert_eq!(first.expect("first shared call").output, "shared handle");
-    assert_eq!(second.expect("second shared call").output, "shared handle");
+    assert_eq!(first.expect("first shared call").output(), "shared handle");
+    assert_eq!(
+        second.expect("second shared call").output(),
+        "shared handle"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -1642,7 +1631,7 @@ fn observing_selector(
 
 /// Drive a streaming run to its terminal item, returning the first error if
 /// the stream yields one.
-async fn drain_stream(mut stream: StreamingResult) -> Result<(), StreamingError> {
+async fn drain_stream(mut stream: StreamingResult) -> Result<(), PromptError> {
     while let Some(item) = stream.next().await {
         item?;
     }
@@ -1727,7 +1716,7 @@ async fn a_request_patch_can_influence_the_selected_model_on_both_surfaces() {
                     .prompt("route by patch")
                     .await
                     .expect("blocking patch-routed run")
-                    .output,
+                    .output(),
                 "beta answer"
             );
         }
@@ -1751,9 +1740,7 @@ async fn a_stopped_completion_call_hook_suppresses_selection_on_both_surfaces() 
                 .expect_err("streaming completion-call stop");
             assert!(matches!(
                 error,
-                StreamingError::Prompt(error)
-                    if matches!(&error, PromptError::PromptCancelled { reason, .. }
-                        if reason == "completion denied")
+                PromptError::Cancelled { reason, .. } if reason == "completion denied"
             ));
         } else {
             let error = agent
@@ -1762,7 +1749,7 @@ async fn a_stopped_completion_call_hook_suppresses_selection_on_both_surfaces() 
                 .expect_err("blocking completion-call stop");
             assert!(matches!(
                 error,
-                PromptError::PromptCancelled { reason, .. } if reason == "completion denied"
+                PromptError::Cancelled { reason, .. } if reason == "completion denied"
             ));
         }
 
@@ -1871,7 +1858,7 @@ async fn an_errored_provider_attempt_still_counts_as_the_previous_model() {
         let failed_with_provider_error = if streaming {
             matches!(
                 drain_stream(agent.prompt("boom").stream()).await,
-                Err(StreamingError::Report(report))
+                Err(PromptError::Report(report))
                     if report.kind == ErrorKind::Provider
                         && report.message.ends_with("provider exploded")
             )
@@ -1928,7 +1915,7 @@ async fn an_errored_provider_attempt_still_counts_as_the_previous_model() {
         ))
         .await
         .expect("recovered run");
-    assert_eq!(output.output, "recovered");
+    assert_eq!(output.output(), "recovered");
     let observed = observations.lock().expect("observation lock").clone();
     assert_eq!(observed[0], (1, None, None, None));
     assert_eq!(observed[1], (2, Some("alpha".to_owned()), None, None));
@@ -1954,7 +1941,7 @@ async fn an_agent_level_swap_serves_the_next_run_and_rebinds_live_handles() {
     let before = handle.descriptor();
 
     let first = agent.prompt("hi").run().await.expect("first run");
-    assert_eq!(first.output, "one");
+    assert_eq!(first.output(), "one");
 
     let label = agent.register_model(
         "alpha",
@@ -1971,7 +1958,7 @@ async fn an_agent_level_swap_serves_the_next_run_and_rebinds_live_handles() {
     );
 
     let second = agent.prompt("hi").run().await.expect("second run");
-    assert_eq!(second.output, "two", "the swap serves the next run");
+    assert_eq!(second.output(), "two", "the swap serves the next run");
     let after = handle.descriptor();
     assert_ne!(
         before, after,

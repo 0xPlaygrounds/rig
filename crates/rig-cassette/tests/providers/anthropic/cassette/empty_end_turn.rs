@@ -41,7 +41,7 @@ struct NotifyError;
 
 fn notify_tool_definition() -> ToolDefinition {
     ToolDefinition {
-        name: Notify::NAME.to_string(),
+        name: rig_core::message::ToolName::new(Notify::NAME).expect("tool name"),
         description: "Send a short notification for a user status update.".to_string(),
         parameters: json!({
             "type": "object",
@@ -146,13 +146,13 @@ async fn raw_followup_empty_end_turn_normalizes_to_an_empty_choice() {
             // The conversation is plain values: the recorded follow-up sent
             // the preamble, the first turn's reply and the tool result (the
             // prompt was not repeated), so that is the history here.
-            let mut history = rig::NonEmpty::new(Message::system(TERMINAL_NOTIFY_PREAMBLE));
+            let mut history = vec![Message::system(TERMINAL_NOTIFY_PREAMBLE)];
             let first_turn = model
                 .call(
-                    CompletionRequest::from(rig::NonEmpty::with_rest(
+                    CompletionRequest::from(vec![
                         Message::system(TERMINAL_NOTIFY_PREAMBLE),
-                        [Message::user(TERMINAL_NOTIFY_PROMPT)],
-                    ))
+                        Message::user(TERMINAL_NOTIFY_PROMPT),
+                    ])
                     .max_tokens(1024)
                     .tool(notify_tool_definition()),
                 )
@@ -209,18 +209,16 @@ async fn prompt_loop_accepts_empty_terminal_turn_after_tool_result() {
                 .expect("agent prompt should not fail on an empty terminal Anthropic turn");
 
             assert!(
-                response.output.trim().is_empty(),
+                response.output().trim().is_empty(),
                 "expected empty final output for the terminal tool prompt, got {:?}",
-                response.output
+                response.output()
             );
             assert!(
                 call_count.load(Ordering::SeqCst) >= 1,
                 "notify should be called at least once"
             );
 
-            let messages = response
-                .messages
-                .expect("extended details should include history");
+            let messages = response.messages;
             assert!(
                 messages.iter().any(assistant_message_has_notify_tool_call),
                 "expected notify tool call in history, got {messages:?}"
@@ -255,9 +253,9 @@ async fn prompt_loop_preserves_pre_tool_text_when_terminal_followup_is_empty() {
         .expect("agent prompt should preserve prior-turn text when Anthropic ends empty");
 
     assert!(
-        response.output.trim().is_empty(),
+        response.output().trim().is_empty(),
         "expected empty final output for the terminal tool prompt, got {:?}",
-        response.output
+        response.output()
     );
     assert!(
         call_count.load(Ordering::SeqCst) >= 1,
@@ -265,8 +263,7 @@ async fn prompt_loop_preserves_pre_tool_text_when_terminal_followup_is_empty() {
     );
 
     let messages = response
-        .messages
-        .expect("extended details should include history");
+        .messages;
     assert!(
         messages
             .iter()

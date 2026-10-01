@@ -31,7 +31,7 @@ fn verifier_document() -> Document {
     let bytes =
         std::fs::read(VERIFIER_FIXTURE_PATH).expect("verifier fixture PDF should be readable");
     Document {
-        data: DocumentSourceKind::base64(&BASE64_STANDARD.encode(bytes)),
+        data: DocumentSourceKind::base64(BASE64_STANDARD.encode(bytes)),
         media_type: Some(DocumentMediaType::PDF),
         additional_params: None,
     }
@@ -39,12 +39,12 @@ fn verifier_document() -> Document {
 
 fn document_question(page_number: u8) -> RigMessage {
     RigMessage::User {
-        content: rig_core::NonEmpty::with_rest(
+        content: vec![
             RigUserContent::Document(verifier_document()),
-            [RigUserContent::Text(Text::new(format!(
+            RigUserContent::Text(Text::new(format!(
                 "What verifier token is printed on page {page_number}? Reply with only the exact token."
-            )))],
-        ),
+            ))),
+        ],
     }
 }
 
@@ -220,7 +220,7 @@ async fn document_file_data_roundtrip_live() {
                 .chat(direct_message, &mut history)
                 .await
                 .expect("OpenRouter should read PDF file_data document");
-            assert_verifier_response(&response.output, PAGE_TWO_VERIFIER);
+            assert_verifier_response(&response.output(), PAGE_TWO_VERIFIER);
             assert_history_preserves_single_file_data_document(&history);
 
             let follow_up = agent
@@ -230,7 +230,7 @@ async fn document_file_data_roundtrip_live() {
                 )
                 .await
                 .expect("OpenRouter should reuse PDF file_data document from chat history");
-            assert_verifier_response(&follow_up.output, PAGE_THREE_VERIFIER);
+            assert_verifier_response(&follow_up.output(), PAGE_THREE_VERIFIER);
             assert_history_preserves_single_file_data_document(&history);
 
             let direct_prompt = document_question(1);
@@ -240,7 +240,7 @@ async fn document_file_data_roundtrip_live() {
                 .prompt(direct_prompt)
                 .await
                 .expect("OpenRouter should read direct generic PDF file_data document");
-            assert_verifier_response(&direct_response.output, PAGE_ONE_VERIFIER);
+            assert_verifier_response(&direct_response.output(), PAGE_ONE_VERIFIER);
         },
     )
     .await;

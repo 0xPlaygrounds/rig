@@ -91,7 +91,7 @@ fn forced_tool_request() -> rig::completion::CompletionRequest {
         .temperature(0.0)
         .tool(rig::tool::tool_definition(&Adder))
         .tool_choice(ToolChoice::Specific {
-            function_names: vec![Adder::NAME.to_string()],
+            function_names: vec![rig_core::message::ToolName::new(Adder::NAME).expect("tool name")],
         })
 }
 

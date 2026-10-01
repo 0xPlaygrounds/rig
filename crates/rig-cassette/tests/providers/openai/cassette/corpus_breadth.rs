@@ -5,7 +5,7 @@
 //! recording under `crates/rig-cassette/fixtures/cassettes/openai/corpus_breadth/`.
 
 use futures::StreamExt;
-use rig::agent::{AgentBuilder, MultiTurnStreamItem, StreamingError};
+use rig::agent::{AgentBuilder, MultiTurnStreamItem};
 use rig::bus::Bus;
 use rig::completion::PromptError;
 use rig::effect::{EffectFamily, HandlerKey};
@@ -42,13 +42,12 @@ async fn final_output(stream: &mut rig::agent::StreamingResult) -> Result<String
     let mut output = None;
     while let Some(item) = stream.next().await {
         match item {
-            Ok(MultiTurnStreamItem::FinalResponse(response)) => output = Some(response.output),
+            Ok(MultiTurnStreamItem::FinalResponse(response)) => output = Some(response.output()),
             Ok(_) => {}
-            Err(StreamingError::Prompt(error)) => match error {
-                PromptError::PromptCancelled { reason, .. } => return Err(reason),
+            Err(error) => match error {
+                PromptError::Cancelled { reason, .. } => return Err(reason),
                 other => panic!("the stream yields: {other:?}"),
             },
-            Err(other) => panic!("the stream yields: {other:?}"),
         }
     }
     Ok(output.expect("a final response"))
@@ -189,7 +188,7 @@ async fn tool_dispatch_cancelled_effect_log_is_the_golden_fixture() {
                 .await
                 .expect_err("the hook stops the run");
             assert!(
-                matches!(&error, PromptError::PromptCancelled { reason, .. } if reason == CANCEL_ADD_DISPATCH),
+                matches!(&error, PromptError::Cancelled { reason, .. } if reason == CANCEL_ADD_DISPATCH),
                 "{error:?}"
             );
             let log = agent.stamp(recorder.take());
@@ -222,7 +221,7 @@ async fn custom_at_outcome_effect_log_is_the_golden_fixture() {
             .max_turns(3)
             .await
             .expect("the agent answers")
-            .output;
+            .output();
         assert!(output.contains("42"), "{output}");
         let log = agent.stamp(recorder.take());
         drop((agent, dispatcher, registrar));
@@ -284,7 +283,7 @@ async fn memory_two_runs_effect_log_is_the_golden_fixture() {
                 .prompt(prompt)
                 .await
                 .expect("the agent answers")
-                .output;
+                .output();
             assert!(!output.is_empty());
         }
         let log = agent.stamp(recorder.take());

@@ -270,7 +270,7 @@ async fn five_turn_reasoning_metadata_roundtrip() {
                     user: user_message,
                     assistant: Message::Assistant {
                         id: response.message_id,
-                        content: rig_core::NonEmpty::from_vec(response.choice).expect("non-empty"),
+                        content: response.choice,
                     },
                     raw_response,
                 });
@@ -416,7 +416,7 @@ async fn five_turn_streaming_reasoning_metadata_roundtrip() {
                     user: user_message,
                     assistant: Message::Assistant {
                         id: message_id,
-                        content: rig_core::NonEmpty::from_vec(reasoning_blocks).expect("non-empty"),
+                        content: reasoning_blocks,
                     },
                     final_response,
                 });

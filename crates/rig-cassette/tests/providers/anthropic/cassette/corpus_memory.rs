@@ -36,7 +36,7 @@ async fn final_output(stream: &mut rig::agent::StreamingResult) -> String {
     let mut output = None;
     while let Some(item) = stream.next().await {
         if let MultiTurnStreamItem::FinalResponse(response) = item.expect("the stream yields") {
-            output = Some(response.output);
+            output = Some(response.output());
         }
     }
     output.expect("a final response")
@@ -93,7 +93,7 @@ async fn run_prompts(agent: &rig::agent::Agent, prompts: &[&str], streamed: bool
                 .max_turns(3)
                 .await
                 .expect("the agent answers")
-                .output
+                .output()
         };
         outputs.push(output);
     }
@@ -245,7 +245,7 @@ async fn history_bypass_effect_log_is_the_golden_fixture() {
             .history(bypass_history())
             .await
             .expect("the agent answers");
-        assert!(response.output.contains("Ada"), "{}", response.output);
+        assert!(response.output().contains("Ada"), "{}", response.output());
         let log = agent.stamp(recorder.take());
         assert_eq!(families(&log), [EffectFamily::Completion]);
         assert!(
@@ -292,7 +292,7 @@ async fn host_bus_memory_effect_log_is_the_golden_fixture() {
             .prompt(PROMPT)
             .await
             .expect("the agent answers")
-            .output;
+            .output();
         assert!(!output.is_empty());
         let log = agent.stamp(recorder.take());
         drop((agent, dispatcher, registrar));

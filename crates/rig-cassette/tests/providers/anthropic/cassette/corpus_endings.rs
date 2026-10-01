@@ -1,14 +1,14 @@
 //! Matrix F of the effect corpus: hook-ended runs. Every `Stop` in the
 //! hook surface that fires after at least one dispatch, on the Anthropic
 //! wire (`CLAUDE_SONNET_4_6`, temperature 0), each ending the run in
-//! `PromptCancelled` with the hook's reason. The cells that stop before
+//! `Cancelled` with the hook's reason. The cells that stop before
 //! any dispatch are mock-scripted in `tests/core/golden_endings.rs` (no
 //! wire, no cassette). Producers of the goldens
 //! `crates/rig-cassette/tests/corpus_endings.rs` replays by both
 //! interpreters; the enumeration lives there.
 
 use futures::StreamExt;
-use rig::agent::{AgentHook, MultiTurnStreamItem, StreamingError};
+use rig::agent::{AgentHook, MultiTurnStreamItem};
 use rig::completion::PromptError;
 use rig::effect::EffectFamily;
 use rig::error::ErrorKind;
@@ -39,7 +39,7 @@ pub(super) const NOTE_PROMPT: &str = "Save a note titled 'Rust' whose body is a 
 
 fn cancelled_reason(error: &PromptError) -> &str {
     match error {
-        PromptError::PromptCancelled { reason, .. } => reason,
+        PromptError::Cancelled { reason, .. } => reason,
         other => panic!("a cancelled run, not {other:?}"),
     }
 }
@@ -49,10 +49,9 @@ async fn streamed_cancel(stream: &mut rig::agent::StreamingResult) -> String {
     let mut reason = None;
     while let Some(item) = stream.next().await {
         match item {
-            Err(StreamingError::Prompt(error)) => {
+            Err(error) => {
                 reason = Some(cancelled_reason(&error).to_owned());
             }
-            Err(other) => panic!("a cancelled run, not {other:?}"),
             Ok(MultiTurnStreamItem::FinalResponse(_)) => panic!("the hook stops the run"),
             Ok(_) => {}
         }

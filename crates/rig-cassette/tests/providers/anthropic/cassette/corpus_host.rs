@@ -62,7 +62,7 @@ async fn final_output(stream: &mut rig::agent::StreamingResult) -> String {
     let mut output = None;
     while let Some(item) = stream.next().await {
         if let MultiTurnStreamItem::FinalResponse(response) = item.expect("the stream yields") {
-            output = Some(response.output);
+            output = Some(response.output());
         }
     }
     output.expect("a final response")
@@ -137,7 +137,7 @@ async fn over_host(
             .max_turns(3)
             .await
             .expect("the agent answers")
-            .output
+            .output()
     };
     if host.with_tool {
         assert!(output.contains("42"), "{output}");

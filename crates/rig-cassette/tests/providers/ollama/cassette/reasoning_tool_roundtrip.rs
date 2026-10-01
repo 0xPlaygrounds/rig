@@ -43,13 +43,13 @@ async fn nonstreaming() {
                 .await
                 .expect("[ollama] non-streaming chat failed");
 
-            reasoning::assert_nonstreaming_universal(&result.output, &call_count, "ollama");
+            reasoning::assert_nonstreaming_universal(&result.output(), &call_count, "ollama");
             // #1926: the tool-call turn's `thinking` must survive into history as
             // an AssistantContent::Reasoning. Pre-fix, the non-streaming choice
             // contained only the ToolCall and this assertion failed.
             reasoning::assert_chat_history_preserves_reasoning_tool_roundtrip(
                 &chat_history,
-                &result.output,
+                &result.output(),
                 "ollama",
             );
             assert!(

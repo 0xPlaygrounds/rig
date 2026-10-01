@@ -18,6 +18,7 @@ use rig_cassette::agent::AgentReplayExt;
 use serde_json::json;
 
 use super::golden_recovery::Add;
+use super::{cancelled_reason, stream_turn};
 use crate::goldens::{
     RepairToAdd, RetryUnknownTool, STOP_ON_TOOL_ARGUMENTS_DELTA, SkipUnknown,
     StopOnToolArgumentsDelta, event_schema, families,
@@ -26,12 +27,6 @@ use crate::goldens::{
 const PREAMBLE: &str = "Use the add tool.";
 const PROMPT: &str = "What is 2 + 3?";
 const ANSWER: &str = "2 + 3 = 5";
-
-fn stream_turn(events: Vec<MockStreamEvent>) -> Vec<MockStreamEvent> {
-    let mut events = events;
-    events.push(MockStreamEvent::final_response_with_default_usage());
-    events
-}
 
 /// A call streamed as its name, then its arguments in two fragments.
 fn delta_call(id: &str, name: &str) -> Vec<MockStreamEvent> {
@@ -58,7 +53,7 @@ async fn streamed(
     max_turns: usize,
     unhandled: UnhandledInvalidToolCall,
     retries: usize,
-) -> Result<String, rig::agent::StreamingError> {
+) -> Result<String, PromptError> {
     let mut stream = agent
         .prompt(PROMPT)
         .max_turns(max_turns)
@@ -69,7 +64,7 @@ async fn streamed(
     let mut failure = None;
     while let Some(item) = stream.next().await {
         match item {
-            Ok(MultiTurnStreamItem::FinalResponse(response)) => output = Some(response.output),
+            Ok(MultiTurnStreamItem::FinalResponse(response)) => output = Some(response.output()),
             Ok(_) => {}
             Err(error) => failure = Some(error),
         }
@@ -81,16 +76,6 @@ async fn streamed(
     match failure {
         Some(error) => Err(error),
         None => Ok(output.expect("a final response")),
-    }
-}
-
-fn cancelled_reason(error: &rig::agent::StreamingError) -> &str {
-    match error {
-        rig::agent::StreamingError::Prompt(error) => match error {
-            PromptError::PromptCancelled { reason, .. } => reason,
-            other => panic!("a cancelled run, not {other:?}"),
-        },
-        other => panic!("a cancelled run, not {other:?}"),
     }
 }
 
@@ -320,7 +305,7 @@ async fn delta_fail_effect_log_is_the_golden_fixture() {
         .await
         .expect_err("the unknown call fails the run");
     assert!(
-        matches!(&error, rig::agent::StreamingError::Prompt(error) if matches!(error, PromptError::UnknownToolCall { .. })),
+        matches!(&error, error if matches!(error, PromptError::UnknownToolCall { .. })),
         "{error:?}"
     );
     let log = agent.stamp(recorder.take());
@@ -354,7 +339,7 @@ async fn delta_output_tool_effect_log_is_the_golden_fixture() {
     let mut output = None;
     while let Some(item) = stream.next().await {
         if let MultiTurnStreamItem::FinalResponse(response) = item.expect("the stream yields") {
-            output = Some(response.output);
+            output = Some(response.output());
         }
     }
     drop(stream);

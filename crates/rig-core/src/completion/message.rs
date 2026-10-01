@@ -1,4 +1,3 @@
-use crate::NonEmpty;
 use crate::error::ProviderError;
 use serde::{Deserialize, Serialize};
 use std::{convert::Infallible, str::FromStr};
@@ -18,13 +17,13 @@ pub enum Message {
     System { content: String },
 
     /// User message containing one or more content types defined by `UserContent`.
-    User { content: NonEmpty<UserContent> },
+    User { content: Vec<UserContent> },
 
     /// Assistant message containing one or more content types defined by `AssistantContent`.
     Assistant {
         /// Provider-assigned assistant message ID, when available.
         id: Option<String>,
-        content: NonEmpty<AssistantContent>,
+        content: Vec<AssistantContent>,
     },
 }
 
@@ -306,7 +305,7 @@ pub struct ToolResult {
     /// hook repair. Required for provider replay independently of call identity.
     pub name: ToolName,
     /// One or more content items produced by the tool.
-    pub content: NonEmpty<ToolResultContent>,
+    pub content: Vec<ToolResultContent>,
 }
 
 /// Describes one typed item in a tool result.
@@ -406,11 +405,11 @@ impl ToolCall {
     }
 
     /// The result answering this call: its id and name, and `content`.
-    pub fn result(&self, content: impl Into<NonEmpty<ToolResultContent>>) -> ToolResult {
+    pub fn result(&self, content: Vec<ToolResultContent>) -> ToolResult {
         ToolResult {
             call: self.id.clone(),
             name: self.function.name.clone(),
-            content: content.into(),
+            content,
         }
     }
 
@@ -775,22 +774,22 @@ pub enum DocumentSourceKind {
 
 impl DocumentSourceKind {
     /// Create a URL-backed source.
-    pub fn url(url: &str) -> Self {
-        Self::Url(url.to_string())
+    pub fn url(url: impl Into<String>) -> Self {
+        Self::Url(url.into())
     }
 
     /// Create a base64-backed source.
-    pub fn base64(base64_string: &str) -> Self {
-        Self::Base64(base64_string.to_string())
+    pub fn base64(base64_string: impl Into<String>) -> Self {
+        Self::Base64(base64_string.into())
     }
 
     /// Create a provider file ID-backed source.
-    pub fn file_id(file_id: &str) -> Self {
-        Self::FileId(file_id.to_string())
+    pub fn file_id(file_id: impl Into<String>) -> Self {
+        Self::FileId(file_id.into())
     }
 
     /// Create a string-backed source.
-    pub fn string(input: &str) -> Self {
+    pub fn string(input: impl Into<String>) -> Self {
         Self::String(input.into())
     }
 
@@ -1002,7 +1001,7 @@ impl Message {
     /// Creates a user message containing one text block.
     pub fn user(text: impl Into<String>) -> Self {
         Message::User {
-            content: NonEmpty::new(UserContent::text(text)),
+            content: vec![UserContent::text(text)],
         }
     }
 
@@ -1010,7 +1009,7 @@ impl Message {
     pub fn assistant(text: impl Into<String>) -> Self {
         Message::Assistant {
             id: None,
-            content: NonEmpty::new(AssistantContent::text(text)),
+            content: vec![AssistantContent::text(text)],
         }
     }
 
@@ -1019,18 +1018,18 @@ impl Message {
     /// [`ToolCall::result`] with [`Self::tool_results`].
     pub fn tool_result(call: CallId, name: ToolName, content: impl Into<String>) -> Self {
         Message::User {
-            content: NonEmpty::new(UserContent::tool_result(
+            content: vec![UserContent::tool_result(
                 call,
                 name,
-                ToolResultContent::text(content),
-            )),
+                vec![ToolResultContent::text(content)],
+            )],
         }
     }
 
     /// Creates a user message carrying `results`, in order.
-    pub fn tool_results(results: NonEmpty<ToolResult>) -> Self {
+    pub fn tool_results(results: Vec<ToolResult>) -> Self {
         Message::User {
-            content: results.map(UserContent::ToolResult),
+            content: results.into_iter().map(UserContent::ToolResult).collect(),
         }
     }
 }
@@ -1087,43 +1086,35 @@ impl UserContent {
         /// Creates user image content referencing a URL.
         image_url => Image(Url: String);
         /// Creates user audio content from base64-encoded data.
-        audio => Audio(AudioMediaType, Base64: String);
+        audio_base64 => Audio(AudioMediaType, Base64: String);
         /// Creates user audio content from unencoded bytes.
         audio_raw => Audio(AudioMediaType, Raw: Vec<u8>);
         /// Creates user audio content referencing a URL.
         audio_url => Audio(AudioMediaType, Url: String);
         /// Creates user video content from base64-encoded data.
-        video => Video(VideoMediaType, Base64: String);
+        video_base64 => Video(VideoMediaType, Base64: String);
         /// Creates user video content from unencoded bytes.
         video_raw => Video(VideoMediaType, Raw: Vec<u8>);
         /// Creates user video content referencing a URL.
         video_url => Video(VideoMediaType, Url: String);
+        /// Creates user document content from base64-encoded data.
+        document_base64 => Document(DocumentMediaType, Base64: String);
         /// Creates user document content from unencoded bytes.
         document_raw => Document(DocumentMediaType, Raw: Vec<u8>);
         /// Creates user document content referencing a URL.
         document_url => Document(DocumentMediaType, Url: String);
-    }
-
-    /// Creates document content from a string without decoding or fetching it.
-    pub fn document(data: impl Into<String>, media_type: Option<DocumentMediaType>) -> Self {
-        let data: String = data.into();
-        UserContent::Document(Document {
-            data: DocumentSourceKind::string(&data),
-            media_type,
-            additional_params: None,
-        })
+        /// Creates user document content from literal text, such as a plain
+        /// text or Markdown file. Binary formats belong in
+        /// [`Self::document_base64`] or [`Self::document_raw`].
+        document_text => Document(DocumentMediaType, String: String);
     }
 
     /// Creates a tool result answering the call `call` to the tool `name`.
-    pub fn tool_result(
-        call: CallId,
-        name: ToolName,
-        content: impl Into<NonEmpty<ToolResultContent>>,
-    ) -> Self {
+    pub fn tool_result(call: CallId, name: ToolName, content: Vec<ToolResultContent>) -> Self {
         UserContent::ToolResult(ToolResult {
             call,
             name,
-            content: content.into(),
+            content,
         })
     }
 }
@@ -1329,7 +1320,7 @@ macro_rules! single_content_message_from {
         impl From<$src> for Message {
             fn from(value: $src) -> Self {
                 Message::User {
-                    content: NonEmpty::new(UserContent::$variant(value.into())),
+                    content: vec![UserContent::$variant(value.into())],
                 }
             }
         }
@@ -1339,7 +1330,7 @@ macro_rules! single_content_message_from {
             fn from(value: $src) -> Self {
                 Message::Assistant {
                     id: None,
-                    content: NonEmpty::new(AssistantContent::$variant(value.into())),
+                    content: vec![AssistantContent::$variant(value.into())],
                 }
             }
         }
@@ -1379,7 +1370,7 @@ impl From<AssistantContent> for Message {
     fn from(content: AssistantContent) -> Self {
         Message::Assistant {
             id: None,
-            content: NonEmpty::new(content),
+            content: vec![content],
         }
     }
 }
@@ -1387,19 +1378,19 @@ impl From<AssistantContent> for Message {
 impl From<UserContent> for Message {
     fn from(content: UserContent) -> Self {
         Message::User {
-            content: NonEmpty::new(content),
+            content: vec![content],
         }
     }
 }
 
-impl From<NonEmpty<AssistantContent>> for Message {
-    fn from(content: NonEmpty<AssistantContent>) -> Self {
+impl From<Vec<AssistantContent>> for Message {
+    fn from(content: Vec<AssistantContent>) -> Self {
         Message::Assistant { id: None, content }
     }
 }
 
-impl From<NonEmpty<UserContent>> for Message {
-    fn from(content: NonEmpty<UserContent>) -> Self {
+impl From<Vec<UserContent>> for Message {
+    fn from(content: Vec<UserContent>) -> Self {
         Message::User { content }
     }
 }
@@ -1412,7 +1403,7 @@ pub enum ToolChoice {
     None,
     Required,
     Specific {
-        function_names: Vec<String>,
+        function_names: Vec<ToolName>,
     },
 }
 

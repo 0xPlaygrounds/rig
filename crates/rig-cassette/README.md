@@ -41,9 +41,10 @@ dependencies in the same build.
 
 The dependency direction is cassette → runtime → core. Neither runtime depends
 on cassette, including through optional features. The `rig` facade re-exports
-this crate as `rig::cassette`; its `agent` feature enables the cassette agent
-adapter. Direct minimal consumers should depend on `rig-cassette`, rather than
-the facade's default transport configuration.
+this crate as `rig::cassette` behind its opt-in `cassette` feature; with the
+facade's `agent` feature it also enables the cassette agent adapter. Direct
+minimal consumers should depend on `rig-cassette`, rather than the facade's
+default transport configuration.
 
 The facade and provider helpers needed by this package's tests remain
 version-less path dev-dependencies, omitted from its published manifest.
@@ -135,7 +136,10 @@ returns early cannot pass on a recording it never played to the end. The guard
 stays silent while the thread is already panicking, for a fully played session,
 and after `finish_after_test_result` returns a test's own error. Invalid
 fixtures and failed assertions panic, preserving the original test-support
-behavior.
+behavior. Applications that record or replay outside a test use
+`ProviderCassette::try_start_at` and `try_finish`, which return a
+`CassetteError` for each of those failures instead. `try_finish` shuts the
+session down whatever its outcome, so dropping it afterwards never panics.
 
 `RIG_PROVIDER_TEST_MODE` defaults to `replay`. `record` contacts the configured
 upstream and overwrites the selected fixture after scrubbing; `start` and

@@ -18,7 +18,8 @@ use rig_core::{
     Embed,
     embeddings::Embedding,
     vector_store::{
-        InsertDocuments, VectorStoreError, VectorStoreIndex, request::VectorSearchRequest,
+        InsertDocuments, VectorSearchIdResult, VectorSearchResult, VectorStoreError,
+        VectorStoreIndex, request::VectorSearchRequest,
     },
     wasm_compat::WasmCompatSend,
 };
@@ -90,7 +91,6 @@ impl QdrantVectorStore {
 
         let filter = req
             .filter()
-            .as_ref()
             .cloned()
             .map(QdrantFilter::interpret)
             .transpose()?
@@ -163,12 +163,12 @@ fn missing_point_id() -> VectorStoreError {
 impl VectorStoreIndex for QdrantVectorStore {
     type Filter = QdrantFilter;
 
-    /// Returns the nearest points as `(score, id, payload)`. Errors when a point
+    /// Returns the nearest points with their payloads as documents. Errors when a point
     /// lacks an id or its payload does not deserialize into `T`.
     async fn top_n<T: DeserializeOwned + WasmCompatSend>(
         &self,
         req: VectorSearchRequest<Self::Filter>,
-    ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
+    ) -> Result<Vec<VectorSearchResult<T>>, VectorStoreError> {
         self.run_query(&req)
             .await?
             .into_iter()
@@ -176,22 +176,29 @@ impl VectorStoreIndex for QdrantVectorStore {
                 let id = stringify_id(item.id.ok_or_else(missing_point_id)?)?;
                 let score = item.score as f64;
                 let payload = serde_json::from_value(serde_json::to_value(item.payload)?)?;
-                Ok((score, id, payload))
+                Ok(VectorSearchResult {
+                    score,
+                    id,
+                    document: payload,
+                })
             })
             .collect()
     }
 
-    /// Like `top_n` but returns `(score, id)` without deserializing payloads.
+    /// Like `top_n` but returns only scores and ids, without deserializing payloads.
     async fn top_n_ids(
         &self,
         req: VectorSearchRequest<Self::Filter>,
-    ) -> Result<Vec<(f64, String)>, VectorStoreError> {
+    ) -> Result<Vec<VectorSearchIdResult>, VectorStoreError> {
         self.run_query(&req)
             .await?
             .into_iter()
             .map(|point| {
                 let id = stringify_id(point.id.ok_or_else(missing_point_id)?)?;
-                Ok((point.score as f64, id))
+                Ok(VectorSearchIdResult {
+                    score: point.score as f64,
+                    id,
+                })
             })
             .collect()
     }

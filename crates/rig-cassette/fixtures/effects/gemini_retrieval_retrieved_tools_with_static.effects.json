@@ -105,7 +105,6 @@
             "query": "First add 20 and 5 with the add tool. Then subtract 4 from that sum with the subtract tool. Report the final number.",
             "samples": 1,
             "threshold": null,
-            "additional_params": null,
             "filter": null
           }
         }
@@ -306,7 +305,6 @@
             "query": "First add 20 and 5 with the add tool. Then subtract 4 from that sum with the subtract tool. Report the final number.",
             "samples": 1,
             "threshold": null,
-            "additional_params": null,
             "filter": null
           }
         }
@@ -546,7 +544,6 @@
             "query": "First add 20 and 5 with the add tool. Then subtract 4 from that sum with the subtract tool. Report the final number.",
             "samples": 1,
             "threshold": null,
-            "additional_params": null,
             "filter": null
           }
         }

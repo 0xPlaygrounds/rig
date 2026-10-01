@@ -5,10 +5,10 @@ use rig::streaming::Item;
 use rig_cassette::agent::AgentReplayExt;
 
 use futures::StreamExt;
-use rig::agent::{MultiTurnStreamItem, StreamingError, StreamingResult};
+use rig::agent::{MultiTurnStreamItem, StreamingResult};
 use rig::message::{CallId, Message, UserContent};
 use rig::providers::anthropic;
-use rig::streaming::{StreamEvent, StreamedUserContent};
+use rig::streaming::StreamEvent;
 use rig::tool::Tool;
 use serde::Deserialize;
 use serde_json::Value;
@@ -328,10 +328,7 @@ async fn collect_concurrent_tool_observation(
             Ok(MultiTurnStreamItem::ToolExecutionCommitted { .. }) => {
                 observation.events.push("tool_execution_committed");
             }
-            Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult {
-                tool_result,
-                ..
-            })) => {
+            Ok(MultiTurnStreamItem::ToolResult { tool_result, .. }) => {
                 observation
                     .streamed_tool_results
                     .push(tool_name_for_result(&tool_names_by_id, &tool_result.call));
@@ -340,12 +337,11 @@ async fn collect_concurrent_tool_observation(
             Ok(MultiTurnStreamItem::FinalResponse(response)) => {
                 observation.final_response_text = Some(response.output().to_owned());
                 observation.got_final_response = true;
-                if let Some(history) = response.messages() {
-                    observation.history_tool_results =
-                        tool_result_names_in_history(history, &tool_names_by_id);
-                    observation.last_history_tool_result_message =
-                        last_tool_result_message_names(history, &tool_names_by_id);
-                }
+                let history = response.messages();
+                observation.history_tool_results =
+                    tool_result_names_in_history(history, &tool_names_by_id);
+                observation.last_history_tool_result_message =
+                    last_tool_result_message_names(history, &tool_names_by_id);
                 observation.events.push("final_response");
             }
             Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Text {
@@ -376,17 +372,13 @@ async fn collect_concurrent_tool_observation(
             Ok(MultiTurnStreamItem::CompletionCall(_)) => {}
             Ok(_) => {}
             Err(error) => {
-                observation.errors.push(streaming_error_to_string(error));
+                observation.errors.push(error.to_string());
                 observation.events.push("error");
             }
         }
     }
 
     observation
-}
-
-fn streaming_error_to_string(error: StreamingError) -> String {
-    error.to_string()
 }
 
 fn tool_result_names_in_history(

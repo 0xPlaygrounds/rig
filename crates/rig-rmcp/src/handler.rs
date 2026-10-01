@@ -20,6 +20,7 @@ use rmcp::ServiceExt;
 use rmcp::model::{ClientRequest, ListToolsRequest, PaginatedRequestParams, ServerResult};
 use tokio::sync::{Mutex, RwLock};
 
+use rig_core::message::EmptyToolName;
 use rig_core::tool::{DynamicTool, ManagedToolSink, ManagedToolToken};
 
 use crate::{
@@ -105,10 +106,10 @@ where
         &self,
         tool: rmcp::model::Tool,
         client: rmcp::service::ServerSink,
-    ) -> DynamicTool {
+    ) -> Result<DynamicTool, EmptyToolName> {
         McpTool::from_mcp_server(tool, client)
             .with_timeout(self.timeout)
-            .into()
+            .try_into()
     }
 
     pub(crate) fn begin_refresh(&self) -> u64 {
@@ -140,10 +141,10 @@ where
                 rmcp::ServiceError::Timeout { .. } => {
                     McpClientError::ToolFetchTimeout(self.refresh_timeout)
                 }
-                error => McpClientError::ToolFetchError(error),
+                error => McpClientError::ToolFetch(error),
             })?;
             let ServerResult::ListToolsResult(page) = response else {
-                return Err(McpClientError::ToolFetchError(
+                return Err(McpClientError::ToolFetch(
                     rmcp::ServiceError::UnexpectedResponse,
                 ));
             };
@@ -154,9 +155,16 @@ where
             }
         }
 
+        // One nameless tool is a server bug; it should not hide the server's other tools.
         Ok(tools
             .into_iter()
-            .map(|tool| self.build_tool(tool, peer.clone()))
+            .filter_map(|tool| match self.build_tool(tool, peer.clone()) {
+                Ok(tool) => Some(tool),
+                Err(error) => {
+                    tracing::warn!(%error, "skipping an MCP tool the server listed without a name");
+                    None
+                }
+            })
             .collect())
     }
 
@@ -223,9 +231,7 @@ where
         T: rmcp::transport::IntoTransport<rmcp::service::RoleClient, E, A>,
         E: std::error::Error + Send + Sync + 'static,
     {
-        let service = ServiceExt::serve(self, transport)
-            .await
-            .map_err(|e| McpClientError::ConnectionError(e.to_string()))?;
+        let service = ServiceExt::serve(self, transport).await?;
 
         let handler = service.service();
         let refresh = handler.begin_refresh();

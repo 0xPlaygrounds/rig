@@ -41,7 +41,7 @@ async fn plaintext_document_prompt() {
         .prompt(document)
         .await
         .expect("document prompt should succeed")
-        .output;
+        .output();
 
     assert_nonempty_response(&response);
     assert_contains_any_case_insensitive(&response, &["safety", "speed", "concurrency"]);
@@ -58,16 +58,14 @@ async fn plaintext_document_with_instruction() {
 
     let response = agent
         .prompt(Message::User {
-            content: rig_core::NonEmpty::with_rest(
-                UserContent::document(rust_document(), Some(DocumentMediaType::TXT)),
-                [UserContent::text(
-                    "List the three main goals of Rust mentioned in this document.",
-                )],
-            ),
+            content: vec![
+                UserContent::document_text(rust_document(), Some(DocumentMediaType::TXT)),
+                UserContent::text("List the three main goals of Rust mentioned in this document."),
+            ],
         })
         .await
         .expect("instruction prompt should succeed")
-        .output;
+        .output();
 
     assert_contains_any_case_insensitive(&response, &["safety", "speed", "concurrency"]);
 }

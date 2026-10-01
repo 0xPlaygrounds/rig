@@ -17,7 +17,7 @@ use rig::providers::gemini::{
     completion::gemini_api_types::{AdditionalParameters, GenerationConfig, ThinkingConfig},
 };
 use rig::streaming::Item;
-use rig::streaming::{StreamEvent, StreamedUserContent};
+use rig::streaming::StreamEvent;
 use rig::tool::Tool;
 use schemars::{JsonSchema, schema_for};
 use serde::{Deserialize, Serialize};
@@ -183,7 +183,7 @@ struct WorkspaceStreamObservation {
 }
 
 impl WorkspaceStreamObservation {
-    fn final_response_text(&self) -> Option<&str> {
+    fn final_response_text(&self) -> Option<String> {
         self.final_response
             .as_ref()
             .map(rig::run::PromptResponse::output)
@@ -275,21 +275,21 @@ async fn consume_workspace_like_stream(
                 observation.events.push("tool_call_delta");
                 observation.tool_call_deltas += 1;
             }
-            MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult {
-                tool_result,
-                ..
-            }) => {
+            MultiTurnStreamItem::ToolResult { tool_result, .. } => {
                 observation.events.push("tool_result");
                 let value = match tool_result.content.first() {
-                    ToolResultContent::Json { value } => value.clone(),
-                    ToolResultContent::Text(_) => {
+                    Some(ToolResultContent::Json { value }) => value.clone(),
+                    Some(ToolResultContent::Text(_)) => {
                         return Err(
                             "JS Runtime returned literal text instead of structured JSON"
                                 .to_string(),
                         );
                     }
-                    ToolResultContent::Image(_) => {
+                    Some(ToolResultContent::Image(_)) => {
                         return Err("JS Runtime returned an unexpected image".to_string());
+                    }
+                    None => {
+                        return Err("JS Runtime returned an empty tool result".to_string());
                     }
                 };
                 observation.tool_results.push(value.to_string());

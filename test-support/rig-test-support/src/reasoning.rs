@@ -3,7 +3,6 @@
 //! These tests verify that providers can handle reasoning-enabled requests,
 //! preserve multi-turn history, and complete tool roundtrips. Visible reasoning
 //! is recorded for diagnostics when a provider emits it, but is not required.
-#![allow(dead_code)]
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -25,7 +24,7 @@ use rig_agent::agent::ReasoningDelta;
 
 use rig_agent::agent::StepEventKind;
 
-use rig_agent::agent::StreamingError;
+use rig_agent::completion::PromptError;
 
 use rig_agent::completion;
 
@@ -40,8 +39,6 @@ use rig_core::message::ToolResultContent;
 use rig_core::message::UserContent;
 
 use rig_core::streaming::{Item, StreamEvent};
-
-use rig_core::streaming::StreamedUserContent;
 
 use rig_core::tool::Tool;
 
@@ -272,14 +269,14 @@ pub async fn run_reasoning_roundtrip_streaming_with_final<F>(
     F: FnMut(&completion::CompletionResponse),
 {
     let turn1_prompt = Message::User {
-        content: rig_core::NonEmpty::new(UserContent::text(ROUNDTRIP_TURN1_TEXT)),
+        content: vec![UserContent::text(ROUNDTRIP_TURN1_TEXT)],
     };
 
     let request = completion::CompletionRequest {
-        chat_history: rig_core::NonEmpty::with_rest(
+        chat_history: vec![
             Message::system(agent.preamble.clone()),
-            [turn1_prompt.clone()],
-        ),
+            turn1_prompt.clone(),
+        ],
         documents: vec![],
         tools: vec![],
         temperature: None,
@@ -363,18 +360,20 @@ pub async fn run_reasoning_roundtrip_streaming_with_final<F>(
     assistant_content.push(AssistantContent::text(&streamed_text));
     let turn1_assistant = Message::Assistant {
         id: response.message_id.clone(),
-        content: rig_core::NonEmpty::from_vec(assistant_content).expect("non-empty"),
+        content: assistant_content,
     };
 
     let turn2_prompt = Message::User {
-        content: rig_core::NonEmpty::new(UserContent::text(ROUNDTRIP_TURN2_TEXT)),
+        content: vec![UserContent::text(ROUNDTRIP_TURN2_TEXT)],
     };
 
     let request2 = completion::CompletionRequest {
-        chat_history: rig_core::NonEmpty::with_rest(
+        chat_history: vec![
             Message::system(agent.preamble.clone()),
-            [turn1_prompt, turn1_assistant, turn2_prompt],
-        ),
+            turn1_prompt,
+            turn1_assistant,
+            turn2_prompt,
+        ],
         documents: vec![],
         tools: vec![],
         temperature: None,
@@ -416,14 +415,14 @@ pub async fn run_reasoning_roundtrip_streaming_with_final<F>(
 /// Run and assert the two-turn nonstreaming reasoning-history roundtrip.
 pub async fn run_reasoning_roundtrip_nonstreaming(agent: ReasoningRoundtripAgent) {
     let turn1_prompt = Message::User {
-        content: rig_core::NonEmpty::new(UserContent::text(ROUNDTRIP_TURN1_TEXT)),
+        content: vec![UserContent::text(ROUNDTRIP_TURN1_TEXT)],
     };
 
     let request = completion::CompletionRequest {
-        chat_history: rig_core::NonEmpty::with_rest(
+        chat_history: vec![
             Message::system(agent.preamble.clone()),
-            [turn1_prompt.clone()],
-        ),
+            turn1_prompt.clone(),
+        ],
         documents: vec![],
         tools: vec![],
         temperature: None,
@@ -456,18 +455,20 @@ pub async fn run_reasoning_roundtrip_nonstreaming(agent: ReasoningRoundtripAgent
 
     let turn1_assistant = Message::Assistant {
         id: response.message_id,
-        content: rig_core::NonEmpty::from_vec(response.choice).expect("non-empty"),
+        content: response.choice,
     };
 
     let turn2_prompt = Message::User {
-        content: rig_core::NonEmpty::new(UserContent::text(ROUNDTRIP_TURN2_TEXT)),
+        content: vec![UserContent::text(ROUNDTRIP_TURN2_TEXT)],
     };
 
     let request2 = completion::CompletionRequest {
-        chat_history: rig_core::NonEmpty::with_rest(
+        chat_history: vec![
             Message::system(agent.preamble.clone()),
-            [turn1_prompt, turn1_assistant, turn2_prompt],
-        ),
+            turn1_prompt,
+            turn1_assistant,
+            turn2_prompt,
+        ],
         documents: vec![],
         tools: vec![],
         temperature: None,
@@ -583,11 +584,10 @@ Based on the weather conditions, should I pack an umbrella or sunscreen? \
 Use the get_weather tool to check before answering.";
 
 /// Reasoning, tool, text, and termination observations from an agent stream.
+#[derive(Default)]
 pub struct StreamStats {
     /// Number of complete reasoning blocks observed.
     pub reasoning_block_count: usize,
-    /// Number of reasoning deltas observed.
-    pub reasoning_delta_count: usize,
     /// Reasoning content variant names in observation order.
     pub reasoning_content_types: Vec<&'static str>,
     /// Whether any reasoning text carried a signature.
@@ -608,48 +608,6 @@ pub struct StreamStats {
     pub got_final_response: bool,
     /// Formatted stream errors in observation order.
     pub errors: Vec<String>,
-    /// Event-kind labels in stream order for ordering assertions.
-    pub events: Vec<&'static str>,
-}
-
-impl StreamStats {
-    fn new() -> Self {
-        Self {
-            reasoning_block_count: 0,
-            reasoning_delta_count: 0,
-            reasoning_content_types: vec![],
-            reasoning_has_signature: false,
-            reasoning_has_encrypted: false,
-            tool_calls_in_stream: vec![],
-            tool_results_in_stream: 0,
-            text_chunks: 0,
-            final_turn_text: String::new(),
-            final_response_text: None,
-            got_final_response: false,
-            errors: vec![],
-            events: vec![],
-        }
-    }
-
-    /// Count complete reasoning blocks and reasoning deltas together.
-    pub fn total_reasoning(&self) -> usize {
-        self.reasoning_block_count + self.reasoning_delta_count
-    }
-
-    /// Whether reasoning was observed before the first tool call, or without a call.
-    pub fn reasoning_before_first_tool_call(&self) -> bool {
-        let first_reasoning = self
-            .events
-            .iter()
-            .position(|event| event.starts_with("reasoning"));
-        let first_tool_call = self.events.iter().position(|event| *event == "tool_call");
-
-        match (first_reasoning, first_tool_call) {
-            (Some(reasoning), Some(tool_call)) => reasoning < tool_call,
-            (Some(_), None) => true,
-            _ => false,
-        }
-    }
 }
 
 fn record_reasoning(
@@ -658,7 +616,6 @@ fn record_reasoning(
     provider: &str,
 ) {
     stats.reasoning_block_count += 1;
-    stats.events.push("reasoning_block");
 
     for content in &reasoning.content {
         let type_name = match content {
@@ -686,10 +643,10 @@ fn record_reasoning(
 
 /// Drain an agent stream into observations, retaining errors for later assertions.
 pub async fn collect_stream_stats(
-    stream: impl futures::Stream<Item = Result<MultiTurnStreamItem, StreamingError>>,
+    stream: impl futures::Stream<Item = Result<MultiTurnStreamItem, PromptError>>,
     provider: &str,
 ) -> StreamStats {
-    let mut stats = StreamStats::new();
+    let mut stats = StreamStats::default();
 
     futures::pin_mut!(stream);
 
@@ -699,7 +656,6 @@ pub async fn collect_stream_stats(
                 stats
                     .tool_calls_in_stream
                     .push(tool_call.function.name.clone().into());
-                stats.events.push("tool_call");
             }
             Ok(MultiTurnStreamItem::StreamAssistantItem(content)) => match content {
                 Item::Event(StreamEvent::End {
@@ -710,39 +666,16 @@ pub async fn collect_stream_stats(
                         record_reasoning(&mut stats, reasoning, provider);
                     }
                 }
-                Item::Event(StreamEvent::Reasoning { .. }) => {
-                    stats.reasoning_delta_count += 1;
-                    if stats.events.last() != Some(&"reasoning_delta") {
-                        stats.events.push("reasoning_delta");
-                    }
-                }
                 Item::Event(StreamEvent::Text { ref text, .. }) => {
                     stats.text_chunks += 1;
                     stats.final_turn_text.push_str(text);
-                    if stats.events.last() != Some(&"text") {
-                        stats.events.push("text");
-                    }
                 }
-                Item::Event(StreamEvent::Arguments { .. }) => {
-                    if stats.events.last() != Some(&"tool_call_delta") {
-                        stats.events.push("tool_call_delta");
-                    }
-                }
-                Item::Unknown(_) => {
-                    stats.events.push("unknown");
-                }
-                Item::Event(StreamEvent::Start { .. } | StreamEvent::End { .. }) => {}
+                Item::Event(_) | Item::Unknown(_) => {}
             },
-            Ok(MultiTurnStreamItem::CompletionCall(_)) => {
-                stats.events.push("final");
+            Ok(MultiTurnStreamItem::ToolResult { .. }) => {
+                stats.tool_results_in_stream += 1;
+                stats.final_turn_text.clear();
             }
-            Ok(MultiTurnStreamItem::StreamUserItem(ref content)) => match content {
-                StreamedUserContent::ToolResult { .. } => {
-                    stats.tool_results_in_stream += 1;
-                    stats.final_turn_text.clear();
-                    stats.events.push("tool_result");
-                }
-            },
             Ok(MultiTurnStreamItem::FinalResponse(response)) => {
                 stats.final_response_text = Some(response.output().to_owned());
                 stats.got_final_response = true;

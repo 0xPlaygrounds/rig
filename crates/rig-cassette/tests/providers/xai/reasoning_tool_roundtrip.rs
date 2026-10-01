@@ -52,7 +52,7 @@ async fn nonstreaming() {
                 .await
                 .expect("[xai] Non-streaming chat failed - likely 400 from dropped reasoning");
 
-            reasoning::assert_nonstreaming_universal(&result.output, &call_count, "xai");
+            reasoning::assert_nonstreaming_universal(&result.output(), &call_count, "xai");
         },
     )
     .await;

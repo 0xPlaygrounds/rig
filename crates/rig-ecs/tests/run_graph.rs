@@ -76,11 +76,11 @@ fn an_utterance_despawned_before_assemble_leaves_the_next_request() {
     add_before_assemble(&mut app, despawn_the_assistant_utterance);
     let history = vec![
         MessageParts::User {
-            content: rig_core::NonEmpty::new(UserContent::text("A")),
+            content: vec![UserContent::text("A")],
         },
         MessageParts::Assistant {
             id: None,
-            content: rig_core::NonEmpty::new(rig_core::message::AssistantContent::text("B")),
+            content: vec![rig_core::message::AssistantContent::text("B")],
         },
     ];
     let run = app
@@ -155,7 +155,13 @@ fn a_tool_granted_by_a_relationship_is_advertised_and_gone_after_removal() {
     let requests = requests.lock().expect("requests");
     let advertised: Vec<Vec<String>> = requests
         .iter()
-        .map(|request| request.tools.iter().map(|tool| tool.name.clone()).collect())
+        .map(|request| {
+            request
+                .tools
+                .iter()
+                .map(|tool| tool.name.to_string())
+                .collect()
+        })
         .collect();
     assert_eq!(
         advertised,

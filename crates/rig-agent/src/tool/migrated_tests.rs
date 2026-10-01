@@ -52,7 +52,7 @@ mod portable_fixtures {
 
     pub fn context_free_dynamic_fixture() -> DynamicTool {
         DynamicTool::new(
-            "dynamic_runtime_name",
+            rig_core::message::ToolName::new("dynamic_runtime_name").expect("tool name"),
             "context-free dynamic definition",
             serde_json::json!({
                 "type": "object",
@@ -227,7 +227,7 @@ fn deleting_a_middle_tool_preserves_order_of_survivors() {
 fn named_tool(name: &str, description: &str) -> DynamicTool {
     let output = format!("called {description}");
     DynamicTool::new(
-        name,
+        rig_core::message::ToolName::new(name).expect("tool name"),
         description,
         json!({ "type": "object", "properties": {} }),
         move |_args| {
@@ -259,7 +259,7 @@ async fn tool_definitions_follow_registration_order() {
     }
 
     let defs = toolset.tool_definitions();
-    let def_names: Vec<String> = defs.into_iter().map(|def| def.name).collect();
+    let def_names: Vec<String> = defs.into_iter().map(|def| def.name.into()).collect();
     assert_eq!(def_names, names);
 
     let docs = toolset.documents();
@@ -594,7 +594,7 @@ async fn explicit_image_tool_outputs_remain_structured() {
 
     assert_eq!(content.len(), 1);
     match content.first() {
-        ToolResultContent::Image(image) => {
+        Some(ToolResultContent::Image(image)) => {
             assert!(matches!(image.data, DocumentSourceKind::Base64(_)));
             assert_eq!(
                 image.media_type,

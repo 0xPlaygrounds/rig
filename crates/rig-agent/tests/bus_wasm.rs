@@ -184,18 +184,7 @@ async fn a_stream_dropped_mid_flight_is_observed_by_the_handler() {
         },
         wasm_bindgen_futures::spawn_local,
     );
-    let request = rig_core::completion::CompletionRequest {
-        model: None,
-        chat_history: rig_core::NonEmpty::new(rig_core::completion::Message::user("hi")),
-        documents: vec![],
-        tools: vec![],
-        temperature: None,
-        max_tokens: None,
-        tool_choice: None,
-        additional_params: None,
-        output_schema: None,
-        record_telemetry_content: false,
-    };
+    let request = rig_core::completion::CompletionRequest::new("hi");
     let mut stream = dispatcher.dispatch_stream(
         &HandlerKey::from("echo"),
         EffectKind::Completion {

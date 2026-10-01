@@ -1,5 +1,6 @@
 use super::*;
 use crate::message::AssistantContent;
+use crate::test_utils::json_body;
 use crate::test_utils::{
     MockHttpResponse, MockStreamingClient, RecordingHttpClient, SequencedHttpClient,
 };
@@ -49,28 +50,7 @@ fn cohere() -> CohereConfig {
 
 /// The request the recorded cell sent.
 fn recorded_request() -> CompletionRequest {
-    CompletionRequest {
-        model: None,
-        chat_history: crate::NonEmpty::new(crate::message::Message::user(
-            "Write a detailed fifty-word description of the ocean.",
-        )),
-        documents: Vec::new(),
-        tools: Vec::new(),
-        temperature: None,
-        max_tokens: Some(4),
-        tool_choice: None,
-        additional_params: None,
-        output_schema: None,
-        record_telemetry_content: false,
-    }
-}
-
-fn body_of(encoded: &Encoded) -> serde_json::Value {
-    let request = &encoded.request;
-    match request.body() {
-        Body::Bytes(bytes) => serde_json::from_slice(bytes).expect("the body is JSON"),
-        Body::Multipart(_) => panic!("the chat wire sends no multipart body"),
-    }
+    CompletionRequest::new("Write a detailed fifty-word description of the ocean.").max_tokens(4)
 }
 
 fn text_of(choice: &[AssistantContent]) -> String {
@@ -140,7 +120,7 @@ fn the_mode_is_the_only_difference_between_the_two_requests() {
         .expect("the request encodes");
 
     assert_eq!(
-        body_of(&unary),
+        json_body(&unary.request),
         serde_json::from_str::<serde_json::Value>(RECORDED_REQUEST).expect("the fixture is JSON")
     );
     assert_eq!(unary.framing, Framing::Whole);
@@ -148,7 +128,7 @@ fn the_mode_is_the_only_difference_between_the_two_requests() {
     let mut expected =
         serde_json::from_str::<serde_json::Value>(RECORDED_REQUEST).expect("the fixture is JSON");
     expected["stream"] = serde_json::Value::Bool(true);
-    assert_eq!(body_of(&streamed), expected);
+    assert_eq!(json_body(&streamed.request), expected);
     assert_eq!(streamed.framing, Framing::Sse);
 }
 
@@ -234,10 +214,7 @@ fn an_image_request_carries_exactly_one_image() {
     let encoded = wire
         .encode(vec![png(b"first")], Mode::Unary)
         .expect("the image is a PNG");
-    let Body::Bytes(bytes) = encoded.request.body() else {
-        panic!("the image wire sends no multipart body");
-    };
-    let body: serde_json::Value = serde_json::from_slice(bytes).expect("the body is JSON");
+    let body = json_body(&encoded.request);
     assert!(
         body["images"][0]
             .as_str()

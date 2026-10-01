@@ -5,7 +5,7 @@
 //! closes the block with `content_block_stop`, so rig's accumulator treats a
 //! close as "the wire promised a complete block" and, when the assembled
 //! fragments are not JSON, raised a bare `ErrorReport`. The agent engine
-//! turned any stream error into a fatal `StreamingError` before the
+//! turned any stream error into a fatal run error before the
 //! invalid-tool recovery seam saw it: one bad byte from the model ended the
 //! run, the model never learned why, and the application got a string.
 //!
@@ -58,11 +58,10 @@
 use futures::StreamExt;
 use rig::agent::{
     AgentHook, HookContext, InvalidToolCallAction, InvalidToolCallContext, InvalidToolCallReason,
-    MultiTurnStreamItem, StreamingError,
+    MultiTurnStreamItem,
 };
 use rig::completion::PromptError;
 use rig::providers::anthropic;
-use rig::streaming::StreamedUserContent;
 use rig_test_support::cassette_models::AnthropicModels;
 use serde_json::Value;
 
@@ -171,7 +170,7 @@ async fn blocking_healthy_control() {
                 .prompt(STREAMING_TOOLS_PROMPT)
                 .await
                 .expect("blocking tool prompt should succeed");
-            assert_mentions_expected_number(&response.output, -3);
+            assert_mentions_expected_number(&response.output(), -3);
         },
     )
     .await;
@@ -218,17 +217,11 @@ async fn streaming_malformed_fails_by_default() {
                 }
             }
             match error.expect("default policy is fail-fast") {
-                StreamingError::Prompt(err) => match err {
-                    PromptError::Report(report) => assert!(
-                        report.message.contains("malformed JSON input"),
-                        "{}",
-                        report.message
-                    ),
-                    other => panic!("expected the provider report, got {other:?}"),
-                },
-                StreamingError::Report(report) => {
-                    assert!(report.message.contains("malformed JSON input"));
-                }
+                PromptError::Report(report) => assert!(
+                    report.message.contains("malformed JSON input"),
+                    "{}",
+                    report.message
+                ),
                 other => panic!("expected the provider report, got {other:?}"),
             }
         },
@@ -256,10 +249,9 @@ async fn streaming_malformed_skip_feeds_result_back() {
             let mut skipped = None;
             while let Some(item) = stream.next().await {
                 match item {
-                    Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult {
-                        tool_result,
-                        ..
-                    })) => skipped = Some(tool_result),
+                    Ok(MultiTurnStreamItem::ToolResult { tool_result, .. }) => {
+                        skipped = Some(tool_result)
+                    }
                     Ok(MultiTurnStreamItem::ToolCall { .. }) => {
                         panic!("a malformed call must never be executed")
                     }

@@ -2,6 +2,7 @@
 name = "rig-core"
 version.workspace = true
 edition = { workspace = true }
+rust-version = { workspace = true }
 license = "MIT"
 readme = "README.md"
 description = "An opinionated library for building LLM powered applications."
@@ -34,13 +35,14 @@ lopdf = { workspace = true, optional = true }
 mime_guess = { workspace = true }
 ordered-float = { workspace = true }
 quick-xml = { workspace = true, optional = true }
-rig-derive = { version = "0.42.0", path = "../rig-derive", optional = true }
+rig-derive = { version = "0.43.0", path = "../rig-derive", optional = true }
 schemars = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true, features = ["raw_value"] }
 sha2 = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
+tracing-subscriber = { workspace = true, optional = true }
 url = { workspace = true }
 uuid = { workspace = true, features = ["v4", "serde"] }
 http = { workspace = true }
@@ -48,16 +50,16 @@ fastrand = { workspace = true }
 mime = { workspace = true }
 # The transport contracts, re-exported at `http_client`, `ws_client` and
 # `wasm_compat`.
-rig-http = { path = "../rig-http", version = "0.42.0" }
+rig-http = { path = "../rig-http", version = "0.43.0" }
 # The bundled HTTP transport, the default a provider client sends through
 # under the `reqwest` feature. Its TLS stack is chosen by `rustls` (default)
 # or `native-tls` below.
-rig-reqwest = { path = "../rig-reqwest", version = "0.42.0", optional = true, default-features = false }
+rig-reqwest = { path = "../rig-reqwest", version = "0.43.0", optional = true, default-features = false }
 
 # The bundled websocket backend is native-only: on wasm the `tungstenite`
 # feature degrades to the websocket contract alone.
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
-rig-tungstenite = { path = "../rig-tungstenite", version = "0.42.0", optional = true, default-features = false }
+rig-tungstenite = { path = "../rig-tungstenite", version = "0.43.0", optional = true, default-features = false }
 
 [target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
 # `lopdf` pulls `getrandom` through its PDF encryption support. Browser WASM
@@ -98,7 +100,7 @@ default = ["derive", "rustls"]
 audio = []
 image = []
 derive = ["dep:rig-derive"]
-test-utils = ["rig-http/test-utils"]
+test-utils = ["rig-http/test-utils", "dep:tracing-subscriber"]
 pdf = ["dep:lopdf"]
 epub = ["dep:epub", "dep:quick-xml"]
 # The transport-agnostic websocket contract (`ws_client`) and the provider

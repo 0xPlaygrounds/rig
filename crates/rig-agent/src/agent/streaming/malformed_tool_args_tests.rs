@@ -5,7 +5,7 @@
 //! proving what the *model* sees on the next request — the observable
 //! contract — and that the default is still fail-fast.
 
-use super::{MultiTurnStreamItem, StreamedUserContent, StreamingError};
+use super::MultiTurnStreamItem;
 use crate::agent::AgentBuilder;
 use crate::agent::hook::{AgentHook, HookContext};
 use crate::agent::{InvalidToolCallAction, InvalidToolCallContext, InvalidToolCallReason};
@@ -61,7 +61,7 @@ impl AgentHook for DecideHook {
 /// Everything the consumer observed from one streamed run.
 struct Observed {
     items: Vec<MultiTurnStreamItem>,
-    error: Option<StreamingError>,
+    error: Option<PromptError>,
 }
 
 async fn run_with(action: Option<InvalidToolCallAction>) -> (Observed, MockCompletionModel) {
@@ -90,24 +90,17 @@ async fn run_with(action: Option<InvalidToolCallAction>) -> (Observed, MockCompl
     (Observed { items, error }, recorded)
 }
 
-fn assert_original_report(error: StreamingError) {
+fn assert_original_report(error: PromptError) {
     match error {
-        StreamingError::Prompt(err) => match err {
-            PromptError::Report(report) => {
-                assert_eq!(report.kind, ErrorKind::Response);
-                assert!(
-                    report
-                        .message
-                        .contains("tool call `add` arrived with malformed JSON input"),
-                    "{}",
-                    report.message
-                );
-            }
-            other => panic!("expected the provider report, got {other:?}"),
-        },
-        StreamingError::Report(report) => {
+        PromptError::Report(report) => {
             assert_eq!(report.kind, ErrorKind::Response);
-            assert!(report.message.contains("malformed JSON input"));
+            assert!(
+                report
+                    .message
+                    .contains("tool call `add` arrived with malformed JSON input"),
+                "{}",
+                report.message
+            );
         }
         other => panic!("expected the provider report, got {other:?}"),
     }
@@ -183,10 +176,7 @@ async fn malformed_arguments_skip_feeds_the_parse_failure_back() {
         .items
         .iter()
         .find_map(|item| match item {
-            MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult {
-                tool_result,
-                ..
-            }) => Some(tool_result.clone()),
+            MultiTurnStreamItem::ToolResult { tool_result, .. } => Some(tool_result.clone()),
             _ => None,
         })
         .expect("skip must emit a synthetic tool result");
@@ -227,13 +217,10 @@ async fn malformed_arguments_repair_fails_closed() {
 async fn malformed_arguments_stop_ends_the_run_cleanly() {
     let (observed, recorded) = run_with(Some(InvalidToolCallAction::stop("operator halted"))).await;
     match observed.error.expect("stop is surfaced as a cancellation") {
-        StreamingError::Prompt(err) => match err {
-            PromptError::PromptCancelled { reason, .. } => {
-                assert_eq!(reason, "operator halted");
-            }
-            other => panic!("expected PromptCancelled, got {other:?}"),
-        },
-        other => panic!("expected a prompt cancellation, got {other:?}"),
+        PromptError::Cancelled { reason, .. } => {
+            assert_eq!(reason, "operator halted");
+        }
+        other => panic!("expected Cancelled, got {other:?}"),
     }
     assert_eq!(recorded.request_count(), 1);
 }

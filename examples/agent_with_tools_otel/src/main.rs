@@ -161,7 +161,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     println!(
         "OpenAI Calculator Agent: {}",
-        calculator_agent.prompt("Calculate 2 - 5").await?.output
+        calculator_agent.prompt("Calculate 2 - 5").await?.output()
     );
 
     let _ = provider.shutdown();

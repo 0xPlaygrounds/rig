@@ -115,7 +115,7 @@ async fn serial_per_handler_is_proven_under_the_agents_inline_driver() {
     let response = within(agent.prompt("go").max_turns(3).tool_concurrency(2).run())
         .await
         .expect("run");
-    assert_eq!(response.output, "done");
+    assert_eq!(response.output(), "done");
     assert_eq!(
         *serial.completed.lock().expect("lock"),
         vec!["first".to_string(), "second".to_string()],
@@ -130,7 +130,7 @@ async fn serial_per_handler_is_proven_under_the_agents_inline_driver() {
     let response = within(agent.prompt("go").max_turns(3).tool_concurrency(2).run())
         .await
         .expect("run");
-    assert_eq!(response.output, "done");
+    assert_eq!(response.output(), "done");
     assert_eq!(
         *concurrent.completed.lock().expect("lock"),
         vec!["second".to_string(), "first".to_string()],
@@ -164,7 +164,7 @@ async fn into_parts_hands_over_the_driver_with_the_dispatcher() {
     let response = within(agent.prompt("hello").run())
         .await
         .expect("served by the spawned driver");
-    assert_eq!(response.output, "parts");
+    assert_eq!(response.output(), "parts");
     drop(agent);
     drop(dispatcher);
     drop(handle);
@@ -182,7 +182,7 @@ async fn into_parts_fails_while_a_clone_still_shares_the_driver() {
         Err(agent) => agent,
     };
     let response = within(agent.prompt("still runs").run()).await.expect("run");
-    assert_eq!(response.output, "shared");
+    assert_eq!(response.output(), "shared");
     drop(clone);
 }
 
@@ -261,7 +261,7 @@ async fn dispatch_boundary_hooks_see_ids_and_patch_effects() {
     let response = within(agent.prompt("go").max_turns(3).run())
         .await
         .expect("run");
-    assert_eq!(response.output, "done");
+    assert_eq!(response.output(), "done");
     assert_eq!(
         *tool.completed.lock().expect("lock"),
         vec!["patched".to_string()],
@@ -309,9 +309,9 @@ async fn a_denied_tool_dispatch_is_the_skipped_result_the_model_sees() {
     let response = within(agent.prompt("go").max_turns(3).run())
         .await
         .expect("run");
-    assert_eq!(response.output, "done");
+    assert_eq!(response.output(), "done");
     assert!(tool.completed.lock().expect("lock").is_empty(), "never ran");
-    let history = response.messages.expect("history");
+    let history = response.messages;
     let saw_skip = history.iter().any(|message| {
         serde_json::to_string(message)
             .expect("serializes")
@@ -426,7 +426,7 @@ async fn a_finished_stream_kept_in_scope_does_not_block_the_next_run() {
     let response = within(agent.prompt("again").using_model("unary").run())
         .await
         .expect("the finished stream released the driver");
-    assert_eq!(response.output, "second");
+    assert_eq!(response.output(), "second");
     drop(stream);
 }
 
@@ -494,7 +494,7 @@ async fn a_prompt_awaited_inside_a_stream_loop_on_a_clone_resolves() {
             let response = within(clone.prompt("nested").using_model("unary").run())
                 .await
                 .expect("the nested run is served by the driving run");
-            inner = Some(response.output);
+            inner = Some(response.output());
         }
     }
     assert_eq!(outer.as_deref(), Some("outer"));
@@ -576,7 +576,7 @@ async fn a_run_dropped_mid_flight_cancels_the_tool_immediately() {
     let _ = again;
     let response = within(agent.prompt("again").max_turns(1).run()).await;
     // The scripted model has one turn left ("done") for this run.
-    assert_eq!(response.expect("run after a dropped one").output, "done");
+    assert_eq!(response.expect("run after a dropped one").output(), "done");
 }
 
 /// A tool that runs a nested prompt on a clone of the agent it belongs to.
@@ -613,7 +613,7 @@ impl Tool for Nested {
             .map_err(|err| {
                 ToolExecutionError::new(rig_agent::tool::ToolErrorKind::Other, err.to_string())
             })?;
-        Ok(response.output)
+        Ok(response.output())
     }
 }
 
@@ -641,7 +641,7 @@ async fn a_nested_agent_call_from_a_tool_is_served_by_the_driving_run() {
     let response = within(agent.prompt("go").max_turns(3).run())
         .await
         .expect("the nested run is served while the outer run drives");
-    assert_eq!(response.output, "done");
+    assert_eq!(response.output(), "done");
 }
 
 /// A tool that, from inside its own execution, runs a nested prompt whose
@@ -703,8 +703,8 @@ impl Tool for NestedSameTool {
         self.inner_outputs
             .lock()
             .expect("lock")
-            .push(response.output.clone());
-        Ok(response.output)
+            .push(response.output());
+        Ok(response.output())
     }
 }
 
@@ -743,7 +743,7 @@ impl Tool for NestedOnItself {
             .map_err(|err| {
                 ToolExecutionError::new(rig_agent::tool::ToolErrorKind::Other, err.to_string())
             })?;
-        Ok(response.output)
+        Ok(response.output())
     }
 }
 
@@ -844,7 +844,7 @@ async fn a_nested_call_over_the_calls_scope_under_serial_serving_fails_fast() {
     let response = within(agent.prompt("go").max_turns(3).run())
         .await
         .expect("the outer run completes: the re-entrant call was refused, not queued");
-    assert_eq!(response.output, "done");
+    assert_eq!(response.output(), "done");
     assert_eq!(
         *tool.inner_outputs.lock().expect("lock"),
         vec!["inner-done".to_string()]
@@ -971,7 +971,7 @@ async fn hook_sequence_unary_turn_without_tools() {
         .add_hook(sequence.clone())
         .build();
     let response = within(agent.prompt("go").run()).await.expect("run");
-    assert_eq!(response.output, "done");
+    assert_eq!(response.output(), "done");
     assert_eq!(
         sequence.take(),
         strings(&[
@@ -999,7 +999,7 @@ async fn hook_sequence_unary_turn_with_one_tool_call() {
     let response = within(agent.prompt("go").max_turns(3).run())
         .await
         .expect("run");
-    assert_eq!(response.output, "done");
+    assert_eq!(response.output(), "done");
     assert_eq!(
         sequence.take(),
         strings(&[
@@ -1104,15 +1104,24 @@ impl rig_core::vector_store::VectorStoreIndex for AlwaysSlow {
     async fn top_n<T: serde::de::DeserializeOwned + Send>(
         &self,
         _req: rig_core::vector_store::request::VectorSearchRequest<Self::Filter>,
-    ) -> Result<Vec<(f64, String, T)>, rig_core::vector_store::VectorStoreError> {
+    ) -> Result<
+        Vec<rig_core::vector_store::VectorSearchResult<T>>,
+        rig_core::vector_store::VectorStoreError,
+    > {
         Ok(Vec::new())
     }
 
     async fn top_n_ids(
         &self,
         _req: rig_core::vector_store::request::VectorSearchRequest<Self::Filter>,
-    ) -> Result<Vec<(f64, String)>, rig_core::vector_store::VectorStoreError> {
-        Ok(vec![(1.0, "slow".to_owned())])
+    ) -> Result<
+        Vec<rig_core::vector_store::VectorSearchIdResult>,
+        rig_core::vector_store::VectorStoreError,
+    > {
+        Ok(vec![rig_core::vector_store::VectorSearchIdResult {
+            score: 1.0,
+            id: "slow".to_owned(),
+        }])
     }
 }
 
@@ -1126,7 +1135,7 @@ async fn hook_sequence_with_memory_and_tool_retrieval_when_a_hook_opts_in() {
         .add_hook(sequence.clone())
         .build();
     let response = within(agent.prompt("go").run()).await.expect("run");
-    assert_eq!(response.output, "done");
+    assert_eq!(response.output(), "done");
     assert_eq!(
         sequence.take(),
         strings(&[
@@ -1175,7 +1184,7 @@ async fn internal_families_are_observe_only_unless_a_hook_opts_in() {
         .record_to(recorder.clone())
         .build();
     let response = within(agent.prompt("go").run()).await.expect("run");
-    assert_eq!(response.output, "done");
+    assert_eq!(response.output(), "done");
     assert_eq!(
         observer.0.take(),
         strings(&["on_dispatch(completion)", "on_outcome(completion)"]),
@@ -1211,10 +1220,7 @@ async fn a_cancelling_replacement_on_a_completion_outcome_stops_the_run_on_both_
         .build();
     let err = within(unary.prompt("go").run()).await.expect_err("stopped");
     assert!(
-        matches!(
-            err,
-            rig_agent::run::response::PromptError::PromptCancelled { .. }
-        ),
+        matches!(err, rig_agent::run::response::PromptError::Cancelled { .. }),
         "{err:?}"
     );
 
@@ -1226,10 +1232,10 @@ async fn a_cancelling_replacement_on_a_completion_outcome_stops_the_run_on_both_
     let mut stream = streaming.prompt("go").stream();
     let mut cancelled = false;
     while let Some(item) = within(stream.next()).await {
-        if let Err(rig_agent::agent::StreamingError::Prompt(err)) = item
+        if let Err(err) = item
             && matches!(
                 &err,
-                rig_agent::run::response::PromptError::PromptCancelled { .. }
+                rig_agent::run::response::PromptError::Cancelled { .. }
             )
         {
             cancelled = true;
@@ -1349,8 +1355,8 @@ async fn two_agents_on_one_host_bus_keep_their_own_keys() {
         right.prompt("go").max_turns(3).run(),
     ))
     .await;
-    assert_eq!(left_response.expect("left").output, "done");
-    assert_eq!(right_response.expect("right").output, "done");
+    assert_eq!(left_response.expect("left").output(), "done");
+    assert_eq!(right_response.expect("right").output(), "done");
     let mut reached = calls.lock().expect("lock").clone();
     reached.sort_unstable();
     assert_eq!(
@@ -1563,10 +1569,12 @@ async fn retiring_an_older_name_cannot_remove_the_latest_explicit_key_binding() 
         rig_agent::tool::RegisteredTool::from_tool(Slow::default())
             .with_key(rig_core::effect::Key::new_unchecked(key.clone())),
     );
-    let replacement =
-        rig_core::tool::DynamicTool::new("other", "replacement", json!({"type": "object"}), |_| {
-            Box::pin(async { Ok(rig_core::tool::ToolOutput::text("latest")) })
-        });
+    let replacement = rig_core::tool::DynamicTool::new(
+        rig_core::message::ToolName::new("other").expect("tool name"),
+        "replacement",
+        json!({"type": "object"}),
+        |_| Box::pin(async { Ok(rig_core::tool::ToolOutput::text("latest")) }),
+    );
     server.add_registered_tool(
         rig_agent::tool::RegisteredTool::from_dynamic(replacement)
             .with_key(rig_core::effect::Key::new_unchecked(key.clone())),
@@ -1603,7 +1611,7 @@ fn attaching_a_bus_preserves_the_latest_explicit_key_owner() {
     let key = HandlerKey::from("host/tool:shared");
     for name in ["first", "second", "first"] {
         let tool = rig_core::tool::DynamicTool::new(
-            name,
+            rig_core::message::ToolName::new(name).expect("tool name"),
             "test binding",
             json!({"type": "object"}),
             |_| Box::pin(async { Ok(rig_core::tool::ToolOutput::text("answer")) }),
@@ -1656,7 +1664,7 @@ async fn anonymous_models_are_scoped_to_the_values_that_selected_them() {
             "one live registration while a runner selects it"
         );
         let response = within(runner.run()).await.expect("run");
-        assert_eq!(response.output, "anonymous");
+        assert_eq!(response.output(), "anonymous");
     }
     assert_eq!(
         anonymous(&dispatcher),
@@ -1671,7 +1679,7 @@ async fn anonymous_models_are_scoped_to_the_values_that_selected_them() {
     drop(swapped);
     assert_eq!(anonymous(&dispatcher), 1, "a clone still selects it");
     let response = within(clone.prompt("hello").run()).await.expect("run");
-    assert_eq!(response.output, "swapped");
+    assert_eq!(response.output(), "swapped");
     drop(clone);
     assert_eq!(
         anonymous(&dispatcher),
@@ -1681,7 +1689,8 @@ async fn anonymous_models_are_scoped_to_the_values_that_selected_them() {
 
     let response = within(agent.prompt("hello").run()).await.expect("run");
     assert_eq!(
-        response.output, "default",
+        response.output(),
+        "default",
         "the agent's own default is untouched"
     );
     drop((agent, dispatcher));
@@ -1705,7 +1714,7 @@ async fn recording_survives_into_parts() {
     } = parts;
     let task = tokio::spawn(driver);
     let response = within(agent.prompt("hello").run()).await.expect("run");
-    assert_eq!(response.output, "recorded");
+    assert_eq!(response.output(), "recorded");
     let log = agent.stamp(recorder.log());
     assert_eq!(
         log.len(),
@@ -1787,18 +1796,7 @@ async fn a_streamed_completion_names_its_provider_like_a_unary_one() {
             agent.owner()
         )))
         .expect("the route is registered under the agent's owner");
-    let request = |text: &str| rig_core::completion::CompletionRequest {
-        model: None,
-        chat_history: rig_core::NonEmpty::new(rig_core::message::Message::user(text)),
-        documents: Vec::new(),
-        tools: Vec::new(),
-        temperature: None,
-        max_tokens: None,
-        tool_choice: None,
-        additional_params: None,
-        output_schema: None,
-        record_telemetry_content: false,
-    };
+    let request = |text: &str| rig_core::completion::CompletionRequest::new(text);
 
     let unary = within(model.call(request("hi"))).await.expect("unary");
     let mut stream = streamer.stream(request("hi"));
@@ -1860,12 +1858,12 @@ async fn a_model_registered_through_the_parts_registrar_serves_the_next_run() {
     let response = within(agent.prompt("hello").using_model("late").run())
         .await
         .expect("the next run selects it");
-    assert_eq!(response.output, "late");
+    assert_eq!(response.output(), "late");
     let first = within(in_flight)
         .await
         .expect("join")
         .expect("the in-flight run");
-    assert_eq!(first.output, "done");
+    assert_eq!(first.output(), "done");
     drop((agent, dispatcher, registrar));
     within(task).await.expect("driver task");
 }
@@ -1923,20 +1921,7 @@ impl AgentHook for AsksTheModel {
         _event: CompletionCallEvent<'_>,
     ) -> CompletionCallAction {
         let model = ctx.bind(&self.key).expect("bound for this run");
-        let request = rig_core::completion::CompletionRequest {
-            model: None,
-            chat_history: rig_core::NonEmpty::new(rig_core::message::Message::user(
-                "side question",
-            )),
-            documents: Vec::new(),
-            tools: Vec::new(),
-            temperature: None,
-            max_tokens: None,
-            tool_choice: None,
-            additional_params: None,
-            output_schema: None,
-            record_telemetry_content: false,
-        };
+        let request = rig_core::completion::CompletionRequest::new("side question");
         let answer = model.call(request).await.expect("the side model answers");
         self.seen.lock().expect("lock").push(
             answer
@@ -1974,7 +1959,7 @@ async fn a_hook_binds_a_run_scoped_view_and_dispatches_through_it() {
     )
     .await
     .expect("run");
-    assert_eq!(response.output, "main answer");
+    assert_eq!(response.output(), "main answer");
     assert_eq!(*seen.lock().expect("lock"), vec!["side answer".to_string()]);
 }
 
@@ -2040,8 +2025,8 @@ async fn id_less_calls_across_turns_keep_the_history_canonical() {
     let response = within(agent.prompt("go").max_turns(4).tool_concurrency(2).run())
         .await
         .expect("run");
-    assert_eq!(response.output, "done");
-    expected_call_ids(response.messages().expect("history"));
+    assert_eq!(response.output(), "done");
+    expected_call_ids(response.messages());
     assert_eq!(tool.completed.lock().expect("lock").len(), 4);
 
     // The streaming surface issues the ids at the stream boundary, and the
@@ -2067,7 +2052,7 @@ async fn id_less_calls_across_turns_keep_the_history_canonical() {
     let mut messages = None;
     while let Some(item) = within(stream.next()).await {
         if let Ok(rig_agent::agent::MultiTurnStreamItem::FinalResponse(done)) = item {
-            messages = done.messages().map(<[Message]>::to_vec);
+            messages = Some(done.messages().to_vec());
         }
     }
     expected_call_ids(&messages.expect("streamed history"));

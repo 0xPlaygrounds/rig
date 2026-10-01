@@ -65,9 +65,9 @@ async fn main() -> Result<(), anyhow::Error> {
     for doc in docs {
         println!(
             "Vector found with id: {id} and score: {score} and word def: {doc}",
-            id = doc.1,
-            score = doc.0,
-            doc = doc.2
+            id = doc.id,
+            score = doc.score,
+            doc = doc.document
         );
     }
 

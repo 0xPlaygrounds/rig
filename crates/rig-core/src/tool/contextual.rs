@@ -3,11 +3,12 @@
 //! model-visible outputs retain their text, JSON, or multimodal representation.
 //!
 //! ```
-//! use rig_core::tool::{DynamicTool, ToolOutput};
+//! use rig_core::{message::ToolName, tool::{DynamicTool, ToolOutput}};
 //!
-//! let tool = DynamicTool::new_with_context("echo", "Echo JSON", serde_json::json!({}),
+//! let tool = DynamicTool::new_with_context(ToolName::new("echo")?, "Echo JSON", serde_json::json!({}),
 //!     |_context, args| Box::pin(async move { Ok(ToolOutput::json(args)) }));
 //! assert_eq!(tool.name(), "echo");
+//! # Ok::<(), rig_core::message::EmptyToolName>(())
 //! ```
 
 use std::{future::Future, sync::Arc};
@@ -15,7 +16,7 @@ use std::{future::Future, sync::Arc};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    completion::ToolDefinition,
+    completion::{ToolDefinition, message::ToolName},
     effect::{EffectKind, Outcome},
     serve::{ErasedHandler, adapters::ToolCallback, adapters::ToolFn},
     wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync},
@@ -267,7 +268,7 @@ pub struct DynamicTool {
 impl DynamicTool {
     /// Define a tool from a context-free callback over owned arguments.
     pub fn new<F>(
-        name: impl Into<String>,
+        name: ToolName,
         description: impl Into<String>,
         parameters: serde_json::Value,
         callback: F,
@@ -290,7 +291,7 @@ impl DynamicTool {
 
     /// Define a tool from a callback over the dispatch-scoped context.
     pub fn new_with_context<F>(
-        name: impl Into<String>,
+        name: ToolName,
         description: impl Into<String>,
         parameters: serde_json::Value,
         callback: F,
@@ -298,10 +299,9 @@ impl DynamicTool {
     where
         F: ToolCallback + 'static,
     {
-        let name = name.into();
         let description = description.into();
         let handler = ErasedHandler::new(ToolFn::new(
-            name.clone(),
+            name.to_string(),
             description.clone(),
             parameters.clone(),
             callback,
@@ -327,7 +327,7 @@ impl DynamicTool {
     }
 
     /// The tool's name.
-    pub fn name(&self) -> &str {
+    pub fn name(&self) -> &ToolName {
         &self.definition.name
     }
 
@@ -373,7 +373,7 @@ impl DynamicTool {
         let outcome = crate::serve::serve_inline_with(
             &self.handler,
             EffectKind::ToolCall {
-                name: self.definition.name.clone(),
+                name: self.definition.name.to_string(),
                 args: arguments.to_string(),
             },
             vec![
@@ -391,7 +391,7 @@ impl DynamicTool {
                 "tool handler answered with a {} outcome",
                 other.family()
             ))),
-            Err(report) => Err(ToolExecutionError::other(report.message)),
+            Err(report) => Err(report.into()),
         }
     }
 }
@@ -404,10 +404,51 @@ impl std::fmt::Debug for DynamicTool {
     }
 }
 
+/// A typed tool's [`Tool::NAME`] as a [`ToolName`].
+///
+/// An empty `NAME` fails the build where this is instantiated.
+///
+/// ```
+/// use rig_core::{message::ToolChoice, tool::{Tool, ToolContext, tool_name}};
+///
+/// struct Ping;
+///
+/// impl Tool for Ping {
+///     const NAME: &'static str = "ping";
+///     type Args = serde_json::Value;
+///     type Output = String;
+///     type Error = std::convert::Infallible;
+///
+///     fn description(&self) -> String {
+///         "Replies with pong.".to_string()
+///     }
+///
+///     fn parameters(&self) -> serde_json::Value {
+///         serde_json::json!({ "type": "object" })
+///     }
+///
+///     async fn call(
+///         &self,
+///         _context: &mut ToolContext,
+///         _args: Self::Args,
+///     ) -> Result<String, Self::Error> {
+///         Ok("pong".to_string())
+///     }
+/// }
+///
+/// let choice = ToolChoice::Specific { function_names: vec![tool_name::<Ping>()] };
+/// assert_eq!(tool_name::<Ping>(), "ping");
+/// # let _ = choice;
+/// ```
+pub fn tool_name<T: Tool>() -> ToolName {
+    const { assert!(!T::NAME.is_empty(), "Tool::NAME cannot be empty") };
+    ToolName::new_unchecked(T::NAME)
+}
+
 /// A tool's [`ToolDefinition`] from a typed tool.
 pub fn tool_definition<T: Tool>(tool: &T) -> ToolDefinition {
     ToolDefinition {
-        name: T::NAME.to_string(),
+        name: tool_name::<T>(),
         description: tool.description(),
         parameters: tool.parameters(),
     }

@@ -30,7 +30,6 @@ use serde::{Deserialize, Serialize};
 use rig_core::completion::{CompletionResponse, FinishReason, ToolDefinition};
 use rig_core::error::ProviderError;
 
-use rig_core::NonEmpty;
 use rig_core::message::{
     AssistantContent, ToolCall, ToolChoice, ToolName, ToolResult, ToolResultContent, UserContent,
 };
@@ -46,6 +45,7 @@ pub use policy::{
 pub use response::{CompletionCall, MemoryAppend, PromptError, PromptResponse};
 use rig_core::completion::message::turn_delivered_no_answer;
 use rig_core::json_utils;
+use rig_core::structured_output;
 use transcript::{
     TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER, TranscriptError, assistant_message,
     assistant_text_from_choice, assistant_turn, build_full_history, build_history_for_request,
@@ -105,7 +105,7 @@ impl InvalidToolCallDiagnostic<'_> {
     }
 
     fn cancelled(&self, reason: String) -> PromptError {
-        PromptError::prompt_cancelled(self.history.to_vec(), reason)
+        PromptError::cancelled(self.history.to_vec(), reason)
     }
 }
 
@@ -510,7 +510,7 @@ impl AgentRun {
     /// rewrite the user prompt here, before any model call. Valid only while
     /// [`initial_prompt`](Self::initial_prompt) is `Some`; once the first
     /// [`AgentRunStep::CallModel`] has been emitted the prompt is committed
-    /// and rewriting returns [`PromptError::PromptCancelled`].
+    /// and rewriting returns [`PromptError::Cancelled`].
     pub(crate) fn rewrite_initial_prompt(
         &mut self,
         prompt: impl Into<Message>,
@@ -521,7 +521,7 @@ impl AgentRun {
                 *slot = prompt.into();
                 Ok(())
             }
-            _ => Err(PromptError::prompt_cancelled(
+            _ => Err(PromptError::cancelled(
                 self.full_history(),
                 "the initial prompt can only be rewritten before the run starts",
             )),
@@ -573,7 +573,7 @@ impl AgentRun {
     /// Set the total model-call budget, including the initial call and every
     /// retry or continuation. A budget of zero emits no model calls. Exceeding
     /// the budget makes [`AgentRun::next_step`] return
-    /// [`PromptError::MaxTurnsError`].
+    /// [`PromptError::MaxTurns`].
     pub fn max_turns(mut self, max_turns: usize) -> Self {
         self.max_turns = max_turns;
         self
@@ -590,37 +590,6 @@ impl AgentRun {
         self.output_schema = output_schema;
         self.max_output_retries = max_output_retries;
         self
-    }
-
-    /// Top-level `required` schema fields absent from the output-tool arguments.
-    /// A lightweight structural check (not full JSON Schema validation): empty
-    /// when there is no schema, no `required` array, or every required field is
-    /// present. Non-object arguments (e.g. `null`) count every required field as
-    /// missing.
-    fn missing_required_output_fields(&self, args: &serde_json::Value) -> Vec<String> {
-        let Some(required) = self
-            .output_schema
-            .as_ref()
-            .and_then(|schema| schema.get("required"))
-            .and_then(|required| required.as_array())
-        else {
-            return Vec::new();
-        };
-        let object = args.as_object();
-        required
-            .iter()
-            .filter_map(|field| field.as_str())
-            .filter(|field| object.is_none_or(|object| !object.contains_key(*field)))
-            .map(str::to_owned)
-            .collect()
-    }
-
-    /// Whether text parses as JSON with no missing top-level required fields.
-    /// With no required fields, non-object JSON also passes.
-    fn text_satisfies_output_schema(&self, text: &str) -> bool {
-        serde_json::from_str::<serde_json::Value>(text.trim())
-            .ok()
-            .is_some_and(|value| self.missing_required_output_fields(&value).is_empty())
     }
 
     /// The input chat history this run was created with, empty when none was
@@ -701,6 +670,11 @@ impl AgentRun {
         self.output_tool_name.as_deref()
     }
 
+    /// The policy for an invalid tool call no hook resolves.
+    pub(crate) fn unhandled_invalid_tool_call(&self) -> UnhandledInvalidToolCall {
+        self.unhandled_invalid_tool_call
+    }
+
     /// Aggregated token usage across all completed model calls so far.
     pub fn usage(&self) -> Usage {
         self.usage
@@ -763,7 +737,7 @@ impl AgentRun {
             }
         };
         if parked_has_tool_calls || replacement_has_tool_calls {
-            return Err(PromptError::prompt_cancelled(
+            return Err(PromptError::cancelled(
                 self.full_history(),
                 "a completion outcome replacement does not support tool-bearing model turns; patch or deny the tool dispatches instead",
             ));
@@ -799,7 +773,7 @@ impl AgentRun {
         };
 
         if turn.has_tool_calls {
-            return Err(PromptError::prompt_cancelled(
+            return Err(PromptError::cancelled(
                 self.full_history(),
                 "model-turn retry does not support tool-bearing model turns; use tool-call hooks instead",
             ));
@@ -844,7 +818,7 @@ impl AgentRun {
     /// Build the cancellation error a driver should return when one of its
     /// hooks terminates the run, carrying the current full history.
     pub fn cancel_error(&self, reason: impl Into<String>) -> PromptError {
-        PromptError::prompt_cancelled(self.full_history(), reason)
+        PromptError::cancelled(self.full_history(), reason)
     }
 
     /// The invalid tool call currently awaiting
@@ -874,15 +848,15 @@ impl AgentRun {
     /// Advance the machine and return the next action for the driver.
     ///
     /// # Errors
-    /// - [`PromptError::MaxTurnsError`] when the total model-call budget is exhausted.
-    /// - [`PromptError::PromptCancelled`] when the machine is driven out of
+    /// - [`PromptError::MaxTurns`] when the total model-call budget is exhausted.
+    /// - [`PromptError::Cancelled`] when the machine is driven out of
     ///   protocol (for example, calling this while a model response is
     ///   pending).
     pub fn next_step(&mut self) -> Result<AgentRunStep, PromptError> {
         match std::mem::replace(&mut self.state, RunState::Failed) {
             RunState::PreparingRequest => {
                 let Some((prompt_ref, history_for_turn)) = self.new_messages.split_last() else {
-                    return Err(PromptError::prompt_cancelled(
+                    return Err(PromptError::cancelled(
                         self.full_history(),
                         "prompt loop lost its pending prompt",
                     ));
@@ -890,7 +864,7 @@ impl AgentRun {
                 let prompt = prompt_ref.clone();
 
                 if self.current_turn >= self.max_turns {
-                    return Err(PromptError::MaxTurnsError {
+                    return Err(PromptError::MaxTurns {
                         max_turns: self.max_turns,
                         chat_history: self.full_history(),
                         prompt,
@@ -941,15 +915,16 @@ impl AgentRun {
                     let tool_call_id = tool_call.id.clone();
                     let output = json_utils::serialize_json_value(&args);
 
-                    let missing = self.missing_required_output_fields(&args);
+                    let missing = self
+                        .output_schema
+                        .as_ref()
+                        .map(|schema| structured_output::missing_required_fields(schema, &args))
+                        .unwrap_or_default();
                     if !missing.is_empty() && self.can_reprompt_for_output() {
                         self.new_messages
                             .extend(assistant_message(message_id, items.clone()));
-                        let feedback = format!(
-                            "The `{output_tool_name}` arguments were missing required field(s): \
-                             {}. Call `{output_tool_name}` again with every required field.",
-                            missing.join(", ")
-                        );
+                        let feedback =
+                            structured_output::reprompt_missing_fields(&output_tool_name, &missing);
                         if let Some(user_message) =
                             invalid_tool_retry_user_message(&items, &tool_call_id, &feedback)
                         {
@@ -969,7 +944,9 @@ impl AgentRun {
                     self.new_messages
                         .extend(assistant_message(message_id, final_items.clone()));
 
-                    return Ok(self.finish(output, final_items, output_tool_calls));
+                    let content = response::finalize_output_tool_choice(&items, &output)
+                        .unwrap_or_else(|| vec![AssistantContent::text(output)]);
+                    return Ok(self.finish(content, output_tool_calls));
                 }
 
                 // Reasoning alone is not an answer. Reject answerless truncated turns
@@ -1006,17 +983,18 @@ impl AgentRun {
                     if let Some(output_tool_name) = self.output_tool_name.clone()
                         && !is_empty_assistant_turn(&items)
                         && self.can_reprompt_for_output()
-                        && !self.text_satisfies_output_schema(&assistant_text_from_choice(&items))
+                        && !structured_output::text_satisfies_schema(
+                            self.output_schema.as_ref(),
+                            &assistant_text_from_choice(&items),
+                        )
                     {
-                        let feedback = format!(
-                            "Provide your final answer by calling the `{output_tool_name}` tool \
-                             with the structured result as its arguments, not as plain text."
-                        );
-                        self.new_messages.push(Message::user(feedback));
+                        self.new_messages.push(Message::user(
+                            structured_output::reprompt_text_answer(&output_tool_name),
+                        ));
                         return self.reprompt_for_output();
                     }
 
-                    Ok(self.finish(assistant_text_from_choice(&items), items, 0))
+                    Ok(self.finish(items, 0))
                 }
             }
             RunState::ExecutingTools(calls) => {
@@ -1128,17 +1106,11 @@ impl AgentRun {
     /// Build the run's final [`PromptResponse`], park it in
     /// [`RunState::Done`], and return the `Done` step. Shared by the
     /// output-tool and plain-text finalization paths in `next_step`.
-    fn finish(
-        &mut self,
-        output: String,
-        content: Vec<AssistantContent>,
-        output_tool_calls: usize,
-    ) -> AgentRunStep {
-        let response = PromptResponse::new(output, self.usage)
+    fn finish(&mut self, content: Vec<AssistantContent>, output_tool_calls: usize) -> AgentRunStep {
+        let response = PromptResponse::from_content(content, self.usage)
             .with_messages(self.new_messages.clone())
             .with_completion_calls(self.completion_calls.clone())
-            .with_output_tool_calls(output_tool_calls)
-            .with_content(content);
+            .with_output_tool_calls(output_tool_calls);
         self.state = RunState::Done(response.clone());
         AgentRunStep::Done(response)
     }
@@ -1223,7 +1195,7 @@ impl AgentRun {
     /// - [`InvalidToolCallAction::Repair`] renames the tool call; the
     ///   repaired name is revalidated against the allowed tools.
     /// - [`InvalidToolCallAction::Stop`] cancels the run with
-    ///   `PromptError::prompt_cancelled` and the supplied reason.
+    ///   `PromptError::cancelled` and the supplied reason.
     /// - [`InvalidToolCallAction::Skip`] records a synthetic tool result
     ///   and suppresses execution of every tool call in the turn. Rejected
     ///   under [`ToolChoice::None`].
@@ -1264,7 +1236,7 @@ impl AgentRun {
                     &tool_call.id,
                     &feedback,
                 ) else {
-                    return Err(PromptError::prompt_cancelled(
+                    return Err(PromptError::cancelled(
                         diagnostic_history,
                         "invalid tool call retry produced no retry messages",
                     ));
@@ -1288,7 +1260,7 @@ impl AgentRun {
                 let user_content = UserContent::tool_result(
                     tool_call.id.clone(),
                     tool_call.function.name.clone(),
-                    ToolResultContent::from(reason),
+                    vec![ToolResultContent::from(reason)],
                 );
                 // Keyed by the call's position: `next_index` is exactly the
                 // invalid call's slot in `items`, and later mutations only
@@ -1355,7 +1327,7 @@ impl AgentRun {
 
         if results.is_empty() {
             self.state = RunState::Failed;
-            return Err(PromptError::prompt_cancelled(
+            return Err(PromptError::cancelled(
                 self.full_history(),
                 "tool execution produced no tool results",
             ));
@@ -1380,9 +1352,8 @@ impl AgentRun {
             )));
         }
 
-        if let Ok(content) = NonEmpty::from_vec(results) {
-            self.new_messages.push(Message::User { content });
-        }
+        // Not empty: an empty batch failed the run above.
+        self.new_messages.push(Message::User { content: results });
         self.state = RunState::PreparingRequest;
         Ok(())
     }
@@ -1560,7 +1531,7 @@ impl AgentRun {
                 // avoiding re-parsing a rejection message as structured output.
                 let skipped_tool_result = invalid
                     .tool_call
-                    .result(ToolResultContent::text(reason.as_str()));
+                    .result(vec![ToolResultContent::text(reason.as_str())]);
                 self.abandon_streamed_turn(
                     partial,
                     invalid,
@@ -1601,7 +1572,7 @@ impl AgentRun {
             partial.rollback_messages(invalid.tool_call.clone(), feedback)
         else {
             self.state = RunState::Failed;
-            return Err(PromptError::prompt_cancelled(
+            return Err(PromptError::cancelled(
                 diagnostic_history,
                 no_messages_reason,
             ));
@@ -1694,7 +1665,7 @@ impl AgentRun {
     }
 
     fn protocol_violation(&self, reason: &str) -> PromptError {
-        PromptError::prompt_cancelled(
+        PromptError::cancelled(
             self.full_history(),
             format!("agent run driver protocol violation: {reason}"),
         )

@@ -35,3 +35,4 @@ mod streaming_tools;
 mod support;
 mod tools;
 mod typed_prompt_tools;
+mod web_search_citations;

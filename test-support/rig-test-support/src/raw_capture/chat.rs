@@ -11,8 +11,8 @@
 //! Those stay at the call site.
 
 use rig_core::completion::{CompletionResponse, FinishReason};
-use rig_core::providers::openai;
 use rig_core::providers::openai::wire::{ChatUsage, StreamingCompletionResponse};
+use rig_core::providers::{deepseek, mistral, openai};
 use serde::Deserialize as _;
 use serde_json::Value;
 
@@ -106,10 +106,11 @@ pub fn assert_reproduces_body(
 /// this pins the mapping one decoder performed rather than comparing the
 /// normalized response with a second copy of the same mapping. Dialects
 /// wrapping the shared type (Venice) pass their inner
-/// [`openai::CompletionResponse`].
-pub fn assert_native_matches_normalized(
+/// [`openai::CompletionResponse`]; dialects with their own accounting
+/// (DeepSeek, Mistral) pass theirs.
+pub fn assert_native_matches_normalized<U: OpenAiCounters>(
     response: &CompletionResponse,
-    native: &openai::CompletionResponse,
+    native: &openai::completion::ChatCompletionResponse<U>,
     context: &str,
 ) {
     assert_eq!(
@@ -131,7 +132,11 @@ pub fn assert_native_matches_normalized(
         Some(native_finish_reason(native_choice.finish_reason.as_str())),
         "{context}: the normalized reason is the native one"
     );
-    let native_usage = native.usage.as_ref().expect("the reply reports usage");
+    let native_usage = native
+        .usage
+        .as_ref()
+        .expect("the reply reports usage")
+        .counters();
     assert_eq!(
         (
             response.usage.input_tokens,
@@ -145,6 +150,47 @@ pub fn assert_native_matches_normalized(
         ),
         "{context}: the normalized counters are the native ones"
     );
+}
+
+/// The OpenAI-compatible counters inside a dialect's own accounting.
+pub trait OpenAiCounters {
+    fn counters(&self) -> &openai::Usage;
+}
+
+impl OpenAiCounters for openai::Usage {
+    fn counters(&self) -> &openai::Usage {
+        self
+    }
+}
+
+impl OpenAiCounters for deepseek::Usage {
+    fn counters(&self) -> &openai::Usage {
+        &self.openai
+    }
+}
+
+impl OpenAiCounters for mistral::Usage {
+    fn counters(&self) -> &openai::Usage {
+        &self.openai
+    }
+}
+
+/// The text parts of a native reply's first choice, concatenated.
+pub fn native_text<U>(native: &openai::completion::ChatCompletionResponse<U>) -> String {
+    let choice = native
+        .choices
+        .first()
+        .expect("the reply carries at least one choice");
+    let openai::completion::Message::Assistant { content, .. } = &choice.message else {
+        panic!("a completion choice carries an assistant message");
+    };
+    content
+        .iter()
+        .filter_map(|part| match part {
+            openai::completion::AssistantContent::Text { text } => Some(text.as_str()),
+            openai::completion::AssistantContent::Refusal { .. } => None,
+        })
+        .collect()
 }
 
 /// The normalized terminal record's fields, checked against the recorded

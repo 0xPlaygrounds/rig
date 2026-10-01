@@ -9,7 +9,7 @@ use super::*;
 fn request() -> CompletionRequest {
     CompletionRequest {
         model: None,
-        chat_history: rig_core::NonEmpty::new(Message::user("hi")),
+        chat_history: vec![Message::user("hi")],
         documents: vec![],
         tools: vec![],
         temperature: None,
@@ -721,7 +721,7 @@ async fn typed_tool_namespaces_survive_log_roundtrip_and_replay() {
     let mut next = request();
     next.chat_history.push(Message::Assistant {
         id: None,
-        content: rig_core::NonEmpty::from_vec(choice.clone()).expect("non-empty"),
+        content: choice.clone(),
     });
     next.chat_history.push(Message::User {
         content: calls
@@ -731,12 +731,10 @@ async fn typed_tool_namespaces_survive_log_roundtrip_and_replay() {
                 UserContent::tool_result(
                     call.id.clone(),
                     rig_core::message::ToolName::new("add").expect("tool name"),
-                    rig_core::NonEmpty::new(ToolResultContent::text("ok")),
+                    vec![ToolResultContent::text("ok")],
                 )
             })
-            .collect::<Vec<_>>()
-            .try_into()
-            .expect("non-empty"),
+            .collect::<Vec<_>>(),
     });
     let mut records = two_records().records;
     records[0].kind = EffectKind::Completion {
@@ -790,10 +788,10 @@ async fn typed_tool_namespaces_survive_log_roundtrip_and_replay() {
         let EffectKind::Completion { request, .. } = &mut changed else {
             unreachable!()
         };
-        let Message::User { content } = request.chat_history.last_mut() else {
+        let Some(Message::User { content }) = request.chat_history.last_mut() else {
             unreachable!()
         };
-        let UserContent::ToolResult(result) = content.last_mut() else {
+        let Some(UserContent::ToolResult(result)) = content.last_mut() else {
             unreachable!()
         };
         assert!(result.call.is_local());

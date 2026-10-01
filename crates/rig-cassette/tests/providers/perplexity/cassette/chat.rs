@@ -24,14 +24,14 @@ async fn chat_history_smoke() {
             )
             .await
             .expect("first chat turn should succeed")
-            .output;
+            .output();
         assert_contains_any_case_insensitive(&first, &["amber", "remember"]);
 
         let second = agent
             .chat("What code word did I ask you to remember?", &mut history)
             .await
             .expect("second chat turn should succeed")
-            .output;
+            .output();
         assert_contains_any_case_insensitive(&second, &["amber-rig", "amber"]);
     })
     .await;

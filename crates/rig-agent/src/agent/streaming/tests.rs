@@ -10,13 +10,15 @@ use crate::agent::engine::drive_tool_calls;
 use crate::agent::hook::{AgentHook, HookContext};
 use crate::agent::run::{AgentRun, AgentRunStep};
 use crate::completion::{CompletionRequest, FinishReason, PromptError, ToolDefinition, Usage};
+use crate::run::response::finalize_output_tool_choice;
 use crate::run::transcript::TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER;
+use crate::run::transcript::assistant_text_from_choice;
 use crate::run::transcript::tool_result_output;
 use crate::streaming::{Item, StreamEvent};
 use crate::test_utils::{
-    AppendFailingMemory, FailingMemory, MockAddTool, MockBarrierTool, MockCompletionModel,
-    MockContextProbeTool, MockStreamEvent, MockSubtractTool, MockToolError, MockTurn, SessionId,
-    mock_final,
+    AppendFailingMemory, CapturedSpan, FailingMemory, MockAddTool, MockBarrierTool,
+    MockCompletionModel, MockContextProbeTool, MockStreamEvent, MockSubtractTool, MockToolError,
+    MockTurn, SessionId, TraceCapture, mock_final,
 };
 use crate::tool::{Tool, ToolContext};
 use futures::{StreamExt, TryStreamExt};
@@ -27,14 +29,10 @@ use rig_core::message::{
 use rig_core::operation::Finish;
 use rig_core::providers::anthropic;
 use serde::Deserialize;
-use std::collections::{BTreeSet, HashMap};
+use std::collections::BTreeSet;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use tracing::field::{Field, Visit};
-use tracing::{Id, Subscriber};
-use tracing_subscriber::layer::{Context, SubscriberExt};
-use tracing_subscriber::{Layer, Registry, registry::LookupSpan};
 
 struct StopAgentStreamingBeforeCompletion;
 
@@ -68,11 +66,48 @@ async fn public_streaming_request_constructor_preserves_agent_hooks() {
 
     assert!(matches!(
         error,
-        StreamingError::Prompt(error)
-            if matches!(&error, PromptError::PromptCancelled { reason, .. }
-                if reason == "agent streaming stopped")
+        PromptError::Cancelled { reason, .. } if reason == "agent streaming stopped"
     ));
     assert_eq!(model.request_count(), 0);
+}
+
+#[tokio::test]
+async fn stream_to_stdout_returns_the_run_error() {
+    let model = MockCompletionModel::from_stream_turns([[
+        MockStreamEvent::text("should not run"),
+        MockStreamEvent::final_response(Usage::default()),
+    ]]);
+    let agent = AgentBuilder::new(model)
+        .add_hook(StopAgentStreamingBeforeCompletion)
+        .build();
+
+    let mut stream = agent.prompt("go").stream();
+    let error = stream_to_stdout(&mut stream)
+        .await
+        .expect_err("a failed run is not an empty answer");
+
+    assert!(matches!(
+        error,
+        StreamToStdoutError::Run(PromptError::Cancelled { reason, .. })
+            if reason == "agent streaming stopped"
+    ));
+}
+
+#[tokio::test]
+async fn stream_to_stdout_returns_the_final_response() {
+    let model = MockCompletionModel::from_stream_turns([[
+        MockStreamEvent::text("done"),
+        MockStreamEvent::final_response(Usage::default()),
+    ]]);
+    let agent = AgentBuilder::new(model).build();
+
+    let mut stream = agent.prompt("go").stream();
+    let response = stream_to_stdout(&mut stream)
+        .await
+        .expect("the run succeeds");
+
+    assert_eq!(response.output(), "done");
+    assert_eq!(response.messages().len(), 2);
 }
 
 #[tokio::test]
@@ -147,7 +182,7 @@ async fn tool_call_stream_without_terminal_record_dispatches_no_tools() {
 }
 
 #[test]
-fn finalize_streamed_choice_surfaces_output_over_tool_call_and_prose() {
+fn finalize_output_tool_choice_surfaces_output_over_tool_call_and_prose() {
     use rig_core::message::{ToolCall, ToolFunction};
 
     let output_call = AssistantContent::ToolCall(ToolCall::from_wire(
@@ -164,7 +199,7 @@ fn finalize_streamed_choice_surfaces_output_over_tool_call_and_prose() {
         AssistantContent::text("Sure, here is the weather:"),
         output_call.clone(),
     ];
-    let final_choice = finalize_streamed_choice(&with_prose, r#"{"city":"Tokyo"}"#)
+    let final_choice = finalize_output_tool_choice(&with_prose, r#"{"city":"Tokyo"}"#)
         .expect("a turn with the output-tool call is finalized via it");
     assert_eq!(
         assistant_text_from_choice(&final_choice),
@@ -179,7 +214,7 @@ fn finalize_streamed_choice_surfaces_output_over_tool_call_and_prose() {
 
     // Output-tool call only.
     let only_call = vec![output_call];
-    let final_choice = finalize_streamed_choice(&only_call, r#"{"city":"Tokyo"}"#)
+    let final_choice = finalize_output_tool_choice(&only_call, r#"{"city":"Tokyo"}"#)
         .expect("finalized via output tool");
     assert_eq!(
         assistant_text_from_choice(&final_choice),
@@ -188,7 +223,7 @@ fn finalize_streamed_choice_surfaces_output_over_tool_call_and_prose() {
 
     // A plain-text finalize (no tool call) is left to the caller.
     let text_only = vec![AssistantContent::text(r#"{"city":"Tokyo"}"#)];
-    assert!(finalize_streamed_choice(&text_only, r#"{"city":"Tokyo"}"#).is_none());
+    assert!(finalize_output_tool_choice(&text_only, r#"{"city":"Tokyo"}"#).is_none());
 }
 
 #[test]
@@ -260,10 +295,10 @@ fn validate_follow_up_tool_history(request: &CompletionRequest) -> Result<(), St
 
     if !matches!(
         history.first(),
-        Message::User { content }
+        Some(Message::User { content })
             if matches!(
                 content.first(),
-                UserContent::Text(text) if text.text == "do tool work"
+                Some(UserContent::Text(text)) if text.text == "do tool work"
             )
     ) {
         return Err(format!(
@@ -279,7 +314,7 @@ fn validate_follow_up_tool_history(request: &CompletionRequest) -> Result<(), St
         Some(Message::Assistant { content, .. })
             if matches!(
                 content.first(),
-                AssistantContent::ToolCall(tool_call)
+                Some(AssistantContent::ToolCall(tool_call))
                     if tool_call.id.provider().map(|provider| provider.call_id.as_str()) == Some("call_1")
                         && tool_call.id.provider().as_ref().is_some_and(|provider| {
                             provider.call_id == "call_1"
@@ -297,7 +332,7 @@ fn validate_follow_up_tool_history(request: &CompletionRequest) -> Result<(), St
         Some(Message::User { content })
             if matches!(
                 content.first(),
-                UserContent::ToolResult(tool_result)
+                Some(UserContent::ToolResult(tool_result))
                     if tool_result.call.provider().map(|provider| provider.call_id.as_str()) == Some("call_1")
                         && tool_result.call.provider().as_ref().is_some_and(|provider| {
                             provider.call_id == "call_1"
@@ -509,7 +544,7 @@ struct CountingOperationArgs {
 
 fn arithmetic_tool_definition(name: &str, description: &str) -> ToolDefinition {
     ToolDefinition {
-        name: name.to_string(),
+        name: rig_core::message::ToolName::new(name).expect("tool name"),
         description: description.to_string(),
         parameters: serde_json::json!({
             "type": "object",
@@ -682,9 +717,7 @@ async fn execution_commit_items_are_not_emitted_when_run_commit_fails() {
     while let Some(item) = stream.next().await {
         match item {
             Ok(MultiTurnStreamItem::ToolExecutionCommitted { .. }) => saw_commit = true,
-            Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult { .. })) => {
-                saw_result = true
-            }
+            Ok(MultiTurnStreamItem::ToolResult { .. }) => saw_result = true,
             Err(_) => saw_error = true,
             _ => {}
         }
@@ -698,170 +731,6 @@ async fn execution_commit_items_are_not_emitted_when_run_commit_fails() {
     assert!(!saw_result, "an uncommitted result cannot be surfaced");
 }
 
-#[derive(Clone, Debug, Default)]
-struct CapturedSpan {
-    id: u64,
-    name: String,
-    target: String,
-    parent_id: Option<u64>,
-    fields: HashMap<String, u64>,
-    string_fields: HashMap<String, String>,
-    record_counts: HashMap<String, usize>,
-}
-
-#[derive(Clone, Default)]
-struct CapturedSpans(Arc<Mutex<Vec<CapturedSpan>>>);
-
-impl CapturedSpans {
-    fn clear(&self) {
-        if let Ok(mut spans) = self.0.lock() {
-            spans.clear();
-        }
-    }
-
-    fn insert(&self, id: &Id, name: &str, target: &str, parent_id: Option<u64>) {
-        let id = id.into_u64();
-        if let Ok(mut spans) = self.0.lock() {
-            spans.push(CapturedSpan {
-                id,
-                name: name.to_string(),
-                target: target.to_string(),
-                parent_id,
-                fields: HashMap::new(),
-                string_fields: HashMap::new(),
-                record_counts: HashMap::new(),
-            });
-        }
-    }
-
-    fn record(&self, id: &Id, fields: Vec<CapturedField>) {
-        if let Ok(mut spans) = self.0.lock()
-            && let Some(span) = spans.iter_mut().rev().find(|span| span.id == id.into_u64())
-        {
-            for field in fields {
-                match field {
-                    CapturedField::Number(name, value) => {
-                        *span.record_counts.entry(name.clone()).or_insert(0) += 1;
-                        span.fields.insert(name, value);
-                    }
-                    CapturedField::Text(name, value) => {
-                        *span.record_counts.entry(name.clone()).or_insert(0) += 1;
-                        span.fields.insert(name.clone(), 0);
-                        span.string_fields.insert(name, value);
-                    }
-                }
-            }
-        }
-    }
-
-    fn record_strings(&self, id: &Id, fields: Vec<(String, String)>) {
-        if let Ok(mut spans) = self.0.lock()
-            && let Some(span) = spans.iter_mut().rev().find(|span| span.id == id.into_u64())
-        {
-            span.string_fields.extend(fields);
-        }
-    }
-
-    fn snapshot(&self) -> Vec<CapturedSpan> {
-        self.0.lock().map(|spans| spans.clone()).unwrap_or_default()
-    }
-}
-
-struct SpanCaptureLayer {
-    spans: CapturedSpans,
-}
-
-impl<S> Layer<S> for SpanCaptureLayer
-where
-    S: Subscriber,
-    S: for<'lookup> LookupSpan<'lookup>,
-{
-    fn on_new_span(&self, attrs: &tracing::span::Attributes<'_>, id: &Id, ctx: Context<'_, S>) {
-        // An explicit root (`parent: None`) has no parent even when a span
-        // is current; only a contextual span inherits the current one.
-        let parent_id = if attrs.is_root() {
-            None
-        } else {
-            attrs
-                .parent()
-                .map(Id::into_u64)
-                .or_else(|| ctx.current_span().id().map(Id::into_u64))
-        };
-        self.spans.insert(
-            id,
-            attrs.metadata().name(),
-            attrs.metadata().target(),
-            parent_id,
-        );
-        let mut string_fields = Vec::new();
-        attrs.record(&mut SpanStringCaptureVisitor {
-            fields: &mut string_fields,
-        });
-        self.spans.record_strings(id, string_fields);
-    }
-
-    fn on_record(&self, span: &Id, values: &tracing::span::Record<'_>, _ctx: Context<'_, S>) {
-        let mut fields = Vec::new();
-        values.record(&mut SpanFieldCaptureVisitor {
-            fields: &mut fields,
-        });
-        self.spans.record(span, fields);
-        let mut string_fields = Vec::new();
-        values.record(&mut SpanStringCaptureVisitor {
-            fields: &mut string_fields,
-        });
-        self.spans.record_strings(span, string_fields);
-    }
-}
-
-enum CapturedField {
-    Number(String, u64),
-    Text(String, String),
-}
-
-struct SpanFieldCaptureVisitor<'a> {
-    fields: &'a mut Vec<CapturedField>,
-}
-
-struct SpanStringCaptureVisitor<'a> {
-    fields: &'a mut Vec<(String, String)>,
-}
-
-impl Visit for SpanStringCaptureVisitor<'_> {
-    fn record_str(&mut self, field: &Field, value: &str) {
-        self.fields
-            .push((field.name().to_string(), value.to_string()));
-    }
-
-    fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
-        self.fields
-            .push((field.name().to_string(), format!("{value:?}")));
-    }
-}
-
-impl Visit for SpanFieldCaptureVisitor<'_> {
-    fn record_u64(&mut self, field: &Field, value: u64) {
-        self.fields
-            .push(CapturedField::Number(field.name().to_string(), value));
-    }
-
-    // Capture the *presence* of non-numeric fields (e.g. `gen_ai.completion`)
-    // with a placeholder value so tests can assert whether they were recorded.
-    fn record_str(&mut self, field: &Field, value: &str) {
-        self.fields.push(CapturedField::Text(
-            field.name().to_string(),
-            value.to_string(),
-        ));
-    }
-
-    fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
-        self.fields.push(CapturedField::Text(
-            field.name().to_string(),
-            format!("{value:?}"),
-        ));
-    }
-}
-
 async fn assert_stream_usage_recorded_on_chat_spans(
     agent: crate::agent::Agent,
     prompt: &str,
@@ -873,11 +742,8 @@ async fn assert_stream_usage_recorded_on_chat_spans(
     // guard's own docs carry that recipe plus the rule it cannot enforce:
     // an absence assertion needs a positive anchor, or it passes vacuously.
     let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
-    let spans = CapturedSpans::default();
-    let subscriber = Registry::default().with(SpanCaptureLayer {
-        spans: spans.clone(),
-    });
-    let _default = tracing::subscriber::set_default(subscriber);
+    let spans = TraceCapture::default();
+    let _default = tracing::subscriber::set_default(spans.subscriber());
 
     // Span callsites in the driver are shared with every other test in
     // this binary. The FIRST thread to hit a callsite caches its interest
@@ -928,7 +794,7 @@ async fn assert_stream_usage_recorded_on_chat_spans(
     .instrument(outer_span)
     .await;
 
-    let span_snapshot = spans.snapshot();
+    let span_snapshot = spans.spans();
     let outer_span_id = span_snapshot
         .iter()
         .find(|span| span.name == "outer")
@@ -946,18 +812,15 @@ async fn assert_stream_usage_recorded_on_chat_spans(
     );
 
     for (chat_span, expected_usage) in chat_spans.into_iter().zip(expected_usages) {
-        assert_eq!(chat_span.parent_id, Some(outer_span_id));
+        assert_eq!(chat_span.parent, Some(outer_span_id));
         // The provider's streaming span adopts the agent's chat span and
         // records its own operation onto it.
         assert_eq!(
-            chat_span
-                .string_fields
-                .get("gen_ai.operation.name")
-                .map(String::as_str),
+            chat_span.text("gen_ai.operation.name").as_deref(),
             Some("chat_streaming")
         );
         // A counter the provider did not report leaves its span field unset.
-        let field = |name: &str| chat_span.fields.get(name).copied();
+        let field = |name: &str| chat_span.u64(name);
         assert_eq!(
             field("gen_ai.usage.input_tokens"),
             expected_usage.input_tokens
@@ -990,13 +853,13 @@ async fn assert_stream_usage_recorded_on_chat_spans(
         .expect("outer span should be present");
     assert!(
         outer_span
-            .fields
-            .keys()
-            .all(|field| !field.starts_with("gen_ai.usage.")),
+            .recorded
+            .iter()
+            .all(|(field, _)| !field.starts_with("gen_ai.usage.")),
         "usage should not be recorded onto the caller's outer span"
     );
     assert!(
-        !outer_span.fields.contains_key("gen_ai.completion"),
+        outer_span.record_count("gen_ai.completion") == 0,
         "gen_ai.completion should not be recorded onto the caller's outer span \
              (parity with the blocking driver)"
     );
@@ -1006,11 +869,8 @@ async fn capture_stream_message_telemetry(
     record_telemetry_content: bool,
 ) -> (CapturedSpan, Vec<CompletionRequest>) {
     let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
-    let spans = CapturedSpans::default();
-    let subscriber = Registry::default().with(SpanCaptureLayer {
-        spans: spans.clone(),
-    });
-    let _default = tracing::subscriber::set_default(subscriber);
+    let spans = TraceCapture::default();
+    let _default = tracing::subscriber::set_default(spans.subscriber());
 
     let warmup_model = MockCompletionModel::from_stream_turns([[
         MockStreamEvent::text("warmup"),
@@ -1053,7 +913,7 @@ async fn capture_stream_message_telemetry(
     }
 
     let span = spans
-        .snapshot()
+        .spans()
         .into_iter()
         .find(|span| span.name == "chat_streaming")
         .expect("chat_streaming span should be captured");
@@ -1064,11 +924,8 @@ async fn capture_unary_message_telemetry(
     record_telemetry_content: bool,
 ) -> (CapturedSpan, CapturedSpan, Vec<CompletionRequest>) {
     let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
-    let spans = CapturedSpans::default();
-    let subscriber = Registry::default().with(SpanCaptureLayer {
-        spans: spans.clone(),
-    });
-    let _default = tracing::subscriber::set_default(subscriber);
+    let spans = TraceCapture::default();
+    let _default = tracing::subscriber::set_default(spans.subscriber());
 
     let warmup_agent = crate::agent::AgentBuilder::new(MockCompletionModel::text("warmup")).build();
     warmup_agent
@@ -1092,7 +949,7 @@ async fn capture_unary_message_telemetry(
         .await
         .expect("prompt should not error");
 
-    let snapshot = spans.snapshot();
+    let snapshot = spans.spans();
     let chat_span = snapshot
         .iter()
         .find(|span| span.name == "chat")
@@ -1109,11 +966,11 @@ async fn capture_unary_message_telemetry(
 async fn stream_prompt_message_telemetry_is_opt_in() {
     let (default_span, default_requests) = capture_stream_message_telemetry(false).await;
     assert!(
-        !default_span.fields.contains_key("gen_ai.input.messages"),
+        default_span.record_count("gen_ai.input.messages") == 0,
         "default streaming prompt should not record input message contents"
     );
     assert!(
-        !default_span.fields.contains_key("gen_ai.output.messages"),
+        default_span.record_count("gen_ai.output.messages") == 0,
         "default streaming prompt should not record output message contents"
     );
 
@@ -1125,30 +982,22 @@ async fn stream_prompt_message_telemetry_is_opt_in() {
 
     let (opt_in_span, opt_in_requests) = capture_stream_message_telemetry(true).await;
     let input = opt_in_span
-        .string_fields
-        .get("gen_ai.input.messages")
+        .text("gen_ai.input.messages")
         .expect("opt-in should record input messages");
     assert!(input.contains("stream prompt secret"));
     assert!(input.contains("static stream context secret"));
     let output = opt_in_span
-        .string_fields
-        .get("gen_ai.output.messages")
+        .text("gen_ai.output.messages")
         .expect("opt-in should record output messages");
     assert!(output.contains("stream response secret"));
     assert_eq!(
-        opt_in_span
-            .record_counts
-            .get("gen_ai.input.messages")
-            .copied(),
-        Some(1),
+        opt_in_span.record_count("gen_ai.input.messages"),
+        1,
         "agent-owned input message telemetry should be recorded once"
     );
     assert_eq!(
-        opt_in_span
-            .record_counts
-            .get("gen_ai.output.messages")
-            .copied(),
-        Some(1),
+        opt_in_span.record_count("gen_ai.output.messages"),
+        1,
         "agent-owned output message telemetry should be recorded once"
     );
     assert_eq!(opt_in_requests.len(), 1);
@@ -1163,29 +1012,19 @@ async fn unary_prompt_message_telemetry_records_accepted_output_when_opted_in() 
     let (default_span, default_agent_span, default_requests) =
         capture_unary_message_telemetry(false).await;
     assert!(
-        !default_span.fields.contains_key("gen_ai.input.messages"),
+        default_span.record_count("gen_ai.input.messages") == 0,
         "default blocking prompt should not record input message contents"
     );
     assert!(
-        !default_span.fields.contains_key("gen_ai.output.messages"),
+        default_span.record_count("gen_ai.output.messages") == 0,
         "default blocking prompt should not record output message contents"
     );
     assert!(
-        !default_span
-            .string_fields
-            .contains_key("gen_ai.system_instructions"),
+        default_span.value("gen_ai.system_instructions").is_none(),
         "default blocking prompt should not record system instructions"
     );
-    assert!(
-        !default_agent_span
-            .string_fields
-            .contains_key("gen_ai.prompt")
-    );
-    assert!(
-        !default_agent_span
-            .string_fields
-            .contains_key("gen_ai.completion")
-    );
+    assert!(default_agent_span.value("gen_ai.prompt").is_none());
+    assert!(default_agent_span.value("gen_ai.completion").is_none());
     assert_eq!(default_requests.len(), 1);
     assert!(
         !default_requests[0].record_telemetry_content,
@@ -1195,34 +1034,23 @@ async fn unary_prompt_message_telemetry_records_accepted_output_when_opted_in() 
     let (opt_in_span, opt_in_agent_span, opt_in_requests) =
         capture_unary_message_telemetry(true).await;
     let input = opt_in_span
-        .string_fields
-        .get("gen_ai.input.messages")
+        .text("gen_ai.input.messages")
         .expect("opt-in should record blocking input messages");
     assert!(input.contains("blocking prompt secret"));
     let output = opt_in_span
-        .string_fields
-        .get("gen_ai.output.messages")
+        .text("gen_ai.output.messages")
         .expect("opt-in should record blocking output messages");
     assert!(output.contains("blocking response secret"));
     assert_eq!(
-        opt_in_span
-            .string_fields
-            .get("gen_ai.system_instructions")
-            .map(String::as_str),
+        opt_in_span.text("gen_ai.system_instructions").as_deref(),
         Some(r#"[{"type":"text","content":"blocking system secret"}]"#)
     );
     assert_eq!(
-        opt_in_agent_span
-            .string_fields
-            .get("gen_ai.prompt")
-            .map(String::as_str),
+        opt_in_agent_span.text("gen_ai.prompt").as_deref(),
         Some("blocking prompt secret")
     );
     assert_eq!(
-        opt_in_agent_span
-            .string_fields
-            .get("gen_ai.completion")
-            .map(String::as_str),
+        opt_in_agent_span.text("gen_ai.completion").as_deref(),
         Some("blocking response secret")
     );
     assert_eq!(opt_in_requests.len(), 1);
@@ -1234,11 +1062,8 @@ async fn unary_prompt_message_telemetry_records_accepted_output_when_opted_in() 
 
 async fn capture_tool_content_telemetry(record_telemetry_content: bool) -> CapturedSpan {
     let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
-    let spans = CapturedSpans::default();
-    let subscriber = Registry::default().with(SpanCaptureLayer {
-        spans: spans.clone(),
-    });
-    let _default = tracing::subscriber::set_default(subscriber);
+    let spans = TraceCapture::default();
+    let _default = tracing::subscriber::set_default(spans.subscriber());
 
     let warmup = AgentBuilder::new(MockCompletionModel::from_turns([
         MockTurn::tool_call("warmup", "add", serde_json::json!({"x": 1, "y": 2})),
@@ -1277,7 +1102,7 @@ async fn capture_tool_content_telemetry(record_telemetry_content: bool) -> Captu
         .expect("tool run should succeed");
 
     spans
-        .snapshot()
+        .spans()
         .into_iter()
         .find(|span| span.name == "execute_tool")
         .expect("execute_tool span should be captured")
@@ -1286,21 +1111,10 @@ async fn capture_tool_content_telemetry(record_telemetry_content: bool) -> Captu
 #[tokio::test]
 async fn tool_arguments_and_results_follow_content_telemetry_toggle() {
     let default_span = capture_tool_content_telemetry(false).await;
-    assert!(
-        !default_span
-            .string_fields
-            .contains_key("gen_ai.tool.call.arguments")
-    );
-    assert!(
-        !default_span
-            .string_fields
-            .contains_key("gen_ai.tool.call.result")
-    );
+    assert!(default_span.value("gen_ai.tool.call.arguments").is_none());
+    assert!(default_span.value("gen_ai.tool.call.result").is_none());
     assert_eq!(
-        default_span
-            .string_fields
-            .get("gen_ai.tool.name")
-            .map(String::as_str),
+        default_span.text("gen_ai.tool.name").as_deref(),
         Some("add"),
         "structural tool metadata should remain available"
     );
@@ -1308,14 +1122,12 @@ async fn tool_arguments_and_results_follow_content_telemetry_toggle() {
     let opt_in_span = capture_tool_content_telemetry(true).await;
     assert!(
         opt_in_span
-            .string_fields
-            .get("gen_ai.tool.call.arguments")
+            .text("gen_ai.tool.call.arguments")
             .is_some_and(|args| args.contains("12345") && args.contains("67890"))
     );
     assert!(
         opt_in_span
-            .string_fields
-            .get("gen_ai.tool.call.result")
+            .text("gen_ai.tool.call.result")
             .is_some_and(|result| result.contains("80235"))
     );
 }
@@ -1323,11 +1135,8 @@ async fn tool_arguments_and_results_follow_content_telemetry_toggle() {
 #[tokio::test]
 async fn streaming_rejected_message_telemetry_does_not_record_output() {
     let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
-    let spans = CapturedSpans::default();
-    let subscriber = Registry::default().with(SpanCaptureLayer {
-        spans: spans.clone(),
-    });
-    let _default = tracing::subscriber::set_default(subscriber);
+    let spans = TraceCapture::default();
+    let _default = tracing::subscriber::set_default(spans.subscriber());
 
     let warmup_model = MockCompletionModel::from_stream_turns([[
         MockStreamEvent::text("warmup"),
@@ -1377,16 +1186,16 @@ async fn streaming_rejected_message_telemetry_does_not_record_output() {
     );
 
     let chat_span = spans
-        .snapshot()
+        .spans()
         .into_iter()
         .find(|span| span.name == "chat_streaming")
         .expect("chat_streaming span should be captured");
     assert!(
-        chat_span.fields.contains_key("gen_ai.input.messages"),
+        chat_span.record_count("gen_ai.input.messages") > 0,
         "opt-in rejected stream should still record input messages"
     );
     assert!(
-        !chat_span.fields.contains_key("gen_ai.output.messages"),
+        chat_span.record_count("gen_ai.output.messages") == 0,
         "rejected streaming turn must not record output message contents"
     );
 }
@@ -1394,11 +1203,8 @@ async fn streaming_rejected_message_telemetry_does_not_record_output() {
 #[tokio::test]
 async fn unary_repaired_message_telemetry_records_canonical_output() {
     let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
-    let spans = CapturedSpans::default();
-    let subscriber = Registry::default().with(SpanCaptureLayer {
-        spans: spans.clone(),
-    });
-    let _default = tracing::subscriber::set_default(subscriber);
+    let spans = TraceCapture::default();
+    let _default = tracing::subscriber::set_default(spans.subscriber());
 
     let warmup_agent = crate::agent::AgentBuilder::new(MockCompletionModel::text("warmup")).build();
     warmup_agent
@@ -1428,13 +1234,13 @@ async fn unary_repaired_message_telemetry_records_canonical_output() {
         .max_turns(3)
         .await
         .expect("repaired tool call should complete");
-    assert_eq!(output.output, "done");
+    assert_eq!(output.output(), "done");
 
     let output_messages: Vec<String> = spans
-        .snapshot()
+        .spans()
         .into_iter()
         .filter(|span| span.name == "chat" && span.target == "rig::agent_chat")
-        .filter_map(|span| span.string_fields.get("gen_ai.output.messages").cloned())
+        .filter_map(|span| span.text("gen_ai.output.messages"))
         .collect();
     assert!(
         output_messages.iter().any(|output| output.contains("add")),
@@ -1510,7 +1316,7 @@ fn final_response_serializes_completion_calls_with_missing_usage() {
             CompletionCall::new(0, Usage::default(), serde_json::json!({"id": "resp_0"})),
             CompletionCall::new(1, usage(3, 4), serde_json::json!({"id": "resp_1"})),
         ],
-        None,
+        Vec::new(),
     );
 
     if let MultiTurnStreamItem::FinalResponse(response) = &item {
@@ -2008,7 +1814,7 @@ async fn stream_prompt_continues_after_tool_call_turn() {
             Ok(MultiTurnStreamItem::ToolCall { .. }) => {
                 saw_tool_call = true;
             }
-            Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult { .. })) => {
+            Ok(MultiTurnStreamItem::ToolResult { .. }) => {
                 saw_tool_result = true;
             }
             Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Text {
@@ -2020,9 +1826,7 @@ async fn stream_prompt_continues_after_tool_call_turn() {
             Ok(MultiTurnStreamItem::FinalResponse(res)) => {
                 saw_final_response = true;
                 final_response_text = Some(res.output().to_owned());
-                final_history = res
-                    .messages()
-                    .map(<[rig_core::completion::Message]>::to_vec);
+                final_history = Some(res.messages().to_vec());
                 break;
             }
             Ok(_) => {}
@@ -2210,21 +2014,18 @@ async fn unknown_tool_call_fails_before_streaming_second_request() {
     assert!(!saw_tool_call);
     let error = error.expect("unknown model-emitted tool should fail");
     match error {
-        StreamingError::Prompt(err) => match err {
-            PromptError::UnknownToolCall {
-                tool_name,
-                available_tools,
-                allowed_tools,
-                chat_history,
-            } => {
-                assert_eq!(tool_name, "default_api");
-                assert_eq!(available_tools, vec!["add".to_string()]);
-                assert_eq!(allowed_tools, vec!["add".to_string()]);
-                assert!(history_contains_tool_call(&chat_history, "default_api"));
-            }
-            other => panic!("expected UnknownToolCall, got {other:?}"),
-        },
-        other => panic!("expected prompt streaming error, got {other:?}"),
+        PromptError::UnknownToolCall {
+            tool_name,
+            available_tools,
+            allowed_tools,
+            chat_history,
+        } => {
+            assert_eq!(tool_name, "default_api");
+            assert_eq!(available_tools, vec!["add".to_string()]);
+            assert_eq!(allowed_tools, vec!["add".to_string()]);
+            assert!(history_contains_tool_call(&chat_history, "default_api"));
+        }
+        other => panic!("expected UnknownToolCall, got {other:?}"),
     }
     assert_eq!(recorded.request_count(), 1);
 }
@@ -2264,10 +2065,7 @@ async fn invalid_tool_call_hook_can_repair_streaming_tool_name() {
                 assert_eq!(tool_call.function.name, "add");
                 saw_repaired_tool_call = true;
             }
-            Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult {
-                tool_result,
-                ..
-            })) => {
+            Ok(MultiTurnStreamItem::ToolResult { tool_result, .. }) => {
                 assert!(tool_result.content.iter().any(|content| {
                     matches!(
                         content,
@@ -2382,9 +2180,7 @@ async fn invalid_tool_call_hook_skip_emits_streaming_tool_result() {
 
     while let Some(item) = stream.next().await {
         match item {
-            Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult {
-                tool_result,
-            })) => {
+            Ok(MultiTurnStreamItem::ToolResult { tool_result }) => {
                 skipped_tool_result = Some(tool_result);
             }
             Ok(MultiTurnStreamItem::FinalResponse(response)) => {
@@ -2610,10 +2406,7 @@ async fn invalid_tool_call_hook_skips_mixed_streaming_turn_without_executing_val
 
     while let Some(item) = stream.next().await {
         match item {
-            Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult {
-                tool_result,
-                ..
-            })) => {
+            Ok(MultiTurnStreamItem::ToolResult { tool_result, .. }) => {
                 skipped_tool_result = Some(tool_result);
             }
             Ok(MultiTurnStreamItem::FinalResponse(response)) => {
@@ -3108,9 +2901,7 @@ async fn invalid_tool_call_delta_skip_uses_structured_tool_feedback() {
             }))) if call.function.name == "default_api" => {
                 panic!("an invalid tool call should not be emitted")
             }
-            Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult {
-                tool_result,
-            })) => {
+            Ok(MultiTurnStreamItem::ToolResult { tool_result }) => {
                 skipped_tool_result = Some(tool_result);
             }
             Ok(MultiTurnStreamItem::FinalResponse(response)) => {
@@ -3243,18 +3034,15 @@ async fn streaming_retry_budget_exhaustion_history_contains_invalid_tool_call() 
 
     let error = error.expect("retry budget exhaustion should fail");
     match error {
-        StreamingError::Prompt(err) => match err {
-            PromptError::UnknownToolCall {
-                tool_name,
-                chat_history,
-                ..
-            } => {
-                assert_eq!(tool_name, "default_api");
-                assert!(history_contains_tool_call(&chat_history, "default_api"));
-            }
-            other => panic!("expected UnknownToolCall, got {other:?}"),
-        },
-        other => panic!("expected prompt streaming error, got {other:?}"),
+        PromptError::UnknownToolCall {
+            tool_name,
+            chat_history,
+            ..
+        } => {
+            assert_eq!(tool_name, "default_api");
+            assert!(history_contains_tool_call(&chat_history, "default_api"));
+        }
+        other => panic!("expected UnknownToolCall, got {other:?}"),
     }
     assert_eq!(recorded.request_count(), 1);
 }
@@ -3295,20 +3083,17 @@ async fn streaming_name_delta_retry_budget_exhaustion_history_includes_same_turn
 
     let error = error.expect("retry budget exhaustion should fail");
     match error {
-        StreamingError::Prompt(err) => match err {
-            PromptError::UnknownToolCall {
-                tool_name,
-                chat_history,
-                ..
-            } => {
-                assert_eq!(tool_name, "default_api");
-                assert!(history_contains_text(&chat_history, "checking "));
-                assert!(history_contains_tool_call(&chat_history, "add"));
-                assert!(history_contains_tool_call(&chat_history, "default_api"));
-            }
-            other => panic!("expected UnknownToolCall, got {other:?}"),
-        },
-        other => panic!("expected prompt streaming error, got {other:?}"),
+        PromptError::UnknownToolCall {
+            tool_name,
+            chat_history,
+            ..
+        } => {
+            assert_eq!(tool_name, "default_api");
+            assert!(history_contains_text(&chat_history, "checking "));
+            assert!(history_contains_tool_call(&chat_history, "add"));
+            assert!(history_contains_tool_call(&chat_history, "default_api"));
+        }
+        other => panic!("expected UnknownToolCall, got {other:?}"),
     }
     assert_eq!(recorded.request_count(), 1);
 }
@@ -3366,7 +3151,7 @@ async fn completed_unknown_tool_call_after_text_fails_before_finish_hook_or_late
             Ok(MultiTurnStreamItem::ToolCall { .. }) => {
                 saw_tool_call = true;
             }
-            Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult { .. })) => {
+            Ok(MultiTurnStreamItem::ToolResult { .. }) => {
                 saw_tool_result = true;
             }
             Ok(_) => {}
@@ -3385,21 +3170,18 @@ async fn completed_unknown_tool_call_after_text_fails_before_finish_hook_or_late
     assert_eq!(add_calls.load(Ordering::SeqCst), 0);
     let error = error.expect("completed unknown tool call should fail immediately");
     match error {
-        StreamingError::Prompt(err) => match err {
-            PromptError::UnknownToolCall {
-                tool_name,
-                available_tools,
-                allowed_tools,
-                chat_history,
-            } => {
-                assert_eq!(tool_name, "default_api");
-                assert_eq!(available_tools, vec!["add".to_string()]);
-                assert_eq!(allowed_tools, vec!["add".to_string()]);
-                assert!(history_contains_tool_call(&chat_history, "default_api"));
-            }
-            other => panic!("expected UnknownToolCall, got {other:?}"),
-        },
-        other => panic!("expected prompt streaming error, got {other:?}"),
+        PromptError::UnknownToolCall {
+            tool_name,
+            available_tools,
+            allowed_tools,
+            chat_history,
+        } => {
+            assert_eq!(tool_name, "default_api");
+            assert_eq!(available_tools, vec!["add".to_string()]);
+            assert_eq!(allowed_tools, vec!["add".to_string()]);
+            assert!(history_contains_tool_call(&chat_history, "default_api"));
+        }
+        other => panic!("expected UnknownToolCall, got {other:?}"),
     }
     assert_eq!(recorded.request_count(), 1);
 }
@@ -3448,7 +3230,7 @@ async fn mixed_streaming_tool_calls_fail_before_any_tool_execution() {
             Ok(MultiTurnStreamItem::ToolCall { .. }) => {
                 saw_tool_call = true;
             }
-            Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult { .. })) => {
+            Ok(MultiTurnStreamItem::ToolResult { .. }) => {
                 saw_tool_result = true;
             }
             Ok(_) => {}
@@ -3465,21 +3247,18 @@ async fn mixed_streaming_tool_calls_fail_before_any_tool_execution() {
     assert_eq!(add_calls.load(Ordering::SeqCst), 0);
     let error = error.expect("mixed unknown streamed tool call should fail");
     match error {
-        StreamingError::Prompt(err) => match err {
-            PromptError::UnknownToolCall {
-                tool_name,
-                available_tools,
-                allowed_tools,
-                chat_history,
-            } => {
-                assert_eq!(tool_name, "default_api");
-                assert_eq!(available_tools, vec!["add".to_string()]);
-                assert_eq!(allowed_tools, vec!["add".to_string()]);
-                assert!(history_contains_tool_call(&chat_history, "default_api"));
-            }
-            other => panic!("expected UnknownToolCall, got {other:?}"),
-        },
-        other => panic!("expected prompt streaming error, got {other:?}"),
+        PromptError::UnknownToolCall {
+            tool_name,
+            available_tools,
+            allowed_tools,
+            chat_history,
+        } => {
+            assert_eq!(tool_name, "default_api");
+            assert_eq!(available_tools, vec!["add".to_string()]);
+            assert_eq!(allowed_tools, vec!["add".to_string()]);
+            assert!(history_contains_tool_call(&chat_history, "default_api"));
+        }
+        other => panic!("expected UnknownToolCall, got {other:?}"),
     }
     assert_eq!(recorded.request_count(), 1);
 }
@@ -3525,10 +3304,7 @@ async fn multiple_valid_streaming_tool_calls_execute_after_batch_validation() {
             Ok(MultiTurnStreamItem::ToolCall { tool_call, .. }) => {
                 tool_call_names.push(tool_call.function.name);
             }
-            Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult {
-                tool_result,
-                ..
-            })) => {
+            Ok(MultiTurnStreamItem::ToolResult { tool_result, .. }) => {
                 tool_result_ids.push(
                     tool_result
                         .call
@@ -3583,7 +3359,7 @@ async fn disallowed_specific_tool_call_fails_before_streaming_second_request() {
         .tool(MockAddTool)
         .tool(MockSubtractTool)
         .tool_choice(ToolChoice::Specific {
-            function_names: vec!["add".to_string()],
+            function_names: vec![rig_core::message::ToolName::new("add").expect("tool name")],
         })
         .build();
 
@@ -3611,24 +3387,21 @@ async fn disallowed_specific_tool_call_fails_before_streaming_second_request() {
     assert!(!saw_tool_call);
     let error = error.expect("disallowed model-emitted tool should fail");
     match error {
-        StreamingError::Prompt(err) => match err {
-            PromptError::UnknownToolCall {
-                tool_name,
+        PromptError::UnknownToolCall {
+            tool_name,
+            available_tools,
+            allowed_tools,
+            chat_history,
+        } => {
+            assert_eq!(tool_name, "subtract");
+            assert_eq!(
                 available_tools,
-                allowed_tools,
-                chat_history,
-            } => {
-                assert_eq!(tool_name, "subtract");
-                assert_eq!(
-                    available_tools,
-                    vec!["add".to_string(), "subtract".to_string()]
-                );
-                assert_eq!(allowed_tools, vec!["add".to_string()]);
-                assert!(history_contains_tool_call(&chat_history, "subtract"));
-            }
-            other => panic!("expected UnknownToolCall, got {other:?}"),
-        },
-        other => panic!("expected prompt streaming error, got {other:?}"),
+                vec!["add".to_string(), "subtract".to_string()]
+            );
+            assert_eq!(allowed_tools, vec!["add".to_string()]);
+            assert!(history_contains_tool_call(&chat_history, "subtract"));
+        }
+        other => panic!("expected UnknownToolCall, got {other:?}"),
     }
     assert_eq!(recorded.request_count(), 1);
 }
@@ -3658,7 +3431,7 @@ async fn mixed_specific_tool_calls_fail_before_any_tool_execution() {
         })
         .tool(MockSubtractTool)
         .tool_choice(ToolChoice::Specific {
-            function_names: vec!["add".to_string()],
+            function_names: vec![rig_core::message::ToolName::new("add").expect("tool name")],
         })
         .build();
 
@@ -3676,7 +3449,7 @@ async fn mixed_specific_tool_calls_fail_before_any_tool_execution() {
             Ok(MultiTurnStreamItem::ToolCall { .. }) => {
                 saw_tool_call = true;
             }
-            Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult { .. })) => {
+            Ok(MultiTurnStreamItem::ToolResult { .. }) => {
                 saw_tool_result = true;
             }
             Ok(_) => {}
@@ -3692,24 +3465,21 @@ async fn mixed_specific_tool_calls_fail_before_any_tool_execution() {
     assert_eq!(add_calls.load(Ordering::SeqCst), 0);
     let error = error.expect("mixed disallowed streamed tool call should fail");
     match error {
-        StreamingError::Prompt(err) => match err {
-            PromptError::UnknownToolCall {
-                tool_name,
+        PromptError::UnknownToolCall {
+            tool_name,
+            available_tools,
+            allowed_tools,
+            chat_history,
+        } => {
+            assert_eq!(tool_name, "subtract");
+            assert_eq!(
                 available_tools,
-                allowed_tools,
-                chat_history,
-            } => {
-                assert_eq!(tool_name, "subtract");
-                assert_eq!(
-                    available_tools,
-                    vec!["add".to_string(), "subtract".to_string()]
-                );
-                assert_eq!(allowed_tools, vec!["add".to_string()]);
-                assert!(history_contains_tool_call(&chat_history, "subtract"));
-            }
-            other => panic!("expected UnknownToolCall, got {other:?}"),
-        },
-        other => panic!("expected prompt streaming error, got {other:?}"),
+                vec!["add".to_string(), "subtract".to_string()]
+            );
+            assert_eq!(allowed_tools, vec!["add".to_string()]);
+            assert!(history_contains_tool_call(&chat_history, "subtract"));
+        }
+        other => panic!("expected UnknownToolCall, got {other:?}"),
     }
     assert_eq!(recorded.request_count(), 1);
 }
@@ -3756,21 +3526,18 @@ async fn tool_choice_none_rejects_streaming_tool_call() {
     assert!(!saw_tool_call);
     let error = error.expect("ToolChoice::None should reject returned tool calls");
     match error {
-        StreamingError::Prompt(err) => match err {
-            PromptError::UnknownToolCall {
-                tool_name,
-                available_tools,
-                allowed_tools,
-                chat_history,
-            } => {
-                assert_eq!(tool_name, "add");
-                assert_eq!(available_tools, vec!["add".to_string()]);
-                assert!(allowed_tools.is_empty());
-                assert!(history_contains_tool_call(&chat_history, "add"));
-            }
-            other => panic!("expected UnknownToolCall, got {other:?}"),
-        },
-        other => panic!("expected prompt streaming error, got {other:?}"),
+        PromptError::UnknownToolCall {
+            tool_name,
+            available_tools,
+            allowed_tools,
+            chat_history,
+        } => {
+            assert_eq!(tool_name, "add");
+            assert_eq!(available_tools, vec!["add".to_string()]);
+            assert!(allowed_tools.is_empty());
+            assert!(history_contains_tool_call(&chat_history, "add"));
+        }
+        other => panic!("expected UnknownToolCall, got {other:?}"),
     }
     assert_eq!(recorded.request_count(), 1);
 }
@@ -3820,21 +3587,18 @@ async fn tool_choice_none_rejects_streaming_tool_call_name_delta_before_hook_or_
     assert!(!saw_delta);
     let error = error.expect("ToolChoice::None should reject returned tool-call deltas");
     match error {
-        StreamingError::Prompt(err) => match err {
-            PromptError::UnknownToolCall {
-                tool_name,
-                available_tools,
-                allowed_tools,
-                chat_history,
-            } => {
-                assert_eq!(tool_name, "add");
-                assert_eq!(available_tools, vec!["add".to_string()]);
-                assert!(allowed_tools.is_empty());
-                assert!(history_contains_tool_call(&chat_history, "add"));
-            }
-            other => panic!("expected UnknownToolCall, got {other:?}"),
-        },
-        other => panic!("expected prompt streaming error, got {other:?}"),
+        PromptError::UnknownToolCall {
+            tool_name,
+            available_tools,
+            allowed_tools,
+            chat_history,
+        } => {
+            assert_eq!(tool_name, "add");
+            assert_eq!(available_tools, vec!["add".to_string()]);
+            assert!(allowed_tools.is_empty());
+            assert!(history_contains_tool_call(&chat_history, "add"));
+        }
+        other => panic!("expected UnknownToolCall, got {other:?}"),
     }
     assert_eq!(recorded.request_count(), 1);
 }
@@ -3881,21 +3645,18 @@ async fn unknown_tool_call_name_delta_fails_before_streaming_delta_hook_or_emit(
     assert!(!saw_delta);
     let error = error.expect("unknown tool-call name delta should fail");
     match error {
-        StreamingError::Prompt(err) => match err {
-            PromptError::UnknownToolCall {
-                tool_name,
-                available_tools,
-                allowed_tools,
-                chat_history,
-            } => {
-                assert_eq!(tool_name, "default_api");
-                assert_eq!(available_tools, vec!["add".to_string()]);
-                assert_eq!(allowed_tools, vec!["add".to_string()]);
-                assert!(history_contains_tool_call(&chat_history, "default_api"));
-            }
-            other => panic!("expected UnknownToolCall, got {other:?}"),
-        },
-        other => panic!("expected prompt streaming error, got {other:?}"),
+        PromptError::UnknownToolCall {
+            tool_name,
+            available_tools,
+            allowed_tools,
+            chat_history,
+        } => {
+            assert_eq!(tool_name, "default_api");
+            assert_eq!(available_tools, vec!["add".to_string()]);
+            assert_eq!(allowed_tools, vec!["add".to_string()]);
+            assert!(history_contains_tool_call(&chat_history, "default_api"));
+        }
+        other => panic!("expected UnknownToolCall, got {other:?}"),
     }
     assert_eq!(recorded.request_count(), 1);
 }
@@ -3942,21 +3703,18 @@ async fn tool_call_args_delta_before_unknown_name_fails_before_hook_or_emit() {
     assert!(!saw_delta);
     let error = error.expect("unknown tool-call name should reject buffered args");
     match error {
-        StreamingError::Prompt(err) => match err {
-            PromptError::UnknownToolCall {
-                tool_name,
-                available_tools,
-                allowed_tools,
-                chat_history,
-            } => {
-                assert_eq!(tool_name, "default_api");
-                assert_eq!(available_tools, vec!["add".to_string()]);
-                assert_eq!(allowed_tools, vec!["add".to_string()]);
-                assert!(history_contains_tool_call(&chat_history, "default_api"));
-            }
-            other => panic!("expected UnknownToolCall, got {other:?}"),
-        },
-        other => panic!("expected prompt streaming error, got {other:?}"),
+        PromptError::UnknownToolCall {
+            tool_name,
+            available_tools,
+            allowed_tools,
+            chat_history,
+        } => {
+            assert_eq!(tool_name, "default_api");
+            assert_eq!(available_tools, vec!["add".to_string()]);
+            assert_eq!(allowed_tools, vec!["add".to_string()]);
+            assert!(history_contains_tool_call(&chat_history, "default_api"));
+        }
+        other => panic!("expected UnknownToolCall, got {other:?}"),
     }
     assert_eq!(recorded.request_count(), 1);
 }
@@ -4050,7 +3808,7 @@ async fn tool_call_args_without_a_name_never_become_a_call() {
                 StreamEvent::Start { .. } | StreamEvent::Arguments { .. },
             ))
             | MultiTurnStreamItem::ToolCall { .. } => saw_call = true,
-            MultiTurnStreamItem::FinalResponse(response) => output = Some(response.output),
+            MultiTurnStreamItem::FinalResponse(response) => output = Some(response.output()),
             _ => {}
         }
     }
@@ -4105,21 +3863,18 @@ async fn tool_choice_none_buffers_args_then_rejects_name_without_emit() {
     assert!(!saw_delta);
     let error = error.expect("ToolChoice::None should reject buffered tool-call deltas");
     match error {
-        StreamingError::Prompt(err) => match err {
-            PromptError::UnknownToolCall {
-                tool_name,
-                available_tools,
-                allowed_tools,
-                chat_history,
-            } => {
-                assert_eq!(tool_name, "add");
-                assert_eq!(available_tools, vec!["add".to_string()]);
-                assert!(allowed_tools.is_empty());
-                assert!(history_contains_tool_call(&chat_history, "add"));
-            }
-            other => panic!("expected UnknownToolCall, got {other:?}"),
-        },
-        other => panic!("expected prompt streaming error, got {other:?}"),
+        PromptError::UnknownToolCall {
+            tool_name,
+            available_tools,
+            allowed_tools,
+            chat_history,
+        } => {
+            assert_eq!(tool_name, "add");
+            assert_eq!(available_tools, vec!["add".to_string()]);
+            assert!(allowed_tools.is_empty());
+            assert!(history_contains_tool_call(&chat_history, "add"));
+        }
+        other => panic!("expected UnknownToolCall, got {other:?}"),
     }
     assert_eq!(recorded.request_count(), 1);
 }
@@ -4230,9 +3985,9 @@ async fn stream_prompt_reasoning_delta_stop_prevents_emit_and_later_hook_dispatc
     assert!(!saw_delta);
     assert!(!saw_final_response);
     assert!(
-        error_message
-            .as_deref()
-            .is_some_and(|message| message.contains("PromptCancelled: stop on reasoning delta")),
+        error_message.as_deref().is_some_and(
+            |message| message.contains("the run was cancelled: stop on reasoning delta")
+        ),
         "expected hook termination error, got {error_message:?}"
     );
 }
@@ -4446,9 +4201,9 @@ async fn stream_prompt_tool_call_deltas_hook_termination_prevents_delta_emit() {
     assert!(!saw_delta);
     assert!(!saw_final_response);
     assert!(
-        error_message
-            .as_deref()
-            .is_some_and(|message| message.contains("PromptCancelled: stop on tool call delta")),
+        error_message.as_deref().is_some_and(
+            |message| message.contains("the run was cancelled: stop on tool call delta")
+        ),
         "expected hook termination error, got {error_message:?}"
     );
 }
@@ -4724,9 +4479,7 @@ async fn final_response_history_preserves_structured_text_metadata() {
     }
 
     let final_response = final_response.expect("expected final response");
-    let history = final_response
-        .messages()
-        .expect("with_history should include final history");
+    let history = final_response.messages();
     let assistant_content = history
         .iter()
         .find_map(|message| match message {
@@ -5348,9 +5101,7 @@ async fn test_chat_history_in_final_response() -> anyhow::Result<()> {
                 response_text.push_str(&text);
             }
             Ok(MultiTurnStreamItem::FinalResponse(res)) => {
-                final_history = res
-                    .messages()
-                    .map(<[rig_core::completion::Message]>::to_vec);
+                final_history = Some(res.messages().to_vec());
                 break;
             }
             Err(e) => {
@@ -5405,9 +5156,7 @@ async fn streaming_appends_to_memory_after_final_response() {
     while let Some(item) = stream.next().await {
         match item {
             Ok(MultiTurnStreamItem::FinalResponse(res)) => {
-                history_in_final = res
-                    .messages()
-                    .map(<[rig_core::completion::Message]>::to_vec);
+                history_in_final = Some(res.messages().to_vec());
                 memory_append = res.memory_append.clone();
                 break;
             }
@@ -5458,7 +5207,7 @@ async fn streaming_reports_a_refused_append_on_the_final_response() {
         }
     }
     let response = final_response.expect("the answer stands when the append is refused");
-    assert_eq!(response.messages().map(<[_]>::len), Some(2));
+    assert_eq!(response.messages().len(), 2);
     let report = response
         .memory_append()
         .and_then(crate::run::MemoryAppend::failure)
@@ -5485,9 +5234,7 @@ async fn streaming_reasoning_without_tools_does_not_duplicate_final_history() {
     while let Some(item) = stream.next().await {
         match item {
             Ok(MultiTurnStreamItem::FinalResponse(res)) => {
-                history_in_final = res
-                    .messages()
-                    .map(<[rig_core::completion::Message]>::to_vec);
+                history_in_final = Some(res.messages().to_vec());
                 break;
             }
             Ok(_) => {}
@@ -5508,7 +5255,7 @@ async fn streaming_reasoning_without_tools_does_not_duplicate_final_history() {
         Some(Message::User { content })
             if matches!(
                 content.first(),
-                UserContent::Text(text) if text.text == "think before answering"
+                Some(UserContent::Text(text)) if text.text == "think before answering"
             )
     ));
 
@@ -5620,13 +5367,13 @@ async fn streaming_load_error_yields_memory_error() {
 
     let first = stream.next().await.expect("at least one item");
     match first {
-        Err(StreamingError::Prompt(err)) => match err {
-            PromptError::MemoryError(err) => {
+        Err(err) => match err {
+            PromptError::Memory(err) => {
                 assert!(err.to_string().contains("load boom"));
             }
-            other => panic!("expected PromptError::MemoryError, got {other:?}"),
+            other => panic!("expected PromptError::Memory, got {other:?}"),
         },
-        other => panic!("expected StreamingError::Prompt, got {other:?}"),
+        other => panic!("expected PromptError::Memory, got {other:?}"),
     }
 }
 
@@ -5710,10 +5457,11 @@ async fn run_channel_forwards_events_and_resolves() {
             .iter()
             .any(|item| matches!(item, MultiTurnStreamItem::ToolCall { .. }))
     );
-    assert!(items.iter().any(|item| matches!(
-        item,
-        MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult { .. })
-    )));
+    assert!(
+        items
+            .iter()
+            .any(|item| matches!(item, MultiTurnStreamItem::ToolResult { .. }))
+    );
     match items.last() {
         Some(MultiTurnStreamItem::FinalResponse(last)) => {
             assert_eq!(last.output(), response.output());
@@ -5791,11 +5539,8 @@ async fn run_channel_reports_stream_errors_on_the_future() {
 #[tokio::test]
 async fn a_stream_runs_under_the_span_it_was_built_in() {
     let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
-    let spans = CapturedSpans::default();
-    let subscriber = Registry::default().with(SpanCaptureLayer {
-        spans: spans.clone(),
-    });
-    let _default = tracing::subscriber::set_default(subscriber);
+    let spans = TraceCapture::default();
+    let _default = tracing::subscriber::set_default(spans.subscriber());
 
     // Same callsite-interest warm-up as `assert_stream_usage_recorded_on_chat_spans`.
     let warmup_agent = AgentBuilder::new(streaming_tool_then_text_model()).build();
@@ -5827,7 +5572,7 @@ async fn a_stream_runs_under_the_span_it_was_built_in() {
         Some(MultiTurnStreamItem::FinalResponse(_))
     ));
 
-    let snapshot = spans.snapshot();
+    let snapshot = spans.spans();
     let outer_id = snapshot
         .iter()
         .find(|span| span.name == "outer")
@@ -5843,7 +5588,7 @@ async fn a_stream_runs_under_the_span_it_was_built_in() {
         .collect();
     assert_eq!(chat_spans.len(), 2, "two model turns: {snapshot:?}");
     for chat_span in chat_spans {
-        assert_eq!(chat_span.parent_id, Some(outer_id));
+        assert_eq!(chat_span.parent, Some(outer_id));
     }
 }
 
@@ -5853,11 +5598,8 @@ async fn a_stream_runs_under_the_span_it_was_built_in() {
 #[tokio::test]
 async fn run_channel_runs_under_the_span_it_was_split_in() {
     let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
-    let spans = CapturedSpans::default();
-    let subscriber = Registry::default().with(SpanCaptureLayer {
-        spans: spans.clone(),
-    });
-    let _default = tracing::subscriber::set_default(subscriber);
+    let spans = TraceCapture::default();
+    let _default = tracing::subscriber::set_default(spans.subscriber());
 
     let warmup_agent = AgentBuilder::new(streaming_tool_then_text_model()).build();
     let mut warmup_stream = warmup_agent.prompt("warmup").max_turns(1).stream();
@@ -5881,7 +5623,7 @@ async fn run_channel_runs_under_the_span_it_was_split_in() {
         Some(MultiTurnStreamItem::FinalResponse(_))
     ));
 
-    let snapshot = spans.snapshot();
+    let snapshot = spans.spans();
     let outer_id = snapshot
         .iter()
         .find(|span| span.name == "outer")
@@ -5894,7 +5636,7 @@ async fn run_channel_runs_under_the_span_it_was_split_in() {
         .collect();
     assert_eq!(chat_spans.len(), 2, "two model turns: {snapshot:?}");
     for chat_span in chat_spans {
-        assert_eq!(chat_span.parent_id, Some(outer_id));
+        assert_eq!(chat_span.parent, Some(outer_id));
     }
 }
 
@@ -5904,11 +5646,8 @@ async fn run_channel_runs_under_the_span_it_was_split_in() {
 #[tokio::test]
 async fn a_stream_built_outside_a_span_stays_a_root_when_polled_inside_one() {
     let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
-    let spans = CapturedSpans::default();
-    let subscriber = Registry::default().with(SpanCaptureLayer {
-        spans: spans.clone(),
-    });
-    let _default = tracing::subscriber::set_default(subscriber);
+    let spans = TraceCapture::default();
+    let _default = tracing::subscriber::set_default(spans.subscriber());
 
     let warmup_agent = AgentBuilder::new(streaming_tool_then_text_model()).build();
     let mut warmup_stream = warmup_agent.prompt("warmup").max_turns(1).stream();
@@ -5936,7 +5675,7 @@ async fn a_stream_built_outside_a_span_stays_a_root_when_polled_inside_one() {
         Some(MultiTurnStreamItem::FinalResponse(_))
     ));
 
-    let snapshot = spans.snapshot();
+    let snapshot = spans.spans();
     let poller_id = snapshot
         .iter()
         .find(|span| span.name == "poller")
@@ -5946,15 +5685,15 @@ async fn a_stream_built_outside_a_span_stays_a_root_when_polled_inside_one() {
         .iter()
         .find(|span| span.name == "invoke_agent")
         .unwrap_or_else(|| panic!("a root invoke_agent is created: {snapshot:?}"));
-    assert_eq!(invoke.parent_id, None, "not the poller's child");
+    assert_eq!(invoke.parent, None, "not the poller's child");
     let chat_spans: Vec<_> = snapshot
         .iter()
         .filter(|span| span.name == "chat_streaming")
         .collect();
     assert_eq!(chat_spans.len(), 2);
     for chat_span in chat_spans {
-        assert_eq!(chat_span.parent_id, Some(invoke.id));
-        assert_ne!(chat_span.parent_id, Some(poller_id));
+        assert_eq!(chat_span.parent, Some(invoke.id));
+        assert_ne!(chat_span.parent, Some(poller_id));
     }
 }
 
@@ -5966,11 +5705,8 @@ async fn a_stream_built_outside_a_span_stays_a_root_when_polled_inside_one() {
 #[tokio::test]
 async fn a_blocking_run_belongs_to_the_span_it_was_started_in() {
     let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
-    let spans = CapturedSpans::default();
-    let subscriber = Registry::default().with(SpanCaptureLayer {
-        spans: spans.clone(),
-    });
-    let _default = tracing::subscriber::set_default(subscriber);
+    let spans = TraceCapture::default();
+    let _default = tracing::subscriber::set_default(spans.subscriber());
 
     let warmup_agent = AgentBuilder::new(MockCompletionModel::text("warmup")).build();
     warmup_agent.prompt("warmup").await.expect("warmup");
@@ -5986,7 +5722,7 @@ async fn a_blocking_run_belongs_to_the_span_it_was_started_in() {
         .expect("run succeeds");
     assert_eq!(response.output(), "done");
 
-    let snapshot = spans.snapshot();
+    let snapshot = spans.spans();
     let outer_id = snapshot
         .iter()
         .find(|span| span.name == "outer")
@@ -5998,7 +5734,7 @@ async fn a_blocking_run_belongs_to_the_span_it_was_started_in() {
         .filter(|span| span.name == "chat" && span.target == "rig::agent_chat")
         .collect();
     assert_eq!(chat_spans.len(), 1, "one model turn: {snapshot:?}");
-    assert_eq!(chat_spans[0].parent_id, Some(outer_id));
+    assert_eq!(chat_spans[0].parent, Some(outer_id));
 }
 
 /// A typed run reaches the same rule through `IntoFuture`: the future is
@@ -6006,11 +5742,8 @@ async fn a_blocking_run_belongs_to_the_span_it_was_started_in() {
 #[tokio::test]
 async fn a_typed_run_belongs_to_the_span_it_was_started_in() {
     let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
-    let spans = CapturedSpans::default();
-    let subscriber = Registry::default().with(SpanCaptureLayer {
-        spans: spans.clone(),
-    });
-    let _default = tracing::subscriber::set_default(subscriber);
+    let spans = TraceCapture::default();
+    let _default = tracing::subscriber::set_default(spans.subscriber());
 
     let warmup_agent = AgentBuilder::new(MockCompletionModel::text("{\"n\": 0}")).build();
     warmup_agent
@@ -6031,7 +5764,7 @@ async fn a_typed_run_belongs_to_the_span_it_was_started_in() {
         .expect("typed run succeeds");
     assert_eq!(response.output["n"], 1);
 
-    let snapshot = spans.snapshot();
+    let snapshot = spans.spans();
     let outer_id = snapshot
         .iter()
         .find(|span| span.name == "outer")
@@ -6043,7 +5776,7 @@ async fn a_typed_run_belongs_to_the_span_it_was_started_in() {
         .filter(|span| span.name == "chat" && span.target == "rig::agent_chat")
         .collect();
     assert_eq!(chat_spans.len(), 1, "one model turn: {snapshot:?}");
-    assert_eq!(chat_spans[0].parent_id, Some(outer_id));
+    assert_eq!(chat_spans[0].parent, Some(outer_id));
 }
 
 /// The blocking counterpart of the stream root test: a run started outside
@@ -6052,11 +5785,8 @@ async fn a_typed_run_belongs_to_the_span_it_was_started_in() {
 #[tokio::test]
 async fn a_blocking_run_started_outside_a_span_stays_a_root_when_polled_inside_one() {
     let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
-    let spans = CapturedSpans::default();
-    let subscriber = Registry::default().with(SpanCaptureLayer {
-        spans: spans.clone(),
-    });
-    let _default = tracing::subscriber::set_default(subscriber);
+    let spans = TraceCapture::default();
+    let _default = tracing::subscriber::set_default(spans.subscriber());
 
     let warmup_agent = AgentBuilder::new(MockCompletionModel::text("warmup")).build();
     warmup_agent.prompt("warmup").await.expect("warmup");
@@ -6069,7 +5799,7 @@ async fn a_blocking_run_started_outside_a_span_stays_a_root_when_polled_inside_o
     let response = run.instrument(poller_span).await.expect("run succeeds");
     assert_eq!(response.output(), "done");
 
-    let snapshot = spans.snapshot();
+    let snapshot = spans.spans();
     let poller_id = snapshot
         .iter()
         .find(|span| span.name == "poller")
@@ -6079,14 +5809,14 @@ async fn a_blocking_run_started_outside_a_span_stays_a_root_when_polled_inside_o
         .iter()
         .find(|span| span.name == "invoke_agent")
         .unwrap_or_else(|| panic!("a root invoke_agent is created: {snapshot:?}"));
-    assert_eq!(invoke.parent_id, None, "not the poller's child");
+    assert_eq!(invoke.parent, None, "not the poller's child");
     let chat_spans: Vec<_> = snapshot
         .iter()
         .filter(|span| span.name == "chat" && span.target == "rig::agent_chat")
         .collect();
     assert_eq!(chat_spans.len(), 1, "one model turn: {snapshot:?}");
     assert_eq!(
-        chat_spans[0].parent_id,
+        chat_spans[0].parent,
         Some(invoke.id),
         "not the poller {poller_id}"
     );

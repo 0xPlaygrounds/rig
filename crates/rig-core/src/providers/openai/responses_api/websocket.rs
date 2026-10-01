@@ -496,6 +496,8 @@ impl ResponsesWebSocketSession {
         &self,
         completion_request: crate::completion::CompletionRequest,
     ) -> Result<crate::providers::openai::responses_api::CompletionRequest, ProviderError> {
+        // The session sends without the driver, so it runs the driver's check.
+        completion_request.validate_message_content()?;
         let (completion_request, issuers) = crate::providers::openai::wire::scope_reasoning(
             &self.wire.provider.dialect,
             &self.wire.model,
@@ -712,7 +714,7 @@ fn feed<'id>(
     reply: &'id std::sync::Mutex<Shared<Completion>>,
     payload: String,
 ) -> Result<bool, ProviderError> {
-    crate::driver::step(decoder, reply, WireFrame::Text(payload))
+    crate::driver::step(decoder, reply, WireFrame::Text(payload), None)
         .map(|step| matches!(step, Flow::Ended(_)))
 }
 
@@ -860,7 +862,7 @@ fn event_timeout_error(timeout: Duration) -> ProviderError {
 /// Failures without a provider response retain transport error classification.
 fn websocket_provider_error(error: http_client::Error) -> ProviderError {
     let provider_request_id = error.non_success_headers().and_then(|headers| {
-        crate::providers::internal::request_id_from_headers(headers, REQUEST_ID_HEADER)
+        crate::driver::http_transport::request_id_from(headers, REQUEST_ID_HEADER)
     });
     ProviderError::from_transport_error(error).with_provider_request_id(provider_request_id)
 }

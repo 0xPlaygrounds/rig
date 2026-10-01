@@ -1,6 +1,8 @@
 use google_cloud_aiplatform_v1 as vertexai;
+use google_cloud_auth::build_errors;
 use google_cloud_auth::credentials;
 use google_cloud_auth::credentials::Credentials;
+use google_cloud_gax::client_builder;
 use std::sync::Arc;
 use thiserror::Error;
 use tokio::sync::OnceCell;
@@ -24,12 +26,16 @@ pub enum VertexAiClientError {
         "construct Vertex ADC credentials inside a Tokio runtime context; the host must retain and drive that runtime"
     )]
     RuntimeRequired,
-    #[error("failed to build source credentials: {0}")]
-    SourceCredentials(String),
-    #[error("failed to build impersonated credentials: {0}")]
-    ImpersonatedCredentials(String),
-    #[error("failed to build Vertex AI prediction service: {0}")]
-    PredictionService(String),
+    /// Application Default Credentials could not be resolved.
+    #[error("failed to build source credentials")]
+    SourceCredentials(#[source] Arc<build_errors::Error>),
+    /// `GOOGLE_CLOUD_SERVICE_ACCOUNT` impersonation could not be set up.
+    #[error("failed to build impersonated credentials")]
+    ImpersonatedCredentials(#[source] Arc<build_errors::Error>),
+    /// The SDK prediction service could not be built. Shared through `Arc`
+    /// because every clone of a client reports the same cached failure.
+    #[error("failed to build Vertex AI prediction service")]
+    PredictionService(#[source] Arc<client_builder::Error>),
     #[error(
         "a supplied `PredictionService` already carries its own credentials; drop either `VertexAiBuilder::with_credentials()` or `VertexAiBuilder::with_prediction_service()`"
     )]
@@ -50,13 +56,13 @@ fn build_credentials(
         tokio::runtime::Handle::try_current().map_err(|_| VertexAiClientError::RuntimeRequired)?;
         let source_credentials = credentials::Builder::default()
             .build()
-            .map_err(|e| VertexAiClientError::SourceCredentials(e.to_string()))?;
+            .map_err(|e| VertexAiClientError::SourceCredentials(Arc::new(e)))?;
 
         if let Ok(service_account) = std::env::var("GOOGLE_CLOUD_SERVICE_ACCOUNT") {
             credentials::impersonated::Builder::from_source_credentials(source_credentials)
                 .with_target_principal(service_account)
                 .build()
-                .map_err(|e| VertexAiClientError::ImpersonatedCredentials(e.to_string()))
+                .map_err(|e| VertexAiClientError::ImpersonatedCredentials(Arc::new(e)))
         } else {
             Ok(source_credentials)
         }
@@ -270,7 +276,7 @@ impl VertexAi {
                         .with_credentials(credentials.clone())
                         .build()
                         .await
-                        .map_err(|error| VertexAiClientError::PredictionService(error.to_string()))
+                        .map_err(|error| VertexAiClientError::PredictionService(Arc::new(error)))
                 })
                 .await
                 .as_ref()

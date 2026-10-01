@@ -125,12 +125,12 @@ fn provider_file_content_as_generic_document(file_id: &str) -> RigUserContent {
 
 fn document_question(content: RigUserContent, page_number: u8) -> Message {
     Message::User {
-        content: rig_core::NonEmpty::with_rest(
+        content: vec![
             content,
-            [RigUserContent::Text(Text::new(format!(
+            RigUserContent::Text(Text::new(format!(
                 "What exact visible text appears on page {page_number}? Reply with only that text."
-            )))],
-        ),
+            ))),
+        ],
     }
 }
 
@@ -195,7 +195,7 @@ async fn responses_document_file_id_roundtrip_live() {
         let response = agent
             .chat(document_question(provider_native_content, 2), &mut history)
             .await
-            .expect("Responses API should read uploaded PDF by file_id").output;
+            .expect("Responses API should read uploaded PDF by file_id").output();
         assert_page_label(&response, 2);
         assert_history_contains_file_id(&history, &file_id);
 
@@ -205,14 +205,14 @@ async fn responses_document_file_id_roundtrip_live() {
                 &mut history,
             )
             .await
-            .expect("Responses API should reuse file_id document from chat history").output;
+            .expect("Responses API should reuse file_id document from chat history").output();
         assert_page_label(&follow_up, 3);
         assert_history_contains_file_id(&history, &file_id);
 
         let direct_response = agent
             .prompt(direct_file_id_document_question(&file_id, 1))
             .await
-            .expect("Responses API should read direct generic file_id document").output;
+            .expect("Responses API should read direct generic file_id document").output();
         assert_page_label(&direct_response, 1);
     })
     .await;
@@ -233,7 +233,7 @@ async fn chat_completions_document_file_id_roundtrip_live() {
         let response = agent
             .chat(direct_file_id_document_question(&file_id, 2), &mut history)
             .await
-            .expect("Chat Completions API should read uploaded PDF by file_id").output;
+            .expect("Chat Completions API should read uploaded PDF by file_id").output();
         assert_page_label(&response, 2);
         assert_history_contains_file_id(&history, &file_id);
 
@@ -243,7 +243,7 @@ async fn chat_completions_document_file_id_roundtrip_live() {
                 &mut history,
             )
             .await
-            .expect("Chat Completions API should reuse file_id document from chat history").output;
+            .expect("Chat Completions API should reuse file_id document from chat history").output();
         assert_page_label(&follow_up, 3);
         assert_history_contains_file_id(&history, &file_id);
 
@@ -251,7 +251,7 @@ async fn chat_completions_document_file_id_roundtrip_live() {
         let native_roundtrip_response = agent
             .prompt(document_question(provider_native_content, 1))
             .await
-            .expect("Chat Completions API should read provider-native file_id round-tripped through Rig").output;
+            .expect("Chat Completions API should read provider-native file_id round-tripped through Rig").output();
         assert_page_label(&native_roundtrip_response, 1);
     })
     .await;

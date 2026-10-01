@@ -1,0 +1,196 @@
+when:
+  path: /v1/responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"content":[{"text":"Use web search to find the latest stable Rust release and its release date. Cite the source you used. Answer in one short sentence.","type":"input_text"}],"role":"user","type":"message"}],"max_output_tokens":2048,"model":"grok-4.3","store":false,"stream":true,"tools":[{"type":"web_search"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  - name: x-request-id
+    value: 53a064fb-1f13-97db-8f67-296c3c2677db
+  body: |+
+    event: response.created
+    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"53a064fb-1f13-97db-8f67-296c3c2677db","incomplete_details":null,"instructions":null,"max_output_tokens":2048,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"in_progress","store":false,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"type":"web_search"}],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":null,"user":null},"sequence_number":0,"type":"response.created"}
+
+    event: response.in_progress
+    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"53a064fb-1f13-97db-8f67-296c3c2677db","incomplete_details":null,"instructions":null,"max_output_tokens":2048,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"in_progress","store":false,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"type":"web_search"}],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":null,"user":null},"sequence_number":1,"type":"response.in_progress"}
+
+    event: response.output_item.added
+    data: {"item":{"action":{"query":"","sources":[],"type":"search"},"id":"ws_53a064fb-1f13-97db-8f67-296c3c2677db_call-fcd2c610-a722-4ae0-b0a9-6676c9b28b07-0","status":"in_progress","type":"web_search_call"},"output_index":0,"sequence_number":2,"type":"response.output_item.added"}
+
+    event: response.web_search_call.in_progress
+    data: {"item_id":"ws_53a064fb-1f13-97db-8f67-296c3c2677db_call-fcd2c610-a722-4ae0-b0a9-6676c9b28b07-0","output_index":0,"sequence_number":3,"type":"response.web_search_call.in_progress"}
+
+    event: response.web_search_call.searching
+    data: {"item_id":"ws_53a064fb-1f13-97db-8f67-296c3c2677db_call-fcd2c610-a722-4ae0-b0a9-6676c9b28b07-0","output_index":0,"sequence_number":4,"type":"response.web_search_call.searching"}
+
+    event: response.output_item.added
+    data: {"item":{"action":{"query":"","sources":[],"type":"search"},"id":"ws_53a064fb-1f13-97db-8f67-296c3c2677db_call-fcd2c610-a722-4ae0-b0a9-6676c9b28b07-1","status":"in_progress","type":"web_search_call"},"output_index":1,"sequence_number":5,"type":"response.output_item.added"}
+
+    event: response.web_search_call.in_progress
+    data: {"item_id":"ws_53a064fb-1f13-97db-8f67-296c3c2677db_call-fcd2c610-a722-4ae0-b0a9-6676c9b28b07-1","output_index":1,"sequence_number":6,"type":"response.web_search_call.in_progress"}
+
+    event: response.web_search_call.searching
+    data: {"item_id":"ws_53a064fb-1f13-97db-8f67-296c3c2677db_call-fcd2c610-a722-4ae0-b0a9-6676c9b28b07-1","output_index":1,"sequence_number":7,"type":"response.web_search_call.searching"}
+
+    event: response.web_search_call.completed
+    data: {"item_id":"ws_53a064fb-1f13-97db-8f67-296c3c2677db_call-fcd2c610-a722-4ae0-b0a9-6676c9b28b07-0","output_index":0,"sequence_number":8,"type":"response.web_search_call.completed"}
+
+    event: response.output_item.done
+    data: {"item":{"action":{"query":"latest stable Rust release date","sources":[{"type":"url","url":"https://blog.rust-lang.org/2026/06/30/Rust-1.96.1"},{"type":"url","url":"https://github.com/rust-lang/rust/branches/all"},{"type":"url","url":"https://libraries.io/cargo/rust-releases-bundled"},{"type":"url","url":"https://rust-game.info/news/"},{"type":"url","url":"https://blog.rust-lang.org/2026/08/20/Rust-1.98.0/"}],"type":"search"},"id":"ws_53a064fb-1f13-97db-8f67-296c3c2677db_call-fcd2c610-a722-4ae0-b0a9-6676c9b28b07-0","status":"completed","type":"web_search_call"},"output_index":0,"sequence_number":9,"type":"response.output_item.done"}
+
+    event: response.web_search_call.completed
+    data: {"item_id":"ws_53a064fb-1f13-97db-8f67-296c3c2677db_call-fcd2c610-a722-4ae0-b0a9-6676c9b28b07-1","output_index":1,"sequence_number":10,"type":"response.web_search_call.completed"}
+
+    event: response.output_item.done
+    data: {"item":{"action":{"query":"Rust current stable version","sources":[{"type":"url","url":"https://github.com/rust-lang/rust/branches/all"},{"type":"url","url":"https://blog.rust-lang.org/2026/06/30/Rust-1.96.1"},{"type":"url","url":"https://rust-game.info/news/"},{"type":"url","url":"https://www.whatrustisit.com/"},{"type":"url","url":"https://libraries.io/cargo/rust-releases-bundled"}],"type":"search"},"id":"ws_53a064fb-1f13-97db-8f67-296c3c2677db_call-fcd2c610-a722-4ae0-b0a9-6676c9b28b07-1","status":"completed","type":"web_search_call"},"output_index":1,"sequence_number":11,"type":"response.output_item.done"}
+
+    event: response.output_item.added
+    data: {"item":{"action":{"query":"","sources":[],"type":"search"},"id":"ws_53a064fb-1f13-97db-8f67-296c3c2677db_call-fcd2c610-a722-4ae0-b0a9-6676c9b28b07-2","status":"in_progress","type":"web_search_call"},"output_index":2,"sequence_number":12,"type":"response.output_item.added"}
+
+    event: response.web_search_call.in_progress
+    data: {"item_id":"ws_53a064fb-1f13-97db-8f67-296c3c2677db_call-fcd2c610-a722-4ae0-b0a9-6676c9b28b07-2","output_index":2,"sequence_number":13,"type":"response.web_search_call.in_progress"}
+
+    event: response.web_search_call.searching
+    data: {"item_id":"ws_53a064fb-1f13-97db-8f67-296c3c2677db_call-fcd2c610-a722-4ae0-b0a9-6676c9b28b07-2","output_index":2,"sequence_number":14,"type":"response.web_search_call.searching"}
+
+    event: response.output_item.added
+    data: {"item":{"action":{"query":"","sources":[],"type":"search"},"id":"ws_53a064fb-1f13-97db-8f67-296c3c2677db_call-fcd2c610-a722-4ae0-b0a9-6676c9b28b07-3","status":"in_progress","type":"web_search_call"},"output_index":3,"sequence_number":15,"type":"response.output_item.added"}
+
+    event: response.web_search_call.in_progress
+    data: {"item_id":"ws_53a064fb-1f13-97db-8f67-296c3c2677db_call-fcd2c610-a722-4ae0-b0a9-6676c9b28b07-3","output_index":3,"sequence_number":16,"type":"response.web_search_call.in_progress"}
+
+    event: response.web_search_call.searching
+    data: {"item_id":"ws_53a064fb-1f13-97db-8f67-296c3c2677db_call-fcd2c610-a722-4ae0-b0a9-6676c9b28b07-3","output_index":3,"sequence_number":17,"type":"response.web_search_call.searching"}
+
+    event: response.web_search_call.completed
+    data: {"item_id":"ws_53a064fb-1f13-97db-8f67-296c3c2677db_call-fcd2c610-a722-4ae0-b0a9-6676c9b28b07-2","output_index":2,"sequence_number":18,"type":"response.web_search_call.completed"}
+
+    event: response.output_item.done
+    data: {"item":{"action":{"query":"Rust 1.98.1 release","sources":[{"type":"url","url":"https://blog.rust-lang.org/releases/latest"},{"type":"url","url":"https://github.com/rust-lang/rust/releases/latest"},{"type":"url","url":"https://versionlog.com/rust/1.98/"},{"type":"url","url":"https://chromium.googlesource.com/external/github.com/rust-lang/rust/+/refs/tags/1.98.1"},{"type":"url","url":"https://eosl.date/eol/product/rust/"},{"type":"url","url":"https://blog.rust-lang.org/releases/"},{"type":"url","url":"https://newreleases.io/project/github/rust-lang/rust/release/1.98.0"},{"type":"url","url":"https://github.com/rust-lang/rust/releases"},{"type":"url","url":"https://bsky.app/profile/rust-lang.org"},{"type":"url","url":"https://blog.rust-lang.org/2026/08/20/Rust-1.98.0/"}],"type":"search"},"id":"ws_53a064fb-1f13-97db-8f67-296c3c2677db_call-fcd2c610-a722-4ae0-b0a9-6676c9b28b07-2","status":"completed","type":"web_search_call"},"output_index":2,"sequence_number":19,"type":"response.output_item.done"}
+
+    event: response.web_search_call.completed
+    data: {"item_id":"ws_53a064fb-1f13-97db-8f67-296c3c2677db_call-fcd2c610-a722-4ae0-b0a9-6676c9b28b07-3","output_index":3,"sequence_number":20,"type":"response.web_search_call.completed"}
+
+    event: response.output_item.done
+    data: {"item":{"action":{"type":"open_page","url":"https://www.whatrustisit.com/"},"id":"ws_53a064fb-1f13-97db-8f67-296c3c2677db_call-fcd2c610-a722-4ae0-b0a9-6676c9b28b07-3","status":"completed","type":"web_search_call"},"output_index":3,"sequence_number":21,"type":"response.output_item.done"}
+
+    event: response.output_item.added
+    data: {"item":{"content":[],"id":"msg_53a064fb-1f13-97db-8f67-296c3c2677db","role":"assistant","status":"in_progress","type":"message"},"output_index":4,"sequence_number":22,"type":"response.output_item.added"}
+
+    event: response.content_part.added
+    data: {"content_index":0,"item_id":"msg_53a064fb-1f13-97db-8f67-296c3c2677db","output_index":4,"part":{"annotations":[],"logprobs":[],"text":"","type":"output_text"},"sequence_number":23,"type":"response.content_part.added"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"**","item_id":"msg_53a064fb-1f13-97db-8f67-296c3c2677db","logprobs":[],"output_index":4,"sequence_number":24,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"The","item_id":"msg_53a064fb-1f13-97db-8f67-296c3c2677db","logprobs":[],"output_index":4,"sequence_number":25,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" latest","item_id":"msg_53a064fb-1f13-97db-8f67-296c3c2677db","logprobs":[],"output_index":4,"sequence_number":26,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" stable","item_id":"msg_53a064fb-1f13-97db-8f67-296c3c2677db","logprobs":[],"output_index":4,"sequence_number":27,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" Rust","item_id":"msg_53a064fb-1f13-97db-8f67-296c3c2677db","logprobs":[],"output_index":4,"sequence_number":28,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" release","item_id":"msg_53a064fb-1f13-97db-8f67-296c3c2677db","logprobs":[],"output_index":4,"sequence_number":29,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" is","item_id":"msg_53a064fb-1f13-97db-8f67-296c3c2677db","logprobs":[],"output_index":4,"sequence_number":30,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" ","item_id":"msg_53a064fb-1f13-97db-8f67-296c3c2677db","logprobs":[],"output_index":4,"sequence_number":31,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"1","item_id":"msg_53a064fb-1f13-97db-8f67-296c3c2677db","logprobs":[],"output_index":4,"sequence_number":32,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":".","item_id":"msg_53a064fb-1f13-97db-8f67-296c3c2677db","logprobs":[],"output_index":4,"sequence_number":33,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"98","item_id":"msg_53a064fb-1f13-97db-8f67-296c3c2677db","logprobs":[],"output_index":4,"sequence_number":34,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":".","item_id":"msg_53a064fb-1f13-97db-8f67-296c3c2677db","logprobs":[],"output_index":4,"sequence_number":35,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"1","item_id":"msg_53a064fb-1f13-97db-8f67-296c3c2677db","logprobs":[],"output_index":4,"sequence_number":36,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":",","item_id":"msg_53a064fb-1f13-97db-8f67-296c3c2677db","logprobs":[],"output_index":4,"sequence_number":37,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" released","item_id":"msg_53a064fb-1f13-97db-8f67-296c3c2677db","logprobs":[],"output_index":4,"sequence_number":38,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" September","item_id":"msg_53a064fb-1f13-97db-8f67-296c3c2677db","logprobs":[],"output_index":4,"sequence_number":39,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" ","item_id":"msg_53a064fb-1f13-97db-8f67-296c3c2677db","logprobs":[],"output_index":4,"sequence_number":40,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"3","item_id":"msg_53a064fb-1f13-97db-8f67-296c3c2677db","logprobs":[],"output_index":4,"sequence_number":41,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":",","item_id":"msg_53a064fb-1f13-97db-8f67-296c3c2677db","logprobs":[],"output_index":4,"sequence_number":42,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" ","item_id":"msg_53a064fb-1f13-97db-8f67-296c3c2677db","logprobs":[],"output_index":4,"sequence_number":43,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"202","item_id":"msg_53a064fb-1f13-97db-8f67-296c3c2677db","logprobs":[],"output_index":4,"sequence_number":44,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"6","item_id":"msg_53a064fb-1f13-97db-8f67-296c3c2677db","logprobs":[],"output_index":4,"sequence_number":45,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":".**","item_id":"msg_53a064fb-1f13-97db-8f67-296c3c2677db","logprobs":[],"output_index":4,"sequence_number":46,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"[[1]](https://blog.rust-lang.org/releases/latest)","item_id":"msg_53a064fb-1f13-97db-8f67-296c3c2677db","logprobs":[],"output_index":4,"sequence_number":47,"type":"response.output_text.delta"}
+
+    event: response.output_text.annotation.added
+    data: {"annotation":{"end_index":122,"start_index":73,"title":"1","type":"url_citation","url":"https://blog.rust-lang.org/releases/latest"},"annotation_index":0,"content_index":0,"item_id":"msg_53a064fb-1f13-97db-8f67-296c3c2677db","output_index":4,"sequence_number":48,"type":"response.output_text.annotation.added"}
+
+    event: response.output_text.done
+    data: {"content_index":0,"item_id":"msg_53a064fb-1f13-97db-8f67-296c3c2677db","logprobs":[],"output_index":4,"sequence_number":49,"text":"**The latest stable Rust release is 1.98.1, released September 3, 2026.**[[1]](https://blog.rust-lang.org/releases/latest)","type":"response.output_text.done"}
+
+    event: response.content_part.done
+    data: {"content_index":0,"item_id":"msg_53a064fb-1f13-97db-8f67-296c3c2677db","output_index":4,"part":{"annotations":[{"end_index":122,"start_index":73,"title":"1","type":"url_citation","url":"https://blog.rust-lang.org/releases/latest"}],"logprobs":[],"text":"**The latest stable Rust release is 1.98.1, released September 3, 2026.**[[1]](https://blog.rust-lang.org/releases/latest)","type":"output_text"},"sequence_number":50,"type":"response.content_part.done"}
+
+    event: response.output_item.done
+    data: {"item":{"content":[{"annotations":[{"end_index":122,"start_index":73,"title":"1","type":"url_citation","url":"https://blog.rust-lang.org/releases/latest"}],"logprobs":[],"text":"**The latest stable Rust release is 1.98.1, released September 3, 2026.**[[1]](https://blog.rust-lang.org/releases/latest)","type":"output_text"}],"id":"msg_53a064fb-1f13-97db-8f67-296c3c2677db","role":"assistant","status":"completed","type":"message"},"output_index":4,"sequence_number":51,"type":"response.output_item.done"}
+
+    event: response.completed
+    data: {"response":{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"53a064fb-1f13-97db-8f67-296c3c2677db","incomplete_details":null,"instructions":null,"max_output_tokens":2048,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[{"action":{"query":"latest stable Rust release date","sources":[{"type":"url","url":"https://libraries.io/cargo/rust-releases-bundled"},{"type":"url","url":"https://chromium.googlesource.com/external/github.com/rust-lang/rust/+/refs/tags/1.98.1"},{"type":"url","url":"https://eosl.date/eol/product/rust/"},{"type":"url","url":"https://newreleases.io/project/github/rust-lang/rust/release/1.98.0"},{"type":"url","url":"https://blog.rust-lang.org/2026/06/30/Rust-1.96.1"},{"type":"url","url":"https://versionlog.com/rust/1.98/"},{"type":"url","url":"https://blog.rust-lang.org/releases/latest"},{"type":"url","url":"https://github.com/rust-lang/rust/releases"},{"type":"url","url":"https://github.com/rust-lang/rust/releases/latest"},{"type":"url","url":"https://blog.rust-lang.org/releases/"},{"type":"url","url":"https://rust-game.info/news/"},{"type":"url","url":"https://www.whatrustisit.com/"},{"type":"url","url":"https://github.com/rust-lang/rust/branches/all"},{"type":"url","url":"https://blog.rust-lang.org/2026/08/20/Rust-1.98.0/"},{"type":"url","url":"https://bsky.app/profile/rust-lang.org"}],"type":"search"},"id":"ws_53a064fb-1f13-97db-8f67-296c3c2677db_call-fcd2c610-a722-4ae0-b0a9-6676c9b28b07-0","status":"completed","type":"web_search_call"},{"action":{"query":"Rust current stable version","sources":[{"type":"url","url":"https://libraries.io/cargo/rust-releases-bundled"},{"type":"url","url":"https://chromium.googlesource.com/external/github.com/rust-lang/rust/+/refs/tags/1.98.1"},{"type":"url","url":"https://eosl.date/eol/product/rust/"},{"type":"url","url":"https://newreleases.io/project/github/rust-lang/rust/release/1.98.0"},{"type":"url","url":"https://blog.rust-lang.org/2026/06/30/Rust-1.96.1"},{"type":"url","url":"https://versionlog.com/rust/1.98/"},{"type":"url","url":"https://blog.rust-lang.org/releases/latest"},{"type":"url","url":"https://github.com/rust-lang/rust/releases"},{"type":"url","url":"https://github.com/rust-lang/rust/releases/latest"},{"type":"url","url":"https://blog.rust-lang.org/releases/"},{"type":"url","url":"https://rust-game.info/news/"},{"type":"url","url":"https://www.whatrustisit.com/"},{"type":"url","url":"https://github.com/rust-lang/rust/branches/all"},{"type":"url","url":"https://blog.rust-lang.org/2026/08/20/Rust-1.98.0/"},{"type":"url","url":"https://bsky.app/profile/rust-lang.org"}],"type":"search"},"id":"ws_53a064fb-1f13-97db-8f67-296c3c2677db_call-fcd2c610-a722-4ae0-b0a9-6676c9b28b07-1","status":"completed","type":"web_search_call"},{"action":{"query":"Rust 1.98.1 release","sources":[{"type":"url","url":"https://libraries.io/cargo/rust-releases-bundled"},{"type":"url","url":"https://chromium.googlesource.com/external/github.com/rust-lang/rust/+/refs/tags/1.98.1"},{"type":"url","url":"https://eosl.date/eol/product/rust/"},{"type":"url","url":"https://newreleases.io/project/github/rust-lang/rust/release/1.98.0"},{"type":"url","url":"https://blog.rust-lang.org/2026/06/30/Rust-1.96.1"},{"type":"url","url":"https://versionlog.com/rust/1.98/"},{"type":"url","url":"https://blog.rust-lang.org/releases/latest"},{"type":"url","url":"https://github.com/rust-lang/rust/releases"},{"type":"url","url":"https://github.com/rust-lang/rust/releases/latest"},{"type":"url","url":"https://blog.rust-lang.org/releases/"},{"type":"url","url":"https://rust-game.info/news/"},{"type":"url","url":"https://www.whatrustisit.com/"},{"type":"url","url":"https://github.com/rust-lang/rust/branches/all"},{"type":"url","url":"https://blog.rust-lang.org/2026/08/20/Rust-1.98.0/"},{"type":"url","url":"https://bsky.app/profile/rust-lang.org"}],"type":"search"},"id":"ws_53a064fb-1f13-97db-8f67-296c3c2677db_call-fcd2c610-a722-4ae0-b0a9-6676c9b28b07-2","status":"completed","type":"web_search_call"},{"action":{"type":"open_page","url":"https://www.whatrustisit.com/"},"id":"ws_53a064fb-1f13-97db-8f67-296c3c2677db_call-fcd2c610-a722-4ae0-b0a9-6676c9b28b07-3","status":"completed","type":"web_search_call"},{"content":[{"annotations":[{"end_index":122,"start_index":73,"title":"1","type":"url_citation","url":"https://blog.rust-lang.org/releases/latest"}],"logprobs":[],"text":"**The latest stable Rust release is 1.98.1, released September 3, 2026.**[[1]](https://blog.rust-lang.org/releases/latest)","type":"output_text"}],"id":"msg_53a064fb-1f13-97db-8f67-296c3c2677db","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":false,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"type":"web_search"}],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":{"context_details":{"input_tokens":12459,"output_tokens":162},"cost_in_usd_ticks":371507000,"input_tokens":19100,"input_tokens_details":{"cached_tokens":7616},"num_server_side_tools_used":4,"num_sources_used":0,"output_tokens":509,"output_tokens_details":{"reasoning_tokens":406},"server_side_tool_usage_details":{"code_interpreter_calls":0,"document_search_calls":0,"file_search_calls":0,"image_generation_calls":0,"mcp_calls":0,"web_search_calls":4,"x_posts_fetched":0,"x_search_calls":0,"x_users_fetched":0},"total_tokens":19609},"user":null},"sequence_number":52,"type":"response.completed"}
+
+---
+when:
+  path: /v1/responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"content":[{"text":"Use web search to find the latest stable Rust release and its release date. Cite the source you used. Answer in one short sentence.","type":"input_text"}],"role":"user","type":"message"}],"max_output_tokens":2048,"model":"grok-4.3","store":false,"tools":[{"type":"web_search"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: x-request-id
+    value: 4afbde1d-86dd-955f-850a-406c23bf81d1
+  body: '{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"4afbde1d-86dd-955f-850a-406c23bf81d1","incomplete_details":null,"instructions":null,"max_output_tokens":2048,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[{"action":{"query":"latest stable Rust release date","sources":[{"type":"url","url":"https://blog.rust-lang.org/2026/06/30/Rust-1.96.1"},{"type":"url","url":"https://github.com/rust-lang/rust/branches/all"},{"type":"url","url":"https://rust-game.info/news/"},{"type":"url","url":"https://libraries.io/cargo/rust-releases-bundled"},{"type":"url","url":"https://blog.rust-lang.org/2026/08/20/Rust-1.98.0/"}],"type":"search"},"id":"ws_4afbde1d-86dd-955f-850a-406c23bf81d1_call-d4201a76-92f3-4d40-9421-93249b43394d-0","status":"completed","type":"web_search_call"},{"action":{"query":"Rust current stable version","sources":[{"type":"url","url":"https://github.com/rust-lang/rust/branches/all"},{"type":"url","url":"https://blog.rust-lang.org/2026/06/30/Rust-1.96.1"},{"type":"url","url":"https://rust-game.info/news/"},{"type":"url","url":"https://www.whatrustisit.com/"},{"type":"url","url":"https://libraries.io/cargo/rust-releases-bundled"}],"type":"search"},"id":"ws_4afbde1d-86dd-955f-850a-406c23bf81d1_call-d4201a76-92f3-4d40-9421-93249b43394d-1","status":"completed","type":"web_search_call"},{"id":"tco_4afbde1d-86dd-955f-850a-406c23bf81d1_call-d4201a76-92f3-4d40-9421-93249b43394d-0","status":"completed","summary":[],"type":"reasoning"},{"id":"tco_4afbde1d-86dd-955f-850a-406c23bf81d1_call-d4201a76-92f3-4d40-9421-93249b43394d-1","status":"completed","summary":[],"type":"reasoning"},{"action":{"query":"Rust 1.98.1 release date","sources":[{"type":"url","url":"https://blog.rust-lang.org/releases/latest"},{"type":"url","url":"https://github.com/rust-lang/rust/releases/latest"},{"type":"url","url":"https://eosl.date/eol/product/rust/"},{"type":"url","url":"https://blog.rust-lang.org/releases/"},{"type":"url","url":"https://github.com/rust-lang/rust/releases"},{"type":"url","url":"https://verssion.one/p/Rust_%28programming_language%29/"},{"type":"url","url":"https://bsky.app/profile/rust-lang.org"},{"type":"url","url":"https://blog.rust-lang.org/2026/08/20/Rust-1.98.0/"},{"type":"url","url":"https://patchletter.com/en/software/rust"},{"type":"url","url":"https://endoflife.date/rust"}],"type":"search"},"id":"ws_4afbde1d-86dd-955f-850a-406c23bf81d1_call-d4201a76-92f3-4d40-9421-93249b43394d-2","status":"completed","type":"web_search_call"},{"action":{"type":"open_page","url":"https://www.whatrustisit.com/"},"id":"ws_4afbde1d-86dd-955f-850a-406c23bf81d1_call-d4201a76-92f3-4d40-9421-93249b43394d-3","status":"completed","type":"web_search_call"},{"id":"tco_4afbde1d-86dd-955f-850a-406c23bf81d1_call-d4201a76-92f3-4d40-9421-93249b43394d-2","status":"completed","summary":[],"type":"reasoning"},{"id":"tco_4afbde1d-86dd-955f-850a-406c23bf81d1_call-d4201a76-92f3-4d40-9421-93249b43394d-3","status":"completed","summary":[],"type":"reasoning"},{"content":[{"annotations":[{"end_index":126,"start_index":77,"title":"1","type":"url_citation","url":"https://blog.rust-lang.org/releases/latest"}],"logprobs":[],"text":"The latest stable Rust release is version 1.98.1, released September 3, 2026.[[1]](https://blog.rust-lang.org/releases/latest)","type":"output_text"}],"id":"msg_4afbde1d-86dd-955f-850a-406c23bf81d1","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":"low","summary":"detailed"},"safety_identifier":null,"service_tier":"default","status":"completed","store":false,"temperature":0.7,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"search_context_size":"medium","type":"web_search"}],"top_logprobs":0,"top_p":0.95,"truncation":"disabled","usage":{"context_details":{"input_tokens":13624,"output_tokens":141},"cost_in_usd_ticks":432559500,"input_tokens":20259,"input_tokens_details":{"cached_tokens":3136},"num_server_side_tools_used":4,"num_sources_used":0,"output_tokens":490,"output_tokens_details":{"reasoning_tokens":386},"server_side_tool_usage_details":{"code_interpreter_calls":0,"document_search_calls":0,"file_search_calls":0,"image_generation_calls":0,"mcp_calls":0,"web_search_calls":4,"x_posts_fetched":0,"x_search_calls":0,"x_users_fetched":0},"total_tokens":20749},"user":null}'

@@ -1157,7 +1157,7 @@ impl TryFrom<message::ToolChoice> for ToolChoice {
                     ));
                 };
 
-                Self::Tool { name }
+                Self::Tool { name: name.into() }
             }
         };
 
@@ -2135,12 +2135,10 @@ impl AnthropicCompletionRequest {
             ));
         };
 
-        let (history_system, chat_history) = split_system_messages_from_history(
+        let (history_system, full_history) = split_system_messages_from_history(
             &chat_history,
             supports_mid_conversation_system_messages(model),
         );
-        let mut full_history = vec![];
-        full_history.extend(chat_history);
 
         let mut messages = full_history
             .iter()
@@ -2262,7 +2260,7 @@ pub(super) fn build_tool_definitions(
         .map(|tool| {
             let input_schema = tool.parameters;
             let mut tool = ToolDefinition {
-                name: tool.name,
+                name: tool.name.into(),
                 description: Some(tool.description),
                 input_schema,
                 strict: false,

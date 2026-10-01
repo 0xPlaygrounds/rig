@@ -187,7 +187,7 @@ async fn blocking_agent_prompt_surfaces_refusal() {
                 .await
                 .expect("an agent must deliver the refusal, not an empty-response error");
 
-            assert_nonempty_response(&response.output);
+            assert_nonempty_response(&response.output());
         },
     )
     .await;
@@ -221,9 +221,10 @@ async fn blocking_raw_and_normalized_agree() {
             let document = openrouter::CompletionResponse::deserialize(&normalized.raw)
                 .expect("raw is OpenRouter's own completion response");
             let raw_refusal = document
+                .openai
                 .choices
                 .first()
-                .and_then(|choice| match &choice.message {
+                .and_then(|choice| match &choice.openai.message {
                     OpenAiMessage::Assistant { refusal, .. } => refusal.clone(),
                     _ => None,
                 })

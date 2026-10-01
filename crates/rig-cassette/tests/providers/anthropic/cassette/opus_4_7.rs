@@ -35,7 +35,7 @@ async fn messages_prompt_smoke() {
                 .prompt(BASIC_PROMPT)
                 .await
                 .expect("prompt should succeed")
-                .output;
+                .output();
 
             assert_nonempty_response(&response);
         },
@@ -79,7 +79,7 @@ async fn messages_tools_smoke() {
                 .prompt(TOOLS_PROMPT)
                 .await
                 .expect("tool prompt should succeed")
-                .output;
+                .output();
 
             assert_mentions_expected_number(&response, -3);
         },
@@ -123,7 +123,7 @@ async fn messages_structured_output_smoke() {
                 .prompt(STRUCTURED_OUTPUT_PROMPT)
                 .await
                 .expect("structured output prompt should succeed")
-                .output;
+                .output();
             let structured: SmokeStructuredOutput =
                 serde_json::from_str(&response).expect("structured output should deserialize");
 
@@ -191,7 +191,7 @@ async fn messages_image_input_smoke() {
             let image_bytes =
                 std::fs::read(IMAGE_FIXTURE_PATH).expect("fixture image should be readable");
             let image = Image {
-                data: DocumentSourceKind::base64(&BASE64_STANDARD.encode(image_bytes)),
+                data: DocumentSourceKind::base64(BASE64_STANDARD.encode(image_bytes)),
                 media_type: Some(ImageMediaType::JPEG),
                 ..Default::default()
             };
@@ -200,7 +200,7 @@ async fn messages_image_input_smoke() {
                 .prompt(image)
                 .await
                 .expect("image prompt should succeed")
-                .output;
+                .output();
 
             assert_nonempty_response(&response);
             assert_contains_any_case_insensitive(&response, &["ant", "insect"]);
@@ -314,7 +314,7 @@ async fn messages_adaptive_thinking_tool_roundtrip_smoke() {
                 .chat(reasoning::TOOL_USER_PROMPT, &mut Vec::<Message>::new())
                 .await
                 .expect("adaptive thinking tool chat should succeed")
-                .output;
+                .output();
 
             reasoning::assert_nonstreaming_universal(&result, &call_count, "anthropic");
         },

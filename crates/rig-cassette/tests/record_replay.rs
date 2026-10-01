@@ -97,7 +97,7 @@ async fn a_run_records_every_dispatch_and_replays_from_the_log() {
     let response = within(recorded.prompt("go").max_turns(3).run())
         .await
         .expect("recorded run");
-    assert_eq!(response.output, "done");
+    assert_eq!(response.output(), "done");
     let log = recorded.stamp(recorder.take());
     assert_eq!(log.len(), 4, "two completions and two tool calls");
     assert_eq!(log[0].kind.family(), EffectFamily::Completion);
@@ -139,7 +139,8 @@ async fn a_run_records_every_dispatch_and_replays_from_the_log() {
         .await
         .expect("replayed run");
     assert_eq!(
-        response.output, "done",
+        response.output(),
+        "done",
         "the same PromptResponse from the record"
     );
     drop(replayed);

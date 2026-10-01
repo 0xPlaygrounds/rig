@@ -71,8 +71,10 @@ async fn mcp_tool_runs_as_a_dynamic_tool_without_rig_agent() {
         .expect("client connect");
     let peer = client.peer().clone();
 
-    // One tool, converted through `From`.
-    let greet: DynamicTool = McpTool::from_mcp_server(tool("greet"), peer.clone()).into();
+    // One tool, converted through `TryFrom`.
+    let greet: DynamicTool = McpTool::from_mcp_server(tool("greet"), peer.clone())
+        .try_into()
+        .expect("tool name");
     assert_eq!(greet.name(), "greet");
     assert_eq!(greet.definition().description, "greet tool");
     let output = greet
@@ -85,7 +87,7 @@ async fn mcp_tool_runs_as_a_dynamic_tool_without_rig_agent() {
     // carries the tool's output.
     let mut many = tools_from_server([tool("greet"), tool("missing")], &peer)
         .into_iter()
-        .map(DynamicTool::from);
+        .map(|tool| DynamicTool::try_from(tool).expect("tool name"));
     let _greet_again = many.next().expect("two tools");
     let missing = many.next().expect("two tools");
     let error = missing
@@ -96,6 +98,9 @@ async fn mcp_tool_runs_as_a_dynamic_tool_without_rig_agent() {
         error.to_string().contains("reported an execution error"),
         "{error}"
     );
+
+    // A server tool without a name cannot be advertised to a model.
+    assert!(DynamicTool::try_from(McpTool::from_mcp_server(tool(""), peer.clone())).is_err());
 
     drop(client);
     server_task.abort();

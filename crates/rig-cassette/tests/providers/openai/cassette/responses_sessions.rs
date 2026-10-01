@@ -110,7 +110,7 @@ async fn sequential_tool_calls_nonstreaming() {
                 .chat(SEQUENTIAL_TOOLS_PROMPT, &mut history)
                 .await
                 .expect("sequential tool chat should succeed")
-                .output;
+                .output();
 
             assert_mentions_expected_number(&result, 2);
 
@@ -228,7 +228,7 @@ async fn parallel_tool_calls_single_turn_nonstreaming() {
                 .chat(TWO_TOOL_STREAM_PROMPT, &mut history)
                 .await
                 .expect("parallel tool chat should succeed")
-                .output;
+                .output();
 
             let lowered = result.to_ascii_lowercase();
             assert!(
@@ -342,17 +342,17 @@ async fn long_history_replay_nonstreaming() {
             .message(Message::user("Now look up the harbor label with the tool."))
             .message(Message::Assistant {
                 id: None,
-                content: rig_core::NonEmpty::new(AssistantContent::tool_call_with_call_id(
+                content: vec![AssistantContent::tool_call_with_call_id(
                     "history_tool_1",
                     call_id.clone(),
                     rig_core::message::ToolName::new(AlphaSignal::NAME).expect("tool name"),
                     serde_json::json!({}),
-                )),
+                )],
             })
             .message(Message::from(UserContent::tool_result(
                 rig_core::message::CallId::from_dual_wire("history_tool_1", call_id),
                 rig_core::message::ToolName::new(AlphaSignal::NAME).expect("tool name"),
-                rig_core::NonEmpty::new(rig::message::ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)),
+                vec![rig::message::ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)],
             )))
             .message(Message::assistant("The harbor label is crimson-harbor."))
             .tool(rig::tool::tool_definition(&AlphaSignal));
@@ -481,7 +481,7 @@ async fn usage_accumulates_across_streaming_multi_turn() {
 
             while let Some(item) = stream.next().await {
                 match item.expect("stream item should be ok") {
-                    MultiTurnStreamItem::StreamUserItem(_) => saw_tool_result = true,
+                    MultiTurnStreamItem::ToolResult { .. } => saw_tool_result = true,
                     MultiTurnStreamItem::FinalResponse(response) => {
                         final_usage = Some(response.usage());
                     }

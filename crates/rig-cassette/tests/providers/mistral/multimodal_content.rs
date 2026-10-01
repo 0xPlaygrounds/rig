@@ -77,16 +77,14 @@ fn pdf_document() -> UserContent {
 
 fn speech_audio() -> UserContent {
     let bytes = std::fs::read(AUDIO_FIXTURE_PATH).expect("audio fixture should be readable");
-    UserContent::audio(
+    UserContent::audio_base64(
         base64::engine::general_purpose::STANDARD.encode(bytes),
         Some(rig::message::AudioMediaType::MP3),
     )
 }
 
 fn user_message(content: Vec<UserContent>) -> Message {
-    Message::User {
-        content: rig_core::NonEmpty::from_vec(content).expect("non-empty"),
-    }
+    Message::User { content }
 }
 
 /// Read a recorded cassette back. Called *after* the wrapper returns, because
@@ -251,7 +249,7 @@ async fn blocking_agent_prompt_sends_a_base64_image() -> Result<()> {
                     red_png(),
                 ]))
                 .await?;
-            assert_mentions(&response.output, "red");
+            assert_mentions(&response.output(), "red");
             Ok::<_, anyhow::Error>(())
         },
     )
@@ -274,7 +272,7 @@ async fn blocking_image_only_message_carries_no_text_part() -> Result<()> {
                 .temperature(0.0)
                 .build();
             let response = agent.prompt(user_message(vec![red_png()])).await?;
-            assert_mentions(&response.output, "red");
+            assert_mentions(&response.output(), "red");
             Ok::<_, anyhow::Error>(())
         },
     )
@@ -309,7 +307,7 @@ async fn blocking_two_images_in_one_message() -> Result<()> {
                     red_png(),
                 ]))
                 .await?;
-            assert_mentions(&response.output, "red");
+            assert_mentions(&response.output(), "red");
             Ok::<_, anyhow::Error>(())
         },
     )
@@ -344,7 +342,7 @@ async fn blocking_image_url_reference_is_sent() -> Result<()> {
                     ),
                 ]))
                 .await?;
-            assert_nonempty_response(&response.output);
+            assert_nonempty_response(&response.output());
             Ok::<_, anyhow::Error>(())
         },
     )
@@ -375,7 +373,7 @@ async fn blocking_image_on_a_second_model_family() -> Result<()> {
                     red_png(),
                 ]))
                 .await?;
-            assert_mentions(&response.output, "red");
+            assert_mentions(&response.output(), "red");
             Ok::<_, anyhow::Error>(())
         },
     )
@@ -404,7 +402,7 @@ async fn blocking_image_survives_a_replayed_history() -> Result<()> {
             let response = agent
                 .chat("Repeat the colour you just named.", &mut history)
                 .await?;
-            assert_mentions(&response.output, "red");
+            assert_mentions(&response.output(), "red");
             Ok::<_, anyhow::Error>(())
         },
     )
@@ -465,7 +463,7 @@ async fn blocking_unicode_text_beside_an_image() -> Result<()> {
                     red_png(),
                 ]))
                 .await?;
-            assert_mentions(&response.output, "red");
+            assert_mentions(&response.output(), "red");
             Ok::<_, anyhow::Error>(())
         },
     )
@@ -562,7 +560,7 @@ async fn blocking_agent_reads_an_attached_pdf() -> Result<()> {
                     pdf_document(),
                 ]))
                 .await?;
-            assert_mentions(&response.output, PDF_TOKEN);
+            assert_mentions(&response.output(), PDF_TOKEN);
             Ok::<_, anyhow::Error>(())
         },
     )
@@ -590,7 +588,7 @@ async fn blocking_document_only_message_carries_no_text_part() -> Result<()> {
                 .temperature(0.0)
                 .build();
             let response = agent.prompt(user_message(vec![pdf_document()])).await?;
-            assert_mentions(&response.output, PDF_TOKEN);
+            assert_mentions(&response.output(), PDF_TOKEN);
             Ok::<_, anyhow::Error>(())
         },
     )
@@ -621,8 +619,8 @@ async fn blocking_document_and_image_in_one_message() -> Result<()> {
                     red_png(),
                 ]))
                 .await?;
-            assert_mentions(&response.output, PDF_TOKEN);
-            assert_mentions(&response.output, "red");
+            assert_mentions(&response.output(), PDF_TOKEN);
+            assert_mentions(&response.output(), "red");
             Ok::<_, anyhow::Error>(())
         },
     )
@@ -651,7 +649,7 @@ async fn blocking_document_on_a_second_model_family() -> Result<()> {
                     pdf_document(),
                 ]))
                 .await?;
-            assert_mentions(&response.output, PDF_TOKEN_PREFIX);
+            assert_mentions(&response.output(), PDF_TOKEN_PREFIX);
             Ok::<_, anyhow::Error>(())
         },
     )
@@ -745,7 +743,7 @@ async fn blocking_agent_sends_audio() -> Result<()> {
                     speech_audio(),
                 ]))
                 .await?;
-            assert_mentions(&response.output, AUDIO_KEYWORD);
+            assert_mentions(&response.output(), AUDIO_KEYWORD);
             Ok::<_, anyhow::Error>(())
         },
     )
@@ -784,7 +782,7 @@ async fn blocking_text_only_content_still_flattens_to_a_string() -> Result<()> {
                     UserContent::text(" Answer with one word."),
                 ]))
                 .await?;
-            assert_mentions(&response.output, "paris");
+            assert_mentions(&response.output(), "paris");
             Ok::<_, anyhow::Error>(())
         },
     )
@@ -843,10 +841,10 @@ async fn blocking_text_document_still_flattens_into_the_prompt() -> Result<()> {
             let response = agent
                 .prompt(user_message(vec![
                     UserContent::text("What code word is in these notes?"),
-                    UserContent::document("# Notes\nThe code word is WALRUS-4412.", None),
+                    UserContent::document_text("# Notes\nThe code word is WALRUS-4412.", None),
                 ]))
                 .await?;
-            assert_mentions(&response.output, "WALRUS-4412");
+            assert_mentions(&response.output(), "WALRUS-4412");
             Ok::<_, anyhow::Error>(())
         },
     )
@@ -929,7 +927,7 @@ async fn blocking_image_with_a_tool_configured() -> Result<()> {
                     red_png(),
                 ]))
                 .await?;
-            assert_mentions(&response.output, "red");
+            assert_mentions(&response.output(), "red");
             Ok::<_, anyhow::Error>(())
         },
     )

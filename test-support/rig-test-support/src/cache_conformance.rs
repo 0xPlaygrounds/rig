@@ -49,7 +49,6 @@
 //!   determinism check in `tests/cassette_cache_prefix.rs` can catch that.
 //! * A cassette pins what the provider did at record time. Only the live
 //!   economics suite catches the provider changing its cache semantics under us.
-#![allow(dead_code)]
 
 use rig_agent::completion::CompletionRequest;
 
@@ -265,9 +264,7 @@ impl CacheProbe {
         CompletionRequest {
             chat_history: std::iter::once(Message::system(self.preamble.clone()))
                 .chain(chat_history)
-                .collect::<Vec<_>>()
-                .try_into()
-                .expect("non-empty"),
+                .collect::<Vec<_>>(),
             documents: vec![],
             tools: self.tools.clone(),
             temperature: Some(0.0),
@@ -299,7 +296,7 @@ const TOOL_PADDING_REPETITIONS: usize = 3;
 pub fn cache_probe_tools(label: &str) -> Vec<ToolDefinition> {
     vec![
         ToolDefinition {
-            name: "lookup_cache_policy".to_string(),
+            name: rig_core::message::ToolName::new("lookup_cache_policy").expect("tool name"),
             description: format!(
                 "Return {label} internal prompt cache policy notes. {}",
                 cache_padding(TOOL_PADDING_REPETITIONS)
@@ -313,7 +310,7 @@ pub fn cache_probe_tools(label: &str) -> Vec<ToolDefinition> {
             }),
         },
         ToolDefinition {
-            name: "lookup_cache_fixture".to_string(),
+            name: rig_core::message::ToolName::new("lookup_cache_fixture").expect("tool name"),
             description: format!(
                 "Return {label} prompt cache fixture notes. {}",
                 cache_padding(TOOL_PADDING_REPETITIONS)
@@ -395,7 +392,7 @@ pub async fn run_cache_probe(
 ) -> CacheObservation {
     let model: rig_core::DynModel<rig_core::operation::Completion> = model.into();
     let opening = Message::User {
-        content: rig_core::NonEmpty::new(UserContent::text(probe.prompt)),
+        content: vec![UserContent::text(probe.prompt)],
     };
 
     let first = send(&model, probe, vec![opening.clone()], "turn 1 (warm)").await;
@@ -403,10 +400,10 @@ pub async fn run_cache_probe(
 
     let assistant = Message::Assistant {
         id: second.message_id.clone(),
-        content: rig_core::NonEmpty::from_vec(second.choice.clone()).expect("non-empty"),
+        content: second.choice.clone(),
     };
     let follow_up = Message::User {
-        content: rig_core::NonEmpty::new(UserContent::text(probe.follow_up)),
+        content: vec![UserContent::text(probe.follow_up)],
     };
     let third = send(
         &model,
@@ -449,7 +446,7 @@ pub async fn run_cache_probe_streaming(
 ) -> CacheObservation {
     let model: rig_core::DynModel<rig_core::operation::Completion> = model.into();
     let opening = Message::User {
-        content: rig_core::NonEmpty::new(UserContent::text(probe.prompt)),
+        content: vec![UserContent::text(probe.prompt)],
     };
 
     let (first_usage, _, _) =
@@ -470,12 +467,10 @@ pub async fn run_cache_probe_streaming(
     };
     let assistant = Message::Assistant {
         id: message_id,
-        content: rig_core::NonEmpty::new(rig_core::message::AssistantContent::text(
-            &assistant_text,
-        )),
+        content: vec![rig_core::message::AssistantContent::text(&assistant_text)],
     };
     let follow_up = Message::User {
-        content: rig_core::NonEmpty::new(UserContent::text(probe.follow_up)),
+        content: vec![UserContent::text(probe.follow_up)],
     };
     let (third_usage, _, _) = stream_turn(
         &model,

@@ -23,7 +23,7 @@
 //! macro invocations, the `.await` rule runs a second pass over the raw token
 //! stream. Test files and `tests/` directories are skipped.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use proc_macro2::{TokenStream, TokenTree};
 use quote::ToTokens;
@@ -62,9 +62,7 @@ pub(crate) fn check(workspace: &Path) -> Result<(), String> {
     if !providers.is_dir() {
         return Err(format!("{} is not a directory", providers.display()));
     }
-    let mut files = Vec::new();
-    walk(&providers, &mut files)?;
-    files.sort();
+    let files = crate::support::files_under(&providers, Some("rs"))?;
 
     let mut offenders = Vec::new();
     for path in &files {
@@ -97,21 +95,6 @@ pub(crate) fn check(workspace: &Path) -> Result<(), String> {
          and consumer-trait impls belong to rig_core::driver",
         offenders.join("\n")
     ))
-}
-
-/// Every `.rs` file under `dir`, recursively.
-fn walk(dir: &Path, out: &mut Vec<PathBuf>) -> Result<(), String> {
-    let entries = std::fs::read_dir(dir).map_err(|error| format!("{}: {error}", dir.display()))?;
-    for entry in entries {
-        let entry = entry.map_err(|error| format!("{}: {error}", dir.display()))?;
-        let path = entry.path();
-        if path.is_dir() {
-            walk(&path, out)?;
-        } else if path.extension().is_some_and(|ext| ext == "rs") {
-            out.push(path);
-        }
-    }
-    Ok(())
 }
 
 struct Wires {

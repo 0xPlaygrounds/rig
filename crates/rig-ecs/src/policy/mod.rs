@@ -9,77 +9,23 @@
 use rig_core::{
     completion::{
         CompletionRequest, Document, ToolDefinition,
-        message::{AssistantContent, CallId, Message, ToolChoice, ToolName, UserContent},
+        message::{CallId, Message, ToolChoice, ToolName, UserContent},
     },
     effect::{HandlerDescriptor, Outcome},
     error::{ErrorKind, ErrorReport},
     json_utils::to_canonical_string,
+    structured_output::{
+        AUGMENTATION_SEPARATOR, OUTPUT_TOOL_DESCRIPTION, output_tool_augmentation,
+        prompted_augmentation,
+    },
     tool::{ToolExecutionError, ToolResult},
-    transcript::{tool_result_message, tool_result_output},
+    transcript::tool_result_output,
 };
 
 use crate::agent::{
     Failure, MessageParts, OutputKind, OutputToolConfig,
     content::parts::{ToolResultLimit, ToolResultStatus},
 };
-
-/// Model-facing output instructions and invalid-call feedback.
-///
-/// ```
-/// let instructions = rig_ecs::policy::text::output_tool_augmentation("answer");
-/// assert!(instructions.contains("`answer`"));
-/// ```
-pub mod text {
-    /// The output tool's default name.
-    pub const OUTPUT_TOOL_NAME: &str = "final_result";
-
-    /// The output tool's description.
-    pub const OUTPUT_TOOL_DESCRIPTION: &str = "Call this tool exactly once with your final answer when you are done. Its arguments are the structured result and must satisfy the output schema.";
-
-    /// Appended to the preamble (after a blank line) when the answer is
-    /// asked for through the output tool; `{name}` is the tool's name.
-    pub fn output_tool_augmentation(name: &str) -> String {
-        format!(
-            "When you have gathered enough information to answer, call the `{name}` tool exactly once with your final answer. Its arguments are the structured result and must satisfy the required schema. Do not return the final answer as plain text."
-        )
-    }
-
-    /// Appended to the preamble (after a blank line) when the answer is
-    /// asked for as prompted JSON; `{schema}` is the schema's canonical
-    /// rendering.
-    pub fn prompted_augmentation(schema: &str) -> String {
-        format!(
-            "Respond with ONLY a single JSON object that conforms to this JSON Schema. Do not include any prose, explanation, or markdown code fences.\n{schema}"
-        )
-    }
-
-    /// The reprompt when the model answered as text instead of calling
-    /// the output tool.
-    pub fn reprompt_text_answer(name: &str) -> String {
-        format!(
-            "Provide your final answer by calling the `{name}` tool with the structured result as its arguments, not as plain text."
-        )
-    }
-
-    /// The separator between the preamble and an augmentation.
-    pub const AUGMENTATION_SEPARATOR: &str = "\n\n";
-
-    /// The result every other call of a turn gets when one call was
-    /// retried or skipped: none of the turn's calls ran.
-    pub const TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER: &str =
-        "Tool not executed because another tool call in the same assistant turn was invalid.";
-}
-
-/// Whether the tool choice permits the output tool's call.
-pub fn output_tool_callable(choice: Option<&ToolChoice>, name: &str) -> bool {
-    match choice {
-        None | Some(ToolChoice::Auto) | Some(ToolChoice::Required) => true,
-        Some(ToolChoice::None) => false,
-        Some(ToolChoice::Specific { function_names }) => {
-            function_names.iter().any(|named| named == name)
-        }
-    }
-}
 
 /// The output mode a turn runs under once `Auto` is resolved, never `Auto`:
 /// no schema is `Native`; an explicit `Tool` the choice forbids degrades to
@@ -116,75 +62,6 @@ pub fn resolve_output(
     }
 }
 
-/// The output tool's name for a run: the default, numbered from 1 on a
-/// collision with a granted tool's name (`final_result`, `final_result_1`,
-/// `final_result_2`, ...).
-pub fn output_tool_name(granted: &[&str]) -> String {
-    let base = text::OUTPUT_TOOL_NAME;
-    if !granted.contains(&base) {
-        return base.to_owned();
-    }
-    let mut suffix = 1;
-    loop {
-        let candidate = format!("{base}_{suffix}");
-        if !granted.contains(&candidate.as_str()) {
-            return candidate;
-        }
-        suffix += 1;
-    }
-}
-
-/// The required fields of an object schema the arguments lack, in the
-/// schema's order; a non-object argument lacks every one.
-pub fn missing_required_fields(
-    schema: &serde_json::Value,
-    arguments: &serde_json::Value,
-) -> Vec<String> {
-    let required: Vec<&str> = schema
-        .get("required")
-        .and_then(serde_json::Value::as_array)
-        .map(|names| names.iter().filter_map(serde_json::Value::as_str).collect())
-        .unwrap_or_default();
-    match arguments.as_object() {
-        Some(object) => required
-            .into_iter()
-            .filter(|name| !object.contains_key(*name))
-            .map(str::to_owned)
-            .collect(),
-        None => required.into_iter().map(str::to_owned).collect(),
-    }
-}
-
-/// Return whether text parses as JSON and contains every required schema field.
-/// Without a schema, accepts any JSON. Does not validate field types or other
-/// schema constraints.
-pub fn text_satisfies_schema(schema: Option<&serde_json::Value>, text: &str) -> bool {
-    serde_json::from_str::<serde_json::Value>(text.trim())
-        .ok()
-        .is_some_and(|value| {
-            schema.is_none_or(|schema| missing_required_fields(schema, &value).is_empty())
-        })
-}
-
-/// The reprompt when the output tool was called without every required
-/// field: a tool result on the call, naming the fields.
-pub fn reprompt_missing_fields(name: &str, missing: &[String]) -> String {
-    format!(
-        "The `{name}` arguments were missing required field(s): {}. Call `{name}` again with every required field.",
-        missing.join(", ")
-    )
-}
-
-/// Whether an assistant turn belongs in history: not when it has no parts,
-/// or exactly one unannotated empty text part.
-pub fn turn_is_empty(content: &[AssistantContent]) -> bool {
-    match content {
-        [] => true,
-        [AssistantContent::Text(text)] => text.text.is_empty() && text.additional_params.is_none(),
-        _ => false,
-    }
-}
-
 /// Ordered request inputs gathered by assembly, borrowing message parts and
 /// handler descriptors while owning the attached document list.
 pub struct RequestGraph<'a> {
@@ -217,7 +94,8 @@ pub struct RequestGraph<'a> {
 /// Construct a completion request from ordered graph inputs and resolved output
 /// policy. Non-tool descriptors are omitted; an invalid native schema is omitted.
 /// A graph with neither a preamble nor an utterance holds no conversation and
-/// is [`ContentError::Missing`](crate::agent::content::parts::ContentError::Missing).
+/// is [`ContentError::Missing`](crate::agent::content::parts::ContentError::Missing),
+/// as is an empty output tool name.
 pub fn fold_request(
     graph: &RequestGraph<'_>,
 ) -> Result<CompletionRequest, crate::agent::content::parts::ContentError> {
@@ -237,11 +115,12 @@ pub fn fold_request(
         && let (Some(name), Some(schema)) = (graph.output_tool, graph.schema)
     {
         tools.push(ToolDefinition {
-            name: name.to_owned(),
+            name: ToolName::new(name)
+                .map_err(|_| crate::agent::content::parts::ContentError::Missing)?,
             description: graph
                 .output_tool_config
                 .and_then(|config| config.description.as_deref())
-                .unwrap_or(text::OUTPUT_TOOL_DESCRIPTION)
+                .unwrap_or(OUTPUT_TOOL_DESCRIPTION)
                 .to_owned(),
             parameters: schema.clone(),
         });
@@ -255,8 +134,9 @@ pub fn fold_request(
         | (OutputKind::Auto | OutputKind::Tool | OutputKind::Prompted, _) => None,
     };
 
-    let chat_history = rig_core::NonEmpty::from_vec(chat_history)
-        .map_err(|_| crate::agent::content::parts::ContentError::Missing)?;
+    if chat_history.is_empty() {
+        return Err(crate::agent::content::parts::ContentError::Missing);
+    }
     Ok(CompletionRequest {
         model: None,
         chat_history,
@@ -278,9 +158,9 @@ fn system_message(graph: &RequestGraph<'_>) -> Option<String> {
         (OutputKind::Tool, Some(name), _) => graph
             .output_tool_config
             .is_none_or(|config| config.augment_preamble)
-            .then(|| text::output_tool_augmentation(name)),
+            .then(|| output_tool_augmentation(name)),
         (OutputKind::Prompted, _, Some(schema)) => {
-            Some(text::prompted_augmentation(&to_canonical_string(schema)))
+            Some(prompted_augmentation(&to_canonical_string(schema)))
         }
         (OutputKind::Tool, None, _)
         | (OutputKind::Prompted, _, None)
@@ -292,13 +172,26 @@ fn system_message(graph: &RequestGraph<'_>) -> Option<String> {
         (None, Some(augmentation)) => Some(augmentation),
         (Some(preamble), Some(augmentation)) => Some(format!(
             "{preamble}{}{augmentation}",
-            text::AUGMENTATION_SEPARATOR
+            AUGMENTATION_SEPARATOR
         )),
     }
 }
 
+/// The name a tool descriptor is called by; `None` for other effect families.
+pub(crate) fn tool_name(descriptor: &HandlerDescriptor) -> Option<&str> {
+    match &descriptor.family {
+        rig_core::effect::FamilyDescriptor::Tool { name, .. } => Some(name),
+        rig_core::effect::FamilyDescriptor::Completion { .. }
+        | rig_core::effect::FamilyDescriptor::Embed { .. }
+        | rig_core::effect::FamilyDescriptor::Rerank { .. }
+        | rig_core::effect::FamilyDescriptor::Memory { .. }
+        | rig_core::effect::FamilyDescriptor::Retrieve { .. }
+        | rig_core::effect::FamilyDescriptor::Custom { .. } => None,
+    }
+}
+
 /// Convert a tool descriptor to its model-facing definition; return `None` for
-/// other effect families.
+/// other effect families and for a tool with an empty name.
 pub fn tool_definition(descriptor: &HandlerDescriptor) -> Option<ToolDefinition> {
     match &descriptor.family {
         rig_core::effect::FamilyDescriptor::Tool {
@@ -307,7 +200,7 @@ pub fn tool_definition(descriptor: &HandlerDescriptor) -> Option<ToolDefinition>
             parameters,
             ..
         } => Some(ToolDefinition {
-            name: name.clone(),
+            name: ToolName::new(name.as_str()).ok()?,
             description: description.clone(),
             parameters: parameters.clone(),
         }),
@@ -356,13 +249,15 @@ pub fn tool_result_part(
             ToolResult::skipped(report.message.clone()),
             ToolResultStatus::Denied,
         ),
-        Err(report) => (
-            ToolResult::failed(
-                ToolExecutionError::other(report.message.clone())
-                    .with_model_feedback(report.message.clone()),
-            ),
-            ToolResultStatus::Error,
-        ),
+        Err(report) => {
+            let result = ToolResult::failed(report.clone().into());
+            let status = if result.is_refused() {
+                ToolResultStatus::Refused
+            } else {
+                ToolResultStatus::Error
+            };
+            (result, status)
+        }
     };
     Ok((
         tool_result_output(id, name, result.output().clone()),
@@ -451,34 +346,6 @@ pub fn tool_failure(outcome: &Result<Outcome, ErrorReport>) -> Option<Failure> {
     }
 }
 
-/// The user utterance a retried or skipped turn answers with (CONTRACT
-/// §8.2): `text` as the tool result of the call `id`, the invalid-peer
-/// notice for every other call of `content`, in call order.
-pub fn invalid_peer_results(
-    content: &[AssistantContent],
-    id: &CallId,
-    text: &str,
-) -> Option<MessageParts> {
-    let parts = content
-        .iter()
-        .filter_map(|part| match part {
-            AssistantContent::ToolCall(call) => Some(tool_result_message(
-                call.id.clone(),
-                call.function.name.clone(),
-                if &call.id == id {
-                    text.to_owned()
-                } else {
-                    text::TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER.to_owned()
-                },
-            )),
-            AssistantContent::Text(_)
-            | AssistantContent::Reasoning(_)
-            | AssistantContent::Image(_) => None,
-        })
-        .collect();
-    MessageParts::user(parts).ok()
-}
-
 /// Return retrieval text from the last utterance with usable text, or an empty
 /// string when none exists. Tool-result-only utterances do not replace the query.
 pub fn retrieval_query(utterances: &[MessageParts]) -> String {
@@ -487,26 +354,6 @@ pub fn retrieval_query(utterances: &[MessageParts]) -> String {
         .rev()
         .find_map(|parts| parts.to_message().rag_text())
         .unwrap_or_default()
-}
-
-/// The text of an assistant answer: its text parts concatenated.
-pub fn answer_text(content: &[AssistantContent]) -> String {
-    content
-        .iter()
-        .filter_map(|part| match part {
-            AssistantContent::Text(text) => Some(text.text.as_str()),
-            AssistantContent::Reasoning(_)
-            | AssistantContent::Image(_)
-            | AssistantContent::ToolCall(_) => None,
-        })
-        .collect()
-}
-
-/// A user message of one text part.
-pub fn user_text(text: &str) -> Message {
-    Message::User {
-        content: rig_core::NonEmpty::new(UserContent::text(text)),
-    }
 }
 
 #[cfg(test)]

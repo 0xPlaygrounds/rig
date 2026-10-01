@@ -186,14 +186,3 @@ async fn explicit_marker_supports_imported_aliases() {
         Some(Invocation("alias".into()))
     );
 }
-
-#[test]
-fn invalid_context_parameters_are_rejected() {
-    let tests = trybuild::TestCases::new();
-    tests.compile_fail("tests/ui/tool_context/fail_immutable_context.rs");
-    tests.compile_fail("tests/ui/tool_context/fail_owned_context.rs");
-    tests.compile_fail("tests/ui/tool_context/fail_multiple_contexts.rs");
-    tests.compile_fail("tests/ui/tool_context/fail_wildcard_context.rs");
-    tests.compile_fail("tests/ui/tool_context/fail_context_in_params.rs");
-    tests.compile_fail("tests/ui/tool_context/fail_context_in_required.rs");
-}

@@ -90,7 +90,7 @@ async fn request_hook_records_prompt_and_response() -> Result<()> {
                 .prompt("Entertain me!")
                 .add_hook(hook.clone())
                 .await?
-                .output;
+                .output();
 
             assert_nonempty_response(&response);
             anyhow::ensure!(hook.prompt_calls.load(Ordering::SeqCst) == 1);

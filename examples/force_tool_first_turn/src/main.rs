@@ -9,14 +9,14 @@
 //! `Required` unconditionally forces a tool call on *every* turn. The model never
 //! reaches a turn where it is free to stop calling tools and write the final
 //! answer, so the run loops until `max_turns` and fails with
-//! [`PromptError::MaxTurnsError`].
+//! [`PromptError::MaxTurns`].
 //!
 //! **The fix.** Gate the patch on the turn index — force `Required` only on the
 //! first turn (`ctx.turn() == 1`). The model is nudged to call the tool up front;
 //! later turns inherit the agent's baseline (`auto`), so it can stop and answer.
 //!
 //! This example runs the footgun first (and catches the resulting
-//! `MaxTurnsError`), then runs the fix.
+//! `MaxTurns`), then runs the fix.
 //!
 //! Requires `OPENAI_API_KEY`.
 
@@ -140,9 +140,9 @@ async fn main() -> Result<()> {
         .add_hook(ForceToolEveryTurn)
         .await
     {
-        Ok(answer) => println!("(unexpected) got a final answer: {}\n", answer.output),
-        Err(PromptError::MaxTurnsError { max_turns, .. }) => println!(
-            "hit MaxTurnsError after {max_turns} model calls — every turn re-forced a tool call, so \
+        Ok(answer) => println!("(unexpected) got a final answer: {}\n", answer.output()),
+        Err(PromptError::MaxTurns { max_turns, .. }) => println!(
+            "hit the max-turns limit after {max_turns} model calls — every turn re-forced a tool call, so \
              the model never produced a final answer.\n"
         ),
         Err(err) => println!("run failed: {err}\n"),
@@ -157,7 +157,7 @@ async fn main() -> Result<()> {
         .max_turns(4)
         .add_hook(ForceToolOnFirstTurn)
         .await?
-        .output;
+        .output();
     println!("final answer: {answer}");
 
     Ok(())

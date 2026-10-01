@@ -5,6 +5,7 @@ use testcontainers::{
     runners::AsyncRunner,
 };
 
+use crate::common::{WORD_DEFINITIONS, mock_embeddings, openai_client, skip_if_docker_unavailable};
 use qdrant_client::{
     Payload, Qdrant,
     qdrant::{
@@ -22,16 +23,6 @@ use rig::{
 const QDRANT_PORT: u16 = 6333;
 const QDRANT_PORT_SECONDARY: u16 = 6334;
 const COLLECTION_NAME: &str = "rig-collection";
-
-fn skip_if_docker_unavailable(test_name: &str) -> bool {
-    let docker_socket = std::path::Path::new("/var/run/docker.sock");
-    if std::env::var_os("DOCKER_HOST").is_some() || docker_socket.exists() {
-        return false;
-    }
-
-    eprintln!("skipping {test_name}: Docker is unavailable");
-    true
-}
 
 #[derive(Embed, Clone, serde::Deserialize, serde::Serialize, Debug)]
 struct Word {
@@ -85,81 +76,22 @@ async fn vector_search_test() {
     // Setup mock openai API
     let server = httpmock::MockServer::start();
 
-    server.mock(|when, then| {
-        when.method(httpmock::Method::POST)
-            .path("/embeddings")
-            .header("Authorization", "Bearer TEST")
-            .json_body(json!({
-                "input": [
-                    "Definition of a *flurbo*: A flurbo is a green alien that lives on cold planets",
-                    "Definition of a *glarb-glarb*: A glarb-glarb is an ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.",
-                    "Definition of a *linglingdong*: A term used by inhabitants of the far side of the moon to describe humans."
-                ],
-                "model": "text-embedding-ada-002",
-            }));
-        then.status(200)
-            .header("content-type", "application/json")
-            .json_body(json!({
-                "object": "list",
-                "data": [
-                  {
-                    "object": "embedding",
-                    "embedding": vec![0.0043064255; 1536],
-                    "index": 0
-                  },
-                  {
-                    "object": "embedding",
-                    "embedding": vec![0.0043064255; 1536],
-                    "index": 1
-                  },
-                  {
-                    "object": "embedding",
-                    "embedding": vec![0.0023064255; 1536],
-                    "index": 2
-                  }
-                ],
-                "model": "text-embedding-ada-002",
-                "usage": {
-                  "prompt_tokens": 8,
-                  "total_tokens": 8
-                }
-            }
-        ));
-    });
-    server.mock(|when, then| {
-        when.method(httpmock::Method::POST)
-            .path("/embeddings")
-            .header("Authorization", "Bearer TEST")
-            .json_body(json!({
-                "input": [
-                    "What is a linglingdong?"
-                ],
-                "model": "text-embedding-ada-002",
-            }));
-        then.status(200)
-            .header("content-type", "application/json")
-            .json_body(json!({
-                    "object": "list",
-                    "data": [
-                      {
-                        "object": "embedding",
-                        "embedding": vec![0.002; 1536],
-                        "index": 0
-                      }
-                    ],
-                    "model": "text-embedding-ada-002",
-                    "usage": {
-                      "prompt_tokens": 8,
-                      "total_tokens": 8
-                    }
-                }
-            ));
-    });
+    mock_embeddings(
+        &server,
+        json!({ "input": WORD_DEFINITIONS, "model": "text-embedding-ada-002" }),
+        [
+            vec![0.0043064255; 1536],
+            vec![0.0043064255; 1536],
+            vec![0.0023064255; 1536],
+        ],
+    );
+    mock_embeddings(
+        &server,
+        json!({ "input": ["What is a linglingdong?"], "model": "text-embedding-ada-002" }),
+        [vec![0.002; 1536]],
+    );
 
-    // Initialize OpenAI client
-    let openai_client = openai::OpenAIConfig::new("TEST")
-        .with_base_url(server.base_url())
-        .client();
+    let openai_client = openai_client(&server);
 
     let model = openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None);
 
@@ -181,7 +113,7 @@ async fn vector_search_test() {
 
     let results = vector_store.top_n::<serde_json::Value>(req).await.unwrap();
 
-    let (_, _, value) = &results.first().unwrap();
+    let value = &results.first().unwrap().document;
 
     assert_eq!(
         value,
@@ -193,20 +125,18 @@ async fn vector_search_test() {
 }
 
 async fn create_points(model: Model<openai::wire::Embeddings>) -> Vec<PointStruct> {
-    let words = vec![
-        Word {
-            id: "0981d983-a5f8-49eb-89ea-f7d3b2196d2e".to_string(),
-            definition: "Definition of a *flurbo*: A flurbo is a green alien that lives on cold planets".to_string(),
-        },
-        Word {
-            id: "62a36d43-80b6-4fd6-990c-f75bb02287d1".to_string(),
-            definition: "Definition of a *glarb-glarb*: A glarb-glarb is an ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.".to_string(),
-        },
-        Word {
-            id: "f9e17d59-32e5-440c-be02-b2759a654824".to_string(),
-            definition: "Definition of a *linglingdong*: A term used by inhabitants of the far side of the moon to describe humans.".to_string(),
-        }
+    let ids = [
+        "0981d983-a5f8-49eb-89ea-f7d3b2196d2e",
+        "62a36d43-80b6-4fd6-990c-f75bb02287d1",
+        "f9e17d59-32e5-440c-be02-b2759a654824",
     ];
+    let words = ids
+        .into_iter()
+        .zip(WORD_DEFINITIONS)
+        .map(|(id, definition)| Word {
+            id: id.to_string(),
+            definition: definition.to_string(),
+        });
 
     let documents = EmbeddingsBuilder::new(model)
         .documents(words)

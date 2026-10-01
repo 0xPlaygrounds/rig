@@ -36,7 +36,7 @@ where
     T: JsonSchema + DeserializeOwned + WasmCompatSend + WasmCompatSync,
 {
     agent: Agent,
-    retries: u64,
+    retries: usize,
     _t: PhantomData<T>,
 }
 
@@ -92,7 +92,7 @@ where
 {
     agent_builder: AgentBuilder,
     _t: PhantomData<T>,
-    retries: Option<u64>,
+    retries: Option<usize>,
 }
 
 /// Generate setters forwarding to the matching inner [`AgentBuilder`] methods.
@@ -119,7 +119,9 @@ where
     }
 
     /// Configure an agent builder for extraction of `T`, replacing its preamble,
-    /// output schema, tool choice, and output mode.
+    /// output schema, tool choice, and output mode. The tool choice is always
+    /// [`ToolChoice::Required`], since an extraction is one turn that must call
+    /// the `submit` tool.
     pub fn from_agent_builder(builder: AgentBuilder) -> Self {
         Self {
             agent_builder: builder
@@ -158,9 +160,6 @@ where
         /// Set the maximum number of tokens for the completion
         max_tokens(max_tokens: u64);
 
-        /// Set the `tool_choice` option for the inner Agent.
-        tool_choice(choice: ToolChoice);
-
         /// Add a provider-independent lifecycle hook to every extraction attempt.
         ///
         /// Completion-response hooks receive canonical Rig content, usage, prompt,
@@ -182,7 +181,7 @@ where
     }
 
     /// Set the maximum number of retries for the extractor.
-    pub fn retries(mut self, retries: u64) -> Self {
+    pub fn retries(mut self, retries: usize) -> Self {
         self.retries = Some(retries);
         self
     }

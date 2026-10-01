@@ -5,6 +5,10 @@
 //! state with [`checkpoint`]. Concrete recording and replay adapters live in
 //! `rig_cassette::ecs`; the optional `assets` feature loads prompts and tools.
 //!
+//! This crate is experimental: its API may change in minor releases. The
+//! runtime behaviour its tests pin is stated in
+//! [`CONTRACT.md`](https://github.com/0xPlaygrounds/rig/blob/main/crates/rig-ecs/CONTRACT.md).
+//!
 //! ```
 //! let mut app = bevy_app::App::new();
 //! app.add_plugins(rig_ecs::RigPlugin::default());

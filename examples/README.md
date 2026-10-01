@@ -54,7 +54,6 @@ Most examples expect provider API keys in the environment (e.g. `OPENAI_API_KEY`
 | `manual_tool_calls` | Demonstrates manual tool-call handling with an explicit raw `Model` request. |
 | `multi_agent` | See source. |
 | `multi_extract` | Demonstrates fan-out structured extraction with `try_parallel!`. |
-| `multi_turn_agent_extended` | See source. |
 | `multi_turn_agent` | See source. |
 | `openai_agent_completions_api_otel` | This example shows how you can use OpenAI's Completions API. |
 | `openai_streaming_per_call_usage` | Shows how to inspect per-completion-call usage in an agent stream. |

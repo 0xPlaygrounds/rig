@@ -19,7 +19,7 @@ use super::support::with_xai_cassette;
 fn request(history: Vec<Message>) -> CompletionRequest {
     CompletionRequest {
         model: None,
-        chat_history: rig_core::NonEmpty::from_vec(history).expect("non-empty"),
+        chat_history: history,
         documents: vec![],
         tools: vec![],
         temperature: None,
@@ -75,16 +75,14 @@ async fn file_id_chain() {
 
         let body = async {
             let document = Message::User {
-                content: rig_core::NonEmpty::with_rest(
+                content: vec![
                     UserContent::Document(Document {
                         data: DocumentSourceKind::file_id(&file_id),
                         media_type: Some(DocumentMediaType::PDF),
                         additional_params: None,
                     }),
-                    [UserContent::text(
-                        "How many pages does this PDF have? Answer with a number.",
-                    )],
-                ),
+                    UserContent::text("How many pages does this PDF have? Answer with a number."),
+                ],
             };
             let model = client.completion(xai::GROK_4);
             let first = model
@@ -96,7 +94,7 @@ async fn file_id_chain() {
                 document,
                 Message::Assistant {
                     id: first.message_id.clone(),
-                    content: rig_core::NonEmpty::from_vec(first.choice.clone()).expect("non-empty"),
+                    content: first.choice.clone(),
                 },
                 Message::user("Is the attached PDF longer than two pages? Answer yes or no."),
             ];

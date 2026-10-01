@@ -10,7 +10,6 @@
 //! proxy for those cells, so their request boundary is pinned by the
 //! recording's owning test, not here. Setup failures replay the committed
 //! error recordings through the ordinary cassette wrappers.
-#![allow(dead_code)]
 
 use std::sync::{
     Arc,
@@ -23,8 +22,6 @@ use bytes::Bytes;
 use futures::StreamExt;
 
 use rig_agent::agent::MultiTurnStreamItem;
-
-use rig_agent::agent::StreamingError;
 
 use rig_agent::agent::StreamingResult;
 
@@ -532,18 +529,14 @@ pub async fn drain(stream: &mut StreamingResult) -> Drained {
 }
 
 /// The report a runner stream error carries.
-pub fn report_of(error: &StreamingError) -> ErrorReport {
+pub fn report_of(error: &PromptError) -> ErrorReport {
     match error {
-        StreamingError::Completion(error) => ErrorReport::from(error),
-        StreamingError::Report(report) => report.clone(),
-        StreamingError::Prompt(error) => match error {
-            PromptError::Report(report) => report.clone(),
-            PromptError::CompletionError(error) => ErrorReport::from(error),
-            PromptError::PromptCancelled { reason, .. } => {
-                ErrorReport::new(ErrorKind::Cancelled, reason.clone())
-            }
-            other => panic!("a provider-shaped failure, not {other:?}"),
-        },
+        PromptError::Provider(error) => ErrorReport::from(error),
+        PromptError::Report(report) => report.clone(),
+        PromptError::Cancelled { reason, .. } => {
+            ErrorReport::new(ErrorKind::Cancelled, reason.clone())
+        }
+        other => panic!("a provider-shaped failure, not {other:?}"),
     }
 }
 

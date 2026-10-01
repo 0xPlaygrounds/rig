@@ -64,7 +64,7 @@ fn comments_do_not_register_rows_or_calls() {
 #[test]
 fn resume_rows_preserve_scenarios_and_validate_registration() {
     let header = "wrapper: super::with_cassette, wire: wire, run: world::run;";
-    let matrix: ResumeMatrix = syn::parse_str(&format!(
+    let matrix = NativeMatrix::parse_resume.parse_str(&format!(
         r#"{header}
         #[tokio::test] cut: ("recording", cells::CELL, Some(1), "cut");
         #[tokio::test] #[ignore = "unrecorded"] end: ("absent", cells::CELL, Some(usize::MAX), "end");
@@ -87,7 +87,11 @@ fn resume_rows_preserve_scenarios_and_validate_registration() {
         "#[tokio::test] cut: (\"recording\", CELL, None);",
         "#[tokio::test] cut: (\"recording\", CELL, None, \"golden\", extra);",
     ] {
-        assert!(syn::parse_str::<ResumeMatrix>(&format!("{header}{row}")).is_err());
+        assert!(
+            NativeMatrix::parse_resume
+                .parse_str(&format!("{header}{row}"))
+                .is_err()
+        );
     }
 }
 

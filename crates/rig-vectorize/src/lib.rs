@@ -34,7 +34,9 @@ pub use client::{
 
 use client::{QueryRequest as ApiQueryRequest, VectorInput as ApiVectorInput};
 use rig_core::vector_store::request::VectorSearchRequest;
-use rig_core::vector_store::{InsertDocuments, VectorStoreError, VectorStoreIndex};
+use rig_core::vector_store::{
+    InsertDocuments, VectorSearchIdResult, VectorSearchResult, VectorStoreError, VectorStoreIndex,
+};
 use rig_core::wasm_compat::WasmCompatSend;
 use rig_core::{Embed, embeddings::Embedding};
 use serde::{Serialize, de::DeserializeOwned};
@@ -91,7 +93,7 @@ impl VectorizeVectorStore {
             top_k: req.samples(),
             return_values: Some(false),
             return_metadata: Some(return_metadata),
-            filter: req.filter().as_ref().map(|f| f.clone().into_inner()),
+            filter: req.filter().map(|f| f.clone().into_inner()),
         };
 
         let result = self.client.query(query_request).await?;
@@ -107,12 +109,12 @@ impl VectorizeVectorStore {
 impl VectorStoreIndex for VectorizeVectorStore {
     type Filter = VectorizeFilter;
 
-    /// Returns matches as `(score, vector id, metadata)`. A match without
+    /// Returns matches keyed by vector id, with metadata as the document. A match without
     /// metadata deserializes from JSON null, which fails for most `T`.
     async fn top_n<T: DeserializeOwned + WasmCompatSend>(
         &self,
         req: VectorSearchRequest<Self::Filter>,
-    ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
+    ) -> Result<Vec<VectorSearchResult<T>>, VectorStoreError> {
         let matches = self.query_matches(&req, ReturnMetadata::All).await?;
 
         let results = matches
@@ -120,21 +122,31 @@ impl VectorStoreIndex for VectorizeVectorStore {
             .map(|m| {
                 let metadata = m.metadata.unwrap_or(serde_json::Value::Null);
                 let doc: T = serde_json::from_value(metadata)?;
-                Ok((m.score, m.id, doc))
+                Ok(VectorSearchResult {
+                    score: m.score,
+                    id: m.id,
+                    document: doc,
+                })
             })
             .collect::<Result<Vec<_>, serde_json::Error>>()?;
 
         Ok(results)
     }
 
-    /// Like `top_n` but returns `(score, vector id)` without requesting metadata.
+    /// Like `top_n` but returns only scores and vector ids, without requesting metadata.
     async fn top_n_ids(
         &self,
         req: VectorSearchRequest<Self::Filter>,
-    ) -> Result<Vec<(f64, String)>, VectorStoreError> {
+    ) -> Result<Vec<VectorSearchIdResult>, VectorStoreError> {
         let matches = self.query_matches(&req, ReturnMetadata::None).await?;
 
-        Ok(matches.into_iter().map(|m| (m.score, m.id)).collect())
+        Ok(matches
+            .into_iter()
+            .map(|m| VectorSearchIdResult {
+                score: m.score,
+                id: m.id,
+            })
+            .collect())
     }
 }
 

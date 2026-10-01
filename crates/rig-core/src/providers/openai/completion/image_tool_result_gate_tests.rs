@@ -24,27 +24,13 @@ fn params(
         issuers: vec![crate::message::Issuer::from("openai")],
         reasoning_details: false,
         model: "test-model".to_string(),
-        request: crate::completion::CompletionRequest {
-            model: None,
-            chat_history: crate::NonEmpty::new(message::Message::User {
-                content: crate::NonEmpty::new(message::UserContent::ToolResult(
-                    message::ToolResult {
-                        call: crate::message::CallId::from_wire("call_1"),
-                        name: crate::message::ToolName::new("view_file".to_string())
-                            .expect("tool name"),
-                        content: crate::NonEmpty::from_vec(content).expect("non-empty"),
-                    },
-                )),
-            }),
-            documents: vec![],
-            tools: vec![],
-            temperature: None,
-            max_tokens: None,
-            tool_choice: None,
-            additional_params: None,
-            output_schema: None,
-            record_telemetry_content: false,
-        },
+        request: crate::completion::CompletionRequest::new(message::Message::User {
+            content: vec![message::UserContent::ToolResult(message::ToolResult {
+                call: crate::message::CallId::from_wire("call_1"),
+                name: crate::message::ToolName::new("view_file".to_string()).expect("tool name"),
+                content,
+            })],
+        }),
         strict_tools: false,
         tool_result_array_content: false,
         supports_image_tool_results,

@@ -1688,7 +1688,10 @@ fn assert_mid_stream_scene_refused(app: &mut App, cell: &Cell, program: &Program
             )
         });
     assert!(
-        error.message.contains("delivered progress"),
+        matches!(
+            error,
+            rig_ecs::checkpoint::CheckpointError::UnresumableStream
+        ),
         "{}: refused for its progress, not another reason: {error:?}",
         cell.name
     );

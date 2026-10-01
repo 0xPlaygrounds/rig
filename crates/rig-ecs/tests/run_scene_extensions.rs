@@ -9,10 +9,9 @@ use std::any::type_name;
 
 use bevy_ecs::{prelude::*, reflect::AppTypeRegistry};
 use bevy_reflect::Reflect;
-use rig_core::error::ErrorKind;
 use rig_ecs::{
     agent::{Owner, Run, RunOf, Settled, Turn},
-    checkpoint::{Checkpoint, RestoreMode, load_world, save_world},
+    checkpoint::{Checkpoint, CheckpointError, RestoreMode, load_world, save_world},
     systems::RunCommands,
 };
 use serde::{Deserialize, Serialize};
@@ -124,10 +123,9 @@ fn missing_registration_and_invalid_payload_are_refused_before_spawning() {
     run_support::capturing_agent(&mut app, "t/model:default", "t", "ok");
     let count = app.world().entities().len();
     let error = load_world(&saved, app.world_mut(), RestoreMode::Strict, []).unwrap_err();
-    assert_eq!(error.kind, ErrorKind::Request);
     assert!(
-        error.message.contains(type_name::<RetryBudget>())
-            || error.message.contains(type_name::<Blames>()),
+        matches!(&error, CheckpointError::Unregistered { path, .. }
+            if path == type_name::<RetryBudget>() || path == type_name::<Blames>()),
         "names an unregistered host type: {error:?}"
     );
     assert_eq!(app.world().entities().len(), count);
@@ -143,7 +141,10 @@ fn missing_registration_and_invalid_payload_are_refused_before_spawning() {
         serde_json::json!("not a budget"),
     );
     let error = load_world(&invalid, app.world_mut(), RestoreMode::Strict, []).unwrap_err();
-    assert_eq!(error.kind, ErrorKind::Request, "{error:?}");
+    assert!(
+        matches!(&error, CheckpointError::Deserialize { path, .. } if path == type_name::<RetryBudget>()),
+        "{error:?}"
+    );
     assert_eq!(app.world().entities().len(), count);
     let mut invalid = saved;
     invalid.entities[run].insert(
@@ -151,7 +152,10 @@ fn missing_registration_and_invalid_payload_are_refused_before_spawning() {
         serde_json::json!(usize::MAX),
     );
     let error = load_world(&invalid, app.world_mut(), RestoreMode::Strict, []).unwrap_err();
-    assert_eq!(error.kind, ErrorKind::Request, "{error:?}");
+    assert!(
+        matches!(&error, CheckpointError::Deserialize { path, .. } if path == type_name::<Blames>()),
+        "{error:?}"
+    );
     assert_eq!(app.world().entities().len(), count);
 }
 
@@ -246,7 +250,10 @@ fn a_stream_checkpoint_restores_completed_state_and_refuses_an_unfinished_prefix
             assert_eq!(counters.stream_sends.load(Ordering::SeqCst), 0);
         } else {
             let error = loaded.unwrap_err();
-            assert_eq!(error.kind, ErrorKind::Request, "{error:?}");
+            assert!(
+                !matches!(error, CheckpointError::NotInstalled(_)),
+                "{error:?}"
+            );
             assert_eq!(restored.world().entities().len(), count);
             assert_eq!(
                 restored

@@ -21,7 +21,7 @@
 //! | 1 | `raw_round_trips_deepseek_type` | typed read-back | `raw` deserializes into `deepseek::CompletionResponse`, whose provider-native fields are the normalized response's | recorded |
 //! | 2 | `raw_exposes_prompt_cache_miss_tokens` | provider-only field | `raw.usage.prompt_cache_miss_tokens` and `raw.system_fingerprint` equal the fixture body, and neither has a normalized slot | recorded |
 //! | 3 | `normalized_fields_match_raw_renormalized` | normalized view | the response reproduces its fixture bytes, and the typed view of its own `raw` agrees with it field for field | recorded |
-//! | 4 | `reasoning_raw_round_trips_and_exposes_reasoning_content` | reasoning turn | a thinking-mode turn's `raw` reads back into `deepseek::CompletionResponse`; its `choices[0].message.reasoning_content` is the fixture's reasoning string, which the normalized view carries only as a `Reasoning` block under a different spelling | recorded |
+//! | 4 | `reasoning_raw_round_trips_and_exposes_reasoning_content` | reasoning turn | a thinking-mode turn's `raw` reads back into `deepseek::CompletionResponse`; its assistant message's `reasoning` (spelled `reasoning_content` on the wire) is the fixture's reasoning string, which the normalized view carries only as a `Reasoning` block under a different spelling | recorded |
 //!
 //! The scenario literals — and so the fixture directories — keep the names
 //! they were recorded under.
@@ -39,7 +39,7 @@
 
 use rig::completion::{CompletionRequest, CompletionResponse};
 use rig::message::{AssistantContent, ReasoningContent};
-use rig::providers::deepseek;
+use rig::providers::{deepseek, openai};
 use serde::Deserialize;
 use serde_json::json;
 
@@ -93,46 +93,21 @@ fn reasoning_text_of(choice: &[AssistantContent]) -> String {
 }
 
 /// DeepSeek's own view of a reply, checked against the normalized response it
-/// rode on.
-///
-/// One decoder produces the normalized response, and this is the typed read
-/// of the very document that decoder read, so agreement here pins that
-/// mapping rather than comparing it with a second mapping of the same bytes.
-///
-/// Not [`chat::assert_native_matches_normalized`]: that one reads the shared
-/// [`rig::providers::openai::CompletionResponse`], and the point of this one
-/// is DeepSeek's own type — including the half of its cache split that gets
-/// normalized, which no shared chat type models.
+/// rode on: the shared chat fields, the cache-hit half of DeepSeek's split,
+/// and the choice text.
 fn assert_typed_view_matches(typed: &deepseek::CompletionResponse, response: &CompletionResponse) {
+    chat::assert_native_matches_normalized(response, typed, "the typed view of raw");
+    let usage = typed.usage.as_ref().expect("the reply reports usage");
     assert_eq!(
-        typed.id.as_deref(),
-        response.response_id.as_deref(),
-        "response id"
-    );
-    assert_eq!(typed.model, response.model, "model");
-    let choice = typed.choices.first().expect("a reply carries a choice");
-    assert_eq!(
-        Some(chat::native_finish_reason(&choice.finish_reason)),
-        response.finish_reason(),
-        "finish reason"
-    );
-    assert_eq!(
-        Some(u64::from(typed.usage.prompt_tokens)),
-        response.usage.input_tokens,
-        "input tokens"
-    );
-    assert_eq!(
-        Some(u64::from(typed.usage.completion_tokens)),
-        response.usage.output_tokens,
-        "output tokens"
-    );
-    assert_eq!(
-        Some(u64::from(typed.usage.prompt_cache_hit_tokens)),
+        Some(u64::from(usage.prompt_cache_hit_tokens)),
         response.usage.cached_input_tokens,
         "the hit count is the half of the split that gets normalized"
     );
-    let deepseek::Message::Assistant { content, .. } = &choice.message;
-    assert_eq!(&assistant_text(&response.choice), content, "choice text");
+    assert_eq!(
+        assistant_text(&response.choice),
+        chat::native_text(typed),
+        "choice text"
+    );
 }
 
 // ================================================================
@@ -292,15 +267,16 @@ async fn reasoning_raw_round_trips_and_exposes_reasoning_content() {
     let typed = deepseek::CompletionResponse::deserialize(&response.raw)
         .expect("raw reads back as DeepSeek's own CompletionResponse");
     assert_typed_view_matches(&typed, &response);
-    let deepseek::Message::Assistant {
-        reasoning_content, ..
-    } = &typed
+    let openai::completion::Message::Assistant { reasoning, .. } = &typed
         .choices
         .first()
         .expect("a reply carries a choice")
-        .message;
+        .message
+    else {
+        panic!("a completion choice carries an assistant message");
+    };
     assert_eq!(
-        reasoning_content.as_deref(),
+        reasoning.as_deref(),
         Some(recorded_reasoning),
         "the typed view carries the fixture's reasoning_content verbatim"
     );

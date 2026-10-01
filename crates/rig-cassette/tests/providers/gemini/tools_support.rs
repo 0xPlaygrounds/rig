@@ -65,7 +65,7 @@ pub(crate) struct OperationArgs {
 
 fn operation_definition(name: &str, description: &str) -> ToolDefinition {
     ToolDefinition {
-        name: name.to_string(),
+        name: rig_core::message::ToolName::new(name).expect("tool name"),
         description: description.to_string(),
         parameters: json!({
             "type": "object",

@@ -18,6 +18,7 @@
 
 use rig::Embed;
 use rig::embeddings::{EmbedError, Embedding, TextEmbedder};
+use rig::vector_store::VectorSearchResult;
 use rig::vector_store::request::{SearchFilter, VectorSearchRequest};
 use rig::vector_store::{InsertDocuments, VectorStoreIndex};
 use rig::vectorize::{VectorizeClient, VectorizeFilter, VectorizeVectorStore};
@@ -161,7 +162,12 @@ async fn test_top_n_returns_full_documents() {
 
     assert!(!results.is_empty(), "Should return at least one result");
 
-    for (_score, _id, document) in &results {
+    for VectorSearchResult {
+        score: _score,
+        id: _id,
+        document,
+    } in &results
+    {
         assert!(!document.id.is_empty(), "Document should have an id");
         assert!(!document.content.is_empty(), "Document should have content");
         assert!(
@@ -290,7 +296,12 @@ async fn test_query_with_eq_filter() {
                 );
                 return;
             }
-            for (_score, _id, document) in &results {
+            for VectorSearchResult {
+                score: _score,
+                id: _id,
+                document,
+            } in &results
+            {
                 assert_eq!(
                     document.category, "programming",
                     "Filter should only return programming documents"
@@ -369,7 +380,12 @@ async fn test_query_with_combined_filters() {
                 );
                 return;
             }
-            for (_score, _id, document) in &results {
+            for VectorSearchResult {
+                score: _score,
+                id: _id,
+                document,
+            } in &results
+            {
                 assert_ne!(document.id, "doc-rust", "Filter should exclude doc-rust");
                 assert_eq!(
                     document.category, "programming",
@@ -453,7 +469,12 @@ async fn test_query_with_in_filter() {
                 );
                 return;
             }
-            for (_score, _id, document) in &results {
+            for VectorSearchResult {
+                score: _score,
+                id: _id,
+                document,
+            } in &results
+            {
                 assert!(
                     document.category == "programming" || document.category == "database",
                     "Filter should only return programming or database documents, got: {}",

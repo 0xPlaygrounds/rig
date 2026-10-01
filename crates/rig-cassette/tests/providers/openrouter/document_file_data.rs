@@ -29,7 +29,7 @@ fn verifier_document() -> Document {
     let bytes =
         std::fs::read(VERIFIER_FIXTURE_PATH).expect("verifier fixture PDF should be readable");
     Document {
-        data: DocumentSourceKind::base64(&BASE64_STANDARD.encode(bytes)),
+        data: DocumentSourceKind::base64(BASE64_STANDARD.encode(bytes)),
         media_type: Some(DocumentMediaType::PDF),
         additional_params: None,
     }
@@ -37,12 +37,12 @@ fn verifier_document() -> Document {
 
 fn document_question(page_number: u8) -> RigMessage {
     RigMessage::User {
-        content: rig_core::NonEmpty::with_rest(
+        content: vec![
             RigUserContent::Document(verifier_document()),
-            [RigUserContent::Text(Text::new(format!(
+            RigUserContent::Text(Text::new(format!(
                 "What verifier token is printed on page {page_number}? Reply with only the exact token."
-            )))],
-        ),
+            ))),
+        ],
     }
 }
 

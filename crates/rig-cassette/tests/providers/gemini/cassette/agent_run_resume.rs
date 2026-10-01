@@ -119,7 +119,7 @@ async fn resume_from_serialized_state_mid_tool_execution() {
                 }
             };
 
-            assert_mentions_expected_number(&response.output, 42);
+            assert_mentions_expected_number(&response.output(), 42);
             assert_eq!(resumed.completion_calls().len(), resumed.turn());
         },
     )
@@ -219,7 +219,7 @@ async fn resume_while_invalid_tool_call_awaits_resolution() {
                     AgentRunStep::Done(response) => break response,
                 }
             };
-            assert_nonempty_response(&response.output);
+            assert_nonempty_response(&response.output());
         },
     )
     .await;
@@ -315,7 +315,7 @@ async fn resume_after_invalid_tool_call_retry_rollback() {
                 }
             };
 
-            assert_nonempty_response(&response.output);
+            assert_nonempty_response(&response.output());
             assert!(resumed.completion_calls().len() >= 2);
         },
     )

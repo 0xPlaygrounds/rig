@@ -481,7 +481,7 @@ async fn parallel_tool_calls_single_turn_nonstreaming() -> Result<()> {
             let response = agent.chat(TWO_TOOL_STREAM_PROMPT, &mut history).await?;
 
             assert_contains_all_case_insensitive(
-                &response.output,
+                &response.output(),
                 &[ALPHA_SIGNAL_OUTPUT, BETA_SIGNAL_OUTPUT],
             );
             let calls = history_tool_calls(&history);
@@ -595,11 +595,11 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
                 .message(Message::user("Look up the harbor label with the tool."))
                 .message(Message::Assistant {
                     id: None,
-                    content: rig_core::NonEmpty::new(AssistantContent::tool_call(
+                    content: vec![AssistantContent::tool_call(
                         "call_REDACTED_1",
                         rig_core::message::ToolName::new(AlphaSignal::NAME).expect("tool name"),
                         json!({}),
-                    )),
+                    )],
                 })
                 .message(Message::tool_result(rig_core::message::CallId::from_wire("call_REDACTED_1"), rig_core::message::ToolName::new(AlphaSignal::NAME).expect("tool name"), ALPHA_SIGNAL_OUTPUT))
                 .message(Message::assistant("The harbor label is crimson-harbor."))
@@ -630,9 +630,10 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
                 response.usage
             );
             anyhow::ensure!(
-                wire.choices
+                wire.openai
+                    .choices
                     .iter()
-                    .all(|choice| choice.finish_reason.is_some()),
+                    .all(|choice| !choice.openai.finish_reason.is_empty()),
                 "the gateway's document should preserve every choice's finish reason"
             );
             anyhow::ensure!(
@@ -640,7 +641,7 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
                 "normalized response should preserve the finish reason: {:?}",
                 response.finish_reason()
             );
-            assert_nonempty_response(&wire.model);
+            assert_nonempty_response(&wire.openai.model);
 
             Ok(())
         },

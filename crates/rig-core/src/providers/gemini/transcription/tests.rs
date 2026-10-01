@@ -45,11 +45,8 @@ fn the_wire_encodes_the_recorded_generate_content_request() {
     );
     assert_eq!(encoded.request_id_header, None);
 
-    let crate::wire::Body::Bytes(body) = request.body() else {
-        panic!("the transcription body is JSON, not a multipart form")
-    };
     assert_eq!(
-        serde_json::from_slice::<Value>(body).expect("the body is JSON"),
+        crate::test_utils::json_body(request),
         serde_json::json!({
             "contents": [{
                 "parts": [{

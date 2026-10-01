@@ -4,7 +4,7 @@
 //! DeepSeek emits the tool call anyway when the budget runs out mid-arguments:
 //! the turn comes back with `finish_reason: "length"` and
 //! `tool_calls[].function.arguments` cut off partway through the JSON object.
-//! `deepseek::Function` parsed that strictly, so the *whole* `CompletionResponse`
+//! DeepSeek's tool-call type parsed that strictly, so the *whole* `CompletionResponse`
 //! failed to decode and the text, usage, id, model and finish reason went with
 //! it — while the streaming path kept the turn and dropped the unusable
 //! call. The two transports disagreed about
@@ -35,7 +35,7 @@
 use anyhow::Result;
 use rig::completion::ToolDefinition;
 use rig::message::AssistantContent;
-use rig::providers::deepseek;
+use rig::providers::{deepseek, openai};
 use rig_test_support::cassette_models::OpenAiModels;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -71,7 +71,7 @@ fn thinking_params() -> Value {
 
 fn file_report_tool() -> ToolDefinition {
     ToolDefinition {
-        name: "file_report".to_owned(),
+        name: rig_core::message::ToolName::new("file_report").expect("tool name"),
         description: "File an incident report.".to_owned(),
         parameters: json!({
             "type": "object",
@@ -88,7 +88,7 @@ fn file_report_tool() -> ToolDefinition {
 
 fn page_oncall_tool() -> ToolDefinition {
     ToolDefinition {
-        name: "page_oncall".to_owned(),
+        name: rig_core::message::ToolName::new("page_oncall").expect("tool name"),
         description: "Page the on-call engineer.".to_owned(),
         parameters: json!({
             "type": "object",
@@ -253,10 +253,13 @@ async fn assert_blocking_truncation_survives(client: &OpenAiModels, max_tokens: 
         choice.finish_reason, "length",
         "premise: the recorded turn must have been cut by the budget"
     );
-    let deepseek::Message::Assistant {
+    let openai::completion::Message::Assistant {
         tool_calls: wire_calls,
         ..
-    } = &choice.message;
+    } = &choice.message
+    else {
+        panic!("a completion choice carries an assistant message");
+    };
     assert!(
         wire_calls.is_empty(),
         "the unusable call is dropped at decode rather than surfaced: {wire_calls:?}"
@@ -1224,10 +1227,13 @@ fn a_truncated_call_is_dropped_at_decode_and_the_turn_survives() {
 
     let response: deepseek::CompletionResponse =
         serde_json::from_str(body).expect("a truncated turn must still decode");
-    let deepseek::Message::Assistant {
+    let openai::completion::Message::Assistant {
         tool_calls: wire_calls,
         ..
-    } = &response.choices[0].message;
+    } = &response.choices[0].message
+    else {
+        panic!("a completion choice carries an assistant message");
+    };
     assert_eq!(
         wire_calls.len(),
         1,
@@ -1241,8 +1247,9 @@ fn a_truncated_call_is_dropped_at_decode_and_the_turn_survives() {
 
     // The counters survive the cut: the truncated call still cost its
     // tokens, and DeepSeek's cache split is on the type in full.
-    assert_eq!(response.usage.total_tokens, 396);
-    assert_eq!(response.usage.prompt_cache_hit_tokens, 256);
-    assert_eq!(response.usage.prompt_cache_miss_tokens, 116);
+    let usage = response.usage.expect("the reply reports usage");
+    assert_eq!(usage.openai.total_tokens, 396);
+    assert_eq!(usage.prompt_cache_hit_tokens, 256);
+    assert_eq!(usage.prompt_cache_miss_tokens, 116);
     assert_eq!(response.choices[0].finish_reason, "length");
 }

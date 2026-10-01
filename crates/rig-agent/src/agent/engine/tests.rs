@@ -19,9 +19,9 @@ use tokio::sync::{Barrier, Notify};
 use crate::agent::AgentBuilder;
 use crate::agent::hook::{AgentHook, HookContext, RequestPatch, StepEventKind};
 use crate::agent::run::OutputMode;
-use crate::agent::streaming::{MultiTurnStreamItem, StreamingError};
+use crate::agent::streaming::MultiTurnStreamItem;
 use crate::completion::{FinishReason, Message, PromptError, Usage};
-use crate::streaming::{Item, StreamEvent, StreamedUserContent};
+use crate::streaming::{Item, StreamEvent};
 use crate::test_utils::{
     MockAddTool, MockBarrierTool, MockCompletionModel, MockOperationArgs, MockScript,
     MockStreamEvent, MockSubtractTool, MockToolError, MockTurn, mock_final,
@@ -37,7 +37,8 @@ use rig_core::message::{
 };
 use rig_core::operation::Finish;
 use rig_core::vector_store::{
-    VectorSearchRequest, VectorStoreError, VectorStoreIndex, request::Filter,
+    VectorSearchIdResult, VectorSearchRequest, VectorSearchResult, VectorStoreError,
+    VectorStoreIndex, request::Filter,
 };
 use rig_core::wasm_compat::WasmCompatSend;
 
@@ -927,7 +928,7 @@ async fn retried_turn_records_the_retried_attempts_own_raw_blocking() {
     .await
     .expect("retried run");
 
-    assert_eq!(response.output, "second attempt");
+    assert_eq!(response.output(), "second attempt");
     assert_eq!(
         *hook.seen.lock().expect("retry raws"),
         [first.clone(), second.clone()],
@@ -981,7 +982,7 @@ async fn retried_turn_records_the_retried_attempts_own_raw_streamed() {
     }
 
     let response = final_response.expect("run final response");
-    assert_eq!(response.output, "second attempt");
+    assert_eq!(response.output(), "second attempt");
     assert_eq!(
         *retry.seen.lock().expect("retry raws"),
         [first.clone(), second.clone()],
@@ -1012,7 +1013,7 @@ async fn response_scoped_id_is_not_promoted_into_history() {
     .await
     .expect("blocking response");
 
-    let messages = response.messages.expect("history enabled");
+    let messages = response.messages;
     let assistant_ids: Vec<_> = messages
         .iter()
         .filter_map(|message| match message {
@@ -1035,7 +1036,7 @@ async fn message_id_is_promoted_into_history() {
     .await
     .expect("blocking response");
 
-    let messages = response.messages.expect("history enabled");
+    let messages = response.messages;
     let assistant_ids: Vec<_> = messages
         .iter()
         .filter_map(|message| match message {
@@ -1191,10 +1192,10 @@ async fn streaming_completion_response_stop_preserves_the_completion_call() {
     assert_eq!(hook.model_turns.load(SeqCst), 0);
     assert!(matches!(
         error,
-        Some(StreamingError::Prompt(error))
+        Some(error)
             if matches!(
                 &error,
-                PromptError::PromptCancelled { chat_history, reason }
+                PromptError::Cancelled { chat_history, reason }
                     if chat_history == &[prompt] && reason == "stop at stream EOF"
             )
     ));
@@ -1243,10 +1244,10 @@ async fn streaming_model_turn_stop_preserves_the_completion_call() {
     assert!(!saw_run_final);
     assert!(matches!(
         error,
-        Some(StreamingError::Prompt(error))
+        Some(error)
             if matches!(
                 &error,
-                PromptError::PromptCancelled { reason, .. }
+                PromptError::Cancelled { reason, .. }
                     if reason == "stop completed model turn"
             )
     ));
@@ -1302,7 +1303,7 @@ async fn frames_after_the_providers_end_are_not_read() {
         assert_eq!(texts, "canonical response", "{case}");
         assert_eq!(completion_calls, 1, "{case}");
         assert_eq!(
-            response.expect("the run completes").output,
+            response.expect("the run completes").output(),
             "canonical response",
             "{case}"
         );
@@ -1417,9 +1418,7 @@ async fn streamed_tool_call_items_share_one_call_id() {
             MultiTurnStreamItem::ToolExecutionCommitted { tool_call, .. } => {
                 executed_ids.push(tool_call.id)
             }
-            MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult {
-                tool_result,
-            }) => result_ids.push(tool_result.call),
+            MultiTurnStreamItem::ToolResult { tool_result } => result_ids.push(tool_result.call),
             _ => {}
         }
     }
@@ -1447,7 +1446,7 @@ async fn from_agent_preserves_implicit_one_and_explicit_zero_budgets() {
         .expect_err("implicit budget should reject the second model call");
     assert!(matches!(
         implicit_err,
-        PromptError::MaxTurnsError { max_turns: 1, .. }
+        PromptError::MaxTurns { max_turns: 1, .. }
     ));
     assert_eq!(implicit_recorded.request_count(), 1);
 
@@ -1463,7 +1462,7 @@ async fn from_agent_preserves_implicit_one_and_explicit_zero_budgets() {
         .expect_err("explicit zero budget should reject the initial model call");
     assert!(matches!(
         zero_err,
-        PromptError::MaxTurnsError { max_turns: 0, .. }
+        PromptError::MaxTurns { max_turns: 0, .. }
     ));
     assert_eq!(zero_recorded.request_count(), 0);
 }
@@ -1524,7 +1523,7 @@ async fn prompt_surfaces_reject_second_tool_roundtrip_request_at_budget_one() {
         .expect_err("blocking prompt should reject request two");
     assert!(matches!(
         blocking_err,
-        PromptError::MaxTurnsError { max_turns: 1, .. }
+        PromptError::MaxTurns { max_turns: 1, .. }
     ));
     assert_eq!(blocking_recorded.request_count(), 1);
 
@@ -1540,10 +1539,7 @@ async fn prompt_surfaces_reject_second_tool_roundtrip_request_at_budget_one() {
         }
     }
     match streaming_err {
-        Some(StreamingError::Prompt(err)) => assert!(matches!(
-            err,
-            PromptError::MaxTurnsError { max_turns: 1, .. }
-        )),
+        Some(err) => assert!(matches!(err, PromptError::MaxTurns { max_turns: 1, .. })),
         other => panic!("expected streaming max-turns error, got {other:?}"),
     }
     assert_eq!(streaming_recorded.request_count(), 1);
@@ -1587,8 +1583,8 @@ async fn run_and_stream_behave_identically_for_a_tool_call() {
     let final_response = final_response.expect("stream should yield a final response");
 
     // Same final output.
-    assert_eq!(blocking.output, "the answer is 5");
-    assert_eq!(final_response.output(), blocking.output);
+    assert_eq!(blocking.output(), "the answer is 5");
+    assert_eq!(final_response.output(), blocking.output());
 
     // Same medium-independent hook event sequence (model call and its
     // completion outcome, tool dispatch, tool outcome, second model call and
@@ -1614,11 +1610,8 @@ async fn run_and_stream_behave_identically_for_a_tool_call() {
     assert_eq!(blocking_hook.tool_results(), vec!["5".to_string()]);
 
     // Same final message history (compared via serialized form to normalize).
-    let blocking_messages = blocking.messages.expect("blocking messages");
-    let streaming_messages = final_response
-        .messages()
-        .expect("streaming history")
-        .to_vec();
+    let blocking_messages = blocking.messages;
+    let streaming_messages = final_response.messages().to_vec();
     assert_eq!(
         serde_json::to_value(&blocking_messages).expect("serialize blocking"),
         serde_json::to_value(&streaming_messages).expect("serialize streaming"),
@@ -2379,7 +2372,7 @@ mod structured_tool_results {
 
         // The persisted tool results must keep tool-call order regardless of
         // completion timing: `add` (tc_add) before `flaky_tool` (tc_flaky).
-        let messages = response.messages.expect("messages");
+        let messages = response.messages;
         let tool_result_ids: Vec<String> = messages
             .iter()
             .flat_map(|message| match message {
@@ -2415,148 +2408,25 @@ mod structured_tool_results {
 /// streaming side is already pinned by `assert_stream_usage_recorded_on_chat_spans`.
 mod span_safety_net {
     use crate::agent::telemetry::build_chat_span;
-    use std::collections::{HashMap, HashSet};
-    use std::sync::{Arc, Mutex};
+    use std::collections::HashSet;
 
     use futures::StreamExt;
+    use serde_json::Value;
     use tracing::Instrument;
-    use tracing::field::{Field, Visit};
-    use tracing::span::{Attributes, Record};
-    use tracing::{Id, Subscriber};
-    use tracing_subscriber::layer::{Context, SubscriberExt};
-    use tracing_subscriber::{Layer, Registry, registry::LookupSpan};
+    use tracing_subscriber::Registry;
 
     use crate::agent::{
         AgentBuilder, HookContext, MultiTurnStreamItem, OutcomeAction, OutcomeEvent,
     };
     use crate::completion::{PromptError, Usage};
     use crate::test_utils::{
-        MockAddTool, MockCompletionModel, MockScript, MockStreamEvent, MockTurn,
+        CapturedSpan, MockAddTool, MockCompletionModel, MockScript, MockStreamEvent, MockTurn,
+        TraceCapture,
     };
     use crate::tool::{ToolContext, ToolExecutionError};
     use rig_core::driver::Model;
 
     use super::{BoundedResponseRetry, StopCompletedModelTurn, TestRetryMode};
-
-    #[derive(Clone)]
-    struct CapturedSpan {
-        id: u64,
-        name: String,
-        target: String,
-        field_names: HashSet<String>,
-        u64_fields: HashMap<String, u64>,
-        string_fields: HashMap<String, Vec<String>>,
-    }
-
-    #[derive(Clone, Default)]
-    struct Captured {
-        spans: Arc<Mutex<Vec<CapturedSpan>>>,
-        /// `(span, follows_from)` pairs recorded via `Span::follows_from`.
-        follows: Arc<Mutex<Vec<(u64, u64)>>>,
-    }
-
-    impl Captured {
-        fn insert(&self, id: &Id, name: &str, target: &str) {
-            self.spans.lock().expect("spans").push(CapturedSpan {
-                id: id.into_u64(),
-                name: name.to_string(),
-                target: target.to_string(),
-                field_names: HashSet::new(),
-                u64_fields: HashMap::new(),
-                string_fields: HashMap::new(),
-            });
-        }
-
-        fn record(
-            &self,
-            id: &Id,
-            names: HashSet<String>,
-            u64s: HashMap<String, u64>,
-            strings: HashMap<String, String>,
-        ) {
-            let id = id.into_u64();
-            if let Ok(mut spans) = self.spans.lock()
-                && let Some(span) = spans.iter_mut().find(|s| s.id == id)
-            {
-                span.field_names.extend(names);
-                span.u64_fields.extend(u64s);
-                for (name, value) in strings {
-                    span.string_fields.entry(name).or_default().push(value);
-                }
-            }
-        }
-
-        fn follows_from(&self, span: &Id, follows: &Id) {
-            self.follows
-                .lock()
-                .expect("follows")
-                .push((span.into_u64(), follows.into_u64()));
-        }
-
-        fn clear(&self) {
-            self.spans.lock().expect("spans").clear();
-            self.follows.lock().expect("follows").clear();
-        }
-
-        fn snapshot(&self) -> Vec<CapturedSpan> {
-            self.spans.lock().expect("spans").clone()
-        }
-
-        fn follows_edges(&self) -> Vec<(u64, u64)> {
-            self.follows.lock().expect("follows").clone()
-        }
-    }
-
-    struct CaptureLayer {
-        captured: Captured,
-    }
-
-    impl<S> Layer<S> for CaptureLayer
-    where
-        S: Subscriber + for<'l> LookupSpan<'l>,
-    {
-        fn on_new_span(&self, attrs: &Attributes<'_>, id: &Id, _ctx: Context<'_, S>) {
-            self.captured
-                .insert(id, attrs.metadata().name(), attrs.metadata().target());
-        }
-
-        fn on_record(&self, span: &Id, values: &Record<'_>, _ctx: Context<'_, S>) {
-            let mut visitor = FieldVisitor::default();
-            values.record(&mut visitor);
-            self.captured
-                .record(span, visitor.names, visitor.u64s, visitor.strings);
-        }
-
-        fn on_follows_from(&self, span: &Id, follows: &Id, _ctx: Context<'_, S>) {
-            self.captured.follows_from(span, follows);
-        }
-    }
-
-    #[derive(Default)]
-    struct FieldVisitor {
-        names: HashSet<String>,
-        u64s: HashMap<String, u64>,
-        strings: HashMap<String, String>,
-    }
-
-    impl Visit for FieldVisitor {
-        fn record_u64(&mut self, field: &Field, value: u64) {
-            self.names.insert(field.name().to_string());
-            self.u64s.insert(field.name().to_string(), value);
-        }
-
-        fn record_str(&mut self, field: &Field, value: &str) {
-            self.names.insert(field.name().to_string());
-            self.strings
-                .insert(field.name().to_string(), value.to_string());
-        }
-
-        fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
-            self.names.insert(field.name().to_string());
-            self.strings
-                .insert(field.name().to_string(), format!("{value:?}"));
-        }
-    }
 
     fn usage(input: u64, output: u64) -> Usage {
         Usage {
@@ -2644,7 +2514,7 @@ mod span_safety_net {
                 item.expect("streaming retry item")
             {
                 saw_final = true;
-                assert_eq!(response.output, "accepted");
+                assert_eq!(response.output(), "accepted");
             }
         }
         assert!(saw_final, "streaming retry should produce a final response");
@@ -2664,7 +2534,7 @@ mod span_safety_net {
 
         assert!(matches!(
             error,
-            PromptError::PromptCancelled { reason, .. }
+            PromptError::Cancelled { reason, .. }
                 if reason == "stop completed model turn"
         ));
     }
@@ -2694,12 +2564,7 @@ mod span_safety_net {
                     errors += 1;
                     assert!(matches!(
                         error,
-                        super::StreamingError::Prompt(error)
-                            if matches!(
-                                &error,
-                                PromptError::PromptCancelled { reason, .. }
-                                    if reason == "stop completed model turn"
-                            )
+                        PromptError::Cancelled { reason, .. } if reason == "stop completed model turn"
                     ));
                 }
             }
@@ -2755,11 +2620,8 @@ mod span_safety_net {
     #[tokio::test]
     async fn response_retry_records_only_accepted_content_on_both_surfaces() {
         let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
-        let captured = Captured::default();
-        let subscriber = Registry::default().with(CaptureLayer {
-            captured: captured.clone(),
-        });
-        let _default = tracing::subscriber::set_default(subscriber);
+        let captured = TraceCapture::default();
+        let _default = tracing::subscriber::set_default(captured.subscriber());
 
         // Register both transport callsites under this subscriber before
         // inspecting field recordings.
@@ -2769,7 +2631,7 @@ mod span_safety_net {
         captured.clear();
 
         run_blocking_response_retry_with_content_telemetry().await;
-        let blocking = captured.snapshot();
+        let blocking = captured.spans();
         let blocking_chats = blocking
             .iter()
             .filter(|span| span.name == "chat")
@@ -2781,21 +2643,14 @@ mod span_safety_net {
                 .all(|span| span.target == "rig::agent_chat")
         );
         assert!(
-            !blocking_chats[0]
-                .field_names
-                .contains("gen_ai.output.messages"),
+            blocking_chats[0].record_count("gen_ai.output.messages") == 0,
             "rejected blocking content must not be recorded as model output"
         );
         assert!(
-            blocking_chats[1]
-                .field_names
-                .contains("gen_ai.output.messages"),
+            blocking_chats[1].record_count("gen_ai.output.messages") > 0,
             "accepted blocking content must be recorded as model output"
         );
-        let blocking_output = blocking_chats[1]
-            .string_fields
-            .get("gen_ai.output.messages")
-            .expect("accepted blocking output value");
+        let blocking_output = blocking_chats[1].recorded_texts("gen_ai.output.messages");
         assert!(
             blocking_output
                 .iter()
@@ -2809,13 +2664,13 @@ mod span_safety_net {
         let blocking_completion = blocking
             .iter()
             .find(|span| span.name == "invoke_agent")
-            .and_then(|span| span.string_fields.get("gen_ai.completion"))
+            .map(|span| span.recorded_texts("gen_ai.completion"))
             .expect("accepted blocking run-level completion");
         assert_eq!(blocking_completion, &["accepted"]);
 
         captured.clear();
         run_streaming_response_retry_with_content_telemetry().await;
-        let streaming = captured.snapshot();
+        let streaming = captured.spans();
         let streaming_chats = streaming
             .iter()
             .filter(|span| span.name == "chat_streaming")
@@ -2827,21 +2682,14 @@ mod span_safety_net {
                 .all(|span| span.target == "rig::agent_chat")
         );
         assert!(
-            !streaming_chats[0]
-                .field_names
-                .contains("gen_ai.output.messages"),
+            streaming_chats[0].record_count("gen_ai.output.messages") == 0,
             "rejected streaming content must not be recorded as model output"
         );
         assert!(
-            streaming_chats[1]
-                .field_names
-                .contains("gen_ai.output.messages"),
+            streaming_chats[1].record_count("gen_ai.output.messages") > 0,
             "accepted streaming content must be recorded as model output"
         );
-        let streaming_output = streaming_chats[1]
-            .string_fields
-            .get("gen_ai.output.messages")
-            .expect("accepted streaming output value");
+        let streaming_output = streaming_chats[1].recorded_texts("gen_ai.output.messages");
         assert!(
             streaming_output
                 .iter()
@@ -2855,7 +2703,7 @@ mod span_safety_net {
         let streaming_completion = streaming
             .iter()
             .find(|span| span.name == "invoke_agent")
-            .and_then(|span| span.string_fields.get("gen_ai.completion"))
+            .map(|span| span.recorded_texts("gen_ai.completion"))
             .expect("accepted streaming run-level completion");
         assert_eq!(streaming_completion, &["accepted"]);
     }
@@ -2863,11 +2711,8 @@ mod span_safety_net {
     #[tokio::test]
     async fn model_turn_stop_preserves_completed_content_telemetry_on_both_surfaces() {
         let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
-        let captured = Captured::default();
-        let subscriber = Registry::default().with(CaptureLayer {
-            captured: captured.clone(),
-        });
-        let _default = tracing::subscriber::set_default(subscriber);
+        let captured = TraceCapture::default();
+        let _default = tracing::subscriber::set_default(captured.subscriber());
 
         run_blocking_model_turn_stop_with_content_telemetry().await;
         run_streaming_model_turn_stop_with_content_telemetry().await;
@@ -2875,11 +2720,11 @@ mod span_safety_net {
         captured.clear();
 
         run_blocking_model_turn_stop_with_content_telemetry().await;
-        let blocking = captured.snapshot();
+        let blocking = captured.spans();
         let blocking_output = blocking
             .iter()
             .find(|span| span.name == "chat")
-            .and_then(|span| span.string_fields.get("gen_ai.output.messages"))
+            .map(|span| span.recorded_texts("gen_ai.output.messages"))
             .expect("stopped blocking turn should retain output telemetry");
         assert!(
             blocking_output
@@ -2889,11 +2734,11 @@ mod span_safety_net {
 
         captured.clear();
         run_streaming_model_turn_stop_with_content_telemetry().await;
-        let streaming = captured.snapshot();
+        let streaming = captured.spans();
         let streaming_output = streaming
             .iter()
             .find(|span| span.name == "chat_streaming")
-            .and_then(|span| span.string_fields.get("gen_ai.output.messages"))
+            .map(|span| span.recorded_texts("gen_ai.output.messages"))
             .expect("stopped streaming turn should retain output telemetry");
         assert!(
             streaming_output
@@ -2903,7 +2748,7 @@ mod span_safety_net {
         let streaming_completion = streaming
             .iter()
             .find(|span| span.name == "invoke_agent")
-            .and_then(|span| span.string_fields.get("gen_ai.completion"))
+            .map(|span| span.recorded_texts("gen_ai.completion"))
             .expect("stopped streaming turn should retain run-level completion telemetry");
         assert_eq!(streaming_completion, &["stopped streaming response"]);
     }
@@ -2911,11 +2756,8 @@ mod span_safety_net {
     #[tokio::test]
     async fn run_records_usage_and_chains_chat_spans_on_a_created_agent_span() {
         let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
-        let captured = Captured::default();
-        let subscriber = Registry::default().with(CaptureLayer {
-            captured: captured.clone(),
-        });
-        let _default = tracing::subscriber::set_default(subscriber);
+        let captured = TraceCapture::default();
+        let _default = tracing::subscriber::set_default(captured.subscriber());
 
         warm_blocking_callsites().await;
         tracing::callsite::rebuild_interest_cache();
@@ -2931,9 +2773,9 @@ mod span_safety_net {
             .run()
             .await
             .expect("blocking run should succeed");
-        assert_eq!(response.output, "the answer is 5");
+        assert_eq!(response.output(), "the answer is 5");
 
-        let spans = captured.snapshot();
+        let spans = captured.spans();
 
         // The blocking chat span is named "chat" (NOT "chat_streaming").
         let chat_spans: Vec<&CapturedSpan> = spans.iter().filter(|s| s.name == "chat").collect();
@@ -2950,16 +2792,10 @@ mod span_safety_net {
             .expect("blocking run should create an invoke_agent span");
 
         // ...and records aggregate usage + completion onto it (created_agent_span).
-        assert_eq!(
-            agent_span.u64_fields.get("gen_ai.usage.input_tokens"),
-            Some(&(7 + 13)),
-        );
-        assert_eq!(
-            agent_span.u64_fields.get("gen_ai.usage.output_tokens"),
-            Some(&(11 + 17)),
-        );
+        assert_eq!(agent_span.u64("gen_ai.usage.input_tokens"), Some(7 + 13));
+        assert_eq!(agent_span.u64("gen_ai.usage.output_tokens"), Some(11 + 17));
         assert!(
-            agent_span.field_names.contains("gen_ai.completion"),
+            agent_span.record_count("gen_ai.completion") > 0,
             "the created agent span records the final completion text"
         );
 
@@ -2971,7 +2807,10 @@ mod span_safety_net {
             .iter()
             .find(|s| s.name == "execute_tool")
             .expect("tool turn should emit an execute_tool span");
-        let edges = captured.follows_edges();
+        let edges: Vec<(u64, u64)> = spans
+            .iter()
+            .flat_map(|span| span.follows_from.iter().map(|from| (span.id, *from)))
+            .collect();
         assert!(
             edges.contains(&(tool_span.id, chat_spans[0].id)),
             "execute_tool should follow_from the first chat span; edges={edges:?}"
@@ -2985,11 +2824,8 @@ mod span_safety_net {
     #[tokio::test]
     async fn classic_completion_parent_is_enriched_without_duplicate_provider_span() {
         let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
-        let captured = Captured::default();
-        let subscriber = Registry::default().with(CaptureLayer {
-            captured: captured.clone(),
-        });
-        let _default = tracing::subscriber::set_default(subscriber);
+        let captured = TraceCapture::default();
+        let _default = tracing::subscriber::set_default(captured.subscriber());
 
         let warm = AgentBuilder::new(fixture_telemetry_model("warm")).build();
         let _ = warm.prompt("warm").await;
@@ -2998,9 +2834,9 @@ mod span_safety_net {
 
         let agent = AgentBuilder::new(fixture_telemetry_model("done")).build();
         let response = agent.prompt("hello").await.expect("prompt should succeed");
-        assert_eq!(response.output, "done");
+        assert_eq!(response.output(), "done");
 
-        let spans = captured.snapshot();
+        let spans = captured.spans();
         let chat_spans = spans
             .iter()
             .filter(|span| span.name == "chat")
@@ -3013,17 +2849,15 @@ mod span_safety_net {
         );
         assert_eq!(
             chat_spans[0]
-                .string_fields
-                .get("gen_ai.provider.name")
-                .and_then(|values| values.first())
+                .recorded_texts("gen_ai.provider.name")
+                .first()
                 .map(String::as_str),
             Some("fixture-provider")
         );
         assert_eq!(
             chat_spans[0]
-                .string_fields
-                .get("gen_ai.request.model")
-                .and_then(|values| values.first())
+                .recorded_texts("gen_ai.request.model")
+                .first()
                 .map(String::as_str),
             Some("fixture-model")
         );
@@ -3032,11 +2866,8 @@ mod span_safety_net {
     #[tokio::test]
     async fn run_does_not_record_usage_onto_a_caller_supplied_outer_span() {
         let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
-        let captured = Captured::default();
-        let subscriber = Registry::default().with(CaptureLayer {
-            captured: captured.clone(),
-        });
-        let _default = tracing::subscriber::set_default(subscriber);
+        let captured = TraceCapture::default();
+        let _default = tracing::subscriber::set_default(captured.subscriber());
 
         warm_blocking_callsites().await;
         tracing::callsite::rebuild_interest_cache();
@@ -3065,7 +2896,7 @@ mod span_safety_net {
         .instrument(outer)
         .await;
 
-        let spans = captured.snapshot();
+        let spans = captured.spans();
         // Under an ambient span the driver adopts it; no invoke_agent is created.
         assert!(
             spans.iter().all(|s| s.name != "invoke_agent"),
@@ -3077,13 +2908,13 @@ mod span_safety_net {
             .expect("outer span should be captured");
         assert!(
             outer_span
-                .field_names
+                .recorded
                 .iter()
-                .all(|name| !name.starts_with("gen_ai.usage.")),
+                .all(|(name, _)| !name.starts_with("gen_ai.usage.")),
             "run-level usage must not be recorded onto a caller-supplied outer span"
         );
         assert!(
-            !outer_span.field_names.contains("gen_ai.completion"),
+            outer_span.record_count("gen_ai.completion") == 0,
             "run-level completion must not be recorded onto a caller-supplied outer span"
         );
     }
@@ -3134,57 +2965,19 @@ mod span_safety_net {
         }
     }
 
-    /// Captures every value recorded into the `gen_ai.tool.call.result` span
-    /// field, so tests can assert telemetry follows result-hook policy.
-    #[derive(Default)]
-    struct ResultValueVisitor {
-        values: Vec<String>,
-    }
-    impl Visit for ResultValueVisitor {
-        fn record_str(&mut self, field: &Field, value: &str) {
-            if field.name() == "gen_ai.tool.call.result" {
-                self.values.push(value.to_string());
-            }
-        }
-        fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
-            if field.name() == "gen_ai.tool.call.result" {
-                self.values.push(format!("{value:?}"));
-            }
-        }
-    }
-
-    struct ResultValueLayer {
-        values: Arc<Mutex<Vec<String>>>,
-    }
-    impl<S> Layer<S> for ResultValueLayer
-    where
-        S: Subscriber + for<'l> LookupSpan<'l>,
-    {
-        fn on_record(&self, _span: &Id, values: &Record<'_>, _ctx: Context<'_, S>) {
-            let mut visitor = ResultValueVisitor::default();
-            values.record(&mut visitor);
-            if !visitor.values.is_empty() {
-                self.values.lock().expect("values").extend(visitor.values);
-            }
-        }
-    }
-
     /// A `ToolResult` rewrite applies to both model presentation and
     /// telemetry so redaction hooks cannot leak the raw output through spans.
     #[tokio::test]
     async fn tool_result_rewrite_redacts_span_output() {
         let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
-        let values: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
-        let subscriber = Registry::default().with(ResultValueLayer {
-            values: values.clone(),
-        });
-        let _default = tracing::subscriber::set_default(subscriber);
+        let capture = TraceCapture::default();
+        let _default = tracing::subscriber::set_default(capture.subscriber());
 
         // Warm the `execute_tool` result callsite under this subscriber, then
         // reset — mirroring the usage tests' interest-cache warm-up.
         warm_blocking_callsites().await;
         tracing::callsite::rebuild_interest_cache();
-        values.lock().expect("values").clear();
+        capture.clear();
 
         let model = MockCompletionModel::from_turns([
             MockTurn::tool_call("tc1", "raw_output", serde_json::json!({})),
@@ -3200,9 +2993,10 @@ mod span_safety_net {
             .run()
             .await
             .expect("run should succeed");
-        assert_eq!(response.output, "ok");
+        assert_eq!(response.output(), "ok");
 
-        let captured = values.lock().expect("values").clone();
+        let captured = capture.values_of("gen_ai.tool.call.result");
+        let captured: Vec<&str> = captured.iter().filter_map(Value::as_str).collect();
         assert!(
             captured.iter().any(|v| v.contains("[REDACTED]")),
             "the rewritten presentation must reach telemetry; captured: {captured:?}"
@@ -3220,15 +3014,12 @@ mod span_safety_net {
     #[tokio::test]
     async fn tool_result_stop_omits_span_output() {
         let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
-        let values: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
-        let subscriber = Registry::default().with(ResultValueLayer {
-            values: values.clone(),
-        });
-        let _default = tracing::subscriber::set_default(subscriber);
+        let capture = TraceCapture::default();
+        let _default = tracing::subscriber::set_default(capture.subscriber());
 
         warm_blocking_callsites().await;
         tracing::callsite::rebuild_interest_cache();
-        values.lock().expect("values").clear();
+        capture.clear();
 
         let result = AgentBuilder::new(MockCompletionModel::from_turns([MockTurn::tool_call(
             "tc1",
@@ -3244,7 +3035,8 @@ mod span_safety_net {
         .await;
         assert!(result.is_err(), "the result hook should stop the run");
 
-        let captured = values.lock().expect("values").clone();
+        let captured = capture.values_of("gen_ai.tool.call.result");
+        let captured: Vec<&str> = captured.iter().filter_map(Value::as_str).collect();
         assert!(
             !captured
                 .iter()
@@ -3357,11 +3149,8 @@ async fn run_and_stream_same_message_history_for_parallel_tool_calls() {
     }
     let final_response = final_response.expect("stream should yield a final response");
 
-    let blocking_messages = blocking.messages.expect("blocking messages");
-    let streaming_messages = final_response
-        .messages()
-        .expect("streaming history")
-        .to_vec();
+    let blocking_messages = blocking.messages;
+    let streaming_messages = final_response.messages().to_vec();
     assert_eq!(
         serde_json::to_value(&blocking_messages).expect("serialize blocking"),
         serde_json::to_value(&streaming_messages).expect("serialize streaming"),
@@ -3437,7 +3226,7 @@ async fn run_preserves_tool_call_order_under_out_of_order_completion() {
         .await
         .expect("run should succeed");
 
-    let messages = response.messages.expect("messages");
+    let messages = response.messages;
     let result_ids: Vec<String> = messages
         .iter()
         .flat_map(|message| match message {
@@ -3545,11 +3334,8 @@ async fn stream_and_run_same_message_history_for_parallel_tool_calls_under_concu
         .stream();
     let final_response = drive_to_final_response(stream).await;
 
-    let blocking_messages = blocking.messages.expect("blocking messages");
-    let streaming_messages = final_response
-        .messages()
-        .expect("streaming history")
-        .to_vec();
+    let blocking_messages = blocking.messages;
+    let streaming_messages = final_response.messages().to_vec();
     assert_eq!(
         serde_json::to_value(&blocking_messages).expect("serialize blocking"),
         serde_json::to_value(&streaming_messages).expect("serialize streaming"),
@@ -3593,7 +3379,7 @@ async fn stream_preserves_history_order_under_out_of_order_completion() {
     .await
     .expect("streamed tools must run concurrently, not deadlock on the first call");
 
-    let messages = final_response.messages().expect("history").to_vec();
+    let messages = final_response.messages().to_vec();
     // History stays in call order (tc1 then tc2), even though tc2 finished first.
     assert_eq!(
         tool_result_ids(&messages),
@@ -3634,10 +3420,7 @@ async fn stream_emits_tool_results_in_call_order_after_batch_settles_under_concu
     tokio::time::timeout(std::time::Duration::from_secs(5), async {
         while let Some(item) = stream.next().await {
             match item.unwrap_or_else(|err| panic!("stream item errored: {err}")) {
-                MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult {
-                    tool_result,
-                    ..
-                }) => streamed_result_ids.push(
+                MultiTurnStreamItem::ToolResult { tool_result, .. } => streamed_result_ids.push(
                     tool_result
                         .call
                         .provider()
@@ -3661,7 +3444,7 @@ async fn stream_emits_tool_results_in_call_order_after_batch_settles_under_concu
     );
     let final_response = final_response.expect("stream should yield a final response");
     assert_eq!(
-        tool_result_ids(final_response.messages().expect("history")),
+        tool_result_ids(final_response.messages()),
         vec!["tc1".to_string(), "tc2".to_string()]
     );
 }
@@ -3735,9 +3518,7 @@ async fn stream_emits_model_tool_calls_then_atomic_execution_items() {
                 MultiTurnStreamItem::ToolExecutionCommitted { .. } => {
                     markers.push("exec-commit");
                 }
-                MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult { .. }) => {
-                    markers.push("result")
-                }
+                MultiTurnStreamItem::ToolResult { .. } => markers.push("result"),
                 _ => {}
             }
         }
@@ -3827,7 +3608,7 @@ impl Tool for DrainProbeTool {
     }
 }
 
-/// On the concurrent path, a terminate surfaces a `StreamingError`, ends the
+/// On the concurrent path, a terminate surfaces a `PromptError`, ends the
 /// run with no final response, and — for a sibling that is **already in
 /// flight** — drains it to completion rather than cancelling it mid-poll (so
 /// no detached task is left running and the deterministic terminate reason
@@ -3872,7 +3653,7 @@ async fn stream_concurrent_tool_result_terminate_drains_in_flight_siblings() {
                 match item {
                     Ok(MultiTurnStreamItem::FinalResponse(_)) => saw_final_response = true,
                     Ok(_) => {}
-                    Err(StreamingError::Prompt(_)) => saw_error = true,
+                    Err(_) => saw_error = true,
                     Err(other) => panic!("unexpected streaming error: {other}"),
                 }
             }
@@ -3883,7 +3664,7 @@ async fn stream_concurrent_tool_result_terminate_drains_in_flight_siblings() {
 
     assert!(
         saw_error,
-        "a terminate hook on the concurrent path must surface a StreamingError::Prompt"
+        "a terminate hook on the concurrent path must surface a PromptError"
     );
     assert!(
         !saw_final_response,
@@ -4337,9 +4118,7 @@ async fn concurrent_termination_surfaces_no_execution_items() {
             while let Some(item) = stream.next().await {
                 match item {
                     Ok(MultiTurnStreamItem::ToolExecutionCommitted { .. }) => exec_commits += 1,
-                    Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult {
-                        ..
-                    })) => results += 1,
+                    Ok(MultiTurnStreamItem::ToolResult { .. }) => results += 1,
                     Ok(MultiTurnStreamItem::FinalResponse(_)) => saw_final = true,
                     Ok(_) => {}
                     Err(_) => saw_error = true,
@@ -4467,7 +4246,7 @@ async fn stream_hook_skip_surfaces_result_without_execution_commit() {
     while let Some(item) = stream.next().await {
         match item.unwrap_or_else(|err| panic!("stream item errored: {err}")) {
             MultiTurnStreamItem::ToolExecutionCommitted { .. } => exec_commits += 1,
-            MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult { .. }) => {
+            MultiTurnStreamItem::ToolResult { .. } => {
                 results += 1;
             }
             MultiTurnStreamItem::FinalResponse(resp) => final_response = Some(resp),
@@ -4486,7 +4265,7 @@ async fn stream_hook_skip_surfaces_result_without_execution_commit() {
     );
     let final_response = final_response.expect("stream should yield a final response");
     // The skip result is committed to history (the model sees the reason).
-    let history = final_response.messages().expect("history");
+    let history = final_response.messages();
     assert!(
         history.iter().any(|m| serde_json::to_string(m)
             .map(|s| s.contains("blocked by policy"))
@@ -4566,7 +4345,7 @@ async fn specific_naming_filtered_out_tool_errors_locally_without_provider_call(
         .tool(MockAddTool)
         .tool(MockSubtractTool)
         .tool_choice(ToolChoice::Specific {
-            function_names: vec!["subtract".to_string()],
+            function_names: vec![rig_core::message::ToolName::new("subtract").expect("tool name")],
         })
         .add_hook(FilterToAddHook)
         .build()
@@ -4694,7 +4473,7 @@ async fn tool_concurrency_zero_is_clamped_and_does_not_hang() {
         .await
         .expect("tool_concurrency(0) must clamp to 1, not hang on buffer_unordered(0)")
         .expect("run should succeed");
-    assert_eq!(response.output, "done");
+    assert_eq!(response.output(), "done");
 }
 
 /// A tool that counts how many times it executes.
@@ -4836,7 +4615,7 @@ async fn run_terminates_from_each_shared_event() {
             .await
             .expect_err(&format!("terminate at {kind:?} must cancel the run"));
         assert!(
-            matches!(err, PromptError::PromptCancelled { .. }),
+            matches!(err, PromptError::Cancelled { .. }),
             "terminate at {kind:?} should cancel the run, got {err:?}"
         );
     }
@@ -4922,7 +4701,7 @@ async fn multi_hook_stack_parity_across_run_and_stream() {
             StepEventKind::CompletionDispatch,
         ]
     );
-    assert_eq!(blocking.output, "the answer is 5");
+    assert_eq!(blocking.output(), "the answer is 5");
 }
 
 /// Renames an invalid tool call to a known tool; observes everything else.
@@ -5018,8 +4797,8 @@ async fn invalid_tool_call_repair_parity_across_run_and_stream() {
     let final_response = final_response.expect("stream should recover and yield a final response");
 
     // Same recovered output.
-    assert_eq!(blocking.output, "the answer is 5");
-    assert_eq!(final_response.output(), blocking.output);
+    assert_eq!(blocking.output(), "the answer is 5");
+    assert_eq!(final_response.output(), blocking.output());
 
     // Both drivers reported the invalid tool call to the hook, then executed
     // the repaired tool, so the shared event sequences match.
@@ -5037,11 +4816,8 @@ async fn invalid_tool_call_repair_parity_across_run_and_stream() {
     assert_eq!(blocking_hook.tool_results(), vec!["5".to_string()]);
 
     // Same final message history.
-    let blocking_messages = blocking.messages.expect("blocking messages");
-    let streaming_messages = final_response
-        .messages()
-        .expect("streaming history")
-        .to_vec();
+    let blocking_messages = blocking.messages;
+    let streaming_messages = final_response.messages().to_vec();
     assert_eq!(
         serde_json::to_value(&blocking_messages).expect("serialize blocking"),
         serde_json::to_value(&streaming_messages).expect("serialize streaming"),
@@ -5106,11 +4882,11 @@ async fn invalid_tool_call_scalar_args_are_canonical_across_run_and_complete_str
     assert_eq!(*streaming_args.lock().unwrap(), canonical_args);
     assert_eq!(blocking_hook.tool_results(), vec!["payload"]);
     assert_eq!(streaming_hook.tool_results(), vec!["payload"]);
-    assert_eq!(blocking.output, "done");
+    assert_eq!(blocking.output(), "done");
     assert_eq!(final_response.output(), "done");
     assert_eq!(
-        serde_json::to_value(blocking.messages.expect("blocking history")).unwrap(),
-        serde_json::to_value(final_response.messages().expect("streaming history")).unwrap()
+        serde_json::to_value(blocking.messages).unwrap(),
+        serde_json::to_value(final_response.messages()).unwrap()
     );
 }
 
@@ -5237,8 +5013,8 @@ async fn run_blocking_scenario(prompt: &'static str, turns: &[ScriptedTurn]) -> 
         .await
         .expect("blocking scenario should succeed");
     ParityOutcome {
-        output: response.output,
-        messages: response.messages.expect("blocking messages"),
+        output: response.output(),
+        messages: response.messages,
         shared_events: hook.shared_events(),
         tool_results: hook.tool_results(),
     }
@@ -5271,10 +5047,7 @@ async fn run_streaming_scenario(
     let final_response = final_response.expect("streaming scenario should yield a final response");
     ParityOutcome {
         output: final_response.output().to_string(),
-        messages: final_response
-            .messages()
-            .expect("streaming history")
-            .to_vec(),
+        messages: final_response.messages().to_vec(),
         shared_events: hook.shared_events(),
         tool_results: hook.tool_results(),
     }
@@ -5436,8 +5209,8 @@ async fn invalid_tool_call_skip_parity_across_run_and_stream() {
     }
     let final_response = final_response.expect("stream should recover and yield a final response");
 
-    assert_eq!(blocking.output, "acknowledged");
-    assert_eq!(final_response.output(), blocking.output);
+    assert_eq!(blocking.output(), "acknowledged");
+    assert_eq!(final_response.output(), blocking.output());
     assert_eq!(
         blocking_hook.shared_events(),
         streaming_hook.shared_events()
@@ -5449,11 +5222,8 @@ async fn invalid_tool_call_skip_parity_across_run_and_stream() {
         "the hook must observe the invalid tool call"
     );
 
-    let blocking_messages = blocking.messages.expect("blocking messages");
-    let streaming_messages = final_response
-        .messages()
-        .expect("streaming history")
-        .to_vec();
+    let blocking_messages = blocking.messages;
+    let streaming_messages = final_response.messages().to_vec();
     assert_eq!(
         serde_json::to_value(&blocking_messages).expect("serialize blocking"),
         serde_json::to_value(&streaming_messages).expect("serialize streaming"),
@@ -5522,7 +5292,7 @@ async fn recovered_turn_suppresses_completion_response_on_both_drivers() {
     while stream.next().await.is_some() {}
 
     // Recovery still reaches the same final answer.
-    assert_eq!(blocking.output, "the answer is 5");
+    assert_eq!(blocking.output(), "the answer is 5");
 
     // Blocking: the recovered turn 1 suppresses `CompletionResponse`; only the
     // plain turn 2 fires it.
@@ -5666,8 +5436,8 @@ async fn valid_tool_call_skip_parity_across_run_and_stream() {
     }
     let final_response = final_response.expect("stream should yield a final response");
 
-    assert_eq!(blocking.output, "acknowledged");
-    assert_eq!(final_response.output(), blocking.output);
+    assert_eq!(blocking.output(), "acknowledged");
+    assert_eq!(final_response.output(), blocking.output());
     assert_eq!(
         blocking_hook.shared_events(),
         streaming_hook.shared_events()
@@ -5682,11 +5452,8 @@ async fn valid_tool_call_skip_parity_across_run_and_stream() {
         "a skipped tool fires a ToolResult hook with the verbatim skip reason"
     );
 
-    let blocking_messages = blocking.messages.expect("blocking messages");
-    let streaming_messages = final_response
-        .messages()
-        .expect("streaming history")
-        .to_vec();
+    let blocking_messages = blocking.messages;
+    let streaming_messages = final_response.messages().to_vec();
     assert_eq!(
         serde_json::to_value(&blocking_messages).expect("serialize blocking"),
         serde_json::to_value(&streaming_messages).expect("serialize streaming"),
@@ -5813,7 +5580,7 @@ async fn check_tool_target_patch_is_refused(streaming: bool) {
         assert!(finished);
     } else {
         assert_eq!(
-            runner.run().await.expect("run remains usable").output,
+            runner.run().await.expect("run remains usable").output(),
             "done"
         );
     }
@@ -6080,8 +5847,8 @@ async fn valid_tool_call_rewrite_args_parity_across_run_and_stream() {
     // The tool ran with the rewritten arguments (2 + 40 = 42), not the
     // model's emitted 2 + 3 = 5 — on both drivers.
     assert_eq!(blocking_hook.tool_results(), vec!["42".to_string()]);
-    assert_eq!(blocking.output, "acknowledged");
-    assert_eq!(final_response.output(), blocking.output);
+    assert_eq!(blocking.output(), "acknowledged");
+    assert_eq!(final_response.output(), blocking.output());
     assert_eq!(
         blocking_hook.shared_events(),
         streaming_hook.shared_events()
@@ -6134,7 +5901,7 @@ async fn string_tool_call_without_rewrite_is_canonical_across_run_and_stream() {
         }
     }
 
-    assert_eq!(blocking.output, "done");
+    assert_eq!(blocking.output(), "done");
     assert_eq!(final_output.as_deref(), Some("done"));
     assert_eq!(blocking_hook.tool_results(), vec!["original"]);
     assert_eq!(streaming_hook.tool_results(), vec!["original"]);
@@ -6188,7 +5955,7 @@ async fn string_tool_call_rewrite_is_canonical_json_across_run_and_stream() {
         }
     }
 
-    assert_eq!(blocking.output, "done");
+    assert_eq!(blocking.output(), "done");
     assert_eq!(final_output.as_deref(), Some("done"));
     assert_eq!(blocking_hook.tool_results(), vec!["sanitized"]);
     assert_eq!(streaming_hook.tool_results(), vec!["sanitized"]);
@@ -6229,7 +5996,7 @@ async fn blocking_turn_dispatches_the_registry_generation_it_advertised() {
     .expect("in-flight blocking replacement must not hang");
     let response = response.expect("blocking run should use its pinned tool generation");
 
-    assert_eq!(response.output, "done");
+    assert_eq!(response.output(), "done");
     assert_eq!(first_calls.load(SeqCst), 1);
     assert_eq!(second_calls.load(SeqCst), 0);
 }
@@ -6353,8 +6120,8 @@ async fn valid_tool_result_rewrite_parity_across_run_and_stream() {
     }
     let final_response = final_response.expect("stream should yield a final response");
 
-    assert_eq!(blocking.output, "acknowledged");
-    assert_eq!(final_response.output(), blocking.output);
+    assert_eq!(blocking.output(), "acknowledged");
+    assert_eq!(final_response.output(), blocking.output());
 
     // The ToolResult event observes the tool's ACTUAL output (5) on both
     // drivers — the replacement is applied after the event fires.
@@ -6363,11 +6130,8 @@ async fn valid_tool_result_rewrite_parity_across_run_and_stream() {
 
     // The model-visible history carries the REWRITTEN result, not "5", and is
     // byte-identical across drivers.
-    let blocking_messages = blocking.messages.expect("blocking messages");
-    let streaming_messages = final_response
-        .messages()
-        .expect("streaming history")
-        .to_vec();
+    let blocking_messages = blocking.messages;
+    let streaming_messages = final_response.messages().to_vec();
     assert_eq!(
         serde_json::to_value(&blocking_messages).expect("serialize blocking"),
         serde_json::to_value(&streaming_messages).expect("serialize streaming"),
@@ -6406,7 +6170,7 @@ async fn rewrite_result_is_delivered_verbatim_not_reparsed() {
         .await
         .expect("run should succeed with a JSON-shaped rewritten result");
 
-    let messages = result.messages.expect("messages");
+    let messages = result.messages;
     assert!(
         tool_result_text_in_history(&messages, IMAGE_JSON),
         "the JSON-shaped replacement must reach history verbatim as text, not be \
@@ -6506,7 +6270,7 @@ async fn patch_request_parity_across_run_and_stream() {
         .run()
         .await
         .expect("blocking run should succeed");
-    assert_eq!(blocking.output, "done");
+    assert_eq!(blocking.output(), "done");
     let blocking_requests = blocking_probe.requests();
     assert_eq!(blocking_requests.len(), 1);
     assert_request(&blocking_requests[0]);
@@ -6599,20 +6363,27 @@ impl VectorStoreIndex for RecordingContextIndex {
     async fn top_n<T: for<'a> Deserialize<'a> + WasmCompatSend>(
         &self,
         req: VectorSearchRequest,
-    ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
+    ) -> Result<Vec<VectorSearchResult<T>>, VectorStoreError> {
         self.queries
             .lock()
             .expect("context query recorder lock")
             .push((req.query().to_string(), req.samples()));
         let value = serde_json::from_value(json!({ "source": self.id }))?;
-        Ok(vec![(1.0, self.id.to_string(), value)])
+        Ok(vec![VectorSearchResult {
+            score: 1.0,
+            id: self.id.to_string(),
+            document: value,
+        }])
     }
 
     async fn top_n_ids(
         &self,
         _req: VectorSearchRequest,
-    ) -> Result<Vec<(f64, String)>, VectorStoreError> {
-        Ok(vec![(1.0, self.id.to_string())])
+    ) -> Result<Vec<VectorSearchIdResult>, VectorStoreError> {
+        Ok(vec![VectorSearchIdResult {
+            score: 1.0,
+            id: self.id.to_string(),
+        }])
     }
 }
 
@@ -6624,19 +6395,19 @@ impl VectorStoreIndex for FailingContextIndex {
     async fn top_n<T: for<'a> Deserialize<'a> + WasmCompatSend>(
         &self,
         _req: VectorSearchRequest,
-    ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
-        Err(VectorStoreError::BuilderError(
-            "context index unavailable".to_string(),
-        ))
+    ) -> Result<Vec<VectorSearchResult<T>>, VectorStoreError> {
+        Err(VectorStoreError::datastore(std::io::Error::other(
+            "context index unavailable",
+        )))
     }
 
     async fn top_n_ids(
         &self,
         _req: VectorSearchRequest,
-    ) -> Result<Vec<(f64, String)>, VectorStoreError> {
-        Err(VectorStoreError::BuilderError(
-            "context index unavailable".to_string(),
-        ))
+    ) -> Result<Vec<VectorSearchIdResult>, VectorStoreError> {
+        Err(VectorStoreError::datastore(std::io::Error::other(
+            "context index unavailable",
+        )))
     }
 }
 
@@ -6650,19 +6421,22 @@ impl VectorStoreIndex for QueryRecordingToolIndex {
     async fn top_n<T: for<'a> Deserialize<'a> + WasmCompatSend>(
         &self,
         _req: VectorSearchRequest,
-    ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
+    ) -> Result<Vec<VectorSearchResult<T>>, VectorStoreError> {
         Ok(Vec::new())
     }
 
     async fn top_n_ids(
         &self,
         req: VectorSearchRequest,
-    ) -> Result<Vec<(f64, String)>, VectorStoreError> {
+    ) -> Result<Vec<VectorSearchIdResult>, VectorStoreError> {
         self.queries
             .lock()
             .expect("query recorder lock")
             .push(req.query().to_string());
-        Ok(vec![(1.0, MockAddTool::NAME.to_string())])
+        Ok(vec![VectorSearchIdResult {
+            score: 1.0,
+            id: MockAddTool::NAME.to_string(),
+        }])
     }
 }
 
@@ -6812,11 +6586,11 @@ async fn dynamic_context_preserves_query_selection_formatting_and_order_on_both_
         )
         .build()
         .prompt(Message::User {
-            content: rig_core::NonEmpty::new(UserContent::image_url(
+            content: vec![UserContent::image_url(
                 "https://example.com/prompt.png",
                 None,
                 None,
-            )),
+            )],
         })
         .history(vec![
             Message::user("older history query"),
@@ -6914,7 +6688,7 @@ async fn dynamic_context_and_application_hooks_follow_registration_order() {
         .run()
         .await
         .expect_err("an earlier stop hook should terminate before retrieval");
-    assert!(matches!(error, PromptError::PromptCancelled { .. }));
+    assert!(matches!(error, PromptError::Cancelled { .. }));
     assert!(skipped_queries.lock().expect("skipped queries").is_empty());
 }
 
@@ -6931,7 +6705,7 @@ async fn dynamic_context_retrieval_failure_stops_before_provider_io_on_both_surf
         .expect_err("failed retrieval should stop the run");
     assert!(matches!(
         error,
-        PromptError::PromptCancelled { reason, .. }
+        PromptError::Cancelled { reason, .. }
             if reason.contains("context index unavailable")
     ));
     assert_eq!(blocking_probe.request_count(), 0);
@@ -6950,12 +6724,7 @@ async fn dynamic_context_retrieval_failure_stops_before_provider_io_on_both_surf
         .expect_err("failed retrieval should stop the stream");
     assert!(matches!(
         error,
-        StreamingError::Prompt(prompt_error)
-            if matches!(
-                &prompt_error,
-                PromptError::PromptCancelled { reason, .. }
-                    if reason.contains("context index unavailable")
-            )
+        PromptError::Cancelled { reason, .. } if reason.contains("context index unavailable")
     ));
     assert_eq!(streaming_probe.request_count(), 0);
 }
@@ -6988,11 +6757,11 @@ async fn retrieved_tool_query_selection_is_unchanged_on_both_surfaces() {
         )
         .build()
         .prompt(Message::User {
-            content: rig_core::NonEmpty::new(UserContent::image_url(
+            content: vec![UserContent::image_url(
                 "https://example.com/blocking.png",
                 None,
                 None,
-            )),
+            )],
         })
         .history(vec![
             Message::user("older blocking history query"),
@@ -7032,11 +6801,11 @@ async fn retrieved_tool_query_selection_is_unchanged_on_both_surfaces() {
     )
     .build()
     .prompt(Message::User {
-        content: rig_core::NonEmpty::new(UserContent::image_url(
+        content: vec![UserContent::image_url(
             "https://example.com/streaming.png",
             None,
             None,
-        )),
+        )],
     })
     .history(vec![
         Message::user("older streaming history query"),
@@ -7157,7 +6926,7 @@ async fn history_patch_changes_sent_messages_not_transcript_on_both_surfaces() {
         "the overridden history reaches the provider"
     );
     assert!(
-        !messages_have_sentinel(blocking.messages.as_deref().unwrap_or_default()),
+        !messages_have_sentinel(&blocking.messages),
         "the persisted transcript is untouched by the per-turn history override"
     );
 
@@ -7174,7 +6943,7 @@ async fn history_patch_changes_sent_messages_not_transcript_on_both_surfaces() {
         "the overridden history reaches the provider on the streaming surface too"
     );
     assert!(
-        !messages_have_sentinel(final_response.messages().expect("history")),
+        !messages_have_sentinel(final_response.messages()),
         "the persisted transcript is untouched by the per-turn history override on \
              the streaming surface too"
     );
@@ -7394,7 +7163,7 @@ async fn chained_rewrites_compose_across_hooks() {
         .run()
         .await
         .expect("blocking run should succeed");
-    assert_eq!(blocking.output, "the answer is 5");
+    assert_eq!(blocking.output(), "the answer is 5");
     assert_eq!(
         recorder.tool_results(),
         vec!["B(A(140))".to_string()],
@@ -7477,18 +7246,21 @@ impl VectorStoreIndex for LateFinalResultIndex {
     async fn top_n<T: for<'a> Deserialize<'a> + WasmCompatSend>(
         &self,
         _req: VectorSearchRequest,
-    ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
+    ) -> Result<Vec<VectorSearchResult<T>>, VectorStoreError> {
         Ok(Vec::new())
     }
 
     async fn top_n_ids(
         &self,
         _req: VectorSearchRequest,
-    ) -> Result<Vec<(f64, String)>, VectorStoreError> {
+    ) -> Result<Vec<VectorSearchIdResult>, VectorStoreError> {
         if self.searches.fetch_add(1, SeqCst) == 0 {
             Ok(Vec::new())
         } else {
-            Ok(vec![(1.0, "final_result".to_string())])
+            Ok(vec![VectorSearchIdResult {
+                score: 1.0,
+                id: "final_result".to_string(),
+            }])
         }
     }
 }
@@ -7566,7 +7338,7 @@ async fn initial_output_tool_collision_uses_a_unique_synthetic_name() {
         .await
         .expect("the real tool should dispatch before the unique output tool finalizes");
 
-    assert!(response.output.contains("done"));
+    assert!(response.output().contains("done"));
     let requests = probe.requests();
     assert_eq!(
         requests.len(),
@@ -7625,7 +7397,9 @@ async fn late_output_tool_collision_fails_before_blocking_provider_for_all_choic
         (
             "specific",
             Some(RequestPatch::new().tool_choice(ToolChoice::Specific {
-                function_names: vec!["final_result".to_string()],
+                function_names: vec![
+                    rig_core::message::ToolName::new("final_result").expect("tool name"),
+                ],
             })),
         ),
     ];
@@ -7657,10 +7431,7 @@ async fn late_output_tool_collision_fails_before_blocking_provider_for_all_choic
             .unwrap_err();
 
         assert!(
-            matches!(
-                &err,
-                PromptError::CompletionError(ProviderError::Request(_))
-            ),
+            matches!(&err, PromptError::Provider(ProviderError::Request(_))),
             "{case}: expected a local completion request error, got {err:?}"
         );
         assert_eq!(
@@ -7726,7 +7497,7 @@ async fn late_output_tool_collision_fails_before_streaming_provider() {
     let err = collisions.pop().expect("one collision error was asserted");
 
     assert!(
-        matches!(&err, StreamingError::Completion(ProviderError::Request(_))),
+        matches!(&err, PromptError::Provider(ProviderError::Request(_))),
         "expected a local streaming completion request error, got {err:?}"
     );
     assert_eq!(
@@ -7827,7 +7598,7 @@ async fn retrieved_output_tool_collision_fails_before_provider_request() {
 
     assert!(matches!(
         &err,
-        PromptError::CompletionError(ProviderError::Request(_))
+        PromptError::Provider(ProviderError::Request(_))
     ));
     assert_eq!(
         probe.request_count(),
@@ -7889,10 +7660,10 @@ async fn active_tools_filter_does_not_let_output_tool_collide_with_a_filtered_re
         .await
         .expect("run should finalize via the picked output tool `final_result_1`");
     assert!(
-        response.output.contains("done"),
+        response.output().contains("done"),
         "the intercepted output-tool call should produce the structured result, \
              got {:?}",
-        response.output
+        response.output()
     );
 
     let requests = probe.requests();
@@ -7969,9 +7740,9 @@ async fn model_turn_finished_content_carries_output_tool_call_in_tool_mode() {
         "ModelTurnFinished.content must carry the model-emitted output-tool call (blocking)"
     );
     assert!(
-        response.output.contains("done"),
+        response.output().contains("done"),
         "the run finalizes with the structured output, not the raw tool call: {:?}",
-        response.output
+        response.output()
     );
 
     // Streaming surface — same content contract.
@@ -8207,8 +7978,8 @@ async fn human_in_the_loop_approve_deny_edit_parity_across_run_and_stream() {
         "the denied (second) call should be add(10, 20): {reviewed:?}"
     );
 
-    assert_eq!(blocking.output, "done");
-    assert_eq!(final_response.output(), blocking.output);
+    assert_eq!(blocking.output(), "done");
+    assert_eq!(final_response.output(), blocking.output());
     assert_eq!(
         blocking_recorder.shared_events(),
         streaming_recorder.shared_events()
@@ -8217,11 +7988,8 @@ async fn human_in_the_loop_approve_deny_edit_parity_across_run_and_stream() {
     // Model-visible history is identical across drivers (compared structurally
     // as serde_json::Value) and carries the denial reason and the edited result
     // 101 (not the model's 1 + 1 = 2).
-    let blocking_messages = blocking.messages.expect("blocking messages");
-    let streaming_messages = final_response
-        .messages()
-        .expect("streaming history")
-        .to_vec();
+    let blocking_messages = blocking.messages;
+    let streaming_messages = final_response.messages().to_vec();
     assert_eq!(
         serde_json::to_value(&blocking_messages).expect("serialize blocking"),
         serde_json::to_value(&streaming_messages).expect("serialize streaming"),
@@ -8237,7 +8005,7 @@ async fn human_in_the_loop_approve_deny_edit_parity_across_run_and_stream() {
 }
 
 /// A HITL hook that aborts a tool call (`Decision::Abort` -> `DispatchAction::stop`)
-/// stops the run and surfaces the reason as a `PromptCancelled` error — on both
+/// stops the run and surfaces the reason as a `Cancelled` error — on both
 /// the blocking and streaming drivers.
 #[tokio::test]
 async fn human_in_the_loop_abort_terminates_the_run() {
@@ -8247,7 +8015,7 @@ async fn human_in_the_loop_abort_terminates_the_run() {
     ];
     const ABORT_REASON: &str = "aborted by the human reviewer";
 
-    // Blocking driver: the run resolves to a PromptCancelled error.
+    // Blocking driver: the run resolves to a Cancelled error.
     let blocking_model =
         MockCompletionModel::from_turns(turns.iter().map(ScriptedTurn::as_blocking_turn));
     let err = AgentBuilder::new(blocking_model)
@@ -8382,7 +8150,7 @@ async fn approval_policy_allow_list_with_sticky_decisions() {
         .await
         .expect("policy run should succeed");
 
-    assert_eq!(out.output, "done");
+    assert_eq!(out.output(), "done");
     // `add` ran twice (auto-approved, then sticky-reused); `subtract` was denied
     // and executed nothing, but its denial reason now surfaces as a ToolResult
     // (structured `Skipped` outcome) between the two `add` results.
@@ -8400,7 +8168,7 @@ async fn approval_policy_allow_list_with_sticky_decisions() {
         policy.evaluated(),
         vec!["add".to_string(), "subtract".to_string()]
     );
-    let messages = out.messages.expect("messages");
+    let messages = out.messages;
     assert!(
         tool_result_text_in_history(&messages, "denied by policy: `subtract` not allowed"),
         "the policy denial reason must reach the model as the subtract tool result"
@@ -8856,7 +8624,7 @@ async fn a_portable_hook_can_retry_a_truncated_tool_free_turn() {
         .await
         .expect("the retried turn should answer");
 
-    assert_eq!(response.output, "a complete answer");
+    assert_eq!(response.output(), "a complete answer");
     assert_eq!(model.request_count(), 2, "the truncated turn was retried");
     // The counter only advances past the `truncated && !has_tool_call`
     // guard, so exactly one turn tripped it and the `Stop` turn did not.
@@ -8933,10 +8701,10 @@ async fn blocking_model_turn_repeat_preserves_prompt_history_with_fresh_preparat
         .await
         .expect("repeat should recover");
 
-    assert_eq!(response.output, "accepted");
+    assert_eq!(response.output(), "accepted");
     assert_eq!(response.usage, first_usage + second_usage);
     assert_eq!(response.completion_calls.len(), 2);
-    let messages = response.messages.expect("response messages");
+    let messages = response.messages;
     assert_eq!(
         messages,
         vec![Message::user("question"), Message::assistant("accepted")]
@@ -8946,7 +8714,7 @@ async fn blocking_model_turn_repeat_preserves_prompt_history_with_fresh_preparat
     assert_eq!(requests.len(), 2);
     let first = requests[0].chat_history.clone();
     let second = requests[1].chat_history.clone();
-    assert_eq!(first, rig_core::NonEmpty::new(Message::user("question")));
+    assert_eq!(first, vec![Message::user("question")]);
     assert_eq!(
         second, first,
         "Repeat must preserve the prompt and preceding history"
@@ -8973,9 +8741,9 @@ async fn blocking_model_turn_feedback_preserves_rejected_response() {
         .await
         .expect("feedback retry should recover");
 
-    assert_eq!(response.output, "accepted");
+    assert_eq!(response.output(), "accepted");
     assert_eq!(
-        response.messages.expect("response messages"),
+        response.messages,
         vec![
             Message::user("question"),
             Message::assistant("rejected"),
@@ -8986,13 +8754,11 @@ async fn blocking_model_turn_feedback_preserves_rejected_response() {
     let second_request = &model.requests()[1];
     assert_eq!(
         second_request.chat_history.clone(),
-        rig_core::NonEmpty::with_rest(
+        vec![
             Message::user("question"),
-            [
-                Message::assistant("rejected"),
-                Message::user("try another approach")
-            ]
-        )
+            Message::assistant("rejected"),
+            Message::user("try another approach")
+        ]
     );
 }
 
@@ -9017,11 +8783,11 @@ async fn blocking_empty_feedback_retry_omits_empty_assistant_history() {
         .await
         .expect("feedback retry should recover from an empty turn");
 
-    assert_eq!(response.output, "accepted");
+    assert_eq!(response.output(), "accepted");
     assert_eq!(response.usage, first_usage + second_usage);
     assert_eq!(response.completion_calls.len(), 2);
     assert_eq!(
-        response.messages.expect("response messages"),
+        response.messages,
         vec![
             Message::user("question"),
             Message::user("provide an answer"),
@@ -9030,10 +8796,10 @@ async fn blocking_empty_feedback_retry_omits_empty_assistant_history() {
     );
     assert_eq!(
         model.requests()[1].chat_history.clone(),
-        rig_core::NonEmpty::with_rest(
+        vec![
             Message::user("question"),
-            [Message::user("provide an answer")]
-        ),
+            Message::user("provide an answer")
+        ],
         "the retry request must not contain an empty assistant message"
     );
 }
@@ -9078,11 +8844,11 @@ async fn streaming_model_turn_retry_marks_rollback_and_matches_blocking_accounti
     assert_eq!(retries, vec![1]);
     assert_eq!(completion_calls, 2);
     let response = final_response.expect("run final response");
-    assert_eq!(response.output, "accepted");
+    assert_eq!(response.output(), "accepted");
     assert_eq!(response.usage, first_usage + second_usage);
     assert_eq!(response.completion_calls.len(), 2);
     assert_eq!(
-        response.messages.expect("response messages"),
+        response.messages,
         vec![Message::user("question"), Message::assistant("accepted")]
     );
     assert_eq!(model.requests().len(), 2);
@@ -9139,7 +8905,7 @@ async fn streaming_feedback_retry_matches_blocking_history_and_usage() {
 
     let streaming = streaming.expect("streaming final response");
     assert!(saw_retry);
-    assert_eq!(streaming.output, blocking.output);
+    assert_eq!(streaming.output(), blocking.output());
     assert_eq!(streaming.usage, blocking.usage);
     // `raw` is the one field that legitimately differs by medium: the
     // streamed calls carry the mock's terminal record serialized, the
@@ -9204,11 +8970,11 @@ async fn streaming_empty_feedback_retry_omits_empty_assistant_history() {
     assert_eq!(retries, vec![1]);
     assert_eq!(completion_calls, 2);
     let response = final_response.expect("run final response");
-    assert_eq!(response.output, "accepted");
+    assert_eq!(response.output(), "accepted");
     assert_eq!(response.usage, first_usage + second_usage);
     assert_eq!(response.completion_calls.len(), 2);
     assert_eq!(
-        response.messages.expect("response messages"),
+        response.messages,
         vec![
             Message::user("question"),
             Message::user("provide an answer"),
@@ -9217,10 +8983,10 @@ async fn streaming_empty_feedback_retry_omits_empty_assistant_history() {
     );
     assert_eq!(
         model.requests()[1].chat_history.clone(),
-        rig_core::NonEmpty::with_rest(
+        vec![
             Message::user("question"),
-            [Message::user("provide an answer")]
-        ),
+            Message::user("provide an answer")
+        ],
         "the retry request must not contain an empty assistant message"
     );
 }
@@ -9351,8 +9117,8 @@ async fn streaming_model_turn_retry_respects_max_turns() {
     assert!(saw_rollback);
     assert!(matches!(
         error,
-        Some(StreamingError::Prompt(error))
-            if matches!(error, PromptError::MaxTurnsError { max_turns: 1, .. })
+        Some(error)
+            if matches!(error, PromptError::MaxTurns { max_turns: 1, .. })
     ));
 }
 
@@ -9389,12 +9155,12 @@ async fn model_turn_retry_rejects_tool_turn_before_tool_hooks_or_execution() {
     .await
     .expect_err("tool-bearing retry must fail closed");
 
-    let PromptError::PromptCancelled {
+    let PromptError::Cancelled {
         chat_history,
         reason,
     } = err
     else {
-        panic!("tool-bearing retry should return PromptCancelled");
+        panic!("tool-bearing retry should return Cancelled");
     };
     assert!(reason.contains("tool-bearing model turns"));
     assert!(reason.contains("tool-call hooks"));
@@ -9432,9 +9198,7 @@ async fn streaming_model_turn_retry_rejects_tool_turn_without_committed_executio
     while let Some(item) = stream.next().await {
         match item {
             Ok(MultiTurnStreamItem::ToolExecutionCommitted { .. }) => execution_commits += 1,
-            Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult { .. })) => {
-                tool_results += 1
-            }
+            Ok(MultiTurnStreamItem::ToolResult { .. }) => tool_results += 1,
             Ok(MultiTurnStreamItem::CompletionCall(_)) => completion_calls += 1,
             Ok(MultiTurnStreamItem::FinalResponse(_)) => agent_finals += 1,
             Ok(MultiTurnStreamItem::ModelTurnRetried { .. }) => retry_markers += 1,
@@ -9443,15 +9207,15 @@ async fn streaming_model_turn_retry_rejects_tool_turn_without_committed_executio
         }
     }
 
-    let Some(StreamingError::Prompt(error)) = error else {
-        panic!("tool-bearing streaming retry should return PromptCancelled");
+    let Some(error) = error else {
+        panic!("tool-bearing streaming retry should return Cancelled");
     };
-    let PromptError::PromptCancelled {
+    let PromptError::Cancelled {
         chat_history,
         reason,
     } = error
     else {
-        panic!("tool-bearing streaming retry should return PromptCancelled");
+        panic!("tool-bearing streaming retry should return Cancelled");
     };
     assert!(reason.contains("tool-bearing model turns"));
     assert!(reason.contains("tool-call hooks"));
@@ -9510,7 +9274,7 @@ async fn concurrent_runs_of_same_agent_have_independent_retry_budgets() {
     let first = first.expect("first run");
     let second = second.expect("second run");
 
-    let outputs = std::collections::HashSet::from([first.output, second.output]);
+    let outputs = std::collections::HashSet::from([first.output(), second.output()]);
     assert_eq!(
         outputs,
         std::collections::HashSet::from(["accepted one".to_string(), "accepted two".to_string(),])
@@ -9775,7 +9539,7 @@ mod run_lifecycle {
             .prompt("hi")
             .await
             .expect("prompt succeeds");
-        assert_eq!(response.output, "done");
+        assert_eq!(response.output(), "done");
 
         assert_eq!(hook.starts.load(SeqCst), 1);
         assert_eq!(
@@ -9800,8 +9564,8 @@ mod run_lifecycle {
         let first = stream.next().await.expect("terminal item");
         assert!(matches!(
             first,
-            Err(StreamingError::Prompt(ref err))
-                if matches!(err, PromptError::PromptCancelled { .. })
+            Err(ref err)
+                if matches!(err, PromptError::Cancelled { .. })
         ));
         assert!(stream.next().await.is_none());
 
@@ -9966,9 +9730,7 @@ async fn outcome_replacement_preserves_tool_execution_commit_disposition() {
         while let Some(item) = stream.next().await {
             match item.expect("replacement stream succeeds") {
                 MultiTurnStreamItem::ToolExecutionCommitted { .. } => committed += 1,
-                MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult { .. }) => {
-                    results += 1
-                }
+                MultiTurnStreamItem::ToolResult { .. } => results += 1,
                 _ => {}
             }
         }

@@ -7,13 +7,12 @@ use rig_core::message::{CallId, Message, Text, ToolResult, ToolResultContent};
 #[test]
 fn test_user_text_message_conversion() {
     let message = Message::User {
-        content: rig_core::NonEmpty::new(rig_core::message::UserContent::Text(Text::new(
+        content: vec![rig_core::message::UserContent::Text(Text::new(
             "Hello".to_string(),
-        ))),
+        ))],
     };
 
-    let rig_message = RigMessage(message);
-    let vertex_content: Result<vertexai::model::Content, _> = rig_message.try_into();
+    let vertex_content = content_from_message(message);
 
     assert!(vertex_content.is_ok());
     let content = vertex_content.unwrap();
@@ -26,11 +25,10 @@ fn test_user_text_message_conversion() {
 fn test_assistant_text_message_conversion() {
     let message = Message::Assistant {
         id: None,
-        content: rig_core::NonEmpty::new(AssistantContent::Text(Text::new("Hi there".to_string()))),
+        content: vec![AssistantContent::Text(Text::new("Hi there".to_string()))],
     };
 
-    let rig_message = RigMessage(message);
-    let vertex_content: Result<vertexai::model::Content, _> = rig_message.try_into();
+    let vertex_content = content_from_message(message);
 
     assert!(vertex_content.is_ok());
     let content = vertex_content.unwrap();
@@ -59,11 +57,10 @@ fn test_assistant_image_response_round_trips_through_history_in_order() {
     ]);
     let response: CompletionResponse = response.complete().expect("image response should convert");
 
-    let content: vertexai::model::Content = RigMessage(Message::Assistant {
+    let content: vertexai::model::Content = content_from_message(Message::Assistant {
         id: None,
-        content: rig_core::NonEmpty::from_vec(response.choice).expect("non-empty"),
+        content: response.choice,
     })
-    .try_into()
     .expect("assistant history image should convert");
 
     assert_eq!(content.parts.len(), 3);
@@ -95,11 +92,10 @@ fn test_assistant_image_history_rejects_invalid_or_unsupported_input() {
 
     for (image, expected_message) in cases {
         let result: Result<vertexai::model::Content, ProviderError> =
-            RigMessage(Message::Assistant {
+            content_from_message(Message::Assistant {
                 id: None,
-                content: rig_core::NonEmpty::new(image),
-            })
-            .try_into();
+                content: vec![image],
+            });
         let Err(error) = result else {
             panic!("invalid assistant image must fail")
         };
@@ -126,11 +122,10 @@ fn test_assistant_tool_call_message_conversion() {
 
     let message = Message::Assistant {
         id: None,
-        content: rig_core::NonEmpty::new(AssistantContent::ToolCall(tool_call)),
+        content: vec![AssistantContent::ToolCall(tool_call)],
     };
 
-    let rig_message = RigMessage(message);
-    let vertex_content: Result<vertexai::model::Content, _> = rig_message.try_into();
+    let vertex_content = content_from_message(message);
 
     assert!(vertex_content.is_ok());
     let content = vertex_content.unwrap();
@@ -155,11 +150,10 @@ fn test_assistant_tool_call_echoes_thought_signature() {
         ),
     )
     .with_signature(Some(BASE64.encode(raw)));
-    let content: vertexai::model::Content = RigMessage(Message::Assistant {
+    let content: vertexai::model::Content = content_from_message(Message::Assistant {
         id: None,
-        content: rig_core::NonEmpty::new(AssistantContent::ToolCall(tool_call)),
+        content: vec![AssistantContent::ToolCall(tool_call)],
     })
-    .try_into()
     .unwrap();
     assert_eq!(content.parts[0].thought_signature.as_ref(), raw.as_slice());
 }
@@ -176,11 +170,10 @@ fn test_assistant_tool_call_malformed_signature_is_dropped_not_fatal() {
         ),
     )
     .with_signature(Some("!!! not base64 !!!".to_string()));
-    let content: vertexai::model::Content = RigMessage(Message::Assistant {
+    let content: vertexai::model::Content = content_from_message(Message::Assistant {
         id: None,
-        content: rig_core::NonEmpty::new(AssistantContent::ToolCall(tool_call)),
+        content: vec![AssistantContent::ToolCall(tool_call)],
     })
-    .try_into()
     .expect("malformed signature should not fail the conversion");
     assert_eq!(content.parts.len(), 1);
     assert!(content.parts[0].thought_signature.is_empty());
@@ -193,13 +186,12 @@ fn test_assistant_reasoning_echoes_thought_signature() {
     let reasoning =
         rig_core::message::Reasoning::new_with_signature("thinking text", Some(BASE64.encode(raw)));
 
-    let content: vertexai::model::Content = RigMessage(Message::Assistant {
+    let content: vertexai::model::Content = content_from_message(Message::Assistant {
         id: None,
-        content: rig_core::NonEmpty::new(AssistantContent::Reasoning(
+        content: vec![AssistantContent::Reasoning(
             reasoning.sealed(crate::types::completion_response::ISSUER),
-        )),
+        )],
     })
-    .try_into()
     .unwrap();
 
     assert_eq!(content.parts.len(), 1);
@@ -218,13 +210,12 @@ fn test_assistant_reasoning_malformed_signature_is_dropped_not_fatal() {
         Some("!!! not base64 !!!".to_string()),
     );
 
-    let content: vertexai::model::Content = RigMessage(Message::Assistant {
+    let content: vertexai::model::Content = content_from_message(Message::Assistant {
         id: None,
-        content: rig_core::NonEmpty::new(AssistantContent::Reasoning(
+        content: vec![AssistantContent::Reasoning(
             reasoning.sealed(crate::types::completion_response::ISSUER),
-        )),
+        )],
     })
-    .try_into()
     .expect("malformed signature should not fail the conversion");
 
     assert_eq!(content.parts.len(), 1);
@@ -240,15 +231,14 @@ fn test_user_tool_result_message_conversion() {
     let tool_result = ToolResult {
         call: CallId::from_wire(""),
         name: rig_core::message::ToolName::new("add".to_string()).expect("tool name"),
-        content: rig_core::NonEmpty::new(ToolResultContent::Text(Text::new("8".to_string()))),
+        content: vec![ToolResultContent::Text(Text::new("8".to_string()))],
     };
 
     let message = Message::User {
-        content: rig_core::NonEmpty::new(rig_core::message::UserContent::ToolResult(tool_result)),
+        content: vec![rig_core::message::UserContent::ToolResult(tool_result)],
     };
 
-    let rig_message = RigMessage(message);
-    let vertex_content: Result<vertexai::model::Content, _> = rig_message.try_into();
+    let vertex_content = content_from_message(message);
 
     assert!(vertex_content.is_ok());
     let content = vertex_content.unwrap();
@@ -272,16 +262,15 @@ fn test_user_tool_result_message_conversion() {
 fn structured_tool_result_stays_structured_at_the_vertex_boundary() {
     let value = serde_json::json!({ "answer": 8 });
     let message = Message::User {
-        content: rig_core::NonEmpty::new(rig_core::message::UserContent::ToolResult(ToolResult {
+        content: vec![rig_core::message::UserContent::ToolResult(ToolResult {
             call: CallId::from_wire(""),
             name: rig_core::message::ToolName::new("lookup".to_string()).expect("tool name"),
-            content: rig_core::NonEmpty::new(ToolResultContent::json(value.clone())),
-        })),
+            content: vec![ToolResultContent::json(value.clone())],
+        })],
     };
 
-    let content: vertexai::model::Content = RigMessage(message)
-        .try_into()
-        .expect("tool result should convert");
+    let content: vertexai::model::Content =
+        content_from_message(message).expect("tool result should convert");
     let response = content.parts[0]
         .function_response()
         .expect("function response");
@@ -298,20 +287,19 @@ fn structured_tool_result_stays_structured_at_the_vertex_boundary() {
 fn image_tool_result_maps_to_native_function_response_part() {
     let raw = vec![0, 1, 2, 255];
     let message = Message::User {
-        content: rig_core::NonEmpty::new(rig_core::message::UserContent::ToolResult(ToolResult {
+        content: vec![rig_core::message::UserContent::ToolResult(ToolResult {
             call: CallId::from_wire(""),
             name: rig_core::message::ToolName::new("inspect".to_string()).expect("tool name"),
-            content: rig_core::NonEmpty::new(ToolResultContent::image_base64(
+            content: vec![ToolResultContent::image_base64(
                 BASE64.encode(&raw),
                 Some(ImageMediaType::PNG),
                 None,
-            )),
-        })),
+            )],
+        })],
     };
 
-    let content: vertexai::model::Content = RigMessage(message)
-        .try_into()
-        .expect("image tool result should convert");
+    let content: vertexai::model::Content =
+        content_from_message(message).expect("image tool result should convert");
     let response = content.parts[0]
         .function_response()
         .expect("function response");
@@ -338,16 +326,15 @@ fn mixed_tool_result_preserves_structured_and_media_order() {
         ToolResultContent::image_url("gs://bucket/result.png", Some(ImageMediaType::PNG), None),
     ];
     let message = Message::User {
-        content: rig_core::NonEmpty::new(rig_core::message::UserContent::ToolResult(ToolResult {
+        content: vec![rig_core::message::UserContent::ToolResult(ToolResult {
             call: CallId::from_wire(""),
             name: rig_core::message::ToolName::new("inspect".to_string()).expect("tool name"),
-            content: rig_core::NonEmpty::from_vec(content).expect("non-empty"),
-        })),
+            content,
+        })],
     };
 
-    let content: vertexai::model::Content = RigMessage(message)
-        .try_into()
-        .expect("mixed tool result should convert");
+    let content: vertexai::model::Content =
+        content_from_message(message).expect("mixed tool result should convert");
     let response = content.parts[0]
         .function_response()
         .expect("function response");
@@ -404,16 +391,15 @@ fn tool_result_image_refs_avoid_names_reserved_by_structured_json() {
         ToolResultContent::image_raw(vec![1, 2, 3], Some(ImageMediaType::PNG), None),
     ];
     let message = Message::User {
-        content: rig_core::NonEmpty::new(rig_core::message::UserContent::ToolResult(ToolResult {
+        content: vec![rig_core::message::UserContent::ToolResult(ToolResult {
             call: CallId::from_wire(""),
             name: rig_core::message::ToolName::new("inspect".to_string()).expect("tool name"),
-            content: rig_core::NonEmpty::from_vec(content).expect("non-empty"),
-        })),
+            content,
+        })],
     };
 
-    let content: vertexai::model::Content = RigMessage(message)
-        .try_into()
-        .expect("colliding ref should be avoided");
+    let content: vertexai::model::Content =
+        content_from_message(message).expect("colliding ref should be avoided");
     let response = content.parts[0]
         .function_response()
         .expect("function response");
@@ -439,18 +425,18 @@ fn tool_result_image_refs_avoid_names_reserved_by_structured_json() {
 #[test]
 fn unsupported_tool_result_image_media_type_is_rejected_locally() {
     let message = Message::User {
-        content: rig_core::NonEmpty::new(rig_core::message::UserContent::ToolResult(ToolResult {
+        content: vec![rig_core::message::UserContent::ToolResult(ToolResult {
             call: CallId::from_wire(""),
             name: rig_core::message::ToolName::new("inspect".to_string()).expect("tool name"),
-            content: rig_core::NonEmpty::new(ToolResultContent::image_raw(
+            content: vec![ToolResultContent::image_raw(
                 vec![1, 2, 3],
                 Some(ImageMediaType::GIF),
                 None,
-            )),
-        })),
+            )],
+        })],
     };
 
-    let error = vertexai::model::Content::try_from(RigMessage(message))
+    let error = content_from_message(message)
         .expect_err("unsupported media must fail before the provider request");
     assert!(
         error.to_string().contains("expected JPEG, PNG, or WEBP"),

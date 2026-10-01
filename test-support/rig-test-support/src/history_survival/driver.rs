@@ -331,7 +331,7 @@ pub async fn run(
                     .chat(prompt.as_str(), &mut history)
                     .await
                     .unwrap_or_else(|error| panic!("[{}] chat failed: {error}", cell.provider));
-                response.output
+                response.output()
             }
             Transport::Streaming => {
                 let mut stream = agent
@@ -346,7 +346,7 @@ pub async fn run(
                     });
                     if let MultiTurnStreamItem::FinalResponse(response) = item {
                         text = Some(response.output().to_owned());
-                        history.extend(response.messages.unwrap_or_default());
+                        history.extend(response.messages);
                     }
                 }
                 text.unwrap_or_else(|| panic!("[{}] stream ended without a final", cell.provider))

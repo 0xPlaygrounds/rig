@@ -69,6 +69,8 @@ pub mod bus {
 }
 
 /// Effect-log recording and replay; optional runtime and native HTTP integrations.
+#[cfg(feature = "cassette")]
+#[cfg_attr(docsrs, doc(cfg(feature = "cassette")))]
 pub use rig_cassette as cassette;
 
 /// The sans-IO run layer of rig-agent (`rig_agent::run`): `AgentRun` and its
@@ -157,7 +159,7 @@ pub mod tool {
     pub use rig_core::tool::builtin;
     pub use rig_core::tool::{
         ContextValue, DynamicTool, ErasedTool, Tool, ToolContext, ToolContextError, ToolEmbedding,
-        tool_definition,
+        tool_definition, tool_name,
     };
     pub use rig_core::tool::{
         IntoToolOutput, ToolErrorKind, ToolExecutionError, ToolOutput, ToolResult,

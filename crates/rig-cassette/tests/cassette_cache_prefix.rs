@@ -60,6 +60,12 @@ use cache_prefix::{EndpointKind, PrefixBlock, Violation};
 /// records that someone silenced the check, not why it is correct.
 const MOVES_CACHE_PREFIX: &[(&str, &str)] = &[
     (
+        "anthropic/long_run_caching/dynamic_tools_30.yaml",
+        "the long run's request patch changes the active tools on turn 11; the \
+         changed tool list is the behavior being recorded (Claude Opus 5.5 \
+         refuses it with the thinking-block binding 400)",
+    ),
+    (
         "anthropic/corpus_shaping/active_tools_none_second_turn.yaml",
         "the effect corpus's per-turn shaping matrix: a request patch drops \
          every tool on the second turn — moving the prefix is the behavior \
@@ -672,7 +678,7 @@ const IGNORED_RESPONSE: &str = "{}";
 /// likely place for iteration order to leak.
 fn determinism_probe_request() -> CompletionRequest {
     let tool = |name: &str, first: &str, second: &str| ToolDefinition {
-        name: name.to_owned(),
+        name: rig_core::message::ToolName::new(name).expect("tool name"),
         description: format!("Deterministic ordering probe tool {name}."),
         parameters: serde_json::json!({
             "type": "object",
@@ -704,12 +710,12 @@ fn determinism_probe_request() -> CompletionRequest {
     };
 
     CompletionRequest {
-        chat_history: rig_core::NonEmpty::with_rest(
+        chat_history: vec![
             Message::system("You are a deterministic serialization probe."),
-            [Message::User {
-                content: rig_core::NonEmpty::new(UserContent::text("probe")),
-            }],
-        ),
+            Message::User {
+                content: vec![UserContent::text("probe")],
+            },
+        ],
         documents: vec![document],
         tools: vec![
             tool("alpha_probe", "alpha_first", "alpha_second"),

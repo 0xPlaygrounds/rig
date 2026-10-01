@@ -123,7 +123,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .preamble("You are a helpful assistant that can solve problems. Use the tool provided to answer the user's question.")
         .max_tokens(1024)
         .default_max_turns(2)
-        .dynamic_tool(calculator_agent.into_tool())
+        .dynamic_tool(calculator_agent.into_tool()?)
         .build();
 
     // Prompt the agent and print the response
@@ -131,7 +131,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     println!(
         "OpenAI Agent-Using Agent: {}",
-        agent_using_agent.prompt("Calculate 2 - 5").await?.output
+        agent_using_agent.prompt("Calculate 2 - 5").await?.output()
     );
 
     Ok(())

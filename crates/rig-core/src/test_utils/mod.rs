@@ -10,6 +10,7 @@ mod streaming;
 pub mod streaming_conformance;
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 mod streaming_conformance_suite;
+mod trace_capture;
 mod tracing_isolation;
 
 pub use completion::{MockCompletionModel, MockError, MockRuntime, MockScript, MockTurn};
@@ -25,9 +26,23 @@ pub use streaming::{
     MOCK_PROVIDER, MockDecoder, MockFrame, MockStreamEvent, mock_final,
     mock_final_with_total_tokens,
 };
+pub use trace_capture::{CapturedEvent, CapturedSpan, TraceCapture};
 pub use tracing_isolation::{
     scoped_tracing_subscriber_guard, scoped_tracing_subscriber_guard_blocking,
 };
+
+/// The JSON document an encoded request sends.
+///
+/// # Panics
+///
+/// When the body is multipart or is not JSON.
+#[cfg(test)]
+pub(crate) fn json_body(request: &http::Request<crate::wire::Body>) -> serde_json::Value {
+    let crate::wire::Body::Bytes(bytes) = request.body() else {
+        panic!("the request body is multipart, not JSON");
+    };
+    serde_json::from_slice(bytes).expect("the request body is JSON")
+}
 
 /// Decode one reply of `wire` to `request` from frames already in hand,
 /// folded as `mode` folds it: the one decoder and fold a live call runs.

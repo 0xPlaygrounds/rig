@@ -26,7 +26,7 @@ const CODE: &str = "amber-5521";
 
 fn lookup() -> ToolDefinition {
     ToolDefinition {
-        name: "lookup_code".to_owned(),
+        name: rig_core::message::ToolName::new("lookup_code").expect("tool name"),
         description: "Return the code stored for a record. Always call it before answering."
             .to_owned(),
         parameters: json!({
@@ -40,7 +40,7 @@ fn lookup() -> ToolDefinition {
 fn request(route: Route, history: Vec<Message>) -> CompletionRequest {
     CompletionRequest {
         model: None,
-        chat_history: rig_core::NonEmpty::from_vec(history).expect("non-empty"),
+        chat_history: history,
         documents: vec![],
         tools: vec![lookup()],
         temperature: None,
@@ -131,24 +131,16 @@ async fn claude_tool_turn(client: &OpenAiModels, route: Route, streamed: bool) -
         prompt,
         Message::Assistant {
             id: None,
-            content: first
-                .into_iter()
-                .collect::<Vec<_>>()
-                .try_into()
-                .expect("non-empty"),
+            content: first,
         },
         Message::User {
             content: vec![UserContent::tool_result(
                 call.id.clone(),
                 call.function.name.clone(),
-                rig_core::NonEmpty::new(ToolResultContent::text(format!(
+                vec![ToolResultContent::text(format!(
                     "record alpha: code {CODE}"
-                ))),
-            )]
-            .into_iter()
-            .collect::<Vec<_>>()
-            .try_into()
-            .expect("non-empty"),
+                ))],
+            )],
         },
     ]
 }
@@ -162,11 +154,7 @@ async fn switch(client: OpenAiModels, route: Route, streamed: bool) {
     assert!(text(&on_gemini).contains(CODE), "{on_gemini:?}");
     history.push(Message::Assistant {
         id: None,
-        content: on_gemini
-            .into_iter()
-            .collect::<Vec<_>>()
-            .try_into()
-            .expect("non-empty"),
+        content: on_gemini,
     });
     history.push(Message::user(
         "Without calling any tool, say the code once more, in uppercase.",

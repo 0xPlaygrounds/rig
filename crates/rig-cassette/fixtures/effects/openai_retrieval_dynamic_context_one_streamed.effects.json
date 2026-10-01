@@ -49,7 +49,6 @@
             "query": "What is a glarb-glarb? Answer in one sentence.",
             "samples": 1,
             "threshold": null,
-            "additional_params": null,
             "filter": null
           }
         }

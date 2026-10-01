@@ -14,7 +14,7 @@ use rig::completion::CompletionRequest;
 
 fn specific_add_choice() -> ToolChoice {
     ToolChoice::Specific {
-        function_names: vec![Adder::NAME.to_string()],
+        function_names: vec![rig_core::message::ToolName::new(Adder::NAME).expect("tool name")],
     }
 }
 
@@ -210,7 +210,7 @@ async fn none_nonstreaming_does_not_emit_tool_calls() {
                 )
                 .await
                 .expect("ToolChoice::None prompt should succeed")
-                .output;
+                .output();
 
             assert_mentions_expected_number(&response, 42);
             assert_history_tool_calls(&chat_history, &[], &[Adder::NAME, Subtract::NAME]);

@@ -18,7 +18,7 @@ const VISION_MODEL: &str = "google/gemini-2.5-flash";
 fn image_message() -> Image {
     let bytes = std::fs::read(IMAGE_FIXTURE_PATH).expect("fixture image should be readable");
     Image {
-        data: DocumentSourceKind::base64(&BASE64_STANDARD.encode(bytes)),
+        data: DocumentSourceKind::base64(BASE64_STANDARD.encode(bytes)),
         media_type: Some(ImageMediaType::JPEG),
         detail: None,
         additional_params: None,
@@ -28,22 +28,22 @@ fn image_message() -> Image {
 fn pdf_document() -> Document {
     let bytes = std::fs::read(PDF_FIXTURE_PATH).expect("fixture pdf should be readable");
     Document {
-        data: DocumentSourceKind::base64(&BASE64_STANDARD.encode(bytes)),
+        data: DocumentSourceKind::base64(BASE64_STANDARD.encode(bytes)),
         media_type: Some(DocumentMediaType::PDF),
         additional_params: None,
     }
 }
 
-/// Builds base64 video content via the `UserContent::video` helper.
+/// Builds base64 video content via the `UserContent::video_base64` helper.
 fn video_content() -> UserContent {
     let bytes = std::fs::read(VIDEO_FIXTURE_PATH).expect("fixture video should be readable");
-    UserContent::video(BASE64_STANDARD.encode(bytes), Some(VideoMediaType::MP4))
+    UserContent::video_base64(BASE64_STANDARD.encode(bytes), Some(VideoMediaType::MP4))
 }
 
-/// Builds base64 audio content via the `UserContent::audio` helper.
+/// Builds base64 audio content via the `UserContent::audio_base64` helper.
 fn audio_content() -> UserContent {
     let bytes = std::fs::read(AUDIO_FIXTURE_PATH).expect("fixture audio should be readable");
-    UserContent::audio(BASE64_STANDARD.encode(bytes), Some(AudioMediaType::MP3))
+    UserContent::audio_base64(BASE64_STANDARD.encode(bytes), Some(AudioMediaType::MP3))
 }
 
 #[tokio::test]
@@ -55,15 +55,15 @@ async fn image_analysis_prompt() {
 
         let response = agent
             .prompt(Message::User {
-                content: rig_core::NonEmpty::with_rest(
+                content: vec![
                     UserContent::text("What do you see in this image? Describe it in detail."),
-                    [UserContent::Image(image_message())],
-                ),
+                    UserContent::Image(image_message()),
+                ],
             })
             .await
             .expect("image prompt should succeed");
 
-        assert_nonempty_response(&response.output);
+        assert_nonempty_response(&response.output());
     })
     .await;
 }
@@ -77,15 +77,15 @@ async fn pdf_analysis_prompt() {
 
         let response = agent
             .prompt(Message::User {
-                content: rig_core::NonEmpty::with_rest(
+                content: vec![
                     UserContent::text("Please summarize the key points of this document."),
-                    [UserContent::Document(pdf_document())],
-                ),
+                    UserContent::Document(pdf_document()),
+                ],
             })
             .await
             .expect("pdf prompt should succeed");
 
-        assert_nonempty_response(&response.output);
+        assert_nonempty_response(&response.output());
     })
     .await;
 }
@@ -99,19 +99,17 @@ async fn mixed_multimodal_prompt() {
 
         let response = agent
             .prompt(Message::User {
-                content: rig_core::NonEmpty::with_rest(
+                content: vec![
                     UserContent::text("I have two questions:"),
-                    [
-                        UserContent::text("1. What colors do you see in this image?"),
-                        UserContent::Image(image_message()),
-                        UserContent::text("2. What is the main subject?"),
-                    ],
-                ),
+                    UserContent::text("1. What colors do you see in this image?"),
+                    UserContent::Image(image_message()),
+                    UserContent::text("2. What is the main subject?"),
+                ],
             })
             .await
             .expect("mixed content prompt should succeed");
 
-        assert_nonempty_response(&response.output);
+        assert_nonempty_response(&response.output());
     })
     .await;
 }
@@ -125,15 +123,15 @@ async fn video_analysis_prompt() {
 
         let response = agent
             .prompt(Message::User {
-                content: rig_core::NonEmpty::with_rest(
+                content: vec![
                     UserContent::text("What do you see in this short video? Describe it briefly."),
-                    [video_content()],
-                ),
+                    video_content(),
+                ],
             })
             .await
             .expect("video prompt should succeed");
 
-        assert_nonempty_response(&response.output);
+        assert_nonempty_response(&response.output());
     })
     .await;
 }
@@ -147,15 +145,15 @@ async fn audio_analysis_prompt() {
 
         let response = agent
             .prompt(Message::User {
-                content: rig_core::NonEmpty::with_rest(
+                content: vec![
                     UserContent::text("What is said in this audio clip? Transcribe it briefly."),
-                    [audio_content()],
-                ),
+                    audio_content(),
+                ],
             })
             .await
             .expect("audio prompt should succeed");
 
-        assert_nonempty_response(&response.output);
+        assert_nonempty_response(&response.output());
     })
     .await;
 }

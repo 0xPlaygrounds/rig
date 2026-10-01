@@ -49,7 +49,7 @@ async fn api_key_completion_smoke() {
         .await
         .expect("api key-backed completion should succeed");
 
-    assert_nonempty_response(&response.output);
+    assert_nonempty_response(&response.output());
 }
 
 #[tokio::test]
@@ -73,7 +73,7 @@ async fn github_access_token_completion_smoke() {
         .await
         .expect("bootstrap-token-backed completion should succeed");
 
-    assert_nonempty_response(&response.output);
+    assert_nonempty_response(&response.output());
 }
 
 #[tokio::test]
@@ -107,7 +107,7 @@ async fn oauth_device_flow_authorize_and_cached_completion_smoke() {
         .await
         .expect("authorized completion should succeed");
 
-    assert_nonempty_response(&response.output);
+    assert_nonempty_response(&response.output());
 
     let cached_response =
         rig::AgentBuilder::new(authorize_oauth(token_dir).await.completion(LIVE_MODEL))
@@ -116,7 +116,7 @@ async fn oauth_device_flow_authorize_and_cached_completion_smoke() {
             .await
             .expect("cached completion should succeed");
 
-    assert_nonempty_response(&cached_response.output);
+    assert_nonempty_response(&cached_response.output());
 }
 
 #[tokio::test]
@@ -173,5 +173,5 @@ async fn access_token_bootstrap_refresh_and_completion_smoke() {
         .await
         .expect("bootstrap-backed completion should succeed");
 
-    assert_nonempty_response(&response.output);
+    assert_nonempty_response(&response.output());
 }

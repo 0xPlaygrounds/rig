@@ -11,7 +11,7 @@ use crate::message::{Reasoning, ToolChoice, ToolFunction};
 fn bare(chat_history: Vec<Message>) -> CompletionRequest {
     CompletionRequest {
         model: None,
-        chat_history: crate::NonEmpty::from_vec(chat_history).expect("non-empty"),
+        chat_history,
         documents: Vec::new(),
         tools: Vec::new(),
         temperature: None,
@@ -38,7 +38,7 @@ fn assert_same(actual: &CompletionRequest, expected: &CompletionRequest) {
 
 fn tool(name: &str) -> ToolDefinition {
     ToolDefinition {
-        name: name.to_owned(),
+        name: crate::message::ToolName::new(name).expect("tool name"),
         description: format!("the {name} tool"),
         parameters: serde_json::json!({"type": "object"}),
     }
@@ -230,22 +230,23 @@ fn every_prompt_form_converts_to_the_same_request() {
     assert_same(&CompletionRequest::from("hi".to_owned()), &expected);
     assert_same(&CompletionRequest::from(Message::user("hi")), &expected);
     assert_same(
-        &CompletionRequest::from(crate::NonEmpty::new(Message::user("hi"))),
+        &CompletionRequest::from(vec![Message::user("hi")]),
         &expected,
     );
 }
 
 #[test]
-fn a_conversation_is_sent_as_given_and_an_empty_one_cannot_be_built() {
+fn a_conversation_is_sent_as_given_and_an_empty_one_is_rejected() {
     let history = vec![
         Message::system("s"),
         Message::user("q"),
         Message::assistant("a"),
         Message::user("q2"),
     ];
-    let conversation = crate::NonEmpty::from_vec(history.clone()).expect("non-empty");
+    let conversation = history.clone();
     assert_same(&CompletionRequest::from(conversation), &bare(history));
-    assert!(crate::NonEmpty::<Message>::from_vec(Vec::new()).is_err());
+    let empty = CompletionRequest::from(Vec::<Message>::new());
+    assert!(empty.validate_message_content().is_err());
 }
 
 fn call(id: &str, name: &str) -> ToolCall {
@@ -314,7 +315,7 @@ fn a_response_is_the_assistant_turn() {
         response.message().expect("a non-empty choice"),
         Message::Assistant {
             id: Some("msg_1".to_owned()),
-            content: crate::NonEmpty::from_vec(choice).expect("non-empty"),
+            content: choice,
         }
     );
 }
@@ -322,6 +323,7 @@ fn a_response_is_the_assistant_turn() {
 #[test]
 fn an_empty_response_reads_empty() {
     let response = response(Vec::new());
+    assert_eq!(response.message(), None, "an empty choice is no turn");
     assert_eq!(response.text(), "");
     assert_eq!(response.reasoning(), "");
     assert_eq!(response.tool_calls().count(), 0);

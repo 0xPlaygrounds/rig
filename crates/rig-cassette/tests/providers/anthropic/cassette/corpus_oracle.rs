@@ -65,7 +65,7 @@ async fn concurrent_notes_effect_log_is_the_golden_fixture() {
             .tool_concurrency(2)
             .await
             .expect("the agent answers")
-            .output;
+            .output();
         assert!(!output.is_empty());
         let log = agent.stamp(recorder.take());
         drop((agent, dispatcher, registrar));
@@ -106,7 +106,7 @@ async fn stop_after_turn_two_effect_log_is_the_golden_fixture() {
                 .await
                 .expect_err("the hook stops the run");
             assert!(
-                matches!(&error, PromptError::PromptCancelled { reason, .. } if *reason == stop_after_turn_reason(2)),
+                matches!(&error, PromptError::Cancelled { reason, .. } if *reason == stop_after_turn_reason(2)),
                 "{error:?}"
             );
             let log = agent.stamp(recorder.take());

@@ -46,7 +46,7 @@ async fn main() -> Result<(), anyhow::Error> {
         "Process the text 'error handling' with a delay of 'not a number'",
     ] {
         println!("User: {prompt}");
-        println!("Agent: {}", async_agent.prompt(prompt).await?.output);
+        println!("Agent: {}", async_agent.prompt(prompt).await?.output());
     }
 
     Ok(())

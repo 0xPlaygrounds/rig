@@ -2,6 +2,7 @@
 name = "rig-rmcp"
 version.workspace = true
 edition = { workspace = true }
+rust-version = { workspace = true }
 license = "MIT"
 readme = "README.md"
 description = "MCP (Model Context Protocol) tool support for Rig via the rmcp SDK: MCP tools as rig-core dynamic tools, plus a client handler that keeps any ManagedToolSink (rig-agent's tool server, for example) in sync with the server's tool list."
@@ -15,7 +16,7 @@ rustdoc-args = ["--cfg", "docsrs"]
 workspace = true
 
 [dependencies]
-rig-core = { path = "../rig-core", version = "0.42.0", default-features = false }
+rig-core = { path = "../rig-core", version = "0.43.0", default-features = false }
 # MCP is native-only: rmcp's `ClientHandler` requires `Send + Sync`
 # unconditionally, which rig's wasm tool registry cannot satisfy. The crate
 # root raises a targeted `compile_error!` on wasm; scoping the SDK out of the
@@ -30,8 +31,8 @@ rmcp = { workspace = true, features = ["client"] }
 tokio = { workspace = true, features = ["rt", "sync", "time"] }
 
 [dev-dependencies]
-rig-core = { path = "../rig-core", version = "0.42.0", default-features = false, features = ["test-utils"] }
-rig-agent = { path = "../rig-agent", version = "0.42.0", default-features = false, features = ["test-utils"] }
+rig-core = { path = "../rig-core", version = "0.43.0", default-features = false, features = ["test-utils"] }
+rig-agent = { path = "../rig-agent", version = "0.43.0", default-features = false, features = ["test-utils"] }
 rmcp = { workspace = true, features = ["client", "server"] }
 tokio = { workspace = true, features = ["full"] }
 tokio-test = { workspace = true }

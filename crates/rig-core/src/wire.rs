@@ -191,6 +191,13 @@ pub trait Operation: Sized + 'static {
     /// telemetry opens its span here and hands it to
     /// [`Call::instrument`].
     fn fold(request: &Self::Request, call: &mut Call<'_>) -> Self::Fold;
+
+    /// Reject a request no provider of this operation can answer. The
+    /// driver calls it before the request is encoded, so a rejected request
+    /// reaches no wire or transport. Accepts every request by default.
+    fn validate(_request: &Self::Request) -> Result<(), ProviderError> {
+        Ok(())
+    }
 }
 
 /// Events a decoder builds and writes with [`Out::event`].
@@ -285,7 +292,7 @@ pub(crate) use reply::Shared;
 pub(crate) mod reply {
     use std::collections::VecDeque;
 
-    use super::{Operation, ProviderError};
+    use super::{Fold, Operation, ProviderError, Reply};
     use crate::streaming::Item;
 
     /// One reply's items and end, shared by the driver that writes them and
@@ -316,6 +323,45 @@ pub(crate) mod reply {
                 document: None,
                 route: String::new(),
             }
+        }
+
+        /// Take the next item: an event is absorbed by the fold before it
+        /// leaves, and an error is stamped with the reply's request id.
+        pub(crate) fn take(&mut self) -> Option<Result<Item<Op::Event>, ProviderError>> {
+            Some(match self.items.pop_front()? {
+                Ok(Item::Event(event)) => self.fold.absorb(&event).map(|()| Item::Event(event)),
+                Ok(unknown) => Ok(unknown),
+                // An id an upstream constructor already attached wins: it
+                // saw the reply.
+                Err(error) => Err(error.with_provider_request_id(self.request_id.clone())),
+            })
+        }
+
+        /// What the driver learned about the reply so far, from `provider`.
+        pub(crate) fn reply(&self, provider: &str) -> Reply {
+            Reply {
+                provider: provider.to_owned(),
+                // A whole body is the reply's document; a stream's is what
+                // its decoder recorded.
+                raw: self
+                    .document
+                    .clone()
+                    .or_else(|| self.raw.clone())
+                    .unwrap_or(serde_json::Value::Null),
+                provider_request_id: self.request_id.clone(),
+            }
+        }
+
+        /// Fold the absorbed reply with the provider's end into the
+        /// response, or return the response a relay's origin folded. A
+        /// reply the provider did not end is [`ProviderError::Truncated`].
+        pub(crate) fn conclude(self, provider: &str) -> Result<Op::Response, ProviderError> {
+            if let Some(response) = self.response {
+                return Ok(response);
+            }
+            let reply = self.reply(provider);
+            let end = self.end.ok_or(ProviderError::Truncated)?;
+            self.fold.finish(end, reply)
         }
     }
 

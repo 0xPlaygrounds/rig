@@ -14,11 +14,13 @@
 use std::collections::{BTreeMap, HashMap};
 use std::time::Duration;
 
-use rig_agent::agent::{Agent, MultiTurnStreamItem, StreamingError};
+use rig_agent::agent::{Agent, MultiTurnStreamItem};
 use rig_cassette::http::CassetteClock;
 use rig_core::completion::{CacheCost, CacheRates, Message, Usage};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+
+pub mod workloads;
 
 /// The support handbook every long-run support chat uses as its preamble.
 pub const SUPPORT_PREAMBLE: &str = include_str!("cache_longrun/support_preamble.md");
@@ -131,6 +133,24 @@ pub async fn chat(
     history: &mut Vec<Message>,
     log: &mut RunLog,
 ) {
+    if let Err(error) = try_chat(agent, clock, prompt, history, log).await {
+        panic!("turn failed: {error}");
+    }
+}
+
+/// [`chat`], returning the error of a turn that fails with anything but a
+/// retryable status (or still fails after the retries) instead of panicking.
+/// The history is left as it was before the turn.
+///
+/// # Errors
+/// The failed turn's error, as text.
+pub async fn try_chat(
+    agent: &Agent,
+    clock: &CassetteClock,
+    prompt: impl Into<Message>,
+    history: &mut Vec<Message>,
+    log: &mut RunLog,
+) -> Result<(), String> {
     let prompt: Message = prompt.into();
     let mut waits = BACKOFF.iter();
     loop {
@@ -138,7 +158,7 @@ pub async fn chat(
             Ok(response) => {
                 log.usages
                     .extend(response.completion_calls.iter().map(|call| call.usage));
-                return;
+                return Ok(());
             }
             Err(error) => error,
         };
@@ -147,18 +167,8 @@ pub async fn chat(
                 log.retries += 1;
                 clock.pause(Duration::from_secs(*wait)).await;
             }
-            _ => panic!("turn failed: {error}"),
+            _ => return Err(error.to_string()),
         }
-    }
-}
-
-fn streaming_status(error: &StreamingError) -> Option<http::StatusCode> {
-    match error {
-        StreamingError::Completion(error) => error.provider_response_status(),
-        StreamingError::Report(report) => report
-            .http_status
-            .and_then(|status| http::StatusCode::from_u16(status).ok()),
-        StreamingError::Prompt(error) => error.provider_response_status(),
     }
 }
 
@@ -195,7 +205,7 @@ pub async fn chat_streamed(
         }
         let error = match (done, failure) {
             (Some(response), None) => {
-                history.extend(response.messages.clone().unwrap_or_default());
+                history.extend(response.messages.clone());
                 log.usages
                     .extend(response.completion_calls.iter().map(|call| call.usage));
                 return;
@@ -203,7 +213,7 @@ pub async fn chat_streamed(
             (_, error) => error,
         };
         match (waits.next(), &error) {
-            (Some(wait), Some(failure)) if retryable(streaming_status(failure)) => {
+            (Some(wait), Some(failure)) if retryable(failure.provider_response_status()) => {
                 log.retries += 1;
                 clock.pause(Duration::from_secs(*wait)).await;
             }

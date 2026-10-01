@@ -182,7 +182,7 @@ async fn main() -> Result<()> {
                     .await?;
                 let tool_names: BTreeSet<String> = tool_definitions
                     .iter()
-                    .map(|def| def.name.clone())
+                    .map(|def| def.name.to_string())
                     .collect();
                 let mut outcome = run.model_response(ModelTurn::new(
                     response.message_id.clone(),
@@ -262,9 +262,9 @@ async fn main() -> Result<()> {
                                 }
                                 _ => {
                                     println!("     ! no valid JSON; denying instead");
-                                    results.push(UserContent::tool_result(id, name, rig::NonEmpty::new(ToolResultContent::text(
+                                    results.push(UserContent::tool_result(id, name, vec![ToolResultContent::text(
                                             "denied: the reviewer supplied no valid JSON to edit with",
-                                        ))));
+                                        )]));
                                 }
                             }
                         }
@@ -286,7 +286,7 @@ async fn main() -> Result<()> {
                             results.push(UserContent::tool_result(
                                 id,
                                 name,
-                                rig::NonEmpty::new(ToolResultContent::text(reason)),
+                                vec![ToolResultContent::text(reason)],
                             ));
                         }
                     }
@@ -304,7 +304,7 @@ async fn main() -> Result<()> {
             }
 
             AgentRunStep::Done(response) => {
-                println!("\n✓ {}", response.output);
+                println!("\n✓ {}", response.output());
                 return Ok(());
             }
         }

@@ -90,7 +90,7 @@ fn request(
 
 fn weather_tool() -> ToolDefinition {
     ToolDefinition {
-        name: "get_weather".to_string(),
+        name: rig_core::message::ToolName::new("get_weather").expect("tool name"),
         description: "Get the current weather for a city.".to_string(),
         parameters: json!({
             "type": "object",
@@ -202,7 +202,7 @@ async fn agent_prompt_empty_stop_sequence() {
                 .prompt(IMMEDIATE_PROMPT)
                 .await
                 .expect("agent prompt must not fail on a completed empty turn")
-                .output;
+                .output();
             assert!(
                 response.trim().is_empty(),
                 "the turn produced no text: {response:?}"

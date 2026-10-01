@@ -9,13 +9,15 @@ use rig_cassette::agent::AgentReplayExt;
 use std::time::Duration;
 
 use futures::StreamExt;
-use rig::agent::{AgentBuilder, MultiTurnStreamItem, StreamingError};
+use rig::agent::{AgentBuilder, MultiTurnStreamItem};
+use rig::completion::PromptError;
 use rig::effect::EffectFamily;
 use rig::serve::ErasedHandler;
 use rig::test_utils::{MockCompletionModel, MockStreamEvent, MockTurn};
 use rig_cassette::effect_log::EffectLog;
 use serde_json::json;
 
+use super::tool_result_texts;
 use crate::goldens::{
     Answer, ApprovalLayer, CANCEL_STREAM_REASON, CancelStreamLayer, WORLD_DENY_REASON,
     WrongFamilyLayer, add_tool_under, families, spawn_world,
@@ -30,36 +32,6 @@ fn calls_add_then_answers() -> MockCompletionModel {
         MockTurn::tool_call("call-1", "add", json!({"x": 17, "y": 25})),
         MockTurn::text("42"),
     ])
-}
-
-/// The text of every tool result in the last request's history.
-fn tool_result_texts(log: &EffectLog) -> Vec<String> {
-    let request = match &log.records.last().expect("a record").kind {
-        rig::effect::EffectKind::Completion { request, .. } => request,
-        other => panic!("the last record is a completion, not {other:?}"),
-    };
-    request
-        .chat_history
-        .iter()
-        .filter_map(|message| match message {
-            rig::message::Message::User { content } => Some(content.iter()),
-            _ => None,
-        })
-        .flatten()
-        .filter_map(|content| match content {
-            rig::message::UserContent::ToolResult(result) => Some(
-                result
-                    .content
-                    .iter()
-                    .map(|part| match part {
-                        rig::message::ToolResultContent::Text(text) => text.text.clone(),
-                        other => format!("{other:?}"),
-                    })
-                    .collect::<String>(),
-            ),
-            _ => None,
-        })
-        .collect()
 }
 
 /// The program under a suspending layer on `add`, the world answering as
@@ -97,7 +69,7 @@ async fn suspended(answer: Answer) -> EffectLog {
         .await
         .expect("a suspended layer never hangs the run past its answer")
         .expect("the agent answers");
-        assert_eq!(response.output, "42");
+        assert_eq!(response.output(), "42");
     }
     agent.stamp(recorder.take())
 }
@@ -125,7 +97,10 @@ async fn suspend_deny_effect_log_is_the_golden_fixture() {
         families(&log),
         [EffectFamily::Completion, EffectFamily::Completion]
     );
-    assert_eq!(tool_result_texts(&log), [WORLD_DENY_REASON]);
+    assert_eq!(
+        tool_result_texts(&log, log.records.len() - 1),
+        [WORLD_DENY_REASON]
+    );
     crate::goldens::golden_effects("mock_layers_suspend_deny", &log);
 }
 
@@ -162,7 +137,7 @@ async fn wrong_family_patch_effect_log_is_the_golden_fixture() {
         .max_turns(3)
         .await
         .expect("the run goes on: the tool failed, the model answered");
-    assert_eq!(response.output, "42");
+    assert_eq!(response.output(), "42");
     let log = agent.stamp(recorder.take());
     // `Internal`, no record: the engine turns the tool's failure into a
     // failed result the model sees, and the run goes on.
@@ -170,7 +145,7 @@ async fn wrong_family_patch_effect_log_is_the_golden_fixture() {
         families(&log),
         [EffectFamily::Completion, EffectFamily::Completion]
     );
-    let texts = tool_result_texts(&log);
+    let texts = tool_result_texts(&log, log.records.len() - 1);
     assert_eq!(texts.len(), 1);
     assert!(
         texts[0].contains("layer `WrongFamilyLayer`")
@@ -228,16 +203,11 @@ async fn replace_streamed_cancelled_effect_log_is_the_golden_fixture() {
     drop(stream);
     let ending = ending.expect("the run ends in an error");
     match &ending {
-        StreamingError::Report(report) => {
+        PromptError::Report(report) => {
             assert_eq!(report.kind, rig::error::ErrorKind::Cancelled);
             assert_eq!(report.message, CANCEL_STREAM_REASON);
         }
-        StreamingError::Prompt(error) => {
-            assert!(
-                matches!(error, rig::completion::PromptError::PromptCancelled { reason, .. } if reason == CANCEL_STREAM_REASON),
-                "{error:?}"
-            );
-        }
+        PromptError::Cancelled { reason, .. } => assert_eq!(reason, CANCEL_STREAM_REASON),
         other => panic!("a cancel, not {other:?}"),
     }
     assert_eq!(texts, "streamed", "the events were delivered as they came");

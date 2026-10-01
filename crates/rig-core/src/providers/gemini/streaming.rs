@@ -210,7 +210,7 @@ impl<'id> Decoder<'id, Completion> for GenerateContentDecoder<'id> {
                 for part in content.parts {
                     let text = matches!(part.part, PartKind::Text(_)) && part.thought != Some(true);
                     if text && previous_text {
-                        self.close_text(&mut out);
+                        out.close_open_text(&mut self.text);
                     }
                     previous_text = text;
                     self.interpret_part(part, &mut out)?;
@@ -242,7 +242,7 @@ impl<'id> Decoder<'id, Completion> for GenerateContentDecoder<'id> {
                 crate::message::EMPTY_RESPONSE_ERROR.to_owned(),
             ));
         }
-        self.close_text(&mut out);
+        out.close_open_text(&mut self.text);
         self.thoughts.close(&mut out, None);
         // Defaulting the raw usage shape does not imply reported usage.
         let usage = self
@@ -379,12 +379,6 @@ struct ObservedFeedback {
 }
 
 impl<'id> GenerateContentDecoder<'id> {
-    fn close_text(&mut self, out: &mut Out<'id, Completion>) {
-        if let Some(part) = self.text.take() {
-            out.close_text(part);
-        }
-    }
-
     fn interpret_part(
         &mut self,
         part: Part,
@@ -406,7 +400,7 @@ impl<'id> GenerateContentDecoder<'id> {
             } => {
                 // A signature closes accumulated reasoning or forms a signature-only part.
                 if !text.is_empty() {
-                    self.close_text(out);
+                    out.close_open_text(&mut self.text);
                 }
                 self.thoughts.fragment(out, &text);
                 if let Some(signature) = thought_signature {
@@ -424,21 +418,20 @@ impl<'id> GenerateContentDecoder<'id> {
                 // signed part ends there.
                 let signed = thought_signature.is_some();
                 if signed && text.is_empty() {
-                    self.close_text(out);
+                    out.close_open_text(&mut self.text);
                 }
                 let params = thought_signature.and_then(|signature| {
                     super::text_signature_extras(super::GEMINI_TEXT_EXTRAS_KEY, signature)
                 });
                 if !text.is_empty() || params.is_some() {
                     self.thoughts.boundary();
-                    let part = self.text.get_or_insert_with(|| out.text());
-                    out.push_text(part, &text);
+                    let part = out.extend_text(&mut self.text, &text);
                     if let Some(params) = params {
                         out.text_params(part, params);
                     }
                 }
                 if signed {
-                    self.close_text(out);
+                    out.close_open_text(&mut self.text);
                 }
             }
             Part {
@@ -448,7 +441,7 @@ impl<'id> GenerateContentDecoder<'id> {
             } => {
                 // Tool content interleaving an open thought part stops it.
                 self.thoughts.boundary();
-                self.close_text(out);
+                out.close_open_text(&mut self.text);
                 shared_parts::function_call(
                     out,
                     function_call.name,
@@ -465,7 +458,7 @@ impl<'id> GenerateContentDecoder<'id> {
                 // Inline media rides on a text part's metadata: the choice
                 // has no part for it.
                 self.thoughts.boundary();
-                self.close_text(out);
+                out.close_open_text(&mut self.text);
                 let raw = Part {
                     thought: None,
                     thought_signature,

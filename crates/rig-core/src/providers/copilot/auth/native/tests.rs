@@ -1,8 +1,8 @@
 use super::{
-    ApiKeyRecord, DeviceCodeHandler, PlatformAuthenticator, bootstrap_token_fingerprint,
-    next_poll_interval_seconds, normalize_poll_interval_seconds,
-    should_retry_with_fresh_access_token_status,
+    ApiKeyRecord, bootstrap_token_fingerprint, next_poll_interval_seconds,
+    normalize_poll_interval_seconds, refresh_api_key, should_retry_with_fresh_access_token_status,
 };
+use crate::providers::copilot::auth::{AuthSource, Authenticator, DeviceCodeHandler};
 use crate::test_utils::RecordingHttpClient;
 use http::StatusCode;
 
@@ -27,7 +27,13 @@ fn api_key_record_parses_dynamic_api_base() {
 
 #[tokio::test]
 async fn noninteractive_oauth_requires_sign_in_instead_of_device_flow() {
-    let auth = PlatformAuthenticator::new(None, None, DeviceCodeHandler::default(), false);
+    let auth = Authenticator::new(
+        AuthSource::OAuth,
+        None,
+        None,
+        DeviceCodeHandler::default(),
+        false,
+    );
     let err = auth
         .auth_context_oauth(&RecordingHttpClient::new(""))
         .await
@@ -144,7 +150,8 @@ async fn cached_credential_remains_persistent_and_reusable() -> anyhow::Result<(
     let record: ApiKeyRecord = serde_json::from_value(fixture.clone())?;
     super::write_json_record(Some(&path), &record)?;
     let http = RecordingHttpClient::new("");
-    let auth = PlatformAuthenticator::new(
+    let auth = Authenticator::new(
+        AuthSource::OAuth,
         None,
         Some(path.clone()),
         DeviceCodeHandler::default(),
@@ -171,4 +178,15 @@ async fn cached_credential_remains_persistent_and_reusable() -> anyhow::Result<(
     let persisted: serde_json::Value = serde_json::from_slice(&std::fs::read(path)?)?;
     anyhow::ensure!(persisted == fixture, "persisted cache changed");
     Ok(())
+}
+
+#[tokio::test]
+async fn api_key_exchange_rejects_a_blank_token() {
+    let http = RecordingHttpClient::new(r#"{"token": "  "}"#);
+    let err = refresh_api_key(&http, "synthetic-bootstrap")
+        .await
+        .expect_err("a blank API key cannot authenticate")
+        .to_string();
+
+    assert!(err.contains("did not include a token"), "{err}");
 }

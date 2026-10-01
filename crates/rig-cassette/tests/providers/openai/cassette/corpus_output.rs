@@ -23,9 +23,11 @@ fn assert_event(output: &str) {
 
 fn tool_names(log: &rig::cassette::effect_log::EffectLog) -> Vec<String> {
     match &log.records[0].kind {
-        EffectKind::Completion { request, .. } => {
-            request.tools.iter().map(|tool| tool.name.clone()).collect()
-        }
+        EffectKind::Completion { request, .. } => request
+            .tools
+            .iter()
+            .map(|tool| tool.name.to_string())
+            .collect(),
         other => panic!("a completion, not {other:?}"),
     }
 }
@@ -46,7 +48,7 @@ async fn tool_unary_effect_log_is_the_golden_fixture() {
             .prompt(STRUCTURED_OUTPUT_PROMPT)
             .await
             .expect("the agent answers");
-        assert_event(&response.output);
+        assert_event(&response.output());
         let log = agent.stamp(recorder.take());
         assert_eq!(families(&log), [EffectFamily::Completion]);
         assert_eq!(tool_names(&log), ["final_result"]);
@@ -71,7 +73,7 @@ async fn prompted_unary_effect_log_is_the_golden_fixture() {
             .prompt(STRUCTURED_OUTPUT_PROMPT)
             .await
             .expect("the agent answers");
-        assert_event(&response.output);
+        assert_event(&response.output());
         let log = agent.stamp(recorder.take());
         assert_eq!(families(&log), [EffectFamily::Completion]);
         assert!(tool_names(&log).is_empty());

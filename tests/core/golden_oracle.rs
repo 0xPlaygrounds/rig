@@ -39,7 +39,7 @@ async fn oracle_rerank_effect_log_is_the_golden_fixture() {
             )),
         )
         .expect("a fresh key");
-    let recorder = rig::cassette::effect_log::EffectLogRecorder::new();
+    let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
     driver.record_to(recorder.clone());
     let driver = tokio::spawn(driver);
     let agent = AgentBuilder::over_bus(dispatcher.clone(), registrar.clone(), "golden", model_key)
@@ -51,7 +51,7 @@ async fn oracle_rerank_effect_log_is_the_golden_fixture() {
         .prompt(PROMPT)
         .await
         .expect("the agent answers")
-        .output;
+        .output();
     assert_eq!(output, "ready");
     let log = agent.stamp(recorder.take());
     drop((agent, dispatcher, registrar));
@@ -86,7 +86,7 @@ async fn oracle_prompted_unvalidated_effect_log_is_the_golden_fixture() {
         .prompt("Return a concise event object for a local Rust meetup in Seattle.")
         .await
         .expect("the run does not validate a prompted answer")
-        .output;
+        .output();
     assert_eq!(output, "not an object");
     let log = agent.stamp(recorder.take());
     assert_eq!(families(&log), [EffectFamily::Completion]);

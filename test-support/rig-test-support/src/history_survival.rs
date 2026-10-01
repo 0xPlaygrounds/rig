@@ -1,6 +1,7 @@
 //! The history round-trip rule: opaque fields a provider delivered must reach
 //! the next request, and every tool call a request carries must be paired
-//! with its result.
+//! with its result. A Responses message's `phase` counts as delivered too:
+//! OpenAI asks for it back on the same assistant item.
 //!
 //! Two callers apply the same rule: `tests/cassette_history_survival.rs`
 //! sweeps every committed cassette at zero provider cost, and the recorded
@@ -17,7 +18,6 @@
 //! let request = serde_json::json!({ "messages": [] });
 //! assert!(lost_tokens(Dialect::from_path("/v1/messages"), "{}", &request).is_empty());
 //! ```
-#![allow(dead_code)]
 
 pub mod adversarial;
 pub mod driver;
@@ -103,15 +103,15 @@ impl Dialect {
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Token {
     /// The content kind: `signature`, `thought_signature`, `encrypted_content`,
-    /// `redacted_reasoning`, `reasoning_id` or `tool_call_id`.
+    /// `redacted_reasoning`, `reasoning_id`, `tool_call_id` or `phase`.
     pub kind: &'static str,
     /// The delivered value, as scrubbed in the cassette.
     pub value: String,
     /// What the value belongs to, when the response names it: a call's tool
     /// name and arguments, a signed thinking block's text, a Gemini part's
-    /// kind, an encrypted item's id. The request must carry the value on an
-    /// owner with the same anchor. Streamed deltas that deliver a value apart
-    /// from its owner leave it `None`.
+    /// kind, an encrypted item's id, a Responses message's id. The request
+    /// must carry the value on an owner with the same anchor. Streamed
+    /// deltas that deliver a value apart from its owner leave it `None`.
     pub anchor: Option<String>,
 }
 
@@ -123,6 +123,7 @@ pub const TOKEN_KINDS: &[&str] = &[
     "redacted_reasoning",
     "reasoning_id",
     "tool_call_id",
+    "phase",
 ];
 
 /// Split a recorded response body into its JSON documents: one for a whole
@@ -220,6 +221,12 @@ fn collect_tokens(value: &Value, complete: bool, tokens: &mut Vec<Token>) {
                     object.get("id").and_then(Value::as_str).map(str::to_owned),
                 ),
                 Some("reasoning") => push("reasoning_id", "id", None),
+                // A Responses message's `phase`, owned by the message's id.
+                Some("message") => push(
+                    "phase",
+                    "phase",
+                    object.get("id").and_then(Value::as_str).map(str::to_owned),
+                ),
                 Some("tool_use") => push("tool_call_id", "id", call.clone()),
                 Some("function_call") => push("tool_call_id", "call_id", call.clone()),
                 _ => {}
@@ -478,6 +485,10 @@ fn collect_slots(parent_key: Option<&str>, value: &Value, slots: &mut Slots) {
                 Some("reasoning.encrypted") => {
                     put("encrypted_content", Leg::Call, "data", vec![id.clone()]);
                     put("reasoning_id", Leg::Call, "id", vec![None]);
+                }
+                // A Responses assistant message re-sending its `phase`.
+                Some("message") if role == Some("assistant") => {
+                    put("phase", Leg::Call, "phase", vec![id.clone()]);
                 }
                 Some("tool_use") => put("tool_call_id", Leg::Call, "id", call.clone()),
                 Some("tool_result") => put("tool_call_id", Leg::Result, "tool_use_id", vec![None]),

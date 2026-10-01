@@ -1,8 +1,8 @@
 use crate::types::{
-    assistant_content::RigAssistantContent,
+    assistant_content,
     converse_output::{ContentBlock, InternalConverseOutput},
     errors::TypeConversionError,
-    json::AwsDocument,
+    json,
 };
 
 use crate::completion::{Converse, ConverseFrame, ConverseRequest};
@@ -158,7 +158,7 @@ fn aws_converse_output_preserves_parallel_tool_calls_in_completion_response() {
             aws_bedrock::ToolUseBlock::builder()
                 .tool_use_id("call_1")
                 .name("add")
-                .input(AwsDocument::from(json!({"x": 1, "y": 2})).0)
+                .input(json::to_document(json!({"x": 1, "y": 2})))
                 .build()
                 .unwrap(),
         ),
@@ -166,7 +166,7 @@ fn aws_converse_output_preserves_parallel_tool_calls_in_completion_response() {
             aws_bedrock::ToolUseBlock::builder()
                 .tool_use_id("call_2")
                 .name("subtract")
-                .input(AwsDocument::from(json!({"x": 4, "y": 3})).0)
+                .input(json::to_document(json!({"x": 4, "y": 3})))
                 .build()
                 .unwrap(),
         ),
@@ -216,8 +216,7 @@ fn tool_use_echo_falls_back_to_minted_handle_without_provider_id() {
         },
     );
 
-    let block = RigAssistantContent(AssistantContent::ToolCall(tool_call))
-        .into_content_block(&"test".into())
+    let block = assistant_content::to_aws(AssistantContent::ToolCall(tool_call), &"test".into())
         .unwrap()
         .expect("tool calls never degrade away");
     let aws_bedrock::ContentBlock::ToolUse(tool_use) = block else {
@@ -229,10 +228,10 @@ fn tool_use_echo_falls_back_to_minted_handle_without_provider_id() {
 #[test]
 fn aws_content_block_to_assistant_content() {
     let content_block = mirrored(aws_bedrock::ContentBlock::Text("text".into()));
-    let rig_assistant_content: Result<RigAssistantContent, _> = content_block.try_into();
+    let rig_assistant_content = assistant_content::from_converse(content_block);
     assert!(rig_assistant_content.is_ok());
     assert_eq!(
-        rig_assistant_content.unwrap().0,
+        rig_assistant_content.unwrap(),
         AssistantContent::Text("text".into())
     );
 }
@@ -249,10 +248,10 @@ fn aws_reasoning_content_to_assistant_content_without_signature() {
         aws_bedrock::ReasoningContentBlock::ReasoningText(reasoning_text_block),
     ));
 
-    let rig_assistant_content: Result<RigAssistantContent, _> = content_block.try_into();
+    let rig_assistant_content = assistant_content::from_converse(content_block);
     assert!(rig_assistant_content.is_ok());
 
-    match rig_assistant_content.unwrap().0 {
+    match rig_assistant_content.unwrap() {
         AssistantContent::Reasoning(reasoning) => {
             assert_eq!(
                 reasoning
@@ -290,10 +289,10 @@ fn aws_reasoning_content_to_assistant_content_with_signature() {
         aws_bedrock::ReasoningContentBlock::ReasoningText(reasoning_text_block),
     ));
 
-    let rig_assistant_content: Result<RigAssistantContent, _> = content_block.try_into();
+    let rig_assistant_content = assistant_content::from_converse(content_block);
     assert!(rig_assistant_content.is_ok());
 
-    match rig_assistant_content.unwrap().0 {
+    match rig_assistant_content.unwrap() {
         AssistantContent::Reasoning(reasoning) => {
             assert_eq!(
                 reasoning
@@ -323,10 +322,9 @@ fn aws_reasoning_content_to_assistant_content_with_signature() {
 fn rig_reasoning_to_aws_content_block_without_signature() {
     // Test conversion from Rig Reasoning to AWS ContentBlock without signature
     let reasoning = rig_core::message::Reasoning::new("My reasoning content");
-    let rig_content = RigAssistantContent(AssistantContent::Reasoning(reasoning.sealed("test")));
+    let rig_content = AssistantContent::Reasoning(reasoning.sealed("test"));
 
-    let aws_content_block = rig_content
-        .into_content_block(&"test".into())
+    let aws_content_block = assistant_content::to_aws(rig_content, &"test".into())
         .expect("conversion should succeed")
         .expect("the item converts to a block");
 
@@ -348,10 +346,9 @@ fn rig_reasoning_to_aws_content_block_with_signature() {
         "My reasoning content",
         Some("sig_abc_123".to_string()),
     );
-    let rig_content = RigAssistantContent(AssistantContent::Reasoning(reasoning.sealed("test")));
+    let rig_content = AssistantContent::Reasoning(reasoning.sealed("test"));
 
-    let aws_content_block = rig_content
-        .into_content_block(&"test".into())
+    let aws_content_block = assistant_content::to_aws(rig_content, &"test".into())
         .expect("conversion should succeed")
         .expect("the item converts to a block");
 
@@ -375,10 +372,9 @@ fn rig_reasoning_with_multiple_strings_to_aws_content_block() {
         " Third part".to_string(),
     ]);
 
-    let rig_content = RigAssistantContent(AssistantContent::Reasoning(reasoning.sealed("test")));
+    let rig_content = AssistantContent::Reasoning(reasoning.sealed("test"));
 
-    let aws_content_block = rig_content
-        .into_content_block(&"test".into())
+    let aws_content_block = assistant_content::to_aws(rig_content, &"test".into())
         .expect("conversion should succeed")
         .expect("the item converts to a block");
 
@@ -400,10 +396,9 @@ fn rig_reasoning_with_empty_text_and_signature_is_converted() {
     // empty text + signature instead of rejecting it.
     let reasoning =
         rig_core::message::Reasoning::new_with_signature("", Some("sig_empty_text".to_string()));
-    let rig_content = RigAssistantContent(AssistantContent::Reasoning(reasoning.sealed("test")));
+    let rig_content = AssistantContent::Reasoning(reasoning.sealed("test"));
 
-    let aws_content_block = rig_content
-        .into_content_block(&"test".into())
+    let aws_content_block = assistant_content::to_aws(rig_content, &"test".into())
         .expect("conversion should succeed")
         .expect("the item converts to a block");
 
@@ -421,9 +416,9 @@ fn rig_reasoning_with_empty_text_and_signature_is_converted() {
 #[test]
 fn rig_reasoning_with_empty_text_and_no_signature_returns_error() {
     let reasoning = rig_core::message::Reasoning::new_with_signature("", None);
-    let rig_content = RigAssistantContent(AssistantContent::Reasoning(reasoning.sealed("test")));
+    let rig_content = AssistantContent::Reasoning(reasoning.sealed("test"));
 
-    let aws_content_block = rig_content.into_content_block(&"test".into());
+    let aws_content_block = assistant_content::to_aws(rig_content, &"test".into());
     assert!(matches!(
         aws_content_block,
         Err(rig_core::error::ProviderError::Provider(message))
@@ -439,9 +434,9 @@ fn rig_reasoning_with_multiple_signed_text_blocks_returns_error() {
         text: "part two".to_string(),
         signature: Some("sig_2".to_string()),
     });
-    let rig_content = RigAssistantContent(AssistantContent::Reasoning(reasoning.sealed("test")));
+    let rig_content = AssistantContent::Reasoning(reasoning.sealed("test"));
 
-    let aws_content_block = rig_content.into_content_block(&"test".into());
+    let aws_content_block = assistant_content::to_aws(rig_content, &"test".into());
     assert!(matches!(
         aws_content_block,
         Err(rig_core::error::ProviderError::Provider(message))
@@ -463,11 +458,10 @@ fn aws_redacted_reasoning_content_becomes_redacted_reasoning_not_an_error() {
         )),
     ));
 
-    let rig_content: RigAssistantContent = content_block
-        .try_into()
+    let rig_content = assistant_content::from_converse(content_block)
         .expect("redacted reasoning must convert, not error");
 
-    match rig_content.0 {
+    match rig_content {
         AssistantContent::Reasoning(reasoning) => assert_eq!(
             reasoning
                 .open(reasoning.issuer())
@@ -487,10 +481,9 @@ fn rig_redacted_reasoning_replays_as_redacted_content_never_as_plaintext() {
     // flattened text, so the blob used to be replayed as an unsigned
     // `reasoningText` body.
     let reasoning = rig_core::message::Reasoning::redacted(BASE64_STANDARD.encode(REDACTED_BLOB));
-    let rig_content = RigAssistantContent(AssistantContent::Reasoning(reasoning.sealed("test")));
+    let rig_content = AssistantContent::Reasoning(reasoning.sealed("test"));
 
-    let aws_content_block = rig_content
-        .into_content_block(&"test".into())
+    let aws_content_block = assistant_content::to_aws(rig_content, &"test".into())
         .expect("redacted reasoning should convert outbound")
         .expect("a native redacted blob replays");
 
@@ -510,10 +503,9 @@ fn redacted_reasoning_round_trips_byte_for_byte() {
         )),
     ));
 
-    let rig_content: RigAssistantContent =
-        inbound.try_into().expect("inbound conversion should work");
-    let outbound = rig_content
-        .into_content_block(&super::PROVIDER_NAME.into())
+    let rig_content =
+        assistant_content::from_converse(inbound).expect("inbound conversion should work");
+    let outbound = assistant_content::to_aws(rig_content, &super::PROVIDER_NAME.into())
         .expect("outbound conversion should work")
         .expect("a native redacted blob replays");
 
@@ -533,10 +525,9 @@ fn redacted_reasoning_round_trips_byte_for_byte() {
 #[test]
 fn foreign_encrypted_reasoning_is_dropped_never_shipped_as_redacted() {
     let reasoning = rig_core::message::Reasoning::encrypted(BASE64_STANDARD.encode(REDACTED_BLOB));
-    let rig_content = RigAssistantContent(AssistantContent::Reasoning(reasoning.sealed("test")));
+    let rig_content = AssistantContent::Reasoning(reasoning.sealed("test"));
 
-    let converted = rig_content
-        .into_content_block(&"test".into())
+    let converted = assistant_content::to_aws(rig_content, &"test".into())
         .expect("foreign ciphertext must degrade, not fail the request");
     assert!(
         converted.is_none(),
@@ -554,10 +545,9 @@ fn opaque_reasoning_mixed_with_text_drops_the_opaque_part_not_the_request() {
     reasoning.content.push(ReasoningContent::Redacted {
         data: BASE64_STANDARD.encode(REDACTED_BLOB),
     });
-    let rig_content = RigAssistantContent(AssistantContent::Reasoning(reasoning.sealed("test")));
+    let rig_content = AssistantContent::Reasoning(reasoning.sealed("test"));
 
-    let aws_content_block = rig_content
-        .into_content_block(&"test".into())
+    let aws_content_block = assistant_content::to_aws(rig_content, &"test".into())
         .expect("mixed block must degrade")
         .expect("the representable text replays");
     match aws_content_block {
@@ -584,10 +574,9 @@ fn responses_summary_plus_encrypted_reasoning_replays_as_text() {
     reasoning
         .content
         .push(ReasoningContent::Encrypted("enc-opaque-blob".to_owned()));
-    let rig_content = RigAssistantContent(AssistantContent::Reasoning(reasoning.sealed("test")));
+    let rig_content = AssistantContent::Reasoning(reasoning.sealed("test"));
 
-    let aws_content_block = rig_content
-        .into_content_block(&"test".into())
+    let aws_content_block = assistant_content::to_aws(rig_content, &"test".into())
         .expect("the Responses encrypted shape must degrade, not fail the request")
         .expect("the summary text replays");
     match aws_content_block {
@@ -613,10 +602,9 @@ fn multiple_opaque_reasoning_payloads_keep_the_first() {
     reasoning.content.push(ReasoningContent::Redacted {
         data: BASE64_STANDARD.encode(b"second"),
     });
-    let rig_content = RigAssistantContent(AssistantContent::Reasoning(reasoning.sealed("test")));
+    let rig_content = AssistantContent::Reasoning(reasoning.sealed("test"));
 
-    let aws_content_block = rig_content
-        .into_content_block(&"test".into())
+    let aws_content_block = assistant_content::to_aws(rig_content, &"test".into())
         .expect("multiple opaque payloads must degrade")
         .expect("the first native blob replays");
     match aws_content_block {
@@ -636,9 +624,8 @@ fn multiple_opaque_reasoning_payloads_keep_the_first() {
 #[test]
 fn foreign_encrypted_reasoning_never_fails_the_request() {
     let reasoning = rig_core::message::Reasoning::encrypted("gAAAA-non_base64-token_");
-    let rig_content = RigAssistantContent(AssistantContent::Reasoning(reasoning.sealed("test")));
-    let converted = rig_content
-        .into_content_block(&"test".into())
+    let rig_content = AssistantContent::Reasoning(reasoning.sealed("test"));
+    let converted = assistant_content::to_aws(rig_content, &"test".into())
         .expect("foreign ciphertext must degrade, not fail the request");
     assert!(converted.is_none());
 }
@@ -650,10 +637,9 @@ fn foreign_encrypted_reasoning_never_fails_the_request() {
 #[test]
 fn non_base64_redacted_reasoning_is_dropped_rather_than_sent_corrupt() {
     let reasoning = rig_core::message::Reasoning::redacted("not*valid*base64");
-    let rig_content = RigAssistantContent(AssistantContent::Reasoning(reasoning.sealed("test")));
+    let rig_content = AssistantContent::Reasoning(reasoning.sealed("test"));
 
-    let converted = rig_content
-        .into_content_block(&"test".into())
+    let converted = assistant_content::to_aws(rig_content, &"test".into())
         .expect("an un-decodable blob must degrade, not fail the request");
     assert!(converted.is_none());
 }
@@ -758,14 +744,12 @@ fn claude_on_bedrock_shares_anthropic_reasoning() {
             Message::user("hi"),
             Message::Assistant {
                 id: None,
-                content: rig_core::NonEmpty::with_rest(
+                content: vec![
                     signed("anthropic"),
-                    [
-                        signed("gcp.gemini"),
-                        signed(super::PROVIDER_NAME),
-                        AssistantContent::text("hello"),
-                    ],
-                ),
+                    signed("gcp.gemini"),
+                    signed(super::PROVIDER_NAME),
+                    AssistantContent::text("hello"),
+                ],
             },
         ]
     };
@@ -773,7 +757,7 @@ fn claude_on_bedrock_shares_anthropic_reasoning() {
     let kept = |model: &str| {
         let request = rig_core::completion::CompletionRequest {
             model: None,
-            chat_history: rig_core::NonEmpty::from_vec(history()).expect("non-empty"),
+            chat_history: history(),
             documents: vec![],
             tools: vec![],
             temperature: None,
@@ -851,16 +835,14 @@ fn decoded_bedrock_reasoning_records_the_models_issuer_and_replays_to_it() {
 
     let request = rig_core::completion::CompletionRequest {
         model: None,
-        chat_history: rig_core::NonEmpty::with_rest(
+        chat_history: vec![
             Message::user("hi"),
-            [
-                Message::Assistant {
-                    id: None,
-                    content: rig_core::NonEmpty::from_vec(response.choice).expect("non-empty"),
-                },
-                Message::user("again"),
-            ],
-        ),
+            Message::Assistant {
+                id: None,
+                content: response.choice,
+            },
+            Message::user("again"),
+        ],
         documents: vec![],
         tools: vec![],
         temperature: None,

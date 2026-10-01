@@ -64,7 +64,7 @@ fn finish(app: &mut App) -> Result<EffectLog, ErrorReport> {
     }
 }
 
-fn main() -> Result<(), ErrorReport> {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut live = app();
     Handlers::with(live.world_mut(), |handlers| {
         handlers.register_erased(KEY, assemble())

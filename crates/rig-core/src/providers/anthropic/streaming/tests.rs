@@ -143,7 +143,7 @@ fn test_streaming_tool_build_marks_final_combined_tool() {
 
     let mut tools = build_tool_definitions(
         vec![crate::completion::ToolDefinition {
-            name: "rig_tool".to_string(),
+            name: crate::message::ToolName::new("rig_tool").expect("tool name"),
             description: "Rig tool".to_string(),
             parameters: json!({"type": "object", "properties": {}}),
         }],
@@ -163,29 +163,18 @@ fn test_streaming_tool_build_marks_final_combined_tool() {
 
 #[test]
 fn streaming_request_keeps_documents_after_leading_system_messages() {
-    let request = CompletionRequest {
-        model: None,
-        chat_history: crate::NonEmpty::with_rest(
-            RigMessage::system("System prompt"),
-            [
-                RigMessage::assistant("Earlier assistant turn"),
-                RigMessage::system("Mid-conversation instruction"),
-                RigMessage::user("Prompt"),
-            ],
-        ),
-        documents: vec![RigDocument {
-            id: "doc1".to_string(),
-            text: "Document text.".to_string(),
-            additional_props: Default::default(),
-        }],
-        tools: vec![],
-        temperature: None,
-        max_tokens: Some(64),
-        tool_choice: None,
-        additional_params: None,
-        output_schema: None,
-        record_telemetry_content: false,
-    };
+    let request = CompletionRequest::from(vec![
+        RigMessage::system("System prompt"),
+        RigMessage::assistant("Earlier assistant turn"),
+        RigMessage::system("Mid-conversation instruction"),
+        RigMessage::user("Prompt"),
+    ])
+    .max_tokens(64)
+    .documents(vec![RigDocument {
+        id: "doc1".to_string(),
+        text: "Document text.".to_string(),
+        additional_props: Default::default(),
+    }]);
 
     let body = built_streaming_body(CLAUDE_OPUS_4_8, request, false)
         .expect("streaming request body should build");
@@ -224,21 +213,13 @@ fn streaming_body_is_blocking_body_plus_stream_flag_and_carries_output_schema() 
     }))
     .expect("schema should deserialize");
 
-    let request = CompletionRequest {
-        model: None,
-        chat_history: crate::NonEmpty::with_rest(
-            RigMessage::system("You are helpful"),
-            [RigMessage::user("What's the weather?")],
-        ),
-        documents: vec![],
-        tools: vec![],
-        temperature: Some(0.5),
-        max_tokens: Some(64),
-        tool_choice: None,
-        additional_params: None,
-        output_schema: Some(schema),
-        record_telemetry_content: false,
-    };
+    let request = CompletionRequest::from(vec![
+        RigMessage::system("You are helpful"),
+        RigMessage::user("What's the weather?"),
+    ])
+    .temperature(0.5)
+    .max_tokens(64)
+    .output_schema(schema);
 
     let streaming_body = built_streaming_body(CLAUDE_OPUS_4_8, request.clone(), false)
         .expect("streaming request body should build");
@@ -282,25 +263,16 @@ fn streaming_body_is_blocking_body_plus_stream_flag_and_carries_output_schema() 
 
 #[test]
 fn streaming_body_keeps_explicit_tool_choice_auto_when_tools_present_but_unset() {
-    let request = CompletionRequest {
-        model: None,
-        chat_history: crate::NonEmpty::new(RigMessage::user("Add 2 and 3")),
-        documents: vec![],
-        tools: vec![crate::completion::ToolDefinition {
-            name: "add".to_string(),
+    let request = CompletionRequest::new(RigMessage::user("Add 2 and 3"))
+        .max_tokens(64)
+        .tools(vec![crate::completion::ToolDefinition {
+            name: crate::message::ToolName::new("add").expect("tool name"),
             description: "Add x and y".to_string(),
             parameters: json!({
                 "type": "object",
                 "properties": { "x": { "type": "integer" } }
             }),
-        }],
-        temperature: None,
-        max_tokens: Some(64),
-        tool_choice: None,
-        additional_params: None,
-        output_schema: None,
-        record_telemetry_content: false,
-    };
+        }]);
 
     let body = built_streaming_body(CLAUDE_OPUS_4_8, request, false)
         .expect("streaming request body should build");
@@ -314,26 +286,17 @@ fn streaming_body_keeps_explicit_tool_choice_auto_when_tools_present_but_unset()
 
 #[test]
 fn streaming_body_applies_strict_tool_opt_in() {
-    let request = CompletionRequest {
-        model: None,
-        chat_history: crate::NonEmpty::new(RigMessage::user("Look this up")),
-        documents: vec![],
-        tools: vec![crate::completion::ToolDefinition {
-            name: "lookup".to_string(),
+    let request = CompletionRequest::new(RigMessage::user("Look this up"))
+        .max_tokens(64)
+        .tools(vec![crate::completion::ToolDefinition {
+            name: crate::message::ToolName::new("lookup").expect("tool name"),
             description: "Look up a value".to_string(),
             parameters: json!({
                 "type": "object",
                 "properties": { "query": { "type": "string" } },
                 "required": ["query"]
             }),
-        }],
-        temperature: None,
-        max_tokens: Some(64),
-        tool_choice: None,
-        additional_params: None,
-        output_schema: None,
-        record_telemetry_content: false,
-    };
+        }]);
 
     let body = built_streaming_body(CLAUDE_OPUS_4_8, request, true)
         .expect("streaming request body should build");
@@ -355,18 +318,9 @@ fn streaming_body_drops_tool_choice_when_no_tools_are_advertised() {
     // whether tools are present, but the streaming path has always emitted
     // `tool_choice` *only* alongside a non-empty tool set (Anthropic rejects it
     // otherwise). A `tool_choice` set with no tools must not reach the wire.
-    let request = CompletionRequest {
-        model: None,
-        chat_history: crate::NonEmpty::new(RigMessage::user("Hi")),
-        documents: vec![],
-        tools: vec![],
-        temperature: None,
-        max_tokens: Some(64),
-        tool_choice: Some(crate::message::ToolChoice::Auto),
-        additional_params: None,
-        output_schema: None,
-        record_telemetry_content: false,
-    };
+    let request = CompletionRequest::new(RigMessage::user("Hi"))
+        .max_tokens(64)
+        .tool_choice(crate::message::ToolChoice::Auto);
 
     let body = built_streaming_body(CLAUDE_OPUS_4_8, request, false)
         .expect("streaming request body should build");
@@ -387,7 +341,7 @@ fn test_streaming_prompt_cache_control_uses_raw_top_level_ttl() {
         resolve_top_level_cache_control(false, None, &mut additional_params).unwrap();
     let mut tools = build_tool_definitions(
         vec![crate::completion::ToolDefinition {
-            name: "rig_tool".to_string(),
+            name: crate::message::ToolName::new("rig_tool").expect("tool name"),
             description: "Rig tool".to_string(),
             parameters: json!({"type": "object", "properties": {}}),
         }],
@@ -1786,18 +1740,7 @@ mod projection {
     }
 
     fn request() -> CompletionRequest {
-        CompletionRequest {
-            model: None,
-            chat_history: crate::NonEmpty::new(crate::message::Message::user("hello")),
-            documents: Vec::new(),
-            tools: Vec::new(),
-            temperature: None,
-            max_tokens: Some(64),
-            tool_choice: None,
-            additional_params: None,
-            output_schema: None,
-            record_telemetry_content: false,
-        }
+        CompletionRequest::new("hello").max_tokens(64)
     }
 
     /// A rejected Messages call: the envelope's type and message, and the

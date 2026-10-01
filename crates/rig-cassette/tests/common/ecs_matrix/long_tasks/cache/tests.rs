@@ -42,10 +42,10 @@ fn anthropic_cache_oracle_checks_actual_encoded_modes() {
             }
             let request = CompletionRequest {
                 model: None,
-                chat_history: rig_core::NonEmpty::from_vec(history).expect("non-empty"),
+                chat_history: history,
                 documents: vec![],
                 tools: vec![ToolDefinition {
-                    name: "probe".into(),
+                    name: rig_core::message::ToolName::new("probe").expect("tool name"),
                     description: "Inspect state".into(),
                     parameters: json!({"type":"object","properties":{}}),
                 }],

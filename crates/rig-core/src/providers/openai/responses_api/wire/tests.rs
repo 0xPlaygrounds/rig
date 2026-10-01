@@ -9,8 +9,9 @@ use crate::completion::CompletionRequest;
 use crate::message::{self, Message};
 use crate::providers::chatgpt::DIALECT as CHATGPT;
 use crate::providers::xai::DIALECT as XAI;
+use crate::test_utils::json_body;
 use crate::test_utils::{MockStreamingClient, RecordingHttpClient};
-use crate::wire::{Body, Mode};
+use crate::wire::Mode;
 use bytes::Bytes;
 use futures::StreamExt;
 
@@ -85,18 +86,7 @@ fn terminal_response_body(sse: &str) -> String {
 }
 
 fn prompt() -> CompletionRequest {
-    CompletionRequest {
-        model: None,
-        chat_history: crate::NonEmpty::new(Message::user("say hi")),
-        documents: Vec::new(),
-        tools: Vec::new(),
-        temperature: None,
-        max_tokens: None,
-        tool_choice: None,
-        additional_params: None,
-        output_schema: None,
-        record_telemetry_content: false,
-    }
+    CompletionRequest::new("say hi")
 }
 
 /// Fold a recorded unary body through the wire, as `Model::call`
@@ -219,16 +209,13 @@ fn encoded_body(wire: &Responses, mode: Mode) -> serde_json::Value {
 /// One request's body, for a turn other than the bare [`prompt`].
 fn encoded_body_of(wire: &Responses, request: CompletionRequest, mode: Mode) -> serde_json::Value {
     let encoded = wire.encode(request, mode).expect("the request encodes");
-    let Body::Bytes(body) = encoded.request.body() else {
-        panic!("a Responses body is bytes");
-    };
-    serde_json::from_slice(body).expect("the body is JSON")
+    json_body(&encoded.request)
 }
 
 /// The bare [`prompt`] with a history of its own.
 fn turn(chat_history: Vec<Message>) -> CompletionRequest {
     CompletionRequest {
-        chat_history: crate::NonEmpty::from_vec(chat_history).expect("non-empty"),
+        chat_history,
         ..prompt()
     }
 }
@@ -479,19 +466,17 @@ fn the_xai_dialect_folds_tool_results_between_user_text_in_order() {
     let body = encoded_body_of(
         &xai(),
         turn(vec![Message::User {
-            content: crate::NonEmpty::with_rest(
+            content: vec![
                 message::UserContent::text("before"),
-                [
-                    message::UserContent::tool_result(
-                        crate::message::CallId::from_dual_wire("result-id", "call-id".to_owned()),
-                        crate::message::ToolName::new("tool").expect("tool name"),
-                        crate::NonEmpty::new(message::ToolResultContent::json(
-                            serde_json::json!({ "ok": true }),
-                        )),
-                    ),
-                    message::UserContent::text("after"),
-                ],
-            ),
+                message::UserContent::tool_result(
+                    crate::message::CallId::from_dual_wire("result-id", "call-id".to_owned()),
+                    crate::message::ToolName::new("tool").expect("tool name"),
+                    vec![message::ToolResultContent::json(
+                        serde_json::json!({ "ok": true }),
+                    )],
+                ),
+                message::UserContent::text("after"),
+            ],
         }]),
         Mode::Unary,
     );
@@ -519,7 +504,7 @@ fn the_xai_dialect_replays_reasoning_by_wire_id_with_its_encrypted_payload() {
             Message::user("Use the tool."),
             Message::Assistant {
                 id: Some("msg_1".to_owned()),
-                content: crate::NonEmpty::with_rest(
+                content: vec![
                     message::AssistantContent::Reasoning(
                         message::Reasoning {
                             id: Some("rs_1".to_owned()),
@@ -532,12 +517,12 @@ fn the_xai_dialect_replays_reasoning_by_wire_id_with_its_encrypted_payload() {
                         }
                         .sealed("xai"),
                     ),
-                    [message::AssistantContent::tool_call(
+                    message::AssistantContent::tool_call(
                         "call_1",
                         crate::message::ToolName::new("my_tool").expect("tool name"),
                         serde_json::json!({"arg": "value"}),
-                    )],
-                ),
+                    ),
+                ],
             },
         ]),
         Mode::Unary,

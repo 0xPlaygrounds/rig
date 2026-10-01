@@ -21,7 +21,7 @@ use crate::{
     agent::{
         AgentBuilder, AgentHook, CompletionCallAction, CompletionCallEvent, DispatchAction,
         DispatchEvent, HookContext, InvalidToolCallAction, MultiTurnStreamItem, NoToolConfig,
-        OutcomeAction, OutcomeEvent, OutputMode, RequestPatch, StreamingError,
+        OutcomeAction, OutcomeEvent, OutputMode, RequestPatch,
         run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome},
     },
     completion::{AssistantContent, Message, PromptError, ToolDefinition},
@@ -34,15 +34,12 @@ use rig_core::message::{ToolChoice, UserContent};
 /// Typed failure from a portable model-conformance scenario.
 #[derive(Debug, thiserror::Error)]
 pub enum ScenarioError {
-    /// A buffered agent run failed.
+    /// An agent run failed.
     #[error(transparent)]
     Prompt(#[from] PromptError),
     /// A direct model completion failed.
     #[error(transparent)]
     Completion(#[from] ProviderError),
-    /// A streaming agent run failed.
-    #[error(transparent)]
-    Streaming(#[from] StreamingError),
     /// A stream item or bus effect failed, as the wire reports it.
     #[error(transparent)]
     Report(#[from] rig_core::error::ErrorReport),
@@ -124,14 +121,14 @@ pub fn validate_cancelled_failure(
     expected_tool: &str,
 ) -> Result<(), ScenarioError> {
     const SCENARIO: &str = "cancelled_failure";
-    let PromptError::PromptCancelled {
+    let PromptError::Cancelled {
         chat_history,
         reason,
     } = error
     else {
         return Err(ScenarioError::contract(
             SCENARIO,
-            format!("expected PromptCancelled, observed {error:?}"),
+            format!("expected Cancelled, observed {error:?}"),
         ));
     };
     let history_has_call = chat_history.iter().any(|message| {
@@ -162,7 +159,7 @@ pub fn validate_max_turns_failure(
     expected_max_turns: usize,
 ) -> Result<(), ScenarioError> {
     const SCENARIO: &str = "max_turns_failure";
-    let PromptError::MaxTurnsError {
+    let PromptError::MaxTurns {
         max_turns,
         chat_history,
         prompt,
@@ -170,7 +167,7 @@ pub fn validate_max_turns_failure(
     else {
         return Err(ScenarioError::contract(
             SCENARIO,
-            format!("expected MaxTurnsError, observed {error:?}"),
+            format!("expected MaxTurns, observed {error:?}"),
         ));
     };
     let pending_prompt_retained = matches!(
@@ -797,24 +794,20 @@ impl Tool for CaptureComplexTool {
     }
 }
 
-fn has_tool_roundtrip(messages: Option<&[Message]>) -> bool {
-    let saw_call = messages.is_some_and(|messages| {
-        messages.iter().any(|message| {
-            matches!(
-                message,
-                Message::Assistant { content, .. }
-                    if content.iter().any(|item| matches!(item, AssistantContent::ToolCall(_)))
-            )
-        })
+fn has_tool_roundtrip(messages: &[Message]) -> bool {
+    let saw_call = messages.iter().any(|message| {
+        matches!(
+            message,
+            Message::Assistant { content, .. }
+                if content.iter().any(|item| matches!(item, AssistantContent::ToolCall(_)))
+        )
     });
-    let saw_result = messages.is_some_and(|messages| {
-        messages.iter().any(|message| {
-            matches!(
-                message,
-                Message::User { content }
-                    if content.iter().any(|item| matches!(item, UserContent::ToolResult(_)))
-            )
-        })
+    let saw_result = messages.iter().any(|message| {
+        matches!(
+            message,
+            Message::User { content }
+                if content.iter().any(|item| matches!(item, UserContent::ToolResult(_)))
+        )
     });
     saw_call && saw_result
 }
@@ -928,31 +921,29 @@ fn report_from_response(
     tool_calls: usize,
     response: crate::agent::PromptResponse,
 ) -> Result<ScenarioReport, ScenarioError> {
-    if let Some(messages) = response.messages.as_deref() {
-        validate_protocol_hygiene(
-            name,
-            &response.output,
-            messages,
-            &[
-                "<tool_call>",
-                "</tool_call>",
-                "<tool_response>",
-                "</tool_response>",
-                "<|im_start|>",
-                "<|im_end|>",
-                "<think>",
-                "</think>",
-            ],
-        )?;
-    }
+    validate_protocol_hygiene(
+        name,
+        &response.output(),
+        &response.messages,
+        &[
+            "<tool_call>",
+            "</tool_call>",
+            "<tool_response>",
+            "</tool_response>",
+            "<|im_start|>",
+            "<|im_end|>",
+            "<think>",
+            "</think>",
+        ],
+    )?;
     Ok(ScenarioReport {
         name,
         tool_calls,
         prompt_tokens: response.usage.input_tokens.unwrap_or(0),
         generated_tokens: response.usage.output_tokens.unwrap_or(0),
-        history_messages: response.messages.as_ref().map_or(0, Vec::len),
+        history_messages: response.messages.len(),
         duration: started.elapsed(),
-        response: response.output,
+        response: response.output(),
     })
 }
 
@@ -962,9 +953,13 @@ fn correlated_messages<'a>(
     scenario: &'static str,
     response: &'a crate::agent::PromptResponse,
 ) -> Result<&'a [Message], ScenarioError> {
-    let messages = response.messages.as_deref().ok_or_else(|| {
-        ScenarioError::contract(scenario, "extended run omitted accumulated message history")
-    })?;
+    let messages = response.messages.as_slice();
+    if messages.is_empty() {
+        return Err(ScenarioError::contract(
+            scenario,
+            "extended run omitted accumulated message history",
+        ));
+    }
     validate_tool_correlation(scenario, messages)?;
     Ok(messages)
 }
@@ -1107,14 +1102,14 @@ where
         || !values
             .iter()
             .any(|value| value.as_str() == Some(PING_OUTPUT))
-        || !response.output.contains(PING_OUTPUT)
+        || !response.output().contains(PING_OUTPUT)
     {
         return Err(ScenarioError::contract(
             SCENARIO,
             format!(
                 "calls={}, results={values:?}, response={:?}",
                 calls.load(Ordering::SeqCst),
-                response.output
+                response.output()
             ),
         ));
     }
@@ -1238,7 +1233,7 @@ where
             format!(
                 "calls={}, expected={expected:?}, observed={observed:?}, response={:?}",
                 calls.load(Ordering::SeqCst),
-                response.output
+                response.output()
             ),
         ));
     }
@@ -1459,7 +1454,7 @@ where
         .add_hook(CaptureTurn(captured.clone()))
         .run()
         .await;
-    if !matches!(stopped, Err(PromptError::PromptCancelled { .. })) {
+    if !matches!(stopped, Err(PromptError::Cancelled { .. })) {
         return Err(ScenarioError::contract(
             SCENARIO,
             format!("capture hook did not stop after the model response: {stopped:?}"),
@@ -1666,9 +1661,13 @@ where
         &observations,
         &serde_json::json!({ "x": 7, "y": 8 }),
     )?;
-    let messages = response.messages.as_deref().ok_or_else(|| {
-        ScenarioError::contract(SCENARIO, "extended hook run omitted message history")
-    })?;
+    let messages = response.messages.as_slice();
+    if messages.is_empty() {
+        return Err(ScenarioError::contract(
+            SCENARIO,
+            "extended hook run omitted message history",
+        ));
+    }
     let results = messages
         .iter()
         .flat_map(tool_result_values)
@@ -1685,7 +1684,7 @@ where
                 "calls={}, completion_calls={}, results={results:?}, output={:?}",
                 calls.load(Ordering::SeqCst),
                 response.completion_calls.len(),
-                response.output
+                response.output()
             ),
         ));
     }
@@ -1793,11 +1792,11 @@ where
             "Use the repeat_text tool to repeat the word \"banana\" 3 times, then show me the exact result.",
         )
         .await?;
-    let response = result.output.clone();
+    let response = result.output();
     let tool_calls = calls.load(Ordering::SeqCst);
     if tool_calls == 0
         || response.matches("banana").count() < 1
-        || !has_tool_roundtrip(result.messages.as_deref())
+        || !has_tool_roundtrip(&result.messages)
     {
         return Err(ScenarioError::contract(
             "optional_argument",
@@ -1833,13 +1832,13 @@ where
             "Compute (4 + 6) * 2. First call the add tool, then call the multiply tool on the result. Tell me the final number.",
         )
         .await?;
-    let response = result.output.clone();
+    let response = result.output();
     let add = add_calls.load(Ordering::SeqCst);
     let multiply = multiply_calls.load(Ordering::SeqCst);
     if add == 0
         || multiply == 0
         || !response.contains("20")
-        || !has_tool_roundtrip(result.messages.as_deref())
+        || !has_tool_roundtrip(&result.messages)
     {
         return Err(ScenarioError::contract(
             "sequential_tools",
@@ -1878,9 +1877,9 @@ where
     while let Some(item) = stream.next().await {
         match item? {
             MultiTurnStreamItem::ToolCall { tool_call } => streamed_call_ids.push(tool_call.id),
-            MultiTurnStreamItem::StreamUserItem(
-                crate::streaming::StreamedUserContent::ToolResult { tool_result },
-            ) => streamed_result_ids.push(tool_result.call),
+            MultiTurnStreamItem::ToolResult { tool_result } => {
+                streamed_result_ids.push(tool_result.call)
+            }
             MultiTurnStreamItem::CompletionCall(call) => completion_usage += call.usage,
             MultiTurnStreamItem::FinalResponse(response) => {
                 final_count += 1;
@@ -1894,17 +1893,14 @@ where
     let result = final_response.ok_or_else(|| {
         ScenarioError::contract("streaming_tool", "stream produced no final response")
     })?;
-    let response = result.output.clone();
-    let history_messages = result.messages.as_ref().map_or(0, Vec::len);
+    let response = result.output();
+    let history_messages = result.messages.len();
     let tool_calls = calls.load(Ordering::SeqCst);
     streamed_call_ids.sort();
     streamed_result_ids.sort();
     let correlated_stream =
         !streamed_call_ids.is_empty() && streamed_call_ids == streamed_result_ids;
-    let correlated_history = result
-        .messages
-        .as_deref()
-        .is_some_and(|messages| validate_tool_correlation("streaming_tool", messages).is_ok());
+    let correlated_history = validate_tool_correlation("streaming_tool", &result.messages).is_ok();
     if tool_calls == 0
         || !response.contains("42")
         || history_messages < 4
@@ -1922,14 +1918,12 @@ where
             ),
         ));
     }
-    if let Some(messages) = result.messages.as_deref() {
-        validate_protocol_hygiene(
-            "streaming_tool",
-            &response,
-            messages,
-            &["<tool_call>", "</tool_call>", "<think>", "</think>"],
-        )?;
-    }
+    validate_protocol_hygiene(
+        "streaming_tool",
+        &response,
+        &result.messages,
+        &["<tool_call>", "</tool_call>", "<think>", "</think>"],
+    )?;
     Ok(ScenarioReport {
         name: "streaming_tool",
         tool_calls,
@@ -1965,10 +1959,10 @@ where
     let result = agent
         .prompt("Use add to calculate 19 + 23. Return answer=42 and a short optional explanation.")
         .await?;
-    let response = result.output.clone();
+    let response = result.output();
     let parsed: ArithmeticResult = serde_json::from_str(&response)?;
     let tool_calls = calls.load(Ordering::SeqCst);
-    if tool_calls == 0 || parsed.answer != 42 || !has_tool_roundtrip(result.messages.as_deref()) {
+    if tool_calls == 0 || parsed.answer != 42 || !has_tool_roundtrip(&result.messages) {
         return Err(ScenarioError::contract(
             "structured_after_tool",
             format!("calls={tool_calls}, response={response:?}"),
@@ -1988,16 +1982,23 @@ where
     T: rig_core::driver::Transport<W>,
     A: Fn(CompletionRequest) -> CompletionRequest,
 {
-    let definition = |name: &str| ToolDefinition {
-        name: name.to_string(),
+    let tool_name = |name: &str| {
+        rig_core::message::ToolName::new(name)
+            .map_err(|error| ScenarioError::contract("tool_choice_modes", error.to_string()))
+    };
+    let definition = |name: rig_core::message::ToolName| ToolDefinition {
         description: format!("Return the supplied integer using {name}."),
+        name,
         parameters: serde_json::json!({
             "type": "object",
             "properties": {"value": {"type": "integer"}},
             "required": ["value"]
         }),
     };
-    let tools = vec![definition("alpha"), definition("beta")];
+    let tools = vec![
+        definition(tool_name("alpha")?),
+        definition(tool_name("beta")?),
+    ];
     let started = Instant::now();
     let none = model
         .call(adjust(
@@ -2045,7 +2046,7 @@ where
             CompletionRequest::new("Call beta with value 9.")
                 .tools(tools)
                 .tool_choice(ToolChoice::Specific {
-                    function_names: vec!["beta".to_string()],
+                    function_names: vec![tool_name("beta")?],
                 })
                 .temperature(0.0)
                 .max_tokens(96),
@@ -2121,18 +2122,18 @@ where
             "stream produced no final response",
         )
     })?;
-    let parsed: ArithmeticResult = serde_json::from_str(&result.output)?;
+    let parsed: ArithmeticResult = serde_json::from_str(&result.output())?;
     let calls = calls.load(Ordering::SeqCst);
     if calls == 0
         || final_count != 1
         || parsed.answer != 42
-        || !has_tool_roundtrip(result.messages.as_deref())
+        || !has_tool_roundtrip(&result.messages)
     {
         return Err(ScenarioError::contract(
             "streaming_structured_after_tool",
             format!(
                 "calls={calls}, final_count={final_count}, response={:?}",
-                result.output
+                result.output()
             ),
         ));
     }

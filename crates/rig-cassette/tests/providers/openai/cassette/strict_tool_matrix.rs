@@ -51,7 +51,7 @@ const OMIT_SOURCE_PROMPT: &str = "Call record_fact exactly once with fact = \
 /// leave `source` out is exactly what `strict` decides.
 fn record_fact_tool() -> ToolDefinition {
     ToolDefinition {
-        name: RECORD_FACT.to_string(),
+        name: rig_core::message::ToolName::new(RECORD_FACT).expect("tool name"),
         description: "Record a fact, optionally with the source it came from.".to_string(),
         parameters: json!({
             "type": "object",
@@ -242,7 +242,7 @@ async fn agent_tool_turn_sends_strict_false() {
                 .expect("agent tool turn should succeed");
 
             assert!(
-                answer.output.contains("42"),
+                answer.output().contains("42"),
                 "the agent should report the tool's result, got {answer:?}"
             );
         },

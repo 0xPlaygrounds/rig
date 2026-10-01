@@ -26,14 +26,14 @@ async fn main() -> Result<()> {
         .prompt("My name is Alice.")
         .conversation("user-123")
         .await?
-        .output;
+        .output();
     println!("turn 1: {first}");
 
     let second = agent
         .prompt("What's my name?")
         .conversation("user-123")
         .await?
-        .output;
+        .output();
     println!("turn 2: {second}");
 
     Ok(())

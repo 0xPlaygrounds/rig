@@ -15,7 +15,7 @@ use bevy_app::{App, Plugin, Update};
 use bevy_asset::{Asset, AssetApp, AssetLoader, Assets, Handle, LoadContext, io::Reader};
 use bevy_ecs::prelude::*;
 use bevy_reflect::TypePath;
-use rig_core::{completion::ToolDefinition, effect::FamilyDescriptor};
+use rig_core::completion::ToolDefinition;
 
 use crate::{
     agent::{Grant, Preamble, RunCounter},
@@ -139,18 +139,10 @@ pub fn grant_tools(
             continue;
         };
         for definition in &definitions.tools {
-            let tool = bound
-                .iter()
-                .find_map(|(entity, bound)| match &bound.descriptor.family {
-                    FamilyDescriptor::Tool { name, .. } if *name == definition.name => Some(entity),
-                    FamilyDescriptor::Tool { .. }
-                    | FamilyDescriptor::Completion { .. }
-                    | FamilyDescriptor::Embed { .. }
-                    | FamilyDescriptor::Rerank { .. }
-                    | FamilyDescriptor::Memory { .. }
-                    | FamilyDescriptor::Retrieve { .. }
-                    | FamilyDescriptor::Custom { .. } => None,
-                });
+            let tool = bound.iter().find_map(|(entity, bound)| {
+                (crate::policy::tool_name(&bound.descriptor) == Some(definition.name.as_str()))
+                    .then_some(entity)
+            });
             match tool {
                 Some(tool) => {
                     commands.spawn((Grant(tool), ChildOf(agent)));

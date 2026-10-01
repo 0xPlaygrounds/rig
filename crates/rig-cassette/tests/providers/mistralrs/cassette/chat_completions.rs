@@ -70,7 +70,7 @@ async fn chat_completions_agent_prompt_completes() {
                     "/no_think Explain why a local OpenAI-compatible server should return token usage.",
                 )
                 .await
-                .expect("Rig OpenAI Chat Completions API prompt should succeed").output;
+                .expect("Rig OpenAI Chat Completions API prompt should succeed").output();
 
             assert!(
                 !response.trim().is_empty(),

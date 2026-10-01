@@ -65,7 +65,7 @@ use rig_agent::{
     agent::{
         CompletionCallAction, CompletionCallEvent, DispatchAction, DispatchEvent, ModelTurnAction,
         ModelTurnFinished, MultiTurnStreamItem, OutcomeAction, OutcomeEvent, RequestPatch,
-        RetryRequest, RunSettled, RunStart, RunStartAction, StepEventKind, StreamingError,
+        RetryRequest, RunSettled, RunStart, RunStartAction, StepEventKind,
     },
     completion::PromptError,
     run::{
@@ -87,7 +87,7 @@ use rig_core::{
     message::{AssistantContent, Message, UserContent},
     streaming::{Item, StreamEvent},
     tool::{ToolContext, ToolOutput},
-    transcript::tool_result_output,
+    transcript::{assistant_text_from_choice, tool_result_output},
 };
 
 /// A hook the producer added, by type: the header names hooks by their
@@ -263,7 +263,7 @@ pub const ROUTE: &str = "fast";
 pub enum Ending {
     /// A final answer, the last completion's text.
     Answer,
-    /// `PromptError::MaxTurnsError`: the model-call budget ran out with the
+    /// `PromptError::MaxTurns`: the model-call budget ran out with the
     /// model still calling tools (a per-run `tool_choice` that forces a
     /// call does this). Every record is a success; the run is not.
     MaxTurns,
@@ -274,10 +274,10 @@ pub enum Ending {
     /// does not advertise and no hook resolved it; the run fails at the
     /// completion record.
     UnknownToolCall,
-    /// `PromptError::MemoryError`: the conversation's `Load` failed; the
+    /// `PromptError::Memory`: the conversation's `Load` failed; the
     /// run fails at the memory record before any completion.
     MemoryError,
-    /// `PromptError::PromptCancelled` with this reason: a hook stopped the
+    /// `PromptError::Cancelled` with this reason: a hook stopped the
     /// run. The records are those the engine made before the stop.
     Cancelled(&'static str),
     /// `PromptError::Report` (or a stream's `Report` item) of this kind: a
@@ -301,7 +301,7 @@ impl Choice {
             Self::None => ToolChoice::None,
             Self::Required => ToolChoice::Required,
             Self::Specific(name) => ToolChoice::Specific {
-                function_names: vec![name.to_owned()],
+                function_names: vec![rig_core::message::ToolName::new(name).expect("tool name")],
             },
         }
     }
@@ -666,7 +666,7 @@ impl AgentHook for DemandDone {
         _ctx: &HookContext,
         event: ModelTurnFinished<'_>,
     ) -> ModelTurnAction {
-        if answer_text(event.content).contains("DONE") {
+        if assistant_text_from_choice(event.content).contains("DONE") {
             ModelTurnAction::continue_run()
         } else {
             ModelTurnAction::retry_with_feedback(DONE_FEEDBACK)
@@ -860,16 +860,6 @@ impl AgentHook for SkipUnknown {
     ) -> Option<InvalidToolCallAction> {
         Some(InvalidToolCallAction::skip(SKIP_REASON))
     }
-}
-
-fn answer_text(content: &[AssistantContent]) -> String {
-    content
-        .iter()
-        .filter_map(|content| match content {
-            AssistantContent::Text(text) => Some(text.text.as_str()),
-            _ => None,
-        })
-        .collect()
 }
 
 /// The builder with `hooks` added in order, by name.
@@ -2077,8 +2067,8 @@ pub fn rerank_key() -> rig_core::effect::Key<rig_core::effect::family::Rerank> {
     rig_core::effect::Key::new_unchecked(HandlerKey::from(RERANK_KEY))
 }
 
-pub fn rerank_request(query: &str) -> rig_core::effect::RerankRequest {
-    rig_core::effect::RerankRequest {
+pub fn rerank_request(query: &str) -> rig_core::operation::RerankRequest {
+    rig_core::operation::RerankRequest {
         query: query.to_owned(),
         documents: RERANK_DOCUMENTS
             .iter()
@@ -2702,55 +2692,53 @@ pub async fn bus_engine_reproduces(program: &Program) {
             while let Some(item) = within(stream.next()).await {
                 match item {
                     Ok(MultiTurnStreamItem::FinalResponse(response)) => {
-                        output = Some(response.output);
+                        output = Some(response.output());
                     }
-                    Err(StreamingError::Report(report))
+                    Err(PromptError::Report(report))
                         if program.cancel_after_first_delta
                             && report.kind == rig_core::error::ErrorKind::Cancelled =>
                     {
                         break;
                     }
-                    Err(StreamingError::Prompt(error))
+                    Err(error)
                         if program.ending == Ending::MaxTurns
-                            && matches!(error, PromptError::MaxTurnsError { .. }) =>
+                            && matches!(error, PromptError::MaxTurns { .. }) =>
                     {
                         failed_as_expected = true;
                     }
-                    Err(StreamingError::Prompt(error))
+                    Err(error)
                         if program.ending == Ending::UnknownToolCall
                             && matches!(error, PromptError::UnknownToolCall { .. }) =>
                     {
                         failed_as_expected = true;
                     }
-                    Err(StreamingError::Prompt(error))
+                    Err(error)
                         if program.ending == Ending::MemoryError
-                            && matches!(error, PromptError::MemoryError(_)) =>
+                            && matches!(error, PromptError::Memory(_)) =>
                     {
                         failed_as_expected = true;
                     }
-                    Err(StreamingError::Prompt(error))
+                    Err(error)
                         if matches!(
                             (&error, program.ending),
-                            (PromptError::PromptCancelled { reason, .. }, Ending::Cancelled(expected))
+                            (PromptError::Cancelled { reason, .. }, Ending::Cancelled(expected))
                                 if reason == expected
                         ) =>
                     {
                         failed_as_expected = true;
                     }
-                    Err(StreamingError::Report(report))
+                    Err(PromptError::Report(report))
                         if program.ending == Ending::ProviderError
                             && report.kind == rig_core::error::ErrorKind::ProviderResponse =>
                     {
                         failed_as_expected = true;
                     }
-                    Err(StreamingError::Report(report))
+                    Err(PromptError::Report(report))
                         if program.ending == Ending::Failed(report.kind) =>
                     {
                         failed_as_expected = true;
                     }
-                    Err(StreamingError::Completion(_))
-                        if program.ending == Ending::ProviderError =>
-                    {
+                    Err(PromptError::Provider(_)) if program.ending == Ending::ProviderError => {
                         failed_as_expected = true;
                     }
                     Err(error) => {
@@ -2802,10 +2790,10 @@ pub async fn bus_engine_reproduces(program: &Program) {
                 continue;
             }
             match (within(runner.run()).await, program.ending) {
-                (Ok(response), Ending::Answer) => Some(response.output),
-                (Err(PromptError::MaxTurnsError { .. }), Ending::MaxTurns)
+                (Ok(response), Ending::Answer) => Some(response.output()),
+                (Err(PromptError::MaxTurns { .. }), Ending::MaxTurns)
                 | (Err(PromptError::UnknownToolCall { .. }), Ending::UnknownToolCall)
-                | (Err(PromptError::MemoryError(_)), Ending::MemoryError) => None,
+                | (Err(PromptError::Memory(_)), Ending::MemoryError) => None,
                 (Err(PromptError::Report(report)), Ending::ProviderError)
                     if report.kind == rig_core::error::ErrorKind::ProviderResponse =>
                 {
@@ -2814,7 +2802,7 @@ pub async fn bus_engine_reproduces(program: &Program) {
                 (Err(PromptError::Report(report)), Ending::Failed(kind)) if report.kind == kind => {
                     None
                 }
-                (Err(PromptError::PromptCancelled { reason, .. }), Ending::Cancelled(expected))
+                (Err(PromptError::Cancelled { reason, .. }), Ending::Cancelled(expected))
                     if reason == expected =>
                 {
                     None
@@ -3204,8 +3192,7 @@ async fn resumed_tail(
             match item {
                 Ok(MultiTurnStreamItem::FinalResponse(response)) => output = Some(response),
                 Ok(_) => {}
-                Err(StreamingError::Prompt(error)) => failure = Some(error),
-                Err(error) => panic!("the resumed stream: {error:?}"),
+                Err(error) => failure = Some(error),
             }
         }
         drop(stream);
@@ -3219,9 +3206,9 @@ async fn resumed_tail(
     drop(agent);
     match (outcome, program.ending) {
         (Ok(response), Ending::Answer) => Ok(Some(response)),
-        (Err(PromptError::MaxTurnsError { .. }), Ending::MaxTurns)
+        (Err(PromptError::MaxTurns { .. }), Ending::MaxTurns)
         | (Err(PromptError::UnknownToolCall { .. }), Ending::UnknownToolCall) => Ok(None),
-        (Err(PromptError::PromptCancelled { reason, .. }), Ending::Cancelled(expected))
+        (Err(PromptError::Cancelled { reason, .. }), Ending::Cancelled(expected))
             if reason == expected =>
         {
             Err(expected)
@@ -3587,7 +3574,7 @@ async fn hand_drive(program: &Program, resume: Resume) {
             }
             let step = match (run.next_step(), program.ending) {
                 (Ok(step), _) => step,
-                (Err(PromptError::MaxTurnsError { .. }), Ending::MaxTurns) => break None,
+                (Err(PromptError::MaxTurns { .. }), Ending::MaxTurns) => break None,
                 (Err(error), _) => panic!("a step: {error:?}"),
             };
             match step {
@@ -3639,10 +3626,10 @@ async fn hand_drive(program: &Program, resume: Resume) {
                         let results = within(context.top_n::<serde_json::Value>(req))
                             .await
                             .expect("the replayer answered the context query");
-                        let docs = results.into_iter().map(|(_, id, value)| Document {
-                            id,
-                            text: serde_json::to_string_pretty(&value)
-                                .unwrap_or_else(|_| value.to_string()),
+                        let docs = results.into_iter().map(|result| Document {
+                            text: serde_json::to_string_pretty(&result.document)
+                                .unwrap_or_else(|_| result.document.to_string()),
+                            id: result.id,
                             additional_props: Default::default(),
                         });
                         turn_patch = Some(turn_patch.unwrap_or_default().extra_context(docs));
@@ -3972,7 +3959,7 @@ async fn hand_drive(program: &Program, resume: Resume) {
                     }
                     if program.hooks.contains(&Hook::DemandDone)
                         && !has_tool_calls
-                        && !answer_text(&choice).contains("DONE")
+                        && !assistant_text_from_choice(&choice).contains("DONE")
                     {
                         run.retry_model_turn(RetryRequest::Feedback(DONE_FEEDBACK.to_owned()))
                             .expect("a text turn is retryable");
@@ -4113,9 +4100,7 @@ async fn hand_drive(program: &Program, resume: Resume) {
         };
         if let (Some((handle, id)), None) = (&memory, program.history) {
             // As the engine: a failed append is logged and the answer stands.
-            if let Err(report) =
-                within(handle.append(id.clone(), response.messages.clone().unwrap_or_default()))
-                    .await
+            if let Err(report) = within(handle.append(id.clone(), response.messages.clone())).await
             {
                 assert_eq!(report.kind, rig_core::error::ErrorKind::MemoryBackend);
             }
@@ -4135,7 +4120,7 @@ async fn hand_drive(program: &Program, resume: Resume) {
     }
     let response = last_response.expect("a run");
     assert_eq!(
-        response.output,
+        response.output(),
         program
             .expected_output
             .map_or_else(|| golden_answer(&replay.log), str::to_owned)

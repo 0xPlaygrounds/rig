@@ -68,7 +68,7 @@ async fn structured_output_smoke() {
                 .prompt(STRUCTURED_OUTPUT_PROMPT)
                 .await
                 .expect("structured output prompt should succeed")
-                .output;
+                .output();
             let structured: SmokeStructuredOutput =
                 decode_structured_output("anthropic_structured_output_smoke", &response)
                     .expect("structured output should deserialize");
@@ -92,7 +92,7 @@ async fn classic_tool_mode_maps_through_anthropic_messages() {
         .prompt(STRUCTURED_OUTPUT_PROMPT)
         .await
         .expect("classic Anthropic Tool-mode run should succeed")
-        .output;
+        .output();
     let structured: SmokeStructuredOutput =
         decode_structured_output("anthropic_classic_tool_mode", &response)
             .expect("output-tool arguments should deserialize");
@@ -120,7 +120,7 @@ async fn classic_prompted_mode_maps_through_anthropic_messages() {
         .prompt(STRUCTURED_OUTPUT_PROMPT)
         .await
         .expect("classic Anthropic Prompted-mode run should succeed")
-        .output;
+        .output();
     let structured: SmokeStructuredOutput =
         decode_structured_output("anthropic_classic_prompted_mode", &response)
             .expect("prompted JSON should deserialize");

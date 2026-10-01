@@ -1,11 +1,8 @@
 use super::*;
 use crate::completion::{AssistantContent, Message, Usage};
+use crate::test_utils::TraceCapture;
 use serde_json::json;
-use std::sync::{Arc, Mutex};
-use tracing::field::{Field, Visit};
-use tracing::{Id, Subscriber};
-use tracing_subscriber::layer::{Context, SubscriberExt};
-use tracing_subscriber::{Layer, Registry, registry::LookupSpan};
+use tracing_subscriber::Registry;
 
 #[test]
 fn content_attributes_follow_gen_ai_semantic_convention_json_shapes() {
@@ -78,50 +75,6 @@ fn content_attributes_follow_gen_ai_semantic_convention_json_shapes() {
     );
 }
 
-/// Field capture for modality spans: names paired with stringified
-/// values, taken from both span creation and later `record` calls.
-#[derive(Clone, Default)]
-struct ModalityCapture(Arc<Mutex<Vec<(String, String)>>>);
-
-impl ModalityCapture {
-    fn get(&self, name: &str) -> Option<String> {
-        self.0.lock().ok().and_then(|fields| {
-            fields
-                .iter()
-                .rev()
-                .find(|(field, _)| field == name)
-                .map(|(_, value)| value.clone())
-        })
-    }
-}
-
-struct ModalityCaptureVisitor(ModalityCapture);
-
-impl Visit for ModalityCaptureVisitor {
-    fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
-        if let Ok(mut fields) = self.0.0.lock() {
-            fields.push((field.name().to_string(), format!("{value:?}")));
-        }
-    }
-}
-
-struct ModalityCaptureLayer {
-    fields: ModalityCapture,
-}
-
-impl<S> Layer<S> for ModalityCaptureLayer
-where
-    S: Subscriber + for<'a> LookupSpan<'a>,
-{
-    fn on_new_span(&self, attrs: &tracing::span::Attributes<'_>, _id: &Id, _ctx: Context<'_, S>) {
-        attrs.record(&mut ModalityCaptureVisitor(self.fields.clone()));
-    }
-
-    fn on_record(&self, _span: &Id, values: &tracing::span::Record<'_>, _ctx: Context<'_, S>) {
-        values.record(&mut ModalityCaptureVisitor(self.fields.clone()));
-    }
-}
-
 /// The provider seams are wired: an `embed_texts_response` call through
 /// the shared OpenAI-compatible driver opens the embeddings span and
 /// records usage — and because the vector stores' `embed_text` defaults
@@ -142,12 +95,9 @@ fn embedding_seam_and_vector_search_record_on_the_span() {
             "data": [{ "object": "embedding", "index": 0, "embedding": [0.1, 0.2] }]
         }"#;
 
-    let fields = ModalityCapture::default();
-    let subscriber = Registry::default().with(ModalityCaptureLayer {
-        fields: fields.clone(),
-    });
+    let capture = TraceCapture::default();
     let _isolation = crate::test_utils::scoped_tracing_subscriber_guard_blocking();
-    tracing::subscriber::with_default(subscriber, || {
+    tracing::subscriber::with_default(capture.subscriber(), || {
         let model = crate::driver::Model::new(
             crate::providers::openai::wire::OpenAIConfig::with_key(
                 &crate::providers::openai::wire::OPENAI,
@@ -180,244 +130,26 @@ fn embedding_seam_and_vector_search_record_on_the_span() {
                 .query("hello")
                 .samples(1)
                 .build();
-            let hits: Vec<(f64, String, String)> =
+            let hits: Vec<crate::vector_store::VectorSearchResult<String>> =
                 index.top_n(request).await.expect("search succeeds");
             assert_eq!(hits.len(), 1);
         });
     });
 
+    let last = |field: &str| capture.values_of(field).last().cloned();
+    assert_eq!(last("gen_ai.operation.name"), Some(json!("embeddings")));
+    assert_eq!(last("gen_ai.provider.name"), Some(json!("openai")));
+    assert_eq!(last("gen_ai.usage.input_tokens"), Some(json!(4)));
     assert_eq!(
-        fields.get("gen_ai.operation.name").as_deref(),
-        Some("\"embeddings\"")
-    );
-    assert_eq!(
-        fields.get("gen_ai.provider.name").as_deref(),
-        Some("\"openai\"")
-    );
-    assert_eq!(
-        fields.get("gen_ai.usage.input_tokens").as_deref(),
-        Some("4")
-    );
-    assert_eq!(
-        fields.get("gen_ai.response.model").as_deref(),
-        Some("\"text-embedding-3-small\"")
+        last("gen_ai.response.model"),
+        Some(json!("text-embedding-3-small"))
     );
     // Two embeds ran (direct + the top_n query); both hit the same seam.
-    let usage_records = fields
-        .0
-        .lock()
-        .expect("fields")
-        .iter()
-        .filter(|(name, _)| name == "gen_ai.usage.input_tokens")
-        .count();
+    let usage_records = capture.values_of("gen_ai.usage.input_tokens").len();
     assert_eq!(
         usage_records, 2,
         "the vector-search query embeds through the instrumented seam"
     );
-}
-
-#[derive(Clone, Default)]
-struct CapturedFields(Arc<Mutex<Vec<(String, u64)>>>);
-
-impl CapturedFields {
-    fn push(&self, name: &str, value: u64) {
-        if let Ok(mut fields) = self.0.lock() {
-            fields.push((name.to_string(), value));
-        }
-    }
-
-    fn contains(&self, name: &str, value: u64) -> bool {
-        self.0.lock().is_ok_and(|fields| {
-            fields
-                .iter()
-                .any(|field| field == &(name.to_string(), value))
-        })
-    }
-
-    fn get(&self, name: &str) -> Option<u64> {
-        self.0.lock().ok().and_then(|fields| {
-            fields
-                .iter()
-                .find(|(field, _)| field == name)
-                .map(|(_, value)| *value)
-        })
-    }
-}
-
-struct FieldCaptureLayer {
-    fields: CapturedFields,
-}
-
-impl<S> Layer<S> for FieldCaptureLayer
-where
-    S: Subscriber,
-    S: for<'lookup> LookupSpan<'lookup>,
-{
-    fn on_record(&self, _span: &Id, values: &tracing::span::Record<'_>, _ctx: Context<'_, S>) {
-        values.record(&mut FieldCaptureVisitor {
-            fields: self.fields.clone(),
-        });
-    }
-}
-
-struct FieldCaptureVisitor {
-    fields: CapturedFields,
-}
-
-impl Visit for FieldCaptureVisitor {
-    fn record_u64(&mut self, field: &Field, value: u64) {
-        self.fields.push(field.name(), value);
-    }
-
-    fn record_debug(&mut self, _field: &Field, _value: &dyn std::fmt::Debug) {}
-}
-
-/// WARN-level events, rendered as `field=value` pairs joined with the
-/// event's message, in emission order.
-#[derive(Clone, Default)]
-struct CapturedWarnings(Arc<Mutex<Vec<String>>>);
-
-impl CapturedWarnings {
-    fn push(&self, rendered: String) {
-        if let Ok(mut events) = self.0.lock() {
-            events.push(rendered);
-        }
-    }
-
-    /// Drains, so a test can assert on one phase and then assert that a
-    /// later phase added nothing. A cloning read would make the second
-    /// assertion see the first phase's events and quietly fail.
-    fn take(&self) -> Vec<String> {
-        self.0
-            .lock()
-            .map(|mut events| std::mem::take(&mut *events))
-            .unwrap_or_default()
-    }
-}
-
-struct WarningCaptureLayer {
-    warnings: CapturedWarnings,
-}
-
-impl<S> Layer<S> for WarningCaptureLayer
-where
-    S: Subscriber,
-    S: for<'lookup> LookupSpan<'lookup>,
-{
-    fn on_event(&self, event: &tracing::Event<'_>, _ctx: Context<'_, S>) {
-        if *event.metadata().level() != tracing::Level::WARN {
-            return;
-        }
-        let mut visitor = WarningCaptureVisitor::default();
-        event.record(&mut visitor);
-        self.warnings.push(visitor.rendered);
-    }
-}
-
-#[derive(Default)]
-struct WarningCaptureVisitor {
-    rendered: String,
-}
-
-impl Visit for WarningCaptureVisitor {
-    fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
-        use std::fmt::Write;
-
-        // `missing_fields = ?vec` arrives here; the message itself arrives
-        // as the reserved `message` field. Both matter to the assertions,
-        // so render every field rather than special-casing.
-        let _ = write!(&mut self.rendered, " {}={value:?}", field.name());
-    }
-
-    fn record_str(&mut self, field: &Field, value: &str) {
-        use std::fmt::Write;
-
-        let _ = write!(&mut self.rendered, " {}={value}", field.name());
-    }
-}
-
-#[derive(Clone, Default)]
-struct CapturedSpan(Arc<Mutex<Option<CapturedSpanData>>>);
-
-struct CapturedSpanData {
-    name: String,
-    target: String,
-    parent_name: Option<String>,
-    fields: Vec<String>,
-    initial_values: Vec<(String, String)>,
-    recorded_values: Vec<(String, String)>,
-}
-
-struct SpanCaptureLayer {
-    span: CapturedSpan,
-}
-
-#[derive(Default)]
-struct StringFieldVisitor {
-    values: Vec<(String, String)>,
-}
-
-impl Visit for StringFieldVisitor {
-    fn record_str(&mut self, field: &Field, value: &str) {
-        self.values
-            .push((field.name().to_owned(), value.to_owned()));
-    }
-
-    fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
-        self.values
-            .push((field.name().to_owned(), format!("{value:?}")));
-    }
-}
-
-impl<S> Layer<S> for SpanCaptureLayer
-where
-    S: Subscriber,
-    S: for<'lookup> LookupSpan<'lookup>,
-{
-    fn on_new_span(&self, attrs: &tracing::span::Attributes<'_>, _id: &Id, ctx: Context<'_, S>) {
-        if let Ok(mut captured) = self.span.0.lock() {
-            let mut visitor = StringFieldVisitor::default();
-            attrs.record(&mut visitor);
-            let parent_name = if let Some(parent) = attrs.parent() {
-                ctx.span(parent)
-                    .map(|span| span.metadata().name().to_owned())
-            } else if attrs.is_contextual() {
-                ctx.lookup_current()
-                    .map(|span| span.metadata().name().to_owned())
-            } else {
-                None
-            };
-            *captured = Some(CapturedSpanData {
-                name: attrs.metadata().name().to_owned(),
-                target: attrs.metadata().target().to_owned(),
-                parent_name,
-                fields: attrs
-                    .metadata()
-                    .fields()
-                    .iter()
-                    .map(|field| field.name().to_owned())
-                    .collect(),
-                initial_values: visitor.values,
-                recorded_values: Vec::new(),
-            });
-        }
-    }
-
-    fn on_record(&self, _span: &Id, values: &tracing::span::Record<'_>, _ctx: Context<'_, S>) {
-        if let Ok(mut captured) = self.span.0.lock()
-            && let Some(captured) = captured.as_mut()
-        {
-            let mut visitor = StringFieldVisitor::default();
-            values.record(&mut visitor);
-            captured.recorded_values.extend(visitor.values);
-        }
-    }
-}
-
-fn contains_string(values: &[(String, String)], field: &str, value: &str) -> bool {
-    values
-        .iter()
-        .any(|candidate| candidate == &(field.to_owned(), value.to_owned()))
 }
 
 #[test]
@@ -434,21 +166,15 @@ fn completion_span_uses_canonical_names_fields_and_initial_attributes() {
             "interactions_streaming",
         ),
     ] {
-        let captured = CapturedSpan::default();
-        let subscriber = Registry::default().with(SpanCaptureLayer {
-            span: captured.clone(),
-        });
-        tracing::subscriber::with_default(subscriber, || {
+        let capture = TraceCapture::default();
+        tracing::subscriber::with_default(capture.subscriber(), || {
             let span = SpanBuilder::new("openai", "gpt-5", operation)
                 .system_instructions(Some("system prompt"), true)
                 .build();
             assert!(!span.is_disabled());
         });
 
-        let Ok(captured) = captured.0.lock() else {
-            panic!("captured span lock poisoned");
-        };
-        let Some(span) = captured.as_ref() else {
+        let Some(span) = capture.last_span() else {
             panic!("completion span was not created");
         };
         assert_eq!(span.name, expected_name);
@@ -464,20 +190,15 @@ fn completion_span_uses_canonical_names_fields_and_initial_attributes() {
             ),
         ] {
             assert!(
-                contains_string(&span.initial_values, field, value),
+                span.initial.get(field) == Some(&json!(value)),
                 "missing initial {field}={value}"
             );
         }
-        assert!(span.recorded_values.is_empty());
-        assert!(
-            !span
-                .initial_values
-                .iter()
-                .any(|(field, _)| field == "gen_ai.response.model")
-        );
+        assert!(span.recorded.is_empty());
+        assert!(!span.initial.contains_key("gen_ai.response.model"));
         for field in COMPLETION_PARENT_REQUIRED_FIELDS {
             assert!(
-                span.fields.iter().any(|candidate| candidate == field),
+                span.declared.iter().any(|candidate| candidate == field),
                 "missing {field}"
             );
         }
@@ -494,26 +215,20 @@ fn completion_span_uses_canonical_names_fields_and_initial_attributes() {
 /// as roots instead of nesting under the agent span.
 #[test]
 fn completion_parent_span_macro_honours_its_parent_argument() {
-    /// `SpanCaptureLayer` has no target filter and keeps only the most
-    /// recent span, so read it immediately after the span under test is
-    /// created, and confirm the target before trusting the parent.
-    fn captured_parent(captured: &CapturedSpan) -> Option<String> {
-        let Ok(captured) = captured.0.lock() else {
-            panic!("captured span lock poisoned");
-        };
-        let Some(span) = captured.as_ref() else {
+    /// The capture has no target filter, so read its last span immediately
+    /// after the span under test is created, and confirm the target before
+    /// trusting the parent.
+    fn captured_parent(capture: &TraceCapture) -> Option<&'static str> {
+        let Some(span) = capture.last_span() else {
             panic!("completion-parent span was not captured");
         };
         assert_eq!(span.target, "third_party_runtime");
-        span.parent_name.clone()
+        span.parent_name
     }
 
-    let captured = CapturedSpan::default();
-    let subscriber = Registry::default().with(SpanCaptureLayer {
-        span: captured.clone(),
-    });
+    let capture = TraceCapture::default();
     let _isolation = crate::test_utils::scoped_tracing_subscriber_guard_blocking();
-    tracing::subscriber::with_default(subscriber, || {
+    tracing::subscriber::with_default(capture.subscriber(), || {
         let ambient = tracing::info_span!(target: "application", "ambient");
 
         // Default arm: nests under whatever span is current.
@@ -525,7 +240,7 @@ fn completion_parent_span_macro_honours_its_parent_argument() {
                 system_instructions: Option::<&str>::None,
             );
         });
-        assert_eq!(captured_parent(&captured).as_deref(), Some("ambient"));
+        assert_eq!(captured_parent(&capture), Some("ambient"));
 
         // Explicit arm: the caller's parent wins over the ambient span, so
         // this one is a root despite `ambient` being current.
@@ -538,32 +253,26 @@ fn completion_parent_span_macro_honours_its_parent_argument() {
                 system_instructions: Option::<&str>::None,
             );
         });
-        assert_eq!(captured_parent(&captured), None);
+        assert_eq!(captured_parent(&capture), None);
     });
 }
 
 #[test]
 fn unrelated_ambient_span_is_parent_not_adopted() {
-    let captured = CapturedSpan::default();
-    let subscriber = Registry::default().with(SpanCaptureLayer {
-        span: captured.clone(),
-    });
+    let capture = TraceCapture::default();
     let _isolation = crate::test_utils::scoped_tracing_subscriber_guard_blocking();
-    tracing::subscriber::with_default(subscriber, || {
+    tracing::subscriber::with_default(capture.subscriber(), || {
         let ambient = tracing::info_span!(target: "application", "ambient");
         let _guard = ambient.enter();
         let span = SpanBuilder::new("openai", "gpt-5", GenAiOperation::Chat).build();
         assert_ne!(span.id(), ambient.id());
     });
 
-    let Ok(captured) = captured.0.lock() else {
-        panic!("captured span lock poisoned");
-    };
-    let Some(span) = captured.as_ref() else {
+    let Some(span) = capture.last_span() else {
         panic!("completion span was not captured");
     };
     assert_eq!(span.target, "rig::completions");
-    assert_eq!(span.parent_name.as_deref(), Some("ambient"));
+    assert_eq!(span.parent_name, Some("ambient"));
 }
 
 #[test]
@@ -573,12 +282,9 @@ fn marker_span_missing_required_fields_is_not_adopted() {
     // Adopting it would silently drop the response/usage/content telemetry
     // that `Span::record` no-ops on for undeclared fields. Instead the
     // builder creates a fresh `rig::completions` child so nothing is lost.
-    let captured = CapturedSpan::default();
-    let subscriber = Registry::default().with(SpanCaptureLayer {
-        span: captured.clone(),
-    });
+    let capture = TraceCapture::default();
     let _isolation = crate::test_utils::scoped_tracing_subscriber_guard_blocking();
-    tracing::subscriber::with_default(subscriber, || {
+    tracing::subscriber::with_default(capture.subscriber(), || {
         // Deliberately hand-written (not `completion_parent_span!`): the
         // point is a marker span that fails to declare required fields.
         let partial_marker = tracing::info_span!(
@@ -609,22 +315,19 @@ fn marker_span_missing_required_fields_is_not_adopted() {
         assert_ne!(span.id(), partial_marker.id());
     });
 
-    let Ok(captured) = captured.0.lock() else {
-        panic!("captured span lock poisoned");
-    };
-    let Some(span) = captured.as_ref() else {
+    let Some(span) = capture.last_span() else {
         panic!("completion span was not captured");
     };
     // A canonical child span is created and parented under the marker span,
     // and it carries the completion fields the marker span could not absorb.
     assert_eq!(span.target, "rig::completions");
-    assert_eq!(span.parent_name.as_deref(), Some("chat"));
+    assert_eq!(span.parent_name, Some("chat"));
     for (field, value) in [
         ("gen_ai.operation.name", "chat"),
         ("gen_ai.provider.name", "openai"),
         ("gen_ai.request.model", "gpt-5"),
     ] {
-        assert!(contains_string(&span.initial_values, field, value));
+        assert!(span.initial.get(field) == Some(&json!(value)));
     }
 }
 
@@ -832,16 +535,13 @@ fn classify_completion_parent_covers_the_decision_table() {
 /// its once-per-callsite budget all need pinning.
 #[test]
 fn near_miss_completion_parent_warns_once_per_callsite() {
-    let warnings = CapturedWarnings::default();
-    let subscriber = Registry::default().with(WarningCaptureLayer {
-        warnings: warnings.clone(),
-    });
+    let capture = TraceCapture::default();
     let _isolation = crate::test_utils::scoped_tracing_subscriber_guard_blocking();
     // The warn budget is process-global; claim a clean one rather than
     // relying on this test's fixture span owning a callsite no other test
     // touches.
     reset_near_miss_warnings();
-    tracing::subscriber::with_default(subscriber, || {
+    tracing::subscriber::with_default(capture.subscriber(), || {
         // The `warn!` callsite lives in `warn_once_on_completion_parent_verdict`
         // and is shared with every other near-miss test, so its interest may
         // already be cached as `never` from a run under a different
@@ -863,7 +563,7 @@ fn near_miss_completion_parent_warns_once_per_callsite() {
         SpanBuilder::new("openai", "gpt-5", GenAiOperation::Chat).build();
     });
 
-    let captured = warnings.take();
+    let captured = capture.warnings();
     assert_eq!(
         captured.len(),
         1,
@@ -891,13 +591,10 @@ fn near_miss_completion_parent_warns_once_per_callsite() {
 /// near-miss parent draws no warning from it and is not enriched.
 #[test]
 fn modality_span_under_a_near_miss_parent_neither_warns_nor_adopts() {
-    let warnings = CapturedWarnings::default();
-    let subscriber = Registry::default().with(WarningCaptureLayer {
-        warnings: warnings.clone(),
-    });
+    let capture = TraceCapture::default();
     let _isolation = crate::test_utils::scoped_tracing_subscriber_guard_blocking();
     reset_near_miss_warnings();
-    tracing::subscriber::with_default(subscriber, || {
+    tracing::subscriber::with_default(capture.subscriber(), || {
         tracing::callsite::rebuild_interest_cache();
         let near_miss = tracing::info_span!(
             target: "third_party_runtime",
@@ -911,7 +608,7 @@ fn modality_span_under_a_near_miss_parent_neither_warns_nor_adopts() {
         assert_ne!(span.id(), near_miss.id(), "a modality span is always fresh");
     });
 
-    let captured = warnings.take();
+    let captured = capture.warnings();
     assert!(
         captured.is_empty(),
         "no adoption warning expected: {captured:?}"
@@ -920,13 +617,10 @@ fn modality_span_under_a_near_miss_parent_neither_warns_nor_adopts() {
 
 #[test]
 fn distinct_near_miss_callsites_each_warn() {
-    let warnings = CapturedWarnings::default();
-    let subscriber = Registry::default().with(WarningCaptureLayer {
-        warnings: warnings.clone(),
-    });
+    let capture = TraceCapture::default();
     let _isolation = crate::test_utils::scoped_tracing_subscriber_guard_blocking();
     reset_near_miss_warnings();
-    tracing::subscriber::with_default(subscriber, || {
+    tracing::subscriber::with_default(capture.subscriber(), || {
         tracing::callsite::rebuild_interest_cache();
 
         // Two separate `info_span!` invocations, and they must stay
@@ -956,7 +650,7 @@ fn distinct_near_miss_callsites_each_warn() {
         });
     });
 
-    let captured = warnings.take();
+    let captured = capture.warnings();
     assert_eq!(
         captured.len(),
         2,
@@ -969,15 +663,12 @@ fn distinct_near_miss_callsites_each_warn() {
 /// completion.
 #[test]
 fn conforming_completion_parent_never_warns() {
-    let warnings = CapturedWarnings::default();
-    let subscriber = Registry::default().with(WarningCaptureLayer {
-        warnings: warnings.clone(),
-    });
+    let capture = TraceCapture::default();
     let _isolation = crate::test_utils::scoped_tracing_subscriber_guard_blocking();
     // Claim a clean budget: the control below must be able to warn even if
     // another test already reported this fixture's callsite.
     reset_near_miss_warnings();
-    tracing::subscriber::with_default(subscriber, || {
+    tracing::subscriber::with_default(capture.subscriber(), || {
         tracing::callsite::rebuild_interest_cache();
 
         // Control. Asserting an absence proves nothing unless the warning
@@ -994,10 +685,11 @@ fn conforming_completion_parent_never_warns() {
             SpanBuilder::new("openai", "gpt-5", GenAiOperation::Chat).build();
         });
         assert_eq!(
-            warnings.take().len(),
+            capture.warnings().len(),
             1,
             "control: a near miss must warn, or this test cannot detect silence"
         );
+        capture.clear();
 
         let conforming = completion_parent_span!(
             target: "third_party_runtime",
@@ -1017,9 +709,9 @@ fn conforming_completion_parent_never_warns() {
         SpanBuilder::new("openai", "gpt-5", GenAiOperation::Chat).build();
     });
 
-    // The control drained the buffer, so anything here was emitted by the
+    // The control cleared the capture, so anything here was emitted by the
     // conforming or ambient span.
-    let captured = warnings.take();
+    let captured = capture.warnings();
     assert!(
         captured.is_empty(),
         "adoption and non-participation are both silent, got: {captured:?}"
@@ -1028,12 +720,9 @@ fn conforming_completion_parent_never_warns() {
 
 #[test]
 fn agent_chat_span_is_adopted_and_enriched() {
-    let captured = CapturedSpan::default();
-    let subscriber = Registry::default().with(SpanCaptureLayer {
-        span: captured.clone(),
-    });
+    let capture = TraceCapture::default();
     let _isolation = crate::test_utils::scoped_tracing_subscriber_guard_blocking();
-    tracing::subscriber::with_default(subscriber, || {
+    tracing::subscriber::with_default(capture.subscriber(), || {
         let completion_parent = completion_parent_span!(
             target: "rig::agent_chat",
             name: "chat_streaming",
@@ -1047,10 +736,7 @@ fn agent_chat_span_is_adopted_and_enriched() {
         assert_eq!(span.id(), completion_parent.id());
     });
 
-    let Ok(captured) = captured.0.lock() else {
-        panic!("captured span lock poisoned");
-    };
-    let Some(span) = captured.as_ref() else {
+    let Some(span) = capture.last_span() else {
         panic!("completion-parent span was not captured");
     };
     assert_eq!(span.target, "rig::agent_chat");
@@ -1063,18 +749,15 @@ fn agent_chat_span_is_adopted_and_enriched() {
             r#"[{"type":"text","content":"provider system"}]"#,
         ),
     ] {
-        assert!(contains_string(&span.recorded_values, field, value));
+        assert!(span.recorded.contains(&(field.to_owned(), json!(value))));
     }
 }
 
 #[test]
 fn neutral_completion_parent_span_is_adopted_and_enriched() {
-    let captured = CapturedSpan::default();
-    let subscriber = Registry::default().with(SpanCaptureLayer {
-        span: captured.clone(),
-    });
+    let capture = TraceCapture::default();
     let _isolation = crate::test_utils::scoped_tracing_subscriber_guard_blocking();
-    tracing::subscriber::with_default(subscriber, || {
+    tracing::subscriber::with_default(capture.subscriber(), || {
         let completion_parent = completion_parent_span!(
             target: "test_runtime",
             name: "chat",
@@ -1087,10 +770,7 @@ fn neutral_completion_parent_span_is_adopted_and_enriched() {
         assert_eq!(span.id(), completion_parent.id());
     });
 
-    let Ok(captured) = captured.0.lock() else {
-        panic!("captured span lock poisoned");
-    };
-    let Some(span) = captured.as_ref() else {
+    let Some(span) = capture.last_span() else {
         panic!("neutral completion-parent span was not captured");
     };
     assert_eq!(span.target, "test_runtime");
@@ -1099,18 +779,15 @@ fn neutral_completion_parent_span_is_adopted_and_enriched() {
         ("gen_ai.provider.name", "neutral-provider"),
         ("gen_ai.request.model", "neutral-model"),
     ] {
-        assert!(contains_string(&span.recorded_values, field, value));
+        assert!(span.recorded.contains(&(field.to_owned(), json!(value))));
     }
 }
 
 #[test]
 fn absent_provider_system_does_not_overwrite_agent_instructions() {
-    let captured = CapturedSpan::default();
-    let subscriber = Registry::default().with(SpanCaptureLayer {
-        span: captured.clone(),
-    });
+    let capture = TraceCapture::default();
     let _isolation = crate::test_utils::scoped_tracing_subscriber_guard_blocking();
-    tracing::subscriber::with_default(subscriber, || {
+    tracing::subscriber::with_default(capture.subscriber(), || {
         let completion_parent = completion_parent_span!(
             target: "test_runtime",
             name: "chat",
@@ -1121,31 +798,19 @@ fn absent_provider_system_does_not_overwrite_agent_instructions() {
         SpanBuilder::new("openai", "gpt-5", GenAiOperation::Chat).build();
     });
 
-    let Ok(captured) = captured.0.lock() else {
-        panic!("captured span lock poisoned");
-    };
-    let Some(span) = captured.as_ref() else {
+    let Some(span) = capture.last_span() else {
         panic!("completion-parent span was not captured");
     };
-    assert!(contains_string(
-        &span.initial_values,
-        "gen_ai.system_instructions",
-        "effective agent instructions"
-    ));
-    assert!(
-        !span
-            .recorded_values
-            .iter()
-            .any(|(field, _)| field == "gen_ai.system_instructions")
+    assert_eq!(
+        span.initial.get("gen_ai.system_instructions"),
+        Some(&json!("effective agent instructions"))
     );
+    assert_eq!(span.record_count("gen_ai.system_instructions"), 0);
 }
 
 #[test]
 fn record_token_usage_records_tool_use_prompt_tokens() {
-    let fields = CapturedFields::default();
-    let subscriber = Registry::default().with(FieldCaptureLayer {
-        fields: fields.clone(),
-    });
+    let capture = TraceCapture::default();
     let usage = Usage {
         input_tokens: Some(1),
         output_tokens: Some(2),
@@ -1159,7 +824,7 @@ fn record_token_usage_records_tool_use_prompt_tokens() {
     // Scoped-subscriber tests must not run concurrently; see
     // `test_utils::scoped_tracing_subscriber_guard`.
     let _isolation = crate::test_utils::scoped_tracing_subscriber_guard_blocking();
-    tracing::subscriber::with_default(subscriber, || {
+    tracing::subscriber::with_default(capture.subscriber(), || {
         let span = tracing::info_span!(
             "usage_recording",
             gen_ai.usage.input_tokens = tracing::field::Empty,
@@ -1173,17 +838,18 @@ fn record_token_usage_records_tool_use_prompt_tokens() {
         span.record_token_usage(&usage);
     });
 
-    assert!(fields.contains("gen_ai.usage.tool_use_prompt_tokens", 12));
+    assert!(
+        capture
+            .values_of("gen_ai.usage.tool_use_prompt_tokens")
+            .contains(&json!(12))
+    );
 }
 
 /// A reported zero reaches the span; a counter the provider never sent
 /// leaves its field unset instead of being recorded as zero.
 #[test]
 fn record_token_usage_records_reported_zero_and_skips_absent_counters() {
-    let fields = CapturedFields::default();
-    let subscriber = Registry::default().with(FieldCaptureLayer {
-        fields: fields.clone(),
-    });
+    let capture = TraceCapture::default();
     let usage = Usage {
         input_tokens: Some(9),
         reasoning_tokens: Some(0),
@@ -1191,7 +857,7 @@ fn record_token_usage_records_reported_zero_and_skips_absent_counters() {
     };
 
     let _isolation = crate::test_utils::scoped_tracing_subscriber_guard_blocking();
-    tracing::subscriber::with_default(subscriber, || {
+    tracing::subscriber::with_default(capture.subscriber(), || {
         let span = tracing::info_span!(
             "usage_recording",
             gen_ai.usage.input_tokens = tracing::field::Empty,
@@ -1202,7 +868,8 @@ fn record_token_usage_records_reported_zero_and_skips_absent_counters() {
         span.record_token_usage(&usage);
     });
 
-    assert_eq!(fields.get("gen_ai.usage.input_tokens"), Some(9));
-    assert_eq!(fields.get("gen_ai.usage.reasoning_tokens"), Some(0));
-    assert_eq!(fields.get("gen_ai.usage.output_tokens"), None);
+    let first = |field: &str| capture.values_of(field).first().cloned();
+    assert_eq!(first("gen_ai.usage.input_tokens"), Some(json!(9)));
+    assert_eq!(first("gen_ai.usage.reasoning_tokens"), Some(json!(0)));
+    assert_eq!(first("gen_ai.usage.output_tokens"), None);
 }

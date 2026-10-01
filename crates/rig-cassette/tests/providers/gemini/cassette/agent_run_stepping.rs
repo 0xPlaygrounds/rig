@@ -65,13 +65,13 @@ async fn hand_driven_single_turn_completes() {
                 }
             };
 
-            assert_nonempty_response(&response.output);
+            assert_nonempty_response(&response.output());
             assert!(run.is_done());
             assert_eq!(
                 run.response()
                     .expect("done run exposes its response")
-                    .output,
-                response.output
+                    .output(),
+                response.output()
             );
             assert_eq!(run.turn(), 1);
             assert_eq!(response.completion_calls.len(), 1);
@@ -86,7 +86,7 @@ async fn hand_driven_single_turn_completes() {
                 "cassette-recorded usage should be non-zero"
             );
 
-            let messages = response.messages.expect("run reports its messages");
+            let messages = response.messages;
             assert_eq!(messages.as_slice(), run.messages());
             assert_eq!(
                 messages.len(),
@@ -165,7 +165,7 @@ async fn hand_driven_multi_turn_tool_run_completes() {
                 executed_tools.iter().any(|name| name == "subtract"),
                 "the subtract tool should run: {executed_tools:?}"
             );
-            assert_mentions_expected_number(&response.output, 9);
+            assert_mentions_expected_number(&response.output(), 9);
             assert!(run.turn() >= 2, "tool use forces at least two model calls");
             assert_eq!(
                 response.completion_calls.len(),
@@ -177,7 +177,7 @@ async fn hand_driven_multi_turn_tool_run_completes() {
                 response.usage
             );
 
-            let messages = response.messages.expect("run reports its messages");
+            let messages = response.messages;
             assert!(history_has_assistant_tool_call(&messages, "add"));
             assert!(history_has_assistant_tool_call(&messages, "subtract"));
             assert!(
@@ -246,8 +246,8 @@ async fn hand_driven_parallel_tool_calls_arrive_in_one_step() {
             );
             assert!(first_step.iter().any(|name| name == "add"));
             assert!(first_step.iter().any(|name| name == "subtract"));
-            assert_mentions_expected_number(&response.output, 8);
-            assert_mentions_expected_number(&response.output, 6);
+            assert_mentions_expected_number(&response.output(), 8);
+            assert_mentions_expected_number(&response.output(), 6);
         },
     )
     .await;
@@ -291,13 +291,13 @@ async fn max_turns_error_carries_pending_tool_results_message() {
                 }
             };
 
-            let PromptError::MaxTurnsError {
+            let PromptError::MaxTurns {
                 max_turns,
                 chat_history,
                 prompt,
             } = error
             else {
-                panic!("expected MaxTurnsError, got {error:?}");
+                panic!("expected MaxTurns, got {error:?}");
             };
             assert_eq!(max_turns, 2);
             // Pins the divergence resolved by #1899: the error carries the
@@ -305,7 +305,7 @@ async fn max_turns_error_carries_pending_tool_results_message() {
             // reconstruction of its text.
             assert!(
                 is_tool_result_user_message(&prompt),
-                "MaxTurnsError must carry the pending tool-results message: {prompt:?}"
+                "MaxTurns must carry the pending tool-results message: {prompt:?}"
             );
             assert!(
                 matches!(
@@ -388,7 +388,7 @@ async fn hand_driven_entries_survive_midrun_serialization() {
                 }
             };
 
-            assert_mentions_expected_number(&response.output, 13);
+            assert_mentions_expected_number(&response.output(), 13);
             // The full log is on the finished run, in append order, last-wins
             // readable.
             let notes: Vec<_> = run

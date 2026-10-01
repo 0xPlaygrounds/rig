@@ -223,7 +223,7 @@ async fn nested_arguments_roundtrip_nonstreaming() {
                 .chat(NESTED_ARGS_PROMPT, &mut history)
                 .await
                 .expect("nested-args tool chat should succeed")
-                .output;
+                .output();
 
             assert!(
                 result.contains("SAKURA-77"),
@@ -301,7 +301,7 @@ async fn unicode_arguments_streaming() {
                     .to_string(),
             )
             .tool(ToolDefinition {
-                name: "echo".to_string(),
+                name: rig_core::message::ToolName::new("echo").expect("tool name"),
                 description: "Echo a message back to the user.".to_string(),
                 parameters: json!({
                     "type": "object",

@@ -483,17 +483,18 @@ fn assert_response_metadata(
             .all(|choice| !choice.finish_reason.is_empty()),
         "raw Mistral choices should preserve finish reasons"
     );
-    let raw_usage = raw
+    let raw_usage = &raw
         .usage
         .as_ref()
-        .expect("raw response should preserve usage");
+        .expect("raw response should preserve usage")
+        .openai;
     assert!(
         response.usage.input_tokens.is_some_and(|n| n > 0),
         "usage should include input tokens"
     );
     assert_eq!(
         response.usage.output_tokens,
-        Some(raw_usage.completion_tokens as u64)
+        raw_usage.completion_tokens.map(|n| n as u64)
     );
     assert_eq!(
         response.usage.total_tokens,
@@ -592,7 +593,7 @@ async fn tool_choice_auto_any_specific_and_none() -> Result<()> {
                         .tool(rig::tool::tool_definition(&AlphaSignal))
                         .tool(rig::tool::tool_definition(&BetaSignal))
                         .tool_choice(ToolChoice::Specific {
-                            function_names: vec![BetaSignal::NAME.to_string()],
+                            function_names: vec![rig_core::message::ToolName::new(BetaSignal::NAME).expect("tool name")],
                         }))
                 .await?;
             let specific_calls = specific

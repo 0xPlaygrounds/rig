@@ -62,12 +62,12 @@ fn provider_file_content_as_generic_document(file_id: &str) -> RigUserContent {
 
 fn document_question(content: RigUserContent, page_number: u8) -> Message {
     Message::User {
-        content: rig_core::NonEmpty::with_rest(
+        content: vec![
             content,
-            [RigUserContent::Text(Text::new(format!(
+            RigUserContent::Text(Text::new(format!(
                 "What verifier token is printed on page {page_number}? Reply with only the exact token."
-            )))],
-        ),
+            ))),
+        ],
     }
 }
 
@@ -328,7 +328,7 @@ async fn messages_document_file_id_roundtrip_live() {
                 let response = agent
                     .chat(provider_native_roundtrip_message, &mut history)
                     .await
-                    .expect("Messages API should read uploaded PDF by file_id").output;
+                    .expect("Messages API should read uploaded PDF by file_id").output();
                 assert_verifier_response(&response, PAGE_TWO_VERIFIER);
                 assert_history_preserves_single_file_id(&history, &file_id);
 
@@ -338,7 +338,7 @@ async fn messages_document_file_id_roundtrip_live() {
                         &mut history,
                     )
                     .await
-                    .expect("Messages API should reuse file_id document from chat history").output;
+                    .expect("Messages API should reuse file_id document from chat history").output();
                 assert_verifier_response(&follow_up, PAGE_THREE_VERIFIER);
                 assert_history_preserves_single_file_id(&history, &file_id);
 
@@ -348,7 +348,7 @@ async fn messages_document_file_id_roundtrip_live() {
                 let direct_response = agent
                     .prompt(direct_prompt)
                     .await
-                    .expect("Messages API should read direct generic file_id document").output;
+                    .expect("Messages API should read direct generic file_id document").output();
                 assert_verifier_response(&direct_response, PAGE_ONE_VERIFIER);
             })
             .await;
@@ -412,7 +412,7 @@ async fn file_id_chain() {
                     .chat(direct_file_id_document_question(&file_id, 2), &mut history)
                     .await
                     .expect("the first turn reads the file by id")
-                    .output;
+                    .output();
                 assert_verifier_response(&response, PAGE_TWO_VERIFIER);
                 let follow_up = agent
                     .chat(
@@ -421,7 +421,7 @@ async fn file_id_chain() {
                     )
                     .await
                     .expect("the second turn reads the file from history")
-                    .output;
+                    .output();
                 assert_verifier_response(&follow_up, PAGE_THREE_VERIFIER);
                 assert_history_preserves_single_file_id(&history, &file_id);
             })

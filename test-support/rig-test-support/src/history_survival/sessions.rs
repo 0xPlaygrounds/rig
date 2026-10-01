@@ -37,7 +37,7 @@ const CODE: &str = "amber-5521";
 
 fn tool() -> ToolDefinition {
     ToolDefinition {
-        name: "lookup_code".to_owned(),
+        name: rig_core::message::ToolName::new("lookup_code").expect("tool name"),
         description: "Return the code stored for a record. Always call it before answering."
             .to_owned(),
         parameters: serde_json::json!({
@@ -51,7 +51,7 @@ fn tool() -> ToolDefinition {
 fn request(cell: Cell, history: Vec<Message>) -> CompletionRequest {
     CompletionRequest {
         model: None,
-        chat_history: rig_core::NonEmpty::from_vec(history).expect("non-empty"),
+        chat_history: history,
         documents: vec![],
         tools: vec![tool()],
         temperature: None,
@@ -248,16 +248,16 @@ async fn turn_one(
         prompt,
         Message::Assistant {
             id: reply.message_id.clone(),
-            content: rig_core::NonEmpty::from_vec(reply.choice.clone()).expect("non-empty"),
+            content: reply.choice.clone(),
         },
         Message::User {
-            content: rig_core::NonEmpty::new(UserContent::tool_result(
+            content: vec![UserContent::tool_result(
                 call.id.clone(),
                 call.function.name.clone(),
-                rig_core::NonEmpty::new(ToolResultContent::text(format!(
+                vec![ToolResultContent::text(format!(
                     "record alpha: code {CODE}"
-                ))),
-            )),
+                ))],
+            )],
         },
     ];
     let persisted = serde_json::to_string(&history).expect("history serializes");
@@ -317,7 +317,7 @@ pub async fn run_memory(
                 if let MultiTurnStreamItem::FinalResponse(response) =
                     item.unwrap_or_else(|error| panic!("[{}] stream: {error}", cell.provider))
                 {
-                    output = Some(response.output);
+                    output = Some(response.output());
                 }
             }
             output.expect("a final response")
@@ -327,7 +327,7 @@ pub async fn run_memory(
                 .max_turns(3)
                 .await
                 .unwrap_or_else(|error| panic!("[{}] prompt: {error}", cell.provider))
-                .output
+                .output()
         };
         assert!(
             output.contains(crate::support::ALPHA_SIGNAL_OUTPUT),

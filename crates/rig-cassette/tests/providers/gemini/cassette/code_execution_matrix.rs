@@ -308,7 +308,7 @@ async fn blocking_agent_prompt_answers_after_code_execution() {
                 .expect("agent prompt must survive code-execution parts");
 
             assert!(
-                states(&answer.output, "1048576"),
+                states(&answer.output(), "1048576"),
                 "agent answer should carry the computed value, got {answer:?}"
             );
         },
@@ -925,7 +925,7 @@ async fn blocking_code_execution_replayed_in_chat_history() {
                 .await
                 .expect("first code-execution turn should convert");
             assert!(
-                states(&first.output, "169"),
+                states(&first.output(), "169"),
                 "first answer should carry 169, got {first:?}"
             );
 
@@ -933,14 +933,14 @@ async fn blocking_code_execution_replayed_in_chat_history() {
                 Message::user(
                     "Use the code execution tool to compute 13 times 13. State the number.",
                 ),
-                Message::assistant(first.output),
+                Message::assistant(first.output()),
             ];
             let second = agent
                 .chat("Now double that number and state the result.", &mut history)
                 .await
                 .expect("history replay after a code-execution turn should succeed");
             assert!(
-                states(&second.output, "338"),
+                states(&second.output(), "338"),
                 "second answer should carry the doubled value, got {second:?}"
             );
         },

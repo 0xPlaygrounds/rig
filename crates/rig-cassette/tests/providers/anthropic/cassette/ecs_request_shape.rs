@@ -73,7 +73,7 @@ async fn tool_choice_auto_effect_log() {
 
 /// `tool_choice(Required)`: every turn must be a tool call, and the run
 /// spec's tool choice applies to every turn, so the run never reaches a
-/// text answer: after `max_turns(2)` model calls it ends in `MaxTurnsError`
+/// text answer: after `max_turns(2)` model calls it ends in `MaxTurns`
 /// with `[Completion, Tool, Completion, Tool]` recorded. The corpus pins
 /// that this is what the engine does with a per-run `Required`.
 #[tokio::test]
@@ -128,7 +128,7 @@ async fn tool_choice_required_effect_log() {
 }
 
 /// `tool_choice(Specific(add))`: the named tool is forced on every turn,
-/// so, like `Required`, the run ends in `MaxTurnsError` after two forced
+/// so, like `Required`, the run ends in `MaxTurns` after two forced
 /// calls.
 #[tokio::test]
 async fn tool_choice_specific_effect_log() {
@@ -150,7 +150,9 @@ async fn tool_choice_specific_effect_log() {
                     .world_mut()
                     .entity_mut(ecs.agent)
                     .insert(ToolChoiceSpec(Some(ToolChoice::Specific {
-                        function_names: vec!["add".into()],
+                        function_names: vec![
+                            rig_core::message::ToolName::new("add").expect("tool name"),
+                        ],
                     })));
                 let history = vec![];
                 let run =

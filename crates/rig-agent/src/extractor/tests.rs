@@ -11,7 +11,8 @@ use crate::completion::{PromptError, StructuredOutputError, Usage};
 use crate::test_utils::{MockCompletionModel, MockTurn};
 use rig_core::message::{AssistantContent, ToolCall, ToolFunction};
 use rig_core::vector_store::{
-    VectorSearchRequest, VectorStoreError, VectorStoreIndex, request::Filter,
+    VectorSearchIdResult, VectorSearchRequest, VectorSearchResult, VectorStoreError,
+    VectorStoreIndex, request::Filter,
 };
 use serde::Deserialize;
 
@@ -27,7 +28,7 @@ fn usage(total_tokens: u64) -> Usage {
     }
 }
 
-fn extractor(model: MockCompletionModel, retries: u64) -> Extractor<Person> {
+fn extractor(model: MockCompletionModel, retries: usize) -> Extractor<Person> {
     ExtractorBuilder::new(model).retries(retries).build()
 }
 
@@ -149,20 +150,27 @@ impl VectorStoreIndex for ExtractorContextIndex {
     async fn top_n<T: DeserializeOwned + WasmCompatSend>(
         &self,
         req: VectorSearchRequest,
-    ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
+    ) -> Result<Vec<VectorSearchResult<T>>, VectorStoreError> {
         self.queries
             .lock()
             .expect("extractor query recorder")
             .push((req.query().to_string(), req.samples()));
         let value = serde_json::from_value(json!({ "question": "retrieved" }))?;
-        Ok(vec![(1.0, "extractor-context".to_string(), value)])
+        Ok(vec![VectorSearchResult {
+            score: 1.0,
+            id: "extractor-context".to_string(),
+            document: value,
+        }])
     }
 
     async fn top_n_ids(
         &self,
         _req: VectorSearchRequest,
-    ) -> Result<Vec<(f64, String)>, VectorStoreError> {
-        Ok(vec![(1.0, "extractor-context".to_string())])
+    ) -> Result<Vec<VectorSearchIdResult>, VectorStoreError> {
+        Ok(vec![VectorSearchIdResult {
+            score: 1.0,
+            id: "extractor-context".to_string(),
+        }])
     }
 }
 
@@ -342,10 +350,10 @@ async fn extractor_completion_call_stop_prevents_provider_io() {
 
     assert!(matches!(
         error,
-        StructuredOutputError::PromptError(err)
+        StructuredOutputError::Prompt(err)
             if matches!(
                 err,
-                PromptError::PromptCancelled { ref reason, .. } if reason == "extractor stopped"
+                PromptError::Cancelled { ref reason, .. } if reason == "extractor stopped"
             )
     ));
     assert_eq!(model.request_count(), 0);
@@ -455,10 +463,10 @@ async fn unexpected_tool_call_hook_can_stop_extraction() {
 
     assert!(matches!(
         error,
-        StructuredOutputError::PromptError(err)
+        StructuredOutputError::Prompt(err)
             if matches!(
                 err,
-                PromptError::PromptCancelled { ref reason, .. }
+                PromptError::Cancelled { ref reason, .. }
                     if reason == "unexpected extractor tool call"
             )
     ));
@@ -601,7 +609,7 @@ async fn exhausted_retries_return_error_from_final_attempt() {
 
     assert!(matches!(
         err,
-        StructuredOutputError::PromptError(err)
+        StructuredOutputError::Prompt(err)
             if matches!(
                 err,
                 PromptError::Report(ref report)

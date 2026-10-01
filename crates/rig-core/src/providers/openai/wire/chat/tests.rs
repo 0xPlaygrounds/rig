@@ -15,6 +15,7 @@ use super::*;
 use crate::completion::FinishReason;
 use crate::message::AssistantContent;
 use crate::providers::openai::wire::{Dialect, GROQ, OPENAI, OpenAIConfig};
+use crate::test_utils::json_body;
 use crate::test_utils::{MockStreamingClient, RecordingHttpClient};
 
 use super::super::tests::{recorded, recorded_json};
@@ -26,18 +27,7 @@ fn wire() -> Chat {
 }
 
 fn prompt(text: &str) -> CompletionRequest {
-    CompletionRequest {
-        model: None,
-        chat_history: crate::NonEmpty::new(crate::message::Message::user(text)),
-        documents: Vec::new(),
-        tools: Vec::new(),
-        temperature: Some(0.0),
-        max_tokens: Some(16),
-        tool_choice: None,
-        additional_params: None,
-        output_schema: None,
-        record_telemetry_content: false,
-    }
+    CompletionRequest::new(text).temperature(0.0).max_tokens(16)
 }
 
 /// Fold both recorded shapes of one turn and hand back the two responses.
@@ -177,11 +167,7 @@ fn the_mode_decides_whether_the_body_asks_for_a_stream() {
         let encoded = wire()
             .encode(prompt("Reply with exactly the single word: pong"), mode)
             .expect("the request encodes");
-        let request = &encoded.request;
-        let Body::Bytes(bytes) = request.body() else {
-            panic!("a chat request body is bytes");
-        };
-        serde_json::from_slice(bytes).expect("the body is JSON")
+        json_body(&encoded.request)
     }
 
     let unary = body(Mode::Unary);
@@ -321,11 +307,7 @@ fn the_output_cap_spelling_follows_the_model_family() {
             .chat(model)
             .encode(prompt("hi"), Mode::Unary)
             .expect("encodes");
-        let request = &encoded.request;
-        let Body::Bytes(bytes) = request.body() else {
-            panic!("a chat request body is bytes");
-        };
-        let body: serde_json::Value = serde_json::from_slice(bytes).expect("JSON");
+        let body = json_body(&encoded.request);
         if body.get("max_completion_tokens").is_some() {
             "max_completion_tokens"
         } else if body.get("max_tokens").is_some() {
@@ -346,11 +328,7 @@ fn the_output_cap_spelling_follows_the_model_family() {
         .chat("gpt-5.2")
         .encode(prompt("hi"), Mode::Unary)
         .expect("encodes");
-    let groq_request = &groq.request;
-    let Body::Bytes(bytes) = groq_request.body() else {
-        panic!("a chat request body is bytes");
-    };
-    let body: serde_json::Value = serde_json::from_slice(bytes).expect("JSON");
+    let body = json_body(&groq.request);
     assert!(body.get("max_tokens").is_some());
     assert!(body.get("max_completion_tokens").is_none());
 }
@@ -371,7 +349,7 @@ fn gpt_6_chat_tools_need_effort_none_or_the_responses_wire() {
     let with_tool = |params: Option<serde_json::Value>| {
         let mut request = prompt("look it up");
         request.tools = vec![ToolDefinition {
-            name: "lookup".to_owned(),
+            name: crate::message::ToolName::new("lookup").expect("tool name"),
             description: "Look something up.".to_owned(),
             parameters: serde_json::json!({"type": "object", "properties": {}}),
         }];
@@ -436,13 +414,13 @@ fn openrouter_refuses_a_document_that_is_only_a_file_id() {
 
     let with_file_id = || {
         let mut request = prompt("read this");
-        request.chat_history = crate::NonEmpty::new(Message::User {
-            content: crate::NonEmpty::new(UserContent::Document(Document {
+        request.chat_history = vec![Message::User {
+            content: vec![UserContent::Document(Document {
                 data: DocumentSourceKind::FileId("file-abc".to_owned()),
                 media_type: None,
                 additional_params: None,
-            })),
-        });
+            })],
+        }];
         request
     };
 
@@ -983,20 +961,12 @@ fn the_mistral_body_rebuilds_content_as_its_own_chunks() {
 
     let encode = |content: Vec<UserContent>| {
         let mut request = prompt("look at this");
-        request.chat_history = crate::NonEmpty::new(Message::User {
-            content: crate::NonEmpty::from_vec(content).expect("non-empty"),
-        });
+        request.chat_history = vec![Message::User { content }];
         OpenAIConfig::new("k")
             .with_dialect(&MISTRAL)
             .chat("mistral-small-latest")
             .encode(request, Mode::Unary)
-            .map(|encoded| {
-                let http_request = &encoded.request;
-                let Body::Bytes(bytes) = http_request.body() else {
-                    panic!("bytes")
-                };
-                serde_json::from_slice::<serde_json::Value>(bytes).expect("JSON")
-            })
+            .map(|encoded| json_body(&encoded.request))
     };
 
     // Text-only content keeps the plain-string form it always took.
@@ -1056,20 +1026,16 @@ fn the_mistral_body_rebuilds_content_as_its_own_chunks() {
 
     // And no other dialect rebuilds content this way.
     let mut request = prompt("describe");
-    request.chat_history = crate::NonEmpty::new(Message::User {
-        content: crate::NonEmpty::new(UserContent::Image(Image {
+    request.chat_history = vec![Message::User {
+        content: vec![UserContent::Image(Image {
             data: crate::message::DocumentSourceKind::Url("https://x.invalid/a.png".to_owned()),
             media_type: None,
             detail: None,
             additional_params: None,
-        })),
-    });
+        })],
+    }];
     let openai = wire().encode(request, Mode::Unary).expect("encodes");
-    let http_request = &openai.request;
-    let Body::Bytes(bytes) = http_request.body() else {
-        panic!("bytes")
-    };
-    let body: serde_json::Value = serde_json::from_slice(bytes).expect("JSON");
+    let body = json_body(&openai.request);
     assert_eq!(body["messages"][0]["content"][0]["type"], "image_url");
     assert!(
         body["messages"][0]["content"][0]["image_url"]["url"].is_string(),
@@ -1088,19 +1054,17 @@ fn groq_replays_reasoning_turns_without_reasoning_content() {
 
     let history = |issuer: &'static str| {
         let mut request = prompt("and then?");
-        request.chat_history = crate::NonEmpty::with_rest(
+        request.chat_history = vec![
             Message::user("think first"),
-            [
-                Message::Assistant {
-                    id: None,
-                    content: crate::NonEmpty::with_rest(
-                        AssistantContent::Reasoning(Reasoning::new("private chain").sealed(issuer)),
-                        [AssistantContent::text("visible answer")],
-                    ),
-                },
-                Message::user("and then?"),
-            ],
-        );
+            Message::Assistant {
+                id: None,
+                content: vec![
+                    AssistantContent::Reasoning(Reasoning::new("private chain").sealed(issuer)),
+                    AssistantContent::text("visible answer"),
+                ],
+            },
+            Message::user("and then?"),
+        ];
         request
     };
     let assistant = |dialect: &Dialect| {
@@ -1109,11 +1073,7 @@ fn groq_replays_reasoning_turns_without_reasoning_content() {
             .chat("m")
             .encode(history(dialect.name), Mode::Unary)
             .expect("encodes");
-        let request = &encoded.request;
-        let Body::Bytes(bytes) = request.body() else {
-            panic!("a chat request body is bytes");
-        };
-        let body: serde_json::Value = serde_json::from_slice(bytes).expect("JSON");
+        let body = json_body(&encoded.request);
         body["messages"][1].clone()
     };
 

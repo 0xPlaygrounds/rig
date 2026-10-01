@@ -7,32 +7,23 @@ fn request_with(preamble: Option<&str>, tools: bool) -> GenerateContentRequest {
     let mut tool_defs = Vec::new();
     if tools {
         tool_defs.push(crate::completion::ToolDefinition {
-            name: "probe".to_owned(),
+            name: crate::message::ToolName::new("probe").expect("tool name"),
             description: "probe".to_owned(),
             parameters: serde_json::json!({"type": "object", "properties": {}}),
         });
     }
-    super::create_request_body(CompletionRequest {
-        chat_history: crate::NonEmpty::from_vec(
+    super::create_request_body(
+        CompletionRequest::from(
             preamble
                 .map(Message::system)
                 .into_iter()
                 .chain([Message::User {
-                    content: crate::NonEmpty::new(UserContent::text("hi")),
+                    content: vec![UserContent::text("hi")],
                 }])
                 .collect::<Vec<_>>(),
         )
-        .expect("non-empty"),
-        documents: vec![],
-        tools: tool_defs,
-        temperature: None,
-        max_tokens: None,
-        tool_choice: None,
-        additional_params: None,
-        model: None,
-        output_schema: None,
-        record_telemetry_content: false,
-    })
+        .tools(tool_defs),
+    )
     .expect("request should build")
 }
 
@@ -191,27 +182,18 @@ fn build_with(
     preamble: Option<&str>,
     additional: Option<serde_json::Value>,
 ) -> Result<GenerateContentRequest, EncodeError> {
-    super::create_request_body(CompletionRequest {
-        chat_history: crate::NonEmpty::from_vec(
+    super::create_request_body(
+        CompletionRequest::from(
             preamble
                 .map(Message::system)
                 .into_iter()
                 .chain([Message::User {
-                    content: crate::NonEmpty::new(UserContent::text("hi")),
+                    content: vec![UserContent::text("hi")],
                 }])
                 .collect::<Vec<_>>(),
         )
-        .expect("non-empty"),
-        documents: vec![],
-        tools: vec![],
-        temperature: None,
-        max_tokens: None,
-        tool_choice: None,
-        additional_params: additional,
-        model: None,
-        output_schema: None,
-        record_telemetry_content: false,
-    })
+        .additional_params(additional),
+    )
 }
 
 /// The route a caller reaches without ever touching the typed API.
@@ -298,20 +280,12 @@ fn a_non_string_handle_in_additional_params_is_refused() {
 /// typed field.
 #[test]
 fn unrelated_additional_params_coexist_with_the_typed_field() {
-    let mut request = super::create_request_body(CompletionRequest {
-        chat_history: crate::NonEmpty::new(Message::User {
-            content: crate::NonEmpty::new(UserContent::text("hi")),
-        }),
-        documents: vec![],
-        tools: vec![],
-        temperature: None,
-        max_tokens: None,
-        tool_choice: None,
-        additional_params: Some(serde_json::json!({"topK": 5})),
-        model: None,
-        output_schema: None,
-        record_telemetry_content: false,
-    })
+    let mut request = super::create_request_body(
+        CompletionRequest::new(Message::User {
+            content: vec![UserContent::text("hi")],
+        })
+        .additional_params(serde_json::json!({"topK": 5})),
+    )
     .expect("request should build");
     request
         .with_cached_content("cachedContents/typed")
@@ -384,22 +358,15 @@ fn setting_a_field_twice_is_refused_rather_than_resolved_by_serialization_order(
         "{message}"
     );
 
-    let message = super::create_request_body(CompletionRequest {
-        chat_history: crate::NonEmpty::new(Message::User {
-            content: crate::NonEmpty::new(UserContent::text("hi")),
-        }),
-        documents: vec![],
-        tools: vec![],
-        temperature: None,
-        max_tokens: None,
-        tool_choice: Some(crate::message::ToolChoice::Auto),
-        additional_params: Some(serde_json::json!({
+    let message = super::create_request_body(
+        CompletionRequest::new(Message::User {
+            content: vec![UserContent::text("hi")],
+        })
+        .tool_choice(crate::message::ToolChoice::Auto)
+        .additional_params(serde_json::json!({
             "toolConfig": {"functionCallingConfig": {"mode": "ANY"}}
         })),
-        model: None,
-        output_schema: None,
-        record_telemetry_content: false,
-    })
+    )
     .expect_err("a tool_choice and a smuggled toolConfig are two answers")
     .to_string();
     assert!(message.contains("set the tool choice twice"), "{message}");

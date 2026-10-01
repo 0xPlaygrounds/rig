@@ -28,11 +28,11 @@ use futures::StreamExt;
 use rig::agent::{
     AgentHook, CompletionCallAction, CompletionCallEvent, DispatchAction, DispatchEvent,
     HookContext, ModelTurnAction, ModelTurnFinished, MultiTurnStreamItem, OutcomeAction,
-    OutcomeEvent, RequestPatch, StreamingError,
+    OutcomeEvent, RequestPatch,
 };
 use rig::completion::Document;
 use rig::providers::gemini;
-use rig::streaming::{StreamEvent, StreamedUserContent};
+use rig::streaming::StreamEvent;
 use rig::tool::Tool;
 
 use super::super::support::with_gemini_cassette;
@@ -278,7 +278,7 @@ async fn lifecycle_and_scratchpad_thread_across_multi_turn_blocking() {
                 .await
                 .expect("dependent multi-turn tool run should succeed");
 
-            assert_nonempty_response(&response.output);
+            assert_nonempty_response(&response.output());
 
             // --- HookContext identity is stable and correct across the run ---
             assert_eq!(
@@ -409,7 +409,7 @@ async fn request_patch_injects_context_and_narrows_active_tools_blocking() {
             // extra_context injection reached the model: the answer uses the fact
             // that appears only in the injected document (no model input).
             assert!(
-                response.output.contains(VAULT_CODE),
+                response.output().contains(VAULT_CODE),
                 "the extra_context fact must reach the model; answer: {response:?}"
             );
             // active_tools narrowing is proven by the downstream negative: the
@@ -496,11 +496,11 @@ async fn chained_arg_rewrite_then_result_redaction_blocking() {
             // Paired positive + negative: the redacted marker reached the model,
             // and the raw executed result (15) did not.
             assert!(
-                response.output.contains(REDACTION_MARKER),
+                response.output().contains(REDACTION_MARKER),
                 "the redaction marker must reach the model; answer: {response:?}"
             );
             assert!(
-                !response.output.contains("15"),
+                !response.output().contains("15"),
                 "the raw tool result must not reach the model; answer: {response:?}"
             );
         },
@@ -559,17 +559,14 @@ async fn streaming_lifecycle_ordering_and_context_streaming_flag() {
                     Ok(MultiTurnStreamItem::ToolExecutionCommitted { .. }) => {
                         events.push("tool_execution_committed");
                     }
-                    Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult {
-                        ..
-                    })) => events.push("tool_result"),
+                    Ok(MultiTurnStreamItem::ToolResult { .. }) => events.push("tool_result"),
                     Ok(MultiTurnStreamItem::FinalResponse(response)) => {
                         saw_final = true;
                         final_text = response.output().to_owned();
                         events.push("final_response");
                     }
                     Ok(_) => {}
-                    Err(StreamingError::Prompt(error)) => panic!("stream errored: {error:?}"),
-                    Err(other) => panic!("stream errored: {other:?}"),
+                    Err(error) => panic!("stream errored: {error:?}"),
                 }
             }
 
@@ -661,7 +658,7 @@ async fn multi_tool_workflow_pairs_calls_and_results_per_turn_blocking() {
                 .await
                 .expect("independent multi-tool run should succeed");
 
-            assert_nonempty_response(&response.output);
+            assert_nonempty_response(&response.output());
             assert!(
                 add_calls.count() >= 1 && subtract_calls.count() >= 1,
                 "both independent tools should run"
@@ -740,7 +737,7 @@ async fn skip_in_multi_tool_workflow_leaves_tool_unexecuted_blocking() {
                 .await
                 .expect("a skipped tool must not fail the run");
 
-            assert_nonempty_response(&response.output);
+            assert_nonempty_response(&response.output());
             // Zero-execution invariant: the skipped tool's body never ran.
             assert_eq!(
                 subtract_calls.count(),

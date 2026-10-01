@@ -65,9 +65,12 @@ mod cassette {
     mod image_params_matrix;
     mod lifecycle_matrix;
     mod long_run_caching;
+    mod long_run_features;
+    mod long_run_workloads;
     mod max_completion_tokens_matrix;
     mod models;
     mod multi_extract;
+    mod openai_compatible_dual_reasoning_keys;
     mod openai_compatible_reasoning_content;
     mod permission_control;
     mod portability_matrix_chat;
@@ -109,6 +112,7 @@ mod cassette {
     mod typed_prompt_tools;
     mod url_pdf_document;
     mod vllm;
+    mod web_search_citations;
     mod websocket_error_identity_matrix;
 }
 

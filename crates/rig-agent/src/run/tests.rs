@@ -260,7 +260,7 @@ fn tool_result(id: &str, output: &str) -> UserContent {
     UserContent::tool_result(
         rig_core::message::CallId::from_wire(id),
         rig_core::message::ToolName::new("add").expect("tool name"),
-        rig_core::NonEmpty::new(ToolResultContent::text(output)),
+        vec![ToolResultContent::text(output)],
     )
 }
 
@@ -321,8 +321,8 @@ fn text_only_run_completes_in_one_turn() {
     assert!(!suppressed);
 
     let response = expect_done(&mut run);
-    assert_eq!(response.output, "hi there");
-    let messages = response.messages.expect("messages should be recorded");
+    assert_eq!(response.output(), "hi there");
+    let messages = response.messages;
     assert_eq!(messages.len(), 2);
     assert!(run.is_done());
 }
@@ -344,13 +344,7 @@ fn input_history_prefixes_request_history() {
     );
     let response = expect_done(&mut run);
     // Returned messages exclude the input history.
-    assert_eq!(
-        response
-            .messages
-            .expect("messages should be recorded")
-            .len(),
-        2
-    );
+    assert_eq!(response.messages.len(), 2);
 }
 
 #[test]
@@ -381,10 +375,10 @@ fn repeated_model_turn_reuses_prompt_without_recording_rejected_response() {
             .expect("second response"),
     );
     let response = expect_done(&mut run);
-    assert_eq!(response.output, "accepted");
+    assert_eq!(response.output(), "accepted");
     assert_eq!(response.usage, first_usage + second_usage);
     assert_eq!(response.completion_calls.len(), 2);
-    let messages = response.messages.expect("response history");
+    let messages = response.messages;
     assert_eq!(messages.len(), 2);
     assert!(!format!("{messages:?}").contains("rejected"));
 }
@@ -423,10 +417,7 @@ fn repeated_model_turn_consumes_existing_max_turns_budget() {
         .expect("state transition itself should succeed");
 
     let err = run.next_step().expect_err("second call must exceed budget");
-    assert!(matches!(
-        err,
-        PromptError::MaxTurnsError { max_turns: 1, .. }
-    ));
+    assert!(matches!(err, PromptError::MaxTurns { max_turns: 1, .. }));
     assert_eq!(run.completion_calls().len(), 1);
 }
 
@@ -443,12 +434,12 @@ fn model_turn_retry_rejects_tool_calls_without_advancing_to_execution() {
         .retry_model_turn(RetryRequest::Feedback("do not call tools".to_string()))
         .expect_err("tool-bearing retries must fail closed");
 
-    let PromptError::PromptCancelled {
+    let PromptError::Cancelled {
         chat_history,
         reason,
     } = err
     else {
-        panic!("tool-bearing retry should return PromptCancelled");
+        panic!("tool-bearing retry should return Cancelled");
     };
     assert!(reason.contains("tool-bearing model turns"));
     assert!(reason.contains("tool-call hooks"));
@@ -487,20 +478,14 @@ fn tool_roundtrip_threads_history_and_usage() {
     );
 
     let response = expect_done(&mut run);
-    assert_eq!(response.output, "the answer is 2");
+    assert_eq!(response.output(), "the answer is 2");
     assert_eq!(response.usage, usage(30, 12));
     assert_eq!(response.completion_calls.len(), 2);
     assert_eq!(response.completion_calls[0].call_index, 0);
     assert_eq!(response.completion_calls[0].usage, usage(10, 5));
     assert_eq!(response.completion_calls[1].usage, usage(20, 7));
     // prompt, assistant tool call, tool result, final assistant text
-    assert_eq!(
-        response
-            .messages
-            .expect("messages should be recorded")
-            .len(),
-        4
-    );
+    assert_eq!(response.messages.len(), 4);
 }
 
 #[test]
@@ -557,10 +542,7 @@ fn max_turns_zero_rejects_initial_model_call() {
     let err = run
         .next_step()
         .expect_err("zero budget should emit no call");
-    assert!(matches!(
-        err,
-        PromptError::MaxTurnsError { max_turns: 0, .. }
-    ));
+    assert!(matches!(err, PromptError::MaxTurns { max_turns: 0, .. }));
     assert_eq!(run.turn(), 0);
 }
 
@@ -581,10 +563,7 @@ fn new_implicitly_allows_one_model_call_and_rejects_tool_continuation() {
     let err = run
         .next_step()
         .expect_err("second model call should exceed budget");
-    assert!(matches!(
-        err,
-        PromptError::MaxTurnsError { max_turns: 1, .. }
-    ));
+    assert!(matches!(err, PromptError::MaxTurns { max_turns: 1, .. }));
     assert_eq!(run.turn(), 1);
 }
 
@@ -607,10 +586,7 @@ fn max_turns_n_allows_exactly_n_model_calls() {
     let err = run
         .next_step()
         .expect_err("fourth model call should exceed budget");
-    assert!(matches!(
-        err,
-        PromptError::MaxTurnsError { max_turns: 3, .. }
-    ));
+    assert!(matches!(err, PromptError::MaxTurns { max_turns: 3, .. }));
     assert_eq!(run.turn(), 3);
 }
 
@@ -652,7 +628,7 @@ fn invalid_tool_call_stop_leaves_run_terminal() {
         .expect_err("stop should cancel the run");
     assert!(matches!(
         err,
-        PromptError::PromptCancelled { reason, .. } if reason == "operator stop"
+        PromptError::Cancelled { reason, .. } if reason == "operator stop"
     ));
 
     let err = run
@@ -660,7 +636,7 @@ fn invalid_tool_call_stop_leaves_run_terminal() {
         .expect_err("a stopped run must remain terminal");
     assert!(matches!(
         err,
-        PromptError::PromptCancelled { reason, .. }
+        PromptError::Cancelled { reason, .. }
             if reason.contains("next_step called after the run already failed")
     ));
 }
@@ -688,7 +664,7 @@ fn invalid_tool_call_retry_rolls_back_with_feedback() {
     assert!(matches!(
         prompt,
         Message::User { ref content }
-            if matches!(content.first(), UserContent::ToolResult(_))
+            if matches!(content.first(), Some(UserContent::ToolResult(_)))
     ));
 
     // Budget of one: a second retry fails with UnknownToolCall.
@@ -722,10 +698,7 @@ fn invalid_tool_call_retry_cannot_emit_call_past_total_budget() {
     let err = run
         .next_step()
         .expect_err("retry must not emit a second model call");
-    assert!(matches!(
-        err,
-        PromptError::MaxTurnsError { max_turns: 1, .. }
-    ));
+    assert!(matches!(err, PromptError::MaxTurns { max_turns: 1, .. }));
     assert_eq!(run.turn(), 1);
 }
 
@@ -898,7 +871,7 @@ fn empty_tool_results_cancel_the_run() {
         .expect_err("empty results should cancel");
     assert!(matches!(
         err,
-        PromptError::PromptCancelled { reason, .. }
+        PromptError::Cancelled { reason, .. }
             if reason.contains("tool execution produced no tool results")
     ));
 }
@@ -910,19 +883,19 @@ fn out_of_protocol_calls_are_rejected_without_corrupting_state() {
     let err = run
         .tool_results(vec![tool_result("call_1", "x")])
         .expect_err("no CallTools pending");
-    assert!(matches!(err, PromptError::PromptCancelled { .. }));
+    assert!(matches!(err, PromptError::Cancelled { .. }));
 
     // The run is still drivable after a rejected out-of-protocol call.
     expect_call_model(&mut run);
     let err = run
         .next_step()
         .expect_err("model response is pending, next_step must be rejected");
-    assert!(matches!(err, PromptError::PromptCancelled { .. }));
+    assert!(matches!(err, PromptError::Cancelled { .. }));
     expect_continue(
         run.model_response(text_turn("hi"))
             .expect("model_response should still succeed"),
     );
-    assert_eq!(expect_done(&mut run).output, "hi");
+    assert_eq!(expect_done(&mut run).output(), "hi");
 }
 
 #[test]
@@ -940,7 +913,7 @@ fn model_response_rejected_after_streamed_completion_call_record() {
     let err = run
         .model_response(text_turn("hi"))
         .expect_err("mixed streamed/non-streamed ingestion must be rejected");
-    assert!(matches!(err, PromptError::PromptCancelled { .. }));
+    assert!(matches!(err, PromptError::Cancelled { .. }));
     // No duplicate completion call was appended.
     assert_eq!(run.completion_calls().len(), 1);
 }
@@ -953,8 +926,8 @@ fn done_step_is_idempotent() {
         run.model_response(text_turn("hi"))
             .expect("model_response should succeed"),
     );
-    assert_eq!(expect_done(&mut run).output, "hi");
-    assert_eq!(expect_done(&mut run).output, "hi");
+    assert_eq!(expect_done(&mut run).output(), "hi");
+    assert_eq!(expect_done(&mut run).output(), "hi");
 }
 
 #[test]
@@ -988,7 +961,7 @@ fn serialized_run_alone_carries_pending_tool_calls() {
             UserContent::tool_result(
                 call.tool_call.id.clone(),
                 call.tool_call.function.name.clone(),
-                rig_core::NonEmpty::new(ToolResultContent::text("2")),
+                vec![ToolResultContent::text("2")],
             )
         })
         .collect::<Vec<_>>();
@@ -1001,7 +974,7 @@ fn serialized_run_alone_carries_pending_tool_calls() {
             .model_response(text_turn("done"))
             .expect("model_response should succeed"),
     );
-    assert_eq!(expect_done(&mut resumed).output, "done");
+    assert_eq!(expect_done(&mut resumed).output(), "done");
 }
 
 #[test]
@@ -1022,7 +995,7 @@ fn tool_results_validates_against_pending_calls() {
     let err = run
         .tool_results(vec![tool_result("call_unknown", "2")])
         .expect_err("unknown tool call id must be rejected");
-    assert!(matches!(err, PromptError::PromptCancelled { .. }));
+    assert!(matches!(err, PromptError::Cancelled { .. }));
     run.tool_results(vec![tool_result("call_1", "2")])
         .expect("valid results should still be accepted after a rejection");
 
@@ -1031,14 +1004,14 @@ fn tool_results_validates_against_pending_calls() {
     let err = run
         .tool_results(vec![tool_result("call_1", "2"), tool_result("call_1", "3")])
         .expect_err("answering one call twice must be rejected");
-    assert!(matches!(err, PromptError::PromptCancelled { .. }));
+    assert!(matches!(err, PromptError::Cancelled { .. }));
 
     // Non-tool-result content is rejected.
     let mut run = drive_to_pending_tools();
     let err = run
         .tool_results(vec![UserContent::text("not a tool result")])
         .expect_err("non-tool-result content must be rejected");
-    assert!(matches!(err, PromptError::PromptCancelled { .. }));
+    assert!(matches!(err, PromptError::Cancelled { .. }));
 }
 
 #[test]
@@ -1102,10 +1075,7 @@ fn serde_round_trip_at_exhausted_budget_preserves_boundary() {
     let err = restored
         .next_step()
         .expect_err("restored run must not emit a second model call");
-    assert!(matches!(
-        err,
-        PromptError::MaxTurnsError { max_turns: 1, .. }
-    ));
+    assert!(matches!(err, PromptError::MaxTurns { max_turns: 1, .. }));
     assert_eq!(restored.turn(), 1);
 }
 
@@ -1147,7 +1117,7 @@ fn serde_round_trip_mid_run_resumes_identically() {
         serde_json::from_str(&serialized).expect("mid-run state should deserialize");
     let resumed = finish(restored);
 
-    assert_eq!(resumed.output, uninterrupted.output);
+    assert_eq!(resumed.output(), uninterrupted.output());
     assert_eq!(resumed.usage, uninterrupted.usage);
     assert_eq!(resumed.completion_calls, uninterrupted.completion_calls);
     // Direct value comparison: with `additional_params` a named field,
@@ -1260,17 +1230,58 @@ fn output_tool_call_finalizes_run_with_arguments() {
 
     // The output tool is not executed; its arguments become the run output.
     let response = expect_done(&mut run);
-    assert_eq!(response.output, r#"{"x":1}"#);
+    assert_eq!(response.output(), r#"{"x":1}"#);
     assert!(run.is_done());
 
     // The finalizing turn is persisted as assistant text, not as the raw
     // output-tool call, so the saved history has no dangling tool_use.
-    let messages = response.messages.expect("messages should be recorded");
+    let messages = response.messages;
     assert_no_orphan_tool_use(&messages);
     assert!(matches!(
         messages.last(),
         Some(Message::Assistant { content, .. })
             if assistant_text_from_choice(content) == r#"{"x":1}"#
+    ));
+}
+
+#[test]
+fn output_tool_response_content_is_the_output_while_history_keeps_prose() {
+    let mut run = AgentRun::new("summarize").with_output_tool_name("final_result");
+
+    expect_call_model(&mut run);
+    let turn = ModelTurn::new(
+        None,
+        vec![
+            AssistantContent::text("Here is the summary:"),
+            tool_call("call_1", "final_result"),
+        ],
+        Usage::default(),
+        tool_names(&["add"]),
+        tool_names(&["add", "final_result"]),
+        hand_raw(),
+    );
+    expect_continue(
+        run.model_response(turn)
+            .expect("model_response should succeed"),
+    );
+
+    let response = expect_done(&mut run);
+    assert_eq!(response.output(), r#"{"x":1}"#);
+    assert_eq!(
+        assistant_text_from_choice(response.content()),
+        response.output()
+    );
+    assert!(
+        !response
+            .content()
+            .iter()
+            .any(|item| matches!(item, AssistantContent::ToolCall(_))),
+        "the output-tool call is replaced by its output"
+    );
+    assert!(matches!(
+        response.messages.last(),
+        Some(Message::Assistant { content, .. })
+            if assistant_text_from_choice(content) == r#"Here is the summary:{"x":1}"#
     ));
 }
 
@@ -1290,13 +1301,13 @@ fn scalar_output_tool_call_is_serialized_as_reparseable_json() {
 
     let response = expect_done(&mut run);
     assert_eq!(
-        serde_json::from_str::<serde_json::Value>(&response.output)
+        serde_json::from_str::<serde_json::Value>(&response.output())
             .expect("scalar output must remain valid JSON"),
         json!("complete")
     );
-    assert_eq!(response.output, r#""complete""#);
+    assert_eq!(response.output(), r#""complete""#);
 
-    let messages = response.messages.expect("messages should be recorded");
+    let messages = response.messages;
     assert_no_orphan_tool_use(&messages);
     assert!(matches!(
         messages.last(),
@@ -1331,12 +1342,12 @@ fn output_tool_call_wins_over_sibling_real_tool_calls() {
     );
 
     let response = expect_done(&mut run);
-    assert_eq!(response.output, r#"{"x":1}"#);
+    assert_eq!(response.output(), r#"{"x":1}"#);
     assert!(run.is_done());
 
     // Both the sibling `add` call and the output-tool call are dropped from
     // the persisted assistant message, leaving no unanswered tool_use.
-    let messages = response.messages.expect("messages should be recorded");
+    let messages = response.messages;
     assert_no_orphan_tool_use(&messages);
     assert!(
         messages.iter().all(|message| match message {
@@ -1440,7 +1451,7 @@ fn tool_mode_accepts_valid_json_text_without_reprompting() {
     );
 
     let response = expect_done(&mut run);
-    assert_eq!(response.output, r#"{"summary":"all good"}"#);
+    assert_eq!(response.output(), r#"{"summary":"all good"}"#);
     assert!(run.is_done());
 }
 
@@ -1458,7 +1469,7 @@ fn tool_mode_finalizes_best_effort_when_model_call_budget_exhausted() {
     );
 
     let response = expect_done(&mut run);
-    assert_eq!(response.output, "invalid output");
+    assert_eq!(response.output(), "invalid output");
     assert_eq!(run.turn(), 1);
 }
 
@@ -1479,8 +1490,8 @@ fn tool_mode_finalizes_best_effort_when_output_retry_budget_exhausted() {
     );
 
     let response = expect_done(&mut run);
-    assert_eq!(response.output, r#"{"x":1}"#);
-    let messages = response.messages.expect("messages should be recorded");
+    assert_eq!(response.output(), r#"{"x":1}"#);
+    let messages = response.messages;
     assert_no_orphan_tool_use(&messages);
 }
 
@@ -1586,7 +1597,7 @@ fn durable_human_in_the_loop_approval_survives_serialize_resume() {
             .expect("model_response 2"),
     );
     let response = expect_done(&mut resumed);
-    assert_eq!(response.output, "done");
+    assert_eq!(response.output(), "done");
 }
 
 // ---------------------------------------------------------------------
@@ -1764,10 +1775,7 @@ fn from_spec_matches_the_builder_chain() {
 }
 
 fn assistant(content: Vec<AssistantContent>) -> Message {
-    Message::Assistant {
-        id: None,
-        content: rig_core::NonEmpty::from_vec(content).expect("non-empty"),
-    }
+    Message::Assistant { id: None, content }
 }
 
 #[test]
@@ -1832,5 +1840,21 @@ fn a_truncated_reasoning_only_turn_commits_nothing() {
             .all(|message| !matches!(message, Message::Assistant { .. })),
         "the reasoning-only turn is not history: {:?}",
         run.new_messages
+    );
+}
+
+/// An empty choice, or a retry with no tool calls to answer, builds no
+/// message, so nothing empty is appended to history.
+#[test]
+fn transcript_helpers_build_no_message_from_nothing() {
+    assert_eq!(transcript::assistant_message(None, Vec::new()), None);
+    assert_eq!(transcript::assistant_turn(None, Vec::new()), None);
+    assert_eq!(
+        transcript::invalid_tool_retry_user_message(
+            &[AssistantContent::text("no calls here")],
+            &rig_core::message::CallId::from_wire("call_1"),
+            "feedback",
+        ),
+        None
     );
 }

@@ -5,8 +5,15 @@
 #![allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 
 use rig_core::{
-    completion::message::{Message, ToolChoice, UserContent},
+    completion::message::{AssistantContent, Message, ToolChoice, UserContent},
     effect::{EffectKind, FamilyDescriptor, HandlerDescriptor, HandlerKey},
+};
+
+use rig_core::{
+    structured_output::{
+        OUTPUT_TOOL_NAME, output_tool_callable, reprompt_missing_fields, reprompt_text_answer,
+    },
+    transcript::is_empty_assistant_turn,
 };
 
 use super::*;
@@ -39,8 +46,8 @@ fn system_content(request: &serde_json::Value) -> Option<String> {
 #[test]
 fn the_output_tool_is_the_goldens() {
     let tool = request("anthropic_output_tool_unary", 0)["tools"][0].clone();
-    assert_eq!(tool["name"], text::OUTPUT_TOOL_NAME);
-    assert_eq!(tool["description"], text::OUTPUT_TOOL_DESCRIPTION);
+    assert_eq!(tool["name"], OUTPUT_TOOL_NAME);
+    assert_eq!(tool["description"], OUTPUT_TOOL_DESCRIPTION);
 }
 
 /// CONTRACT §strings: the tool-mode augmentation after a blank line
@@ -51,8 +58,8 @@ fn the_tool_augmentation_is_the_goldens() {
         system_content(&request("anthropic_output_tool_unary", 0)).expect("a system message");
     let expected = format!(
         "You are a concise assistant. Answer directly.{}{}",
-        text::AUGMENTATION_SEPARATOR,
-        text::output_tool_augmentation("final_result")
+        AUGMENTATION_SEPARATOR,
+        output_tool_augmentation("final_result")
     );
     assert_eq!(system, expected);
 }
@@ -74,8 +81,8 @@ fn the_prompted_augmentation_is_the_goldens() {
     });
     let expected = format!(
         "You are a concise assistant. Answer directly.{}{}",
-        text::AUGMENTATION_SEPARATOR,
-        text::prompted_augmentation(&to_canonical_string(&schema))
+        AUGMENTATION_SEPARATOR,
+        prompted_augmentation(&to_canonical_string(&schema))
     );
     assert_eq!(system, expected);
 }
@@ -88,7 +95,7 @@ fn the_text_reprompt_is_the_goldens() {
     assert_eq!(last["role"], "user");
     assert_eq!(
         last["content"][0]["text"],
-        text::reprompt_text_answer("final_result")
+        reprompt_text_answer("final_result")
     );
 }
 
@@ -137,31 +144,44 @@ fn output_resolution_follows_the_goldens() {
     ));
     assert!(output_tool_callable(
         Some(&ToolChoice::Specific {
-            function_names: vec!["final_result".to_owned()]
+            function_names: vec![
+                rig_core::message::ToolName::new("final_result").expect("tool name")
+            ]
         }),
         "final_result"
     ));
-}
-
-/// CONTRACT §output: the output tool's name is numbered from 1 on a
-/// collision (`rig_agent::run::prepare` docs; no golden collides).
-#[test]
-fn the_output_tool_name_numbers_from_one() {
-    assert_eq!(output_tool_name(&["add"]), "final_result");
-    assert_eq!(output_tool_name(&["final_result"]), "final_result_1");
-    assert_eq!(
-        output_tool_name(&["final_result", "final_result_1"]),
-        "final_result_2"
-    );
 }
 
 /// CONTRACT §history: an empty turn is no history
 /// (`anthropic_request_shape_tool_choice_none` `/records/0/outcome`).
 #[test]
 fn an_empty_turn_is_not_history() {
-    assert!(turn_is_empty(&[]));
-    assert!(turn_is_empty(&[AssistantContent::text("")]));
-    assert!(!turn_is_empty(&[AssistantContent::text("x")]));
+    assert!(is_empty_assistant_turn(&[]));
+    assert!(is_empty_assistant_turn(&[AssistantContent::text("")]));
+    assert!(!is_empty_assistant_turn(&[AssistantContent::text("x")]));
+}
+
+/// A graph with no preamble and no utterance has no conversation to send.
+#[test]
+fn a_graph_without_a_conversation_does_not_fold() {
+    let graph = RequestGraph {
+        preamble: None,
+        utterances: Vec::new(),
+        documents: Vec::new(),
+        tools: Vec::new(),
+        temperature: None,
+        max_tokens: None,
+        additional_params: None,
+        tool_choice: None,
+        output: OutputKind::Native,
+        schema: None,
+        output_tool: None,
+        output_tool_config: None,
+    };
+    assert!(matches!(
+        fold_request(&graph),
+        Err(crate::agent::content::parts::ContentError::Missing)
+    ));
 }
 
 /// CONTRACT §derivation: the fold over the smoke golden's graph is the
@@ -170,9 +190,9 @@ fn an_empty_turn_is_not_history() {
 #[test]
 fn the_fold_reproduces_the_smoke_request() {
     let prompt = MessageParts::User {
-        content: rig_core::NonEmpty::new(UserContent::text(
+        content: vec![UserContent::text(
             "In one or two sentences, explain what Rust programming language is and why memory safety matters.",
-        )),
+        )],
     };
     let graph = RequestGraph {
         preamble: Some("You are a concise assistant. Answer directly."),
@@ -203,7 +223,7 @@ fn documents_and_tools_fold_from_the_graph() {
     let documents: Vec<Document> =
         serde_json::from_value(golden["documents"].clone()).expect("serde");
     let prompt = MessageParts::User {
-        content: rig_core::NonEmpty::new(UserContent::text("What does \"glarb-glarb\" mean?")),
+        content: vec![UserContent::text("What does \"glarb-glarb\" mean?")],
     };
     let graph = RequestGraph {
         preamble: Some("You are a concise assistant. Answer directly."),
@@ -240,9 +260,9 @@ fn documents_and_tools_fold_from_the_graph() {
         layers: Vec::new(),
     };
     let prompt = MessageParts::User {
-        content: rig_core::NonEmpty::new(UserContent::text(
+        content: vec![UserContent::text(
             "What is 17 + 25? Reply with just the number.",
-        )),
+        )],
     };
     let graph = RequestGraph {
         preamble: Some("You are a concise assistant. Answer directly."),
@@ -274,7 +294,7 @@ fn message_parts_round_trip_but_never_a_system_message() {
         })
         .is_none()
     );
-    let user = user_text("hi");
+    let user = Message::user("hi");
     let parts = MessageParts::from_message(&user).expect("a user message");
     assert_eq!(
         serde_json::to_value(parts.to_message()).expect("serde"),

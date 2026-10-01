@@ -264,7 +264,7 @@ async fn model_error_streamed_effect_log() {
 
 /// The runner's budget exhausted with a tool call pending: one model call
 /// allowed, the tool runs, the next call is refused by the budget. Two
-/// records, then `MaxTurnsError`. Its own recording: the run makes one
+/// records, then `MaxTurns`. Its own recording: the run makes one
 /// request, and a cassette with a second interaction refuses to leave it
 /// unused.
 #[tokio::test]

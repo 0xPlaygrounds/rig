@@ -118,7 +118,6 @@
             "query": "Subtract 8 from 50 with the subtract tool, then reply with just the number.",
             "samples": 1,
             "threshold": null,
-            "additional_params": null,
             "filter": null
           }
         }
@@ -149,7 +148,6 @@
             "query": "Subtract 8 from 50 with the subtract tool, then reply with just the number.",
             "samples": 1,
             "threshold": null,
-            "additional_params": null,
             "filter": null
           }
         }
@@ -334,7 +332,6 @@
             "query": "Subtract 8 from 50 with the subtract tool, then reply with just the number.",
             "samples": 1,
             "threshold": null,
-            "additional_params": null,
             "filter": null
           }
         }
@@ -365,7 +362,6 @@
             "query": "Subtract 8 from 50 with the subtract tool, then reply with just the number.",
             "samples": 1,
             "threshold": null,
-            "additional_params": null,
             "filter": null
           }
         }

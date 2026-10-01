@@ -296,7 +296,9 @@ async fn tool_choice_specific_output_effect_log() {
                     .world_mut()
                     .entity_mut(ecs.agent)
                     .insert(ToolChoiceSpec(Some(ToolChoice::Specific {
-                        function_names: vec!["final_result".to_owned()],
+                        function_names: vec![
+                            rig_core::message::ToolName::new("final_result").expect("tool name"),
+                        ],
                     })));
 
                 let output = ecs

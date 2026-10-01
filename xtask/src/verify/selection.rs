@@ -26,12 +26,7 @@ pub(super) fn changes(root: &Path, opts: &Options) -> Result<BTreeSet<String>> {
             &revision,
         ],
     ] {
-        paths.extend(
-            output(root, "git", &args)?
-                .split('\0')
-                .filter(|s| !s.is_empty())
-                .map(str::to_owned),
-        );
+        paths.extend(execute::git_paths(root, &args)?);
     }
     paths.extend(execute::untracked_inputs(root)?);
     Ok(paths)

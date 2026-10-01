@@ -2,6 +2,7 @@
 name = "rig-reqwest"
 version.workspace = true
 edition = { workspace = true }
+rust-version = { workspace = true }
 license = "MIT"
 readme = "README.md"
 description = "The bundled reqwest HTTP transport for Rig."
@@ -16,7 +17,7 @@ rustdoc-args = ["--cfg", "docsrs"]
 workspace = true
 
 [dependencies]
-rig-http = { path = "../rig-http", version = "0.42.0" }
+rig-http = { path = "../rig-http", version = "0.43.0" }
 reqwest = { workspace = true, features = ["json", "stream", "multipart"] }
 reqwest-middleware = { workspace = true, optional = true, features = [
   "json",

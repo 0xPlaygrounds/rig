@@ -95,6 +95,10 @@ Rig supports the following LLM providers out of the box:
 - Xiaomi MiMo
 - Z.ai
 
+The built-in `rig_core::vector_store::in_memory_store::InMemoryVectorStore`
+stores serializable documents without requiring `Eq` or `Default`. Its custom
+ID callbacks accept closures that capture and mutate application state.
+
 Vector stores are available as separate companion-crates and as feature-gated modules on the root `rig` facade:
 
 ```toml
@@ -255,7 +259,7 @@ mapping, so authorization failures do not become recreation loops.
 context)`; `Model::call` and `Model::stream` record nothing. Request builders
 and request literals contain only provider request data.
 
-Bus-backed `ModelHandle::complete_observed` and `ModelHandle::stream_observed`
+Bus-backed `ModelHandle::call_observed` and `ModelHandle::stream_observed`
 take the same context. `ModelAdapter` forwards `Dispatch::adapter_context`;
 explicit caller context takes precedence over Recorder/Observe context for
 that invocation, including through handler layers. It is never serialized into

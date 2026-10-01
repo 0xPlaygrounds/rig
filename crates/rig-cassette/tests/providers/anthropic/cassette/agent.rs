@@ -18,7 +18,7 @@ async fn completion_smoke() {
             .prompt(BASIC_PROMPT)
             .await
             .expect("completion should succeed")
-            .output;
+            .output();
 
         assert_nonempty_response(&response);
     })
@@ -45,7 +45,7 @@ async fn completion_smoke_effect_log_is_the_golden_fixture() {
             .prompt(BASIC_PROMPT)
             .await
             .expect("completion should succeed")
-            .output;
+            .output();
         assert_nonempty_response(&response);
         let log = agent.stamp(recorder.take());
         crate::goldens::golden_effects("anthropic_completion_smoke", &log);
@@ -73,7 +73,7 @@ async fn memory_conversation_effect_log_is_the_golden_fixture() {
             .prompt(BASIC_PROMPT)
             .await
             .expect("completion should succeed")
-            .output;
+            .output();
         assert_nonempty_response(&response);
         let log = agent.stamp(recorder.take());
         assert_eq!(

@@ -2,6 +2,7 @@ use super::*;
 use crate::error::ProviderError;
 use crate::message::EMPTY_RESPONSE_ERROR;
 use crate::providers::anthropic::wire::AnthropicConfig;
+use crate::test_utils::json_body;
 use crate::wire::WireFrame;
 use serde_json::json;
 use serde_path_to_error::deserialize;
@@ -300,7 +301,7 @@ fn test_cache_control_serialization() {
 
 fn generic_tool(name: &str) -> completion::ToolDefinition {
     completion::ToolDefinition {
-        name: name.to_string(),
+        name: crate::message::ToolName::new(name).expect("tool name"),
         description: format!("{name} description"),
         parameters: json!({
             "type": "object",
@@ -313,46 +314,27 @@ fn completion_request_with_tools(
     tools: Vec<completion::ToolDefinition>,
     additional_params: Option<serde_json::Value>,
 ) -> CompletionRequest {
-    CompletionRequest {
-        model: None,
-        chat_history: crate::NonEmpty::with_rest(
-            message::Message::system("System prompt"),
-            [message::Message::from("Hello")],
-        ),
-        documents: Vec::new(),
-        tools,
-        temperature: None,
-        max_tokens: Some(64),
-        tool_choice: None,
-        additional_params,
-        output_schema: None,
-        record_telemetry_content: false,
-    }
+    CompletionRequest::from(vec![
+        message::Message::system("System prompt"),
+        message::Message::from("Hello"),
+    ])
+    .max_tokens(64)
+    .tools(tools)
+    .additional_params(additional_params)
 }
 
 fn completion_request_with_history(
     chat_history: Vec<message::Message>,
     preamble: Option<String>,
 ) -> CompletionRequest {
-    CompletionRequest {
-        model: None,
-        chat_history: crate::NonEmpty::from_vec(
-            preamble
-                .map(message::Message::system)
-                .into_iter()
-                .chain(chat_history)
-                .collect::<Vec<_>>(),
-        )
-        .expect("non-empty"),
-        documents: Vec::new(),
-        tools: Vec::new(),
-        temperature: None,
-        max_tokens: Some(64),
-        tool_choice: None,
-        additional_params: None,
-        output_schema: None,
-        record_telemetry_content: false,
-    }
+    CompletionRequest::from(
+        preamble
+            .map(message::Message::system)
+            .into_iter()
+            .chain(chat_history)
+            .collect::<Vec<_>>(),
+    )
+    .max_tokens(64)
 }
 
 #[test]
@@ -387,19 +369,15 @@ fn strict_tool_hook_is_a_noop_for_anthropic_compatible_gateways() {
     use crate::wire::{Mode, Wire};
 
     let request = completion_request_with_tools(vec![generic_tool("lookup")], None);
-    let encoded = crate::providers::anthropic::wire::AnthropicConfig::with_dialect(
-        "k",
+    let encoded = crate::providers::anthropic::wire::AnthropicConfig::with_key(
         &crate::providers::anthropic::wire::ZAI,
+        "k",
     )
     .completion("some-model")
     .with_strict_tools()
     .encode(request, Mode::Unary)
     .expect("the request encodes");
-    let crate::wire::Body::Bytes(body) = &encoded.request.body() else {
-        panic!("the Messages endpoint takes JSON")
-    };
-    let value: serde_json::Value =
-        serde_json::from_slice(body).expect("the body is the JSON the wire built");
+    let value = json_body(&encoded.request);
 
     assert!(value["tools"][0].get("strict").is_none());
     assert!(
@@ -701,7 +679,7 @@ fn opus_4_8_preserves_system_message_after_assistant_server_tool_result() {
         vec![
             message::Message::Assistant {
                 id: None,
-                content: crate::NonEmpty::with_rest(
+                content: vec![
                     message::AssistantContent::Text(message::Text {
                         text: String::new(),
                         additional_params: crate::message::AdditionalParams::try_from_value(
@@ -718,7 +696,7 @@ fn opus_4_8_preserves_system_message_after_assistant_server_tool_result() {
                         )
                         .expect("object params"),
                     }),
-                    [message::AssistantContent::Text(message::Text {
+                    message::AssistantContent::Text(message::Text {
                         text: String::new(),
                         additional_params: crate::message::AdditionalParams::try_from_value(
                             json!({
@@ -733,8 +711,8 @@ fn opus_4_8_preserves_system_message_after_assistant_server_tool_result() {
                             }),
                         )
                         .expect("object params"),
-                    })],
-                ),
+                    }),
+                ],
             },
             message::Message::System {
                 content: "For the rest of this conversation, answer in Spanish.".to_string(),
@@ -794,10 +772,10 @@ fn foreign_annotated_empty_text_produces_no_anthropic_block() {
 
     let message = message::Message::Assistant {
         id: None,
-        content: crate::NonEmpty::with_rest(
+        content: vec![
             foreign_annotated_empty,
-            [message::AssistantContent::text("real answer")],
-        ),
+            message::AssistantContent::text("real answer"),
+        ],
     };
     let converted = Message::try_from(message).expect("message converts");
     assert_eq!(converted.content.len(), 1, "only the real block survives");
@@ -813,7 +791,7 @@ fn opus_4_8_preserves_system_message_after_assistant_server_tool_use() {
         vec![
             message::Message::Assistant {
                 id: None,
-                content: crate::NonEmpty::new(message::AssistantContent::Text(message::Text {
+                content: vec![message::AssistantContent::Text(message::Text {
                     text: String::new(),
                     additional_params: crate::message::AdditionalParams::try_from_value(json!({
                         ANTHROPIC_RAW_CONTENT_KEY: {
@@ -826,7 +804,7 @@ fn opus_4_8_preserves_system_message_after_assistant_server_tool_use() {
                         }
                     }))
                     .expect("object params"),
-                })),
+                })],
             },
             message::Message::System {
                 content: "For the rest of this conversation, answer in Spanish.".to_string(),
@@ -917,11 +895,11 @@ fn sonnet_5_5_defers_a_system_message_past_tool_results() {
     let lookup = || message::ToolName::new("lookup").expect("tool name");
     let tool_call = message::Message::Assistant {
         id: None,
-        content: crate::NonEmpty::new(message::AssistantContent::tool_call(
+        content: vec![message::AssistantContent::tool_call(
             "toolu_1",
             lookup(),
             json!({}),
-        )),
+        )],
     };
     let tool_result =
         message::Message::tool_result(message::CallId::from_wire("toolu_1"), lookup(), "ok");
@@ -2433,11 +2411,11 @@ fn test_file_id_rig_to_anthropic_conversion() {
     use crate::completion::message as msg;
 
     let rig_message = msg::Message::User {
-        content: crate::NonEmpty::new(msg::UserContent::Document(msg::Document {
+        content: vec![msg::UserContent::Document(msg::Document {
             data: DocumentSourceKind::FileId("file_abc".to_string()),
             media_type: None,
             additional_params: None,
-        })),
+        })],
     };
 
     let anthropic_message: Message = rig_message.try_into().unwrap();
@@ -2462,10 +2440,10 @@ fn test_plaintext_rig_to_anthropic_conversion() {
     use crate::completion::message as msg;
 
     let rig_message = msg::Message::User {
-        content: crate::NonEmpty::new(msg::UserContent::document(
+        content: vec![msg::UserContent::document_text(
             "Some plain text content".to_string(),
             Some(msg::DocumentMediaType::TXT),
-        )),
+        )],
     };
 
     let anthropic_message: Message = rig_message.try_into().unwrap();
@@ -2491,11 +2469,11 @@ fn test_unsupported_document_type_returns_error() {
     use crate::completion::message as msg;
 
     let rig_message = msg::Message::User {
-        content: crate::NonEmpty::new(msg::UserContent::Document(msg::Document {
+        content: vec![msg::UserContent::Document(msg::Document {
             data: DocumentSourceKind::String("data".into()),
             media_type: Some(msg::DocumentMediaType::HTML),
             additional_params: None,
-        })),
+        })],
     };
 
     let result: Result<Message, _> = rig_message.try_into();
@@ -2512,11 +2490,11 @@ fn test_plaintext_document_url_source_returns_error() {
     use crate::completion::message as msg;
 
     let rig_message = msg::Message::User {
-        content: crate::NonEmpty::new(msg::UserContent::Document(msg::Document {
+        content: vec![msg::UserContent::Document(msg::Document {
             data: DocumentSourceKind::Url("https://example.com/doc.txt".into()),
             media_type: Some(msg::DocumentMediaType::TXT),
             additional_params: None,
-        })),
+        })],
     };
 
     let result: Result<Message, _> = rig_message.try_into();
@@ -2618,9 +2596,9 @@ fn test_assistant_reasoning_multiblock_to_anthropic_content() {
 
     let msg = message::Message::Assistant {
         id: None,
-        content: crate::NonEmpty::new(message::AssistantContent::Reasoning(
+        content: vec![message::AssistantContent::Reasoning(
             reasoning.sealed("anthropic"),
-        )),
+        )],
     };
     let converted =
         Message::from_message(msg, &["anthropic".into()]).expect("convert assistant message");
@@ -2658,9 +2636,9 @@ fn test_assistant_encrypted_reasoning_maps_to_redacted_thinking() {
     };
     let msg = message::Message::Assistant {
         id: None,
-        content: crate::NonEmpty::new(message::AssistantContent::Reasoning(
+        content: vec![message::AssistantContent::Reasoning(
             reasoning.sealed("anthropic"),
-        )),
+        )],
     };
 
     let converted =
@@ -3139,7 +3117,7 @@ fn web_search_response_preserves_raw_blocks_and_citations() {
 
     let round_trip: Message = message::Message::Assistant {
         id: converted.message_id.clone(),
-        content: crate::NonEmpty::from_vec(converted.choice).expect("non-empty"),
+        content: converted.choice,
     }
     .try_into()
     .unwrap();
@@ -3203,7 +3181,7 @@ fn web_search_tool_result_error_object_is_preserved_raw() {
 
     let round_trip: Message = message::Message::Assistant {
         id: converted.message_id,
-        content: crate::NonEmpty::from_vec(converted.choice).expect("non-empty"),
+        content: converted.choice,
     }
     .try_into()
     .unwrap();
@@ -3306,7 +3284,7 @@ fn code_execution_tool_result_is_preserved_and_round_trips() {
 
     let round_trip: Message = message::Message::Assistant {
         id: converted.message_id,
-        content: crate::NonEmpty::from_vec(converted.choice).expect("non-empty"),
+        content: converted.choice,
     }
     .try_into()
     .unwrap();
@@ -3406,7 +3384,7 @@ fn anthropic_citations_returns_empty_when_absent() {
 fn assistant_text_citations_survive_anthropic_request_conversion() {
     let assistant = message::Message::Assistant {
         id: None,
-        content: crate::NonEmpty::new(message::AssistantContent::Text(message::Text {
+        content: vec![message::AssistantContent::Text(message::Text {
             text: "the grass is green".into(),
             additional_params: crate::message::AdditionalParams::try_from_value(json!({
                 "citations": [{
@@ -3418,7 +3396,7 @@ fn assistant_text_citations_survive_anthropic_request_conversion() {
                 }]
             }))
             .expect("object params"),
-        })),
+        })],
     };
 
     let converted: Message = assistant.try_into().unwrap();
@@ -3475,9 +3453,7 @@ fn document_additional_params_forward_to_anthropic_document() {
         }))
         .expect("object params"),
     });
-    let msg = message::Message::User {
-        content: crate::NonEmpty::new(doc),
-    };
+    let msg = message::Message::User { content: vec![doc] };
     let converted: Message = msg.try_into().unwrap();
     let block = converted.content.first();
     let Some(Content::Document {
@@ -3628,7 +3604,7 @@ fn url_pdf_with_or_without_media_type_converts_to_url_document_source() {
 
     for media_type in [Some(message::DocumentMediaType::PDF), None] {
         let msg = message::Message::User {
-            content: crate::NonEmpty::new(message::UserContent::document_url(pdf_url, media_type)),
+            content: vec![message::UserContent::document_url(pdf_url, media_type)],
         };
 
         let converted = Message::try_from(msg).expect("URL PDF should convert");

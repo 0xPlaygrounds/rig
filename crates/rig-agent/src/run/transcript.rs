@@ -7,16 +7,11 @@
 //! assert_eq!(history.len(), 1);
 //! ```
 
-use rig_core::NonEmpty;
 use rig_core::message::{AssistantContent, CallId, Message};
 pub use rig_core::transcript::{
-    TranscriptError, tool_result_message, tool_result_output, validate_canonical,
+    TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER, TranscriptError, assistant_text_from_choice,
+    is_empty_assistant_turn, tool_result_message, tool_result_output, validate_canonical,
 };
-
-/// The result text for a valid call skipped because a sibling call in the
-/// same assistant turn was invalid.
-pub const TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER: &str =
-    "Tool not executed because another tool call in the same assistant turn was invalid.";
 
 /// Combine input history with new messages for building completion requests.
 pub fn build_history_for_request(
@@ -43,37 +38,24 @@ pub fn invalid_tool_retry_user_message(
     invalid_tool_call_id: &CallId,
     feedback: &str,
 ) -> Option<Message> {
-    // Call IDs distinguish peers even when the provider supplies no wire IDs.
-    let retry_results = assistant_content
-        .iter()
-        .filter_map(|content| match content {
-            AssistantContent::ToolCall(tool_call) if tool_call.id == *invalid_tool_call_id => {
-                Some(tool_result_message(
-                    tool_call.id.clone(),
-                    tool_call.function.name.clone(),
-                    feedback.to_string(),
-                ))
-            }
-            AssistantContent::ToolCall(tool_call) => Some(tool_result_message(
-                tool_call.id.clone(),
-                tool_call.function.name.clone(),
-                TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER.to_string(),
-            )),
-            _ => None,
-        })
-        .collect::<Vec<_>>();
-
-    Some(Message::User {
-        content: rig_core::NonEmpty::from_vec(retry_results).ok()?,
-    })
+    let content = rig_core::transcript::invalid_call_feedback(
+        assistant_content,
+        invalid_tool_call_id,
+        feedback,
+    );
+    (!content.is_empty()).then_some(Message::User { content })
 }
 
 /// The assistant message carrying `choice` under `id`, or `None` when the
 /// choice is empty.
 pub fn assistant_message(id: Option<String>, choice: Vec<AssistantContent>) -> Option<Message> {
-    NonEmpty::from_vec(choice)
-        .ok()
-        .map(|content| Message::Assistant { id, content })
+    if choice.is_empty() {
+        return None;
+    }
+    Some(Message::Assistant {
+        id,
+        content: choice,
+    })
 }
 
 /// The assistant message for a generated turn, or `None` for an empty turn
@@ -83,31 +65,4 @@ pub fn assistant_turn(id: Option<String>, choice: Vec<AssistantContent>) -> Opti
         return None;
     }
     assistant_message(id, choice)
-}
-
-/// Return true for zero parts or exactly one empty, unannotated text part.
-/// Annotations carry data even without text. The run uses this classification
-/// for generated turns, not to filter caller-supplied history.
-pub fn is_empty_assistant_turn(choice: &[AssistantContent]) -> bool {
-    if choice.is_empty() {
-        return true;
-    }
-
-    choice.len() == 1
-        && matches!(
-            choice.first(),
-            Some(AssistantContent::Text(text))
-                if text.text.is_empty() && text.additional_params.is_none()
-        )
-}
-
-/// The concatenated text of a choice.
-pub fn assistant_text_from_choice(choice: &[AssistantContent]) -> String {
-    choice
-        .iter()
-        .filter_map(|content| match content {
-            AssistantContent::Text(text) => Some(text.text.as_str()),
-            _ => None,
-        })
-        .collect()
 }

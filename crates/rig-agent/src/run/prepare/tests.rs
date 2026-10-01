@@ -15,7 +15,7 @@ fn prepared_request_round_trips_through_serde() {
         &ProviderCapabilities::default(),
         &[Message::user("hi")],
         vec![ToolDefinition {
-            name: "add".to_string(),
+            name: rig_core::message::ToolName::new("add").expect("tool name"),
             description: "adds".to_string(),
             parameters: serde_json::json!({"type": "object"}),
         }],
@@ -72,7 +72,7 @@ fn allowed_tool_names_none_allows_no_tools() {
 fn allowed_tool_names_specific_allows_requested_executable_tools() {
     let executable = tool_names(&["add", "subtract"]);
     let choice = ToolChoice::Specific {
-        function_names: vec!["add".to_string()],
+        function_names: vec![rig_core::message::ToolName::new("add").expect("tool name")],
     };
 
     assert_eq!(
@@ -85,7 +85,7 @@ fn allowed_tool_names_specific_allows_requested_executable_tools() {
 fn allowed_tool_names_specific_rejects_missing_tools() {
     let executable = tool_names(&["add"]);
     let choice = ToolChoice::Specific {
-        function_names: vec!["missing".to_string()],
+        function_names: vec![rig_core::message::ToolName::new("missing").expect("tool name")],
     };
 
     let err = allowed_tool_names_for_choice(&executable, Some(&choice), None, None)
@@ -113,41 +113,6 @@ fn allowed_tool_names_specific_rejects_empty_names() {
         err,
         PrepareError::Request(err)
             if err.to_string().contains("requires at least one function name")
-    ));
-}
-
-#[test]
-fn output_tool_callable_honors_specific_naming_the_output_tool() {
-    // Auto / Required / no explicit choice all permit the output-tool call.
-    assert!(output_tool_callable(None, "final_result"));
-    assert!(output_tool_callable(
-        Some(&ToolChoice::Auto),
-        "final_result"
-    ));
-    assert!(output_tool_callable(
-        Some(&ToolChoice::Required),
-        "final_result"
-    ));
-    // A `Specific` set that NAMES the output tool can call it — the case the
-    // pinned Tool-mode stall warning must not flag (it is accepted by
-    // `allowed_tool_names_for_choice`, which advertises the output tool).
-    assert!(output_tool_callable(
-        Some(&ToolChoice::Specific {
-            function_names: vec!["final_result".to_string()],
-        }),
-        "final_result",
-    ));
-    // A `Specific` set that omits it — or `ToolChoice::None` — genuinely cannot
-    // finalize a pinned Tool-mode turn, so the warning should still fire there.
-    assert!(!output_tool_callable(
-        Some(&ToolChoice::Specific {
-            function_names: vec!["search".to_string()],
-        }),
-        "final_result",
-    ));
-    assert!(!output_tool_callable(
-        Some(&ToolChoice::None),
-        "final_result"
     ));
 }
 
@@ -206,7 +171,7 @@ fn specific_naming_a_filtered_out_tool_is_a_local_error_with_hint() {
     // the now-filtered-out `subtract`.
     let executable = tool_names(&["add"]);
     let choice = ToolChoice::Specific {
-        function_names: vec!["subtract".to_string()],
+        function_names: vec![rig_core::message::ToolName::new("subtract").expect("tool name")],
     };
     let err = allowed_tool_names_for_choice(
         &executable,
@@ -231,7 +196,7 @@ fn specific_may_name_the_output_tool() {
     // The effective advertised set includes the synthetic output tool.
     let empty = tool_names(&[]);
     let choice = ToolChoice::Specific {
-        function_names: vec!["final_result".to_string()],
+        function_names: vec![rig_core::message::ToolName::new("final_result").expect("tool name")],
     };
     let allowed = allowed_tool_names_for_choice(&empty, Some(&choice), Some("final_result"), None)
         .expect("Specific naming the output tool is valid");
@@ -245,7 +210,7 @@ fn specific_typo_is_not_blamed_on_active_tools() {
     // because the filter never had that tool to drop.
     let executable = tool_names(&["add"]);
     let choice = ToolChoice::Specific {
-        function_names: vec!["nonexistent".to_string()],
+        function_names: vec![rig_core::message::ToolName::new("nonexistent").expect("tool name")],
     };
     let err = allowed_tool_names_for_choice(
         &executable,
@@ -346,50 +311,4 @@ fn resolve_output_mode_degrades_to_native_when_output_tool_not_callable() {
         resolve_output_mode(true, true, false, false, &OutputMode::Prompted),
         OutputMode::Prompted,
     );
-}
-
-#[test]
-fn output_tool_callable_for_auto_required_unset_or_a_specific_set_naming_it() {
-    assert!(output_tool_callable(None, "final_result"));
-    assert!(output_tool_callable(
-        Some(&ToolChoice::Auto),
-        "final_result"
-    ));
-    assert!(output_tool_callable(
-        Some(&ToolChoice::Required),
-        "final_result"
-    ));
-    assert!(!output_tool_callable(
-        Some(&ToolChoice::None),
-        "final_result"
-    ));
-    assert!(!output_tool_callable(
-        Some(&ToolChoice::Specific {
-            function_names: vec!["add".to_string()],
-        }),
-        "final_result"
-    ));
-    assert!(output_tool_callable(
-        Some(&ToolChoice::Specific {
-            function_names: vec!["add".to_string(), "final_result".to_string()],
-        }),
-        "final_result"
-    ));
-}
-
-#[test]
-fn pick_output_tool_name_defaults_when_unused() {
-    let executable = tool_names(&["add", "subtract"]);
-    assert_eq!(pick_output_tool_name(&executable), DEFAULT_OUTPUT_TOOL_NAME);
-}
-
-#[test]
-fn pick_output_tool_name_avoids_collision_with_real_tools() {
-    // A user tool literally named `final_result` must not be shadowed, or
-    // the model's output call would be dispatched to the tool server.
-    let executable = tool_names(&["final_result"]);
-    assert_eq!(pick_output_tool_name(&executable), "final_result_1");
-
-    let executable = tool_names(&["final_result", "final_result_1"]);
-    assert_eq!(pick_output_tool_name(&executable), "final_result_2");
 }

@@ -11,8 +11,6 @@ use rig_agent::agent::MultiTurnStreamItem;
 
 use rig_agent::agent::NoToolConfig;
 
-use rig_agent::agent::StreamingError;
-
 use rig_agent::agent::WithBuilderTools;
 
 use rig_agent::agent::WithToolServerHandle;
@@ -63,20 +61,12 @@ enum RunFailure {
 
 fn classify_prompt(error: PromptError) -> RunFailure {
     match error {
-        PromptError::PromptCancelled { reason, .. } => RunFailure::Cancelled(reason),
-        PromptError::MaxTurnsError { .. } => RunFailure::MaxTurns,
-        PromptError::MemoryError(_) => RunFailure::MemoryError,
+        PromptError::Cancelled { reason, .. } => RunFailure::Cancelled(reason),
+        PromptError::MaxTurns { .. } => RunFailure::MaxTurns,
+        PromptError::Memory(_) => RunFailure::MemoryError,
         PromptError::Report(report) => RunFailure::Report(report),
-        PromptError::CompletionError(error) => RunFailure::Report(ErrorReport::from(&error)),
+        PromptError::Provider(error) => RunFailure::Report(ErrorReport::from(&error)),
         other => panic!("the run fails as one of the program's endings, not {other:?}"),
-    }
-}
-
-fn classify_stream(error: StreamingError) -> RunFailure {
-    match error {
-        StreamingError::Prompt(error) => classify_prompt(error),
-        StreamingError::Report(report) => RunFailure::Report(report),
-        StreamingError::Completion(error) => RunFailure::Report(ErrorReport::from(&error)),
     }
 }
 
@@ -90,7 +80,7 @@ async fn final_output(
         match item {
             Ok(MultiTurnStreamItem::FinalResponse(response)) => output = Some(response),
             Ok(_) => {}
-            Err(error) => return Err(classify_stream(error)),
+            Err(error) => return Err(classify_prompt(error)),
         }
     }
     Ok(output.expect("a final response"))
@@ -346,7 +336,7 @@ async fn run_prompts(
             drop(stream);
             let output = expect_ending(
                 result.map(|response| {
-                    let output = response.output.clone();
+                    let output = response.output();
                     outputs.push(response);
                     output
                 }),
@@ -366,7 +356,7 @@ async fn run_prompts(
             let result = runner
                 .await
                 .map(|response| {
-                    let output = response.output.clone();
+                    let output = response.output();
                     outputs.push(response);
                     output
                 })
@@ -467,16 +457,9 @@ where
             );
         }
         for response in &responses {
-            super::reasoning::assert_history(
-                cell,
-                &log,
-                response
-                    .messages
-                    .as_deref()
-                    .expect("a run has a transcript"),
-            );
+            super::reasoning::assert_history(cell, &log, &response.messages);
             assert_eq!(
-                response.output,
+                response.output(),
                 corpus::golden_answer(&log),
                 "the reasoning is not the answer"
             );
@@ -490,14 +473,7 @@ where
         super::long_loop::write_attempt(cell, &log);
         super::long_loop::assert_log(cell, wire.thinking, &log);
         for response in &responses {
-            super::long_loop::assert_transcript(
-                cell,
-                &log,
-                response
-                    .messages
-                    .as_deref()
-                    .expect("a run has a transcript"),
-            );
+            super::long_loop::assert_transcript(cell, &log, &response.messages);
         }
     }
     if cell.image.is_some() {
@@ -505,14 +481,11 @@ where
         for (n, response) in responses.iter().enumerate() {
             super::image::assert_history(
                 cell,
-                response
-                    .messages
-                    .as_deref()
-                    .expect("a run has a transcript"),
+                &response.messages,
                 &format!("{}: run {n} history", cell.name),
             );
         }
-        let answer = &responses.last().expect("a run").output;
+        let answer = &responses.last().expect("a run").output();
         super::image::assert_answer(cell, answer);
         assert_eq!(*answer, corpus::golden_answer(&log));
     }

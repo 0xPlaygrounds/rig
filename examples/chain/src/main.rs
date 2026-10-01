@@ -5,8 +5,8 @@
 use rig::operation::Completion;
 use rig::prelude::*;
 use rig::providers::openai::{self, OpenAI};
-use rig::vector_store::VectorStoreIndex;
 use rig::vector_store::request::VectorSearchRequest;
+use rig::vector_store::{VectorSearchResult, VectorStoreIndex};
 use rig::{embeddings::EmbeddingsBuilder, vector_store::in_memory_store::InMemoryVectorStore};
 
 const QUERY: &str = "What does \"glarb-glarb\" mean?";
@@ -29,11 +29,11 @@ fn build_dictionary_agent(model: impl Into<DynModel<Completion>>) -> rig::agent:
         .build()
 }
 
-fn lookup_context(docs: Vec<(f64, String, String)>, prompt: &str) -> String {
+fn lookup_context(docs: Vec<VectorSearchResult<String>>, prompt: &str) -> String {
     format!(
         "Non standard word definitions:\n{}\n\n{}",
         docs.into_iter()
-            .map(|(_, _, doc)| doc)
+            .map(|result| result.document)
             .collect::<Vec<_>>()
             .join("\n"),
         prompt,
@@ -72,7 +72,7 @@ async fn main() -> Result<(), anyhow::Error> {
         }
     };
 
-    let response = agent.prompt(prompt).await?.output;
+    let response = agent.prompt(prompt).await?.output();
     println!("{response}");
 
     Ok(())

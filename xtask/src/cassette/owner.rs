@@ -35,9 +35,7 @@ pub(crate) enum Owner {
 pub(crate) fn owners(root: &Path, provider: &str, scenario: &str) -> Result<Vec<Owner>, String> {
     let base = root.join("crates/rig-cassette/tests/providers");
     let dir = base.join(provider);
-    let mut files = Vec::new();
-    rust_files(&dir, &mut files)?;
-    files.sort();
+    let files = crate::support::files_under(&dir, Some("rs"))?;
     let modules = module_map(&dir.join("mod.rs"), provider);
     let mut named = false;
     let mut found = Vec::new();
@@ -66,19 +64,6 @@ pub(crate) fn owners(root: &Path, provider: &str, scenario: &str) -> Result<Vec<
         });
     }
     Ok(found)
-}
-
-fn rust_files(dir: &Path, out: &mut Vec<PathBuf>) -> Result<(), String> {
-    let entries = std::fs::read_dir(dir).map_err(|error| format!("{}: {error}", dir.display()))?;
-    for entry in entries {
-        let path = entry.map_err(|error| error.to_string())?.path();
-        if path.is_dir() {
-            rust_files(&path, out)?;
-        } else if path.extension().is_some_and(|ext| ext == "rs") {
-            out.push(path);
-        }
-    }
-    Ok(())
 }
 
 /// The module path of every file reachable from `root_file` (module

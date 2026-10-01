@@ -24,7 +24,7 @@ async fn tools_roundtrip() {
             .await
             .expect("tool round-trip should succeed");
 
-        assert_mentions_expected_number(&response.output, -3);
+        assert_mentions_expected_number(&response.output(), -3);
     })
     .await;
 }
@@ -48,7 +48,7 @@ async fn tools_smoke() {
             .await
             .expect("tool prompt should succeed");
 
-        assert_mentions_expected_number(&response.output, -3);
+        assert_mentions_expected_number(&response.output(), -3);
     })
     .await;
 }

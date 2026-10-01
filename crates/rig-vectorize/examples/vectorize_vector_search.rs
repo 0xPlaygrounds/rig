@@ -75,9 +75,9 @@ async fn main() -> Result<(), anyhow::Error> {
     let results = vector_store.top_n::<Word>(request).await?;
 
     println!("\nResults:");
-    for (score, id, word) in results {
-        println!("  Score: {score:.4}, ID: {id}");
-        println!("    Definition: {}", word.definition);
+    for result in results {
+        println!("  Score: {:.4}, ID: {}", result.score, result.id);
+        println!("    Definition: {}", result.document.definition);
     }
 
     Ok(())

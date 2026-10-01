@@ -30,7 +30,7 @@ async fn main() -> Result<()> {
         })
         .build();
 
-    let response = agent.prompt(LOADERS_PROMPT).await?.output;
+    let response = agent.prompt(LOADERS_PROMPT).await?.output();
     println!("{response}");
 
     Ok(())

@@ -23,18 +23,18 @@ async fn image_prompt_from_fixture() {
         .expect("fixture image should be readable");
     let response = agent
         .prompt(Message::User {
-            content: rig_core::NonEmpty::with_rest(
+            content: vec![
                 UserContent::image_base64(
                     BASE64_STANDARD.encode(image_bytes),
                     Some(ImageMediaType::JPEG),
                     None,
                 ),
-                [UserContent::text("Describe the image in one sentence.")],
-            ),
+                UserContent::text("Describe the image in one sentence."),
+            ],
         })
         .await
         .expect("image prompt should succeed")
-        .output;
+        .output();
 
     assert_nonempty_response(&response);
     assert_contains_any_case_insensitive(&response, &["ant", "insect"]);

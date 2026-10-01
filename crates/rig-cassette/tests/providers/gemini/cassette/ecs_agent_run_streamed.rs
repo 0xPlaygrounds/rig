@@ -306,7 +306,7 @@ async fn streamed_skip_abandons_the_turn_and_recovers() {
                         assert!(is_tool_result_user_message(prompt));
                     }
                     let retry = &turns[1].request.chat_history;
-                    let Message::User { content } = retry.last() else {
+                    let Some(Message::User { content }) = retry.last() else {
                         panic!("tool results are a user message")
                     };
                     let result = content
@@ -456,9 +456,9 @@ async fn builtin_streaming_max_turns_error_carries_pending_message() {
             let error = ecs
                 .wait_for_outcome(run)
                 .await
-                .expect_err("the stream should surface MaxTurnsError");
+                .expect_err("the stream should surface MaxTurns");
             let Failure::MaxTurns { limit: max_turns } = error else {
-                panic!("expected MaxTurnsError, got {error:?}")
+                panic!("expected MaxTurns, got {error:?}")
             };
             let mut chat_history = history(&mut ecs, run);
             let prompt = chat_history
@@ -477,7 +477,7 @@ async fn builtin_streaming_max_turns_error_carries_pending_message() {
             );
             assert!(
                 is_tool_result_user_message(&prompt),
-                "MaxTurnsError must carry the pending tool-results message: {prompt:?}"
+                "MaxTurns must carry the pending tool-results message: {prompt:?}"
             );
             assert!(
                 history_has_assistant_tool_call(&chat_history, "add"),
@@ -551,7 +551,7 @@ async fn builtin_streaming_cancellation_history_includes_assistant_turn() {
                 "a cancelled run must not produce a final response"
             );
             let Failure::Cancelled(report) = error else {
-                panic!("expected PromptCancelled, got {error:?}")
+                panic!("expected Cancelled, got {error:?}")
             };
             let reason = report.message;
             let chat_history = history(&mut ecs, run);

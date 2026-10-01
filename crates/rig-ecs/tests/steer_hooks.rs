@@ -33,7 +33,7 @@ use rig_ecs::{
         Resolution, Retry, Route, RunResult, Settled, UsesModel,
     },
     bus::{Handlers, PendingEffect, RigSchedule},
-    checkpoint::{Checkpoint, RestoreMode, load_world, save_world},
+    checkpoint::{Checkpoint, CheckpointError, RestoreMode, load_world, save_world},
     systems::{Fresh, RigSet, RunCommands},
 };
 use run_support::*;
@@ -190,7 +190,9 @@ fn demand_done(
     mut commands: Commands,
 ) {
     for (turn, outs) in &turns {
-        if outs.done && !rig_ecs::policy::answer_text(&outs.content).contains("DONE") {
+        if outs.done
+            && !rig_core::transcript::assistant_text_from_choice(&outs.content).contains("DONE")
+        {
             commands.entity(turn).insert(Retry {
                 feedback: Some("End with DONE.".to_owned()),
             });
@@ -545,9 +547,9 @@ fn a_checkpoint_preserves_invalid_call_identity_namespaces() {
     let count = destination.world().entities().len();
     let error = load_world(&legacy, destination.world_mut(), RestoreMode::Strict, [])
         .expect_err("legacy component identities must fail load");
-    assert_eq!(error.kind, ErrorKind::Request, "{error:?}");
     assert!(
-        error.message.contains(std::any::type_name::<InvalidCall>()),
+        matches!(&error, CheckpointError::Deserialize { path, .. }
+            if path == std::any::type_name::<InvalidCall>()),
         "{error:?}"
     );
     assert_eq!(

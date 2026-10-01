@@ -278,8 +278,11 @@ fn config_with(
 fn request(messages: Vec<Message>) -> CompletionRequest {
     CompletionRequest {
         model: None,
-        chat_history: rig_core::NonEmpty::from_vec(messages)
-            .unwrap_or_else(|_| rig_core::NonEmpty::new(Message::user("hello"))),
+        chat_history: if messages.is_empty() {
+            vec![Message::user("hello")]
+        } else {
+            messages
+        },
         documents: Vec::new(),
         tools: Vec::new(),
         temperature: None,
@@ -895,13 +898,13 @@ async fn foreign_reasoning_in_history_is_refused_not_dropped()
         Message::user("hello"),
         Message::Assistant {
             id: None,
-            content: rig_core::NonEmpty::with_rest(
+            content: vec![
                 rig_core::message::AssistantContent::Reasoning(
                     rig_core::message::Reasoning::new("elsewhere")
                         .sealed(String::from("anthropic")),
                 ),
-                [rig_core::message::AssistantContent::text("hi")],
-            ),
+                rig_core::message::AssistantContent::text("hi"),
+            ],
         },
         Message::user("again"),
     ];
@@ -1495,7 +1498,7 @@ fn renders_smollm2_history_default_system_and_generation_suffix()
 fn rejects_unsupported_request_features() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let mut tools = request(vec![Message::user("hello")]);
     tools.tools.push(ToolDefinition {
-        name: "tool".to_string(),
+        name: rig_core::message::ToolName::new("tool")?,
         description: "tool".to_string(),
         parameters: serde_json::json!({}),
     });
@@ -1525,16 +1528,16 @@ fn rejects_unsupported_request_features() -> Result<(), Box<dyn std::error::Erro
     assert!(render_prompt(&tool_result).is_err());
 
     let image = Message::User {
-        content: rig_core::NonEmpty::new(UserContent::image_base64(
+        content: vec![UserContent::image_base64(
             "data",
             Some(ImageMediaType::PNG),
             Some(ImageDetail::Auto),
-        )),
+        )],
     };
     assert!(render_prompt(&request(vec![image])).is_err());
 
     let audio = Message::User {
-        content: rig_core::NonEmpty::new(UserContent::audio("data", Some(AudioMediaType::WAV))),
+        content: vec![UserContent::audio_base64("data", Some(AudioMediaType::WAV))],
     };
     assert!(render_prompt(&request(vec![audio])).is_err());
     Ok(())
@@ -1792,5 +1795,62 @@ async fn stream_terminal_raw_round_trips_into_the_local_record()
     assert_eq!(terminal.model, renormalized.model);
     assert_eq!(terminal.usage, renormalized.usage);
     assert_eq!(terminal.usage.output_tokens, Some(2));
+    Ok(())
+}
+
+/// The generation wire runs through the driver, so the request boundary
+/// rejects each empty piece before the local runtime sees it.
+#[cfg(not(target_family = "wasm"))]
+#[tokio::test(flavor = "current_thread")]
+async fn an_empty_turn_never_reaches_the_local_runtime()
+-> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let parsed = |message: serde_json::Value| serde_json::from_value::<Message>(message);
+    let mut empty_history = request(vec![Message::user("hello")]);
+    empty_history.chat_history.clear();
+    let requests = [
+        (empty_history, "request has an empty chat history"),
+        (
+            request(vec![parsed(
+                serde_json::json!({"role": "user", "content": []}),
+            )?]),
+            "user message at index 0 has no content",
+        ),
+        (
+            request(vec![
+                parsed(serde_json::json!({"role": "assistant", "id": null, "content": []}))?,
+                Message::user("hello"),
+            ]),
+            "assistant message at index 0 has no content",
+        ),
+        (
+            request(vec![parsed(serde_json::json!({
+                "role": "user",
+                "content": [{
+                    "type": "toolresult",
+                    "call": {"provider": {"call_id": "call_1"}},
+                    "name": "lookup",
+                    "content": [],
+                }],
+            }))?]),
+            "tool result for `lookup` at index 0",
+        ),
+    ];
+    let events = Arc::new(std::sync::Mutex::new(vec![GenerationEvent::Text(
+        "unreachable".to_owned(),
+    )]));
+    let model = rig_core::Model::new(Generation, Scripted(Arc::clone(&events)));
+    for (request, expected) in requests {
+        let called = model.call(request.clone()).await.err();
+        let streamed = model.stream(request).err();
+        for error in [called, streamed] {
+            let error = error.ok_or("the request is rejected")?;
+            assert!(error.to_string().contains(expected), "{error}");
+        }
+    }
+    assert_eq!(
+        events.lock().map(|events| events.len()).ok(),
+        Some(1),
+        "the runtime was never sent a request"
+    );
     Ok(())
 }

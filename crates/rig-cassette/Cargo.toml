@@ -2,6 +2,7 @@
 name = "rig-cassette"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license = "MIT"
 readme = "README.md"
 description = "Effect-log and provider HTTP recording, replay, scrubbing and verification for Rig."
@@ -49,6 +50,7 @@ http = [
     "dep:httpdate",
     "dep:httpmock",
     "dep:serde_yaml",
+    "dep:thiserror",
     "dep:tokio",
     "dep:url",
     "serde_json/float_roundtrip",
@@ -57,10 +59,10 @@ http = [
 bedrock = ["http", "dep:aws-smithy-eventstream", "dep:aws-smithy-types"]
 
 [dependencies]
-rig-core = { path = "../rig-core", version = "0.42.0", default-features = false }
-rig-agent = { path = "../rig-agent", version = "0.42.0", default-features = false, optional = true }
-rig-ecs = { path = "../rig-ecs", version = "0.42.0", optional = true }
-rig-reqwest = { path = "../rig-reqwest", version = "0.42.0", default-features = false, features = ["rustls"], optional = true }
+rig-core = { path = "../rig-core", version = "0.43.0", default-features = false }
+rig-agent = { path = "../rig-agent", version = "0.43.0", default-features = false, optional = true }
+rig-ecs = { path = "../rig-ecs", version = "0.43.0", optional = true }
+rig-reqwest = { path = "../rig-reqwest", version = "0.43.0", default-features = false, features = ["rustls"], optional = true }
 bevy_app = { workspace = true, optional = true }
 bevy_ecs = { workspace = true, optional = true }
 aws-smithy-eventstream = { workspace = true, optional = true }
@@ -73,6 +75,7 @@ httpmock = { workspace = true, features = ["record", "proxy"], optional = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 serde_yaml = { workspace = true, optional = true }
+thiserror = { workspace = true, optional = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "net", "sync", "io-util", "fs", "time"], optional = true }
 url = { workspace = true, optional = true }
 
@@ -83,6 +86,7 @@ rig = { path = "../..", default-features = false, features = [
   "agent",
   "audio",
   "bedrock",
+  "cassette",
   "derive",
   "image",
   "reqwest",
@@ -129,7 +133,6 @@ syn = { workspace = true, features = ["full", "visit"] }
 tokio = { workspace = true, features = ["full"] }
 tokio-test = { workspace = true }
 tracing = { workspace = true }
-tracing-subscriber = { workspace = true, features = ["env-filter"] }
 
 [[test]]
 name = "verify"

@@ -24,7 +24,7 @@ async fn structured_output_smoke() {
                 .prompt(STRUCTURED_OUTPUT_PROMPT)
                 .await
                 .expect("structured output prompt should succeed");
-            let structured: SmokeStructuredOutput = serde_json::from_str(&response.output)
+            let structured: SmokeStructuredOutput = serde_json::from_str(&response.output())
                 .expect("structured output should deserialize");
 
             assert_smoke_structured_output(&structured);

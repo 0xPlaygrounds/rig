@@ -2,6 +2,7 @@
 name = "rig-tungstenite"
 version.workspace = true
 edition = { workspace = true }
+rust-version = { workspace = true }
 license = "MIT"
 readme = "README.md"
 description = "The bundled tungstenite websocket backend for Rig."
@@ -15,7 +16,7 @@ rustdoc-args = ["--cfg", "docsrs"]
 workspace = true
 
 [dependencies]
-rig-http = { path = "../rig-http", version = "0.42.0", features = ["websocket"] }
+rig-http = { path = "../rig-http", version = "0.43.0", features = ["websocket"] }
 futures = { workspace = true }
 thiserror = { workspace = true }
 

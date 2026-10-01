@@ -1,11 +1,10 @@
 //! Shared fixtures, tiny tools, and durable assertions for ignored smoke tests.
-#![allow(dead_code)]
 
 use futures::StreamExt;
 
 use rig_agent::agent::MultiTurnStreamItem;
 
-use rig_agent::agent::StreamingError;
+use rig_agent::completion::PromptError;
 
 use rig_agent::agent::StreamingResult;
 
@@ -18,8 +17,6 @@ use rig_core::embeddings::Embedding;
 use rig_core::completion::CompletionResponse;
 
 use rig_core::streaming::{Item, StreamEvent};
-
-use rig_core::streaming::StreamedUserContent;
 
 use rig_core::streaming::CompletionStream;
 
@@ -414,7 +411,7 @@ impl Tool for BetaSignal {
 /// Build a named tool definition accepting an empty JSON object.
 pub fn zero_arg_tool_definition(name: &str) -> ToolDefinition {
     ToolDefinition {
-        name: name.to_owned(),
+        name: rig_core::message::ToolName::new(name).expect("tool name"),
         description: format!("A zero-argument tool named {name}."),
         parameters: json!({
             "type": "object",
@@ -743,7 +740,7 @@ impl rig_agent::agent::AgentHook for EscalateCapOnTruncation {
 /// Drain the stream, propagating errors and requiring an agent final response.
 pub async fn collect_stream_final_response(
     stream: &mut StreamingResult,
-) -> Result<String, StreamingError> {
+) -> Result<String, PromptError> {
     let mut final_response = None;
 
     while let Some(item) = stream.next().await {
@@ -759,7 +756,7 @@ pub async fn collect_stream_final_response(
 /// response and a recorded provider completion call.
 pub async fn collect_stream_final_response_and_provider_final(
     stream: &mut StreamingResult,
-) -> Result<(String, rig_agent::run::response::CompletionCall), StreamingError> {
+) -> Result<(String, rig_agent::run::response::CompletionCall), PromptError> {
     let mut final_response = None;
     let mut provider_final = None;
 
@@ -934,7 +931,7 @@ pub async fn collect_stream_observation(stream: &mut StreamingResult) -> StreamO
                 });
                 observation.events.push("tool_call");
             }
-            Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult { .. })) => {
+            Ok(MultiTurnStreamItem::ToolResult { .. }) => {
                 observation.tool_results += 1;
                 observation.final_turn_text.clear();
                 observation.events.push("tool_result");

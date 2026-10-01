@@ -107,7 +107,7 @@ async fn specific_single_function_targets_named_tool() {
                 .tool(rig::tool::tool_definition(&Adder))
                 .tool(rig::tool::tool_definition(&Subtract))
                 .tool_choice(ToolChoice::Specific {
-                    function_names: vec![Subtract::NAME.to_string()],
+                    function_names: vec![rig_core::tool::tool_name::<Subtract>()],
                 });
 
             let response = model
@@ -165,7 +165,10 @@ async fn specific_multiple_functions_use_allowed_tools() {
                 .tool(rig::tool::tool_definition(&Subtract))
                 .tool(rig::tool::tool_definition(&AlphaSignal))
                 .tool_choice(ToolChoice::Specific {
-                    function_names: vec![Adder::NAME.to_string(), Subtract::NAME.to_string()],
+                    function_names: vec![
+                        rig_core::tool::tool_name::<Adder>(),
+                        rig_core::tool::tool_name::<Subtract>(),
+                    ],
                 });
 
             let response = model

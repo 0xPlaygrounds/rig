@@ -1,5 +1,6 @@
 use super::*;
 use crate::message::AssistantContent;
+use crate::test_utils::json_body;
 use crate::test_utils::{MockStreamingClient, RecordingHttpClient};
 use crate::wire::secret::tests::a_config_reloads_without_its_credential;
 use futures::StreamExt;
@@ -31,32 +32,15 @@ const STREAM_BODY: &str = concat!(
 /// The request the recorded cell sent: a preamble, a prompt, 24 tokens, and
 /// `think: false` through the provider escape hatch.
 fn recorded_request() -> CompletionRequest {
-    CompletionRequest {
-        model: None,
-        chat_history: crate::NonEmpty::with_rest(
-            crate::message::Message::system("You are a concise assistant. Answer directly."),
-            [crate::message::Message::user(
-                "In one or two sentences, explain what Rust programming language is and why \
+    CompletionRequest::from(vec![
+        crate::message::Message::system("You are a concise assistant. Answer directly."),
+        crate::message::Message::user(
+            "In one or two sentences, explain what Rust programming language is and why \
                  memory safety matters.",
-            )],
         ),
-        documents: Vec::new(),
-        tools: Vec::new(),
-        temperature: None,
-        max_tokens: Some(24),
-        tool_choice: None,
-        additional_params: Some(serde_json::json!({ "think": false })),
-        output_schema: None,
-        record_telemetry_content: false,
-    }
-}
-
-fn body_of(encoded: &Encoded) -> serde_json::Value {
-    let request = &encoded.request;
-    match request.body() {
-        Body::Bytes(bytes) => serde_json::from_slice(bytes).expect("the body is JSON"),
-        Body::Multipart(_) => panic!("the chat wire sends no multipart body"),
-    }
+    ])
+    .max_tokens(24)
+    .additional_params(serde_json::json!({ "think": false }))
 }
 
 fn text_of(choice: &[AssistantContent]) -> String {
@@ -127,7 +111,7 @@ fn the_mode_is_the_only_difference_between_the_two_requests() {
         .expect("the request encodes");
 
     assert_eq!(
-        body_of(&unary),
+        json_body(&unary.request),
         serde_json::from_str::<serde_json::Value>(RECORDED_REQUEST).expect("the fixture is JSON")
     );
     assert_eq!(unary.framing, Framing::Whole);
@@ -135,7 +119,7 @@ fn the_mode_is_the_only_difference_between_the_two_requests() {
     let mut expected =
         serde_json::from_str::<serde_json::Value>(RECORDED_REQUEST).expect("the fixture is JSON");
     expected["stream"] = serde_json::Value::Bool(true);
-    assert_eq!(body_of(&streamed), expected);
+    assert_eq!(json_body(&streamed.request), expected);
     // A streamed reply is newline-delimited JSON, never SSE.
     assert_eq!(streamed.framing, Framing::Ndjson);
 }

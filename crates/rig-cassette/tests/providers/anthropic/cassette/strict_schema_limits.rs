@@ -12,7 +12,7 @@ use rig::completion::CompletionRequest;
 
 fn empty_tool(name: impl Into<String>) -> ToolDefinition {
     ToolDefinition {
-        name: name.into(),
+        name: rig_core::message::ToolName::new(name).expect("tool name"),
         description: "A strict no-argument boundary-test tool.".to_string(),
         parameters: json!({ "type": "object", "properties": {} }),
     }
@@ -96,7 +96,9 @@ async fn twenty_strict_tools_are_accepted() {
                 .max_tokens(1024)
                 .tools(tools)
                 .tool_choice(ToolChoice::Specific {
-                    function_names: vec!["boundary_tool_19".to_string()],
+                    function_names: vec![
+                        rig_core::message::ToolName::new("boundary_tool_19").expect("tool name"),
+                    ],
                 });
 
             let response = model
@@ -125,7 +127,9 @@ async fn twenty_one_strict_tools_are_rejected() {
                         .collect(),
                 )
                 .tool_choice(ToolChoice::Specific {
-                    function_names: vec!["boundary_tool_20".to_string()],
+                    function_names: vec![
+                        rig_core::message::ToolName::new("boundary_tool_20").expect("tool name"),
+                    ],
                 });
 
             let error = model
@@ -152,7 +156,7 @@ async fn twenty_four_optional_parameters_in_one_schema_hit_internal_limit() {
             .max_tokens(64)
             .tool_choice(ToolChoice::Required)
             .tool(ToolDefinition {
-                name: "optional_boundary".to_string(),
+                name: rig_core::message::ToolName::new("optional_boundary").expect("tool name"),
                 description: "Exercise the strict optional-parameter boundary.".to_string(),
                 parameters: optional_parameters_schema(24),
             });
@@ -179,7 +183,7 @@ async fn twenty_five_optional_parameters_are_rejected() {
                 .max_tokens(64)
                 .tool_choice(ToolChoice::Required)
                 .tool(ToolDefinition {
-                    name: "optional_boundary".to_string(),
+                    name: rig_core::message::ToolName::new("optional_boundary").expect("tool name"),
                     description: "Exceed the strict optional-parameter boundary.".to_string(),
                     parameters: optional_parameters_schema(25),
                 });
@@ -208,7 +212,7 @@ async fn sixteen_union_parameters_in_one_schema_hit_internal_limit() {
             .max_tokens(64)
             .tool_choice(ToolChoice::Required)
             .tool(ToolDefinition {
-                name: "union_boundary".to_string(),
+                name: rig_core::message::ToolName::new("union_boundary").expect("tool name"),
                 description: "Exercise the strict union-parameter boundary.".to_string(),
                 parameters: union_parameters_schema(16),
             });
@@ -233,7 +237,10 @@ async fn twenty_four_optional_parameters_across_tools_are_accepted() {
                 .map_wire(|wire| wire.with_strict_tools());
             let tools = (0..12)
                 .map(|tool_index| ToolDefinition {
-                    name: format!("optional_tool_{tool_index:02}"),
+                    name: rig_core::message::ToolName::new(format!(
+                        "optional_tool_{tool_index:02}"
+                    ))
+                    .expect("tool name"),
                     description: "A tool with two optional parameters.".to_string(),
                     parameters: json!({
                         "type": "object",
@@ -248,7 +255,9 @@ async fn twenty_four_optional_parameters_across_tools_are_accepted() {
                 .max_tokens(1024)
                 .tools(tools)
                 .tool_choice(ToolChoice::Specific {
-                    function_names: vec!["optional_tool_00".to_string()],
+                    function_names: vec![
+                        rig_core::message::ToolName::new("optional_tool_00").expect("tool name"),
+                    ],
                 });
 
             let response = model
@@ -271,7 +280,8 @@ async fn sixteen_union_parameters_across_tools_are_accepted() {
                 .map_wire(|wire| wire.with_strict_tools());
             let tools = (0..16)
                 .map(|tool_index| ToolDefinition {
-                    name: format!("union_tool_{tool_index:02}"),
+                    name: rig_core::message::ToolName::new(format!("union_tool_{tool_index:02}"))
+                        .expect("tool name"),
                     description: "A tool with one required nullable parameter.".to_string(),
                     parameters: json!({
                         "type": "object",
@@ -286,7 +296,9 @@ async fn sixteen_union_parameters_across_tools_are_accepted() {
                 .max_tokens(1024)
                 .tools(tools)
                 .tool_choice(ToolChoice::Specific {
-                    function_names: vec!["union_tool_00".to_string()],
+                    function_names: vec![
+                        rig_core::message::ToolName::new("union_tool_00").expect("tool name"),
+                    ],
                 });
 
             let response = model
@@ -312,7 +324,8 @@ async fn seventeen_union_parameters_are_rejected() {
                     .max_tokens(64)
                     .tool_choice(ToolChoice::Required)
                     .tool(ToolDefinition {
-                        name: "union_boundary".to_string(),
+                        name: rig_core::message::ToolName::new("union_boundary")
+                            .expect("tool name"),
                         description: "Exceed the strict union-parameter boundary.".to_string(),
                         parameters: union_parameters_schema(17),
                     });

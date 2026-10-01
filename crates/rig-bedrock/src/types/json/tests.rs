@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use aws_smithy_types::{Document, Number};
 use serde_json::Value;
 
-use crate::types::json::AwsDocument;
+use crate::types::json;
 
 #[test]
 fn smithy_objects_have_stable_recursive_json_order() {
@@ -18,7 +18,7 @@ fn smithy_objects_have_stable_recursive_json_order() {
                 ])),
             ),
         ]));
-        let value: Value = AwsDocument(document).into();
+        let value = json::to_value(document);
         assert_eq!(value.to_string(), r#"{"a":{"x":2,"y":5},"z":true}"#);
     }
 }
@@ -26,13 +26,13 @@ fn smithy_objects_have_stable_recursive_json_order() {
 #[test]
 fn unsigned_json_numbers_round_trip_without_precision_loss() {
     let value = serde_json::json!(u64::MAX);
-    let document: AwsDocument = value.clone().into();
+    let document = json::to_document(value.clone());
     assert!(matches!(
-        &document.0,
+        &document,
         Document::Number(Number::PosInt(number)) if *number == u64::MAX
     ));
 
-    let roundtrip: Value = document.into();
+    let roundtrip = json::to_value(document);
     assert_eq!(roundtrip, value);
 }
 
@@ -60,13 +60,13 @@ fn test_json_to_aws_document() {
         "#;
 
     let value: Value = serde_json::from_str(json).unwrap();
-    let document: AwsDocument = value.into();
+    let document = json::to_document(value);
     println!("{document:?}");
 }
 
 #[test]
 fn test_aws_document_to_json() {
-    let document = AwsDocument(Document::Object(HashMap::from([
+    let document = Document::Object(HashMap::from([
         (
             String::from("type"),
             Document::String(String::from("object")),
@@ -123,8 +123,8 @@ fn test_aws_document_to_json() {
                 Document::Null,
             ]),
         ),
-    ])));
+    ]));
 
-    let json: Value = document.into();
+    let json = json::to_value(document);
     println!("{json:?}");
 }

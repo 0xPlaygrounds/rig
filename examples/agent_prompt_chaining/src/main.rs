@@ -28,8 +28,8 @@ async fn main() -> Result<()> {
     let seed = build_rng_agent(gpt4.clone())
         .prompt(INPUT_PROMPT)
         .await?
-        .output;
-    let response = build_adder_agent(gpt4).prompt(seed.trim()).await?.output;
+        .output();
+    let response = build_adder_agent(gpt4).prompt(seed.trim()).await?.output();
 
     println!("First agent returned: {}", seed.trim());
     println!("Second agent returned: {}", response.trim());

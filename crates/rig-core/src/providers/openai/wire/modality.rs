@@ -254,20 +254,13 @@ impl<'id> Decoder<'id, Embedding> for EmbeddingsDecoder {
             .as_ref()
             .map(Usage::to_normalized)
             .unwrap_or_default();
-        // `document` is joined on by the operation's fold, which is the only
-        // place that still holds the request's inputs.
-        let embeddings = event
-            .data
-            .into_iter()
-            .map(|datum| embeddings::Embedding {
-                document: String::new(),
-                vec: datum
-                    .embedding
-                    .into_iter()
-                    .filter_map(|number| number.as_f64())
-                    .collect(),
-            })
-            .collect();
+        let vectors = event.data.into_iter().map(|datum| {
+            datum
+                .embedding
+                .into_iter()
+                .filter_map(|number| number.as_f64())
+                .collect()
+        });
         let model = if event.model.is_empty() {
             self.model.clone()
         } else {
@@ -276,7 +269,7 @@ impl<'id> Decoder<'id, Embedding> for EmbeddingsDecoder {
         Ok(out.end(embeddings::EmbeddingResponse {
             model: Some(model),
             usage,
-            ..embeddings::EmbeddingResponse::new(embeddings)
+            ..embeddings::EmbeddingResponse::from_vectors(vectors)
         }))
     }
 }
@@ -498,7 +491,6 @@ impl<'id> Decoder<'id, Transcription> for TranscriptionsDecoder {
         event: Self::Event,
         out: Out<'id, Transcription>,
     ) -> Result<Flow, ProviderError> {
-        use crate::transcription::NormalizeTranscriptionResponse;
         Ok(out.end(event.normalize()?))
     }
 }

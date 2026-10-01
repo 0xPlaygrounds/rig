@@ -202,28 +202,18 @@ pub(crate) fn create_request_body(
     completion_request: CompletionRequest,
     stream_override: Option<bool>,
 ) -> Result<CreateInteractionRequest, EncodeError> {
-    let chat_history = completion_request.chat_history_with_documents();
+    let (history_system, history) =
+        split_system_messages_from_history(completion_request.chat_history_with_documents());
 
-    let mut history = Vec::new();
-    history.extend(chat_history);
-    let (history_system, history) = split_system_messages_from_history(history);
-
-    let tool_ids = crate::providers::internal::wire_ids::WireIds::new(&history);
-    let mut steps = Vec::new();
-    for (position, message) in history.into_iter().enumerate() {
-        let mut converted = Step::from_message(message).map_err(EncodeError::request)?;
-        tool_ids
-            .apply(
-                position,
-                converted.iter_mut().filter_map(|step| match step {
-                    Step::FunctionCall(call) => call.id.as_mut(),
-                    Step::FunctionResult(result) => result.call_id.as_mut(),
-                    _ => None,
-                }),
-            )
-            .map_err(EncodeError::request)?;
-        steps.extend(converted);
-    }
+    let steps = crate::providers::internal::wire_ids::WireIds::convert(
+        history,
+        Step::from_message,
+        |step| match step {
+            Step::FunctionCall(call) => call.id.as_mut().into_iter().collect(),
+            Step::FunctionResult(result) => result.call_id.as_mut().into_iter().collect(),
+            _ => Vec::new(),
+        },
+    )?;
 
     let input = InteractionInput::Steps(steps);
 
@@ -1894,7 +1884,7 @@ pub mod interactions_api_types {
 
         fn try_from(tool: crate::completion::ToolDefinition) -> Result<Self, Self::Error> {
             Ok(Tool::Function(FunctionTool {
-                name: Some(tool.name),
+                name: Some(tool.name.into()),
                 description: Some(tool.description),
                 parameters: Some(tool.parameters),
             }))
@@ -1913,7 +1903,7 @@ pub mod interactions_api_types {
                     Ok(ToolChoice::Config(ToolChoiceConfig {
                         allowed_tools: AllowedTools {
                             mode: Some(ToolChoiceType::Validated),
-                            tools: Some(function_names),
+                            tools: Some(function_names.into_iter().map(String::from).collect()),
                         },
                     }))
                 }

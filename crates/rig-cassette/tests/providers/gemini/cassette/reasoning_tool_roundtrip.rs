@@ -63,7 +63,7 @@ async fn nonstreaming() {
                 .await
                 .expect("[gemini] Non-streaming chat failed - likely 400 from dropped reasoning");
 
-            reasoning::assert_nonstreaming_universal(&result.output, &call_count, "gemini");
+            reasoning::assert_nonstreaming_universal(&result.output(), &call_count, "gemini");
         },
     )
     .await;

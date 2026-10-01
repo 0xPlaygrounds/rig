@@ -90,18 +90,7 @@ impl Transport<Local<rig_core::operation::Embedding>> for Tiny {
 }
 
 fn request() -> CompletionRequest {
-    CompletionRequest {
-        model: None,
-        chat_history: rig_core::NonEmpty::new(Message::user("hi")),
-        documents: vec![],
-        tools: vec![],
-        temperature: None,
-        max_tokens: None,
-        tool_choice: None,
-        additional_params: None,
-        output_schema: None,
-        record_telemetry_content: false,
-    }
+    CompletionRequest::new("hi")
 }
 
 fn bus() -> (

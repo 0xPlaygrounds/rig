@@ -789,3 +789,64 @@ async fn reasoning_text_delta_arrives_over_websocket() {
         normalized.choice
     );
 }
+
+/// The session sends without the driver, so it runs the request-boundary
+/// check itself: each empty piece is rejected before anything is written,
+/// and the session stays usable.
+#[tokio::test]
+async fn an_empty_turn_is_rejected_before_anything_is_sent() {
+    let with = |message: serde_json::Value| {
+        CompletionRequest::new("hello").message(
+            serde_json::from_value::<rig_core::message::Message>(message)
+                .expect("an empty list parses"),
+        )
+    };
+    let mut empty_history = CompletionRequest::new("hello");
+    empty_history.chat_history.clear();
+    let requests = [
+        (empty_history, "request has an empty chat history"),
+        (
+            with(json!({"role": "user", "content": []})),
+            "user message at index 0 has no content",
+        ),
+        (
+            with(json!({"role": "assistant", "id": null, "content": []})),
+            "assistant message at index 0 has no content",
+        ),
+        (
+            with(json!({
+                "role": "user",
+                "content": [{
+                    "type": "toolresult",
+                    "call": {"provider": {"call_id": "call_1"}},
+                    "name": "lookup",
+                    "content": [],
+                }],
+            })),
+            "tool result for `lookup` at index 0",
+        ),
+    ];
+
+    let client = test_client();
+    let script = Script::turns(Vec::<Vec<String>>::new());
+    let mut session = session(&client, &script);
+    for (request, expected) in requests {
+        let error = session
+            .completion(request.clone())
+            .await
+            .expect_err("the turn is rejected");
+        assert!(error.to_string().contains(expected), "{error}");
+        let error = session
+            .send(request)
+            .await
+            .expect_err("the send is rejected");
+        assert!(error.to_string().contains(expected), "{error}");
+    }
+    assert!(script.sent().is_empty(), "nothing reached the socket");
+
+    session
+        .send(CompletionRequest::new("hello"))
+        .await
+        .expect("the session still sends");
+    assert_eq!(script.sent().len(), 1);
+}

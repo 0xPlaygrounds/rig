@@ -111,7 +111,7 @@ pub async fn chat(message: String) -> Result<String, JsValue> {
         .agent
         .chat(message, &mut state.history)
         .await
-        .map(|response| response.output);
+        .map(|response| response.output());
     CHAT_STATE.with(|slot| slot.replace(Some(state)));
     result.map_err(|error| js_error(BrowserModelError::Inference(error.to_string())))
 }

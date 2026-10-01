@@ -42,7 +42,7 @@ async fn hooks_retry_twice_effect_log_is_the_golden_fixture() {
         .max_invalid_tool_call_retries(2)
         .await
         .expect("the second retry recovers");
-    assert_eq!(response.output, "2 + 3 = 5");
+    assert_eq!(response.output(), "2 + 3 = 5");
     let log = agent.stamp(recorder.take());
     assert_eq!(
         families(&log),

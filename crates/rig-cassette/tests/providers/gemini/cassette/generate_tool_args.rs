@@ -170,7 +170,7 @@ async fn nested_arguments_roundtrip_nonstreaming() {
                 .expect("nested-args tool chat should succeed");
 
             assert!(
-                result.output.contains("SAKURA-77"),
+                result.output().contains("SAKURA-77"),
                 "final answer should repeat the tool's confirmation code, got {result:?}"
             );
 
@@ -247,7 +247,7 @@ async fn unicode_arguments_streaming() {
             )
             .temperature(0.0)
             .tool(ToolDefinition {
-                name: "echo".to_string(),
+                name: rig_core::message::ToolName::new("echo").expect("tool name"),
                 description: "Echo a message back to the user.".to_string(),
                 parameters: json!({
                     "type": "object",
@@ -309,7 +309,7 @@ async fn optional_nullable_argument_omitted_when_not_requested() {
             )
             .temperature(0.0)
             .tool(ToolDefinition {
-                name: "log_event".to_string(),
+                name: rig_core::message::ToolName::new("log_event").expect("tool name"),
                 description: "Record an event with an optional free-form note.".to_string(),
                 parameters: json!({
                     "type": "object",

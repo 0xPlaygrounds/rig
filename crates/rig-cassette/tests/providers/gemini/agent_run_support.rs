@@ -78,7 +78,7 @@ pub(crate) struct MathError;
 
 fn operation_definition(name: &str, description: &str) -> ToolDefinition {
     ToolDefinition {
-        name: name.to_string(),
+        name: rig_core::message::ToolName::new(name).expect("tool name"),
         description: description.to_string(),
         parameters: json!({
             "type": "object",
@@ -205,7 +205,7 @@ pub(crate) fn execute_pending_calls(calls: &[PendingToolCall]) -> Vec<UserConten
             UserContent::tool_result(
                 call.tool_call.id.clone(),
                 call.tool_call.function.name.clone(),
-                rig_core::NonEmpty::from_vec(content).expect("non-empty"),
+                content,
             )
         })
         .collect()

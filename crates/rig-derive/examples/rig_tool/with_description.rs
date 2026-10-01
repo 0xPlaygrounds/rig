@@ -62,7 +62,7 @@ async fn main() -> Result<(), anyhow::Error> {
         "What is 10 / 0?",
     ] {
         println!("User: {prompt}");
-        println!("Agent: {}", calculator_agent.prompt(prompt).await?.output);
+        println!("Agent: {}", calculator_agent.prompt(prompt).await?.output());
     }
 
     Ok(())

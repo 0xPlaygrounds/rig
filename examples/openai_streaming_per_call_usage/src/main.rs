@@ -138,7 +138,7 @@ async fn main() -> Result<()> {
             MultiTurnStreamItem::ToolExecutionCommitted { tool_call, .. } => {
                 println!("rig committed tool execution: {}", tool_call.function.name);
             }
-            MultiTurnStreamItem::StreamUserItem(_) => {
+            MultiTurnStreamItem::ToolResult { .. } => {
                 println!("tool result sent back to model");
             }
             MultiTurnStreamItem::CompletionCall(completion_call) => {

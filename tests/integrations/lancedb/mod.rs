@@ -1,10 +1,13 @@
 use serde_json::json;
 
-use fixture::{Word, as_record_batch, words};
+use crate::common::{mock_embeddings, openai_client};
+use fixture::{FLUMBUZZLE, as_record_batch, flumbuzzles, words};
 use lancedb::index::vector::IvfPqIndexBuilder;
 use rig::lancedb::{LanceDbVectorIndex, SearchParams};
+use rig::vector_store::VectorSearchResult;
 use rig::{
-    embeddings::EmbeddingsBuilder, prelude::*, providers::openai, vector_store::VectorStoreIndex,
+    driver::Model, embeddings::EmbeddingsBuilder, prelude::*, providers::openai,
+    vector_store::VectorStoreIndex,
 };
 
 #[path = "./fixtures/lib.rs"]
@@ -14,95 +17,9 @@ mod fixture;
 async fn vector_search_test() {
     // Setup mock openai API
     let server = httpmock::MockServer::start();
+    mock_embeddings_api(&server);
 
-    server.mock(|when, then| {
-        let mut req_data = vec![
-            "Definition of *flumbrel (noun)*: a small, seemingly insignificant item that you constantly lose or misplace, such as a pen, hair tie, or remote control.",
-            "Definition of *zindle (verb)*: to pretend to be working on something important while actually doing something completely unrelated or unproductive.",
-            "Definition of a *linglingdong*: A term used by inhabitants of the far side of the moon to describe humans.",
-        ];
-        req_data.append(vec!["Definition of *flumbuzzle (noun)*: A sudden, inexplicable urge to rearrange or reorganize small objects, such as desk items or books, for no apparent reason."; 256].as_mut());
-
-        when.method(httpmock::Method::POST)
-            .path("/embeddings")
-            .header("Authorization", "Bearer TEST")
-            .header("Content-Type", "application/json")
-            .json_body(json!({
-                "input": req_data,
-                "model": "text-embedding-ada-002",
-            }));
-
-        let mut resp_data = vec![
-            json!({
-                "object": "embedding",
-                "embedding": vec![0.1; 1536],
-                "index": 0
-            }),
-            json!({
-                "object": "embedding",
-                "embedding": vec![0.0023064255; 1536],
-                "index": 2
-            }),
-            json!({
-                "object": "embedding",
-                "embedding": vec![0.2; 1536],
-                "index": 1
-            }),
-        ];
-        resp_data.append(vec![json!({
-            "object": "embedding",
-            "embedding": vec![0.2; 1536],
-            "index": 1
-        }); 256].as_mut());
-
-        then.status(200)
-            .header("content-type", "application/json")
-            .json_body(json!({
-                "object": "list",
-                "data": resp_data,
-                "model": "text-embedding-ada-002",
-                "usage": {
-                  "prompt_tokens": 8,
-                  "total_tokens": 8
-                }
-            }
-        ));
-    });
-    server.mock(|when, then| {
-        when.method(httpmock::Method::POST)
-            .path("/embeddings")
-            .header("Authorization", "Bearer TEST")
-            .header("Content-Type", "application/json")
-            .json_body(json!({
-                "input": [
-                    "My boss says I zindle too much, what does that mean?"
-                ],
-                "model": "text-embedding-ada-002",
-            }));
-        then.status(200)
-            .header("content-type", "application/json")
-            .json_body(json!({
-                    "object": "list",
-                    "data": [
-                      {
-                        "object": "embedding",
-                        "embedding": vec![0.0023064254; 1536],
-                        "index": 0
-                      }
-                    ],
-                    "model": "text-embedding-ada-002",
-                    "usage": {
-                      "prompt_tokens": 8,
-                      "total_tokens": 8
-                    }
-                }
-            ));
-    });
-
-    // Initialize OpenAI client
-    let openai_client = openai::OpenAIConfig::new("TEST")
-        .with_base_url(server.base_url())
-        .client();
+    let openai_client = openai_client(&server);
 
     // Select an embedding model.
     let model = openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None);
@@ -114,56 +31,8 @@ async fn vector_search_test() {
         .await
         .unwrap();
 
-    // Generate embeddings for the test data.
-    let embeddings = EmbeddingsBuilder::new(model.clone())
-        .documents(words()).unwrap()
-        // Note: need at least 256 rows in order to create an index so copy the definition 256 times for testing purposes.
-        .documents(
-            (0..256)
-                .map(|i| Word {
-                    id: format!("doc{i}"),
-                    definition: "Definition of *flumbuzzle (noun)*: A sudden, inexplicable urge to rearrange or reorganize small objects, such as desk items or books, for no apparent reason.".to_string()
-                })
-        ).unwrap()
-        .build()
-        .await.unwrap();
-
     let table_name = "definitions";
-    let table = if db
-        .table_names()
-        .execute()
-        .await
-        .unwrap()
-        .contains(&table_name.to_string())
-    {
-        db.open_table(table_name).execute().await.unwrap()
-    } else {
-        db.create_table(
-            table_name,
-            vec![as_record_batch(embeddings, model.capabilities().ndims).unwrap()],
-        )
-        .execute()
-        .await
-        .unwrap()
-    };
-
-    // See [LanceDB indexing](https://lancedb.github.io/lancedb/concepts/index_ivfpq/#product-quantization) for more information
-    if table.index_stats("embedding").await.unwrap().is_none() {
-        table
-            .create_index(
-                &["embedding"],
-                lancedb::index::Index::IvfPq(IvfPqIndexBuilder::default()),
-            )
-            .execute()
-            .await
-            .unwrap();
-    }
-
-    // Define search_params params that will be used by the vector store to perform the vector search.
-    let search_params = SearchParams::default();
-    let vector_store_index = LanceDbVectorIndex::new(table, model, "id", search_params)
-        .await
-        .unwrap();
+    let (vector_store_index, _) = index_definitions(&db, model, table_name).await;
 
     let query = "My boss says I zindle too much, what does that mean?";
     let req = VectorSearchRequest::builder()
@@ -177,7 +46,11 @@ async fn vector_search_test() {
         .await
         .unwrap();
 
-    let (distance, _, value) = &results.first().unwrap();
+    let VectorSearchResult {
+        score: distance,
+        document: value,
+        ..
+    } = &results.first().unwrap();
 
     assert_eq!(
         *value,
@@ -195,93 +68,7 @@ async fn vector_search_test() {
 async fn agent_with_dynamic_context_test() {
     // Setup mock openai API
     let server = httpmock::MockServer::start();
-
-    // Mock embeddings API for initial data ingestion
-    server.mock(|when, then| {
-        let mut req_data = vec![
-            "Definition of *flumbrel (noun)*: a small, seemingly insignificant item that you constantly lose or misplace, such as a pen, hair tie, or remote control.",
-            "Definition of *zindle (verb)*: to pretend to be working on something important while actually doing something completely unrelated or unproductive.",
-            "Definition of a *linglingdong*: A term used by inhabitants of the far side of the moon to describe humans.",
-        ];
-        req_data.append(vec!["Definition of *flumbuzzle (noun)*: A sudden, inexplicable urge to rearrange or reorganize small objects, such as desk items or books, for no apparent reason."; 256].as_mut());
-
-        when.method(httpmock::Method::POST)
-            .path("/embeddings")
-            .header("Authorization", "Bearer TEST")
-            .header("Content-Type", "application/json")
-            .json_body(json!({
-                "input": req_data,
-                "model": "text-embedding-ada-002",
-            }));
-
-        let mut resp_data = vec![
-            json!({
-                "object": "embedding",
-                "embedding": vec![0.1; 1536],
-                "index": 0
-            }),
-            json!({
-                "object": "embedding",
-                "embedding": vec![0.0023064255; 1536],
-                "index": 2
-            }),
-            json!({
-                "object": "embedding",
-                "embedding": vec![0.2; 1536],
-                "index": 1
-            }),
-        ];
-        resp_data.append(vec![json!({
-            "object": "embedding",
-            "embedding": vec![0.2; 1536],
-            "index": 1
-        }); 256].as_mut());
-
-        then.status(200)
-            .header("content-type", "application/json")
-            .json_body(json!({
-                "object": "list",
-                "data": resp_data,
-                "model": "text-embedding-ada-002",
-                "usage": {
-                  "prompt_tokens": 8,
-                  "total_tokens": 8
-                }
-            }
-        ));
-    });
-
-    // Mock embeddings API for query
-    server.mock(|when, then| {
-        when.method(httpmock::Method::POST)
-            .path("/embeddings")
-            .header("Authorization", "Bearer TEST")
-            .header("Content-Type", "application/json")
-            .json_body(json!({
-                "input": [
-                    "My boss says I zindle too much, what does that mean?"
-                ],
-                "model": "text-embedding-ada-002",
-            }));
-        then.status(200)
-            .header("content-type", "application/json")
-            .json_body(json!({
-                    "object": "list",
-                    "data": [
-                      {
-                        "object": "embedding",
-                        "embedding": vec![0.0023064254; 1536],
-                        "index": 0
-                      }
-                    ],
-                    "model": "text-embedding-ada-002",
-                    "usage": {
-                      "prompt_tokens": 8,
-                      "total_tokens": 8
-                    }
-                }
-            ));
-    });
+    mock_embeddings_api(&server);
 
     // Mock completions API for agent response
     server.mock(|when, then| {
@@ -327,58 +114,8 @@ async fn agent_with_dynamic_context_test() {
         .await
         .unwrap();
 
-    // Generate embeddings for the test data.
-    let embeddings = EmbeddingsBuilder::new(model.clone())
-        .documents(words()).unwrap()
-        // Note: need at least 256 rows in order to create an index so copy the definition 256 times for testing purposes.
-        .documents(
-            (0..256)
-                .map(|i| Word {
-                    id: format!("doc{i}"),
-                    definition: "Definition of *flumbuzzle (noun)*: A sudden, inexplicable urge to rearrange or reorganize small objects, such as desk items or books, for no apparent reason.".to_string()
-                })
-        ).unwrap()
-        .build()
-        .await.unwrap();
-
-    let top_k = embeddings.len();
-
     let table_name = "agent_definitions";
-    let table = if db
-        .table_names()
-        .execute()
-        .await
-        .unwrap()
-        .contains(&table_name.to_string())
-    {
-        db.open_table(table_name).execute().await.unwrap()
-    } else {
-        db.create_table(
-            table_name,
-            vec![as_record_batch(embeddings, model.capabilities().ndims).unwrap()],
-        )
-        .execute()
-        .await
-        .unwrap()
-    };
-
-    // See [LanceDB indexing](https://lancedb.github.io/lancedb/concepts/index_ivfpq/#product-quantization) for more information
-    if table.index_stats("embedding").await.unwrap().is_none() {
-        table
-            .create_index(
-                &["embedding"],
-                lancedb::index::Index::IvfPq(IvfPqIndexBuilder::default()),
-            )
-            .execute()
-            .await
-            .unwrap();
-    }
-
-    // Define search_params params that will be used by the vector store to perform the vector search.
-    let search_params = SearchParams::default();
-    let vector_store_index = LanceDbVectorIndex::new(table, model, "id", search_params)
-        .await
-        .unwrap();
+    let (vector_store_index, top_k) = index_definitions(&db, model, table_name).await;
 
     // Build RAG agent with dynamic context.
     let agent = AgentBuilder::new(openai_client.completion(openai::GPT_4O))
@@ -387,10 +124,72 @@ async fn agent_with_dynamic_context_test() {
 
     let query = "My boss says I zindle too much, what does that mean?";
 
-    let response = agent.prompt(query).await.unwrap().output;
+    let response = agent.prompt(query).await.unwrap().output();
 
     assert!(response.contains("zindle") || response.contains("pretend to be working"));
     assert!(response.contains("important") || response.contains("unproductive"));
 
     db.drop_table(table_name, &[]).await.unwrap();
+}
+
+/// Mocks the embeddings of [`words`] followed by [`flumbuzzles`], and of the
+/// `zindle` query, which lands nearest `doc1`.
+fn mock_embeddings_api(server: &httpmock::MockServer) {
+    let mut inputs: Vec<String> = words().into_iter().map(|word| word.definition).collect();
+    inputs.extend(std::iter::repeat_n(FLUMBUZZLE.to_string(), 256));
+    let mut embeddings = vec![vec![0.1; 1536], vec![0.0023064255; 1536], vec![0.2; 1536]];
+    embeddings.extend(std::iter::repeat_n(vec![0.2; 1536], 256));
+    mock_embeddings(
+        server,
+        json!({ "input": inputs, "model": "text-embedding-ada-002" }),
+        embeddings,
+    );
+    mock_embeddings(
+        server,
+        json!({
+            "input": ["My boss says I zindle too much, what does that mean?"],
+            "model": "text-embedding-ada-002",
+        }),
+        [vec![0.0023064254; 1536]],
+    );
+}
+
+/// Embeds [`words`] and [`flumbuzzles`] into a new `table_name` table, builds
+/// its IVF-PQ index, and returns the vector index with its row count.
+async fn index_definitions(
+    db: &lancedb::Connection,
+    model: Model<openai::wire::Embeddings>,
+    table_name: &str,
+) -> (LanceDbVectorIndex, usize) {
+    let embeddings = EmbeddingsBuilder::new(model.clone())
+        .documents(words())
+        .unwrap()
+        .documents(flumbuzzles())
+        .unwrap()
+        .build()
+        .await
+        .unwrap();
+    let rows = embeddings.len();
+
+    let batch = as_record_batch(embeddings, model.capabilities().ndims).unwrap();
+    let table = db
+        .create_table(table_name, vec![batch])
+        .execute()
+        .await
+        .unwrap();
+
+    // See [LanceDB indexing](https://lancedb.github.io/lancedb/concepts/index_ivfpq/#product-quantization) for more information
+    table
+        .create_index(
+            &["embedding"],
+            lancedb::index::Index::IvfPq(IvfPqIndexBuilder::default()),
+        )
+        .execute()
+        .await
+        .unwrap();
+
+    let index = LanceDbVectorIndex::new(table, model, "id", SearchParams::default())
+        .await
+        .unwrap();
+    (index, rows)
 }

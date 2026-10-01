@@ -22,7 +22,7 @@ use rig_ecs::{
         Failed, Failure, MessageParts, Owner, Prompt, Ready, Run, RunOf, RunPhase, Settled,
         Utterance,
     },
-    checkpoint::{Checkpoint, RestoreMode, load_world, save_world},
+    checkpoint::{Checkpoint, CheckpointError, RestoreMode, load_world, save_world},
     systems::{Fresh, RunBusy, RunCommands, RunDespawnRefused, spawn_utterance},
 };
 use run_support::*;
@@ -183,7 +183,7 @@ fn a_reserved_run_despawned_before_it_was_populated_is_gone() {
         },
     );
     let history = [MessageParts::User {
-        content: rig_core::NonEmpty::new(UserContent::text("earlier")),
+        content: vec![UserContent::text("earlier")],
     }];
     let run = world
         .commands()
@@ -277,9 +277,8 @@ fn a_checkpoint_refuses_ready_and_prompt_off_a_run_before_it_loads() {
         let count = app.world().entities().len();
         let error = load_world(&misplaced, app.world_mut(), RestoreMode::Strict, []).unwrap_err();
         assert!(
-            error.message.contains(&format!("{name} is not on a run")),
-            "{name}: {}",
-            error.message
+            matches!(error, CheckpointError::InvalidGraph(reason) if reason == format!("{name} is not on a run")),
+            "{name}: {error:?}"
         );
         assert_eq!(
             app.world().entities().len(),
@@ -320,7 +319,7 @@ fn a_run_assembled_by_hand_starts_on_ready_with_its_history_first() {
         world,
         run,
         MessageParts::User {
-            content: rig_core::NonEmpty::new(UserContent::text("earlier")),
+            content: vec![UserContent::text("earlier")],
         },
     )
     .expect("a user utterance");

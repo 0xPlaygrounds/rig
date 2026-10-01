@@ -1,26 +1,10 @@
 use super::*;
 use crate::{
     error::ErrorKind,
-    message::Message,
     operation::Finish,
     streaming::{Item, StreamEvent},
 };
 use futures::StreamExt;
-
-fn request(prompt: &str) -> CompletionRequest {
-    CompletionRequest {
-        model: None,
-        chat_history: crate::NonEmpty::new(Message::user(prompt)),
-        documents: Vec::new(),
-        tools: Vec::new(),
-        temperature: None,
-        max_tokens: None,
-        tool_choice: None,
-        additional_params: None,
-        output_schema: None,
-        record_telemetry_content: false,
-    }
-}
 
 #[tokio::test]
 async fn completion_consumes_scripted_turns_and_records_requests() {
@@ -31,7 +15,7 @@ async fn completion_consumes_scripted_turns_and_records_requests() {
     ]);
 
     let first = model
-        .call(request("hello"))
+        .call(CompletionRequest::new("hello"))
         .await
         .expect("first scripted turn should succeed");
     assert_eq!(first.message_id.as_deref(), Some("msg_1"));
@@ -41,7 +25,7 @@ async fn completion_consumes_scripted_turns_and_records_requests() {
     ));
 
     let second = model
-        .call(request("use a tool"))
+        .call(CompletionRequest::new("use a tool"))
         .await
         .expect("second scripted turn should succeed");
     assert!(matches!(
@@ -71,13 +55,13 @@ async fn completion_attaches_scripted_raw_and_its_own_turn_when_unscripted() {
     ]);
 
     let scripted = model
-        .call(request("hello"))
+        .call(CompletionRequest::new("hello"))
         .await
         .expect("first scripted turn should succeed");
     assert_eq!(scripted.raw, payload);
 
     let unscripted = model
-        .call(request("hello"))
+        .call(CompletionRequest::new("hello"))
         .await
         .expect("second scripted turn should succeed");
     assert_eq!(unscripted.raw, expected_unscripted);
@@ -104,7 +88,9 @@ async fn stream_terminal_raw_is_the_scripted_terminal_serialized() {
         }),
     ]]);
 
-    let mut stream = model.stream(request("hello")).expect("stream should open");
+    let mut stream = model
+        .stream(CompletionRequest::new("hello"))
+        .expect("stream should open");
     while stream.next().await.is_some() {}
     let response = stream.finish().await.expect("the reply ended");
     let typed: Finish = serde_json::from_value(response.raw.clone()).expect("the end");
@@ -121,7 +107,7 @@ async fn missing_completion_turn_returns_provider_error() {
     let model = MockCompletionModel::from_turns([]);
 
     let err = model
-        .call(request("hello"))
+        .call(CompletionRequest::new("hello"))
         .await
         .expect_err("missing turn should error");
 
@@ -145,7 +131,7 @@ async fn stream_yields_scripted_events_and_records_requests() {
     ]]);
 
     let mut stream = model
-        .stream(request("stream"))
+        .stream(CompletionRequest::new("stream"))
         .expect("stream should be created");
 
     let mut text = String::new();
@@ -179,7 +165,7 @@ async fn stream_yields_scripted_events_and_records_requests() {
 async fn stream_error_event_is_returned() {
     let model = MockCompletionModel::from_stream_turns([[MockStreamEvent::error("boom")]]);
     let mut stream = model
-        .stream(request("stream"))
+        .stream(CompletionRequest::new("stream"))
         .expect("stream should be created");
 
     let err = stream

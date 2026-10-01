@@ -423,7 +423,7 @@ async fn support_chat_100_resume() {
             log.usages
                 .extend(response.completion_calls.iter().map(|call| call.usage));
             let mut history = checkpoint.history;
-            history.extend(response.messages.clone().unwrap_or_default());
+            history.extend(response.messages.clone());
             for turn in 52..=100 {
                 chat(&agent, &clock, question(turn, "A"), &mut history, &mut log).await;
             }

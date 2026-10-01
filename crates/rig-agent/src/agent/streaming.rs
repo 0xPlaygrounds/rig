@@ -7,34 +7,29 @@
 //! ```
 
 use rig_core::error::ProviderError;
-use rig_core::{message::AssistantContent, wasm_compat::WasmCompatSend};
+use rig_core::{
+    message::AssistantContent,
+    wasm_compat::{WasmBoxedStream, WasmCompatSend},
+};
 
 use crate::{
-    agent::engine::{DriveItem, StreamingTurnSource, drive_agent, streaming_error_into_prompt},
+    agent::engine::{DriveItem, StreamingTurnSource, drive_agent},
     agent::hook::{AgentHook, RunSettled, SettledOutcome, StepEventKind},
     agent::runner::{AgentRunner, RunOrigin},
-    streaming::{Item, StreamEvent, StreamedUserContent},
+    streaming::{Item, StreamEvent},
 };
 use futures::{SinkExt, Stream, StreamExt, channel::mpsc, stream::FusedStream};
 use serde::Serialize;
+use std::io::Write;
 use std::pin::Pin;
 use tracing_futures::Instrument;
 
 use crate::completion::PromptError;
 use crate::run::response::{CompletionCall, PromptResponse};
-use crate::run::transcript::assistant_text_from_choice;
 use rig_core::message::Message;
 
-// Match core's browser-only relaxed bounds; a bare wasm32 check would also
-// relax Send on WASI, where core still requires it.
 /// The stream a streamed run yields: its items, then its ending.
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
-pub type StreamingResult =
-    Pin<Box<dyn Stream<Item = Result<MultiTurnStreamItem, StreamingError>> + Send>>;
-
-/// The stream a streamed run yields: its items, then its ending.
-#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
-pub type StreamingResult = Pin<Box<dyn Stream<Item = Result<MultiTurnStreamItem, StreamingError>>>>;
+pub type StreamingResult = WasmBoxedStream<'static, Result<MultiTurnStreamItem, PromptError>>;
 
 #[derive(Serialize, Debug, Clone)]
 #[serde(tag = "type", rename_all = "camelCase")]
@@ -81,12 +76,15 @@ pub enum MultiTurnStreamItem {
         /// [`StreamAssistantItem`](Self::StreamAssistantItem).
         tool_call: rig_core::message::ToolCall,
     },
-    /// A streamed user content item: the **result** of an executed (or
-    /// hook-skipped) tool call. The tool batch commits and surfaces atomically at
-    /// every `tool_concurrency` (including the sequential default): results are
-    /// surfaced in call order only after the whole batch settles successfully;
-    /// a run that terminates mid-batch surfaces no successful tool results.
-    StreamUserItem(StreamedUserContent),
+    /// The **result** of an executed (or hook-skipped) tool call. The tool
+    /// batch commits and surfaces atomically at every `tool_concurrency`
+    /// (including the sequential default): results are surfaced in call order
+    /// only after the whole batch settles successfully; a run that terminates
+    /// mid-batch surfaces no successful tool results.
+    ToolResult {
+        /// The result; `tool_result.call` is the id of the call it answers.
+        tool_result: rig_core::message::ToolResult,
+    },
     /// Details for one successfully completed completion request made by this agent stream.
     ///
     /// This is emitted when a provider call finishes. Usage is the provider's
@@ -130,13 +128,11 @@ fn final_response_from_content(
     content: Vec<AssistantContent>,
     aggregated_usage: crate::completion::Usage,
     completion_calls: Vec<CompletionCall>,
-    history: Option<Vec<Message>>,
+    history: Vec<Message>,
 ) -> PromptResponse {
-    let mut response = PromptResponse::new(assistant_text_from_choice(&content), aggregated_usage)
-        .with_content(content)
-        .with_completion_calls(completion_calls);
-    response.messages = history;
-    response
+    PromptResponse::from_content(content, aggregated_usage)
+        .with_completion_calls(completion_calls)
+        .with_messages(history)
 }
 
 impl MultiTurnStreamItem {
@@ -159,7 +155,7 @@ impl MultiTurnStreamItem {
     }
 
     /// Build a final response from structured content and aggregate usage.
-    /// Concatenates text for output; completion details and history remain unset.
+    /// Concatenates text for output; completion details and history remain empty.
     pub fn final_response(
         content: Vec<AssistantContent>,
         aggregated_usage: crate::completion::Usage,
@@ -168,7 +164,7 @@ impl MultiTurnStreamItem {
             content,
             aggregated_usage,
             Vec::new(),
-            None,
+            Vec::new(),
         ))
     }
 
@@ -176,7 +172,7 @@ impl MultiTurnStreamItem {
         content: Vec<AssistantContent>,
         aggregated_usage: crate::completion::Usage,
         completion_calls: Vec<CompletionCall>,
-        history: Option<Vec<Message>>,
+        history: Vec<Message>,
     ) -> Self {
         Self::FinalResponse(final_response_from_content(
             content,
@@ -184,64 +180,6 @@ impl MultiTurnStreamItem {
             completion_calls,
             history,
         ))
-    }
-}
-
-/// Replace calls and prose in a finished output-tool turn with final output text,
-/// retaining reasoning and images. Call only after finalization, when remaining
-/// calls are output-tool calls. Persisted history retains prose independently;
-/// returns `None` if no call is present.
-pub(crate) fn finalize_streamed_choice(
-    last_final_choice: &[AssistantContent],
-    output: &str,
-) -> Option<Vec<AssistantContent>> {
-    let finalized_via_output_tool = last_final_choice
-        .iter()
-        .any(|item| matches!(item, AssistantContent::ToolCall(_)));
-    if !finalized_via_output_tool {
-        return None;
-    }
-    let mut items: Vec<AssistantContent> = last_final_choice
-        .iter()
-        .filter(|item| {
-            !matches!(
-                item,
-                AssistantContent::ToolCall(_) | AssistantContent::Text(_)
-            )
-        })
-        .cloned()
-        .collect();
-    items.push(AssistantContent::text(output.to_string()));
-    Some(items)
-}
-
-/// Why a streamed run ended before its final response.
-#[derive(Debug, thiserror::Error)]
-pub enum StreamingError {
-    /// The provider stream failed.
-    #[error("CompletionError: {0}")]
-    Completion(ProviderError),
-    /// Structured failure from the bus, a handler, a hook, or a stream item.
-    #[error("{0}")]
-    Report(#[from] rig_core::error::ErrorReport),
-    /// The run failed for a reason the blocking surface reports the same way.
-    #[error("PromptError: {0}")]
-    Prompt(#[from] PromptError),
-}
-
-/// A failure relayed over the bus is the report the origin sent.
-impl From<ProviderError> for StreamingError {
-    fn from(error: ProviderError) -> Self {
-        match error {
-            ProviderError::Relayed(report) => Self::Report(*report),
-            error => Self::Completion(error),
-        }
-    }
-}
-
-impl From<rig_core::memory::MemoryError> for StreamingError {
-    fn from(err: rig_core::memory::MemoryError) -> Self {
-        Self::Prompt(PromptError::MemoryError(err))
     }
 }
 
@@ -317,7 +255,7 @@ impl AgentRunner {
                 // at the first failure cannot suppress the lifecycle notification.
                 let hooks = self.config.hooks.clone();
                 let stream = async_stream::stream! {
-                    let err = StreamingError::from(err);
+                    let err = PromptError::from(err);
                     if hooks.observes(StepEventKind::RunSettled) {
                         let reason = err.to_string();
                         hooks
@@ -467,9 +405,8 @@ impl AgentRunner {
                     Err(err) => {
                         // Drain after the terminal error so span and lineage teardown
                         // completes instead of being dropped at the yield.
-                        let error = streaming_error_into_prompt(err);
                         while stream.next().await.is_some() {}
-                        return Err(error);
+                        return Err(err);
                     }
                 };
                 match item {
@@ -489,7 +426,7 @@ impl AgentRunner {
                 }
             }
             response.ok_or_else(|| {
-                PromptError::CompletionError(ProviderError::Response(
+                PromptError::Provider(ProviderError::Response(
                     "agent run ended without producing a final response".to_string(),
                 ))
             })
@@ -498,53 +435,67 @@ impl AgentRunner {
     }
 }
 
-/// Helper function to stream assistant-visible completion output to stdout.
+/// Why [`stream_to_stdout`] returned no response.
+#[derive(Debug, thiserror::Error)]
+pub enum StreamToStdoutError {
+    /// The run failed.
+    #[error(transparent)]
+    Run(#[from] PromptError),
+    /// Writing to stdout failed.
+    #[error(transparent)]
+    Io(#[from] std::io::Error),
+    /// The stream ended without a final response.
+    #[error("the stream ended without a final response")]
+    Incomplete,
+}
+
+/// Print a streamed run's assistant text and reasoning to stdout and return
+/// its final response.
 ///
-/// This helper prints streamed assistant text and reasoning. Streaming metadata
-/// events, such as `MultiTurnStreamItem::CompletionCall`, are not printed;
-/// metadata is returned on the [`PromptResponse`] via accessors such as
-/// [`PromptResponse::completion_calls`]. A model-turn retry prints a visible
-/// boundary because text already written to stdout cannot be retracted.
+/// Streaming metadata events, such as `MultiTurnStreamItem::CompletionCall`,
+/// are not printed; metadata is returned on the [`PromptResponse`] via
+/// accessors such as [`PromptResponse::completion_calls`]. A model-turn retry
+/// prints a visible boundary because text already written to stdout cannot be
+/// retracted. Fails with the run's error as soon as the stream yields it, a
+/// stdout write failure, or [`StreamToStdoutError::Incomplete`] when the
+/// stream ends without a final response.
 pub async fn stream_to_stdout(
     stream: &mut StreamingResult,
-) -> Result<PromptResponse, std::io::Error> {
-    let mut final_res = PromptResponse::empty();
-    print!("Response: ");
+) -> Result<PromptResponse, StreamToStdoutError> {
+    let mut stdout = std::io::stdout();
+    write!(stdout, "Response: ")?;
     while let Some(content) = stream.next().await {
-        match content {
-            Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Text {
+        match content? {
+            MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Text {
                 text,
                 ..
-            }))) => {
-                print!("{text}");
-                std::io::Write::flush(&mut std::io::stdout())?;
+            })) => {
+                write!(stdout, "{text}")?;
+                stdout.flush()?;
             }
-            Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::End {
+            MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::End {
                 content: AssistantContent::Reasoning(reasoning),
                 ..
-            }))) => {
+            })) => {
                 let reasoning = reasoning
                     .open(reasoning.issuer())
                     .map(|reasoning| reasoning.display_text())
                     .unwrap_or_default();
-                print!("{reasoning}");
-                std::io::Write::flush(&mut std::io::stdout())?;
+                write!(stdout, "{reasoning}")?;
+                stdout.flush()?;
             }
-            Ok(MultiTurnStreamItem::FinalResponse(res)) => {
-                final_res = res;
-            }
-            Ok(MultiTurnStreamItem::ModelTurnRetried { turn }) => {
-                print!("\n[model turn {turn} rejected; retry requested]\nResponse: ");
-                std::io::Write::flush(&mut std::io::stdout())?;
-            }
-            Err(err) => {
-                eprintln!("Error: {err}");
+            MultiTurnStreamItem::FinalResponse(response) => return Ok(response),
+            MultiTurnStreamItem::ModelTurnRetried { turn } => {
+                write!(
+                    stdout,
+                    "\n[model turn {turn} rejected; retry requested]\nResponse: "
+                )?;
+                stdout.flush()?;
             }
             _ => {}
         }
     }
-
-    Ok(final_res)
+    Err(StreamToStdoutError::Incomplete)
 }
 
 #[cfg(test)]

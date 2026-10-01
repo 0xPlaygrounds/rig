@@ -8,7 +8,6 @@
 
 use crate::client::env::{self, EnvError};
 use crate::completion::CompletionRequest;
-use crate::embeddings::Embedding as Vector;
 use crate::error::EncodeError;
 use crate::error::ProviderError;
 use crate::model::{ModelInfo, ModelList};
@@ -244,20 +243,10 @@ impl<'id> Decoder<'id, Embedding> for EmbeddingsDecoder {
             total_tokens: reply.prompt_eval_count,
             ..Default::default()
         };
-        // The vectors only; the operation's fold pairs them with the texts
-        // that were sent, which `/api/embed` does not echo back.
-        let vectors = reply
-            .embeddings
-            .into_iter()
-            .map(|vec| Vector {
-                document: String::new(),
-                vec,
-            })
-            .collect();
         Ok(out.end(crate::embeddings::EmbeddingResponse {
             model: Some(reply.model),
             usage,
-            ..crate::embeddings::EmbeddingResponse::new(vectors)
+            ..crate::embeddings::EmbeddingResponse::from_vectors(reply.embeddings)
         }))
     }
 }

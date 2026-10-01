@@ -36,3 +36,50 @@ mod streaming_conformance_suites;
 mod verification_checks;
 
 mod pull_parser;
+
+/// The text of every tool result in the history of the completion recorded
+/// at `at`.
+fn tool_result_texts(log: &rig_cassette::effect_log::EffectLog, at: usize) -> Vec<String> {
+    match &log.records[at].kind {
+        rig::effect::EffectKind::Completion { request, .. } => request
+            .chat_history
+            .iter()
+            .filter_map(|message| match message {
+                rig::message::Message::User { content } => Some(content.iter()),
+                _ => None,
+            })
+            .flatten()
+            .filter_map(|content| match content {
+                rig::message::UserContent::ToolResult(result) => Some(
+                    result
+                        .content
+                        .iter()
+                        .map(|part| match part {
+                            rig::message::ToolResultContent::Text(text) => text.text.clone(),
+                            rig::message::ToolResultContent::Json { value } => value.to_string(),
+                            other => format!("{other:?}"),
+                        })
+                        .collect::<String>(),
+                ),
+                _ => None,
+            })
+            .collect(),
+        other => panic!("a completion, not {other:?}"),
+    }
+}
+
+/// `events` closed by a final response with default usage.
+fn stream_turn(
+    mut events: Vec<rig::test_utils::MockStreamEvent>,
+) -> Vec<rig::test_utils::MockStreamEvent> {
+    events.push(rig::test_utils::MockStreamEvent::final_response_with_default_usage());
+    events
+}
+
+/// The hook's reason a run was cancelled with.
+fn cancelled_reason(error: &rig::completion::PromptError) -> &str {
+    match error {
+        rig::completion::PromptError::Cancelled { reason, .. } => reason,
+        other => panic!("a cancelled run, not {other:?}"),
+    }
+}

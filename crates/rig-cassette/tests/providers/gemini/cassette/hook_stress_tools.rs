@@ -52,7 +52,7 @@ async fn arg_rewrite_sets_one_key_preserving_rest_blocking() {
                 .await
                 .expect("single-key arg rewrite run should succeed");
 
-            assert_nonempty_response(&response.output);
+            assert_nonempty_response(&response.output());
             assert!(add_calls.count() >= 1, "the tool should execute");
             let calls = recorder_probe.recorded_calls();
             assert_eq!(calls.len(), 1, "one add call, saw {calls:?}");
@@ -110,7 +110,7 @@ async fn two_arg_rewrites_chain_blocking() {
                 .await
                 .expect("chained arg rewrite run should succeed");
 
-            assert_nonempty_response(&response.output);
+            assert_nonempty_response(&response.output());
             let calls = recorder_probe.recorded_calls();
             assert_eq!(calls.len(), 1);
             let observed: serde_json::Value =
@@ -178,17 +178,17 @@ async fn two_result_rewrites_chain_redact_then_wrap_blocking() {
                 .expect("chained result rewrite run should succeed");
 
             assert!(
-                response.output.contains("[SECRET]"),
+                response.output().contains("[SECRET]"),
                 "both chained result rewrites must compose (redact then wrap): {response:?}"
             );
             assert!(
-                !response.output.contains('4'),
+                !response.output().contains('4'),
                 "the raw tool result must not reach the model: {response:?}"
             );
             validate_result_redaction(
                 "gemini_chained_result_rewrites",
                 true,
-                &response.output,
+                &response.output(),
                 "4",
             )
             .expect("portable result-rewrite contract should hold");
@@ -224,11 +224,11 @@ async fn result_truncation_reaches_model_blocking() {
                 .expect("result truncation run should succeed");
 
             assert!(
-                response.output.contains("steady"),
+                response.output().contains("steady"),
                 "the truncated result prefix must reach the model: {response:?}"
             );
             assert!(
-                !response.output.contains("waters"),
+                !response.output().contains("waters"),
                 "the truncated-off suffix must not reach the model: {response:?}"
             );
         },
@@ -277,11 +277,11 @@ async fn terminate_from_tool_result_cancels_after_execution_blocking() {
                 "the tool body must have run before the ToolResult terminate"
             );
             match &error {
-                PromptError::PromptCancelled { reason, .. } => assert_eq!(
+                PromptError::Cancelled { reason, .. } => assert_eq!(
                     reason, "result vetoed by policy hook",
                     "the cancellation must carry the hook reason verbatim"
                 ),
-                other => panic!("expected PromptCancelled, got {other:?}"),
+                other => panic!("expected Cancelled, got {other:?}"),
             }
         },
     )
@@ -328,7 +328,7 @@ async fn tool_error_guidance_drives_model_retry_blocking() {
             );
             assert!(
                 response
-                    .output
+                    .output()
                     .to_ascii_lowercase()
                     .contains("azure-falcon"),
                 "the model should report the recovered codeword: {response:?}"

@@ -13,7 +13,7 @@ use arrow_array::{
 use lancedb::arrow::arrow_schema::{DataType, Field, Fields};
 use serde_json::json;
 
-use crate::utils::deserializer::RecordBatchDeserializer;
+use crate::utils::deserializer::record_batch_to_json;
 
 fn fixed_list_actors() -> FixedSizeListArray {
     let mut builder = FixedSizeListBuilder::new(StringBuilder::new(), 2);
@@ -128,7 +128,7 @@ async fn test_primitive_deserialization() {
     .unwrap();
 
     assert_eq!(
-        record_batch.deserialize().unwrap(),
+        record_batch_to_json(&record_batch).unwrap(),
         vec![
             json!({
                 "binary": [
@@ -203,7 +203,7 @@ async fn test_dictionary_deserialization() {
             .unwrap();
 
     assert_eq!(
-        record_batch.deserialize().unwrap(),
+        record_batch_to_json(&record_batch).unwrap(),
         vec![
             json!({
                 "some_dict": {
@@ -236,7 +236,7 @@ async fn test_union_deserialization() {
         RecordBatch::try_from_iter(vec![("some_union", Arc::new(union) as ArrayRef)]).unwrap();
 
     assert_eq!(
-        record_batch.deserialize().unwrap(),
+        record_batch_to_json(&record_batch).unwrap(),
         vec![
             json!({
                 "some_union": [
@@ -271,7 +271,7 @@ async fn test_run_end_deserialization() {
         RecordBatch::try_from_iter(vec![("some_run_end", Arc::new(array) as ArrayRef)]).unwrap();
 
     assert_eq!(
-        record_batch.deserialize().unwrap(),
+        record_batch_to_json(&record_batch).unwrap(),
         vec![
             json!({
                 "some_run_end": "abc"
@@ -308,7 +308,7 @@ async fn test_map_deserialization() {
     .unwrap();
 
     assert_eq!(
-        record_batch.deserialize().unwrap(),
+        record_batch_to_json(&record_batch).unwrap(),
         vec![
             json!({
                 "map_col": {
@@ -397,7 +397,7 @@ async fn test_recursion() {
             .unwrap();
 
     assert_eq!(
-        record_batch.deserialize().unwrap(),
+        record_batch_to_json(&record_batch).unwrap(),
         vec![
             json!({
                 "employees": {

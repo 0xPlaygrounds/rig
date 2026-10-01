@@ -99,13 +99,13 @@ async fn main() -> Result<(), anyhow::Error> {
     let results = vector_store.top_n::<Word>(req.clone()).await?;
 
     tracing::info!("Top 3 similar definitions:");
-    for (i, (score, id, word)) in results.iter().enumerate() {
+    for (i, result) in results.iter().enumerate() {
         tracing::info!(
             "{}. Score: {:.4}, ID: {}, Definition: {}",
             i + 1,
-            score,
-            id,
-            word.definition
+            result.score,
+            result.id,
+            result.document.definition
         );
     }
 
@@ -114,8 +114,8 @@ async fn main() -> Result<(), anyhow::Error> {
     let id_results = vector_store.top_n_ids(req).await?;
 
     tracing::info!("Top 2 similar document IDs:");
-    for (i, (score, id)) in id_results.iter().enumerate() {
-        tracing::info!("{}. Score: {:.4}, ID: {}", i + 1, score, id);
+    for (i, result) in id_results.iter().enumerate() {
+        tracing::info!("{}. Score: {:.4}, ID: {}", i + 1, result.score, result.id);
     }
 
     // Test with different query
@@ -129,13 +129,13 @@ async fn main() -> Result<(), anyhow::Error> {
     let db_results = vector_store.top_n::<Word>(req).await?;
 
     tracing::info!("Top 2 similar definitions:");
-    for (i, (score, id, word)) in db_results.iter().enumerate() {
+    for (i, result) in db_results.iter().enumerate() {
         tracing::info!(
             "{}. Score: {:.4}, ID: {}, Definition: {}",
             i + 1,
-            score,
-            id,
-            word.definition
+            result.score,
+            result.id,
+            result.document.definition
         );
     }
 

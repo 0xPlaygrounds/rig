@@ -147,7 +147,7 @@ fn make_tool(name: &str, description: &str) -> Tool {
 
 fn make_dynamic_tool(name: &str, description: &str) -> DynamicTool {
     DynamicTool::new(
-        name,
+        rig_core::message::ToolName::new(name).expect("tool name"),
         description,
         serde_json::json!({"type": "object", "properties": {}}),
         |_args| Box::pin(async { Ok(ToolOutput::text("local")) }),
@@ -252,6 +252,18 @@ async fn initial_tool_fetch_is_bounded_by_the_refresh_timeout() {
         Err(McpClientError::ToolFetchTimeout(timeout)) if timeout == refresh_timeout
     ));
     server_task.abort();
+}
+
+#[tokio::test]
+async fn failed_handshake_keeps_the_typed_rmcp_error() {
+    let (c2s, sfc) = tokio::io::duplex(8192);
+    let (s2c, cfs) = tokio::io::duplex(8192);
+    drop((sfc, s2c));
+    let result = McpClientHandler::new(ClientInfo::default(), ToolServer::new().run())
+        .connect((cfs, c2s))
+        .await;
+
+    assert!(matches!(result, Err(McpClientError::Connection(_))));
 }
 
 #[tokio::test]
@@ -637,7 +649,11 @@ async fn mcp_tool_preserves_provider_definition() {
     });
     let client = ClientInfo::default().serve((cfs, c2s)).await.unwrap();
     let handle = ToolServer::new()
-        .dynamic_tool(McpTool::from_mcp_server(tool, client.peer().clone()).into())
+        .dynamic_tool(
+            McpTool::from_mcp_server(tool, client.peer().clone())
+                .try_into()
+                .expect("tool name"),
+        )
         .run();
     let defs = handle.tool_defs(None).await.unwrap();
     assert_eq!(defs.len(), 1);
@@ -665,7 +681,11 @@ async fn disconnected_directly_registered_mcp_tool_is_retired_on_dispatch() {
     });
     let client = ClientInfo::default().serve((cfs, c2s)).await.unwrap();
     let handle = ToolServer::new()
-        .dynamic_tool(McpTool::from_mcp_server(tool, client.peer().clone()).into())
+        .dynamic_tool(
+            McpTool::from_mcp_server(tool, client.peer().clone())
+                .try_into()
+                .expect("tool name"),
+        )
         .run();
 
     client.cancel().await.unwrap();
@@ -754,7 +774,7 @@ async fn builder_rmcp_tools_thread_timeout_into_registered_tools() {
         .dynamic_tools(
             tools_from_server([tool("a"), tool("b")], &peer)
                 .into_iter()
-                .map(DynamicTool::from)
+                .map(|tool| DynamicTool::try_from(tool).expect("tool name"))
                 .collect(),
         )
         .build();
@@ -773,7 +793,7 @@ async fn builder_rmcp_tools_thread_timeout_into_registered_tools() {
             tools_from_server([tool("hang_forever")], &peer)
                 .into_iter()
                 .map(|tool| tool.with_timeout(Duration::from_millis(200)))
-                .map(DynamicTool::from)
+                .map(|tool| DynamicTool::try_from(tool).expect("tool name"))
                 .collect(),
         )
         .build();

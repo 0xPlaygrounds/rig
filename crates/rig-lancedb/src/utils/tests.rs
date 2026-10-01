@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use lancedb::arrow::arrow_schema::{DataType, Field, Schema};
 
-use super::FilterTableColumns;
+use super::filter_embeddings;
 
 #[tokio::test]
 async fn test_column_filtering() {
@@ -21,7 +21,7 @@ async fn test_column_filtering() {
 
     let schema = Schema::new(vec![field_a, field_b, field_c, field_d]);
 
-    let columns = Arc::new(schema).filter_embeddings();
+    let columns = filter_embeddings(&schema);
 
     assert_eq!(
         columns,
@@ -50,7 +50,7 @@ async fn test_column_filtering_2() {
 
     let schema = Schema::new(vec![field_a, field_b, field_c, field_d]);
 
-    let columns = Arc::new(schema).filter_embeddings();
+    let columns = filter_embeddings(&schema);
 
     assert_eq!(columns, vec!["id".to_string(), "my_bool".to_string()]);
 }

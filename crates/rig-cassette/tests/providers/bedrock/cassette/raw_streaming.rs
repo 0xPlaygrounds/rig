@@ -113,7 +113,9 @@ async fn raw_stream_emits_tool_call_before_text() {
                 .preamble(ORDERED_TOOL_STREAM_PREAMBLE.to_string())
                 .tool(rig::tool::tool_definition(&AlphaSignal))
                 .tool_choice(ToolChoice::Specific {
-                    function_names: vec!["lookup_harbor_label".to_string()],
+                    function_names: vec![
+                        rig_core::message::ToolName::new("lookup_harbor_label").expect("tool name"),
+                    ],
                 });
 
             let observation = collect_raw_stream_observation(

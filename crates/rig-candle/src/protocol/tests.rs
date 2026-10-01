@@ -5,7 +5,7 @@ use super::*;
 
 fn tool(name: &str) -> ToolDefinition {
     ToolDefinition {
-        name: name.to_string(),
+        name: rig_core::message::ToolName::new(name).expect("tool name"),
         description: format!("Call {name}."),
         parameters: serde_json::json!({
             "type": "object",
@@ -22,9 +22,9 @@ fn request(messages: Vec<Message>) -> CompletionRequest {
     CompletionRequest {
         model: None,
         chat_history: if messages.is_empty() {
-            rig_core::NonEmpty::new(Message::user("fallback"))
+            vec![Message::user("fallback")]
         } else {
-            rig_core::NonEmpty::from_vec(messages).expect("non-empty")
+            messages
         },
         documents: Vec::new(),
         tools: vec![tool("calculate"), tool("lookup")],
@@ -145,7 +145,7 @@ fn renderers_reject_reserved_markers_in_untrusted_content() {
 fn qwen_tool_choice_filters_and_requires() {
     let mut request = request(vec![Message::user("use lookup")]);
     request.tool_choice = Some(ToolChoice::Specific {
-        function_names: vec!["lookup".to_string()],
+        function_names: vec![rig_core::message::ToolName::new("lookup").expect("tool name")],
     });
     let prompt = render_prompt(&request, ConversationProtocol::Qwen3).expect("specific tool");
     assert!(prompt.contains("\"name\":\"lookup\""));
@@ -333,7 +333,7 @@ fn qwen_protocol_rejects_wrong_delimiters_definitions_and_native_schema() {
     }
 
     let mut invalid_name = qwen_request.clone();
-    invalid_name.tools[0].name = "bad name".to_string();
+    invalid_name.tools[0].name = rig_core::message::ToolName::new("bad name").expect("tool name");
     assert!(matches!(
         render_prompt(&invalid_name, ConversationProtocol::Qwen3),
         Err(CandleError::InvalidToolDefinition { .. })
@@ -435,24 +435,24 @@ fn renderer_correlates_generated_and_explicit_equal_spellings() {
     let history = vec![
         Message::Assistant {
             id: None,
-            content: rig_core::NonEmpty::with_rest(
+            content: vec![
                 AssistantContent::ToolCall(generated.clone()),
-                [AssistantContent::ToolCall(explicit.clone())],
-            ),
+                AssistantContent::ToolCall(explicit.clone()),
+            ],
         },
         Message::User {
-            content: rig_core::NonEmpty::with_rest(
+            content: vec![
                 UserContent::tool_result(
                     explicit.id,
                     rig_core::message::ToolName::new("lookup").expect("tool name"),
-                    rig_core::NonEmpty::new(ToolResultContent::text("second")),
+                    vec![ToolResultContent::text("second")],
                 ),
-                [UserContent::tool_result(
+                UserContent::tool_result(
                     generated.id,
                     rig_core::message::ToolName::new("calculate").expect("tool name"),
-                    rig_core::NonEmpty::new(ToolResultContent::text("first")),
-                )],
-            ),
+                    vec![ToolResultContent::text("first")],
+                ),
+            ],
         },
     ];
     let prompt = render_prompt(&request(history), ConversationProtocol::Qwen3)
@@ -485,11 +485,11 @@ fn renderer_allows_identity_reuse_in_completed_turns() {
             let result = UserContent::tool_result(
                 call.id.clone(),
                 rig_core::message::ToolName::new(name).expect("tool name"),
-                rig_core::NonEmpty::new(ToolResultContent::text(name)),
+                vec![ToolResultContent::text(name)],
             );
             history.push(Message::from(call));
             history.push(Message::User {
-                content: rig_core::NonEmpty::new(result),
+                content: vec![result],
             });
         }
         let prompt = render_prompt(&request(history), ConversationProtocol::Qwen3)

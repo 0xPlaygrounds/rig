@@ -16,7 +16,7 @@ use std::path::Path;
 
 use serde_json::Value;
 
-use super::goldens::git;
+use crate::support::output;
 
 const EFFECTS: &str = "crates/rig-cassette/fixtures/effects";
 
@@ -765,8 +765,9 @@ fn retired(root: &Path, path: &str) -> Result<bool, String> {
     else {
         return Ok(false);
     };
-    let named = git(
+    let named = output(
         root,
+        "git",
         &["grep", "-l", "-F", &format!("\"{name}\""), "--", "*.rs"],
     );
     // `git grep` exits 1, an error here, when nothing matches.
@@ -813,27 +814,7 @@ fn finalized(part: &Part<'_>) -> String {
 /// and in path order. It reads the files, not git, so a golden not yet
 /// committed is checked too.
 pub(crate) fn goldens(root: &Path) -> Result<Vec<(String, Value)>, String> {
-    let mut paths = Vec::new();
-    let mut directories = vec![root.join(EFFECTS)];
-    while let Some(directory) = directories.pop() {
-        let entries =
-            std::fs::read_dir(&directory).map_err(|e| format!("{}: {e}", directory.display()))?;
-        for entry in entries {
-            let path = entry
-                .map_err(|e| format!("{}: {e}", directory.display()))?
-                .path();
-            if path.is_dir() {
-                directories.push(path);
-            } else if path
-                .extension()
-                .is_some_and(|extension| extension == "json")
-            {
-                paths.push(path);
-            }
-        }
-    }
-    paths.sort();
-    paths
+    crate::support::files_under(&root.join(EFFECTS), Some("json"))?
         .into_iter()
         .map(|path| {
             let relative = path
@@ -857,7 +838,11 @@ pub(crate) fn run(root: &Path, args: &[String]) -> Result<(), String> {
             other => return Err(format!("unknown argument {other}")),
         }
     }
-    let status = git(root, &["diff", "--name-status", &base, "--", EFFECTS])?;
+    let status = output(
+        root,
+        "git",
+        &["diff", "--name-status", &base, "--", EFFECTS],
+    )?;
     let mut changed = Vec::new();
     let mut audit = Audit::default();
     for line in status.lines() {
@@ -869,8 +854,9 @@ pub(crate) fn run(root: &Path, args: &[String]) -> Result<(), String> {
             _ => audit.other(line, "unreadable golden status"),
         }
     }
-    let cassettes = git(
+    let cassettes = output(
         root,
+        "git",
         &[
             "diff",
             "--name-only",
@@ -882,7 +868,7 @@ pub(crate) fn run(root: &Path, args: &[String]) -> Result<(), String> {
     for (path, head) in goldens(root)? {
         let path = path.as_str();
         let base = if changed.contains(&path) {
-            let text = git(root, &["show", &format!("{base}:{path}")])?;
+            let text = output(root, "git", &["show", &format!("{base}:{path}")])?;
             match serde_json::from_str::<Value>(&text) {
                 Ok(base) => Some(base),
                 Err(error) => {

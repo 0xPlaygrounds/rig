@@ -25,16 +25,16 @@ async fn url_pdf_document_prompt() {
 
             let response = agent
                 .prompt(Message::User {
-                    content: rig_core::NonEmpty::with_rest(
+                    content: vec![
                         UserContent::document_url(PDF_URL, Some(DocumentMediaType::PDF)),
-                        [UserContent::text(
+                        UserContent::text(
                             "What is the title of this paper? Answer in one short sentence.",
-                        )],
-                    ),
+                        ),
+                    ],
                 })
                 .await
                 .expect("URL PDF document prompt should succeed")
-                .output;
+                .output();
 
             assert_nonempty_response(&response);
             assert_contains_any_case_insensitive(&response, &["bitcoin"]);

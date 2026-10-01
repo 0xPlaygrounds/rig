@@ -20,18 +20,16 @@ use tracing_futures::Instrument;
 
 use super::{
     Agent,
-    hook::AgentHook,
     run::{OutputMode, spec::UnhandledInvalidToolCall},
     runner::AgentRunner,
 };
 use crate::{
     completion::{Message, StructuredOutputError, Usage},
     run::response::{CompletionCall, PromptResponse},
-    tool::ToolContext,
 };
 
-/// A typed run's response: the deserialized value plus the run's usage and
-/// completion calls.
+/// A typed run's response: the deserialized value plus the accepted attempt's
+/// transcript, the run's usage, and completion calls.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TypedPromptResponse<T> {
     /// The parsed structured output.
@@ -47,6 +45,11 @@ pub struct TypedPromptResponse<T> {
     /// reported no usage metrics for that request.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub completion_calls: Vec<CompletionCall>,
+    /// The accepted attempt's transcript; see
+    /// [`PromptResponse::messages`](crate::agent::PromptResponse::messages).
+    /// Append it to caller-owned history to continue the conversation.
+    #[serde(default)]
+    pub messages: Vec<Message>,
     /// How the accepted attempt's conversation-memory append settled; see
     /// [`PromptResponse::memory_append`](crate::agent::PromptResponse::memory_append).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -60,6 +63,7 @@ impl<T> TypedPromptResponse<T> {
             output,
             usage,
             completion_calls: Vec::new(),
+            messages: Vec::new(),
             memory_append: None,
         }
     }
@@ -86,7 +90,7 @@ impl<T> TypedPromptResponse<T> {
 
 /// How a [`TypedRun`] recovers `T` from the accepted [`PromptResponse`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum TypedOutput {
+enum OutputSource {
     /// Parse the model's final text; tolerate prose or fences around the JSON.
     Native,
     /// The value is the arguments of the run's output tool call; the model not
@@ -94,212 +98,22 @@ pub(crate) enum TypedOutput {
     OutputTool,
 }
 
+/// The typed-output state of a [`TypedRun`]: how `T` is recovered from the
+/// accepted response and how many failed attempts are retried.
+#[derive(Debug)]
+pub struct TypedOutput<T> {
+    source: OutputSource,
+    retries: usize,
+    _t: PhantomData<fn() -> T>,
+}
+
 /// A run that deserializes its accepted output as `T`.
 ///
 /// Configure it with the same setters as [`AgentRunner`], then `.await` it for
-/// a [`TypedPromptResponse<T>`]. With a [`retries`](Self::retries) budget, a
+/// a [`TypedPromptResponse<T>`]. With a [`retries`](AgentRunner::retries) budget, a
 /// failed attempt (run error, empty output, unparseable output) is retried
 /// from scratch; usage accumulates across attempts.
-#[must_use = "a typed run does nothing until awaited"]
-pub struct TypedRun<T> {
-    runner: AgentRunner,
-    retries: u64,
-    output: TypedOutput,
-    _t: PhantomData<T>,
-}
-
-/// The setters that forward verbatim to the inner [`AgentRunner`].
-macro_rules! forward_runner_setters {
-    () => {
-        /// Attach a per-call [`ToolContext`] for this run.
-        ///
-        /// Every tool the agent executes during this run can read the
-        /// caller-provided values (auth tokens, session IDs, conversation state, …)
-        /// through the tool's [`ToolContext`](crate::tool::ToolContext),
-        /// without the model ever seeing them.
-        pub fn tool_context(mut self, context: ToolContext) -> Self {
-            self.runner = self.runner.tool_context(context);
-            self
-        }
-
-        /// Add chat history to the run.
-        pub fn history<H, Item>(mut self, history: H) -> Self
-        where
-            H: IntoIterator<Item = Item>,
-            Item: Into<Message>,
-        {
-            self.runner = self.runner.history(history);
-            self
-        }
-
-        /// Override the agent preamble for this run.
-        pub fn preamble(mut self, preamble: impl Into<String>) -> Self {
-            self.runner = self.runner.preamble(preamble);
-            self
-        }
-
-        /// Remove the agent's configured preamble for this run.
-        pub fn without_preamble(mut self) -> Self {
-            self.runner = self.runner.without_preamble();
-            self
-        }
-
-        /// Append one static context document for this run.
-        pub fn document(mut self, document: crate::completion::Document) -> Self {
-            self.runner = self.runner.document(document);
-            self
-        }
-
-        /// Append static context documents for this run.
-        pub fn documents(
-            mut self,
-            documents: impl IntoIterator<Item = crate::completion::Document>,
-        ) -> Self {
-            self.runner = self.runner.documents(documents);
-            self
-        }
-
-        /// Override the model temperature for this run.
-        pub fn temperature(mut self, temperature: f64) -> Self {
-            self.runner = self.runner.temperature(temperature);
-            self
-        }
-
-        /// Remove the agent's configured temperature for this run.
-        pub fn without_temperature(mut self) -> Self {
-            self.runner = self.runner.without_temperature();
-            self
-        }
-
-        /// Override the maximum completion token count for this run.
-        pub fn max_tokens(mut self, max_tokens: u64) -> Self {
-            self.runner = self.runner.max_tokens(max_tokens);
-            self
-        }
-
-        /// Remove the agent's configured maximum token count for this run.
-        pub fn without_max_tokens(mut self) -> Self {
-            self.runner = self.runner.without_max_tokens();
-            self
-        }
-
-        /// Shallow-merge object fields into the provider-specific parameters
-        /// for this run. Later fields win.
-        pub fn merge_additional_params(
-            mut self,
-            params: serde_json::Map<String, serde_json::Value>,
-        ) -> Self {
-            self.runner = self.runner.merge_additional_params(params);
-            self
-        }
-
-        /// Replace all provider-specific parameters for this run.
-        pub fn replace_additional_params(mut self, params: serde_json::Value) -> Self {
-            self.runner = self.runner.replace_additional_params(params);
-            self
-        }
-
-        /// Remove the agent's configured provider-specific parameters for this run.
-        pub fn without_additional_params(mut self) -> Self {
-            self.runner = self.runner.without_additional_params();
-            self
-        }
-
-        /// Override the tool-choice policy for this run.
-        pub fn tool_choice(mut self, tool_choice: rig_core::message::ToolChoice) -> Self {
-            self.runner = self.runner.tool_choice(tool_choice);
-            self
-        }
-
-        /// Remove the agent's configured tool-choice policy for this run.
-        pub fn without_tool_choice(mut self) -> Self {
-            self.runner = self.runner.without_tool_choice();
-            self
-        }
-
-        /// Opt in or out of recording sensitive request, response, and tool
-        /// content on GenAI telemetry spans for this run.
-        ///
-        /// Defaults to the agent's setting, which defaults to `false`. Enabling
-        /// this can expose prompts, retrieved context, tool results, model
-        /// responses, and other sensitive or high-cardinality data through
-        /// OpenTelemetry span attributes. Structural metadata and token usage
-        /// remain available when disabled.
-        pub fn record_content_telemetry(mut self, enabled: bool) -> Self {
-            self.runner = self.runner.record_content_telemetry(enabled);
-            self
-        }
-
-        /// Set the conversation id used to load and persist memory for this run.
-        ///
-        /// Overrides any default conversation id set on the agent. If memory is not
-        /// configured on the agent, this has no effect.
-        pub fn conversation(mut self, id: impl Into<rig_core::id::ConversationId>) -> Self {
-            self.runner = self.runner.conversation(id);
-            self
-        }
-
-        /// Disable conversation memory for this run.
-        ///
-        /// History will neither be loaded from nor saved to the agent's memory backend.
-        pub fn without_memory(mut self) -> Self {
-            self.runner = self.runner.without_memory();
-            self
-        }
-
-        /// Set the retry budget for invalid tool-call recovery.
-        ///
-        /// Invalid tool-call retries also consume the total model-call budget.
-        pub fn max_invalid_tool_call_retries(mut self, retries: usize) -> Self {
-            self.runner = self.runner.max_invalid_tool_call_retries(retries);
-            self
-        }
-
-        /// Set the default model candidate for this run.
-        ///
-        /// This does not suppress registered model-selection hooks, which may
-        /// replace this candidate before each model call (including retries).
-        pub fn using_model(mut self, model: impl Into<$crate::agent::ModelRef>) -> Self {
-            self.runner = self.runner.using_model(model);
-            self
-        }
-
-        /// Erase and set a typed default model for this run.
-        pub fn using_model_value(
-            mut self,
-            model: impl Into<rig_core::DynModel<rig_core::operation::Completion>>,
-        ) -> Self {
-            self.runner = self.runner.using_model_value(model);
-            self
-        }
-
-        /// Set the total model-call budget, including the initial call and every
-        /// retry or continuation. Zero emits no model calls; one permits only the
-        /// initial call. Exceeding the budget returns a
-        /// [`StructuredOutputError::PromptError`] wrapping a `MaxTurnsError`.
-        pub fn max_turns(mut self, max_turns: usize) -> Self {
-            self.runner = self.runner.max_turns(max_turns);
-            self
-        }
-
-        /// Append a hook to this run's hook stack (on top of any the agent
-        /// already carries). See the [`hook`](crate::agent::hook) module docs.
-        pub fn add_hook<H>(mut self, hook: H) -> Self
-        where
-            H: AgentHook + 'static,
-        {
-            self.runner = self.runner.add_hook(hook);
-            self
-        }
-
-        /// Execute up to `concurrency` of a turn's tool calls at once. See
-        /// [`AgentRunner::tool_concurrency`] for ordering guarantees.
-        pub fn tool_concurrency(mut self, concurrency: usize) -> Self {
-            self.runner = self.runner.tool_concurrency(concurrency);
-            self
-        }
-    };
-}
+pub type TypedRun<T> = AgentRunner<TypedOutput<T>>;
 
 impl<T> TypedRun<T>
 where
@@ -312,7 +126,7 @@ where
         runner.config.output_schema = Some(schema_for!(T));
         // Native typed prompting parses final text rather than requiring an output call.
         runner.config.output_mode = OutputMode::Native;
-        Self::from_runner(runner, TypedOutput::Native)
+        Self::from_runner(runner, OutputSource::Native)
     }
 
     /// An output-tool typed run over an already configured runner: the value
@@ -321,67 +135,68 @@ where
     pub(crate) fn output_tool(runner: AgentRunner) -> Self {
         Self::from_runner(
             runner.unhandled_invalid_tool_call(UnhandledInvalidToolCall::Ignore),
-            TypedOutput::OutputTool,
+            OutputSource::OutputTool,
         )
     }
 
-    pub(crate) fn from_runner(runner: AgentRunner, output: TypedOutput) -> Self {
-        Self {
-            runner,
+    fn from_runner(runner: AgentRunner, source: OutputSource) -> Self {
+        let output = TypedOutput {
+            source,
             retries: 0,
-            output,
             _t: PhantomData,
-        }
+        };
+        runner.replace_output(output).0
     }
 
     /// Retry a failed attempt up to `retries` more times. An attempt fails when
     /// the run errors, produces no output, or produces output that does not
     /// parse as `T`. Usage accumulates across attempts.
-    pub fn retries(mut self, retries: u64) -> Self {
-        self.retries = retries;
+    pub fn retries(mut self, retries: usize) -> Self {
+        self.output.retries = retries;
         self
     }
-
-    forward_runner_setters!();
 
     async fn send(
         self,
         ambient: tracing::Span,
     ) -> Result<TypedPromptResponse<T>, StructuredOutputError> {
+        let (
+            runner,
+            TypedOutput {
+                source, retries, ..
+            },
+        ) = self.replace_output(());
         let mut usage = Usage::default();
         let mut last_error = None;
 
-        for attempt in 0..=self.retries {
-            if self.retries > 0 {
+        for attempt in 0..=retries {
+            if retries > 0 {
                 tracing::debug!(
                     "Attempting to extract structured output. Retries left: {}",
-                    self.retries - attempt
+                    retries - attempt
                 );
             }
-            let (result, error_usage) = self
-                .runner
-                .clone()
-                .run_with_error_usage(ambient.clone())
-                .await;
+            let (result, error_usage) = runner.clone().run_with_error_usage(ambient.clone()).await;
             let outcome = match result {
                 Ok(response) => {
                     usage += response.usage;
-                    recover_output(&response, self.output).map(|output| TypedPromptResponse {
+                    recover_output(&response, source).map(|output| TypedPromptResponse {
                         output,
                         usage,
                         completion_calls: response.completion_calls,
+                        messages: response.messages,
                         memory_append: response.memory_append,
                     })
                 }
                 Err(err) => {
                     usage += error_usage;
-                    Err(StructuredOutputError::PromptError(err))
+                    Err(StructuredOutputError::Prompt(err))
                 }
             };
             match outcome {
                 Ok(response) => return Ok(response),
                 Err(err) => {
-                    if attempt < self.retries {
+                    if attempt < retries {
                         tracing::warn!(
                             "Attempt {attempt} to extract structured output failed: {err:?}. Retrying..."
                         );
@@ -398,22 +213,24 @@ where
 /// Recover `T` from an accepted response according to the run's output mode.
 fn recover_output<T: DeserializeOwned>(
     response: &PromptResponse,
-    output: TypedOutput,
+    source: OutputSource,
 ) -> Result<T, StructuredOutputError> {
-    match output {
-        TypedOutput::Native => {
-            if response.output.is_empty() {
+    let output = response.output();
+    match source {
+        OutputSource::Native => {
+            if output.is_empty() {
                 return Err(StructuredOutputError::EmptyResponse);
             }
-            Ok(deserialize_structured_output(&response.output)?)
+            deserialize_structured_output(&output)
+                .map_err(|error| deserialization_error(&output, error))
         }
-        TypedOutput::OutputTool => {
+        OutputSource::OutputTool => {
             let submissions = response.output_tool_calls();
             // A whole JSON answer is the run's output too: the protocol accepts
             // schema-valid text, and a model that rejects forced tool choice
             // answers in native structured output instead of calling the tool.
             if submissions == 0
-                && let Ok(value) = serde_json::from_str::<T>(response.output.trim())
+                && let Ok(value) = serde_json::from_str::<T>(output.trim())
             {
                 return Ok(value);
             }
@@ -428,8 +245,15 @@ fn recover_output<T: DeserializeOwned>(
                     "Multiple submit calls detected, using the first one. Providers / agents should only ensure one submit call."
                 );
             }
-            Ok(serde_json::from_str(&response.output)?)
+            serde_json::from_str(&output).map_err(|error| deserialization_error(&output, error))
         }
+    }
+}
+
+fn deserialization_error(output: &str, error: serde_json::Error) -> StructuredOutputError {
+    StructuredOutputError::Deserialization {
+        output: output.to_string(),
+        error,
     }
 }
 

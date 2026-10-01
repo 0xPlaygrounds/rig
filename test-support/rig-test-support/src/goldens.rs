@@ -20,7 +20,6 @@ pub(crate) use world::attach_world_recorder;
 pub use world::{capture_world_program, capture_world_programs, world_golden_test};
 
 /// The families of a log's records, in order: the shape a producer asserts.
-#[allow(dead_code)] // not every target records
 pub fn families(log: &EffectLog) -> Vec<EffectFamily> {
     log.records
         .iter()
@@ -31,10 +30,8 @@ pub fn families(log: &EffectLog) -> Vec<EffectFamily> {
 /// The output schema the request-shape matrix constrains an answer to,
 /// as one literal both the producer and the rig-cassette replay build the
 /// program from (`crates/rig-cassette/tests/corpus_request_shape.rs`).
-#[allow(dead_code)]
 pub const EVENT_SCHEMA: &str = r#"{"type":"object","properties":{"title":{"type":"string"},"category":{"type":"string"},"summary":{"type":"string"}},"required":["title","category","summary"]}"#;
 
-#[allow(dead_code)]
 /// Parse the fixed event schema used by structured-output corpus cells.
 pub fn event_schema() -> schemars::Schema {
     serde_json::from_str(EVENT_SCHEMA).expect("the schema literal is a schema")
@@ -42,7 +39,6 @@ pub fn event_schema() -> schemars::Schema {
 
 /// The prior history the request-shape matrix's history cell runs with;
 /// the replay builds the same two turns.
-#[allow(dead_code)]
 pub fn prior_history() -> Vec<Message> {
     vec![
         Message::user("My name is Ada."),
@@ -163,7 +159,6 @@ pub fn world_golden_effects(name: &str, log: &EffectLog) {
 /// feedback. A hook is program, not record — the effect-log header names
 /// it by type, so every producer that records a recovery and the
 /// rig-cassette replay use this one type.
-#[allow(dead_code)] // used by the recovery producer, not every target
 pub struct RetryUnknownTool;
 
 impl rig_agent::agent::AgentHook for RetryUnknownTool {
@@ -186,30 +181,22 @@ impl rig_agent::agent::AgentHook for RetryUnknownTool {
 // stateless, so its decision is a function of the event alone (the
 // header cannot tell two hooks of one type with different state apart).
 
-#[allow(dead_code)]
 /// Fixed pirate instruction used by preamble-patching cells.
 pub const PIRATE_PREAMBLE: &str = "You are a pirate. Answer in one short sentence.";
-#[allow(dead_code)]
 /// Expected denial text when the run disables the add tool.
 pub const DENY_REASON: &str = "add is disabled for this run";
-#[allow(dead_code)]
 /// Fixed tool-result replacement used by outcome hooks.
 pub const REPLACED_RESULT: &str = "99";
-#[allow(dead_code)]
 /// Fixed final-answer replacement used by steering hooks.
 pub const REPLACED_ANSWER: &str = "REPLACED";
-#[allow(dead_code)]
 /// Feedback requesting the final DONE marker.
 pub const DONE_FEEDBACK: &str = "End your answer with the word DONE.";
-#[allow(dead_code)]
 /// Fixed JSON arguments for the add-tool lookup dispatch.
 pub const LOOKUP_ARGS: &str = r#"{"x":1,"y":2}"#;
-#[allow(dead_code)]
 /// Handler key of the corpus's registered add tool.
 pub const LOOKUP_KEY: &str = "golden/tool:add#0";
 
 /// Opts into observing every dispatch family; decides nothing.
-#[allow(dead_code)]
 pub struct ObserveEverything;
 
 impl rig_agent::agent::AgentHook for ObserveEverything {
@@ -221,7 +208,6 @@ impl rig_agent::agent::AgentHook for ObserveEverything {
 /// `on_dispatch` → `Patch`: `add` runs with `{"x":40,"y":2}` whatever the
 /// model asked (the record holds the patched call; history keeps the
 /// model's).
-#[allow(dead_code)]
 pub struct PatchAddArgs;
 
 impl rig_agent::agent::AgentHook for PatchAddArgs {
@@ -243,7 +229,6 @@ impl rig_agent::agent::AgentHook for PatchAddArgs {
 
 /// `on_dispatch` → `Deny` (a skip): `add` never reaches the bus; the model
 /// sees the reason as the tool's result.
-#[allow(dead_code)]
 pub struct DenyAdd;
 
 impl rig_agent::agent::AgentHook for DenyAdd {
@@ -262,7 +247,6 @@ impl rig_agent::agent::AgentHook for DenyAdd {
 
 /// `on_outcome` → `Replace`: the model sees `99` for `add`, the record
 /// holds what the tool answered.
-#[allow(dead_code)]
 pub struct ReplaceAddResult;
 
 impl rig_agent::agent::AgentHook for ReplaceAddResult {
@@ -281,7 +265,6 @@ impl rig_agent::agent::AgentHook for ReplaceAddResult {
 
 /// `on_outcome` → `Replace` on a completion: a text answer is replaced by
 /// `REPLACED`; the record holds the model's.
-#[allow(dead_code)]
 pub struct ReplaceAnswer;
 
 impl rig_agent::agent::AgentHook for ReplaceAnswer {
@@ -310,7 +293,6 @@ impl rig_agent::agent::AgentHook for ReplaceAnswer {
 
 /// `on_completion_call` → a request patch overriding the preamble: the
 /// request holds the pirate preamble, the spec holds the base.
-#[allow(dead_code)]
 pub struct PreambleOverride;
 
 impl rig_agent::agent::AgentHook for PreambleOverride {
@@ -327,7 +309,6 @@ impl rig_agent::agent::AgentHook for PreambleOverride {
 
 /// `on_model_turn_finished` → `Retry` with feedback until the answer holds
 /// `DONE`: a second completion is a record, the decision is program.
-#[allow(dead_code)]
 pub struct DemandDone;
 
 impl rig_agent::agent::AgentHook for DemandDone {
@@ -355,7 +336,6 @@ impl rig_agent::agent::AgentHook for DemandDone {
 /// `on_run_start` dispatches `add(1, 2)` through the run's bus: a hook's
 /// own effect is a record under the tool's key, before the first
 /// completion.
-#[allow(dead_code)]
 pub struct LookupBeforeRun;
 
 impl rig_agent::agent::AgentHook for LookupBeforeRun {
@@ -381,7 +361,6 @@ impl rig_agent::agent::AgentHook for LookupBeforeRun {
 
 /// `on_model_select` → `Select("fast")` on every turn after the first:
 /// the route answers once the default model has been asked once.
-#[allow(dead_code)]
 pub struct RouteAfterFirstTurn;
 
 impl rig_agent::agent::AgentHook for RouteAfterFirstTurn {
@@ -401,12 +380,10 @@ impl rig_agent::agent::AgentHook for RouteAfterFirstTurn {
 // ---------------------------------------------------------------------------
 // The outcome matrix's tool (Matrix D).
 
-#[allow(dead_code)]
 /// Expected failure message from the deliberately broken adder.
 pub const BROKEN_ADD: &str = "the adder is broken";
 
 #[derive(serde::Deserialize)]
-#[allow(dead_code)]
 /// Integer operands accepted by the corpus arithmetic tools.
 pub struct FailingAddArgs {
     /// First arithmetic operand.
@@ -417,7 +394,6 @@ pub struct FailingAddArgs {
 
 /// An `add` that fails every call: the tool record's outcome is a failed
 /// result, which the model sees and answers around.
-#[allow(dead_code)]
 pub struct FailingAdd;
 
 impl rig_core::tool::Tool for FailingAdd {
@@ -448,7 +424,6 @@ impl rig_core::tool::Tool for FailingAdd {
 // for long enough that a consumer's drop lands mid-call.
 
 #[derive(serde::Deserialize)]
-#[allow(dead_code)]
 /// Arguments accepted by the note-writing tool.
 pub struct NoteArgs {
     /// Title of the note to write.
@@ -458,7 +433,6 @@ pub struct NoteArgs {
 }
 
 /// Writes a note; its `body` is what the model streams at length.
-#[allow(dead_code)]
 pub struct WriteNote;
 
 impl rig_core::tool::Tool for WriteNote {
@@ -489,30 +463,24 @@ impl rig_core::tool::Tool for WriteNote {
 // and a toolset of retrievable tools for `retrieved_tools`, each embedded
 // by the provider under test.
 
-#[allow(dead_code)]
 /// Fixed documents used by retrieval corpus cells.
 pub const FACTS: [&str; 3] = [
     "A flurbo is a green alien that lives on cold planets.",
     "A glarb-glarb is an ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.",
     "A linglingdong is a term used by inhabitants of the far side of the moon to describe humans.",
 ];
-#[allow(dead_code)]
 /// Question answered from the fixed retrieval documents.
 pub const FACT_PROMPT: &str = "What is a glarb-glarb? Answer in one sentence.";
-#[allow(dead_code)]
 /// System instruction requiring use of retrieved arithmetic tools.
 pub const RETRIEVED_TOOLS_PREAMBLE: &str =
     "You are a calculator. You must use the provided tools for every arithmetic operation.";
-#[allow(dead_code)]
 /// Prompt exercising the retrieved subtraction tool.
 pub const SUBTRACT_PROMPT: &str =
     "Subtract 8 from 50 with the subtract tool, then reply with just the number.";
-#[allow(dead_code)]
 /// Prompt requiring an add call followed by a dependent subtraction call.
 pub const ADD_THEN_SUBTRACT_PROMPT: &str = "First add 20 and 5 with the add tool. Then subtract 4 from that sum with the subtract tool. Report the final number.";
 
 /// The facts, embedded by `model`, as an in-memory index (ids `doc0`..).
-#[allow(dead_code)]
 pub async fn facts_index(
     model: impl Into<rig_core::DynModel<rig_core::operation::Embedding>>,
     facts: &[&str],
@@ -534,7 +502,6 @@ pub async fn facts_index(
 
 /// The toolset's embeddable schemas, embedded by `model`, as an index keyed
 /// by tool name.
-#[allow(dead_code)]
 pub async fn tool_index(
     model: impl Into<rig_core::DynModel<rig_core::operation::Embedding>>,
     toolset: &rig_agent::tool::ToolSet,
@@ -556,14 +523,12 @@ pub async fn tool_index(
 
 #[derive(Debug, thiserror::Error)]
 #[error("init error")]
-#[allow(dead_code)]
 /// Initialization error type for the retrievable arithmetic tools.
 pub struct NoInit;
 
 macro_rules! retrievable_operation {
     ($name:ident, $tool_name:literal, $description:literal, $embedding_doc:literal, $op:expr) => {
         #[derive(Clone, Default, serde::Deserialize, serde::Serialize)]
-        #[allow(dead_code)]
         /// Retrievable arithmetic tool with a fixed name, schema, and embedding document.
         pub struct $name;
 
@@ -625,7 +590,6 @@ retrievable_operation!(
 );
 
 /// The retrievable toolset: `add` and `subtract`, in that order.
-#[allow(dead_code)]
 pub fn retrievable_toolset() -> rig_agent::tool::ToolSet {
     let mut toolset = rig_agent::tool::ToolSet::default();
     toolset
@@ -643,41 +607,29 @@ pub fn retrievable_toolset() -> rig_agent::tool::ToolSet {
 // observe-only hook that records what `on_run_settled` saw (producer-side
 // assertion; the header names it like any other hook).
 
-#[allow(dead_code)]
 /// Expected stop reason at run start.
 pub const STOP_AT_START: &str = "stopped at run start";
-#[allow(dead_code)]
 /// Expected stop reason at model selection.
 pub const STOP_AT_MODEL_SELECT: &str = "stopped at model selection";
-#[allow(dead_code)]
 /// Expected stop reason before a completion call.
 pub const STOP_AT_COMPLETION_CALL: &str = "stopped before the completion call";
-#[allow(dead_code)]
 /// Expected cancellation reason before add dispatch reaches the bus.
 pub const CANCEL_ADD_DISPATCH: &str = "add is cancelled before the bus";
-#[allow(dead_code)]
 /// Expected cancellation reason after add dispatch returns from the bus.
 pub const CANCEL_ADD_OUTCOME: &str = "add is cancelled after the bus";
-#[allow(dead_code)]
 /// Expected cancellation reason for the final answer.
 pub const CANCEL_ANSWER: &str = "the answer is cancelled";
-#[allow(dead_code)]
 /// Expected stop reason after a model turn.
 pub const STOP_AFTER_TURN: &str = "stopped after the model turn";
-#[allow(dead_code)]
 /// Expected stop reason at the answer turn.
 pub const STOP_AT_ANSWER: &str = "stopped at the answer turn";
-#[allow(dead_code)]
 /// Expected stop reason on the first text delta.
 pub const STOP_ON_TEXT_DELTA: &str = "stopped on the first text delta";
-#[allow(dead_code)]
 /// Expected stop reason on the first tool-call delta.
 pub const STOP_ON_TOOL_CALL_DELTA: &str = "stopped on the first tool-call delta";
-#[allow(dead_code)]
 /// Expected stop reason on the first reasoning delta.
 pub const STOP_ON_REASONING_DELTA: &str = "stopped on the first reasoning delta";
 
-#[allow(dead_code)]
 /// Hook that stops the run at its start event.
 pub struct StopAtStart;
 impl rig_agent::agent::AgentHook for StopAtStart {
@@ -690,7 +642,6 @@ impl rig_agent::agent::AgentHook for StopAtStart {
     }
 }
 
-#[allow(dead_code)]
 /// Hook that stops the run during model selection.
 pub struct StopAtModelSelect;
 impl rig_agent::agent::AgentHook for StopAtModelSelect {
@@ -703,7 +654,6 @@ impl rig_agent::agent::AgentHook for StopAtModelSelect {
     }
 }
 
-#[allow(dead_code)]
 /// Hook that stops before the completion call.
 pub struct StopAtCompletionCall;
 impl rig_agent::agent::AgentHook for StopAtCompletionCall {
@@ -718,7 +668,6 @@ impl rig_agent::agent::AgentHook for StopAtCompletionCall {
 
 /// `on_dispatch` → `Deny(Cancelled)` for `add`: the run stops before the
 /// tool reaches the bus.
-#[allow(dead_code)]
 pub struct CancelAddDispatch;
 impl rig_agent::agent::AgentHook for CancelAddDispatch {
     async fn on_dispatch(
@@ -736,7 +685,6 @@ impl rig_agent::agent::AgentHook for CancelAddDispatch {
 
 /// `on_outcome` → `Replace(Err(Cancelled))` for `add`'s result: the tool
 /// ran and is recorded; the run stops after.
-#[allow(dead_code)]
 pub struct CancelAddOutcome;
 impl rig_agent::agent::AgentHook for CancelAddOutcome {
     async fn on_outcome(
@@ -753,7 +701,6 @@ impl rig_agent::agent::AgentHook for CancelAddOutcome {
 }
 
 /// `on_outcome` → `Replace(Err(Cancelled))` on a text answer.
-#[allow(dead_code)]
 pub struct CancelAnswer;
 impl rig_agent::agent::AgentHook for CancelAnswer {
     async fn on_outcome(
@@ -775,7 +722,6 @@ impl rig_agent::agent::AgentHook for CancelAnswer {
     }
 }
 
-#[allow(dead_code)]
 /// Hook that stops after the model turn.
 pub struct StopAfterTurn;
 impl rig_agent::agent::AgentHook for StopAfterTurn {
@@ -790,7 +736,6 @@ impl rig_agent::agent::AgentHook for StopAfterTurn {
 
 /// Stops at the turn that carries no tool call — the answer turn of a
 /// tool program, so the tool turn's records precede the stop.
-#[allow(dead_code)]
 pub struct StopAtAnswer;
 impl rig_agent::agent::AgentHook for StopAtAnswer {
     async fn on_model_turn_finished(
@@ -810,7 +755,6 @@ impl rig_agent::agent::AgentHook for StopAtAnswer {
     }
 }
 
-#[allow(dead_code)]
 /// Hook that stops on the first text delta.
 pub struct StopOnTextDelta;
 impl rig_agent::agent::AgentHook for StopOnTextDelta {
@@ -823,7 +767,6 @@ impl rig_agent::agent::AgentHook for StopOnTextDelta {
     }
 }
 
-#[allow(dead_code)]
 /// Hook that stops on the first tool-call delta.
 pub struct StopOnToolCallDelta;
 impl rig_agent::agent::AgentHook for StopOnToolCallDelta {
@@ -836,7 +779,6 @@ impl rig_agent::agent::AgentHook for StopOnToolCallDelta {
     }
 }
 
-#[allow(dead_code)]
 /// Hook that stops on the first reasoning delta.
 pub struct StopOnReasoningDelta;
 impl rig_agent::agent::AgentHook for StopOnReasoningDelta {
@@ -853,7 +795,6 @@ impl rig_agent::agent::AgentHook for StopOnReasoningDelta {
 /// Not a record, and its state is not identity (the header names the
 /// type); the replay's hook of the same name observes nothing.
 #[derive(Clone, Default)]
-#[allow(dead_code)]
 pub struct RecordSettled(pub std::sync::Arc<std::sync::Mutex<Option<String>>>);
 impl rig_agent::agent::AgentHook for RecordSettled {
     async fn on_run_settled(
@@ -863,7 +804,7 @@ impl rig_agent::agent::AgentHook for RecordSettled {
     ) {
         let seen = match event.outcome {
             rig_agent::agent::SettledOutcome::Response(response) => {
-                format!("response:{}", response.output)
+                format!("response:{}", response.output())
             }
             rig_agent::agent::SettledOutcome::Error(reason) => format!("error:{reason}"),
         };
@@ -874,13 +815,11 @@ impl rig_agent::agent::AgentHook for RecordSettled {
 // ---------------------------------------------------------------------------
 // The invalid-call matrix's hooks (Matrix G).
 
-#[allow(dead_code)]
 /// Expected result when an unknown tool call is skipped.
 pub const SKIP_REASON: &str = "no such tool; skipped";
 
 /// `on_invalid_tool_call` → `Repair { tool_name: "add" }`: the unknown
 /// call is re-targeted to `add` with its arguments.
-#[allow(dead_code)]
 pub struct RepairToAdd;
 impl rig_agent::agent::AgentHook for RepairToAdd {
     async fn on_invalid_tool_call(
@@ -896,7 +835,6 @@ impl rig_agent::agent::AgentHook for RepairToAdd {
 
 /// `on_invalid_tool_call` → `Skip { reason }`: the model sees the reason
 /// as the call's result and goes on.
-#[allow(dead_code)]
 pub struct SkipUnknown;
 impl rig_agent::agent::AgentHook for SkipUnknown {
     async fn on_invalid_tool_call(
@@ -914,15 +852,12 @@ impl rig_agent::agent::AgentHook for SkipUnknown {
 // Matrix I: a host's own effect, dispatched by hooks over the host's bus.
 
 /// The host's key for its custom handler.
-#[allow(dead_code)]
 pub const NOTE_KEY: &str = "host/note";
 /// The host's key for its embedding model.
-#[allow(dead_code)]
 pub const EMBED_KEY: &str = "host/embed";
 
 /// A host-defined effect: a note of where in the run it was taken.
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
-#[allow(dead_code)]
 pub struct Note {
     /// Lifecycle location recorded by the note dispatch.
     pub at: String,
@@ -930,7 +865,6 @@ pub struct Note {
 
 /// The host's answer to a [`Note`].
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
-#[allow(dead_code)]
 pub struct NoteAck {
     /// Whether the handler accepted the note.
     pub accepted: bool,
@@ -945,7 +879,6 @@ impl rig_core::effect::CustomEffect for Note {
 
 /// The host's handler for [`Note`]: acknowledges every note with where
 /// it was taken.
-#[allow(dead_code)]
 pub struct NoteTaker;
 
 impl rig_core::serve::Serve for NoteTaker {
@@ -991,13 +924,11 @@ impl rig_core::serve::Serve for NoteTaker {
     }
 }
 
-#[allow(dead_code)]
 fn note_key() -> rig_core::effect::Key<rig_core::effect::family::Custom<Note>> {
     rig_core::effect::Key::new_unchecked(rig_core::effect::HandlerKey::from(NOTE_KEY))
 }
 
 /// Dispatch a note from a hook, asserting the host acknowledged it.
-#[allow(dead_code)]
 async fn take_note(ctx: &rig_agent::agent::HookContext, at: &str) {
     let host = ctx.bind(&note_key()).expect("the host serves notes");
     let ack = host
@@ -1008,7 +939,6 @@ async fn take_note(ctx: &rig_agent::agent::HookContext, at: &str) {
 }
 
 /// `on_run_start` → a note, before the first completion.
-#[allow(dead_code)]
 pub struct NoteAtStart;
 
 impl rig_agent::agent::AgentHook for NoteAtStart {
@@ -1023,7 +953,6 @@ impl rig_agent::agent::AgentHook for NoteAtStart {
 }
 
 /// `on_completion_call` → a note before every completion.
-#[allow(dead_code)]
 pub struct NoteAtCompletionCall;
 
 impl rig_agent::agent::AgentHook for NoteAtCompletionCall {
@@ -1039,7 +968,6 @@ impl rig_agent::agent::AgentHook for NoteAtCompletionCall {
 
 /// `on_outcome` → a note after every tool answer (a completion's answer
 /// is left alone).
-#[allow(dead_code)]
 pub struct NoteAtOutcome;
 
 impl rig_agent::agent::AgentHook for NoteAtOutcome {
@@ -1057,7 +985,6 @@ impl rig_agent::agent::AgentHook for NoteAtOutcome {
 
 /// `on_run_settled` → a note after the run's answer: the last dispatch
 /// the run makes, after the record that answered it.
-#[allow(dead_code)]
 pub struct NoteAtSettled;
 
 impl rig_agent::agent::AgentHook for NoteAtSettled {
@@ -1072,7 +999,6 @@ impl rig_agent::agent::AgentHook for NoteAtSettled {
 
 /// `on_run_start` → two notes dispatched together (their order is the
 /// bus's).
-#[allow(dead_code)]
 pub struct NoteTwice;
 
 impl rig_agent::agent::AgentHook for NoteTwice {
@@ -1097,7 +1023,6 @@ impl rig_agent::agent::AgentHook for NoteTwice {
 
 /// `on_run_start` → a bind to a key the host never registered: the hook
 /// sees the refusal and lets the run go on; nothing is dispatched.
-#[allow(dead_code)]
 pub struct NoteUnserved;
 
 impl rig_agent::agent::AgentHook for NoteUnserved {
@@ -1118,7 +1043,6 @@ impl rig_agent::agent::AgentHook for NoteUnserved {
 
 /// `on_run_start` → the prompt's text embedded through the host's
 /// embedding model.
-#[allow(dead_code)]
 pub struct EmbedPrompt;
 
 impl rig_agent::agent::AgentHook for EmbedPrompt {
@@ -1149,14 +1073,11 @@ impl rig_agent::agent::AgentHook for EmbedPrompt {
 // Matrix J: memory operations.
 
 /// The agent's memory key (`<owner>/memory`, the owner `golden`).
-#[allow(dead_code)]
 pub const MEMORY_KEY: &str = "golden/memory";
 /// The conversation every memory cell loads and saves under.
-#[allow(dead_code)]
 pub const CONVERSATION: &str = "golden-conversation";
 
 /// Clear the conversation from a hook, through the run's memory handle.
-#[allow(dead_code)]
 async fn clear_conversation(ctx: &rig_agent::agent::HookContext) {
     let memory = ctx
         .memory(&rig_core::effect::HandlerKey::from(MEMORY_KEY))
@@ -1175,7 +1096,6 @@ async fn clear_conversation(ctx: &rig_agent::agent::HookContext) {
 
 /// `on_run_start` → `Clear`; the hook fires after the run's `Load`, so
 /// the clear lands between the load and the append.
-#[allow(dead_code)]
 pub struct ClearAtStart;
 
 impl rig_agent::agent::AgentHook for ClearAtStart {
@@ -1190,7 +1110,6 @@ impl rig_agent::agent::AgentHook for ClearAtStart {
 }
 
 /// `on_run_settled` → `Clear` after the run's `Append`.
-#[allow(dead_code)]
 pub struct ClearAtSettled;
 
 impl rig_agent::agent::AgentHook for ClearAtSettled {
@@ -1204,14 +1123,12 @@ impl rig_agent::agent::AgentHook for ClearAtSettled {
 }
 
 /// An in-memory conversation store whose `load` or `append` refuses.
-#[allow(dead_code)]
 pub struct FailingMemory {
     inner: rig_core::memory::InMemoryConversationMemory,
     fail_load: bool,
     fail_append: bool,
 }
 
-#[allow(dead_code)]
 impl FailingMemory {
     /// Construct memory that fails loads while allowing appends.
     pub fn load_fails() -> Self {
@@ -1274,12 +1191,10 @@ impl rig_core::memory::ConversationMemory for FailingMemory {
 // ---------------------------------------------------------------------------
 // Matrix K: the delta wire.
 
-#[allow(dead_code)]
 /// Expected stop reason for a tool-arguments delta.
 pub const STOP_ON_TOOL_ARGUMENTS_DELTA: &str = "stop on the tool's arguments delta";
 
 /// `on_tool_call_delta` → `Stop` on the first arguments delta.
-#[allow(dead_code)]
 pub struct StopOnToolArgumentsDelta;
 impl rig_agent::agent::AgentHook for StopOnToolArgumentsDelta {
     async fn on_tool_call_delta(
@@ -1298,18 +1213,14 @@ impl rig_agent::agent::AgentHook for StopOnToolArgumentsDelta {
 // ---------------------------------------------------------------------------
 // Matrix M: per-turn shaping through `on_completion_call` and `on_model_select`.
 
-#[allow(dead_code)]
 /// Document identifier appended by the request-shaping hook.
 pub const SHAPING_CONTEXT_ID: &str = "shaping-context";
-#[allow(dead_code)]
 /// Document text appended by the request-shaping hook.
 pub const SHAPING_CONTEXT: &str =
     "Definition of a glarb-glarb: an ancient farming tool from planet Jiro.";
-#[allow(dead_code)]
 /// Model route selected by the late-routing hook.
 pub const LATE_ROUTE: &str = "late";
 
-#[allow(dead_code)]
 fn shaping_document() -> rig_agent::completion::Document {
     rig_agent::completion::Document {
         id: SHAPING_CONTEXT_ID.to_owned(),
@@ -1322,7 +1233,6 @@ fn shaping_document() -> rig_agent::completion::Document {
 macro_rules! patch_hook {
     ($(#[$doc:meta])* $name:ident, |$turn:ident| $patch:expr) => {
         $(#[$doc])*
-        #[allow(dead_code)]
         pub struct $name;
 
         impl rig_agent::agent::AgentHook for $name {
@@ -1393,7 +1303,6 @@ patch_hook!(
 
 /// `on_model_select` → `Select("fast")` on the first turn (no model asked
 /// yet), `Continue` after: the reverse of `RouteAfterFirstTurn`.
-#[allow(dead_code)]
 pub struct RouteOnFirstTurn;
 
 impl rig_agent::agent::AgentHook for RouteOnFirstTurn {
@@ -1413,7 +1322,6 @@ impl rig_agent::agent::AgentHook for RouteOnFirstTurn {
 /// `on_model_select` → `Select("late")` on every turn: a route the agent
 /// registered after build (`register_model`), which the required row does
 /// not name.
-#[allow(dead_code)]
 pub struct SelectLate;
 
 impl rig_agent::agent::AgentHook for SelectLate {
@@ -1431,10 +1339,8 @@ impl rig_agent::agent::AgentHook for SelectLate {
 
 /// `on_model_turn_finished` → `Stop` after turn `n`, named by `n`: a
 /// stateful hook whose header name carries its state.
-#[allow(dead_code)]
 pub struct StopAfterTurnN(pub usize);
 
-#[allow(dead_code)]
 /// Build the fixed stop reason for the specified model turn.
 pub fn stop_after_turn_reason(n: usize) -> String {
     format!("stopped after turn {n}")
@@ -1459,20 +1365,16 @@ impl rig_agent::agent::AgentHook for StopAfterTurnN {
 }
 
 /// The host's key for its reranker.
-#[allow(dead_code)]
 pub const RERANK_KEY: &str = "host/rerank";
-#[allow(dead_code)]
 /// Fixed documents used by reranking corpus cells.
 pub const RERANK_DOCUMENTS: [&str; 2] = ["the harbor label", "the orchard label"];
 
 /// A reranker that ranks by document length, longest first: the runtime
 /// behind a local rerank wire, since no keyed provider in the tree has a
 /// rerank cassette suite.
-#[allow(dead_code)]
 #[derive(Clone, Copy, Debug, Default)]
 pub struct MockRerank;
 
-#[allow(dead_code)]
 impl MockRerank {
     /// The mock reranker: its local wire over this runtime.
     pub fn model() -> rig_core::Model<rig_core::driver::Local<rig_core::operation::Rerank>, Self> {
@@ -1516,7 +1418,6 @@ impl rig_core::driver::Transport<rig_core::driver::Local<rig_core::operation::Re
 
 /// `on_run_start` → the prompt reranks two documents through the host's
 /// reranker.
-#[allow(dead_code)]
 pub struct RerankDocs;
 
 impl rig_agent::agent::AgentHook for RerankDocs {
@@ -1530,7 +1431,7 @@ impl rig_agent::agent::AgentHook for RerankDocs {
         let host = ctx.bind(&key).expect("the host serves reranking");
         let query = event.prompt.rag_text().expect("a text prompt");
         let ranked = host
-            .dispatch(rig_core::effect::RerankRequest {
+            .dispatch(rig_core::operation::RerankRequest {
                 query,
                 documents: RERANK_DOCUMENTS
                     .iter()
@@ -1552,22 +1453,17 @@ impl rig_agent::agent::AgentHook for RerankDocs {
 // rig-cassette replay registers the same handlers (`corpus/mod.rs`): program,
 // not record.
 
-#[allow(dead_code)]
 /// Handler key of the tool that performs nested dispatches.
 pub const NESTING_TOOL_KEY: &str = "golden/tool:lookup#0";
-#[allow(dead_code)]
 /// Handler key of the host's nested-note relay.
 pub const RELAY_KEY: &str = "host/relay";
-#[allow(dead_code)]
 /// Handler key of the host service that never answers.
 pub const NEVER_KEY: &str = "host/never";
-#[allow(dead_code)]
 /// System instruction used for nested completion requests.
 pub const NESTED_PREAMBLE: &str = "Answer in one word.";
 
 /// What the `lookup` tool dispatches, and from where.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[allow(dead_code)]
 pub struct Nesting {
     /// Kind of child dispatch performed by the lookup tool.
     pub child: NestedChild,
@@ -1584,7 +1480,6 @@ pub struct Nesting {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[allow(dead_code)]
 /// Nested-dispatch behavior exercised by a corpus cell.
 pub enum NestedChild {
     /// A completion on the agent's model key: the question in the args.
@@ -1606,7 +1501,6 @@ pub enum NestedChild {
 
 /// The relay's effect.
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
-#[allow(dead_code)]
 pub struct RelayNote {
     /// Location marker propagated through the relay and its child note.
     pub at: String,
@@ -1619,7 +1513,6 @@ impl rig_core::effect::CustomEffect for RelayNote {
 
 /// The never-answering effect.
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
-#[allow(dead_code)]
 pub struct Hold;
 
 impl rig_core::effect::CustomEffect for Hold {
@@ -1627,19 +1520,16 @@ impl rig_core::effect::CustomEffect for Hold {
     type Answer = NoteAck;
 }
 
-#[allow(dead_code)]
 fn relay_key() -> rig_core::effect::Key<rig_core::effect::family::Custom<RelayNote>> {
     rig_core::effect::Key::new_unchecked(rig_core::effect::HandlerKey::from(RELAY_KEY))
 }
 
-#[allow(dead_code)]
 fn never_key() -> rig_core::effect::Key<rig_core::effect::family::Custom<Hold>> {
     rig_core::effect::Key::new_unchecked(rig_core::effect::HandlerKey::from(NEVER_KEY))
 }
 
 /// The `lookup` tool's arguments: a question, or a leaf marker.
 #[derive(Debug, Default, serde::Serialize, serde::Deserialize)]
-#[allow(dead_code)]
 pub struct LookupArgs {
     #[serde(default)]
     /// Question passed to the nested lookup or completion.
@@ -1649,7 +1539,6 @@ pub struct LookupArgs {
     pub leaf: bool,
 }
 
-#[allow(dead_code)]
 /// Return the fixed JSON parameter schema of the lookup tool.
 pub fn lookup_parameters() -> serde_json::Value {
     serde_json::json!({
@@ -1664,7 +1553,6 @@ pub fn lookup_parameters() -> serde_json::Value {
 
 /// A tool that dispatches from inside its own service, through the
 /// dispatcher its sink carries.
-#[allow(dead_code)]
 pub struct Lookup {
     /// Child-dispatch and execution-context settings for the lookup.
     pub nesting: Nesting,
@@ -1672,7 +1560,6 @@ pub struct Lookup {
     pub model_key: rig_core::effect::HandlerKey,
 }
 
-#[allow(dead_code)]
 fn tool_text(text: String) -> rig_core::effect::Outcome {
     rig_core::effect::Outcome::ToolResult {
         result: rig_core::tool::ToolResult::success(rig_core::tool::ToolOutput::text(text)),
@@ -1680,7 +1567,6 @@ fn tool_text(text: String) -> rig_core::effect::Outcome {
 }
 
 impl Lookup {
-    #[allow(dead_code)]
     async fn nest(&self, dispatcher: rig_agent::bus::Dispatcher, args: LookupArgs) -> String {
         match self.nesting.child {
             NestedChild::Completion => {
@@ -1828,7 +1714,6 @@ impl rig_core::serve::Serve for Lookup {
 }
 
 /// The host's relay: takes a note through its own sink's dispatcher.
-#[allow(dead_code)]
 pub struct Relay;
 
 impl rig_core::serve::Serve for Relay {
@@ -1878,7 +1763,6 @@ impl rig_core::serve::Serve for Relay {
 
 /// The host's handler that never answers: it signals that it was reached
 /// and holds the dispatch until the consumer goes.
-#[allow(dead_code)]
 pub struct Never {
     /// Notification fired when the never-answering service is entered.
     pub reached: std::sync::Arc<tokio::sync::Notify>,
@@ -1908,7 +1792,6 @@ impl rig_core::serve::Serve for Never {
 }
 
 /// The parent of every record, by position in the log.
-#[allow(dead_code)]
 pub fn parent_positions(log: &EffectLog) -> Vec<Option<usize>> {
     log.records
         .iter()
@@ -1928,24 +1811,18 @@ pub fn parent_positions(log: &EffectLog) -> Vec<Option<usize>> {
 // cells. Program, not record: `crates/rig-cassette/tests/corpus/mod.rs`
 // holds the same types verbatim.
 
-#[allow(dead_code)]
 /// First fixed argument replacement used by dispatch layers.
 pub const PATCHED_ARGS: &str = r#"{"x":40,"y":2}"#;
-#[allow(dead_code)]
 /// Second fixed argument replacement used to prove layer chaining.
 pub const PATCHED_AGAIN_ARGS: &str = r#"{"x":30,"y":12}"#;
-#[allow(dead_code)]
 /// Expected denial message from a host layer.
 pub const HOST_DENY_REASON: &str = "denied by the host";
-#[allow(dead_code)]
 /// Expected denial message from the external approval world.
 pub const WORLD_DENY_REASON: &str = "blocked by the world";
-#[allow(dead_code)]
 /// Expected cancellation message from a stream-intercepting layer.
 pub const CANCEL_STREAM_REASON: &str = "the answer is cancelled by a layer";
 
 /// The history the memory layer answers a `Load` with: two turns naming Ada.
-#[allow(dead_code)]
 pub fn replaced_history() -> Vec<Message> {
     vec![
         Message::user("My name is Ada."),
@@ -1953,12 +1830,10 @@ pub fn replaced_history() -> Vec<Message> {
     ]
 }
 
-#[allow(dead_code)]
 fn is_add(kind: &rig_core::effect::EffectKind) -> bool {
     matches!(kind, rig_core::effect::EffectKind::ToolCall { name, .. } if name == "add")
 }
 
-#[allow(dead_code)]
 fn patch_add(kind: &rig_core::effect::EffectKind, args: &str) -> rig_core::serve::Decision {
     match kind {
         rig_core::effect::EffectKind::ToolCall { name, .. } if name == "add" => {
@@ -1997,7 +1872,6 @@ macro_rules! proceed_before {
 }
 
 /// The hook `DenyAdd`, as a layer.
-#[allow(dead_code)]
 pub struct DenyAddLayer;
 
 impl rig_core::serve::Intercept for DenyAddLayer {
@@ -2019,7 +1893,6 @@ impl rig_core::serve::Intercept for DenyAddLayer {
 }
 
 /// The hook `PatchAddArgs`, as a layer.
-#[allow(dead_code)]
 pub struct PatchAddArgsLayer;
 
 impl rig_core::serve::Intercept for PatchAddArgsLayer {
@@ -2037,7 +1910,6 @@ impl rig_core::serve::Intercept for PatchAddArgsLayer {
 }
 
 /// The host's own patch of `add`'s arguments, beneath the agent's.
-#[allow(dead_code)]
 pub struct PatchAgainLayer;
 
 impl rig_core::serve::Intercept for PatchAgainLayer {
@@ -2055,7 +1927,6 @@ impl rig_core::serve::Intercept for PatchAgainLayer {
 }
 
 /// The hook `ReplaceAddResult`, as a layer.
-#[allow(dead_code)]
 pub struct ReplaceAddResultLayer;
 
 impl rig_core::serve::Intercept for ReplaceAddResultLayer {
@@ -2083,14 +1954,12 @@ impl rig_core::serve::Intercept for ReplaceAddResultLayer {
 }
 
 /// The world a suspending layer asks.
-#[allow(dead_code)]
 pub type Asks = tokio::sync::mpsc::UnboundedSender<(
     rig_core::effect::EffectId,
     futures::channel::oneshot::Sender<rig_core::serve::Decision>,
 )>;
 
 /// An approval gate: `before` sends the dispatch to the world and waits.
-#[allow(dead_code)]
 pub struct ApprovalLayer {
     /// Channel carrying approval requests and their decision senders.
     pub asks: Asks,
@@ -2122,7 +1991,6 @@ impl rig_core::serve::Intercept for ApprovalLayer {
 
 /// What the world answers a suspended dispatch.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[allow(dead_code)]
 pub enum Answer {
     /// Allow the suspended dispatch to proceed.
     Approve,
@@ -2134,7 +2002,6 @@ pub enum Answer {
 
 /// Spawn the world: answers as `answer` says; signals `reached` when it
 /// holds an answer forever.
-#[allow(dead_code)]
 pub fn spawn_world(answer: Answer, reached: std::sync::Arc<tokio::sync::Notify>) -> Asks {
     let (asks, mut asked): (Asks, _) = tokio::sync::mpsc::unbounded_channel();
     tokio::spawn(async move {
@@ -2158,7 +2025,6 @@ pub fn spawn_world(answer: Answer, reached: std::sync::Arc<tokio::sync::Notify>)
 }
 
 /// A patch of another family: never a dispatch.
-#[allow(dead_code)]
 pub struct WrongFamilyLayer;
 
 impl rig_core::serve::Intercept for WrongFamilyLayer {
@@ -2183,7 +2049,6 @@ impl rig_core::serve::Intercept for WrongFamilyLayer {
 }
 
 /// `after` on a completion → the answer is cancelled.
-#[allow(dead_code)]
 pub struct CancelStreamLayer;
 
 impl rig_core::serve::Intercept for CancelStreamLayer {
@@ -2205,7 +2070,6 @@ impl rig_core::serve::Intercept for CancelStreamLayer {
 }
 
 /// `after` on a memory `Load` → the replacement history in the store's place.
-#[allow(dead_code)]
 pub struct ReplaceLoadLayer;
 
 impl rig_core::serve::Intercept for ReplaceLoadLayer {
@@ -2233,7 +2097,6 @@ impl rig_core::serve::Intercept for ReplaceLoadLayer {
 }
 
 /// The host denies everything on the key.
-#[allow(dead_code)]
 pub struct DenyAllLayer;
 
 impl rig_core::serve::Intercept for DenyAllLayer {
@@ -2252,7 +2115,6 @@ impl rig_core::serve::Intercept for DenyAllLayer {
 
 /// `on_run_start` → a host note the host's layer denies; the hook sees
 /// `Denied` and the run goes on.
-#[allow(dead_code)]
 pub struct NoteDeniedAtStart;
 
 impl rig_agent::agent::AgentHook for NoteDeniedAtStart {
@@ -2280,7 +2142,6 @@ impl rig_agent::agent::AgentHook for NoteDeniedAtStart {
 
 /// `on_run_start` asserts the run starts with the history the memory
 /// layer put in the `Load`'s place.
-#[allow(dead_code)]
 pub struct HistoryIsReplaced;
 
 impl rig_agent::agent::AgentHook for HistoryIsReplaced {
@@ -2299,7 +2160,6 @@ impl rig_agent::agent::AgentHook for HistoryIsReplaced {
 /// handler table and requests are the hook cells' bytes), available to
 /// every target.
 #[derive(serde::Deserialize, serde::Serialize)]
-#[allow(dead_code)]
 pub struct AddArgs {
     /// First number to add.
     pub x: i32,
@@ -2307,7 +2167,6 @@ pub struct AddArgs {
     pub y: i32,
 }
 
-#[allow(dead_code)]
 /// Adder matching the provider corpus tool's name, description, and schema.
 pub struct Adder;
 
@@ -2339,7 +2198,6 @@ impl rig_core::tool::Tool for Adder {
 
 /// The agent's `add` tool under `layers` (outermost first), registered
 /// through a tool server named `golden` so the key is `golden/tool:add#0`.
-#[allow(dead_code)]
 pub fn add_tool_under(
     layers: impl FnOnce(rig_core::serve::ErasedHandler) -> rig_core::serve::ErasedHandler,
 ) -> rig_agent::tool::server::ToolServerHandle {
@@ -2360,7 +2218,6 @@ pub fn add_tool_under(
 
 /// A host effect whose `Serialize` fails: it never has a wire form.
 #[derive(Debug)]
-#[allow(dead_code)]
 pub struct Unserializable;
 
 impl serde::Serialize for Unserializable {
@@ -2382,18 +2239,15 @@ impl rig_core::effect::CustomEffect for Unserializable {
     type Answer = NoteAck;
 }
 
-#[allow(dead_code)]
 /// Handler key used by the deliberately unserializable custom effect.
 pub const UNSERIALIZABLE_KEY: &str = "host/unserializable";
 
-#[allow(dead_code)]
 fn unserializable_key() -> rig_core::effect::Key<rig_core::effect::family::Custom<Unserializable>> {
     rig_core::effect::Key::new_unchecked(rig_core::effect::HandlerKey::from(UNSERIALIZABLE_KEY))
 }
 
 /// The host's handler for the kind: counts what reaches it (nothing
 /// should) and would acknowledge.
-#[allow(dead_code)]
 pub struct NeverAsked {
     /// Number of dispatches that reached this handler; expected to remain zero.
     pub reached: std::sync::Arc<std::sync::atomic::AtomicUsize>,
@@ -2431,7 +2285,6 @@ impl rig_core::serve::Serve for NeverAsked {
 
 /// `on_run_start` dispatches the unserializable effect: the hook sees
 /// `Request` with the serde message and the run goes on.
-#[allow(dead_code)]
 pub struct NoteUnserializableAtStart;
 
 impl rig_agent::agent::AgentHook for NoteUnserializableAtStart {
@@ -2463,7 +2316,6 @@ impl rig_agent::agent::AgentHook for NoteUnserializableAtStart {
 }
 
 /// `on_run_start` → `n` host notes, one after another; named by `n`.
-#[allow(dead_code)]
 pub struct NotesAtStart(pub usize);
 
 impl rig_agent::agent::AgentHook for NotesAtStart {

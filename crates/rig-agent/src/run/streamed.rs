@@ -15,7 +15,6 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
-use rig_core::NonEmpty;
 use rig_core::completion::{FinishReason, Message};
 use rig_core::error::ProviderError;
 use rig_core::json_utils;
@@ -97,10 +96,13 @@ impl PartialStreamedTurn {
                     .chain(current_tool_call)
                     .map(AssistantContent::ToolCall),
             )
-            .collect();
+            .collect::<Vec<_>>();
+        if content.is_empty() {
+            return None;
+        }
         Some(Message::Assistant {
             id: self.message_id.clone(),
-            content: NonEmpty::from_vec(content).ok()?,
+            content,
         })
     }
 
@@ -133,7 +135,7 @@ impl PartialStreamedTurn {
         ));
 
         let user_message = Message::User {
-            content: NonEmpty::from_vec(retry_results).ok()?,
+            content: retry_results,
         };
 
         Some((assistant_message, user_message))
@@ -177,7 +179,7 @@ pub enum StreamedResolution {
         skipped_tool_result: Option<ToolResult>,
     },
     /// The invalid call is dropped and the turn goes on without it: the
-    /// runner's `UnhandledInvalidToolCall::Ignore` on the streaming
+    /// run's `UnhandledInvalidToolCall::Ignore` on the streaming
     /// surface. Apply it via
     /// [`StreamedTurnAssembler::resolve_pending_invalid`] and keep consuming
     /// the provider stream; nothing of the call enters the run.

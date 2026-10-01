@@ -8,6 +8,8 @@
 //! # Ok(())
 //! # }
 //! ```
+/// `gemini-3.8-flash` completion model
+pub const GEMINI_3_8_FLASH: &str = "gemini-3.8-flash";
 /// `gemini-3.1-flash-lite-preview` completion model
 pub const GEMINI_3_1_FLASH_LITE_PREVIEW: &str = "gemini-3.1-flash-lite-preview";
 /// `gemini-3-flash-preview` completion model
@@ -236,9 +238,7 @@ pub(crate) fn create_request_body(
         record_telemetry_content: _,
     } = completion_request;
 
-    let mut full_history = Vec::new();
-    full_history.extend(chat_history);
-    let (history_system, full_history) = split_system_messages_from_history(full_history);
+    let (history_system, full_history) = split_system_messages_from_history(chat_history);
 
     let mut additional_params_payload = additional_params
         .take()
@@ -463,7 +463,7 @@ impl TryFrom<Vec<completion::ToolDefinition>> for Tool {
             })?;
 
             function_declarations.push(FunctionDeclaration {
-                name: tool.name,
+                name: tool.name.into(),
                 description: tool.description,
                 parameters,
             });
@@ -2122,7 +2122,9 @@ pub mod gemini_api_types {
                     allowed_function_names: None,
                 },
                 message::ToolChoice::Specific { function_names } => Self::Any {
-                    allowed_function_names: Some(function_names),
+                    allowed_function_names: Some(
+                        function_names.into_iter().map(String::from).collect(),
+                    ),
                 },
             };
 

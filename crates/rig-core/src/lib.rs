@@ -51,7 +51,6 @@ pub mod loaders;
 pub mod markers;
 pub mod memory;
 pub mod model;
-mod non_empty;
 pub mod observe;
 pub mod operation;
 pub mod prelude;
@@ -61,6 +60,7 @@ pub mod rerank;
 pub mod serve;
 
 pub mod streaming;
+pub mod structured_output;
 #[cfg(any(test, feature = "test-utils"))]
 #[cfg_attr(docsrs, doc(cfg(feature = "test-utils")))]
 pub mod test_utils;
@@ -78,7 +78,6 @@ pub use completion::message;
 pub use driver::{DynModel, Model};
 pub use embeddings::Embed;
 pub use error::{ErrorKind, ErrorReport, ProviderError};
-pub use non_empty::{Empty, NonEmpty};
 pub use provider_response::ProviderResponseError;
 // `schemars`, `serde`, and `serde_json` are re-exported so macro-generated
 // code (and downstream crates) can resolve them through Rig instead of

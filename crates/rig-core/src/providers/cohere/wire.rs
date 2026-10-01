@@ -8,7 +8,6 @@
 
 use crate::client::env::{self, EnvError};
 use crate::completion::CompletionRequest;
-use crate::embeddings::Embedding as Vector;
 use crate::error::EncodeError;
 use crate::error::ProviderError;
 use crate::json_utils;
@@ -26,10 +25,11 @@ use crate::message::Issuer;
 /// The issuer of Cohere's reasoning, which is the only reasoning it replays.
 pub(crate) const ISSUER: Issuer = Issuer::from_static(PROVIDER_NAME);
 use super::embeddings::{
-    EmbeddingResponse as CohereEmbeddingResponse, ErrorEnvelope as CohereErrorEnvelope,
+    EmbeddingResponse as CohereEmbeddingResponse,
     ImageEmbeddingResponse as CohereImageEmbeddingResponse, image_data_url, validate_image,
 };
 use super::streaming::ChatDecoder;
+use crate::providers::internal::wire::classify_reply_or_message_envelope;
 
 /// Cohere's API root.
 const BASE_URL: &str = "https://api.cohere.ai";
@@ -177,46 +177,6 @@ const MAX_DOCUMENTS: usize = 96;
 /// The width Cohere's image embeddings come back at.
 const IMAGE_NDIMS: usize = 1_024;
 
-/// Recognized embedding and error-envelope markers, including errors on HTTP 200.
-const EMBED_REPLY_MARKERS: &[&str] = &["embeddings", "message"];
-
-/// The key that recognizes the error envelope on its own.
-const EMBED_ERROR_MARKERS: &[&str] = &["message"];
-
-/// One `/v1/embed` reply: the answer, or the error envelope Cohere can
-/// answer a **200** with instead.
-pub enum EmbedReply<T> {
-    /// The vectors Cohere returned.
-    Reply(T),
-    /// The provider's error envelope, verbatim.
-    Failure(String),
-}
-
-/// Decode embeddings, then an error envelope on failure. Retain the embedding
-/// diagnostic if neither shape decodes.
-fn classify_embed_reply<T>(data: &str) -> WireEvent<EmbedReply<T>>
-where
-    T: serde::de::DeserializeOwned,
-{
-    crate::providers::internal::wire::classify_or(
-        data,
-        |data| {
-            crate::providers::internal::wire::classify_marker_keyed_frame::<T>(
-                data,
-                EMBED_REPLY_MARKERS,
-            )
-            .map(EmbedReply::Reply)
-        },
-        |data| {
-            crate::providers::internal::wire::classify_marker_keyed_frame::<CohereErrorEnvelope>(
-                data,
-                EMBED_ERROR_MARKERS,
-            )
-            .map(|_| EmbedReply::Failure(data.to_owned()))
-        },
-    )
-}
-
 /// The text-embedding wire: `POST /v1/embed`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Embeddings {
@@ -274,10 +234,11 @@ impl Wire for Embeddings {
 pub struct EmbeddingsDecoder;
 
 impl<'id> Decoder<'id, Embedding> for EmbeddingsDecoder {
-    type Event = EmbedReply<CohereEmbeddingResponse>;
+    /// The vectors, or the error envelope Cohere can answer a **200** with.
+    type Event = Result<CohereEmbeddingResponse, String>;
 
     fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
-        classify_embed_reply(&frame.as_str())
+        classify_reply_or_message_envelope(&frame.as_str(), "embeddings")
     }
 
     fn decode(
@@ -285,34 +246,21 @@ impl<'id> Decoder<'id, Embedding> for EmbeddingsDecoder {
         reply: Self::Event,
         out: Out<'id, Embedding>,
     ) -> Result<Flow, ProviderError> {
-        let reply = match reply {
-            EmbedReply::Reply(reply) => reply,
-            // Preserve the error body so the driver can attach its HTTP status.
-            EmbedReply::Failure(body) => {
-                return Err(ProviderError::from_provider_body(body));
-            }
-        };
+        let reply = reply.map_err(ProviderError::from_provider_body)?;
         let usage = reply
             .meta
             .as_ref()
             .map(|meta| meta.billed_units.to_usage())
             .unwrap_or_default();
-        // The vectors only; the operation's fold pairs them with the texts
-        // that were sent, which no `/v1/embed` reply is trusted to echo
-        // back in order.
         let vectors = reply
             .embeddings
             .into_iter()
-            .map(|vector| Vector {
-                document: String::new(),
-                vec: vector.into_iter().filter_map(|n| n.as_f64()).collect(),
-            })
-            .collect();
+            .map(|vector| vector.into_iter().filter_map(|n| n.as_f64()).collect());
         // Cohere's `/v1/embed` reply names no model.
         Ok(out.end(crate::embeddings::EmbeddingResponse {
             response_id: Some(reply.id),
             usage,
-            ..crate::embeddings::EmbeddingResponse::new(vectors)
+            ..crate::embeddings::EmbeddingResponse::from_vectors(vectors)
         }))
     }
 }
@@ -371,10 +319,11 @@ impl Wire for ImageEmbeddings {
 pub struct ImageEmbeddingsDecoder;
 
 impl<'id> Decoder<'id, ImageEmbedding> for ImageEmbeddingsDecoder {
-    type Event = EmbedReply<CohereImageEmbeddingResponse>;
+    /// The vector, or the error envelope Cohere can answer a **200** with.
+    type Event = Result<CohereImageEmbeddingResponse, String>;
 
     fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
-        classify_embed_reply(&frame.as_str())
+        classify_reply_or_message_envelope(&frame.as_str(), "embeddings")
     }
 
     fn decode(
@@ -382,14 +331,7 @@ impl<'id> Decoder<'id, ImageEmbedding> for ImageEmbeddingsDecoder {
         reply: Self::Event,
         out: Out<'id, ImageEmbedding>,
     ) -> Result<Flow, ProviderError> {
-        let reply = match reply {
-            EmbedReply::Reply(reply) => reply,
-            // Same 200-with-an-envelope reply as the text route: the body
-            // verbatim, with the driver stamping the status.
-            EmbedReply::Failure(body) => {
-                return Err(ProviderError::from_provider_body(body));
-            }
-        };
+        let reply = reply.map_err(ProviderError::from_provider_body)?;
         // Each request carries one image, so any other vector count is invalid.
         let [vector] = reply.embeddings.values.as_slice() else {
             return Err(ProviderError::Response(format!(
@@ -402,16 +344,13 @@ impl<'id> Decoder<'id, ImageEmbedding> for ImageEmbeddingsDecoder {
             .as_ref()
             .map(|meta| meta.billed_units.to_usage())
             .unwrap_or_default();
-        let vector = Vector {
-            // The fold names the input: an image has no text, and its bytes
-            // must never travel back in a response.
-            document: String::new(),
-            vec: vector.iter().filter_map(|n| n.as_f64()).collect(),
-        };
-        Ok(out.end(crate::embeddings::ImageEmbeddingResponse {
+        // The fold names the input: an image has no text, and its bytes
+        // must never travel back in a response.
+        let vector = vector.iter().filter_map(|n| n.as_f64()).collect();
+        Ok(out.end(crate::embeddings::EmbeddingResponse {
             usage,
             response_id: reply.id,
-            ..crate::embeddings::ImageEmbeddingResponse::new(vec![vector])
+            ..crate::embeddings::EmbeddingResponse::from_vectors([vector])
         }))
     }
 }

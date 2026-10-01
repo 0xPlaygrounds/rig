@@ -831,6 +831,48 @@ impl From<ToolExecutionError> for ErrorReport {
     }
 }
 
+/// Rebuilds a tool failure from a dispatch report.
+///
+/// An [`ErrorKind::Tool`] report keeps its tool kind; other kinds map to the
+/// closest [`ToolErrorKind`]. Retryability, code, HTTP status, and refusal are
+/// copied, the message is model-visible, and the report is the `source()`.
+impl From<ErrorReport> for ToolExecutionError {
+    fn from(report: ErrorReport) -> Self {
+        let kind = match report.kind {
+            ErrorKind::Tool(kind) => kind,
+            ErrorKind::Timeout => ToolErrorKind::Timeout,
+            ErrorKind::Cancelled => ToolErrorKind::Cancelled,
+            ErrorKind::Denied => ToolErrorKind::PermissionDenied,
+            ErrorKind::HandlerUnavailable => ToolErrorKind::NotFound,
+            ErrorKind::Http => ToolErrorKind::Network,
+            ErrorKind::Provider | ErrorKind::ProviderResponse => ToolErrorKind::Provider,
+            ErrorKind::Json
+            | ErrorKind::Url
+            | ErrorKind::Request
+            | ErrorKind::Response
+            | ErrorKind::MemoryBackend
+            | ErrorKind::MemoryPolicy
+            | ErrorKind::Internal
+            | ErrorKind::BusClosed
+            | ErrorKind::Divergence
+            | ErrorKind::Other => ToolErrorKind::Other,
+        };
+        let mut error = if report.refusal {
+            ToolExecutionError::refused(report.message.clone())
+        } else {
+            ToolExecutionError::new(kind, report.message.clone())
+        }
+        .with_retryable(report.retryable);
+        if let Some(code) = &report.code {
+            error = error.with_code(code.clone());
+        }
+        if let Some(status) = report.http_status {
+            error = error.with_http_status(status);
+        }
+        error.with_source(report)
+    }
+}
+
 impl MemoryError {
     /// The wire form of this error.
     pub fn report(&self) -> ErrorReport {
@@ -878,7 +920,7 @@ impl From<&VectorStoreError> for ErrorReport {
             }
             VectorStoreError::JsonError(_) => (ErrorKind::Json, None),
             VectorStoreError::DatastoreError(_) => (ErrorKind::Provider, None),
-            VectorStoreError::FilterError(_) | VectorStoreError::BuilderError(_) => {
+            VectorStoreError::FilterError(_) | VectorStoreError::SamplesOutOfRange { .. } => {
                 (ErrorKind::Request, None)
             }
             VectorStoreError::MissingIdError(_) => (ErrorKind::Response, None),

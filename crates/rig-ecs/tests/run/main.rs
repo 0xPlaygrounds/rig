@@ -32,6 +32,8 @@ mod run_content_parts;
 mod run_content_scene;
 #[path = "../run_delivery.rs"]
 mod run_delivery;
+#[path = "../run_empty_content.rs"]
+mod run_empty_content;
 #[path = "../run_fork.rs"]
 mod run_fork;
 #[path = "../run_graph.rs"]

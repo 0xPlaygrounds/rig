@@ -2,15 +2,7 @@
 //! and modality builders opened, captured before they were removed: name,
 //! target, parent, declared fields, and recorded values, case by case.
 
-use std::collections::BTreeMap;
-use std::sync::{Arc, Mutex};
-
 use serde_json::{Value, json};
-use tracing::Subscriber;
-use tracing::field::{Field, Visit};
-use tracing::span::{Attributes, Id, Record};
-use tracing_subscriber::layer::{Context, SubscriberExt};
-use tracing_subscriber::{Layer, Registry, registry::LookupSpan};
 
 use super::*;
 use crate::completion::CompletionRequest;
@@ -19,6 +11,7 @@ use crate::embeddings::EmbeddingResponse;
 use crate::error::{EncodeError, ProviderError};
 use crate::operation::{Completion, Embedding, Finish, Rerank, RerankRequest, Transcription};
 use crate::rerank::RerankResponse;
+use crate::test_utils::{CapturedSpan, TraceCapture};
 use crate::transcription::{TranscriptionRequest, TranscriptionResponse};
 use crate::wire::{Decoder, Descriptor, Flow, Fold, Mode, Out, Wire, WireEvent};
 use futures::StreamExt;
@@ -54,72 +47,6 @@ const EXPECTED: &str = r#"{"case":"fresh completion chat","spans":[{"fields":["g
 {"case":"transcription operation span+record","spans":[{"fields":["gen_ai.operation.name","gen_ai.provider.name","gen_ai.request.model","gen_ai.response.id","gen_ai.response.model","rig.provider_request_id","gen_ai.usage.input_tokens","gen_ai.usage.output_tokens","gen_ai.usage.cache_read.input_tokens","gen_ai.usage.cache_creation.input_tokens","gen_ai.usage.tool_use_prompt_tokens","gen_ai.usage.reasoning_tokens"],"name":"transcription","parent":null,"target":"rig::modalities","values":{"gen_ai.operation.name":"transcription","gen_ai.provider.name":"prov","gen_ai.request.model":"model","gen_ai.response.id":"tr_id","gen_ai.usage.input_tokens":10,"gen_ai.usage.output_tokens":0,"gen_ai.usage.reasoning_tokens":3}}]}
 {"case":"span combinator on a native response","spans":[{"fields":["gen_ai.operation.name","gen_ai.provider.name","gen_ai.request.model","gen_ai.system_instructions","gen_ai.response.id","gen_ai.response.model","rig.provider_request_id","gen_ai.usage.input_tokens","gen_ai.usage.output_tokens","gen_ai.usage.cache_read.input_tokens","gen_ai.usage.cache_creation.input_tokens","gen_ai.usage.tool_use_prompt_tokens","gen_ai.usage.reasoning_tokens","gen_ai.input.messages","gen_ai.output.messages"],"name":"chat","parent":null,"target":"rig::completions","values":{"gen_ai.operation.name":"chat","gen_ai.provider.name":"prov","gen_ai.request.model":"model","gen_ai.response.id":"native_id","gen_ai.response.model":"native_model","gen_ai.usage.input_tokens":10,"gen_ai.usage.output_tokens":0,"gen_ai.usage.reasoning_tokens":3}}]}"#;
 
-#[derive(Clone, Default)]
-struct Spans {
-    spans: Arc<Mutex<Vec<Value>>>,
-    index: Arc<Mutex<BTreeMap<u64, usize>>>,
-}
-
-struct Values<'a>(&'a mut serde_json::Map<String, Value>);
-
-impl Visit for Values<'_> {
-    fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
-        self.0
-            .insert(field.name().into(), json!(format!("{value:?}")));
-    }
-    fn record_str(&mut self, field: &Field, value: &str) {
-        self.0.insert(field.name().into(), json!(value));
-    }
-    fn record_u64(&mut self, field: &Field, value: u64) {
-        self.0.insert(field.name().into(), json!(value));
-    }
-    fn record_i64(&mut self, field: &Field, value: i64) {
-        self.0.insert(field.name().into(), json!(value));
-    }
-    fn record_bool(&mut self, field: &Field, value: bool) {
-        self.0.insert(field.name().into(), json!(value));
-    }
-}
-
-impl<S> Layer<S> for Spans
-where
-    S: Subscriber + for<'a> LookupSpan<'a>,
-{
-    fn on_new_span(&self, attrs: &Attributes<'_>, id: &Id, ctx: Context<'_, S>) {
-        let metadata = attrs.metadata();
-        let parent = match attrs.parent() {
-            Some(parent) => ctx.span(parent).map(|span| span.name()),
-            None if attrs.is_contextual() => ctx.lookup_current().map(|span| span.name()),
-            None => None,
-        };
-        let mut values = serde_json::Map::new();
-        attrs.record(&mut Values(&mut values));
-        let fields: Vec<&str> = metadata.fields().iter().map(|field| field.name()).collect();
-        let mut spans = self.spans.lock().expect("spans");
-        self.index
-            .lock()
-            .expect("index")
-            .insert(id.into_u64(), spans.len());
-        spans.push(json!({
-            "name": metadata.name(),
-            "target": metadata.target(),
-            "fields": fields,
-            "parent": parent,
-            "values": Value::Object(values),
-        }));
-    }
-
-    fn on_record(&self, id: &Id, record: &Record<'_>, _: Context<'_, S>) {
-        let Some(&index) = self.index.lock().expect("index").get(&id.into_u64()) else {
-            return;
-        };
-        let mut spans = self.spans.lock().expect("spans");
-        if let Some(values) = spans[index]["values"].as_object_mut() {
-            record.record(&mut Values(values));
-        }
-    }
-}
-
 fn usage() -> Usage {
     Usage {
         input_tokens: Some(10),
@@ -130,10 +57,10 @@ fn usage() -> Usage {
 }
 
 fn run(case: &str, out: &mut Vec<Value>, body: impl FnOnce()) {
-    let spans = Spans::default();
-    tracing::subscriber::with_default(Registry::default().with(spans.clone()), body);
-    let captured = spans.spans.lock().expect("spans").clone();
-    out.push(json!({ "case": case, "spans": captured }));
+    let capture = TraceCapture::default();
+    tracing::subscriber::with_default(capture.subscriber(), body);
+    let spans: Vec<Value> = capture.spans().iter().map(CapturedSpan::summary).collect();
+    out.push(json!({ "case": case, "spans": spans }));
 }
 
 fn completion_parent() -> tracing::Span {

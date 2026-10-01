@@ -184,39 +184,29 @@ pub enum Message {
     },
     // Gemini-backed OpenAI-compatible gateways (e.g. OpenRouter) can answer
     // with `role: "model"`; accept it on deserialization.
-    #[serde(alias = "model")]
+    #[serde(alias = "model", deserialize_with = "deserialize_assistant")]
     Assistant {
         #[serde(
-            default,
-            deserialize_with = "json_utils::string_or_vec",
             skip_serializing_if = "Vec::is_empty",
             serialize_with = "serialize_assistant_content_vec"
         )]
         content: Vec<AssistantContent>,
         // OpenAI-compatible providers expose hidden reasoning on this non-standard
         // field, and some require it to be echoed back on assistant tool-call turns.
-        // Serialized as `reasoning_content` (llama.cpp/DeepSeek dialect); the
-        // `reasoning` alias accepts OpenRouter responses.
-        #[serde(
-            skip_serializing_if = "Option::is_none",
-            rename = "reasoning_content",
-            alias = "reasoning"
-        )]
+        // Serialized as `reasoning_content` (llama.cpp/DeepSeek dialect); decoded
+        // from either that key or OpenRouter's `reasoning`.
+        #[serde(skip_serializing_if = "Option::is_none", rename = "reasoning_content")]
         reasoning: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
         refusal: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
         name: Option<String>,
-        #[serde(
-            default,
-            deserialize_with = "json_utils::null_or_default",
-            skip_serializing_if = "Vec::is_empty"
-        )]
+        #[serde(skip_serializing_if = "Vec::is_empty")]
         tool_calls: Vec<ToolCall>,
         /// Structured reasoning blocks used by OpenAI-compatible providers
         /// such as OpenRouter. Empty (and omitted from the wire) for
         /// providers that do not emit or accept them.
-        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        #[serde(skip_serializing_if = "Vec::is_empty")]
         reasoning_details: Vec<ReasoningDetails>,
     },
     #[serde(rename = "tool")]
@@ -224,6 +214,54 @@ pub enum Message {
         tool_call_id: String,
         content: ToolResultContentValue,
     },
+}
+
+/// An assistant message as compatible providers send it. The two reasoning
+/// keys are separate fields because gateways relaying a `reasoning_content`
+/// upstream behind a `reasoning` surface send both.
+#[derive(Deserialize)]
+struct AssistantMessageWire {
+    #[serde(default, deserialize_with = "json_utils::string_or_vec")]
+    content: Vec<AssistantContent>,
+    #[serde(default)]
+    reasoning_content: Option<String>,
+    #[serde(default)]
+    reasoning: Option<String>,
+    #[serde(default)]
+    refusal: Option<String>,
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default, deserialize_with = "json_utils::null_or_default")]
+    tool_calls: Vec<ToolCall>,
+    #[serde(default)]
+    reasoning_details: Vec<ReasoningDetails>,
+}
+
+/// The fields of [`Message::Assistant`], in declaration order.
+type AssistantFields = (
+    Vec<AssistantContent>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Vec<ToolCall>,
+    Vec<ReasoningDetails>,
+);
+
+/// Decode [`Message::Assistant`], preferring `reasoning_content` over
+/// `reasoning` as the streamed delta does.
+fn deserialize_assistant<'de, D>(deserializer: D) -> Result<AssistantFields, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let wire = AssistantMessageWire::deserialize(deserializer)?;
+    Ok((
+        wire.content,
+        wire.reasoning_content.or(wire.reasoning),
+        wire.refusal,
+        wire.name,
+        wire.tool_calls,
+        wire.reasoning_details,
+    ))
 }
 
 impl Message {
@@ -485,7 +523,7 @@ impl From<completion::ToolDefinition> for ToolDefinition {
         Self {
             r#type: "function".into(),
             function: FunctionDefinition {
-                name: tool.name,
+                name: tool.name.into(),
                 description: tool.description,
                 parameters: tool.parameters,
                 strict: None,
@@ -584,7 +622,7 @@ impl TryFrom<crate::message::ToolChoice> for ToolChoice {
                         "Provider only supports forcing exactly one specific tool".to_string(),
                     ));
                 };
-                Self::function(name)
+                Self::function(name.as_str())
             }
             message::ToolChoice::Auto => Self::Auto,
             message::ToolChoice::None => Self::None,
@@ -1013,66 +1051,6 @@ impl TryFrom<message::Message> for Vec<Message> {
     }
 }
 
-fn message_with_tool_ids(
-    source: message::Message,
-    position: usize,
-    ids: &crate::providers::internal::wire_ids::WireIds,
-    reasoning_details: bool,
-    issuers: &[message::Issuer],
-) -> Result<Vec<Message>, message::MessageError> {
-    let content_positions: Vec<_> = match &source {
-        message::Message::Assistant { content, .. } => content
-            .iter()
-            .enumerate()
-            .filter_map(|(index, part)| {
-                matches!(part, message::AssistantContent::ToolCall(_)).then_some(index)
-            })
-            .collect(),
-        message::Message::User { content } => content
-            .iter()
-            .enumerate()
-            .filter_map(|(index, part)| {
-                matches!(part, message::UserContent::ToolResult(_)).then_some(index)
-            })
-            .collect(),
-        message::Message::System { .. } => Vec::new(),
-    };
-    let mut converted: Vec<Message> = match source {
-        message::Message::Assistant { content, .. } => {
-            assistant_content_to_messages(content, reasoning_details, issuers)?
-        }
-        source => source.try_into()?,
-    };
-    // Conversion can split text into separate messages, but retains every tool
-    // call/result in source order. Assign only wire fields, never core provenance.
-    let slots: Vec<&mut String> = converted
-        .iter_mut()
-        .flat_map(|message| match message {
-            Message::Assistant { tool_calls, .. } => {
-                tool_calls.iter_mut().map(|call| &mut call.id).collect()
-            }
-            Message::ToolResult { tool_call_id, .. } => vec![tool_call_id],
-            _ => Vec::new(),
-        })
-        .collect();
-    if slots.len() != content_positions.len() {
-        return Err(message::MessageError::ConversionError(
-            "tool identity mapping lost a content occurrence during OpenAI conversion".into(),
-        ));
-    }
-    for (slot, content) in slots.into_iter().zip(content_positions) {
-        *slot = ids
-            .get(position, content)
-            .ok_or_else(|| {
-                message::MessageError::ConversionError(
-                    "missing planned OpenAI tool identity".into(),
-                )
-            })?
-            .to_owned();
-    }
-    Ok(converted)
-}
-
 impl From<message::ToolCall> for ToolCall {
     fn from(tool_call: message::ToolCall) -> Self {
         Self {
@@ -1137,8 +1115,14 @@ impl FromStr for SystemContent {
     }
 }
 
+/// OpenAI's chat-completions reply.
+pub type CompletionResponse = ChatCompletionResponse<Usage>;
+
+/// A chat-completions reply over the accounting `U` and choice `C`. Compatible
+/// providers that add usage counters or choice fields read their replies back
+/// with their own `U` and `C`.
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct CompletionResponse {
+pub struct ChatCompletionResponse<U, C = Choice> {
     pub id: String,
     // Null-or-missing tolerated on deserialization: some OpenAI-compatible
     // gateways (HuggingFace router sub-providers, TGI variants, Copilot's
@@ -1153,10 +1137,11 @@ pub struct CompletionResponse {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub service_tier: Option<String>,
     #[serde(
-        deserialize_with = "crate::providers::internal::openai_chat_completions_compatible::deserialize_choices_dropping_incomplete_tool_calls"
+        deserialize_with = "crate::providers::internal::openai_chat_completions_compatible::deserialize_choices_dropping_incomplete_tool_calls",
+        bound(deserialize = "C: serde::de::DeserializeOwned")
     )]
-    pub choices: Vec<Choice>,
-    pub usage: Option<Usage>,
+    pub choices: Vec<C>,
+    pub usage: Option<U>,
 }
 
 /// Return a nonempty top-level refusal only when every content part is empty.
@@ -1627,22 +1612,24 @@ impl TryFrom<OpenAIRequestParams> for CompletionRequest {
             ..
         } = req;
 
-        let partial_history = chat_history.into_vec();
-
-        let tool_ids = crate::providers::internal::wire_ids::WireIds::new(&partial_history);
-
-        let mut full_history: Vec<Message> = Vec::new();
-        full_history.extend(
-            partial_history
-                .into_iter()
-                .enumerate()
-                .map(|(position, message)| {
-                    message_with_tool_ids(message, position, &tool_ids, reasoning_details, &issuers)
-                })
-                .collect::<Result<Vec<Vec<Message>>, _>>()?
-                .into_iter()
-                .flatten(),
-        );
+        // Conversion can split text into separate messages, but keeps every
+        // tool call and result in source order.
+        let mut full_history = crate::providers::internal::wire_ids::WireIds::convert(
+            chat_history,
+            |message| match message {
+                message::Message::Assistant { content, .. } => {
+                    assistant_content_to_messages(content, reasoning_details, &issuers)
+                }
+                message => message.try_into(),
+            },
+            |message| match message {
+                Message::Assistant { tool_calls, .. } => {
+                    tool_calls.iter_mut().map(|call| &mut call.id).collect()
+                }
+                Message::ToolResult { tool_call_id, .. } => vec![tool_call_id],
+                _ => Vec::new(),
+            },
+        )?;
 
         if full_history.is_empty() {
             return Err(EncodeError::request(std::io::Error::new(

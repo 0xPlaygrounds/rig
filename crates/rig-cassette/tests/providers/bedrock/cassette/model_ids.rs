@@ -142,7 +142,7 @@ async fn claude_profile_constant_completes() {
                 .prompt("Reply with the single word: ready.")
                 .await
                 .expect("Claude completion should succeed")
-                .output;
+                .output();
 
             assert_nonempty_response(&response);
         },

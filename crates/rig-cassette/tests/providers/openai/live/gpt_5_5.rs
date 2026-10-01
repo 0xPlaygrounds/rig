@@ -47,7 +47,7 @@ async fn responses_prompt_smoke() {
         .prompt(BASIC_PROMPT)
         .await
         .expect("prompt should succeed")
-        .output;
+        .output();
 
     assert_nonempty_response(&response);
 }
@@ -82,7 +82,7 @@ async fn responses_tools_smoke() {
         .prompt(TOOLS_PROMPT)
         .await
         .expect("tool prompt should succeed")
-        .output;
+        .output();
 
     assert_mentions_expected_number(&response, -3);
 }
@@ -128,7 +128,7 @@ async fn responses_structured_output_smoke() {
         .prompt("Return a concise event object for a local Rust meetup in Seattle.")
         .await
         .expect("output schema prompt should succeed")
-        .output;
+        .output();
     let structured: SmokeStructuredOutput =
         serde_json::from_str(&response).expect("structured output should deserialize");
     assert_smoke_structured_output(&structured);
@@ -176,7 +176,7 @@ async fn responses_image_input_smoke() {
         .build();
     let image_bytes = std::fs::read(IMAGE_FIXTURE_PATH).expect("fixture image should be readable");
     let image = Image {
-        data: DocumentSourceKind::base64(&BASE64_STANDARD.encode(image_bytes)),
+        data: DocumentSourceKind::base64(BASE64_STANDARD.encode(image_bytes)),
         media_type: Some(ImageMediaType::JPEG),
         detail: Some(ImageDetail::Auto),
         ..Default::default()
@@ -186,7 +186,7 @@ async fn responses_image_input_smoke() {
         .prompt(image)
         .await
         .expect("image prompt should succeed")
-        .output;
+        .output();
 
     assert_nonempty_response(&response);
     assert_contains_any_case_insensitive(&response, &["ant", "insect"]);
@@ -230,7 +230,7 @@ async fn responses_reasoning_tool_roundtrip_smoke() {
         .chat(reasoning::TOOL_USER_PROMPT, &mut Vec::<Message>::new())
         .await
         .expect("reasoning tool chat should succeed")
-        .output;
+        .output();
 
     reasoning::assert_nonstreaming_universal(&result, &call_count, "openai");
 }
@@ -271,7 +271,7 @@ async fn chat_completions_prompt_smoke() {
         .prompt(BASIC_PROMPT)
         .await
         .expect("chat completions prompt should succeed")
-        .output;
+        .output();
 
     assert_nonempty_response(&response);
 }
@@ -310,7 +310,7 @@ async fn chat_completions_tools_smoke() {
         .prompt(TOOLS_PROMPT)
         .await
         .expect("chat completions tool prompt should succeed")
-        .output;
+        .output();
 
     assert_mentions_expected_number(&response, -3);
 }
@@ -349,7 +349,7 @@ async fn chat_completions_structured_output_smoke() {
         .prompt("Return a concise event object for a local Rust meetup in Seattle.")
         .await
         .expect("chat completions output schema prompt should succeed")
-        .output;
+        .output();
     let structured: SmokeStructuredOutput =
         serde_json::from_str(&response).expect("structured output should deserialize");
 
@@ -402,7 +402,7 @@ async fn chat_completions_image_input_smoke() {
         .build();
     let image_bytes = std::fs::read(IMAGE_FIXTURE_PATH).expect("fixture image should be readable");
     let image = Image {
-        data: DocumentSourceKind::base64(&BASE64_STANDARD.encode(image_bytes)),
+        data: DocumentSourceKind::base64(BASE64_STANDARD.encode(image_bytes)),
         media_type: Some(ImageMediaType::JPEG),
         detail: Some(ImageDetail::Auto),
         ..Default::default()
@@ -412,7 +412,7 @@ async fn chat_completions_image_input_smoke() {
         .prompt(image)
         .await
         .expect("chat completions image prompt should succeed")
-        .output;
+        .output();
 
     assert_nonempty_response(&response);
     assert_contains_any_case_insensitive(&response, &["ant", "insect"]);

@@ -132,10 +132,10 @@ fn mirror_enum_unknown_variant_preserves_error_string() {
 
 #[test]
 fn additional_model_response_fields_survive_as_json() {
-    let doc: AwsDocument = json!({"reasoning_effort": "low", "depth": 3}).into();
+    let doc = json::to_document(json!({"reasoning_effort": "low", "depth": 3}));
     let output = aws_sdk_bedrockruntime::operation::converse::ConverseOutput::builder()
         .stop_reason(aws_bedrock::StopReason::EndTurn)
-        .additional_model_response_fields(doc.0)
+        .additional_model_response_fields(doc)
         .build()
         .unwrap();
 
@@ -161,7 +161,7 @@ fn tool_use_input_decodes_into_json_value() {
     let aws_block = aws_bedrock::ToolUseBlock::builder()
         .tool_use_id("call_1")
         .name("add")
-        .input(AwsDocument::from(json!({"x": 1, "y": 2})).0)
+        .input(json::to_document(json!({"x": 1, "y": 2})))
         .build()
         .unwrap();
 

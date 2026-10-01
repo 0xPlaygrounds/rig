@@ -17,7 +17,6 @@ pub mod reflect;
 use bevy_ecs::prelude::*;
 use bevy_reflect::{Reflect, ReflectDeserialize, ReflectSerialize};
 use rig_core::{
-    NonEmpty,
     completion::{
         Usage as WireUsage,
         message::{AssistantContent, CallId, Message, ToolChoice, ToolName, UserContent},
@@ -437,14 +436,14 @@ pub enum MessageParts {
     /// A user message's parts.
     User {
         /// The parts.
-        content: NonEmpty<UserContent>,
+        content: Vec<UserContent>,
     },
     /// An assistant message's parts and provider id.
     Assistant {
         /// The provider-assigned message id, when the wire had one.
         id: Option<String>,
         /// The parts.
-        content: NonEmpty<AssistantContent>,
+        content: Vec<AssistantContent>,
     },
 }
 
@@ -454,9 +453,10 @@ impl MessageParts {
     ///
     /// [`ContentError::Shape`]: content::parts::ContentError::Shape
     pub fn user(content: Vec<UserContent>) -> Result<Self, content::parts::ContentError> {
-        NonEmpty::from_vec(content)
-            .map(|content| Self::User { content })
-            .map_err(|_| content::parts::ContentError::Shape)
+        if content.is_empty() {
+            return Err(content::parts::ContentError::Shape);
+        }
+        Ok(Self::User { content })
     }
 
     /// An assistant message of `content` under `id`, or
@@ -467,9 +467,10 @@ impl MessageParts {
         id: Option<String>,
         content: Vec<AssistantContent>,
     ) -> Result<Self, content::parts::ContentError> {
-        NonEmpty::from_vec(content)
-            .map(|content| Self::Assistant { id, content })
-            .map_err(|_| content::parts::ContentError::Shape)
+        if content.is_empty() {
+            return Err(content::parts::ContentError::Shape);
+        }
+        Ok(Self::Assistant { id, content })
     }
 
     /// The message, verbatim.

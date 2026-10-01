@@ -5,7 +5,8 @@
 //! holds an undeclared account failure or undeleted stored state, in which
 //! case it goes under [`attempt_root`] instead. The `http` feature enables this
 //! engine; `bedrock` adds binary Smithy event-stream scrubbing. Invalid
-//! fixtures and failed replay assertions panic.
+//! fixtures and failed replay assertions panic in `start_at` and `finish`;
+//! `try_start_at` and `try_finish` return them as a [`CassetteError`].
 //!
 //! ```
 //! use rig_cassette::http::CassetteSpec;
@@ -33,7 +34,7 @@ use axum::http::{HeaderName, HeaderValue, Method, StatusCode};
 use axum::response::Response;
 use axum::{Router, routing::any};
 use base64::{Engine, prelude::BASE64_STANDARD};
-use futures::{FutureExt, stream};
+use futures::stream;
 use httpmock::MockServer;
 use rig_core::http_client::{
     self, HttpClientExt, LazyBody, MultipartForm, Request as HttpRequest, Response as HttpResponse,
@@ -46,7 +47,7 @@ use std::convert::Infallible;
 use std::fmt;
 use std::fs;
 use std::net::SocketAddr;
-use std::panic::{AssertUnwindSafe, resume_unwind};
+use std::panic::resume_unwind;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU8, AtomicU64, Ordering};
@@ -58,6 +59,8 @@ use tokio::task::JoinHandle;
 mod account;
 mod clock;
 pub use clock::{CassetteClock, MAX_PAUSE, clock_sidecar};
+mod error;
+pub use error::CassetteError;
 pub mod ledger;
 mod relay;
 pub use account::{AccountFailure, account_failure, reply_account_failure};
@@ -308,30 +311,27 @@ impl DirectRecorder {
     }
 
     /// Scrub and append one complete direct request/response exchange.
-    pub async fn record_http_interaction<RequestHeaders, ResponseHeaders>(
+    pub async fn record_http_interaction(
         &self,
-        request: DirectHttpRequest<'_, RequestHeaders>,
-        response: DirectHttpResponse<'_, ResponseHeaders>,
-    ) where
-        RequestHeaders: IntoIterator,
-        RequestHeaders::Item: DirectHeader,
-        ResponseHeaders: IntoIterator,
-        ResponseHeaders::Item: DirectHeader,
-    {
+        request: DirectHttpRequest<
+            '_,
+            impl IntoIterator<Item = (impl AsRef<str>, impl AsRef<str>)>,
+        >,
+        response: DirectHttpResponse<
+            '_,
+            impl IntoIterator<Item = (impl AsRef<str>, impl AsRef<str>)>,
+        >,
+    ) {
         let mut scrubber = CassetteScrubber::new(self.policy);
         let mut interaction = CassetteInteraction {
             when: recorded_request(
                 self.policy,
                 request.method,
                 request.uri,
-                request.headers.into_iter().map(DirectHeader::into_pair),
+                request.headers,
                 request.body,
             ),
-            then: recorded_response(
-                response.status,
-                response.headers.into_iter().map(DirectHeader::into_pair),
-                response.body,
-            ),
+            then: recorded_response(response.status, response.headers, response.body),
         };
         // The ledger sees the exchange before its reply reaches the caller.
         self.log_created(
@@ -344,31 +344,6 @@ impl DirectRecorder {
         scrubber.scrub_request(&mut interaction.when);
         scrubber.scrub_response(&mut interaction.then);
         self.interactions.lock().await.push(interaction);
-    }
-}
-
-/// Convert a direct-recording header into its name and value.
-pub trait DirectHeader {
-    /// The header name representation.
-    type Name: AsRef<str>;
-    /// The header value representation.
-    type Value: AsRef<str>;
-
-    /// Return the header name and value.
-    fn into_pair(self) -> (Self::Name, Self::Value);
-}
-
-impl<Name, Value> DirectHeader for (Name, Value)
-where
-    Name: AsRef<str>,
-    Value: AsRef<str>,
-{
-    type Name = Name;
-    type Value = Value;
-
-    /// Return the header name and value.
-    fn into_pair(self) -> (Self::Name, Self::Value) {
-        self
     }
 }
 
@@ -503,9 +478,8 @@ impl ProviderCassette {
     }
 
     /// Start with an explicit mode and fixture path, ignoring the ambient mode.
-    /// `transport` selects how recording reaches the provider. Panics for an
-    /// invalid upstream URL, missing or malformed replay fixture, or server bind
-    /// failure.
+    /// `transport` selects how recording reaches the provider. Panics with the
+    /// [`CassetteError`] that [`Self::try_start_at`] would return.
     pub async fn start_at(
         transport: RecordVia,
         provider: &'static str,
@@ -515,6 +489,46 @@ impl ProviderCassette {
         cassette_path: PathBuf,
     ) -> Self {
         Self::start_with_attempts(
+            transport,
+            provider,
+            spec,
+            real_base_url,
+            mode,
+            cassette_path,
+            attempt_root(),
+        )
+        .await
+    }
+
+    /// [`Self::start_at`] without panicking. Returns an error for an invalid
+    /// upstream URL, a missing, unreadable or malformed replay fixture or
+    /// clock sidecar, and a local server that cannot bind.
+    ///
+    /// ```no_run
+    /// # use rig_cassette::http::{CassetteError, CassetteMode, CassetteSpec, ProviderCassette, RecordVia};
+    /// # async fn replay() -> Result<(), CassetteError> {
+    /// let cassette = ProviderCassette::try_start_at(
+    ///     RecordVia::Proxy,
+    ///     "openai",
+    ///     CassetteSpec::new("completion"),
+    ///     "https://api.openai.com/v1",
+    ///     CassetteMode::Replay,
+    ///     "sessions/openai/completion.yaml".into(),
+    /// )
+    /// .await?;
+    /// // Point a client at `cassette.base_url()` and run the session.
+    /// cassette.try_finish().await
+    /// # }
+    /// ```
+    pub async fn try_start_at(
+        transport: RecordVia,
+        provider: &'static str,
+        spec: CassetteSpec,
+        real_base_url: &str,
+        mode: CassetteMode,
+        cassette_path: PathBuf,
+    ) -> Result<Self, CassetteError> {
+        Self::try_start_with_attempts(
             transport,
             provider,
             spec,
@@ -537,18 +551,47 @@ impl ProviderCassette {
         cassette_path: PathBuf,
         attempt_root: PathBuf,
     ) -> Self {
+        Self::try_start_with_attempts(
+            transport,
+            provider,
+            spec,
+            real_base_url,
+            mode,
+            cassette_path,
+            attempt_root,
+        )
+        .await
+        .unwrap_or_else(|error| panic!("{error}"))
+    }
+
+    async fn try_start_with_attempts(
+        transport: RecordVia,
+        provider: &'static str,
+        spec: CassetteSpec,
+        real_base_url: &str,
+        mode: CassetteMode,
+        cassette_path: PathBuf,
+        attempt_root: PathBuf,
+    ) -> Result<Self, CassetteError> {
         let scenario = spec.scenario;
         let ledger_path = attempt_root.join(ledger::LEDGER_FILE);
         let policy = CassettePolicy::for_scenario(provider, scenario, spec.replay_matching);
-        let upstream = UpstreamBase::parse(real_base_url);
-        let server = if !mode.records() {
+        let upstream = UpstreamBase::parse(real_base_url, &cassette_path)?;
+        // Everything that can fail runs before the replay server exists, so
+        // an error never drops an unplayed server and trips its guard.
+        let replay = if mode.records() {
+            None
+        } else {
             if !cassette_path.exists() {
-                panic!(
-                    "missing provider cassette {}; run with {MODE_ENV}=record and the real API key to create it",
-                    cassette_path.display()
-                );
+                return Err(CassetteError::MissingFixture {
+                    path: cassette_path,
+                });
             }
-            CassetteServer::Replay(ReplayServer::start(&cassette_path, policy).await)
+            Some(load_replay_interactions(&cassette_path).await?)
+        };
+        let clock = CassetteClock::start(mode, &cassette_path)?;
+        let server = if let Some(interactions) = replay {
+            CassetteServer::Replay(ReplayServer::start(&cassette_path, interactions, policy).await?)
         } else {
             match transport {
                 RecordVia::Direct => CassetteServer::DirectRecording(DirectRecordingServer {
@@ -593,7 +636,10 @@ impl ProviderCassette {
                         },
                     )
                     .await
-                    .expect("the recording relay should bind");
+                    .map_err(|source| CassetteError::Bind {
+                        path: cassette_path.clone(),
+                        source,
+                    })?;
                     CassetteServer::Recording {
                         server,
                         recording_id,
@@ -603,8 +649,7 @@ impl ProviderCassette {
             }
         };
 
-        let clock = CassetteClock::start(mode, &cassette_path);
-        Self {
+        Ok(Self {
             server,
             cassette_path,
             base_path: upstream.path,
@@ -615,7 +660,7 @@ impl ProviderCassette {
             expected_failures: Arc::new(AtomicU8::new(spec.expected_failures)),
             attempt_root,
             clock,
-        }
+        })
     }
 
     /// The session's recorded clock: wall time while recording, the same
@@ -731,11 +776,23 @@ impl ProviderCassette {
     }
 
     /// Write a scrubbed recording or assert complete replay consumption and shut
-    /// down. Panics on empty recordings, export or write failures, unsafe data,
-    /// unused interactions, or refused replay requests. A recording holding an
-    /// undeclared account failure (see [`account_failure`]) is not written to
-    /// the fixture: it goes to [`attempt_root`] and this panics.
+    /// down. Panics with the [`CassetteError`] that [`Self::try_finish`] would
+    /// return. A recording holding an undeclared account failure (see
+    /// [`account_failure`]) is not written to the fixture: it goes to
+    /// [`attempt_root`] and this panics.
     pub async fn finish(self) {
+        if let Err(error) = self.try_finish().await {
+            panic!("{error}");
+        }
+    }
+
+    /// [`Self::finish`] without panicking. Returns an error for a replay that
+    /// left interactions or clock readings unused or refused a request, and
+    /// for a recording that is empty, refused, unsafe after scrubbing, or
+    /// cannot be written. A refused recording is kept under [`attempt_root`],
+    /// and [`CassetteError::RecordingRefused`] says where. The local servers
+    /// are shut down on every path, and dropping what remains never panics.
+    pub async fn try_finish(self) -> Result<(), CassetteError> {
         let expected = self.expected_failures.load(Ordering::Relaxed);
         let Self {
             server,
@@ -750,50 +807,39 @@ impl ProviderCassette {
 
         let yaml = match server {
             CassetteServer::Replay(mut server) => {
-                let result = AssertUnwindSafe(server.assert_consumed(&cassette_path))
-                    .catch_unwind()
-                    .await;
+                let consumed = server.check_consumed(&cassette_path).await;
                 server.shutdown().await;
-                if let Err(payload) = result {
-                    resume_unwind(payload);
-                }
-                clock.finish().await;
-                return;
+                consumed?;
+                return clock.finish(&cassette_path).await;
             }
-            server => server.recorded_yaml().await.unwrap_or_else(|| {
-                panic!(
-                    "provider cassette {} should contain at least one interaction",
-                    cassette_path.display()
-                )
-            }),
+            server => {
+                server
+                    .recorded_yaml()
+                    .await
+                    .ok_or_else(|| CassetteError::EmptyRecording {
+                        path: cassette_path.clone(),
+                    })?
+            }
         };
 
         let refusals = recording_refusals(provider, &yaml, expected);
         if !refusals.is_empty() {
-            let kept = write_attempt(&attempt_root, provider, scenario, policy, &yaml).await;
-            panic!(
-                "provider cassette {} was not written: {}\nthe recording was kept at {}",
-                cassette_path.display(),
-                refusals.join("; "),
-                kept.map_or_else(
-                    || "<nowhere: write failed>".to_owned(),
-                    |path| path.display().to_string()
-                )
-            );
+            let kept_at = write_attempt(&attempt_root, provider, scenario, policy, &yaml).await;
+            return Err(CassetteError::RecordingRefused {
+                path: cassette_path,
+                refusals,
+                kept_at,
+            });
         }
-        write_scrubbed_cassette(&cassette_path, policy, &yaml).await;
-        clock.finish().await;
+        write_scrubbed_cassette(&cassette_path, policy, &yaml).await?;
+        clock.finish(&cassette_path).await
     }
 
     /// Finalize after a successful test, preserving its original panic otherwise.
     /// A failed recording is kept under [`attempt_root`], never over the fixture.
     pub async fn finish_after_test(self, test_result: Result<(), PanicPayload>) {
         match test_result {
-            Ok(()) => {
-                if let Err(payload) = self.finish_catching_unwind().await {
-                    resume_unwind(payload);
-                }
-            }
+            Ok(()) => self.finish().await,
             Err(payload) => {
                 self.keep_failed_attempt().await;
                 resume_unwind(payload);
@@ -809,9 +855,7 @@ impl ProviderCassette {
     ) -> Result<(), E> {
         match test_result {
             Ok(Ok(())) => {
-                if let Err(payload) = self.finish_catching_unwind().await {
-                    resume_unwind(payload);
-                }
+                self.finish().await;
                 Ok(())
             }
             Ok(Err(error)) => {
@@ -855,10 +899,6 @@ impl ProviderCassette {
             server.checked = true;
         }
     }
-
-    async fn finish_catching_unwind(self) -> Result<(), PanicPayload> {
-        AssertUnwindSafe(self.finish()).catch_unwind().await
-    }
 }
 
 struct ReplayServer {
@@ -871,16 +911,17 @@ struct ReplayServer {
 }
 
 impl ReplayServer {
-    async fn start(cassette_path: &Path, policy: CassettePolicy) -> Self {
-        let contents = tokio::fs::read_to_string(cassette_path)
-            .await
-            .unwrap_or_else(|error| {
-                panic!(
-                    "provider cassette {} should be readable: {error}",
-                    cassette_path.display()
-                )
-            });
-        let interactions = parse_cassette(cassette_path, &contents);
+    async fn start(
+        cassette_path: &Path,
+        interactions: Vec<ReplayInteraction>,
+        policy: CassettePolicy,
+    ) -> Result<Self, CassetteError> {
+        let bind_error = |source| CassetteError::Bind {
+            path: cassette_path.to_path_buf(),
+            source,
+        };
+        let listener = TcpListener::bind("127.0.0.1:0").await.map_err(bind_error)?;
+        let addr = listener.local_addr().map_err(bind_error)?;
         let state = Arc::new(Mutex::new(ReplayState {
             cassette_path: cassette_path.to_path_buf(),
             interactions,
@@ -890,12 +931,6 @@ impl ReplayServer {
         let app = Router::new()
             .fallback(any(replay_request))
             .with_state(state.clone());
-        let listener = TcpListener::bind("127.0.0.1:0")
-            .await
-            .expect("replay server should bind");
-        let addr = listener
-            .local_addr()
-            .expect("replay server address should be available");
 
         let (shutdown_tx, shutdown_rx) = oneshot::channel();
         let task = tokio::spawn(async move {
@@ -911,23 +946,28 @@ impl ReplayServer {
             }
         });
 
-        Self {
+        Ok(Self {
             addr,
             state,
             shutdown: Some(shutdown_tx),
             task: Some(task),
             checked: false,
-        }
+        })
     }
 
     fn base_url(&self) -> String {
         format!("http://{}", self.addr)
     }
 
-    async fn assert_consumed(&mut self, cassette_path: &Path) {
+    /// Check that replay played every interaction and refused nothing. This
+    /// disarms the drop guard whatever the outcome.
+    async fn check_consumed(&mut self, cassette_path: &Path) -> Result<(), CassetteError> {
         self.checked = true;
         let state = self.state.lock().await;
-        assert_replay_finished(cassette_path, &state.interactions, &state.misses);
+        match replay_mismatch(cassette_path, &state.interactions, &state.misses) {
+            Some(error) => Err(error),
+            None => Ok(()),
+        }
     }
 
     async fn shutdown(&mut self) {
@@ -1031,6 +1071,7 @@ struct ReplayInteraction {
     consumed: bool,
 }
 
+#[cfg(test)]
 fn assert_replay_finished(
     cassette_path: &Path,
     interactions: &[ReplayInteraction],
@@ -1046,8 +1087,17 @@ fn replay_completion_failure_message(
     interactions: &[ReplayInteraction],
     misses: &[ReplayMiss],
 ) -> Option<String> {
-    let mut failures = Vec::new();
-    let unused = interactions
+    replay_mismatch(cassette_path, interactions, misses).map(|error| error.to_string())
+}
+
+/// The replay failure for interactions left unplayed and requests refused,
+/// or `None` when replay played the fixture exactly.
+fn replay_mismatch(
+    cassette_path: &Path,
+    interactions: &[ReplayInteraction],
+    misses: &[ReplayMiss],
+) -> Option<CassetteError> {
+    let unused_interactions = interactions
         .iter()
         .enumerate()
         .filter(|(_, interaction)| !interaction.consumed)
@@ -1058,51 +1108,101 @@ fn replay_completion_failure_message(
             )
         })
         .collect::<Vec<_>>();
-
-    if !unused.is_empty() {
-        failures.push(format!("left unused interactions:\n{}", unused.join("\n")));
-    }
-
-    if !misses.is_empty() {
-        let formatted_misses = misses
-            .iter()
-            .enumerate()
-            .map(|(index, miss)| format!("[{index}] {}", miss.diagnostic))
-            .collect::<Vec<_>>()
-            .join("\n");
-        failures.push(format!(
-            "received unexpected replay request(s):\n{formatted_misses}"
-        ));
-    }
-
-    (!failures.is_empty()).then(|| {
-        format!(
-            "provider cassette replay failed for {}:\n{}",
-            cassette_path.display(),
-            failures.join("\n\n")
-        )
+    let unexpected_requests = misses
+        .iter()
+        .map(|miss| miss.diagnostic.clone())
+        .collect::<Vec<_>>();
+    (!unused_interactions.is_empty() || !unexpected_requests.is_empty()).then(|| {
+        CassetteError::ReplayMismatch {
+            path: cassette_path.to_path_buf(),
+            unused_interactions,
+            unexpected_requests,
+        }
     })
 }
 
-fn parse_cassette(cassette_path: &Path, contents: &str) -> Vec<ReplayInteraction> {
-    parse_cassette_interactions(cassette_path, contents)
+/// Read, parse and check the fixture a replay session serves.
+async fn load_replay_interactions(
+    cassette_path: &Path,
+) -> Result<Vec<ReplayInteraction>, CassetteError> {
+    let contents = tokio::fs::read_to_string(cassette_path)
+        .await
+        .map_err(|source| CassetteError::UnreadableFixture {
+            path: cassette_path.to_path_buf(),
+            source,
+        })?;
+    try_parse_cassette_interactions(cassette_path, &contents)?
         .into_iter()
-        .map(|interaction| ReplayInteraction {
-            when: interaction.when,
-            then: interaction.then,
-            consumed: false,
+        .enumerate()
+        .map(|(index, interaction)| match replay_problem(&interaction) {
+            Some(reason) => Err(CassetteError::InvalidInteraction {
+                path: cassette_path.to_path_buf(),
+                index,
+                reason,
+            }),
+            None => Ok(ReplayInteraction {
+                when: interaction.when,
+                then: interaction.then,
+                consumed: false,
+            }),
         })
         .collect()
 }
 
+/// What would make the replay server fail on `interaction`: a recorded body
+/// that does not decode, or a response that is not valid HTTP.
+fn replay_problem(interaction: &CassetteInteraction) -> Option<String> {
+    let request = &interaction.when;
+    if let Some(body) = &request.body
+        && let Err(error) = decode_body(body, request.body_encoding)
+    {
+        return Some(format!("request body does not decode: {error}"));
+    }
+    let response = &interaction.then;
+    if let Err(error) = StatusCode::from_u16(response.status) {
+        return Some(format!("response status {}: {error}", response.status));
+    }
+    for header in &response.header {
+        if is_hop_by_hop_header(&header.name) {
+            continue;
+        }
+        if let Err(error) = HeaderName::from_bytes(header.name.as_bytes()) {
+            return Some(format!(
+                "invalid response header name {:?}: {error}",
+                header.name
+            ));
+        }
+        if let Err(error) = HeaderValue::from_str(&header.value) {
+            return Some(format!(
+                "invalid value for response header {:?}: {error}",
+                header.name
+            ));
+        }
+    }
+    if let Some(body) = &response.body
+        && let Err(error) = decode_body(body, response.body_encoding)
+    {
+        return Some(format!("response body does not decode: {error}"));
+    }
+    None
+}
+
 fn parse_cassette_interactions(cassette_path: &Path, contents: &str) -> Vec<CassetteInteraction> {
+    try_parse_cassette_interactions(cassette_path, contents)
+        .unwrap_or_else(|error| panic!("{error}"))
+}
+
+fn try_parse_cassette_interactions(
+    cassette_path: &Path,
+    contents: &str,
+) -> Result<Vec<CassetteInteraction>, CassetteError> {
     serde_yaml::Deserializer::from_str(contents)
         .map(|document| {
-            CassetteInteraction::deserialize(document).unwrap_or_else(|error| {
-                panic!(
-                    "provider cassette {} should deserialize: {error}",
-                    cassette_path.display()
-                )
+            CassetteInteraction::deserialize(document).map_err(|source| {
+                CassetteError::MalformedFixture {
+                    path: cassette_path.to_path_buf(),
+                    source,
+                }
             })
         })
         .collect()
@@ -1849,9 +1949,13 @@ struct UpstreamBase {
 }
 
 impl UpstreamBase {
-    fn parse(real_base_url: &str) -> Self {
-        let url = url::Url::parse(real_base_url)
-            .unwrap_or_else(|error| panic!("invalid provider base URL {real_base_url:?}: {error}"));
+    fn parse(real_base_url: &str, cassette_path: &Path) -> Result<Self, CassetteError> {
+        let url =
+            url::Url::parse(real_base_url).map_err(|source| CassetteError::InvalidBaseUrl {
+                path: cassette_path.to_path_buf(),
+                url: real_base_url.to_owned(),
+                source,
+            })?;
         let origin = url.origin().ascii_serialization();
         let path = url.path().trim_end_matches('/');
         let path = if path.is_empty() || path == "/" {
@@ -1860,7 +1964,7 @@ impl UpstreamBase {
             path.to_string()
         };
 
-        Self { origin, path }
+        Ok(Self { origin, path })
     }
 }
 
@@ -2396,19 +2500,26 @@ async fn write_attempt(
         .map(|()| path)
 }
 
-async fn write_scrubbed_cassette(cassette_path: &Path, policy: CassettePolicy, yaml: &str) {
+async fn write_scrubbed_cassette(
+    cassette_path: &Path,
+    policy: CassettePolicy,
+    yaml: &str,
+) -> Result<(), CassetteError> {
     let redacted = scrub_cassette_contents_with_policy(policy, yaml);
     let failures = cassette_safety_failures_with_policy(policy, cassette_path, &redacted);
-    assert!(
-        failures.is_empty(),
-        "provider cassette {} still contains unsafe artifacts after scrubbing:\n{}",
-        cassette_path.display(),
-        failures.join("\n")
-    );
+    if !failures.is_empty() {
+        return Err(CassetteError::UnsafeRecording {
+            path: cassette_path.to_path_buf(),
+            failures,
+        });
+    }
 
     write_cassette_atomically(cassette_path, redacted.as_bytes())
         .await
-        .expect("provider cassette should be written");
+        .map_err(|source| CassetteError::WriteFixture {
+            path: cassette_path.to_path_buf(),
+            source,
+        })
 }
 
 fn decoded_base64_body_texts(contents: &str) -> Vec<String> {
@@ -3296,6 +3407,8 @@ mod paths;
 mod recording_guard_tests;
 #[cfg(test)]
 mod replay_session_tests;
+#[cfg(test)]
+mod try_session_tests;
 
 #[cfg(test)]
 mod local_path_scrub_tests;

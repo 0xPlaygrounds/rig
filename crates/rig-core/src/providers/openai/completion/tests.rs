@@ -37,18 +37,18 @@ fn completion_response_tolerates_null_or_missing_envelope_metadata() {
 fn minted_tool_ids_replay_as_a_consistent_pair() {
     let assistant = crate::message::Message::Assistant {
         id: None,
-        content: crate::NonEmpty::new(crate::message::AssistantContent::tool_call(
+        content: vec![crate::message::AssistantContent::tool_call(
             "tool-0",
             crate::message::ToolName::new("get_weather").expect("tool name"),
             serde_json::json!({"city": "Tokyo"}),
-        )),
+        )],
     };
     let tool_result = crate::message::Message::User {
-        content: crate::NonEmpty::new(crate::message::UserContent::tool_result(
+        content: vec![crate::message::UserContent::tool_result(
             crate::message::CallId::from_wire("tool-0"),
             crate::message::ToolName::new("get_weather").expect("tool name"),
-            crate::NonEmpty::new(crate::message::ToolResultContent::text("22C")),
-        )),
+            vec![crate::message::ToolResultContent::text("22C")],
+        )],
     };
 
     let assistant_wire: Vec<super::Message> = assistant.try_into().expect("assistant converts");
@@ -95,26 +95,15 @@ fn request_with_multi_block_tool_result() -> CoreCompletionRequest {
     let tool_result = message::ToolResult {
         call: crate::message::CallId::from_wire("call-id"),
         name: crate::message::ToolName::new("tool".to_string()).expect("tool name"),
-        content: crate::NonEmpty::with_rest(
+        content: vec![
             message::ToolResultContent::text("first"),
-            [message::ToolResultContent::text("second")],
-        ),
+            message::ToolResultContent::text("second"),
+        ],
     };
 
-    CoreCompletionRequest {
-        model: None,
-        chat_history: crate::NonEmpty::new(message::Message::User {
-            content: crate::NonEmpty::new(message::UserContent::ToolResult(tool_result)),
-        }),
-        documents: vec![],
-        tools: vec![],
-        temperature: None,
-        max_tokens: None,
-        tool_choice: None,
-        additional_params: None,
-        output_schema: None,
-        record_telemetry_content: false,
-    }
+    CoreCompletionRequest::new(message::Message::User {
+        content: vec![message::UserContent::ToolResult(tool_result)],
+    })
 }
 
 #[test]
@@ -124,7 +113,7 @@ fn mixed_user_content_preserves_order_around_tool_results() {
         message::UserContent::tool_result(
             crate::message::CallId::from_dual_wire("result-id", "call-id".to_string()),
             crate::message::ToolName::new("tool").expect("tool name"),
-            crate::NonEmpty::new(message::ToolResultContent::text("tool output")),
+            vec![message::ToolResultContent::text("tool output")],
         ),
         message::UserContent::text("after"),
     ];
@@ -306,15 +295,13 @@ fn multiple_tool_result_blocks_convert_to_distinct_content_parts() {
     let result = message::ToolResult {
         call: crate::message::CallId::from_wire("call-id"),
         name: crate::message::ToolName::new("tool".to_string()).expect("tool name"),
-        content: crate::NonEmpty::with_rest(
+        content: vec![
             message::ToolResultContent::text("first"),
-            [
-                message::ToolResultContent::json(serde_json::json!({
-                    "status": "ok"
-                })),
-                message::ToolResultContent::text("second"),
-            ],
-        ),
+            message::ToolResultContent::json(serde_json::json!({
+                "status": "ok"
+            })),
+            message::ToolResultContent::text("second"),
+        ],
     };
 
     let converted = Message::try_from(result).expect("tool result should convert");
@@ -334,18 +321,7 @@ fn multiple_tool_result_blocks_convert_to_distinct_content_parts() {
 
 #[test]
 fn test_openai_request_uses_request_model_override() {
-    let request = crate::completion::CompletionRequest {
-        model: Some("gpt-4.1".to_string()),
-        chat_history: crate::NonEmpty::new("Hello".into()),
-        documents: vec![],
-        tools: vec![],
-        temperature: None,
-        max_tokens: None,
-        tool_choice: None,
-        additional_params: None,
-        output_schema: None,
-        record_telemetry_content: false,
-    };
+    let request = crate::completion::CompletionRequest::new("Hello").model("gpt-4.1".to_string());
 
     let openai_request = CompletionRequest::try_from(OpenAIRequestParams {
         issuers: vec![crate::message::Issuer::from("openai")],
@@ -370,19 +346,11 @@ fn test_openai_request_uses_request_model_override() {
 /// `tool_choice: none`, an `active_tools: []` patch) carries no choice.
 #[test]
 fn tool_choice_is_dropped_when_no_tool_is_advertised() {
-    let request =
-        |tools: Vec<crate::completion::ToolDefinition>| crate::completion::CompletionRequest {
-            model: None,
-            chat_history: crate::NonEmpty::new("Hello".into()),
-            documents: vec![],
-            tools,
-            temperature: None,
-            max_tokens: None,
-            tool_choice: Some(crate::message::ToolChoice::None),
-            additional_params: None,
-            output_schema: None,
-            record_telemetry_content: false,
-        };
+    let request = |tools: Vec<crate::completion::ToolDefinition>| {
+        crate::completion::CompletionRequest::new("Hello")
+            .tool_choice(crate::message::ToolChoice::None)
+            .tools(tools)
+    };
     let convert = |request| {
         CompletionRequest::try_from(OpenAIRequestParams {
             issuers: vec![crate::message::Issuer::from("openai")],
@@ -407,7 +375,7 @@ fn tool_choice_is_dropped_when_no_tool_is_advertised() {
 
     let with_tool =
         serde_json::to_value(convert(request(vec![crate::completion::ToolDefinition {
-            name: "add".to_string(),
+            name: crate::message::ToolName::new("add").expect("tool name"),
             description: "add two numbers".to_string(),
             parameters: json!({"type": "object", "properties": {}}),
         }])))
@@ -417,18 +385,7 @@ fn tool_choice_is_dropped_when_no_tool_is_advertised() {
 
 #[test]
 fn test_openai_request_uses_default_model_when_override_unset() {
-    let request = crate::completion::CompletionRequest {
-        model: None,
-        chat_history: crate::NonEmpty::new("Hello".into()),
-        documents: vec![],
-        tools: vec![],
-        temperature: None,
-        max_tokens: None,
-        tool_choice: None,
-        additional_params: None,
-        output_schema: None,
-        record_telemetry_content: false,
-    };
+    let request = crate::completion::CompletionRequest::new("Hello");
 
     let openai_request = CompletionRequest::try_from(OpenAIRequestParams {
         issuers: vec![crate::message::Issuer::from("openai")],
@@ -502,25 +459,13 @@ fn openai_chat_request_keeps_documents_after_system_messages() {
 
 #[test]
 fn openai_chat_direct_request_keeps_documents_after_system_messages() {
-    let request = CoreCompletionRequest {
-        model: None,
-        chat_history: crate::NonEmpty::with_rest(
-            crate::completion::Message::system("System prompt"),
-            [
-                crate::completion::Message::assistant("Earlier assistant turn"),
-                crate::completion::Message::system("Mid-conversation instruction"),
-                crate::completion::Message::user("Prompt"),
-            ],
-        ),
-        documents: vec![test_document("doc1", "Document text.")],
-        tools: vec![],
-        temperature: None,
-        max_tokens: None,
-        tool_choice: None,
-        additional_params: None,
-        output_schema: None,
-        record_telemetry_content: false,
-    };
+    let request = CoreCompletionRequest::from(vec![
+        crate::completion::Message::system("System prompt"),
+        crate::completion::Message::assistant("Earlier assistant turn"),
+        crate::completion::Message::system("Mid-conversation instruction"),
+        crate::completion::Message::user("Prompt"),
+    ])
+    .documents(vec![test_document("doc1", "Document text.")]);
 
     let openai_request = CompletionRequest::try_from(OpenAIRequestParams {
         issuers: vec![crate::message::Issuer::from("openai")],
@@ -877,18 +822,7 @@ fn refusal_content_part_suppresses_the_sibling_fallback() {
 
 #[test]
 fn test_max_tokens_is_forwarded_to_request() {
-    let request = crate::completion::CompletionRequest {
-        model: None,
-        chat_history: crate::NonEmpty::new("Hello".into()),
-        documents: vec![],
-        tools: vec![],
-        temperature: None,
-        max_tokens: Some(4096),
-        tool_choice: None,
-        additional_params: None,
-        output_schema: None,
-        record_telemetry_content: false,
-    };
+    let request = crate::completion::CompletionRequest::new("Hello").max_tokens(4096);
 
     let openai_request = CompletionRequest::try_from(OpenAIRequestParams {
         issuers: vec![crate::message::Issuer::from("openai")],
@@ -914,18 +848,9 @@ fn capped_request(max_tokens: Option<u64>, additional_params: Option<Value>) -> 
         issuers: vec![crate::message::Issuer::from("openai")],
         reasoning_details: false,
         model: "gpt-4o-mini".to_string(),
-        request: crate::completion::CompletionRequest {
-            model: None,
-            chat_history: crate::NonEmpty::new("Hello".into()),
-            documents: vec![],
-            tools: vec![],
-            temperature: None,
-            max_tokens,
-            tool_choice: None,
-            additional_params,
-            output_schema: None,
-            record_telemetry_content: false,
-        },
+        request: crate::completion::CompletionRequest::new("Hello")
+            .max_tokens(max_tokens)
+            .additional_params(additional_params),
         strict_tools: false,
         tool_result_array_content: false,
         supports_response_format: true,
@@ -1072,18 +997,7 @@ fn modern_output_cap_covers_exactly_the_reasoning_families() {
 
 #[test]
 fn test_max_tokens_omitted_when_none() {
-    let request = crate::completion::CompletionRequest {
-        model: None,
-        chat_history: crate::NonEmpty::new("Hello".into()),
-        documents: vec![],
-        tools: vec![],
-        temperature: None,
-        max_tokens: None,
-        tool_choice: None,
-        additional_params: None,
-        output_schema: None,
-        record_telemetry_content: false,
-    };
+    let request = crate::completion::CompletionRequest::new("Hello");
 
     let openai_request = CompletionRequest::try_from(OpenAIRequestParams {
         issuers: vec![crate::message::Issuer::from("openai")],
@@ -1112,19 +1026,13 @@ fn test_max_tokens_omitted_when_none() {
 /// the retained-entry half cannot be recorded against the live API.
 #[test]
 fn additional_params_function_tools_merge_and_native_tools_stay() {
-    let request = CoreCompletionRequest {
-        model: None,
-        chat_history: crate::NonEmpty::new("Hello".into()),
-        documents: vec![],
-        tools: vec![crate::completion::ToolDefinition {
-            name: "builder_tool".to_string(),
+    let request = CoreCompletionRequest::new("Hello")
+        .tools(vec![crate::completion::ToolDefinition {
+            name: crate::message::ToolName::new("builder_tool").expect("tool name"),
             description: "from the builder".to_string(),
             parameters: serde_json::json!({"type": "object", "properties": {}}),
-        }],
-        temperature: None,
-        max_tokens: None,
-        tool_choice: None,
-        additional_params: Some(serde_json::json!({
+        }])
+        .additional_params(serde_json::json!({
             "tools": [
                 {
                     "type": "function",
@@ -1136,10 +1044,7 @@ fn additional_params_function_tools_merge_and_native_tools_stay() {
                 },
                 {"type": "browser_search"}
             ]
-        })),
-        output_schema: None,
-        record_telemetry_content: false,
-    };
+        }));
 
     let openai_request = CompletionRequest::try_from(OpenAIRequestParams {
         issuers: vec![crate::message::Issuer::from("openai")],
@@ -1169,21 +1074,10 @@ fn additional_params_function_tools_merge_and_native_tools_stay() {
 
 #[test]
 fn request_conversion_errors_when_all_messages_are_filtered() {
-    let request = CoreCompletionRequest {
-        model: None,
-        chat_history: crate::NonEmpty::new(message::Message::Assistant {
-            id: None,
-            content: crate::NonEmpty::new(message::AssistantContent::reasoning("openai", "hidden")),
-        }),
-        documents: vec![],
-        tools: vec![],
-        temperature: None,
-        max_tokens: None,
-        tool_choice: None,
-        additional_params: None,
-        output_schema: None,
-        record_telemetry_content: false,
-    };
+    let request = CoreCompletionRequest::new(message::Message::Assistant {
+        id: None,
+        content: vec![message::AssistantContent::reasoning("openai", "hidden")],
+    });
 
     let result = CompletionRequest::try_from(OpenAIRequestParams {
         issuers: vec![crate::message::Issuer::from("openai")],
@@ -1206,29 +1100,9 @@ fn request_conversion_errors_when_all_messages_are_filtered() {
 
 #[test]
 fn request_conversion_omits_response_format_on_initial_tool_turn() {
-    let request = CoreCompletionRequest {
-        model: None,
-        chat_history: crate::NonEmpty::new(message::Message::user(
-            "Hello, whats the weather in London?",
-        )),
-        documents: vec![],
-        tools: vec![completion::ToolDefinition {
-            name: "weather".to_string(),
-            description: "Get the weather".to_string(),
-            parameters: serde_json::json!({
-                "type": "object",
-                "properties": {
-                    "city": { "type": "string" }
-                },
-                "required": ["city"]
-            }),
-        }],
-        temperature: None,
-        max_tokens: None,
-        tool_choice: None,
-        additional_params: None,
-        output_schema: Some(
-            serde_json::from_value(serde_json::json!({
+    let request = CoreCompletionRequest::new("Hello, whats the weather in London?")
+        .output_schema(
+            serde_json::from_value::<schemars::Schema>(serde_json::json!({
                 "title": "WeatherResponse",
                 "type": "object",
                 "properties": {
@@ -1238,9 +1112,18 @@ fn request_conversion_omits_response_format_on_initial_tool_turn() {
                 "required": ["city", "weather"]
             }))
             .expect("schema should deserialize"),
-        ),
-        record_telemetry_content: false,
-    };
+        )
+        .tools(vec![completion::ToolDefinition {
+            name: crate::message::ToolName::new("weather").expect("tool name"),
+            description: "Get the weather".to_string(),
+            parameters: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "city": { "type": "string" }
+                },
+                "required": ["city"]
+            }),
+        }]);
 
     let openai_request = CompletionRequest::try_from(OpenAIRequestParams {
         issuers: vec![crate::message::Issuer::from("openai")],
@@ -1266,56 +1149,45 @@ fn request_conversion_omits_response_format_on_initial_tool_turn() {
 
 #[test]
 fn request_conversion_restores_response_format_after_tool_result() {
-    let request = CoreCompletionRequest {
-        model: None,
-        chat_history: crate::NonEmpty::with_rest(
-            message::Message::user("Hello, whats the weather in London?"),
-            [
-                message::Message::Assistant {
-                    id: None,
-                    content: crate::NonEmpty::new(message::AssistantContent::tool_call(
-                        "call_1",
-                        crate::message::ToolName::new("weather").expect("tool name"),
-                        serde_json::json!({ "city": "London" }),
-                    )),
-                },
-                message::Message::tool_result(
-                    crate::message::CallId::from_wire("call_1"),
-                    crate::message::ToolName::new("weather").expect("tool name"),
-                    "The weather in London is all fire and brimstone",
-                ),
-            ],
+    let request = CoreCompletionRequest::from(vec![
+        message::Message::user("Hello, whats the weather in London?"),
+        message::Message::Assistant {
+            id: None,
+            content: vec![message::AssistantContent::tool_call(
+                "call_1",
+                crate::message::ToolName::new("weather").expect("tool name"),
+                serde_json::json!({ "city": "London" }),
+            )],
+        },
+        message::Message::tool_result(
+            crate::message::CallId::from_wire("call_1"),
+            crate::message::ToolName::new("weather").expect("tool name"),
+            "The weather in London is all fire and brimstone",
         ),
-        documents: vec![],
-        tools: vec![completion::ToolDefinition {
-            name: "weather".to_string(),
-            description: "Get the weather".to_string(),
-            parameters: serde_json::json!({
-                "type": "object",
-                "properties": {
-                    "city": { "type": "string" }
-                },
-                "required": ["city"]
-            }),
-        }],
-        temperature: None,
-        max_tokens: None,
-        tool_choice: None,
-        additional_params: None,
-        output_schema: Some(
-            serde_json::from_value(serde_json::json!({
-                "title": "WeatherResponse",
-                "type": "object",
-                "properties": {
-                    "city": { "type": "string" },
-                    "weather": { "type": "string" }
-                },
-                "required": ["city", "weather"]
-            }))
-            .expect("schema should deserialize"),
-        ),
-        record_telemetry_content: false,
-    };
+    ])
+    .output_schema(
+        serde_json::from_value::<schemars::Schema>(serde_json::json!({
+            "title": "WeatherResponse",
+            "type": "object",
+            "properties": {
+                "city": { "type": "string" },
+                "weather": { "type": "string" }
+            },
+            "required": ["city", "weather"]
+        }))
+        .expect("schema should deserialize"),
+    )
+    .tools(vec![completion::ToolDefinition {
+        name: crate::message::ToolName::new("weather").expect("tool name"),
+        description: "Get the weather".to_string(),
+        parameters: serde_json::json!({
+            "type": "object",
+            "properties": {
+                "city": { "type": "string" }
+            },
+            "required": ["city"]
+        }),
+    }]);
 
     let openai_request = CompletionRequest::try_from(OpenAIRequestParams {
         issuers: vec![crate::message::Issuer::from("openai")],
@@ -1806,14 +1678,14 @@ fn document_file_id_serializes_as_a_file_part() {
 #[test]
 fn mixed_text_and_pdf_user_message_produces_two_content_parts() {
     let user = message::Message::User {
-        content: crate::NonEmpty::with_rest(
+        content: vec![
             message::UserContent::text("What is in this PDF?"),
-            [message::UserContent::Document(message::Document {
+            message::UserContent::Document(message::Document {
                 data: DocumentSourceKind::Base64("JVBERi0K".into()),
                 media_type: Some(message::DocumentMediaType::PDF),
                 additional_params: None,
-            })],
-        ),
+            }),
+        ],
     };
     let converted: Vec<Message> = user.try_into().expect("conversion should succeed");
     assert_eq!(converted.len(), 1);
@@ -1850,52 +1722,39 @@ fn request_plans_tool_ids_across_namespaces_turns_and_split_user_content() {
     let history = vec![
         message::Message::Assistant {
             id: None,
-            content: crate::NonEmpty::with_rest(
+            content: vec![
                 AssistantContent::ToolCall(generated.clone()),
-                [AssistantContent::ToolCall(real.clone())],
-            ),
+                AssistantContent::ToolCall(real.clone()),
+            ],
         },
         message::Message::User {
-            content: crate::NonEmpty::with_rest(
+            content: vec![
                 UserContent::tool_result(
                     real.id.clone(),
                     crate::message::ToolName::new("test").expect("tool name"),
-                    crate::message::ToolResultContent::text(""),
+                    vec![crate::message::ToolResultContent::text("")],
                 ),
-                [
-                    UserContent::text("between results"),
-                    UserContent::tool_result(
-                        generated.id.clone(),
-                        crate::message::ToolName::new("test").expect("tool name"),
-                        crate::message::ToolResultContent::text(""),
-                    ),
-                ],
-            ),
+                UserContent::text("between results"),
+                UserContent::tool_result(
+                    generated.id.clone(),
+                    crate::message::ToolName::new("test").expect("tool name"),
+                    vec![crate::message::ToolResultContent::text("")],
+                ),
+            ],
         },
         message::Message::Assistant {
             id: None,
-            content: crate::NonEmpty::new(AssistantContent::ToolCall(later_call.clone())),
+            content: vec![AssistantContent::ToolCall(later_call.clone())],
         },
         message::Message::User {
-            content: crate::NonEmpty::new(UserContent::tool_result(
+            content: vec![UserContent::tool_result(
                 later_call.id.clone(),
                 crate::message::ToolName::new("test").expect("tool name"),
-                crate::message::ToolResultContent::text(""),
-            )),
+                vec![crate::message::ToolResultContent::text("")],
+            )],
         },
     ];
-    let request = CoreCompletionRequest {
-        model: None,
-        chat_history: crate::NonEmpty::from_vec(history).expect("non-empty"),
-        documents: vec![],
-        tools: vec![],
-        temperature: None,
-        max_tokens: None,
-        tool_choice: None,
-        additional_params: None,
-        output_schema: None,
-        record_telemetry_content: false,
-    };
+    let request = CoreCompletionRequest::from(history);
     let wire = CompletionRequest::try_from(OpenAIRequestParams {
         issuers: vec![crate::message::Issuer::from("openai")],
         reasoning_details: false,
@@ -1949,4 +1808,112 @@ fn additional_params_override_typed_fields_on_the_wire() {
     let body = request_body(&request, false).expect("body should serialize");
     assert_eq!(body["temperature"], 0.9, "{body}");
     assert_eq!(body["top_p"], 0.5, "{body}");
+}
+
+/// A tool-call assistant message whose reasoning keys are `reasoning_keys`,
+/// decoded as a unary chat-completions reply.
+fn assistant_with_reasoning_keys(reasoning_keys: Value) -> Result<Message, serde_json::Error> {
+    let mut message = json!({
+        "role": "assistant",
+        "content": null,
+        "tool_calls": [{
+            "id": "call_00",
+            "type": "function",
+            "function": { "name": "search", "arguments": "{\"q\":\"rust\"}" }
+        }]
+    });
+    if let (Some(message), Value::Object(keys)) = (message.as_object_mut(), reasoning_keys) {
+        message.extend(keys);
+    }
+    let body = json!({
+        "id": "gen_1",
+        "object": "chat.completion",
+        "created": 1,
+        "model": "deepseek-v4.1-flash",
+        "choices": [{ "index": 0, "finish_reason": "tool_calls", "message": message }],
+        "usage": { "prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2 }
+    });
+    serde_json::from_value::<CompletionResponse>(body)
+        .map(|response| response.choices[0].message.clone())
+}
+
+/// Compatible gateways relaying a `reasoning_content` upstream behind a
+/// `reasoning` surface send both keys. Each key decodes on its own and
+/// `reasoning_content` wins, as on the streamed delta; `null` is absent.
+/// Unit-level because it pins every key combination, most of which no
+/// endpoint can be made to send on demand.
+#[test]
+fn assistant_reasoning_keys_decode_independently() {
+    let cases = [
+        (
+            json!({ "reasoning": "Let me search.", "reasoning_content": "Let me search." }),
+            Some("Let me search."),
+        ),
+        (
+            json!({ "reasoning": "surface", "reasoning_content": "upstream" }),
+            Some("upstream"),
+        ),
+        (
+            json!({ "reasoning_content": "upstream", "reasoning": "surface" }),
+            Some("upstream"),
+        ),
+        (json!({ "reasoning": "surface" }), Some("surface")),
+        (json!({ "reasoning_content": "upstream" }), Some("upstream")),
+        (json!({}), None),
+        (
+            json!({ "reasoning": null, "reasoning_content": "upstream" }),
+            Some("upstream"),
+        ),
+        (
+            json!({ "reasoning": "surface", "reasoning_content": null }),
+            Some("surface"),
+        ),
+        (
+            json!({ "reasoning": null, "reasoning_content": null }),
+            None,
+        ),
+    ];
+    for (keys, expected) in cases {
+        let decoded = assistant_with_reasoning_keys(keys.clone());
+        let Ok(Message::Assistant {
+            content,
+            reasoning,
+            tool_calls,
+            reasoning_details,
+            ..
+        }) = decoded
+        else {
+            panic!("{keys} should decode to an assistant message: {decoded:?}");
+        };
+        assert_eq!(reasoning.as_deref(), expected, "{keys}");
+        assert!(content.is_empty(), "{keys}");
+        assert!(reasoning_details.is_empty(), "{keys}");
+        assert_eq!(
+            tool_calls,
+            vec![ToolCall {
+                id: "call_00".to_owned(),
+                r#type: ToolType::Function,
+                function: Function {
+                    name: "search".to_owned(),
+                    arguments: json!({ "q": "rust" }),
+                },
+            }],
+            "{keys}"
+        );
+    }
+}
+
+/// A message decoded from both keys still serializes its reasoning once,
+/// under `reasoning_content`.
+#[test]
+fn assistant_reasoning_from_both_keys_serializes_as_reasoning_content() {
+    let message = assistant_with_reasoning_keys(
+        json!({ "reasoning": "surface", "reasoning_content": "upstream" }),
+    )
+    .expect("both reasoning keys decode");
+    let wire = serde_json::to_value(&message).expect("the message serializes");
+    assert_eq!(wire["reasoning_content"], "upstream");
+    assert!(wire.get("reasoning").is_none(), "{wire}");
+    let back: Message = serde_json::from_value(wire).expect("the serialized message decodes");
+    assert_eq!(back, message);
 }

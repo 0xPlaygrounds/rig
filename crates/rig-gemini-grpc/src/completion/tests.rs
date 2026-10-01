@@ -284,37 +284,35 @@ fn create_grpc_request_sends_the_executed_name_not_an_identifier() {
 
     let call = |wire_id: &str, name: &str| message::Message::Assistant {
         id: None,
-        content: rig_core::NonEmpty::new(AssistantContent::ToolCall(ToolCall::from_wire(
+        content: vec![AssistantContent::ToolCall(ToolCall::from_wire(
             wire_id,
             ToolFunction {
                 name: rig_core::message::ToolName::new(name.to_owned()).expect("tool name"),
                 arguments: serde_json::json!({}),
             },
-        ))),
+        ))],
     };
     let result = |wire_id: &str, name: &str| message::Message::User {
-        content: rig_core::NonEmpty::new(message::UserContent::ToolResult(ToolResult {
+        content: vec![message::UserContent::ToolResult(ToolResult {
             call: rig_core::message::CallId::from_wire(wire_id),
             name: rig_core::message::ToolName::new(name.to_owned()).expect("tool name"),
-            content: rig_core::NonEmpty::new(ToolResultContent::text("out")),
-        })),
+            content: vec![ToolResultContent::text("out")],
+        })],
     };
 
     let req = create_grpc_request(
         "gemini-2.5-flash",
         CompletionRequest {
             model: None,
-            chat_history: rig_core::NonEmpty::with_rest(
+            chat_history: vec![
                 // Driver-built: the executed name travels as data (a
                 // repair hook renamed the call: `sum` ran, not `add`).
                 call("call_1", "add"),
-                [
-                    result("call_1", "sum"), // Cross-provider history with an OpenAI-shaped id —
-                    // `call_abc` must never travel as the name.
-                    call("call_abc", "get_weather"),
-                    result("call_abc", "get_weather"),
-                ],
-            ),
+                result("call_1", "sum"), // Cross-provider history with an OpenAI-shaped id —
+                // `call_abc` must never travel as the name.
+                call("call_abc", "get_weather"),
+                result("call_abc", "get_weather"),
+            ],
             documents: Vec::new(),
             tools: Vec::new(),
             temperature: None,
@@ -346,12 +344,68 @@ fn create_grpc_request_sends_the_executed_name_not_an_identifier() {
     );
 }
 
+/// Messages go through the shared Gemini conversion. Raw image bytes and
+/// text documents are sent; media inside a tool result is refused.
+#[test]
+fn create_grpc_request_transcodes_the_shared_gemini_content() {
+    use rig_core::message::{
+        DocumentMediaType, DocumentSourceKind, Image, ImageMediaType, ToolResult,
+        ToolResultContent, UserContent,
+    };
+
+    let encode = |content: Vec<UserContent>| {
+        let request = CompletionRequest::new(message::Message::User { content });
+        create_grpc_request("gemini-2.5-flash", request)
+    };
+    let image = Image {
+        data: DocumentSourceKind::Raw(vec![1, 2, 3]),
+        media_type: Some(ImageMediaType::PNG),
+        ..Default::default()
+    };
+
+    let request = encode(vec![
+        UserContent::Image(image.clone()),
+        UserContent::document_text("notes", Some(DocumentMediaType::TXT)),
+    ])
+    .expect("request build");
+    let data: Vec<_> = request
+        .contents
+        .iter()
+        .flat_map(|content| &content.parts)
+        .map(|part| part.data.clone())
+        .collect();
+    assert_eq!(
+        data,
+        vec![
+            Some(proto::part::Data::InlineData(proto::Blob {
+                mime_type: "image/png".to_owned(),
+                data: vec![1, 2, 3],
+            })),
+            Some(proto::part::Data::Text("notes".to_owned())),
+        ]
+    );
+
+    let error = encode(vec![UserContent::ToolResult(ToolResult {
+        call: rig_core::message::CallId::from_wire("call_1"),
+        name: rig_core::message::ToolName::new("draw".to_owned()).expect("tool name"),
+        content: vec![ToolResultContent::Image(Image {
+            data: DocumentSourceKind::Base64("AQID".to_owned()),
+            ..image
+        })],
+    })])
+    .expect_err("tool-result media has no proto field");
+    assert!(
+        error.to_string().contains("images in tool results"),
+        "{error}"
+    );
+}
+
 #[test]
 fn create_grpc_request_populates_tool_parameters() {
     use rig_core::completion::ToolDefinition;
 
     let tool = ToolDefinition {
-        name: "get_weather".to_string(),
+        name: rig_core::message::ToolName::new("get_weather").expect("tool name"),
         description: "Look up the current weather for a city.".to_string(),
         parameters: serde_json::json!({
             "type": "object",
@@ -366,7 +420,7 @@ fn create_grpc_request_populates_tool_parameters() {
         "gemini-2.5-flash",
         CompletionRequest {
             model: None,
-            chat_history: rig_core::NonEmpty::new(message::Message::user("forecast in Berlin?")),
+            chat_history: vec![message::Message::user("forecast in Berlin?")],
             documents: Vec::new(),
             tools: vec![tool],
             temperature: None,
@@ -451,17 +505,14 @@ fn a_signature_on_answer_text_stays_on_that_text() {
         "gemini-3-flash-preview",
         CompletionRequest {
             model: None,
-            chat_history: rig_core::NonEmpty::with_rest(
+            chat_history: vec![
                 message::Message::user("q"),
-                [
-                    message::Message::Assistant {
-                        id: None,
-                        content: rig_core::NonEmpty::from_vec(normalized.choice.clone())
-                            .expect("non-empty"),
-                    },
-                    message::Message::user("again"),
-                ],
-            ),
+                message::Message::Assistant {
+                    id: None,
+                    content: normalized.choice.clone(),
+                },
+                message::Message::user("again"),
+            ],
             documents: Vec::new(),
             tools: Vec::new(),
             temperature: None,
@@ -683,27 +734,23 @@ fn only_gemini_reasoning_is_replayed() {
         "gemini-2.5-flash",
         CompletionRequest {
             model: None,
-            chat_history: rig_core::NonEmpty::with_rest(
+            chat_history: vec![
                 message::Message::user("What is 2 + 2?"),
-                [
-                    message::Message::Assistant {
-                        id: None,
-                        content: rig_core::NonEmpty::with_rest(
-                            reasoning("grpc thought", b"grpc", REASONING_ISSUER),
-                            [
-                                reasoning(
-                                    "rest thought",
-                                    b"rest",
-                                    rig_core::providers::gemini::completion::PROVIDER_NAME,
-                                ),
-                                reasoning("anthropic thought", b"anthropic", "anthropic"),
-                                AssistantContent::text("4"),
-                            ],
+                message::Message::Assistant {
+                    id: None,
+                    content: vec![
+                        reasoning("grpc thought", b"grpc", REASONING_ISSUER),
+                        reasoning(
+                            "rest thought",
+                            b"rest",
+                            rig_core::providers::gemini::completion::PROVIDER_NAME,
                         ),
-                    },
-                    message::Message::user("And 3 + 3?"),
-                ],
-            ),
+                        reasoning("anthropic thought", b"anthropic", "anthropic"),
+                        AssistantContent::text("4"),
+                    ],
+                },
+                message::Message::user("And 3 + 3?"),
+            ],
             documents: Vec::new(),
             tools: Vec::new(),
             temperature: None,
@@ -767,22 +814,18 @@ fn the_driver_replays_gemini_reasoning_to_the_grpc_wire() {
         )
     };
     let mut request = hello();
-    request.chat_history = rig_core::NonEmpty::with_rest(
+    request.chat_history = vec![
         message::Message::user("What is 2 + 2?"),
-        [
-            message::Message::Assistant {
-                id: None,
-                content: rig_core::NonEmpty::with_rest(
-                    reasoning("gemini thought", b"gemini", REASONING_ISSUER),
-                    [
-                        reasoning("anthropic thought", b"anthropic", "anthropic"),
-                        AssistantContent::text("4"),
-                    ],
-                ),
-            },
-            message::Message::user("And 3 + 3?"),
-        ],
-    );
+        message::Message::Assistant {
+            id: None,
+            content: vec![
+                reasoning("gemini thought", b"gemini", REASONING_ISSUER),
+                reasoning("anthropic thought", b"anthropic", "anthropic"),
+                AssistantContent::text("4"),
+            ],
+        },
+        message::Message::user("And 3 + 3?"),
+    ];
     let recording = Recording::default();
     futures::executor::block_on(
         Model::new(GenerateContent::new(GEMINI_2_5_FLASH), recording.clone()).call(request),

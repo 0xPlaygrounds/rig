@@ -9,8 +9,12 @@
 
 use rig_core::Embed;
 use rig_core::embeddings::Embedding;
-use rig_core::vector_store::request::{FilterError, SearchFilter, VectorSearchRequest};
-use rig_core::vector_store::{InsertDocuments, VectorStoreError, VectorStoreIndex};
+use rig_core::vector_store::request::{
+    FilterError, SearchFilter, SqlCondition, VectorSearchRequest,
+};
+use rig_core::vector_store::{
+    InsertDocuments, VectorSearchIdResult, VectorSearchResult, VectorStoreError, VectorStoreIndex,
+};
 use rig_core::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use rusqlite::OptionalExtension;
 use rusqlite::types::{Type, Value, ValueRef};
@@ -814,12 +818,12 @@ impl SqlitePatternOp {
 
 #[derive(Debug, Default)]
 struct SqliteRenderedFilters {
-    native: Vec<SqliteRenderedFilter>,
-    post: Vec<SqliteRenderedFilter>,
+    native: Vec<SqlCondition<Value>>,
+    post: Vec<SqlCondition<Value>>,
 }
 
 impl SqliteRenderedFilters {
-    fn post_only(filter: SqliteRenderedFilter) -> Self {
+    fn post_only(filter: SqlCondition<Value>) -> Self {
         Self {
             native: Vec::new(),
             post: vec![filter],
@@ -833,21 +837,6 @@ impl SqliteRenderedFilters {
 
     fn has_post_filters(&self) -> bool {
         !self.post.is_empty()
-    }
-}
-
-#[derive(Debug)]
-struct SqliteRenderedFilter {
-    condition: String,
-    params: Vec<Value>,
-}
-
-impl SqliteRenderedFilter {
-    fn combine(joiner: &str, lhs: Self, rhs: Self) -> Self {
-        Self {
-            condition: format!("({}) {joiner} ({})", lhs.condition, rhs.condition),
-            params: lhs.params.into_iter().chain(rhs.params).collect(),
-        }
     }
 }
 
@@ -1014,10 +1003,12 @@ impl SqliteSearchFilterExpr {
         }
 
         Ok(SqliteRenderedFilters {
-            native: vec![SqliteRenderedFilter {
-                condition: format!("e.{key} {} ?", op.as_sql()),
-                params: vec![sqlite_metadata_filter_param(metadata_column, value)?],
-            }],
+            native: vec![SqlCondition::binary(
+                format!("e.{key}"),
+                op.as_sql(),
+                "?",
+                sqlite_metadata_filter_param(metadata_column, value)?,
+            )],
             post: Vec::new(),
         })
     }
@@ -1027,12 +1018,15 @@ impl SqliteSearchFilterExpr {
         op: SqliteComparisonOp,
         value: serde_json::Value,
         metadata_columns: &[SqliteMetadataColumn],
-    ) -> Result<SqliteRenderedFilter, FilterError> {
+    ) -> Result<SqlCondition<Value>, FilterError> {
         let key = sqlite_qualify_document_key(key)?;
-        Ok(SqliteRenderedFilter {
-            condition: format!("{} {} ?", key.expression, op.as_sql()),
-            params: vec![sqlite_document_filter_param(&key, metadata_columns, value)?],
-        })
+        let value = sqlite_document_filter_param(&key, metadata_columns, value)?;
+        Ok(SqlCondition::binary(
+            key.expression,
+            op.as_sql(),
+            "?",
+            value,
+        ))
     }
 
     fn render_split(
@@ -1063,13 +1057,12 @@ impl SqliteSearchFilterExpr {
                 }
 
                 Ok(SqliteRenderedFilters {
-                    native: vec![SqliteRenderedFilter {
-                        condition: format!("e.{key} >= ? AND e.{key} <= ?"),
-                        params: vec![
-                            sqlite_metadata_filter_param(metadata_column, lo.clone())?,
-                            sqlite_metadata_filter_param(metadata_column, hi.clone())?,
-                        ],
-                    }],
+                    native: vec![SqlCondition::range(
+                        format!("e.{key}"),
+                        "?",
+                        sqlite_metadata_filter_param(metadata_column, lo.clone())?,
+                        sqlite_metadata_filter_param(metadata_column, hi.clone())?,
+                    )],
                     post: Vec::new(),
                 })
             }
@@ -1090,72 +1083,53 @@ impl SqliteSearchFilterExpr {
                 Self::render_native_comparison(key, op.negate(), value.clone(), metadata_columns)
             }
             Self::Not(expr) => expr.render_split(metadata_columns),
-            _ => {
-                let rendered = self.render_document(metadata_columns)?;
-                Ok(SqliteRenderedFilters::post_only(SqliteRenderedFilter {
-                    condition: format!("NOT ({})", rendered.condition),
-                    params: rendered.params,
-                }))
-            }
+            _ => Ok(SqliteRenderedFilters::post_only(
+                self.render_document(metadata_columns)?.not(),
+            )),
         }
     }
 
     fn render_document(
         &self,
         metadata_columns: &[SqliteMetadataColumn],
-    ) -> Result<SqliteRenderedFilter, FilterError> {
+    ) -> Result<SqlCondition<Value>, FilterError> {
         match self {
             Self::Comparison { key, op, value } => {
                 Self::render_document_comparison(key, *op, value.clone(), metadata_columns)
             }
-            Self::And(lhs, rhs) => Ok(SqliteRenderedFilter::combine(
-                "AND",
-                lhs.render_document(metadata_columns)?,
-                rhs.render_document(metadata_columns)?,
-            )),
-            Self::Or(lhs, rhs) => Ok(SqliteRenderedFilter::combine(
-                "OR",
-                lhs.render_document(metadata_columns)?,
-                rhs.render_document(metadata_columns)?,
-            )),
-            Self::Not(expr) => {
-                let expr = expr.render_document(metadata_columns)?;
-                Ok(SqliteRenderedFilter {
-                    condition: format!("NOT ({})", expr.condition),
-                    params: expr.params,
-                })
-            }
+            Self::And(lhs, rhs) => Ok(lhs
+                .render_document(metadata_columns)?
+                .and(rhs.render_document(metadata_columns)?)),
+            Self::Or(lhs, rhs) => Ok(lhs
+                .render_document(metadata_columns)?
+                .or(rhs.render_document(metadata_columns)?)),
+            Self::Not(expr) => Ok(expr.render_document(metadata_columns)?.not()),
             Self::Between { key, lo, hi } => {
                 let key = sqlite_qualify_document_key(key)?;
-                Ok(SqliteRenderedFilter {
-                    condition: format!("{} between ? and ?", key.expression),
-                    params: vec![
-                        sqlite_document_filter_param(&key, metadata_columns, lo.clone())?,
-                        sqlite_document_filter_param(&key, metadata_columns, hi.clone())?,
-                    ],
-                })
+                Ok(SqlCondition::between(
+                    &key.expression,
+                    "?",
+                    sqlite_document_filter_param(&key, metadata_columns, lo.clone())?,
+                    sqlite_document_filter_param(&key, metadata_columns, hi.clone())?,
+                ))
             }
             Self::NullCheck { key, negated } => {
                 let key = sqlite_qualify_document_key(key)?;
                 let operator = if *negated { "is not null" } else { "is null" };
-                Ok(SqliteRenderedFilter {
-                    condition: format!("{} {operator}", key.expression),
-                    params: Vec::new(),
-                })
+                Ok(SqlCondition::raw(format!("{} {operator}", key.expression)))
             }
             Self::Pattern { key, op, pattern } => {
                 let key = sqlite_qualify_document_key(key)?;
-                Ok(SqliteRenderedFilter {
-                    condition: format!("{} {} ?", key.expression, op.as_sql()),
-                    params: vec![Value::Text(pattern.clone())],
-                })
+                Ok(SqlCondition::binary(
+                    key.expression,
+                    op.as_sql(),
+                    "?",
+                    Value::Text(pattern.clone()),
+                ))
             }
             // `Noop` matches every document, so it renders as a tautology when
             // composed under `Or`/`Not`/`And` on the document path.
-            Self::Noop => Ok(SqliteRenderedFilter {
-                condition: "1 = 1".to_owned(),
-                params: Vec::new(),
-            }),
+            Self::Noop => Ok(SqlCondition::raw("1 = 1")),
         }
     }
 }
@@ -1678,10 +1652,12 @@ fn render_search_filters(
 
     let mut filters = SqliteRenderedFilters::default();
     if let Some(threshold) = req.threshold() {
-        filters.native.push(SqliteRenderedFilter {
-            condition: format!("{score_expression} >= ?"),
-            params: vec![Value::Real(threshold)],
-        });
+        filters.native.push(SqlCondition::binary(
+            score_expression,
+            ">=",
+            "?",
+            Value::Real(threshold),
+        ));
     }
     if let Some(filter) = req.filter() {
         filters.extend(filter.render_split(metadata_columns)?);
@@ -1712,7 +1688,7 @@ fn build_search_query(
         filters
             .native
             .iter()
-            .map(|filter| format!("({})", filter.condition)),
+            .map(|filter| format!("({})", filter.condition())),
     );
 
     // `conditions` is only empty on the brute-force path with no native
@@ -1730,7 +1706,7 @@ fn build_search_query(
             filters
                 .post
                 .iter()
-                .map(|filter| format!("({})", filter.condition))
+                .map(|filter| format!("({})", filter.condition()))
                 .collect::<Vec<_>>()
                 .join(" AND ")
         )
@@ -1751,8 +1727,18 @@ fn build_search_query(
         let candidate_limit = sqlite_limit_param(candidate_limit, "candidate limit")?;
         vec![query_vec.clone(), query_vec, candidate_limit]
     };
-    params.extend(filters.native.into_iter().flat_map(|filter| filter.params));
-    params.extend(filters.post.into_iter().flat_map(|filter| filter.params));
+    params.extend(
+        filters
+            .native
+            .into_iter()
+            .flat_map(|filter| filter.into_parts().1),
+    );
+    params.extend(
+        filters
+            .post
+            .into_iter()
+            .flat_map(|filter| filter.into_parts().1),
+    );
 
     Ok(SqliteSearchQuery {
         vector_where_clause,
@@ -1930,7 +1916,7 @@ impl<T: SqliteVectorStoreTable> VectorStoreIndex for SqliteVectorIndex<T> {
     async fn top_n<D>(
         &self,
         req: VectorSearchRequest<SqliteSearchFilter>,
-    ) -> Result<Vec<(f64, String, D)>, VectorStoreError>
+    ) -> Result<Vec<VectorSearchResult<D>>, VectorStoreError>
     where
         D: serde::de::DeserializeOwned,
     {
@@ -1974,7 +1960,11 @@ impl<T: SqliteVectorStoreTable> VectorStoreIndex for SqliteVectorIndex<T> {
         for (id, doc_value, score) in rows {
             match serde_json::from_value::<D>(doc_value) {
                 Ok(doc) => {
-                    top_n.push((score, id, doc));
+                    top_n.push(VectorSearchResult {
+                        score,
+                        id,
+                        document: doc,
+                    });
                 }
                 Err(e) => {
                     debug!("Failed to deserialize document {}: {}", id, e);
@@ -1990,7 +1980,7 @@ impl<T: SqliteVectorStoreTable> VectorStoreIndex for SqliteVectorIndex<T> {
     async fn top_n_ids(
         &self,
         req: VectorSearchRequest<SqliteSearchFilter>,
-    ) -> Result<Vec<(f64, String)>, VectorStoreError> {
+    ) -> Result<Vec<VectorSearchIdResult>, VectorStoreError> {
         tracing::debug!(
             "Finding top {} document IDs for query",
             req.samples() as usize
@@ -2001,10 +1991,10 @@ impl<T: SqliteVectorStoreTable> VectorStoreIndex for SqliteVectorIndex<T> {
 
         let results = self
             .search_rows(&req, "d.id".to_string(), |row| {
-                Ok((
-                    row.get::<_, f64>(1)?,
-                    sqlite_id_value_to_string(0, row.get_ref(0)?)?,
-                ))
+                Ok(VectorSearchIdResult {
+                    score: row.get::<_, f64>(1)?,
+                    id: sqlite_id_value_to_string(0, row.get_ref(0)?)?,
+                })
             })
             .await?;
 

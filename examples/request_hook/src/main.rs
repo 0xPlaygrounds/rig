@@ -165,7 +165,7 @@ async fn main() -> Result<()> {
         .add_hook(SamplingHook)
         .add_hook(TurnCounterHook)
         .await?
-        .output;
+        .output();
 
     println!("\nFinal response:\n{response}");
 

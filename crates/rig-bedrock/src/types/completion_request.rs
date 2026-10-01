@@ -1,5 +1,4 @@
-use crate::types::json::AwsDocument;
-use crate::types::message::RigMessage;
+use crate::types::{json, message};
 use aws_sdk_bedrockruntime::types as aws_bedrock;
 use aws_sdk_bedrockruntime::types::{
     CachePointBlock, CachePointType, InferenceConfiguration, SystemContentBlock, Tool,
@@ -39,11 +38,7 @@ impl AwsCompletionRequest {
     }
 
     pub fn additional_params(&self) -> Option<aws_smithy_types::Document> {
-        self.inner
-            .additional_params
-            .clone()
-            .map(std::convert::Into::into)
-            .map(|doc: AwsDocument| doc.0)
+        self.inner.additional_params.clone().map(json::to_document)
     }
 
     pub fn inference_config(&self) -> InferenceConfiguration {
@@ -72,11 +67,12 @@ impl AwsCompletionRequest {
             .tools
             .iter()
             .map(|tool_definition| {
-                let doc: AwsDocument = tool_definition.parameters.clone().into();
                 ToolSpecification::builder()
                     .name(tool_definition.name.clone())
                     .set_description(Some(tool_definition.description.clone()))
-                    .set_input_schema(Some(ToolInputSchema::Json(doc.0)))
+                    .set_input_schema(Some(ToolInputSchema::Json(json::to_document(
+                        tool_definition.parameters.clone(),
+                    ))))
                     .build()
                     .map(Tool::ToolSpec)
                     .map_err(ProviderError::request)
@@ -195,10 +191,10 @@ impl AwsCompletionRequest {
                 .collect::<Vec<_>>()
                 .join(" | ");
 
-            let content = rig_core::NonEmpty::new(UserContent::document(
+            let content = vec![UserContent::document_text(
                 messages,
                 Some(DocumentMediaType::TXT),
-            ));
+            )];
 
             full_history.push(Message::User { content });
         }
@@ -220,7 +216,7 @@ impl AwsCompletionRequest {
         let tool_ids = rig_core::providers::internal::wire_ids::WireIds::new(&full_history);
         let mut messages = Vec::new();
         for (position, message) in full_history.into_iter().enumerate() {
-            let mut message = RigMessage(message).into_aws(&self.issuer)?;
+            let mut message = message::to_aws(message, &self.issuer)?;
             tool_ids
                 .apply(
                     position,

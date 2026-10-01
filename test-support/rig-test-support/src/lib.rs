@@ -13,6 +13,7 @@ pub mod cache_longrun;
 pub mod cache_prefix;
 pub mod cassette_models;
 pub mod cassettes;
+pub mod citations;
 pub mod comparison_guard;
 pub mod ecs_agent;
 pub mod goldens;

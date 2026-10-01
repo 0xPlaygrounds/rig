@@ -15,7 +15,7 @@ use aws_sdk_bedrockruntime::types as aws_bedrock;
 use serde::{Deserialize, Serialize};
 
 use super::errors::TypeConversionError;
-use super::json::AwsDocument;
+use super::json;
 
 /// Converse response with serializable content and in-process SDK metadata.
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
@@ -93,8 +93,7 @@ impl TryFrom<aws_sdk_bedrockruntime::operation::converse::ConverseOutput>
             stop_reason: stop_reason.try_into()?,
             usage: usage.map(std::convert::TryInto::try_into).transpose()?,
             metrics: metrics.map(std::convert::TryInto::try_into).transpose()?,
-            additional_model_response_fields: additional_model_response_fields
-                .map(|doc| AwsDocument(doc).into()),
+            additional_model_response_fields: additional_model_response_fields.map(json::to_value),
             request_id,
             trace,
             performance_config,
@@ -609,7 +608,7 @@ impl TryFrom<aws_bedrock::ToolResultContentBlock> for ToolResultContentBlock {
                 Ok(ToolResultContentBlock::Image(value.try_into()?))
             }
             aws_bedrock::ToolResultContentBlock::Json(value) => {
-                Ok(ToolResultContentBlock::Json(AwsDocument(value).into()))
+                Ok(ToolResultContentBlock::Json(json::to_value(value)))
             }
             aws_bedrock::ToolResultContentBlock::Text(value) => {
                 Ok(ToolResultContentBlock::Text(value))
@@ -852,7 +851,7 @@ impl TryFrom<aws_bedrock::ToolUseBlock> for ToolUseBlock {
         Ok(ToolUseBlock {
             tool_use_id: value.tool_use_id,
             name: value.name,
-            input: AwsDocument(value.input).into(),
+            input: json::to_value(value.input),
         })
     }
 }

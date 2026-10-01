@@ -15,5 +15,5 @@ async fn coding_openai_compatible_completion_smoke() {
         .await
         .expect("Z.AI coding completion should succeed");
 
-    assert_nonempty_response(&response.output);
+    assert_nonempty_response(&response.output());
 }

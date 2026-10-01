@@ -37,9 +37,9 @@ async fn main() -> Result<()> {
     let category = build_router_agent(gpt4.clone())
         .prompt(INPUT_PROMPT)
         .await?
-        .output;
+        .output();
     let follow_up = follow_up_prompt(category.trim())?;
-    let response = build_response_agent(gpt4).prompt(follow_up).await?.output;
+    let response = build_response_agent(gpt4).prompt(follow_up).await?.output();
 
     println!("Classifier chose: {}", category.trim());
     println!("Follow-up prompt: {follow_up}");

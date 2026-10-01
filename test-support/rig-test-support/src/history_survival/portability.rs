@@ -160,9 +160,7 @@ impl Source {
                 UserContent::ToolResult(ToolResult {
                     call: call.id.clone(),
                     name: call.function.name.clone(),
-                    content: rig_core::NonEmpty::new(ToolResultContent::text(weather_report(
-                        &city,
-                    ))),
+                    content: vec![ToolResultContent::text(weather_report(&city))],
                 })
             })
             .collect();
@@ -175,11 +173,9 @@ impl Source {
             Message::user(TOOL_USER_PROMPT),
             Message::Assistant {
                 id: reply.message_id,
-                content: rig_core::NonEmpty::from_vec(reply.choice).expect("non-empty"),
+                content: reply.choice,
             },
-            Message::User {
-                content: rig_core::NonEmpty::from_vec(results).expect("non-empty"),
-            },
+            Message::User { content: results },
         ]
     }
 }
@@ -253,7 +249,7 @@ pub async fn run(
         });
     Observation {
         history,
-        final_text: response.output,
+        final_text: response.output(),
         tool_calls: calls.load(Ordering::SeqCst),
     }
 }
@@ -327,7 +323,8 @@ pub fn assert_recorded(cell: Cell, scenario: &str) -> Forwarded {
     forwarded.sort();
     forwarded.dedup();
     // Reasoning state is only meaningful to its issuer: none of it may reach
-    // another issuer's model. Tool-call ids are correlation, not state. Claude
+    // another issuer's model. Tool-call ids are correlation, not state, and a
+    // message's `phase` labels the message for every Responses dialect. Claude
     // through OpenRouter shares the Anthropic issuer (its thinking signatures
     // verified valid between OpenRouter and the Claude API both ways), so
     // there the signature must arrive.
@@ -335,7 +332,9 @@ pub fn assert_recorded(cell: Cell, scenario: &str) -> Forwarded {
     let leaked: Vec<&str> = forwarded
         .iter()
         .copied()
-        .filter(|kind| *kind != "tool_call_id" && !(shared && *kind == "signature"))
+        .filter(|kind| {
+            *kind != "tool_call_id" && *kind != "phase" && !(shared && *kind == "signature")
+        })
         .collect();
     assert!(
         leaked.is_empty(),

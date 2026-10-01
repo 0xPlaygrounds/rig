@@ -77,10 +77,7 @@ fn red_png() -> UserContent {
 
 fn multimodal_prompt(part: UserContent) -> Message {
     Message::User {
-        content: rig_core::NonEmpty::with_rest(
-            UserContent::text("What colour is the attachment?"),
-            [part],
-        ),
+        content: vec![UserContent::text("What colour is the attachment?"), part],
     }
 }
 
@@ -217,7 +214,7 @@ async fn blocking_audio_part_reaches_the_wire() {
             let model = client.completion(MODEL);
             let error = model
                 .call(
-                    CompletionRequest::new(multimodal_prompt(UserContent::audio(
+                    CompletionRequest::new(multimodal_prompt(UserContent::audio_base64(
                         "aGVsbG8=",
                         Some(rig::message::AudioMediaType::MP3),
                     )))
@@ -289,7 +286,7 @@ async fn blocking_image_only_message_reaches_the_wire() {
             let error = model
                 .call(
                     CompletionRequest::new(Message::User {
-                        content: rig_core::NonEmpty::new(red_png()),
+                        content: vec![red_png()],
                     })
                     .additional_params(non_thinking_params())
                     .max_tokens(16),
@@ -367,10 +364,10 @@ async fn blocking_all_text_parts_still_flatten_to_a_string() {
             let response = model
                 .call(
                     CompletionRequest::new(Message::User {
-                        content: rig_core::NonEmpty::with_rest(
+                        content: vec![
                             UserContent::text("Reply with exactly: parts-ok"),
-                            [UserContent::text("Nothing else.")],
-                        ),
+                            UserContent::text("Nothing else."),
+                        ],
                     })
                     .additional_params(non_thinking_params())
                     .max_tokens(16),
@@ -447,23 +444,21 @@ async fn blocking_assistant_and_tool_history_still_flattens() {
                     CompletionRequest::new("Now say: history-ok")
                         .message(Message::Assistant {
                             id: None,
-                            content: rig_core::NonEmpty::with_rest(
+                            content: vec![
                                 rig::message::AssistantContent::text("Checking the ledger."),
-                                [rig::message::AssistantContent::tool_call(
+                                rig::message::AssistantContent::tool_call(
                                     "call_history_1",
                                     rig_core::message::ToolName::new("ping").expect("tool name"),
                                     json!({}),
-                                )],
-                            ),
+                                ),
+                            ],
                         })
                         .message(Message::User {
-                            content: rig_core::NonEmpty::new(UserContent::tool_result(
+                            content: vec![UserContent::tool_result(
                                 rig_core::message::CallId::from_wire("call_history_1"),
                                 rig_core::message::ToolName::new("ping").expect("tool name"),
-                                rig_core::NonEmpty::new(rig::message::ToolResultContent::text(
-                                    "pong",
-                                )),
-                            )),
+                                vec![rig::message::ToolResultContent::text("pong")],
+                            )],
                         })
                         .tool(crate::support::zero_arg_tool_definition("ping"))
                         .additional_params(non_thinking_params())

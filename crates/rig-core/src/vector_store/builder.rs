@@ -25,7 +25,7 @@ pub struct InMemoryVectorStoreBuilder<D> {
 
 impl<D> Default for InMemoryVectorStoreBuilder<D>
 where
-    D: Serialize + Eq,
+    D: Serialize,
 {
     fn default() -> Self {
         Self::new()
@@ -34,7 +34,7 @@ where
 
 impl<D> InMemoryVectorStoreBuilder<D>
 where
-    D: Serialize + Eq,
+    D: Serialize,
 {
     /// Create a new builder with default settings.
     ///

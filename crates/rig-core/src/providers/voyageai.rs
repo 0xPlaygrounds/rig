@@ -88,14 +88,6 @@ pub struct RerankApiResponse {
     pub usage: RerankApiUsage,
 }
 
-/// Error envelope accepted in a successful HTTP rerank response. The driver
-/// reports the original body rather than constructing a ranking from it.
-#[derive(Debug, Deserialize)]
-pub struct RerankErrorEnvelope {
-    #[allow(dead_code)]
-    message: String,
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RerankApiUsage {
     pub total_tokens: usize,

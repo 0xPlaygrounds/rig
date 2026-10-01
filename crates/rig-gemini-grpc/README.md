@@ -28,19 +28,18 @@ export GEMINI_API_KEY=your_api_key_here
 
 ```rust
 use rig::prelude::*;
-use rig_gemini_grpc::Client;
+use rig_gemini_grpc::GeminiGrpc;
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    let client = Client::from_env();
+    let transport = GeminiGrpc::from_env().await?;
 
-    let agent = client
-        .agent("gemini-2.5-flash")
+    let agent = AgentBuilder::new(transport.completion("gemini-2.5-flash"))
         .preamble("You are a helpful assistant.")
         .build();
 
     let response = agent.prompt("Hello!").await?;
-    println!("{}", response.output);
+    println!("{}", response.output());
 
     Ok(())
 }

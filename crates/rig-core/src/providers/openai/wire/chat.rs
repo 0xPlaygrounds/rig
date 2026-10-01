@@ -939,12 +939,6 @@ impl<'id> ChatDecoder<'id> {
         }
     }
 
-    fn close_text(&mut self, out: &mut Out<'id, Completion>) {
-        if let Some(part) = self.text.take() {
-            out.close_text(part);
-        }
-    }
-
     /// One chunk's parts, in the order the wire implies: reasoning, its
     /// signature or the boundary that stops it, text, then tool calls.
     fn emit_parts(
@@ -956,7 +950,7 @@ impl<'id> ChatDecoder<'id> {
         calls: bool,
     ) {
         if let Some(reasoning) = reasoning.filter(|reasoning| !reasoning.is_empty()) {
-            self.close_text(out);
+            out.close_open_text(&mut self.text);
             self.thoughts.fragment(out, &reasoning);
         }
         if let Some(signature) = signature {
@@ -968,8 +962,7 @@ impl<'id> ChatDecoder<'id> {
             self.thoughts.boundary();
         }
         if let Some(text) = text {
-            let part = self.text.get_or_insert_with(|| out.text());
-            out.push_text(part, &text);
+            out.extend_text(&mut self.text, &text);
         }
     }
 
@@ -1013,7 +1006,7 @@ impl<'id> ChatDecoder<'id> {
         if self.quirks.reasoning_details {
             for detail in &details {
                 if let Some(reasoning) = detail_reasoning(detail) {
-                    self.close_text(out);
+                    out.close_open_text(&mut self.text);
                     out.reasoning_block(reasoning);
                 }
             }
@@ -1034,7 +1027,7 @@ impl<'id> ChatDecoder<'id> {
         );
 
         for incoming in tool_calls {
-            self.close_text(out);
+            out.close_open_text(&mut self.text);
             if let Some(existing) = out.pending_id(incoming.index)
                 && incoming.evicts(&existing, &out.pending_name(incoming.index))
             {
@@ -1236,7 +1229,7 @@ impl<'id> ChatDecoder<'id> {
             (!text.is_empty()).then_some(text),
             !tool_calls.is_empty(),
         );
-        self.close_text(&mut out);
+        out.close_open_text(&mut self.text);
 
         // Each call is buffered at its own position, so separate id-less
         // calls stay distinct.
@@ -1264,7 +1257,7 @@ impl<'id> ChatDecoder<'id> {
         mut out: Out<'id, Completion>,
         streamed: bool,
     ) -> Result<Flow, ProviderError> {
-        self.close_text(&mut out);
+        out.close_open_text(&mut self.text);
         self.thoughts.close(&mut out, None);
         // A gateway's reasoning belongs to the upstream model that produced it.
         if self.quirks.upstream_reasoning_issuer

@@ -659,7 +659,7 @@ checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 
 [[package]]
 name = "rig-agent"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "async-stream",
  "futures",
@@ -687,7 +687,7 @@ dependencies = [
 
 [[package]]
 name = "rig-core"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "async-stream",
  "base64",
@@ -706,13 +706,14 @@ dependencies = [
  "sha2",
  "thiserror",
  "tracing",
+ "tracing-subscriber",
  "url",
  "uuid",
 ]
 
 [[package]]
 name = "rig-http"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "bytes",
  "futures",

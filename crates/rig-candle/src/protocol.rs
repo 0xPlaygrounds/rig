@@ -105,7 +105,7 @@ fn validate_protocol_inputs(
         validate_protocol_text(
             &serde_json::to_string(&tool.parameters).map_err(|error| {
                 CandleError::InvalidToolDefinition {
-                    tool: tool.name.clone(),
+                    tool: tool.name.to_string(),
                     reason: format!("parameters cannot be serialized: {error}"),
                 }
             })?,
@@ -285,19 +285,14 @@ fn selected_tools(
 }
 
 fn validate_tool_definition(tool: &ToolDefinition) -> Result<(), CandleError> {
-    let valid_name = !tool.name.is_empty()
-        && tool.name.len() <= 64
+    let valid_name = tool.name.len() <= 64
         && tool
             .name
             .bytes()
             .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'));
     if !valid_name {
         return Err(CandleError::InvalidToolDefinition {
-            tool: if tool.name.is_empty() {
-                "<empty>".to_string()
-            } else {
-                tool.name.clone()
-            },
+            tool: tool.name.to_string(),
             reason: "name must contain 1-64 ASCII letters, digits, underscores, or hyphens"
                 .to_string(),
         });
@@ -306,7 +301,7 @@ fn validate_tool_definition(tool: &ToolDefinition) -> Result<(), CandleError> {
         tool.parameters
             .as_object()
             .ok_or_else(|| CandleError::InvalidToolDefinition {
-                tool: tool.name.clone(),
+                tool: tool.name.to_string(),
                 reason: "parameters must be a JSON Schema object".to_string(),
             })?;
     if parameters
@@ -315,13 +310,13 @@ fn validate_tool_definition(tool: &ToolDefinition) -> Result<(), CandleError> {
         .is_some_and(|kind| kind != "object")
     {
         return Err(CandleError::InvalidToolDefinition {
-            tool: tool.name.clone(),
+            tool: tool.name.to_string(),
             reason: "the root parameter schema type must be `object` when present".to_string(),
         });
     }
     serde_json::to_string(&tool.parameters).map_err(|error| {
         CandleError::InvalidToolDefinition {
-            tool: tool.name.clone(),
+            tool: tool.name.to_string(),
             reason: format!("parameters cannot be serialized: {error}"),
         }
     })?;
@@ -329,7 +324,7 @@ fn validate_tool_definition(tool: &ToolDefinition) -> Result<(), CandleError> {
 }
 
 fn messages_with_documents(request: &CompletionRequest) -> Vec<Message> {
-    let mut messages = request.chat_history.clone().into_vec();
+    let mut messages = request.chat_history.clone();
     if !request.documents.is_empty() {
         let context = request
             .documents
@@ -470,7 +465,7 @@ fn render_qwen3(request: &CompletionRequest) -> Result<String, CandleError> {
             });
             rendered.push_str(&serde_json::to_string(&definition).map_err(|error| {
                 CandleError::InvalidToolDefinition {
-                    tool: tool.name.clone(),
+                    tool: tool.name.to_string(),
                     reason: format!("definition cannot be serialized: {error}"),
                 }
             })?);

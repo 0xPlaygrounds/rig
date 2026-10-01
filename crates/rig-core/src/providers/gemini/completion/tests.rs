@@ -198,18 +198,7 @@ fn test_logprobs_result_deserializes_official_json_field_names() {
 
 #[test]
 fn test_resolve_request_model_uses_override() {
-    let request = CompletionRequest {
-        model: Some("gemini-2.5-flash".to_string()),
-        chat_history: crate::NonEmpty::new("Hello".into()),
-        documents: vec![],
-        tools: vec![],
-        temperature: None,
-        max_tokens: None,
-        tool_choice: None,
-        additional_params: None,
-        output_schema: None,
-        record_telemetry_content: false,
-    };
+    let request = CompletionRequest::new("Hello").model("gemini-2.5-flash".to_string());
 
     let request_model = resolve_request_model("gemini-2.0-flash", &request);
     assert_eq!(request_model, "gemini-2.5-flash");
@@ -225,18 +214,7 @@ fn test_resolve_request_model_uses_override() {
 
 #[test]
 fn test_resolve_request_model_uses_default_when_unset() {
-    let request = CompletionRequest {
-        model: None,
-        chat_history: crate::NonEmpty::new("Hello".into()),
-        documents: vec![],
-        tools: vec![],
-        temperature: None,
-        max_tokens: None,
-        tool_choice: None,
-        additional_params: None,
-        output_schema: None,
-        record_telemetry_content: false,
-    };
+    let request = CompletionRequest::new("Hello");
 
     assert_eq!(
         resolve_request_model("gemini-2.0-flash", &request),
@@ -716,13 +694,13 @@ async fn test_completion_response_upgrades_stop_to_tool_calls() {
 fn test_reasoning_signature_is_emitted_in_gemini_part() {
     let msg = message::Message::Assistant {
         id: None,
-        content: crate::NonEmpty::new(message::AssistantContent::Reasoning(
+        content: vec![message::AssistantContent::Reasoning(
             message::Reasoning::new_with_signature(
                 "structured thought",
                 Some("reuse_sig_456".to_string()),
             )
             .sealed("gcp.gemini"),
-        )),
+        )],
     };
 
     let converted: Content = msg.try_into().expect("convert message");
@@ -747,7 +725,7 @@ fn test_message_conversion_tool_call() {
 
     let msg = message::Message::Assistant {
         id: None,
-        content: crate::NonEmpty::new(message::AssistantContent::ToolCall(tool_call)),
+        content: vec![message::AssistantContent::ToolCall(tool_call)],
     };
 
     let content: Content = msg.try_into().unwrap();
@@ -994,16 +972,14 @@ fn test_txt_document_conversion_to_text_part() {
     // Test that TXT documents are converted to plain text parts, not inline data
     use crate::message::{DocumentMediaType, UserContent};
 
-    let doc = UserContent::document(
+    let doc = UserContent::document_text(
         "Note: test.md\nPath: /test.md\nContent: Hello World!",
         Some(DocumentMediaType::TXT),
     );
 
-    let content: Content = message::Message::User {
-        content: crate::NonEmpty::new(doc),
-    }
-    .try_into()
-    .unwrap();
+    let content: Content = message::Message::User { content: vec![doc] }
+        .try_into()
+        .unwrap();
 
     if let Part {
         part: PartKind::Text(text),
@@ -1031,17 +1007,17 @@ fn test_tool_result_with_image_content() {
     let tool_result = ToolResult {
         call: crate::message::CallId::from_wire("call-123"),
         name: crate::message::ToolName::new("test_tool".to_string()).expect("tool name"),
-        content: crate::NonEmpty::with_rest(ToolResultContent::Text(message::Text::new(r#"{"status": "success"}"#.to_string())), [ToolResultContent::Image(Image {
+        content: vec![ToolResultContent::Text(message::Text::new(r#"{"status": "success"}"#.to_string())),ToolResultContent::Image(Image {
                 data: DocumentSourceKind::Base64("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==".to_string()),
                 media_type: Some(ImageMediaType::PNG),
                 detail: None,
                 additional_params: None,
-            })]),
+            })],
     };
 
     let user_content = message::UserContent::ToolResult(tool_result);
     let msg = message::Message::User {
-        content: crate::NonEmpty::new(user_content),
+        content: vec![user_content],
     };
 
     // Convert to Gemini Content
@@ -1089,21 +1065,15 @@ fn mixed_inline_images_and_text_keep_text_response_and_ordered_parts() {
     use crate::message::{ImageMediaType, ToolResult, ToolResultContent};
 
     let message = message::Message::User {
-        content: crate::NonEmpty::new(message::UserContent::ToolResult(ToolResult {
+        content: vec![message::UserContent::ToolResult(ToolResult {
             call: crate::message::CallId::from_wire(""),
             name: crate::message::ToolName::new("ordered_tool".to_string()).expect("tool name"),
-            content: crate::NonEmpty::with_rest(
+            content: vec![
                 ToolResultContent::image_base64("first-image", Some(ImageMediaType::PNG), None),
-                [
-                    ToolResultContent::text("between-images"),
-                    ToolResultContent::image_base64(
-                        "second-image",
-                        Some(ImageMediaType::JPEG),
-                        None,
-                    ),
-                ],
-            ),
-        })),
+                ToolResultContent::text("between-images"),
+                ToolResultContent::image_base64("second-image", Some(ImageMediaType::JPEG), None),
+            ],
+        })],
     };
 
     let content: Content = message.try_into().expect("tool result should convert");
@@ -1136,18 +1106,14 @@ fn mixed_inline_image_and_json_keep_structured_value_and_media_part() {
     use crate::message::{ImageMediaType, ToolResult, ToolResultContent};
 
     let message = message::Message::User {
-        content: crate::NonEmpty::new(message::UserContent::ToolResult(ToolResult {
+        content: vec![message::UserContent::ToolResult(ToolResult {
             call: crate::message::CallId::from_wire(""),
             name: crate::message::ToolName::new("ordered_tool".to_string()).expect("tool name"),
-            content: crate::NonEmpty::with_rest(
+            content: vec![
                 ToolResultContent::json(json!({ "status": "ok" })),
-                [ToolResultContent::image_base64(
-                    "image-data",
-                    Some(ImageMediaType::PNG),
-                    None,
-                )],
-            ),
-        })),
+                ToolResultContent::image_base64("image-data", Some(ImageMediaType::PNG), None),
+            ],
+        })],
     };
 
     let content: Content = message.try_into().expect("tool result should convert");
@@ -1174,19 +1140,19 @@ fn mixed_url_image_and_response_value_is_rejected() {
     use crate::message::{DocumentSourceKind, Image, ImageMediaType, ToolResultContent};
 
     let tool_result = message::Message::User {
-        content: crate::NonEmpty::new(message::UserContent::ToolResult(message::ToolResult {
+        content: vec![message::UserContent::ToolResult(message::ToolResult {
             call: crate::message::CallId::from_wire(""),
             name: crate::message::ToolName::new("url_tool".to_string()).expect("tool name"),
-            content: crate::NonEmpty::with_rest(
+            content: vec![
                 ToolResultContent::Image(Image {
                     data: DocumentSourceKind::Url("https://example.com/image.png".to_string()),
                     media_type: Some(ImageMediaType::PNG),
                     detail: None,
                     additional_params: None,
                 }),
-                [ToolResultContent::text("after-image")],
-            ),
-        })),
+                ToolResultContent::text("after-image"),
+            ],
+        })],
     };
 
     let error = Content::try_from(tool_result)
@@ -1210,15 +1176,15 @@ fn tool_result_rejects_unsupported_image_media_types() {
         ImageMediaType::SVG,
     ] {
         let message = message::Message::User {
-            content: crate::NonEmpty::new(message::UserContent::ToolResult(ToolResult {
+            content: vec![message::UserContent::ToolResult(ToolResult {
                 call: crate::message::CallId::from_wire(""),
                 name: crate::message::ToolName::new("image_tool".to_string()).expect("tool name"),
-                content: crate::NonEmpty::new(ToolResultContent::image_base64(
+                content: vec![ToolResultContent::image_base64(
                     "image-data",
                     Some(media_type),
                     None,
-                )),
-            })),
+                )],
+            })],
         };
 
         let error = Content::try_from(message)
@@ -1237,22 +1203,18 @@ fn structured_json_refs_remain_literal_with_unreferenced_image_parts() {
     use crate::message::{ImageMediaType, ToolResult, ToolResultContent};
 
     let message = message::Message::User {
-        content: crate::NonEmpty::new(message::UserContent::ToolResult(ToolResult {
+        content: vec![message::UserContent::ToolResult(ToolResult {
             call: crate::message::CallId::from_wire(""),
             name: crate::message::ToolName::new("collision_tool".to_string()).expect("tool name"),
-            content: crate::NonEmpty::with_rest(
+            content: vec![
                 ToolResultContent::json(json!({
                     "literal": {
                         "$ref": "tool_result_image_0"
                     }
                 })),
-                [ToolResultContent::image_base64(
-                    "image-data",
-                    Some(ImageMediaType::PNG),
-                    None,
-                )],
-            ),
-        })),
+                ToolResultContent::image_base64("image-data", Some(ImageMediaType::PNG), None),
+            ],
+        })],
     };
 
     let content: Content = message.try_into().expect("tool result should convert");
@@ -1298,11 +1260,11 @@ fn tool_result_literal_text_and_structured_json_remain_distinct() {
 
     for (tool_content, expected) in cases {
         let message = message::Message::User {
-            content: crate::NonEmpty::new(message::UserContent::ToolResult(ToolResult {
+            content: vec![message::UserContent::ToolResult(ToolResult {
                 call: crate::message::CallId::from_wire(""),
                 name: crate::message::ToolName::new("test_tool".to_string()).expect("tool name"),
-                content: crate::NonEmpty::new(tool_content),
-            })),
+                content: vec![tool_content],
+            })],
         };
         let content: Content = message.try_into().expect("tool result should convert");
 
@@ -1331,11 +1293,11 @@ fn echoed_minted_handle_never_reaches_the_function_response_id() {
     );
 
     let message = message::Message::User {
-        content: crate::NonEmpty::new(message::UserContent::ToolResult(message::ToolResult {
+        content: vec![message::UserContent::ToolResult(message::ToolResult {
             call: call.id.clone(),
             name: call.function.name.clone(),
-            content: crate::NonEmpty::new(ToolResultContent::text("out")),
-        })),
+            content: vec![ToolResultContent::text("out")],
+        })],
     };
     let content: Content = message.try_into().expect("tool result should convert");
     let PartKind::FunctionResponse(response) = &content.parts[0].part else {
@@ -1350,11 +1312,11 @@ fn wire_derived_tool_result_keeps_the_provider_id_on_the_wire() {
     use crate::message::ToolResultContent;
 
     let message = message::Message::User {
-        content: crate::NonEmpty::new(message::UserContent::tool_result(
+        content: vec![message::UserContent::tool_result(
             crate::message::CallId::from_wire("gemini-issued-id"),
             crate::message::ToolName::new("lookup").expect("tool name"),
-            crate::NonEmpty::new(ToolResultContent::text("out")),
-        )),
+            vec![ToolResultContent::text("out")],
+        )],
     };
     let content: Content = message.try_into().expect("tool result should convert");
     let PartKind::FunctionResponse(response) = &content.parts[0].part else {
@@ -1368,16 +1330,14 @@ fn test_markdown_document_conversion_to_text_part() {
     // Test that MARKDOWN documents are converted to plain text parts
     use crate::message::{DocumentMediaType, UserContent};
 
-    let doc = UserContent::document(
+    let doc = UserContent::document_text(
         "# Heading\n\n* List item",
         Some(DocumentMediaType::MARKDOWN),
     );
 
-    let content: Content = message::Message::User {
-        content: crate::NonEmpty::new(doc),
-    }
-    .try_into()
-    .unwrap();
+    let content: Content = message::Message::User { content: vec![doc] }
+        .try_into()
+        .unwrap();
 
     if let Part {
         part: PartKind::Text(text),
@@ -1406,11 +1366,9 @@ fn test_markdown_url_document_conversion_to_file_data_part() {
         additional_params: None,
     });
 
-    let content: Content = message::Message::User {
-        content: crate::NonEmpty::new(doc),
-    }
-    .try_into()
-    .unwrap();
+    let content: Content = message::Message::User { content: vec![doc] }
+        .try_into()
+        .unwrap();
 
     if let Part {
         part: PartKind::FileData(file_data),
@@ -1445,7 +1403,7 @@ fn test_user_image_url_renders_as_file_data() {
     });
 
     let content: Content = message::Message::User {
-        content: crate::NonEmpty::new(image),
+        content: vec![image],
     }
     .try_into()
     .unwrap();
@@ -1471,17 +1429,17 @@ fn test_tool_result_with_url_image_is_rejected() {
     let tool_result = ToolResult {
         call: crate::message::CallId::from_wire(""),
         name: crate::message::ToolName::new("screenshot_tool".to_string()).expect("tool name"),
-        content: crate::NonEmpty::new(ToolResultContent::Image(Image {
+        content: vec![ToolResultContent::Image(Image {
             data: DocumentSourceKind::Url("https://example.com/image.png".to_string()),
             media_type: Some(ImageMediaType::PNG),
             detail: None,
             additional_params: None,
-        })),
+        })],
     };
 
     let user_content = message::UserContent::ToolResult(tool_result);
     let msg = message::Message::User {
-        content: crate::NonEmpty::new(user_content),
+        content: vec![user_content],
     };
 
     let error =
@@ -1513,36 +1471,16 @@ fn test_create_request_body_with_documents() {
         },
     ];
 
-    let documents_message = CompletionRequest {
-        chat_history: crate::NonEmpty::new(Message::user("placeholder")),
-        documents,
-        tools: vec![],
-        temperature: None,
-        model: None,
-        output_schema: None,
-        record_telemetry_content: false,
-        max_tokens: None,
-        tool_choice: None,
-        additional_params: None,
-    }
-    .normalized_documents()
-    .unwrap();
+    let documents_message = CompletionRequest::new("placeholder")
+        .documents(documents)
+        .normalized_documents()
+        .unwrap();
 
-    let completion_request = CompletionRequest {
-        chat_history: crate::NonEmpty::with_rest(
-            Message::system("You are a helpful assistant"),
-            [documents_message, Message::user("What are my notes about?")],
-        ),
-        documents: vec![],
-        tools: vec![],
-        temperature: None,
-        model: None,
-        output_schema: None,
-        record_telemetry_content: false,
-        max_tokens: None,
-        tool_choice: None,
-        additional_params: None,
-    };
+    let completion_request = CompletionRequest::from(vec![
+        Message::system("You are a helpful assistant"),
+        documents_message,
+        Message::user("What are my notes about?"),
+    ]);
 
     let request = create_request_body(completion_request).unwrap();
 
@@ -1594,23 +1532,9 @@ fn test_create_request_body_with_documents() {
 fn test_create_request_body_without_documents() {
     // Test backward compatibility: requests without documents work as before
     use crate::completion::request::CompletionRequest;
-    use crate::message::Message;
 
-    let completion_request = CompletionRequest {
-        chat_history: crate::NonEmpty::with_rest(
-            Message::system("You are a helpful assistant"),
-            [Message::user("Hello")],
-        ),
-        documents: vec![], // No documents
-        tools: vec![],
-        temperature: None,
-        max_tokens: None,
-        tool_choice: None,
-        model: None,
-        output_schema: None,
-        record_telemetry_content: false,
-        additional_params: None,
-    };
+    let completion_request =
+        CompletionRequest::new("Hello").preamble("You are a helpful assistant");
 
     let request = create_request_body(completion_request).unwrap();
 
@@ -1726,18 +1650,7 @@ const SIGNED_STREAM: &str = concat!(
 );
 
 fn wire_request(prompt: &str) -> CompletionRequest {
-    CompletionRequest {
-        model: None,
-        chat_history: crate::NonEmpty::new(prompt.into()),
-        documents: vec![],
-        tools: vec![],
-        temperature: None,
-        max_tokens: None,
-        tool_choice: None,
-        additional_params: None,
-        output_schema: None,
-        record_telemetry_content: false,
-    }
+    CompletionRequest::new(prompt)
 }
 
 fn wire(model: &str) -> GenerateContent {
@@ -1846,7 +1759,7 @@ async fn a_trailing_thought_signature_stays_on_the_part_that_carried_it() {
     ] {
         let content: Content = message::Message::Assistant {
             id: None,
-            content: crate::NonEmpty::from_vec(response.choice.clone()).expect("non-empty"),
+            content: response.choice.clone(),
         }
         .try_into()
         .expect("the turn replays");
@@ -2040,27 +1953,15 @@ fn a_text_signature_reaches_no_other_wire() {
             "c2lnbmVkLWFuc3dlcg==".to_owned(),
         ),
     };
-    let request = CompletionRequest {
-        model: None,
-        chat_history: crate::NonEmpty::with_rest(
-            message::Message::user("q"),
-            [
-                message::Message::Assistant {
-                    id: None,
-                    content: crate::NonEmpty::new(message::AssistantContent::Text(signed)),
-                },
-                message::Message::user("again"),
-            ],
-        ),
-        documents: Vec::new(),
-        tools: Vec::new(),
-        temperature: None,
-        max_tokens: Some(16),
-        tool_choice: None,
-        additional_params: None,
-        output_schema: None,
-        record_telemetry_content: false,
-    };
+    let request = CompletionRequest::from(vec![
+        message::Message::user("q"),
+        message::Message::Assistant {
+            id: None,
+            content: vec![message::AssistantContent::Text(signed)],
+        },
+        message::Message::user("again"),
+    ])
+    .max_tokens(16);
 
     let openai = crate::providers::openai::wire::OpenAIConfig::new("sk-test");
     for (wire, encoded) in [
@@ -2095,13 +1996,13 @@ fn a_text_signature_reaches_no_other_wire() {
 fn a_signed_answer_text_round_trips_through_serde() {
     let message = message::Message::Assistant {
         id: None,
-        content: crate::NonEmpty::new(message::AssistantContent::Text(message::Text {
+        content: vec![message::AssistantContent::Text(message::Text {
             text: "the answer".to_owned(),
             additional_params: super::super::text_signature_extras(
                 super::super::GEMINI_TEXT_EXTRAS_KEY,
                 "c2lnbmVk".to_owned(),
             ),
-        })),
+        })],
     };
     let json = serde_json::to_string(&message).expect("the message serializes");
     let loaded: message::Message = serde_json::from_str(&json).expect("the message loads");
@@ -2121,13 +2022,13 @@ fn a_signed_answer_text_round_trips_through_serde() {
 fn a_history_with_a_signature_only_reasoning_block_still_replays() {
     let message = message::Message::Assistant {
         id: None,
-        content: crate::NonEmpty::with_rest(
+        content: vec![
             message::AssistantContent::text("289"),
-            [message::AssistantContent::Reasoning(
+            message::AssistantContent::Reasoning(
                 message::Reasoning::new_with_signature("", Some("c2lnbmVk".to_owned()))
                     .sealed("gcp.gemini"),
-            )],
-        ),
+            ),
+        ],
     };
     let json = serde_json::to_string(&message).expect("the message serializes");
     let loaded: message::Message = serde_json::from_str(&json).expect("the message loads");

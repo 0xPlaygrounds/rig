@@ -17,7 +17,6 @@ pub(crate) mod document;
 pub(crate) mod errors;
 pub(crate) mod image;
 pub(crate) mod json;
-pub(crate) mod media_types;
 pub(crate) mod message;
 /// Bedrock's text-to-image request and response wire types; the image
 /// generation reply decodes from [`TextToImageResponse`](text_to_image::TextToImageResponse).

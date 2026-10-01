@@ -21,7 +21,6 @@ pub(crate) mod gemini_caching;
 pub(crate) mod macros;
 pub(crate) mod ollama;
 pub(crate) mod openai;
-pub(crate) mod verify;
 pub(crate) mod voyageai;
 
 pub use env::EnvError;

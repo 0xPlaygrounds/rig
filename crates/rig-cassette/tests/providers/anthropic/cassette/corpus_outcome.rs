@@ -36,7 +36,7 @@ async fn final_output(stream: &mut rig::agent::StreamingResult) -> String {
     let mut output = None;
     while let Some(item) = stream.next().await {
         if let MultiTurnStreamItem::FinalResponse(response) = item.expect("the stream yields") {
-            output = Some(response.output);
+            output = Some(response.output());
         }
     }
     output.expect("a final response")
@@ -116,7 +116,7 @@ async fn tool_error_effect_log_is_the_golden_fixture() {
             .max_turns(3)
             .await
             .expect("the agent answers around the failure");
-        assert!(!response.output.is_empty());
+        assert!(!response.output().is_empty());
         let log = agent.stamp(recorder.take());
         assert_eq!(
             families(&log),
@@ -237,7 +237,7 @@ async fn model_error_streamed_effect_log_is_the_golden_fixture() {
 
 /// The runner's budget exhausted with a tool call pending: one model call
 /// allowed, the tool runs, the next call is refused by the budget. Two
-/// records, then `MaxTurnsError`. Its own recording: the run makes one
+/// records, then `MaxTurns`. Its own recording: the run makes one
 /// request, and a cassette with a second interaction refuses to leave it
 /// unused.
 #[tokio::test]
@@ -259,7 +259,7 @@ async fn max_turns_exhausted_effect_log_is_the_golden_fixture() {
                 .await
                 .expect_err("one call cannot finish a tool turn");
             assert!(
-                matches!(error, PromptError::MaxTurnsError { max_turns: 1, .. }),
+                matches!(error, PromptError::MaxTurns { max_turns: 1, .. }),
                 "{error:?}"
             );
             let log = agent.stamp(recorder.take());
@@ -290,7 +290,7 @@ async fn default_max_turns_effect_log_is_the_golden_fixture() {
             .record_to(recorder.clone())
             .build();
         let response = agent.prompt(ADD_PROMPT).await.expect("the agent answers");
-        assert!(response.output.contains("42"), "{}", response.output);
+        assert!(response.output().contains("42"), "{}", response.output());
         let log = agent.stamp(recorder.take());
         assert_eq!(
             families(&log),

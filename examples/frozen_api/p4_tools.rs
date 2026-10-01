@@ -1,4 +1,3 @@
-use rig::NonEmpty;
 use rig::completion::{CompletionRequest, ToolDefinition};
 use rig::message::{Message, ToolName, ToolResultContent};
 use rig::providers::openai::{self, OpenAI};
@@ -34,13 +33,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let AddArgs { a, b } = serde_json::from_value(call.function.arguments.clone())?;
         println!("{} [{}] = {}", call.function.name, call.id, a + b);
         // A result is built from the call it answers, so its id and name match.
-        results.push(call.result(ToolResultContent::text((a + b).to_string())));
+        results.push(call.result(vec![ToolResultContent::text((a + b).to_string())]));
     }
 
-    // The next turn: the assistant's calls, then their results. Both lists
-    // are non-empty by type, so no empty turn can reach the provider.
-    match (response.message(), NonEmpty::from_vec(results)) {
-        (Some(turn), Ok(results)) => {
+    // The next turn: the assistant's calls, then their results. A request
+    // holding an empty turn is rejected before it is sent, so the next turn
+    // is sent only when both are there.
+    match response.message() {
+        Some(turn) if !results.is_empty() => {
             let mut next = request;
             next.chat_history.push(turn);
             next.chat_history.push(Message::tool_results(results));

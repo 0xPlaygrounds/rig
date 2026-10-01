@@ -10,7 +10,7 @@
 
 use crate::client::BedrockRuntime;
 use crate::types::assistant_content::PROVIDER_NAME;
-use crate::types::errors::AwsSdkInvokeModelError;
+use crate::types::errors::sdk_error;
 use crate::types::text_to_image::{TextToImageGeneration, TextToImageResponse};
 use aws_smithy_types::Blob;
 use rig_core::driver::{Exchange, Opened, Opening, Transport};
@@ -95,7 +95,7 @@ impl Transport<Images> for BedrockRuntime {
                     Opened::new(futures::stream::iter([Ok(response.body.into_inner())]))
                         .with_request_id(request_id)
                 }
-                Err(sdk_error) => Opened::failed(AwsSdkInvokeModelError(sdk_error).into()),
+                Err(error) => Opened::failed(sdk_error(error)),
             })
         })
     }

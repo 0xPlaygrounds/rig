@@ -348,29 +348,25 @@ async fn chat_sourced_history_replays_the_tool_name_not_the_identifier() {
                 ),
                 rig::message::Message::Assistant {
                     id: None,
-                    content: rig_core::NonEmpty::new(AssistantContent::ToolCall(
-                        rig::message::ToolCall {
-                            id: call_id.clone(),
-                            function: rig::message::ToolFunction {
-                                name: rig_core::message::ToolName::new("add").expect("tool name"),
-                                arguments: serde_json::json!({"x": 2, "y": 3}),
-                            },
-                            signature: None,
-                            additional_params: None,
+                    content: vec![AssistantContent::ToolCall(rig::message::ToolCall {
+                        id: call_id.clone(),
+                        function: rig::message::ToolFunction {
+                            name: rig_core::message::ToolName::new("add").expect("tool name"),
+                            arguments: serde_json::json!({"x": 2, "y": 3}),
                         },
-                    )),
+                        signature: None,
+                        additional_params: None,
+                    })],
                 },
                 rig::message::Message::User {
-                    content: rig_core::NonEmpty::new(rig::message::UserContent::ToolResult(
+                    content: vec![rig::message::UserContent::ToolResult(
                         rig::message::ToolResult {
                             call: call_id,
                             name: rig_core::message::ToolName::new("add".to_owned())
                                 .expect("tool name"),
-                            content: rig_core::NonEmpty::new(
-                                rig::message::ToolResultContent::text("5"),
-                            ),
+                            content: vec![rig::message::ToolResultContent::text("5")],
                         },
-                    )),
+                    )],
                 },
             ];
             let request =

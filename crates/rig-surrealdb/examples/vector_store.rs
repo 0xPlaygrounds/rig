@@ -80,20 +80,23 @@ async fn main() -> Result<(), anyhow::Error> {
         return Err(anyhow::anyhow!("expected at least one result"));
     };
     anyhow::ensure!(
-        first_result.2.topic == "pasta carbonara",
+        first_result.document.topic == "pasta carbonara",
         "expected first result to be pasta carbonara, got {}",
-        first_result.2.topic
+        first_result.document.topic
     );
 
     println!("{} results for query: {}", results.len(), query);
-    for (distance, _id, doc) in results.iter() {
-        println!("Result distance {distance} for topic: {doc}");
+    for result in &results {
+        println!(
+            "Result distance {} for topic: {}",
+            result.score, result.document
+        );
     }
 
     let Some(second_result) = results.get(1) else {
         return Err(anyhow::anyhow!("expected at least two results"));
     };
-    let midpoint = (first_result.0 + second_result.0) / 2.0;
+    let midpoint = (first_result.score + second_result.score) / 2.0;
 
     println!(
         "Attempting vector search with cosine similarity threshold of {midpoint} and query: {query}"
@@ -116,13 +119,16 @@ async fn main() -> Result<(), anyhow::Error> {
         return Err(anyhow::anyhow!("expected one filtered result"));
     };
     anyhow::ensure!(
-        filtered_result.2.topic == "pasta carbonara",
+        filtered_result.document.topic == "pasta carbonara",
         "expected filtered result to be pasta carbonara, got {}",
-        filtered_result.2.topic
+        filtered_result.document.topic
     );
 
-    for (distance, _id, doc) in results.iter() {
-        println!("Result distance {distance} for topic: {doc}");
+    for result in &results {
+        println!(
+            "Result distance {} for topic: {}",
+            result.score, result.document
+        );
     }
 
     Ok(())

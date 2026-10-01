@@ -464,7 +464,7 @@ fn streamed_run_completes_a_tool_roundtrip() {
     run.tool_results(vec![UserContent::tool_result(
         CallId::from_wire("tc_1"),
         ToolName::new("add").expect("tool name"),
-        NonEmpty::new(ToolResultContent::text("2")),
+        vec![ToolResultContent::text("2")],
     )])
     .expect("tool_results should succeed");
 
@@ -486,19 +486,13 @@ fn streamed_run_completes_a_tool_roundtrip() {
     let AgentRunStep::Done(response) = run.next_step().expect("next_step") else {
         panic!("expected Done");
     };
-    assert_eq!(response.output, "done");
+    assert_eq!(response.output(), "done");
     assert_eq!(response.usage, usage);
     assert_eq!(response.completion_calls.len(), 2);
     assert_eq!(response.completion_calls[0].usage, usage);
     assert_eq!(response.completion_calls[1].usage, Usage::default());
     // prompt, assistant tool call, tool result, final assistant text
-    assert_eq!(
-        response
-            .messages
-            .expect("messages should be recorded")
-            .len(),
-        4
-    );
+    assert_eq!(response.messages.len(), 4);
 }
 
 #[test]
@@ -577,7 +571,7 @@ fn streamed_invalid_tool_call_stop_leaves_run_terminal() {
         .expect_err("stop should cancel the run");
     assert!(matches!(
         err,
-        PromptError::PromptCancelled { reason, .. } if reason == "operator stop"
+        PromptError::Cancelled { reason, .. } if reason == "operator stop"
     ));
 
     let err = run
@@ -585,7 +579,7 @@ fn streamed_invalid_tool_call_stop_leaves_run_terminal() {
         .expect_err("a stopped streamed run must remain terminal");
     assert!(matches!(
         err,
-        PromptError::PromptCancelled { reason, .. }
+        PromptError::Cancelled { reason, .. }
             if reason.contains("next_step called after the run already failed")
     ));
 }
@@ -628,10 +622,7 @@ fn streamed_invalid_tool_call_retry_cannot_emit_call_past_total_budget() {
     let err = run
         .next_step()
         .expect_err("retry must not emit a second model call");
-    assert!(matches!(
-        err,
-        PromptError::MaxTurnsError { max_turns: 1, .. }
-    ));
+    assert!(matches!(err, PromptError::MaxTurns { max_turns: 1, .. }));
     assert_eq!(run.turn(), 1);
 }
 
@@ -738,7 +729,7 @@ fn streamed_completion_call_record_requires_a_model_call() {
             serde_json::json!({}),
         )
         .expect_err("recording before any model call must be rejected");
-    assert!(matches!(err, PromptError::PromptCancelled { .. }));
+    assert!(matches!(err, PromptError::Cancelled { .. }));
 
     // The run stays drivable.
     run.next_step().expect("next_step should still succeed");
@@ -776,7 +767,7 @@ fn streamed_turn_without_a_recorded_completion_call_is_a_protocol_violation() {
         .streamed_turn(asm.finish(None, &response(vec![AssistantContent::text("done")])))
         .expect_err("a turn without its completion call recorded is refused");
     assert!(
-        matches!(&err, PromptError::PromptCancelled { reason, .. }
+        matches!(&err, PromptError::Cancelled { reason, .. }
             if reason.contains("record_streamed_completion_call")),
         "{err:?}"
     );
@@ -803,7 +794,7 @@ fn streamed_completion_call_is_recorded_once_per_turn() {
             serde_json::json!({}),
         )
         .expect_err("second record for the same turn must be rejected");
-    assert!(matches!(err, PromptError::PromptCancelled { .. }));
+    assert!(matches!(err, PromptError::Cancelled { .. }));
     assert_eq!(run.completion_calls().len(), 1);
 }
 
@@ -832,7 +823,7 @@ fn streamed_run_serde_round_trips_while_tools_pend() {
         .tool_results(vec![UserContent::tool_result(
             CallId::from_wire("tc_1"),
             ToolName::new("add").expect("tool name"),
-            NonEmpty::new(ToolResultContent::text("2")),
+            vec![ToolResultContent::text("2")],
         )])
         .expect("tool_results should succeed");
     assert!(matches!(
@@ -889,7 +880,7 @@ fn typed_namespaces_survive_pending_tool_checkpoints_and_completed_turn_reuse() 
                         UserContent::tool_result(
                             call.id.clone(),
                             ToolName::new("add").expect("tool name"),
-                            NonEmpty::new(ToolResultContent::text("2")),
+                            vec![ToolResultContent::text("2")],
                         )
                     })
                     .collect::<Vec<_>>();
@@ -935,4 +926,16 @@ fn a_partial_turn_carries_the_ended_reasoning_sealed_to_its_issuer() {
     );
     assert_eq!(partial.reasoning, vec![sealed]);
     assert_eq!(partial.text, None);
+}
+
+/// A partial turn that produced nothing is no assistant message.
+#[test]
+fn an_empty_partial_turn_is_no_assistant_message() {
+    let turn = PartialStreamedTurn {
+        message_id: None,
+        text: Some(String::new()),
+        reasoning: Vec::new(),
+        pending_tool_calls: Vec::new(),
+    };
+    assert_eq!(turn.assistant_message(None), None);
 }

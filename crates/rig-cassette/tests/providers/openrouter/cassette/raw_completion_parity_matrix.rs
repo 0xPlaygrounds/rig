@@ -108,15 +108,14 @@ async fn raw_reproduces_the_completion_it_rode_on() {
     chat::assert_native_matches_normalized(&second, &native, "the typed view of raw");
 
     // OpenRouter's own type is the gateway-aware escape hatch over the same
-    // document, and it is where the gateway's own finish-reason spelling
-    // survives — the shared type requires the word, the normalized response
-    // maps it away.
+    // document, and it is where the upstream's native finish-reason spelling
+    // survives; the normalized response maps it away.
     let typed = openrouter::CompletionResponse::deserialize(&second.raw)
         .expect("raw is OpenRouter's own completion response");
     assert_eq!(
-        typed.choices[0].finish_reason.as_deref(),
-        interactions[1].1["choices"][0]["finish_reason"].as_str(),
-        "the document keeps the gateway's own finish-reason spelling"
+        typed.openai.choices[0].native_finish_reason.as_deref(),
+        interactions[1].1["choices"][0]["native_finish_reason"].as_str(),
+        "the document keeps the upstream's own finish-reason spelling"
     );
 
     // Where the wire makes the two turns equal, the two turns agree.

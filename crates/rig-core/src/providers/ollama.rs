@@ -218,18 +218,13 @@ impl TryFrom<(&str, CompletionRequest)> for OllamaCompletionRequest {
         if req.tool_choice.is_some() {
             tracing::warn!("WARNING: `tool_choice` not supported for Ollama");
         }
-        let mut partial_history = vec![];
-        partial_history.extend(chat_history);
-
-        let mut full_history: Vec<Message> = Vec::new();
-        full_history.extend(
-            partial_history
-                .into_iter()
-                .map(message::Message::try_into)
-                .collect::<Result<Vec<Vec<Message>>, _>>()?
-                .into_iter()
-                .flatten(),
-        );
+        let full_history = chat_history
+            .into_iter()
+            .map(message::Message::try_into)
+            .collect::<Result<Vec<Vec<Message>>, _>>()?
+            .into_iter()
+            .flatten()
+            .collect();
 
         let mut think: Option<Think> = None;
         let mut keep_alive: Option<String> = None;
@@ -363,12 +358,6 @@ pub struct OllamaDecoder<'id> {
 }
 
 impl<'id> OllamaDecoder<'id> {
-    fn close_text(&mut self, out: &mut Out<'id, Completion>) {
-        if let Some(part) = self.text.take() {
-            out.close_text(part);
-        }
-    }
-
     /// Write a record's content and calls, and end the reply when it is
     /// `done`.
     fn interpret_record(
@@ -397,20 +386,19 @@ impl<'id> OllamaDecoder<'id> {
                 _ => (thinking, content),
             };
             if let Some(reasoning) = reasoning.filter(|reasoning| !reasoning.is_empty()) {
-                self.close_text(&mut out);
+                out.close_open_text(&mut self.text);
                 self.thoughts.fragment(&mut out, &reasoning);
             }
             if !text.is_empty() || !tool_calls.is_empty() {
                 self.thoughts.boundary();
             }
             if !text.is_empty() {
-                let part = self.text.get_or_insert_with(|| out.text());
-                out.push_text(part, &text);
+                out.extend_text(&mut self.text, &text);
             }
             // An id-less call gets an id rig issues, never the tool name:
             // only the daemon's ids are provider-issued.
             for tool_call in tool_calls {
-                self.close_text(&mut out);
+                out.close_open_text(&mut self.text);
                 let Ok(name) = ToolName::new(tool_call.function.name) else {
                     continue;
                 };
@@ -440,7 +428,7 @@ impl<'id> OllamaDecoder<'id> {
             eval_duration: response.eval_duration,
             done_reason: response.done_reason,
         };
-        self.close_text(&mut out);
+        out.close_open_text(&mut self.text);
         self.thoughts.close(&mut out, None);
         out.raw(serde_json::to_value(&native)?);
         Ok(out.end(finish_of(native)))
