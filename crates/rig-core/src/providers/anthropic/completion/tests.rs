@@ -7,6 +7,43 @@ use crate::wire::WireFrame;
 use serde_json::json;
 use serde_path_to_error::deserialize;
 
+/// A Messages block Rig does not model, sealed to Anthropic.
+fn native_block(block: serde_json::Value) -> message::AssistantContent {
+    message::AssistantContent::Native(message::Sealed::new(
+        "anthropic",
+        Native::verbatim(MESSAGES, block),
+    ))
+}
+
+/// The Messages block a native part holds.
+fn native_value(content: &message::AssistantContent) -> Option<&serde_json::Value> {
+    match content {
+        message::AssistantContent::Native(native) => native
+            .open(native.issuer())
+            .filter(|native| native.is(&MESSAGES))
+            .map(Native::value),
+        _ => None,
+    }
+}
+
+/// Text whose Messages residue, sealed to Anthropic, is `residue`.
+fn text_with_residue(text: &str, residue: serde_json::Value) -> message::Text {
+    message::Text {
+        text: text.into(),
+        additional_params: None,
+        native: Some(message::Sealed::new(
+            "anthropic",
+            Native::verbatim(MESSAGES, residue),
+        )),
+    }
+}
+
+/// `message` on the wire, replaying what Anthropic issued.
+fn replayed(message: message::Message) -> Message {
+    Message::from_message(message, &[message::Issuer::from_static("anthropic")])
+        .expect("message converts")
+}
+
 /// The one-turn request every reply below is folded against.
 fn hello_request() -> CompletionRequest {
     completion_request_with_history(vec![message::Message::user("hello")], None)
@@ -680,38 +717,22 @@ fn opus_4_8_preserves_system_message_after_assistant_server_tool_result() {
             message::Message::Assistant {
                 id: None,
                 content: vec![
-                    message::AssistantContent::Text(message::Text {
-                        text: String::new(),
-                        additional_params: crate::message::AdditionalParams::try_from_value(
-                            json!({
-                                ANTHROPIC_RAW_CONTENT_KEY: {
-                                    "type": "server_tool_use",
-                                    "id": "srvtoolu_01",
-                                    "name": "web_search",
-                                    "input": {
-                                        "query": "clear daytime sky color"
-                                    }
-                                }
-                            }),
-                        )
-                        .expect("object params"),
-                    }),
-                    message::AssistantContent::Text(message::Text {
-                        text: String::new(),
-                        additional_params: crate::message::AdditionalParams::try_from_value(
-                            json!({
-                                ANTHROPIC_RAW_CONTENT_KEY: {
-                                    "type": "web_search_tool_result",
-                                    "tool_use_id": "srvtoolu_01",
-                                    "content": {
-                                        "type": "web_search_tool_result_error",
-                                        "error_code": "unavailable"
-                                    }
-                                }
-                            }),
-                        )
-                        .expect("object params"),
-                    }),
+                    native_block(json!({
+                        "type": "server_tool_use",
+                        "id": "srvtoolu_01",
+                        "name": "web_search",
+                        "input": {
+                            "query": "clear daytime sky color"
+                        }
+                    })),
+                    native_block(json!({
+                        "type": "web_search_tool_result",
+                        "tool_use_id": "srvtoolu_01",
+                        "content": {
+                            "type": "web_search_tool_result_error",
+                            "error_code": "unavailable"
+                        }
+                    })),
                 ],
             },
             message::Message::System {
@@ -762,6 +783,7 @@ fn foreign_annotated_empty_text_produces_no_anthropic_block() {
             "openai_responses": {"annotations": [{"type": "url_citation"}]}
         }))
         .expect("object params"),
+        native: None,
     });
     assert_eq!(
         anthropic_content_from_assistant_content(foreign_annotated_empty.clone(), &[])
@@ -791,20 +813,14 @@ fn opus_4_8_preserves_system_message_after_assistant_server_tool_use() {
         vec![
             message::Message::Assistant {
                 id: None,
-                content: vec![message::AssistantContent::Text(message::Text {
-                    text: String::new(),
-                    additional_params: crate::message::AdditionalParams::try_from_value(json!({
-                        ANTHROPIC_RAW_CONTENT_KEY: {
-                            "type": "server_tool_use",
-                            "id": "srvtoolu_01",
-                            "name": "web_search",
-                            "input": {
-                                "query": "clear daytime sky color"
-                            }
-                        }
-                    }))
-                    .expect("object params"),
-                })],
+                content: vec![native_block(json!({
+                    "type": "server_tool_use",
+                    "id": "srvtoolu_01",
+                    "name": "web_search",
+                    "input": {
+                        "query": "clear daytime sky color"
+                    }
+                }))],
             },
             message::Message::System {
                 content: "For the rest of this conversation, answer in Spanish.".to_string(),
@@ -3087,27 +3103,19 @@ fn web_search_response_preserves_raw_blocks_and_citations() {
     assert_eq!(answer_text, "Claude Shannon was born on April 30, 1916.");
 
     let items = converted.choice.iter().collect::<Vec<_>>();
-    let message::AssistantContent::Text(server_tool_use) = items[0] else {
-        panic!("expected raw server_tool_use metadata");
-    };
-    assert_eq!(server_tool_use.text, "");
-    assert_eq!(
-        server_tool_use.additional_params.as_ref().unwrap()[ANTHROPIC_RAW_CONTENT_KEY]["type"],
-        "server_tool_use"
-    );
+    let server_tool_use = native_value(items[0]).expect("server_tool_use is a native item");
+    assert_eq!(server_tool_use, &value["content"][0]);
 
-    let message::AssistantContent::Text(web_search_result) = items[1] else {
-        panic!("expected raw web_search_tool_result metadata");
-    };
-    assert_eq!(
-        web_search_result.additional_params.as_ref().unwrap()[ANTHROPIC_RAW_CONTENT_KEY]["content"]
-            [0]["encrypted_content"],
-        "encrypted-content"
-    );
+    let web_search_result = native_value(items[1]).expect("the result is a native item");
+    assert_eq!(web_search_result, &value["content"][1]);
 
     let message::AssistantContent::Text(answer) = items[2] else {
         panic!("expected text answer");
     };
+    assert!(
+        answer.additional_params.is_none(),
+        "citations ride the typed residue, not a tunnel key"
+    );
     let citations = anthropic_citations(answer).unwrap();
     assert!(matches!(
         citations.first(),
@@ -3115,29 +3123,15 @@ fn web_search_response_preserves_raw_blocks_and_citations() {
             if citation.encrypted_index == "encrypted-index"
     ));
 
-    let round_trip: Message = message::Message::Assistant {
+    let round_trip = replayed(message::Message::Assistant {
         id: converted.message_id.clone(),
         content: converted.choice,
-    }
-    .try_into()
-    .unwrap();
-
-    let round_trip_items = round_trip.content.iter().collect::<Vec<_>>();
-    assert!(matches!(
-        round_trip_items.first(),
-        Some(Content::ServerToolUse { id, name, input })
-            if id == "srvtoolu_01"
-                && name == "web_search"
-                && input["query"] == "claude shannon birth date"
-    ));
-    assert!(matches!(
-        round_trip_items.get(1),
-        Some(Content::WebSearchToolResult {
-            tool_use_id,
-            content
-        }) if tool_use_id == "srvtoolu_01"
-            && content[0]["encrypted_content"] == "encrypted-content"
-    ));
+    });
+    assert_eq!(
+        serde_json::to_value(&round_trip.content).unwrap(),
+        value["content"],
+        "the reply replays to Anthropic block for block"
+    );
 }
 
 #[test]
@@ -3166,34 +3160,21 @@ fn web_search_tool_result_error_object_is_preserved_raw() {
         serde_json::from_value(value.clone()).expect("the body parses into the wire type");
     assert_eq!(typed.content.len(), 1);
     let converted = fold_reply(&value).expect("the reply folds");
-    let Some(message::AssistantContent::Text(web_search_result)) = converted.choice.first() else {
-        panic!("expected raw web_search_tool_result metadata");
-    };
+    let raw_content = converted
+        .choice
+        .first()
+        .and_then(native_value)
+        .expect("the result is a native item");
+    assert_eq!(raw_content, &value["content"][0]);
 
-    let raw_content =
-        &web_search_result.additional_params.as_ref().unwrap()[ANTHROPIC_RAW_CONTENT_KEY];
-    assert_eq!(raw_content["type"], "web_search_tool_result");
-    assert_eq!(raw_content["content"]["error_code"], "max_uses_exceeded");
-    assert_eq!(
-        raw_content["content"]["type"],
-        "web_search_tool_result_error"
-    );
-
-    let round_trip: Message = message::Message::Assistant {
+    let round_trip = replayed(message::Message::Assistant {
         id: converted.message_id,
         content: converted.choice,
-    }
-    .try_into()
-    .unwrap();
-
-    assert!(matches!(
-        round_trip.content.first(),
-        Some(Content::WebSearchToolResult {
-            tool_use_id,
-            content
-        }) if tool_use_id == "srvtoolu_01"
-            && content["error_code"] == "max_uses_exceeded"
-    ));
+    });
+    assert_eq!(
+        serde_json::to_value(&round_trip.content).unwrap(),
+        value["content"]
+    );
 }
 
 #[test]
@@ -3212,12 +3193,9 @@ fn code_execution_tool_result_variants_deserialize() {
     .unwrap();
     assert!(matches!(
         normal,
-        Content::CodeExecutionToolResult {
-            ref tool_use_id,
-            ref content
-        } if tool_use_id == "srvtoolu_normal"
-            && content["type"] == "code_execution_result"
-            && content["stdout"] == "42\n"
+        Content::Native(ref block) if block.kind() == Some("code_execution_tool_result")
+            && block.0["tool_use_id"] == "srvtoolu_normal"
+            && block.0["content"]["stdout"] == "42\n"
     ));
 
     let encrypted: Content = serde_json::from_value(json!({
@@ -3234,12 +3212,9 @@ fn code_execution_tool_result_variants_deserialize() {
     .unwrap();
     assert!(matches!(
         encrypted,
-        Content::CodeExecutionToolResult {
-            ref tool_use_id,
-            ref content
-        } if tool_use_id == "srvtoolu_encrypted"
-            && content["type"] == "encrypted_code_execution_result"
-            && content["encrypted_stdout"] == "encrypted-output"
+        Content::Native(ref block) if block.0["tool_use_id"] == "srvtoolu_encrypted"
+            && block.0["content"]["type"] == "encrypted_code_execution_result"
+            && block.0["content"]["encrypted_stdout"] == "encrypted-output"
     ));
 }
 
@@ -3273,30 +3248,19 @@ fn code_execution_tool_result_is_preserved_and_round_trips() {
         serde_json::from_value(value.clone()).expect("the body parses into the wire type");
     assert_eq!(typed.content.len(), 1);
     let converted = fold_reply(&value).expect("the reply folds");
-    let Some(message::AssistantContent::Text(code_execution_result)) = converted.choice.first()
-    else {
-        panic!("expected raw code_execution_tool_result metadata");
-    };
     assert_eq!(
-        code_execution_result.additional_params.as_ref().unwrap()[ANTHROPIC_RAW_CONTENT_KEY],
-        raw_block
+        converted.choice.first().and_then(native_value),
+        Some(&raw_block)
     );
 
-    let round_trip: Message = message::Message::Assistant {
+    let round_trip = replayed(message::Message::Assistant {
         id: converted.message_id,
         content: converted.choice,
-    }
-    .try_into()
-    .unwrap();
-    assert!(matches!(
-        round_trip.content.first(),
-        Some(Content::CodeExecutionToolResult {
-            tool_use_id,
-            content
-        }) if tool_use_id == "srvtoolu_01"
-            && content["type"] == "code_execution_result"
-            && content["stdout"] == "42\n"
-    ));
+    });
+    assert_eq!(
+        serde_json::to_value(&round_trip.content).unwrap(),
+        json!([raw_block])
+    );
 }
 
 #[test]
@@ -3356,10 +3320,10 @@ fn content_block_location_citation_roundtrips() {
 }
 
 #[test]
-fn anthropic_citations_extracts_from_additional_params() {
-    let text = message::Text {
-        text: "the grass is green".into(),
-        additional_params: crate::message::AdditionalParams::try_from_value(json!({
+fn anthropic_citations_extracts_from_native_residue() {
+    let text = text_with_residue(
+        "the grass is green",
+        json!({
             "citations": [{
                 "type": "char_location",
                 "cited_text": "The grass is green.",
@@ -3367,9 +3331,8 @@ fn anthropic_citations_extracts_from_additional_params() {
                 "start_char_index": 0,
                 "end_char_index": 20
             }]
-        }))
-        .expect("object params"),
-    };
+        }),
+    );
     let citations = anthropic_citations(&text).unwrap();
     assert_eq!(citations.len(), 1);
 }
@@ -3384,9 +3347,9 @@ fn anthropic_citations_returns_empty_when_absent() {
 fn assistant_text_citations_survive_anthropic_request_conversion() {
     let assistant = message::Message::Assistant {
         id: None,
-        content: vec![message::AssistantContent::Text(message::Text {
-            text: "the grass is green".into(),
-            additional_params: crate::message::AdditionalParams::try_from_value(json!({
+        content: vec![message::AssistantContent::Text(text_with_residue(
+            "the grass is green",
+            json!({
                 "citations": [{
                     "type": "char_location",
                     "cited_text": "The grass is green.",
@@ -3394,12 +3357,22 @@ fn assistant_text_citations_survive_anthropic_request_conversion() {
                     "start_char_index": 0,
                     "end_char_index": 20
                 }]
-            }))
-            .expect("object params"),
-        })],
+            }),
+        ))],
     };
 
-    let converted: Message = assistant.try_into().unwrap();
+    // Another Messages dialect's service did not issue them: they stay home.
+    let foreign = Message::from_message(
+        assistant.clone(),
+        &[message::Issuer::from_static("minimax")],
+    )
+    .unwrap();
+    assert!(matches!(
+        foreign.content.first(),
+        Some(Content::Text { citations, .. }) if citations.is_empty()
+    ));
+
+    let converted = replayed(assistant);
     let Some(Content::Text {
         citations, text, ..
     }) = converted.content.first()
@@ -3422,18 +3395,20 @@ fn assistant_text_citations_survive_anthropic_request_conversion() {
 
 #[test]
 fn assistant_text_invalid_known_citations_are_rejected_for_anthropic_request_conversion() {
-    let text = message::AssistantContent::Text(message::Text {
-        text: "bad citation".into(),
-        additional_params: crate::message::AdditionalParams::try_from_value(json!({
+    let text = message::AssistantContent::Text(text_with_residue(
+        "bad citation",
+        json!({
             "citations": [{
                 "type": "char_location",
                 "cited_text": "bad"
             }]
-        }))
-        .expect("object params"),
-    });
+        }),
+    ));
 
-    let result = anthropic_content_from_assistant_content(text, &[]);
+    let result = anthropic_content_from_assistant_content(
+        text,
+        &[message::Issuer::from_static("anthropic")],
+    );
 
     assert!(
         result.is_err(),

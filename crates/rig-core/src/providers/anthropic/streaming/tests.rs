@@ -16,6 +16,28 @@ fn adapter() -> MessagesDecoder<'static> {
     MessagesDecoder::new()
 }
 
+/// A `content_block_start` for a block this decoder does not model.
+fn native_start(index: usize, block: serde_json::Value) -> StreamingEvent {
+    let serde_json::Value::Object(block) = block else {
+        panic!("a content block is an object");
+    };
+    StreamingEvent::ContentBlockStart {
+        index,
+        content_block: Content::Native(NativeBlock(block)),
+    }
+}
+
+/// The Messages block a native part holds.
+fn native_of(content: &AssistantContent) -> Option<&serde_json::Value> {
+    match content {
+        AssistantContent::Native(native) => native
+            .open(native.issuer())
+            .filter(|native| native.is(&MESSAGES))
+            .map(Native::value),
+        _ => None,
+    }
+}
+
 /// Decode `events` through one decoder as one reply, then EOF.
 fn decode(events: impl IntoIterator<Item = StreamingEvent>) -> Decoded<Completion> {
     decode_events!(MessagesDecoder::new(), "anthropic", events)
@@ -877,15 +899,11 @@ fn test_web_search_content_block_start_events_deserialize() {
     assert!(matches!(
         event,
         StreamingEvent::ContentBlockStart {
-            content_block: Content::ServerToolUse {
-                ref id,
-                ref name,
-                ref input
-            },
+            content_block: Content::Native(ref block),
             ..
-        } if id == "srvtoolu_01"
-            && name == "web_search"
-            && input["query"] == "claude shannon birth date"
+        } if block.kind() == Some("server_tool_use")
+            && block.0["id"] == "srvtoolu_01"
+            && block.0["input"]["query"] == "claude shannon birth date"
     ));
 
     let web_search_tool_result = r#"{
@@ -906,13 +924,10 @@ fn test_web_search_content_block_start_events_deserialize() {
     assert!(matches!(
         event,
         StreamingEvent::ContentBlockStart {
-            content_block: Content::WebSearchToolResult {
-                ref tool_use_id,
-                ref content
-            },
+            content_block: Content::Native(ref block),
             ..
-        } if tool_use_id == "srvtoolu_01"
-            && content[0]["encrypted_content"] == "encrypted-content"
+        } if block.0["tool_use_id"] == "srvtoolu_01"
+            && block.0["content"][0]["encrypted_content"] == "encrypted-content"
     ));
 }
 
@@ -936,46 +951,41 @@ fn test_code_execution_tool_result_block_is_preserved() {
     .unwrap();
     let decoded = decode([event, stop(1)]);
     let ended = decoded.ended();
-    let [AssistantContent::Text(text)] = ended.as_slice() else {
-        panic!("the result block is a text part: {:?}", decoded.events());
+    let [native] = ended.as_slice() else {
+        panic!("the result block is one part: {:?}", decoded.events());
     };
-    let additional_params = text.additional_params.as_ref().expect("its raw content");
-    assert_eq!(
-        additional_params[crate::providers::anthropic::completion::ANTHROPIC_RAW_CONTENT_KEY]["type"],
-        "code_execution_tool_result"
-    );
-    assert_eq!(
-        additional_params[crate::providers::anthropic::completion::ANTHROPIC_RAW_CONTENT_KEY]["content"]
-            ["stdout"],
-        "42\n"
-    );
+    let block = native_of(native).expect("the result block is a native item");
+    assert_eq!(block["type"], "code_execution_tool_result");
+    assert_eq!(block["content"]["stdout"], "42\n");
 }
 
 #[test]
 fn test_streaming_web_search_blocks_are_preserved_on_final_choice() {
     let decoded = decode([
-        StreamingEvent::ContentBlockStart {
-            index: 0,
-            content_block: Content::ServerToolUse {
-                id: "srvtoolu_01".to_string(),
-                name: "web_search".to_string(),
-                input: serde_json::Value::Null,
-            },
-        },
+        native_start(
+            0,
+            serde_json::json!({
+                "type": "server_tool_use",
+                "id": "srvtoolu_01",
+                "name": "web_search",
+                "input": {}
+            }),
+        ),
         input_json(0, r#"{"query":"claude shannon birth date"}"#),
         stop(0),
-        StreamingEvent::ContentBlockStart {
-            index: 1,
-            content_block: Content::WebSearchToolResult {
-                tool_use_id: "srvtoolu_01".to_string(),
-                content: serde_json::json!([{
+        native_start(
+            1,
+            serde_json::json!({
+                "type": "web_search_tool_result",
+                "tool_use_id": "srvtoolu_01",
+                "content": [{
                     "type": "web_search_result",
                     "url": "https://example.com/shannon",
                     "title": "Claude Shannon",
                     "encrypted_content": "encrypted-content"
-                }]),
-            },
-        },
+                }]
+            }),
+        ),
         StreamingEvent::ContentBlockStart {
             index: 2,
             content_block: Content::Text {
@@ -1015,27 +1025,22 @@ fn test_streaming_web_search_blocks_are_preserved_on_final_choice() {
         "provider-owned web-search blocks must not become Rig client tool calls"
     );
 
-    let Some(crate::message::AssistantContent::Text(server_tool_use)) = choice_items.first() else {
-        panic!("expected raw server_tool_use metadata");
-    };
+    let server_tool_use = choice_items
+        .first()
+        .and_then(native_of)
+        .expect("server_tool_use is a native item");
+    assert_eq!(server_tool_use["type"], "server_tool_use");
     assert_eq!(
-        server_tool_use.additional_params.as_ref().unwrap()
-            [crate::providers::anthropic::completion::ANTHROPIC_RAW_CONTENT_KEY]["type"],
-        "server_tool_use"
-    );
-    assert_eq!(
-        server_tool_use.additional_params.as_ref().unwrap()
-            [crate::providers::anthropic::completion::ANTHROPIC_RAW_CONTENT_KEY]["input"]["query"],
-        "claude shannon birth date"
+        server_tool_use["input"]["query"], "claude shannon birth date",
+        "streamed input replaces the opening input"
     );
 
-    let Some(crate::message::AssistantContent::Text(web_search_result)) = choice_items.get(1)
-    else {
-        panic!("expected raw web_search_tool_result metadata");
-    };
+    let web_search_result = choice_items
+        .get(1)
+        .and_then(native_of)
+        .expect("the result is a native item");
     assert_eq!(
-        web_search_result.additional_params.as_ref().unwrap()
-            [crate::providers::anthropic::completion::ANTHROPIC_RAW_CONTENT_KEY]["content"][0]["encrypted_content"],
+        web_search_result["content"][0]["encrypted_content"],
         "encrypted-content"
     );
 
@@ -1075,8 +1080,13 @@ fn test_handle_citations_delta_event_preserves_metadata() {
     let [AssistantContent::Text(text)] = ended.as_slice() else {
         panic!("the citation rides a text part: {:?}", decoded.events());
     };
-    let additional_params = text.additional_params.as_ref().expect("its citations");
-    assert_eq!(additional_params["citations"][0]["type"], "char_location");
+    assert!(text.additional_params.is_none());
+    let citations =
+        crate::providers::anthropic::completion::anthropic_citations(text).expect("its citations");
+    assert!(matches!(
+        citations.first(),
+        Some(crate::providers::anthropic::completion::Citation::CharLocation(_))
+    ));
 }
 
 #[test]
@@ -1837,6 +1847,265 @@ mod projection {
             Some(&AdapterEvent::Finished {
                 ending: AdapterEnding::Terminal
             })
+        );
+    }
+}
+
+/// Blocks no version of this crate models, as a newer API would send them:
+/// kept whole in history, in place, the same on both transports, and
+/// replayed only to the dialect whose service issued them.
+mod native_items {
+    use super::super::super::completion::CLAUDE_OPUS_4_8;
+    use crate::completion::{CompletionRequest, CompletionResponse};
+    use crate::message::{AssistantContent, Message};
+    use crate::providers::anthropic::wire::{AnthropicConfig, MINIMAX};
+    use crate::test_utils::{decode_reply, json_body};
+    use crate::wire::{Mode, Wire, WireFrame};
+    use serde_json::{Value, json};
+
+    /// A hosted call whose input streams, of a type this crate never heard of.
+    fn novel_call() -> Value {
+        json!({
+            "type": "mcp_tool_use",
+            "id": "mcptoolu_01",
+            "name": "lookup",
+            "server_name": "docs",
+            "input": {"query": "sky colour"}
+        })
+    }
+
+    /// Its result, carrying fields no Rig type names.
+    fn novel_result() -> Value {
+        json!({
+            "type": "frobnicate_tool_result",
+            "tool_use_id": "mcptoolu_01",
+            "caller": {"type": "direct"},
+            "content": {"type": "frobnicate_result", "stdout": "blue", "ratio": 0.25}
+        })
+    }
+
+    fn cited_text() -> Value {
+        json!({
+            "type": "text",
+            "text": "The sky is blue.",
+            "citations": [{
+                "type": "char_location",
+                "cited_text": "Sky: blue.",
+                "document_index": 0,
+                "start_char_index": 0,
+                "end_char_index": 10
+            }]
+        })
+    }
+
+    fn content() -> Value {
+        json!([{"type": "text", "text": "Checking."}, novel_call(), novel_result(), cited_text()])
+    }
+
+    fn usage() -> Value {
+        json!({"input_tokens": 10, "output_tokens": 5})
+    }
+
+    fn whole() -> Value {
+        json!({
+            "type": "message",
+            "id": "msg_native",
+            "model": CLAUDE_OPUS_4_8,
+            "role": "assistant",
+            "stop_reason": "end_turn",
+            "stop_sequence": null,
+            "usage": usage(),
+            "content": content()
+        })
+    }
+
+    /// The same turn as the API streams it: the call's input arrives as
+    /// `input_json_delta` fragments, the citation as a `citations_delta`.
+    fn streamed() -> Vec<WireFrame> {
+        let mut call = novel_call();
+        call["input"] = json!({});
+        let mut result = novel_result();
+        let mut text = cited_text();
+        text["text"] = json!("");
+        let citation = text["citations"][0].take();
+        text["citations"] = json!([]);
+        let frames = [
+            json!({"type": "message_start", "message": {
+                "id": "msg_native", "model": CLAUDE_OPUS_4_8, "role": "assistant",
+                "content": [], "stop_reason": null, "stop_sequence": null, "usage": usage()
+            }}),
+            json!({"type": "content_block_start", "index": 0, "content_block": {"type": "text", "text": ""}}),
+            json!({"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": "Checking."}}),
+            json!({"type": "content_block_stop", "index": 0}),
+            json!({"type": "content_block_start", "index": 1, "content_block": call}),
+            json!({"type": "content_block_delta", "index": 1, "delta": {"type": "input_json_delta", "partial_json": "{\"query\": "}}),
+            json!({"type": "content_block_delta", "index": 1, "delta": {"type": "input_json_delta", "partial_json": "\"sky colour\"}"}}),
+            json!({"type": "content_block_stop", "index": 1}),
+            json!({"type": "content_block_start", "index": 2, "content_block": result.take()}),
+            json!({"type": "content_block_stop", "index": 2}),
+            json!({"type": "content_block_start", "index": 3, "content_block": text}),
+            json!({"type": "content_block_delta", "index": 3, "delta": {"type": "text_delta", "text": "The sky is blue."}}),
+            json!({"type": "content_block_delta", "index": 3, "delta": {"type": "citations_delta", "citation": citation}}),
+            json!({"type": "content_block_stop", "index": 3}),
+            json!({"type": "message_delta", "delta": {"stop_reason": "end_turn", "stop_sequence": null}, "usage": {"output_tokens": 5}}),
+            json!({"type": "message_stop"}),
+        ];
+        frames
+            .into_iter()
+            .map(|frame| WireFrame::Text(frame.to_string()))
+            .collect()
+    }
+
+    fn request() -> CompletionRequest {
+        CompletionRequest::new("What colour is the sky?").max_tokens(64)
+    }
+
+    fn decoded(mode: Mode) -> CompletionResponse {
+        let wire = AnthropicConfig::new("test-key").completion(CLAUDE_OPUS_4_8);
+        let frames = match mode {
+            Mode::Unary => vec![WireFrame::Text(whole().to_string())],
+            Mode::Streaming => streamed(),
+        };
+        decode_reply(&wire, &request(), mode, frames, Value::Null).expect("the reply decodes")
+    }
+
+    /// The assistant `content` a follow-up to `history` sends over `wire`.
+    fn replayed<W>(wire: &W, history: &CompletionResponse) -> Vec<Value>
+    where
+        W: Wire<Op = crate::operation::Completion, Payload = crate::wire::Encoded>,
+    {
+        let follow_up = CompletionRequest::new("And at night?")
+            .messages([
+                Message::user("What colour is the sky?"),
+                history.message().expect("the reply has content"),
+            ])
+            .max_tokens(64);
+        let body = json_body(
+            &wire
+                .encode(follow_up, Mode::Unary)
+                .expect("encodes")
+                .request,
+        );
+        body["messages"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter(|message| message["role"] == "assistant")
+            .flat_map(|message| message["content"].as_array().cloned().unwrap_or_default())
+            .collect()
+    }
+
+    #[test]
+    fn a_new_block_type_is_kept_in_place_on_both_transports() {
+        let unary = decoded(Mode::Unary);
+        let streamed = decoded(Mode::Streaming);
+        assert_eq!(
+            unary.choice, streamed.choice,
+            "one history whatever the transport"
+        );
+
+        let kinds: Vec<&str> = unary
+            .choice
+            .iter()
+            .map(|part| match part {
+                AssistantContent::Text(_) => "text",
+                AssistantContent::Native(_) => "native",
+                _ => "other",
+            })
+            .collect();
+        assert_eq!(kinds, ["text", "native", "native", "text"]);
+        let AssistantContent::Native(call) = &unary.choice[1] else {
+            unreachable!("checked above");
+        };
+        assert_eq!(call.issuer().as_str(), "anthropic");
+        assert_eq!(
+            call.open(call.issuer()).map(|native| native.value()),
+            Some(&novel_call()),
+            "the streamed input is assembled into the block"
+        );
+        let AssistantContent::Text(text) = &unary.choice[3] else {
+            unreachable!("checked above");
+        };
+        assert!(text.additional_params.is_none(), "no tunnel key");
+        assert_eq!(
+            crate::providers::anthropic::completion::anthropic_citations(text)
+                .expect("typed citations")
+                .len(),
+            1
+        );
+    }
+
+    #[test]
+    fn the_same_dialect_replays_every_block_verbatim_and_in_place() {
+        let wire = AnthropicConfig::new("test-key").completion(CLAUDE_OPUS_4_8);
+        for mode in [Mode::Unary, Mode::Streaming] {
+            assert_eq!(
+                Value::Array(replayed(&wire, &decoded(mode))),
+                content(),
+                "{mode:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn another_service_or_format_replays_none_of_it() {
+        let history = decoded(Mode::Streaming);
+        // The same format, another service: its ids mean nothing there.
+        let minimax = AnthropicConfig::with_key(&MINIMAX, "test-key").completion("MiniMax-M2");
+        assert_eq!(
+            Value::Array(replayed(&minimax, &history)),
+            json!([
+                {"type": "text", "text": "Checking."},
+                {"type": "text", "text": "The sky is blue."}
+            ])
+        );
+        // Another format: Responses sends the text and nothing native.
+        let responses =
+            crate::providers::openai::OpenAIConfig::new("test-key").responses("gpt-5.4");
+        let follow_up = CompletionRequest::new("And at night?").messages([
+            Message::user("What colour is the sky?"),
+            history.message().expect("the reply has content"),
+        ]);
+        let body = json_body(
+            &responses
+                .encode(follow_up, Mode::Unary)
+                .expect("encodes")
+                .request,
+        );
+        let input = body["input"].to_string();
+        for absent in ["mcp_tool_use", "frobnicate", "citations", "char_location"] {
+            assert!(!input.contains(absent), "{absent} leaked: {input}");
+        }
+        assert!(input.contains("The sky is blue."));
+    }
+
+    #[test]
+    fn a_turn_of_only_foreign_items_is_left_out() {
+        let history = decoded(Mode::Unary);
+        let natives_only = Message::Assistant {
+            id: None,
+            content: history
+                .choice
+                .into_iter()
+                .filter(|part| matches!(part, AssistantContent::Native(_)))
+                .collect(),
+        };
+        let minimax = AnthropicConfig::with_key(&MINIMAX, "test-key").completion("MiniMax-M2");
+        let request = CompletionRequest::new("Go on.")
+            .messages([Message::user("Search."), natives_only])
+            .max_tokens(64);
+        let body = json_body(
+            &minimax
+                .encode(request, Mode::Unary)
+                .expect("encodes")
+                .request,
+        );
+        assert_eq!(
+            body["messages"]
+                .as_array()
+                .map(|messages| messages.iter().all(|message| message["role"] == "user")),
+            Some(true),
+            "no empty assistant turn reaches the wire: {body}"
         );
     }
 }

@@ -4,7 +4,6 @@ use rig::completion::{
     AssistantContent, CompletionResponse as RigCompletionResponse, Document, Message,
     ProviderToolDefinition,
 };
-use rig::message::Text;
 use rig::providers::anthropic::completion::{CLAUDE_OPUS_4_8, CompletionResponse, Content};
 use serde::Deserialize;
 use serde_json::Value;
@@ -204,12 +203,7 @@ async fn documents_keep_leading_system_message_top_level() {
 fn server_tool_assistant_message_from_response(content: Vec<AssistantContent>) -> Message {
     let raw_blocks = content
         .into_iter()
-        .filter_map(|content| match content {
-            AssistantContent::Text(text) if anthropic_raw_content_type(&text).is_some() => {
-                Some(AssistantContent::Text(text))
-            }
-            _ => None,
-        })
+        .filter(|content| content_raw_type(content).is_some())
         .collect::<Vec<_>>();
 
     assert!(
@@ -231,19 +225,15 @@ fn server_tool_assistant_message_from_response(content: Vec<AssistantContent>) -
     }
 }
 
+/// The type of the Messages block rig kept as a native item.
 fn content_raw_type(content: &AssistantContent) -> Option<&str> {
-    let AssistantContent::Text(text) = content else {
+    let AssistantContent::Native(native) = content else {
         return None;
     };
-
-    anthropic_raw_content_type(text)
-}
-
-fn anthropic_raw_content_type(text: &Text) -> Option<&str> {
-    text.additional_params
-        .as_ref()
-        .and_then(|params| params.get("anthropic_content"))
-        .and_then(|raw_content| raw_content.get("type"))
+    native
+        .open(native.issuer())?
+        .value()
+        .get("type")
         .and_then(Value::as_str)
 }
 

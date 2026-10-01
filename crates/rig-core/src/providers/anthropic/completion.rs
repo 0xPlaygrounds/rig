@@ -11,7 +11,10 @@ use crate::error::EncodeError;
 use crate::json_utils::string_or_vec;
 use crate::{
     completion,
-    message::{self, DocumentMediaType, DocumentSourceKind, MessageError, MimeType},
+    message::{
+        self, DocumentMediaType, DocumentSourceKind, Format, MessageError, MimeType, Native,
+        NativeData,
+    },
 };
 use serde::{Deserialize, Serialize};
 use std::{convert::Infallible, str::FromStr};
@@ -51,7 +54,49 @@ pub const CLAUDE_HAIKU_4_5: &str = "claude-haiku-4-5";
 pub const ANTHROPIC_VERSION_2023_01_01: &str = "2023-01-01";
 pub const ANTHROPIC_VERSION_2023_06_01: &str = "2023-06-01";
 pub const ANTHROPIC_VERSION_LATEST: &str = ANTHROPIC_VERSION_2023_06_01;
-pub(crate) const ANTHROPIC_RAW_CONTENT_KEY: &str = "anthropic_content";
+
+/// The Messages wire format. Every Messages-format dialect shares it; a
+/// native value replays only to the dialect whose service issued it.
+pub const MESSAGES: Format = Format::from_static("anthropic-messages");
+
+/// A Messages content block this crate does not model, such as a hosted
+/// tool's call or result, kept exactly as the API sent it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct NativeBlock(pub serde_json::Map<String, serde_json::Value>);
+
+impl NativeData for NativeBlock {
+    const FORMAT: Format = MESSAGES;
+}
+
+impl NativeBlock {
+    /// The block's `type`.
+    pub fn kind(&self) -> Option<&str> {
+        self.0.get("type").and_then(serde_json::Value::as_str)
+    }
+
+    /// The tool-use ids the block names: its own `id` and the `tool_use_id`
+    /// it answers.
+    fn tool_use_ids(&self) -> impl Iterator<Item = &str> {
+        ["id", "tool_use_id"]
+            .into_iter()
+            .filter_map(|key| self.0.get(key).and_then(serde_json::Value::as_str))
+    }
+}
+
+/// The fields of a Messages text block that [`message::Text`] has no place
+/// for. Citations point into the request's documents, not into the text, so
+/// they stay valid when the text is edited.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct NativeText {
+    /// Citations Claude returned on the block.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub citations: Vec<Citation>,
+}
+
+impl NativeData for NativeText {
+    const FORMAT: Format = MESSAGES;
+}
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct CompletionResponse {
@@ -283,21 +328,6 @@ pub enum Content {
         name: String,
         input: serde_json::Value,
     },
-    ServerToolUse {
-        id: String,
-        name: String,
-        #[serde(default)]
-        input: serde_json::Value,
-    },
-    WebSearchToolResult {
-        tool_use_id: String,
-        content: serde_json::Value,
-    },
-    /// The result of an Anthropic-hosted code execution tool call.
-    CodeExecutionToolResult {
-        tool_use_id: String,
-        content: serde_json::Value,
-    },
     ToolResult {
         tool_use_id: String,
         #[serde(deserialize_with = "string_or_vec")]
@@ -333,6 +363,11 @@ pub enum Content {
     RedactedThinking {
         data: String,
     },
+    /// A block this crate does not model, such as a hosted tool's call or
+    /// result. It decodes from any unrecognized `type` and serializes back
+    /// unchanged.
+    #[serde(untagged)]
+    Native(NativeBlock),
 }
 
 impl FromStr for Content {
@@ -563,16 +598,16 @@ fn extract_anthropic_doc_params(
     Ok((title, context, citations))
 }
 
-/// Extract Anthropic citations attached to a generic [`message::Text`] block.
+/// The Anthropic citations on a [`message::Text`] block.
 ///
 /// Citations are returned by Claude on assistant text blocks when the request
-/// enabled them via [`CitationsConfig`]. Internally they are stored as JSON in
-/// [`message::Text::additional_params`] so they survive conversion through the
-/// generic [`message::AssistantContent`] surface.
+/// enabled them via [`CitationsConfig`]. They ride the block's native residue
+/// ([`NativeText`]), so they replay only to the Messages dialect that issued
+/// them.
 ///
 /// Returns `Ok(vec![])` when no citations are attached. Unknown citation types
-/// are preserved as [`Citation::Unknown`]. Returns an error if the `citations`
-/// field is malformed or if a known citation type has an invalid shape.
+/// are preserved as [`Citation::Unknown`]. Returns an error if the residue is
+/// in the Messages format but malformed.
 ///
 /// ```no_run
 /// use rig_core::completion::message::{self, AssistantContent};
@@ -589,65 +624,15 @@ fn extract_anthropic_doc_params(
 /// # let _ = message::Text::new("");
 /// ```
 pub fn anthropic_citations(text: &message::Text) -> Result<Vec<Citation>, serde_json::Error> {
-    match text
-        .additional_params
-        .as_ref()
-        .and_then(|v| v.get("citations"))
-    {
-        Some(c) => <Vec<Citation> as serde::Deserialize>::deserialize(c),
-        None => Ok(Vec::new()),
-    }
-}
-
-fn extract_anthropic_text_citations(text: &message::Text) -> Result<Vec<Citation>, MessageError> {
-    anthropic_citations(text).map_err(|err| {
-        MessageError::ConversionError(format!(
-            "Text `additional_params.citations` is not valid Anthropic citations: {err}"
-        ))
-    })
-}
-
-fn anthropic_text_content_from_message_text(text: message::Text) -> Result<Content, MessageError> {
-    if let Some(raw_content) = extract_anthropic_raw_content(&text)? {
-        if !text.text.is_empty() {
-            return Err(MessageError::ConversionError(format!(
-                "Text `{ANTHROPIC_RAW_CONTENT_KEY}` metadata cannot be combined with non-empty text"
-            )));
-        }
-
-        return Ok(raw_content);
-    }
-
-    let citations = extract_anthropic_text_citations(&text)?;
-    Ok(Content::Text {
-        text: text.text,
-        citations,
-        cache_control: None,
-    })
-}
-
-fn extract_anthropic_raw_content(text: &message::Text) -> Result<Option<Content>, MessageError> {
-    let Some(raw_content) = text
-        .additional_params
-        .as_ref()
-        .and_then(|value| value.get(ANTHROPIC_RAW_CONTENT_KEY))
-    else {
-        return Ok(None);
+    let Some(sealed) = text.native.as_ref() else {
+        return Ok(Vec::new());
     };
-
-    let content = <Content as serde::Deserialize>::deserialize(raw_content).map_err(|err| {
-        MessageError::ConversionError(format!(
-            "Text `{ANTHROPIC_RAW_CONTENT_KEY}` metadata is not valid Anthropic content: {err}"
-        ))
-    })?;
-
-    match content {
-        Content::ServerToolUse { .. }
-        | Content::WebSearchToolResult { .. }
-        | Content::CodeExecutionToolResult { .. } => Ok(Some(content)),
-        _ => Err(MessageError::ConversionError(format!(
-            "Text `{ANTHROPIC_RAW_CONTENT_KEY}` metadata only supports Anthropic server_tool_use, web_search_tool_result, and code_execution_tool_result blocks"
-        ))),
+    match sealed
+        .open(sealed.issuer())
+        .and_then(Native::decode::<NativeText>)
+    {
+        Some(residue) => residue.map(|residue| residue.citations),
+        None => Ok(Vec::new()),
     }
 }
 
@@ -801,12 +786,41 @@ fn anthropic_content_from_assistant_content(
 ) -> Result<Vec<Content>, MessageError> {
     match content {
         message::AssistantContent::Text(text) => {
-            // Anthropic rejects empty text; only supported raw hosted-tool metadata
-            // can give an otherwise empty block replayable content.
-            if text.text.is_empty() && extract_anthropic_raw_content(&text)?.is_none() {
+            // Anthropic rejects empty text.
+            if text.text.is_empty() {
                 return Ok(Vec::new());
             }
-            Ok(vec![anthropic_text_content_from_message_text(text)?])
+            let citations = match text.native_for::<NativeText>(issuers) {
+                Some(residue) => {
+                    residue
+                        .map_err(|err| {
+                            MessageError::ConversionError(format!(
+                                "Text native residue is not valid Messages text: {err}"
+                            ))
+                        })?
+                        .citations
+                }
+                None => Vec::new(),
+            };
+            Ok(vec![Content::Text {
+                text: text.text,
+                citations,
+                cache_control: None,
+            }])
+        }
+        // A block another dialect or service issued is not replayed.
+        message::AssistantContent::Native(native) => {
+            match native
+                .open_for(issuers)
+                .and_then(Native::decode::<NativeBlock>)
+            {
+                Some(block) => Ok(vec![Content::Native(block.map_err(|err| {
+                    MessageError::ConversionError(format!(
+                        "Native Messages item is not a content block: {err}"
+                    ))
+                })?)]),
+                None => Ok(Vec::new()),
+            }
         }
         message::AssistantContent::Image(_) => Err(MessageError::ConversionError(
             "Anthropic currently doesn't support images.".to_string(),
@@ -2071,28 +2085,18 @@ fn is_valid_mid_conversation_system_message(history: &[message::Message], index:
     follows_valid_turn && is_last_or_precedes_assistant
 }
 
+/// Whether an assistant turn ends in a Messages block Rig does not model:
+/// a hosted tool's call or result, after which the API accepts a system
+/// message.
 fn assistant_ends_in_server_tool_block(message: &message::Message) -> bool {
     let message::Message::Assistant { content, .. } = message else {
         return false;
     };
-
-    let Some(message::AssistantContent::Text(text)) = content.iter().last() else {
-        return false;
-    };
-
-    let Some(raw_type) = text
-        .additional_params
-        .as_ref()
-        .and_then(|params| params.get(ANTHROPIC_RAW_CONTENT_KEY))
-        .and_then(|raw_content| raw_content.get("type"))
-        .and_then(serde_json::Value::as_str)
-    else {
-        return false;
-    };
-
     matches!(
-        raw_type,
-        "server_tool_use" | "web_search_tool_result" | "code_execution_tool_result"
+        content.last(),
+        Some(message::AssistantContent::Native(native)) if native
+            .open(native.issuer())
+            .is_some_and(|native| native.is(&MESSAGES))
     )
 }
 
@@ -2150,11 +2154,9 @@ impl AnthropicCompletionRequest {
         let server_ids = messages
             .iter()
             .flat_map(|message| &message.content)
-            .filter_map(|part| match part {
-                Content::ServerToolUse { id, .. } => Some(id.clone()),
-                Content::WebSearchToolResult { tool_use_id, .. }
-                | Content::CodeExecutionToolResult { tool_use_id, .. } => Some(tool_use_id.clone()),
-                _ => None,
+            .flat_map(|part| match part {
+                Content::Native(block) => block.tool_use_ids().map(str::to_owned).collect(),
+                _ => Vec::new(),
             });
         let tool_ids =
             crate::providers::internal::wire_ids::WireIds::with_reserved(&full_history, server_ids);
