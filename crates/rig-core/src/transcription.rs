@@ -13,7 +13,6 @@
 //! # }
 //! ```
 use crate::completion::Usage;
-use crate::error::ProviderError;
 use crate::json_utils;
 use serde::{Deserialize, Serialize};
 use std::io;
@@ -62,13 +61,6 @@ impl TranscriptionResponse {
             raw: serde_json::Value::Null,
         }
     }
-}
-
-/// Converts provider payloads into normalized transcription responses. The
-/// driver writes the provider, request id and `raw` afterwards.
-pub trait NormalizeTranscriptionResponse {
-    /// Normalize this payload.
-    fn normalize(self) -> Result<TranscriptionResponse, ProviderError>;
 }
 
 /// Struct representing a general transcription request that can be sent to a transcription model provider.

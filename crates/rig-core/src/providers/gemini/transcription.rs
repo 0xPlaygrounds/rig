@@ -15,7 +15,7 @@ use crate::{
         visible_text_parts,
     },
     providers::internal::wire::classify_marker_keyed_frame,
-    transcription::{self, NormalizeTranscriptionResponse},
+    transcription,
     wire::{Body, Decoder, Descriptor, Encoded, Framing, Mode, Out, Wire, WireEvent, WireFrame},
 };
 
@@ -156,12 +156,16 @@ impl<'id> Decoder<'id, Transcription> for TranscriptionsDecoder {
         event: Self::Event,
         out: Out<'id, Transcription>,
     ) -> Result<Flow, ProviderError> {
-        Ok(out.end(event.normalize()?))
+        Ok(out.end(event.normalize_transcription()?))
     }
 }
 
-impl NormalizeTranscriptionResponse for GenerateContentResponse {
-    fn normalize(self) -> Result<transcription::TranscriptionResponse, ProviderError> {
+impl GenerateContentResponse {
+    /// The first candidate's visible text parts as a transcript. Errors when
+    /// there is no candidate or no visible text part.
+    pub fn normalize_transcription(
+        self,
+    ) -> Result<transcription::TranscriptionResponse, ProviderError> {
         let candidate = self
             .candidates
             .first()

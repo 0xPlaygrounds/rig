@@ -954,7 +954,6 @@ impl TurnSource for StreamingTurnSource {
                                 stream.message_id(),
                                 &stream.partial().choice,
                             );
-                            eprintln!("PARTIAL {:?}", stream.partial().choice);
                             // Gated on `has_hooks`: building the diagnostic context
                             // clones the chat history, so an empty stack skips it and
                             // fails fast.
