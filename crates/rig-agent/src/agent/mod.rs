@@ -53,4 +53,4 @@ pub use runner::AgentRunner;
 pub use streaming::{
     MultiTurnStreamItem, RUN_EVENTS_CAPACITY, RunEvents, StreamingResult, stream_to_stdout,
 };
-pub use typed::{TypedPromptResponse, TypedRun};
+pub use typed::{TypedOutput, TypedPromptResponse, TypedRun};
