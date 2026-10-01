@@ -11,7 +11,7 @@
 
 # --- anthropic: content assembly, not frame triage -------------------------
 providers/anthropic/streaming.rs | citation: serde_json::from_value(citation) | Field decode inside the content-delta Deserialize impl: converts the `citation` value of an already-tag-matched `citations_delta` into its typed form; failure is a serde::de error and unrecognized tags fall to Self::Unknown, so no frame is triaged here.
-providers/anthropic/streaming.rs | serde_json::from_str(&server_tool_use.input_json) | Assembles the accumulated server_tool_use partial_json fragments into the raw-content value; malformed input surfaces as a ProviderError, no frame is triaged here.
+providers/anthropic/streaming.rs | serde_json::from_str(&self.input_json) | Assembles an unmodeled block's accumulated partial_json fragments into its `input`; malformed input surfaces as a ProviderError, no frame is triaged here.
 
 # --- openai Responses SSE: classifier-adjacent helpers ---------------------
 providers/openai/responses_api/streaming.rs | let mut value = serde_json::from_str::<serde_json::Value>(data).ok()?; | repair_envelope_less_frame: buffered-body envelope repair feeding the ONE classifier (classify_with_repair); documented F8 policy note at the fn doc.

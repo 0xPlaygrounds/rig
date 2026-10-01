@@ -4,8 +4,37 @@ use crate::message::EMPTY_RESPONSE_ERROR;
 use crate::providers::anthropic::wire::AnthropicConfig;
 use crate::test_utils::json_body;
 use crate::wire::WireFrame;
-use serde_json::json;
+use serde_json::{Value, json};
 use serde_path_to_error::deserialize;
+
+/// An Anthropic block replayable to `anthropic`.
+fn anthropic_block(block: serde_json::Value) -> message::AssistantContent {
+    message::AssistantContent::Provider(
+        message::ProviderItem::AnthropicMessages(
+            message::Verbatim::try_from(block).expect("a block is an object"),
+        )
+        .sealed("anthropic"),
+    )
+}
+
+/// The provider block a choice part holds, when it is an Anthropic one.
+fn anthropic_block_of(
+    content: &message::AssistantContent,
+) -> Option<&serde_json::Map<String, serde_json::Value>> {
+    match content {
+        message::AssistantContent::Provider(item) => match item.value() {
+            message::ProviderItem::AnthropicMessages(block) => Some(block.as_map()),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+/// `message` on the wire as a request to Anthropic replays it.
+fn replayed(message: message::Message) -> Message {
+    Message::from_message(message, &[crate::message::Issuer::from_static("anthropic")])
+        .expect("the message converts")
+}
 
 /// The one-turn request every reply below is folded against.
 fn hello_request() -> CompletionRequest {
@@ -680,38 +709,22 @@ fn opus_4_8_preserves_system_message_after_assistant_server_tool_result() {
             message::Message::Assistant {
                 id: None,
                 content: vec![
-                    message::AssistantContent::Text(message::Text {
-                        text: String::new(),
-                        additional_params: crate::message::AdditionalParams::try_from_value(
-                            json!({
-                                ANTHROPIC_RAW_CONTENT_KEY: {
-                                    "type": "server_tool_use",
-                                    "id": "srvtoolu_01",
-                                    "name": "web_search",
-                                    "input": {
-                                        "query": "clear daytime sky color"
-                                    }
-                                }
-                            }),
-                        )
-                        .expect("object params"),
-                    }),
-                    message::AssistantContent::Text(message::Text {
-                        text: String::new(),
-                        additional_params: crate::message::AdditionalParams::try_from_value(
-                            json!({
-                                ANTHROPIC_RAW_CONTENT_KEY: {
-                                    "type": "web_search_tool_result",
-                                    "tool_use_id": "srvtoolu_01",
-                                    "content": {
-                                        "type": "web_search_tool_result_error",
-                                        "error_code": "unavailable"
-                                    }
-                                }
-                            }),
-                        )
-                        .expect("object params"),
-                    }),
+                    anthropic_block(json!({
+                        "type": "server_tool_use",
+                        "id": "srvtoolu_01",
+                        "name": "web_search",
+                        "input": {
+                            "query": "clear daytime sky color"
+                        }
+                    })),
+                    anthropic_block(json!({
+                        "type": "web_search_tool_result",
+                        "tool_use_id": "srvtoolu_01",
+                        "content": {
+                            "type": "web_search_tool_result_error",
+                            "error_code": "unavailable"
+                        }
+                    })),
                 ],
             },
             message::Message::System {
@@ -756,13 +769,18 @@ fn foreign_annotated_empty_text_produces_no_anthropic_block() {
     // Replayed here, they must vanish from the request — the API
     // rejects empty text blocks and foreign extras cannot reach this
     // wire — while sibling content converts unaffected.
-    let foreign_annotated_empty = message::AssistantContent::Text(message::Text {
-        text: String::new(),
-        additional_params: message::AdditionalParams::try_from_value(json!({
-            "openai_responses": {"annotations": [{"type": "url_citation"}]}
-        }))
-        .expect("object params"),
-    });
+    let foreign_annotated_empty = message::AssistantContent::Text(
+        message::Text::new("").with_provider(
+            crate::providers::openai::responses_api::TextExtras {
+                part: json!({"annotations": [{"type": "url_citation"}]})
+                    .as_object()
+                    .cloned()
+                    .unwrap_or_default(),
+                ..Default::default()
+            }
+            .into(),
+        ),
+    );
     assert_eq!(
         anthropic_content_from_assistant_content(foreign_annotated_empty.clone(), &[])
             .expect("conversion succeeds"),
@@ -791,20 +809,14 @@ fn opus_4_8_preserves_system_message_after_assistant_server_tool_use() {
         vec![
             message::Message::Assistant {
                 id: None,
-                content: vec![message::AssistantContent::Text(message::Text {
-                    text: String::new(),
-                    additional_params: crate::message::AdditionalParams::try_from_value(json!({
-                        ANTHROPIC_RAW_CONTENT_KEY: {
-                            "type": "server_tool_use",
-                            "id": "srvtoolu_01",
-                            "name": "web_search",
-                            "input": {
-                                "query": "clear daytime sky color"
-                            }
-                        }
-                    }))
-                    .expect("object params"),
-                })],
+                content: vec![anthropic_block(json!({
+                    "type": "server_tool_use",
+                    "id": "srvtoolu_01",
+                    "name": "web_search",
+                    "input": {
+                        "query": "clear daytime sky color"
+                    }
+                }))],
             },
             message::Message::System {
                 content: "For the rest of this conversation, answer in Spanish.".to_string(),
@@ -3087,57 +3099,40 @@ fn web_search_response_preserves_raw_blocks_and_citations() {
     assert_eq!(answer_text, "Claude Shannon was born on April 30, 1916.");
 
     let items = converted.choice.iter().collect::<Vec<_>>();
-    let message::AssistantContent::Text(server_tool_use) = items[0] else {
-        panic!("expected raw server_tool_use metadata");
-    };
-    assert_eq!(server_tool_use.text, "");
+    let server_tool_use =
+        anthropic_block_of(items[0]).expect("server_tool_use is a provider block");
+    assert_eq!(server_tool_use["type"], "server_tool_use");
+    let web_search_result =
+        anthropic_block_of(items[1]).expect("web_search_tool_result is a provider block");
     assert_eq!(
-        server_tool_use.additional_params.as_ref().unwrap()[ANTHROPIC_RAW_CONTENT_KEY]["type"],
-        "server_tool_use"
-    );
-
-    let message::AssistantContent::Text(web_search_result) = items[1] else {
-        panic!("expected raw web_search_tool_result metadata");
-    };
-    assert_eq!(
-        web_search_result.additional_params.as_ref().unwrap()[ANTHROPIC_RAW_CONTENT_KEY]["content"]
-            [0]["encrypted_content"],
+        web_search_result["content"][0]["encrypted_content"],
         "encrypted-content"
     );
 
     let message::AssistantContent::Text(answer) = items[2] else {
         panic!("expected text answer");
     };
-    let citations = anthropic_citations(answer).unwrap();
+    let citations = anthropic_citations(answer);
     assert!(matches!(
         citations.first(),
         Some(Citation::WebSearchResultLocation(citation))
             if citation.encrypted_index == "encrypted-index"
     ));
 
-    let round_trip: Message = message::Message::Assistant {
+    let round_trip = replayed(message::Message::Assistant {
         id: converted.message_id.clone(),
         content: converted.choice,
-    }
-    .try_into()
-    .unwrap();
-
-    let round_trip_items = round_trip.content.iter().collect::<Vec<_>>();
-    assert!(matches!(
-        round_trip_items.first(),
-        Some(Content::ServerToolUse { id, name, input })
-            if id == "srvtoolu_01"
-                && name == "web_search"
-                && input["query"] == "claude shannon birth date"
-    ));
-    assert!(matches!(
-        round_trip_items.get(1),
-        Some(Content::WebSearchToolResult {
-            tool_use_id,
-            content
-        }) if tool_use_id == "srvtoolu_01"
-            && content[0]["encrypted_content"] == "encrypted-content"
-    ));
+    });
+    let sent = serde_json::to_value(&round_trip.content).expect("serializes");
+    assert_eq!(
+        sent,
+        json!([
+            value["content"][0],
+            value["content"][1],
+            value["content"][2]
+        ]),
+        "every block replays as the API sent it"
+    );
 }
 
 #[test]
@@ -3166,81 +3161,43 @@ fn web_search_tool_result_error_object_is_preserved_raw() {
         serde_json::from_value(value.clone()).expect("the body parses into the wire type");
     assert_eq!(typed.content.len(), 1);
     let converted = fold_reply(&value).expect("the reply folds");
-    let Some(message::AssistantContent::Text(web_search_result)) = converted.choice.first() else {
-        panic!("expected raw web_search_tool_result metadata");
-    };
-
-    let raw_content =
-        &web_search_result.additional_params.as_ref().unwrap()[ANTHROPIC_RAW_CONTENT_KEY];
+    let raw_content = converted
+        .choice
+        .first()
+        .and_then(anthropic_block_of)
+        .expect("the result is a provider block");
     assert_eq!(raw_content["type"], "web_search_tool_result");
     assert_eq!(raw_content["content"]["error_code"], "max_uses_exceeded");
-    assert_eq!(
-        raw_content["content"]["type"],
-        "web_search_tool_result_error"
-    );
 
-    let round_trip: Message = message::Message::Assistant {
+    let round_trip = replayed(message::Message::Assistant {
         id: converted.message_id,
         content: converted.choice,
-    }
-    .try_into()
-    .unwrap();
-
+    });
     assert!(matches!(
         round_trip.content.first(),
-        Some(Content::WebSearchToolResult {
-            tool_use_id,
-            content
-        }) if tool_use_id == "srvtoolu_01"
-            && content["error_code"] == "max_uses_exceeded"
+        Some(Content::Unknown(block)) if block.as_map()["content"]["error_code"] == "max_uses_exceeded"
     ));
 }
 
 #[test]
-fn code_execution_tool_result_variants_deserialize() {
-    let normal: Content = serde_json::from_value(json!({
-        "type": "code_execution_tool_result",
-        "tool_use_id": "srvtoolu_normal",
-        "content": {
-            "type": "code_execution_result",
-            "return_code": 0,
-            "stdout": "42\n",
-            "stderr": "",
-            "content": []
-        }
-    }))
-    .unwrap();
-    assert!(matches!(
-        normal,
-        Content::CodeExecutionToolResult {
-            ref tool_use_id,
-            ref content
-        } if tool_use_id == "srvtoolu_normal"
-            && content["type"] == "code_execution_result"
-            && content["stdout"] == "42\n"
-    ));
-
-    let encrypted: Content = serde_json::from_value(json!({
-        "type": "code_execution_tool_result",
-        "tool_use_id": "srvtoolu_encrypted",
-        "content": {
-            "type": "encrypted_code_execution_result",
-            "return_code": 1,
-            "stderr": "failure",
-            "encrypted_stdout": "encrypted-output",
-            "content": []
-        }
-    }))
-    .unwrap();
-    assert!(matches!(
-        encrypted,
-        Content::CodeExecutionToolResult {
-            ref tool_use_id,
-            ref content
-        } if tool_use_id == "srvtoolu_encrypted"
-            && content["type"] == "encrypted_code_execution_result"
-            && content["encrypted_stdout"] == "encrypted-output"
-    ));
+fn unmodeled_blocks_deserialize_verbatim_and_known_ones_stay_strict() {
+    for block in [
+        json!({
+            "type": "code_execution_tool_result",
+            "tool_use_id": "srvtoolu_encrypted",
+            "content": {"type": "encrypted_code_execution_result", "encrypted_stdout": "x"}
+        }),
+        json!({"type": "web_fetch_tool_result", "tool_use_id": "srvtoolu_2", "content": {}}),
+        json!({"type": "compaction", "content": "summary"}),
+    ] {
+        let parsed: Content =
+            serde_json::from_value(block.clone()).expect("an unmodeled block decodes");
+        assert!(matches!(&parsed, Content::Unknown(kept) if Value::from(kept.clone()) == block));
+        assert_eq!(serde_json::to_value(&parsed).expect("serializes"), block);
+    }
+    // A modeled tag with a malformed body still fails: it is not demoted.
+    assert!(serde_json::from_value::<Content>(json!({"type": "tool_use", "id": 7})).is_err());
+    assert!(serde_json::from_value::<Content>(json!({"no_type": true})).is_err());
 }
 
 #[test]
@@ -3269,34 +3226,22 @@ fn code_execution_tool_result_is_preserved_and_round_trips() {
         "content": [raw_block]
     });
 
-    let typed: CompletionResponse =
-        serde_json::from_value(value.clone()).expect("the body parses into the wire type");
-    assert_eq!(typed.content.len(), 1);
     let converted = fold_reply(&value).expect("the reply folds");
-    let Some(message::AssistantContent::Text(code_execution_result)) = converted.choice.first()
-    else {
-        panic!("expected raw code_execution_tool_result metadata");
-    };
-    assert_eq!(
-        code_execution_result.additional_params.as_ref().unwrap()[ANTHROPIC_RAW_CONTENT_KEY],
-        raw_block
-    );
+    let kept = converted
+        .choice
+        .first()
+        .and_then(anthropic_block_of)
+        .expect("the result is a provider block");
+    assert_eq!(&Value::Object(kept.clone()), &raw_block);
 
-    let round_trip: Message = message::Message::Assistant {
+    let round_trip = replayed(message::Message::Assistant {
         id: converted.message_id,
         content: converted.choice,
-    }
-    .try_into()
-    .unwrap();
-    assert!(matches!(
-        round_trip.content.first(),
-        Some(Content::CodeExecutionToolResult {
-            tool_use_id,
-            content
-        }) if tool_use_id == "srvtoolu_01"
-            && content["type"] == "code_execution_result"
-            && content["stdout"] == "42\n"
-    ));
+    });
+    assert_eq!(
+        serde_json::to_value(&round_trip.content).expect("serializes"),
+        json!([raw_block])
+    );
 }
 
 #[test]
@@ -3355,48 +3300,40 @@ fn content_block_location_citation_roundtrips() {
     assert_eq!(back, citation);
 }
 
-#[test]
-fn anthropic_citations_extracts_from_additional_params() {
-    let text = message::Text {
-        text: "the grass is green".into(),
-        additional_params: crate::message::AdditionalParams::try_from_value(json!({
-            "citations": [{
-                "type": "char_location",
-                "cited_text": "The grass is green.",
-                "document_index": 0,
-                "start_char_index": 0,
-                "end_char_index": 20
-            }]
-        }))
-        .expect("object params"),
-    };
-    let citations = anthropic_citations(&text).unwrap();
-    assert_eq!(citations.len(), 1);
+fn char_location() -> Citation {
+    Citation::CharLocation(CharLocationCitation {
+        cited_text: "The grass is green.".into(),
+        document_index: 0,
+        document_title: None,
+        start_char_index: 0,
+        end_char_index: 20,
+    })
 }
 
 #[test]
-fn anthropic_citations_returns_empty_when_absent() {
-    let text = message::Text::new("hello".to_string());
-    assert!(anthropic_citations(&text).unwrap().is_empty());
+fn anthropic_citations_reads_the_typed_extras() {
+    let text = message::Text::new("the grass is green").with_provider(
+        TextExtras {
+            citations: vec![char_location()],
+        }
+        .into(),
+    );
+    assert_eq!(anthropic_citations(&text), [char_location()]);
+    assert!(anthropic_citations(&message::Text::new("hello")).is_empty());
 }
 
 #[test]
 fn assistant_text_citations_survive_anthropic_request_conversion() {
     let assistant = message::Message::Assistant {
         id: None,
-        content: vec![message::AssistantContent::Text(message::Text {
-            text: "the grass is green".into(),
-            additional_params: crate::message::AdditionalParams::try_from_value(json!({
-                "citations": [{
-                    "type": "char_location",
-                    "cited_text": "The grass is green.",
-                    "document_index": 0,
-                    "start_char_index": 0,
-                    "end_char_index": 20
-                }]
-            }))
-            .expect("object params"),
-        })],
+        content: vec![message::AssistantContent::Text(
+            message::Text::new("the grass is green").with_provider(
+                TextExtras {
+                    citations: vec![char_location()],
+                }
+                .into(),
+            ),
+        )],
     };
 
     let converted: Message = assistant.try_into().unwrap();
@@ -3408,36 +3345,21 @@ fn assistant_text_citations_survive_anthropic_request_conversion() {
     };
 
     assert_eq!(text, "the grass is green");
-    assert_eq!(
-        citations,
-        &vec![Citation::CharLocation(CharLocationCitation {
-            cited_text: "The grass is green.".into(),
-            document_index: 0,
-            document_title: None,
-            start_char_index: 0,
-            end_char_index: 20,
-        })]
-    );
+    assert_eq!(citations, &vec![char_location()]);
 }
 
 #[test]
-fn assistant_text_invalid_known_citations_are_rejected_for_anthropic_request_conversion() {
-    let text = message::AssistantContent::Text(message::Text {
-        text: "bad citation".into(),
-        additional_params: crate::message::AdditionalParams::try_from_value(json!({
-            "citations": [{
-                "type": "char_location",
-                "cited_text": "bad"
-            }]
-        }))
-        .expect("object params"),
+fn invalid_known_citations_are_rejected_when_history_loads() {
+    let persisted = json!({
+        "text": "bad citation",
+        "provider": {
+            "dialect": "anthropic_messages",
+            "citations": [{"type": "char_location", "cited_text": "bad"}]
+        }
     });
-
-    let result = anthropic_content_from_assistant_content(text, &[]);
-
     assert!(
-        result.is_err(),
-        "invalid Anthropic citation metadata should not be silently dropped"
+        serde_json::from_value::<message::Text>(persisted).is_err(),
+        "a malformed modeled citation is an error, not silently dropped"
     );
 }
 

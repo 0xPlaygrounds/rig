@@ -1,7 +1,9 @@
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::Value;
 
-use super::completion::{CompletionResponse, Content, anthropic_usage_totals, map_finish_reason};
+use super::completion::{
+    CompletionResponse, Content, TextExtras, anthropic_usage_totals, map_finish_reason,
+};
 use crate::error::ProviderError;
 use crate::message::ReasoningContent;
 use crate::observe::ObservedError;
@@ -201,13 +203,68 @@ impl From<PartialUsage> for crate::completion::Usage {
     }
 }
 
-// Hosted-tool input is assembled locally because it becomes raw text-block
-// metadata rather than an executable tool call.
-struct ServerToolUseState {
-    name: String,
-    id: String,
-    initial_input: Value,
+/// A block this crate does not model, assembled from its start frame and
+/// its deltas. Deltas fold by one rule for every such block: `partial_json`
+/// fragments replace `input` when the block stops; any other delta appends
+/// its string fields to the block's same-named fields and sets the rest.
+struct ProviderBlock {
+    block: serde_json::Map<String, Value>,
     input_json: String,
+}
+
+impl ProviderBlock {
+    fn absorb(&mut self, delta: ContentDelta) -> Result<(), ProviderError> {
+        match delta {
+            ContentDelta::InputJsonDelta { partial_json } => {
+                self.input_json.push_str(&partial_json);
+            }
+            ContentDelta::TextDelta { text } => self.append("text", text),
+            ContentDelta::ThinkingDelta { thinking } => self.append("thinking", thinking),
+            ContentDelta::SignatureDelta { signature } => self.append("signature", signature),
+            ContentDelta::CitationsDelta { citation } => {
+                let citation = serde_json::to_value(citation)?;
+                match self.block.get_mut("citations") {
+                    Some(Value::Array(citations)) => citations.push(citation),
+                    _ => {
+                        self.block
+                            .insert("citations".to_owned(), Value::Array(vec![citation]));
+                    }
+                }
+            }
+            ContentDelta::Unknown(Value::Object(fields)) => {
+                for (key, value) in fields {
+                    match value {
+                        _ if key == "type" => {}
+                        Value::String(fragment) => self.append(&key, fragment),
+                        value => {
+                            self.block.insert(key, value);
+                        }
+                    }
+                }
+            }
+            ContentDelta::Unknown(_) => {}
+        }
+        Ok(())
+    }
+
+    fn append(&mut self, key: &str, fragment: String) {
+        match self.block.get_mut(key) {
+            Some(Value::String(existing)) => existing.push_str(&fragment),
+            _ => {
+                self.block.insert(key.to_owned(), Value::String(fragment));
+            }
+        }
+    }
+
+    /// The block as the API would state it whole. Accumulated input that
+    /// does not parse fails the reply: the stop promised a complete block.
+    fn finish(mut self) -> Result<crate::message::Verbatim, ProviderError> {
+        if !self.input_json.is_empty() {
+            let input = serde_json::from_str(&self.input_json)?;
+            self.block.insert("input".to_owned(), input);
+        }
+        Ok(crate::message::Verbatim::new(self.block))
+    }
 }
 
 /// Decode Messages replies, a whole message or a stream of events.
@@ -221,7 +278,8 @@ pub struct MessagesDecoder<'id> {
     /// The content block of the open client tool call, whose index its
     /// fragments are buffered under.
     current_tool_call: Option<usize>,
-    server_tool_uses: HashMap<usize, ServerToolUseState>,
+    /// The open blocks this crate does not model, by content-block index.
+    provider_blocks: HashMap<usize, ProviderBlock>,
     input_tokens: u64,
     /// Per-TTL cache-write breakdown from `message_start`; the terminal
     /// `message_delta` usage omits it.
@@ -247,7 +305,7 @@ impl MessagesDecoder<'_> {
             texts: HashMap::new(),
             thinking: HashMap::new(),
             current_tool_call: None,
-            server_tool_uses: HashMap::new(),
+            provider_blocks: HashMap::new(),
             input_tokens: 0,
             cache_creation: None,
             cache_read_input_tokens: None,
@@ -267,6 +325,11 @@ impl<'id> MessagesDecoder<'id> {
     ) -> Result<(), ProviderError> {
         match event {
             StreamingEvent::ContentBlockDelta { index, delta } => match delta {
+                delta if self.provider_blocks.contains_key(&index) => {
+                    if let Some(block) = self.provider_blocks.get_mut(&index) {
+                        block.absorb(delta)?;
+                    }
+                }
                 ContentDelta::TextDelta { text } => {
                     if self.current_tool_call.is_none() {
                         let part = self.texts.entry(index).or_insert_with(|| out.text());
@@ -274,10 +337,6 @@ impl<'id> MessagesDecoder<'id> {
                     }
                 }
                 ContentDelta::InputJsonDelta { partial_json } => {
-                    if let Some(server_tool_use) = self.server_tool_uses.get_mut(&index) {
-                        server_tool_use.input_json.push_str(&partial_json);
-                        return Ok(());
-                    }
                     if let Some(call) = self.current_tool_call {
                         out.call_fragment(
                             call,
@@ -304,13 +363,14 @@ impl<'id> MessagesDecoder<'id> {
                     fragments.push_str(&signature);
                 }
                 ContentDelta::CitationsDelta { citation } => {
-                    if let Some(params) = crate::message::AdditionalParams::from_entries([(
-                        "citations",
-                        json!([citation]),
-                    )]) {
-                        let part = self.texts.entry(index).or_insert_with(|| out.text());
-                        out.text_params(part, params);
-                    }
+                    let part = self.texts.entry(index).or_insert_with(|| out.text());
+                    out.text_extras(
+                        part,
+                        TextExtras {
+                            citations: vec![citation],
+                        }
+                        .into(),
+                    );
                 }
                 ContentDelta::Unknown(value) => {
                     // Log only the tag; unknown payloads may contain sensitive model output.
@@ -323,75 +383,12 @@ impl<'id> MessagesDecoder<'id> {
             StreamingEvent::ContentBlockStart {
                 index,
                 content_block,
-            } => match content_block {
-                // Text arrives through deltas; cache_control is request-only metadata.
-                Content::Text {
-                    text: _,
-                    citations,
-                    cache_control: _,
-                } => {
-                    let part = out.text();
-                    if let Some(params) = crate::message::AdditionalParams::from_entries(
-                        (!citations.is_empty()).then(|| ("citations", json!(citations))),
-                    ) {
-                        out.text_params(&part, params);
-                    }
-                    self.texts.insert(index, part);
-                }
-                Content::ServerToolUse { id, name, input } => {
-                    self.server_tool_uses.insert(
-                        index,
-                        ServerToolUseState {
-                            name,
-                            id,
-                            initial_input: input,
-                            input_json: String::new(),
-                        },
-                    );
-                }
-                raw @ (Content::WebSearchToolResult { .. }
-                | Content::CodeExecutionToolResult { .. }) => {
-                    if let Some(params) = crate::message::AdditionalParams::from_entries([(
-                        super::completion::ANTHROPIC_RAW_CONTENT_KEY,
-                        json!(raw),
-                    )]) {
-                        let part = out.text();
-                        out.text_params(&part, params);
-                        self.texts.insert(index, part);
-                    }
-                }
-                Content::ToolUse { id, name, .. } => {
-                    self.current_tool_call = Some(index);
-                    out.call_fragment(
-                        index,
-                        CallFragment {
-                            id: Some(id.as_str()),
-                            name: Some(name.as_str()),
-                            ..CallFragment::default()
-                        },
-                    )?;
-                }
-                Content::Thinking {
-                    thinking,
-                    signature,
-                } => {
-                    // Adaptive thinking may carry only a signature, so the
-                    // part opens even when the opening text is empty.
-                    let part = out.reasoning();
-                    out.push_reasoning(&part, &thinking);
-                    self.thinking
-                        .insert(index, (part, String::new(), signature.unwrap_or_default()));
-                }
-                Content::RedactedThinking { data } => {
-                    out.reasoning_block(crate::message::Reasoning {
-                        id: None,
-                        content: vec![ReasoningContent::Redacted { data }],
-                    });
-                }
-                // Request-side content kinds; an assistant stream never
-                // opens a block with them, and there is nothing to write.
-                Content::Image { .. } | Content::ToolResult { .. } | Content::Document { .. } => {}
-            },
+            } => {
+                // Blocks stream one after another, so a block that starts
+                // completes every earlier one still open.
+                self.flush_provider_blocks(Some(index), out)?;
+                self.start_block(index, content_block, out)?;
+            }
             StreamingEvent::ContentBlockStop { index } => {
                 // Signature-only thinking parts carry provider state required
                 // for replay.
@@ -411,28 +408,10 @@ impl<'id> MessagesDecoder<'id> {
                     return Ok(());
                 }
 
-                if let Some(server_tool_use) = self.server_tool_uses.remove(&index) {
-                    let input = if server_tool_use.input_json.is_empty() {
-                        if server_tool_use.initial_input.is_null() {
-                            json!({})
-                        } else {
-                            server_tool_use.initial_input
-                        }
-                    } else {
-                        serde_json::from_str(&server_tool_use.input_json)?
-                    };
-                    if let Some(params) = crate::message::AdditionalParams::from_entries([(
-                        super::completion::ANTHROPIC_RAW_CONTENT_KEY,
-                        json!(Content::ServerToolUse {
-                            id: server_tool_use.id,
-                            name: server_tool_use.name,
-                            input,
-                        }),
-                    )]) {
-                        let part = out.text();
-                        out.text_params(&part, params);
-                        out.close_text(part);
-                    }
+                if let Some(block) = self.provider_blocks.remove(&index) {
+                    out.provider_item(crate::message::ProviderItem::AnthropicMessages(
+                        block.finish()?,
+                    ));
                     return Ok(());
                 }
 
@@ -454,6 +433,96 @@ impl<'id> MessagesDecoder<'id> {
             | StreamingEvent::MessageStop
             | StreamingEvent::Ping
             | StreamingEvent::Error { .. } => {}
+        }
+        Ok(())
+    }
+
+    /// Open the part a `content_block_start` names.
+    fn start_block(
+        &mut self,
+        index: usize,
+        content_block: Content,
+        out: &mut Out<'id, Completion>,
+    ) -> Result<(), ProviderError> {
+        match content_block {
+            // Text arrives through deltas; cache_control is request-only metadata.
+            Content::Text {
+                text: _,
+                citations,
+                cache_control: _,
+            } => {
+                let part = out.text();
+                if !citations.is_empty() {
+                    out.text_extras(&part, TextExtras { citations }.into());
+                }
+                self.texts.insert(index, part);
+            }
+            // Every block this crate does not model, hosted-tool calls
+            // and results included, is kept whole in its place.
+            Content::Unknown(block) => {
+                self.provider_blocks.insert(
+                    index,
+                    ProviderBlock {
+                        block: block.into_map(),
+                        input_json: String::new(),
+                    },
+                );
+            }
+            Content::ToolUse { id, name, .. } => {
+                self.current_tool_call = Some(index);
+                out.call_fragment(
+                    index,
+                    CallFragment {
+                        id: Some(id.as_str()),
+                        name: Some(name.as_str()),
+                        ..CallFragment::default()
+                    },
+                )?;
+            }
+            Content::Thinking {
+                thinking,
+                signature,
+            } => {
+                // Adaptive thinking may carry only a signature, so the
+                // part opens even when the opening text is empty.
+                let part = out.reasoning();
+                out.push_reasoning(&part, &thinking);
+                self.thinking
+                    .insert(index, (part, String::new(), signature.unwrap_or_default()));
+            }
+            Content::RedactedThinking { data } => {
+                out.reasoning_block(crate::message::Reasoning {
+                    id: None,
+                    content: vec![ReasoningContent::Redacted { data }],
+                });
+            }
+            // Request-side content kinds; an assistant stream never
+            // opens a block with them, and there is nothing to write.
+            Content::Image { .. } | Content::ToolResult { .. } | Content::Document { .. } => {}
+        }
+        Ok(())
+    }
+
+    /// Write the open provider blocks below `before` (all of them for
+    /// `None`) in block order.
+    fn flush_provider_blocks(
+        &mut self,
+        before: Option<usize>,
+        out: &mut Out<'id, Completion>,
+    ) -> Result<(), ProviderError> {
+        let mut done: Vec<usize> = self
+            .provider_blocks
+            .keys()
+            .copied()
+            .filter(|index| before.is_none_or(|before| *index < before))
+            .collect();
+        done.sort_unstable();
+        for index in done {
+            if let Some(block) = self.provider_blocks.remove(&index) {
+                out.provider_item(crate::message::ProviderItem::AnthropicMessages(
+                    block.finish()?,
+                ));
+            }
         }
         Ok(())
     }
@@ -513,6 +582,7 @@ impl<'id> MessagesDecoder<'id> {
             self.interpret_content(StreamingEvent::ContentBlockStop { index }, &mut out)?;
         }
 
+        self.flush_provider_blocks(None, &mut out)?;
         // A whole message completes the turn even without an explicit stop
         // reason. Its `raw` is the message itself.
         let usage = PartialUsage {
@@ -581,6 +651,7 @@ impl<'id> Decoder<'id, Completion> for MessagesDecoder<'id> {
                 let Some(reason) = delta.stop_reason else {
                     return Ok(Flow::More);
                 };
+                self.flush_provider_blocks(None, &mut out)?;
                 // Prefer a positive terminal input count, falling back to message_start;
                 // zero-as-missing is a gateway heuristic, not a rule for cache counts.
                 let usage = PartialUsage {

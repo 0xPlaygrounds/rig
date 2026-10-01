@@ -10,6 +10,7 @@ use crate::completion::request::Document as RigDocument;
 use crate::driver::{Decoded, decode_events};
 use crate::message::{AssistantContent, Reasoning, ReasoningContent};
 use crate::streaming::{PartKind, StreamEvent};
+use serde_json::json;
 
 /// A fresh decoder, for its classifier.
 fn adapter() -> MessagesDecoder<'static> {
@@ -859,6 +860,28 @@ fn test_text_content_block_start_allows_null_citations() {
     assert!(citations.is_empty());
 }
 
+/// The Anthropic provider block a choice part holds.
+fn anthropic_block_of(
+    content: &AssistantContent,
+) -> Option<&serde_json::Map<String, serde_json::Value>> {
+    match content {
+        AssistantContent::Provider(item) => match item.value() {
+            crate::message::ProviderItem::AnthropicMessages(block) => Some(block.as_map()),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+fn unknown_start(index: usize, block: serde_json::Value) -> StreamingEvent {
+    serde_json::from_value(json!({
+        "type": "content_block_start",
+        "index": index,
+        "content_block": block,
+    }))
+    .expect("an unmodeled block start classifies")
+}
+
 #[test]
 fn test_web_search_content_block_start_events_deserialize() {
     let server_tool_use = r#"{
@@ -877,21 +900,113 @@ fn test_web_search_content_block_start_events_deserialize() {
     assert!(matches!(
         event,
         StreamingEvent::ContentBlockStart {
-            content_block: Content::ServerToolUse {
-                ref id,
-                ref name,
-                ref input
-            },
+            content_block: Content::Unknown(ref block),
             ..
-        } if id == "srvtoolu_01"
-            && name == "web_search"
-            && input["query"] == "claude shannon birth date"
+        } if block.kind() == "server_tool_use"
+            && block.as_map()["input"]["query"] == "claude shannon birth date"
     ));
+}
 
-    let web_search_tool_result = r#"{
-            "type": "content_block_start",
-            "index": 2,
-            "content_block": {
+#[test]
+fn test_code_execution_tool_result_block_is_preserved() {
+    let block = json!({
+        "type": "code_execution_tool_result",
+        "tool_use_id": "srvtoolu_01",
+        "content": {
+            "type": "code_execution_result",
+            "return_code": 0,
+            "stdout": "42\n",
+            "stderr": "",
+            "content": []
+        }
+    });
+    let decoded = decode([unknown_start(1, block.clone()), stop(1)]);
+    let ended = decoded.ended();
+    let [part] = ended.as_slice() else {
+        panic!("the result block is one part: {:?}", decoded.events());
+    };
+    assert_eq!(
+        anthropic_block_of(part).map(|kept| serde_json::Value::Object(kept.clone())),
+        Some(block)
+    );
+}
+
+/// A block type no version of rig models, with deltas of a type it does not
+/// model either, folds by the generic rule and keeps its place between the
+/// text around it.
+#[test]
+fn a_future_block_with_future_deltas_is_kept_in_place() {
+    let decoded = decode([
+        StreamingEvent::ContentBlockStart {
+            index: 0,
+            content_block: Content::Text {
+                text: String::new(),
+                citations: Vec::new(),
+                cache_control: None,
+            },
+        },
+        StreamingEvent::ContentBlockDelta {
+            index: 0,
+            delta: ContentDelta::TextDelta {
+                text: "before".to_string(),
+            },
+        },
+        stop(0),
+        unknown_start(
+            1,
+            json!({"type": "compaction", "content": "", "flags": {"a": 1}}),
+        ),
+        serde_json::from_value(json!({
+            "type": "content_block_delta",
+            "index": 1,
+            "delta": {"type": "compaction_delta", "content": "the summary"}
+        }))
+        .expect("an unmodeled delta classifies"),
+        serde_json::from_value(json!({
+            "type": "content_block_delta",
+            "index": 1,
+            "delta": {"type": "compaction_delta", "content": " continues", "flags": {"b": 2}}
+        }))
+        .expect("an unmodeled delta classifies"),
+        stop(1),
+        StreamingEvent::ContentBlockStart {
+            index: 2,
+            content_block: Content::Text {
+                text: String::new(),
+                citations: Vec::new(),
+                cache_control: None,
+            },
+        },
+        StreamingEvent::ContentBlockDelta {
+            index: 2,
+            delta: ContentDelta::TextDelta {
+                text: "after".to_string(),
+            },
+        },
+        message_delta("end_turn", PartialUsage::default()),
+    ]);
+    let choice = decoded.outcome.expect("the reply ended").choice;
+    assert_eq!(choice.len(), 3, "{choice:?}");
+    assert!(matches!(&choice[0], AssistantContent::Text(text) if text.text == "before"));
+    assert_eq!(
+        anthropic_block_of(&choice[1]).map(|kept| serde_json::Value::Object(kept.clone())),
+        Some(json!({"type": "compaction", "content": "the summary continues", "flags": {"b": 2}}))
+    );
+    assert!(matches!(&choice[2], AssistantContent::Text(text) if text.text == "after"));
+}
+
+#[test]
+fn test_streaming_web_search_blocks_are_preserved_on_final_choice() {
+    let decoded = decode([
+        unknown_start(
+            0,
+            json!({"type": "server_tool_use", "id": "srvtoolu_01", "name": "web_search", "input": {}}),
+        ),
+        input_json(0, r#"{"query":"claude shannon birth date"}"#),
+        stop(0),
+        unknown_start(
+            1,
+            json!({
                 "type": "web_search_tool_result",
                 "tool_use_id": "srvtoolu_01",
                 "content": [{
@@ -900,82 +1015,8 @@ fn test_web_search_content_block_start_events_deserialize() {
                     "title": "Claude Shannon",
                     "encrypted_content": "encrypted-content"
                 }]
-            }
-        }"#;
-    let event: StreamingEvent = serde_json::from_str(web_search_tool_result).unwrap();
-    assert!(matches!(
-        event,
-        StreamingEvent::ContentBlockStart {
-            content_block: Content::WebSearchToolResult {
-                ref tool_use_id,
-                ref content
-            },
-            ..
-        } if tool_use_id == "srvtoolu_01"
-            && content[0]["encrypted_content"] == "encrypted-content"
-    ));
-}
-
-#[test]
-fn test_code_execution_tool_result_block_is_preserved() {
-    let event: StreamingEvent = serde_json::from_value(serde_json::json!({
-        "type": "content_block_start",
-        "index": 1,
-        "content_block": {
-            "type": "code_execution_tool_result",
-            "tool_use_id": "srvtoolu_01",
-            "content": {
-                "type": "code_execution_result",
-                "return_code": 0,
-                "stdout": "42\n",
-                "stderr": "",
-                "content": []
-            }
-        }
-    }))
-    .unwrap();
-    let decoded = decode([event, stop(1)]);
-    let ended = decoded.ended();
-    let [AssistantContent::Text(text)] = ended.as_slice() else {
-        panic!("the result block is a text part: {:?}", decoded.events());
-    };
-    let additional_params = text.additional_params.as_ref().expect("its raw content");
-    assert_eq!(
-        additional_params[crate::providers::anthropic::completion::ANTHROPIC_RAW_CONTENT_KEY]["type"],
-        "code_execution_tool_result"
-    );
-    assert_eq!(
-        additional_params[crate::providers::anthropic::completion::ANTHROPIC_RAW_CONTENT_KEY]["content"]
-            ["stdout"],
-        "42\n"
-    );
-}
-
-#[test]
-fn test_streaming_web_search_blocks_are_preserved_on_final_choice() {
-    let decoded = decode([
-        StreamingEvent::ContentBlockStart {
-            index: 0,
-            content_block: Content::ServerToolUse {
-                id: "srvtoolu_01".to_string(),
-                name: "web_search".to_string(),
-                input: serde_json::Value::Null,
-            },
-        },
-        input_json(0, r#"{"query":"claude shannon birth date"}"#),
-        stop(0),
-        StreamingEvent::ContentBlockStart {
-            index: 1,
-            content_block: Content::WebSearchToolResult {
-                tool_use_id: "srvtoolu_01".to_string(),
-                content: serde_json::json!([{
-                    "type": "web_search_result",
-                    "url": "https://example.com/shannon",
-                    "title": "Claude Shannon",
-                    "encrypted_content": "encrypted-content"
-                }]),
-            },
-        },
+            }),
+        ),
         StreamingEvent::ContentBlockStart {
             index: 2,
             content_block: Content::Text {
@@ -1015,27 +1056,15 @@ fn test_streaming_web_search_blocks_are_preserved_on_final_choice() {
         "provider-owned web-search blocks must not become Rig client tool calls"
     );
 
-    let Some(crate::message::AssistantContent::Text(server_tool_use)) = choice_items.first() else {
-        panic!("expected raw server_tool_use metadata");
-    };
+    let server_tool_use = anthropic_block_of(&choice_items[0]).expect("a provider block");
+    assert_eq!(server_tool_use["type"], "server_tool_use");
     assert_eq!(
-        server_tool_use.additional_params.as_ref().unwrap()
-            [crate::providers::anthropic::completion::ANTHROPIC_RAW_CONTENT_KEY]["type"],
-        "server_tool_use"
+        server_tool_use["input"]["query"], "claude shannon birth date",
+        "streamed input fragments replace the opening input"
     );
+    let web_search_result = anthropic_block_of(&choice_items[1]).expect("a provider block");
     assert_eq!(
-        server_tool_use.additional_params.as_ref().unwrap()
-            [crate::providers::anthropic::completion::ANTHROPIC_RAW_CONTENT_KEY]["input"]["query"],
-        "claude shannon birth date"
-    );
-
-    let Some(crate::message::AssistantContent::Text(web_search_result)) = choice_items.get(1)
-    else {
-        panic!("expected raw web_search_tool_result metadata");
-    };
-    assert_eq!(
-        web_search_result.additional_params.as_ref().unwrap()
-            [crate::providers::anthropic::completion::ANTHROPIC_RAW_CONTENT_KEY]["content"][0]["encrypted_content"],
+        web_search_result["content"][0]["encrypted_content"],
         "encrypted-content"
     );
 
@@ -1043,8 +1072,7 @@ fn test_streaming_web_search_blocks_are_preserved_on_final_choice() {
         panic!("expected answer text");
     };
     assert_eq!(answer.text, "Claude Shannon was born on April 30, 1916.");
-    let citations = crate::providers::anthropic::completion::anthropic_citations(answer)
-        .expect("expected preserved citations");
+    let citations = crate::providers::anthropic::completion::anthropic_citations(answer);
     assert!(matches!(
         citations.first(),
         Some(crate::providers::anthropic::completion::Citation::WebSearchResultLocation(citation))
@@ -1075,8 +1103,10 @@ fn test_handle_citations_delta_event_preserves_metadata() {
     let [AssistantContent::Text(text)] = ended.as_slice() else {
         panic!("the citation rides a text part: {:?}", decoded.events());
     };
-    let additional_params = text.additional_params.as_ref().expect("its citations");
-    assert_eq!(additional_params["citations"][0]["type"], "char_location");
+    assert!(matches!(
+        crate::providers::anthropic::completion::anthropic_citations(text),
+        [crate::providers::anthropic::completion::Citation::CharLocation(_)]
+    ));
 }
 
 #[test]
@@ -1120,8 +1150,8 @@ fn test_streaming_citation_deltas_are_preserved_on_final_text() {
     };
 
     assert_eq!(text.text, "the grass is green");
-    let citations = crate::providers::anthropic::completion::anthropic_citations(text).unwrap();
-    assert_eq!(citations, vec![citation]);
+    let citations = crate::providers::anthropic::completion::anthropic_citations(text);
+    assert_eq!(citations, [citation]);
 }
 
 /// The `#[serde(other)]` policy fallbacks are gone: classification is the
