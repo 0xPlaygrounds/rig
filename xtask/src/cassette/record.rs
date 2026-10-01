@@ -67,24 +67,16 @@ pub(crate) fn parse_fixture(argument: &str) -> Option<(String, String)> {
 pub(crate) type Snapshot = BTreeMap<PathBuf, Vec<u8>>;
 
 pub(crate) fn snapshot(dir: &Path) -> Result<Snapshot, String> {
-    let mut files = Snapshot::new();
-    let mut pending = vec![dir.to_path_buf()];
-    while let Some(current) = pending.pop() {
-        let Ok(entries) = std::fs::read_dir(&current) else {
-            continue;
-        };
-        for entry in entries {
-            let path = entry.map_err(|error| error.to_string())?.path();
-            if path.is_dir() {
-                pending.push(path);
-            } else {
-                let bytes = std::fs::read(&path).map_err(|error| error.to_string())?;
-                let relative = path.strip_prefix(dir).unwrap_or(&path).to_path_buf();
-                files.insert(relative, bytes);
-            }
-        }
+    if !dir.is_dir() {
+        return Ok(Snapshot::new());
     }
-    Ok(files)
+    crate::support::files_under(dir, None)?
+        .into_iter()
+        .map(|path| {
+            let bytes = std::fs::read(&path).map_err(|error| error.to_string())?;
+            Ok((path.strip_prefix(dir).unwrap_or(&path).to_path_buf(), bytes))
+        })
+        .collect()
 }
 
 /// The files under `dir` that differ from `before`: changed, added or

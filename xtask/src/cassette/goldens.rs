@@ -16,6 +16,8 @@ use std::process::Command;
 
 use serde_json::Value;
 
+use crate::support::output;
+
 /// Whether `before` and `after` (golden JSON) differ only in
 /// `header.deliveries`.
 pub(crate) fn delivery_only(before: &str, after: &str) -> bool {
@@ -27,22 +29,6 @@ pub(crate) fn delivery_only(before: &str, after: &str) -> bool {
         Some(value)
     };
     before != after && strip(before).is_some_and(|before| Some(before) == strip(after))
-}
-
-pub(crate) fn git(root: &Path, args: &[&str]) -> Result<String, String> {
-    let output = Command::new("git")
-        .args(args)
-        .current_dir(root)
-        .output()
-        .map_err(|error| format!("git: {error}"))?;
-    if !output.status.success() {
-        return Err(format!(
-            "git {}: {}",
-            args.join(" "),
-            String::from_utf8_lossy(&output.stderr).trim()
-        ));
-    }
-    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
 }
 
 /// What happened to the changed goldens under the effects tree.
@@ -60,8 +46,9 @@ pub(crate) struct Rebased {
 /// `header.deliveries`, and give every other changed golden the base's
 /// delivery batches ([`rebase_deliveries`]).
 pub(crate) fn revert_delivery_churn(root: &Path, base: &str) -> Result<Rebased, String> {
-    let changed = git(
+    let changed = output(
         root,
+        "git",
         &[
             "diff",
             "--name-only",
@@ -72,14 +59,14 @@ pub(crate) fn revert_delivery_churn(root: &Path, base: &str) -> Result<Rebased, 
     )?;
     let mut outcome = Rebased::default();
     for path in changed.lines().filter(|path| path.ends_with(".json")) {
-        if git(root, &["cat-file", "-e", &format!("{base}:{path}")]).is_err() {
+        if output(root, "git", &["cat-file", "-e", &format!("{base}:{path}")]).is_err() {
             // A golden the base does not have has no batches to keep.
             continue;
         }
-        let before = git(root, &["show", &format!("{base}:{path}")])?;
+        let before = output(root, "git", &["show", &format!("{base}:{path}")])?;
         let after = std::fs::read_to_string(root.join(path)).unwrap_or_default();
         if delivery_only(&before, &after) {
-            git(root, &["checkout", base, "--", path])?;
+            output(root, "git", &["checkout", base, "--", path])?;
             outcome.reverted += 1;
             continue;
         }

@@ -8,7 +8,6 @@
 //! least 12 characters is also searched for literally, and never printed.
 
 use std::path::Path;
-use std::process::Command;
 
 /// One suspicious match: the kind and a redacted excerpt.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -239,19 +238,7 @@ pub(crate) fn exported_secrets() -> Vec<String> {
 /// Fixtures changed against `base`, plus untracked ones.
 fn changed_fixtures(root: &Path, base: &str) -> Result<Vec<String>, String> {
     let git = |args: &[&str]| -> Result<Vec<String>, String> {
-        let output = Command::new("git")
-            .args(args)
-            .current_dir(root)
-            .output()
-            .map_err(|error| format!("git: {error}"))?;
-        if !output.status.success() {
-            return Err(format!(
-                "git {}: {}",
-                args.join(" "),
-                String::from_utf8_lossy(&output.stderr).trim()
-            ));
-        }
-        Ok(String::from_utf8_lossy(&output.stdout)
+        Ok(crate::support::output(root, "git", args)?
             .lines()
             .map(str::to_owned)
             .collect())

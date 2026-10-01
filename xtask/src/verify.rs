@@ -7,6 +7,7 @@ mod preflight;
 mod selection;
 #[cfg(test)]
 mod tests;
+use crate::support::output;
 use serde_json::Value;
 use std::{collections::BTreeMap, path::Path, process::Command};
 
@@ -18,6 +19,11 @@ pub(crate) enum Error {
     Io(#[from] std::io::Error),
     #[error(transparent)]
     Json(#[from] serde_json::Error),
+}
+impl From<String> for Error {
+    fn from(message: String) -> Self {
+        Self::Invalid(message)
+    }
 }
 type Result<T> = std::result::Result<T, Error>;
 fn invalid(message: impl Into<String>) -> Error {
@@ -94,20 +100,6 @@ impl Options {
             check,
         })
     }
-}
-fn output(root: &Path, program: &str, args: &[&str]) -> Result<String> {
-    let result = Command::new(program)
-        .args(args)
-        .current_dir(root)
-        .output()?;
-    if !result.status.success() {
-        return Err(invalid(format!(
-            "{program} {args:?} failed: {}",
-            String::from_utf8_lossy(&result.stderr)
-        )));
-    }
-    String::from_utf8(result.stdout)
-        .map_err(|_| invalid("non-UTF-8 command output; cannot safely plan"))
 }
 pub(crate) fn run(root: &Path, args: Vec<String>) -> Result<()> {
     let opts = Options::parse(args)?;
