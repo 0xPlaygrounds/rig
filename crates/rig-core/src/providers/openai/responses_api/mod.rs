@@ -2432,7 +2432,19 @@ pub(crate) fn round_trips(block: &crate::message::AssistantContent, item: &Value
         return false;
     };
     let replayed = message::replay_form(item, Some(&canonical), states_default);
-    message::same_wire_value(&canonical, &replayed)
+    message::same_wire_value(&decoded_arguments(canonical), &decoded_arguments(replayed))
+}
+
+/// `item` with a `function_call`'s `arguments`, which the wire states as
+/// JSON text, decoded: spacing in that text states nothing.
+fn decoded_arguments(mut item: Value) -> Value {
+    if let Some(Value::String(arguments)) = item.get("arguments")
+        && let Ok(arguments) = serde_json::from_str::<Value>(arguments)
+        && let Some(item) = item.as_object_mut()
+    {
+        item.insert("arguments".to_owned(), arguments);
+    }
+    item
 }
 
 impl From<AssistantContent> for completion::AssistantContent {

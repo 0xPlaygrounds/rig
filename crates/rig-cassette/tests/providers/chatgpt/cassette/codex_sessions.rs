@@ -584,12 +584,12 @@ async fn streamed_phase_round_trips_on_follow_up() {
         .choice
         .iter()
         .filter_map(|content| match content {
+            // The message item the text keeps as its provider item.
             AssistantContent::Text(text) => Some(
-                text.additional_params
+                text.native
                     .as_ref()
-                    .and_then(|params| params.wire_extras("openai_responses"))
-                    .and_then(|extras| extras.get("phase"))
-                    .and_then(serde_json::Value::as_str),
+                    .and_then(|native| native.open(native.issuer()))
+                    .and_then(|item| item.item()["phase"].as_str()),
             ),
             _ => None,
         })
