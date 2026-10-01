@@ -1,5 +1,4 @@
 //! Rig repository paths for the reusable cassette engine.
-#![allow(dead_code, unused_imports)]
 
 pub use rig_cassette::http::*;
 use std::path::PathBuf;

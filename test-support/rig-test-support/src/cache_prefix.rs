@@ -22,7 +22,6 @@
 //! The invariant is ported from `inspirations/pydantic-ai`
 //! (`tests/cassette_utils.py` `check_cache_prefix_stability`); the plumbing is
 //! rig's.
-#![allow(dead_code)]
 
 use serde_json::Value;
 

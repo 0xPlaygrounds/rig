@@ -10,7 +10,6 @@
 //! proxy for those cells, so their request boundary is pinned by the
 //! recording's owning test, not here. Setup failures replay the committed
 //! error recordings through the ordinary cassette wrappers.
-#![allow(dead_code)]
 
 use std::sync::{
     Arc,
