@@ -194,7 +194,8 @@ pub mod test_utils {
 pub use rig_derive::rig_tool;
 
 /// Conversation memory traits and the in-process backend, plus the `rig-memory`
-/// policy types when the `memory` feature is enabled.
+/// policy types when the `memory` feature is enabled and its JSON Lines file
+/// backend when `memory-file` is enabled.
 pub mod memory {
     pub use rig_core::memory::*;
 

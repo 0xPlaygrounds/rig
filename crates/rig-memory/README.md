@@ -4,8 +4,9 @@ Conversation memory policies for the [Rig](https://github.com/0xPlaygrounds/rig)
 agent framework.
 
 `rig-core` ships the `ConversationMemory` trait and an in-process
-`InMemoryConversationMemory` backend. This crate provides reusable named
-policies for shaping loaded history before it is sent to the model:
+`InMemoryConversationMemory` backend. This crate adds a file backend and
+reusable named policies for shaping loaded history before it is sent to the
+model:
 
 - [`NoopMemoryPolicy`] — identity policy, useful as a default.
 - [`SlidingWindowMemory`] — keep at most the most recent `N` messages.
@@ -49,3 +50,29 @@ let memory = PolicyMemory::new(
     SlidingWindowMemory::last_messages(20),
 );
 ```
+
+## File backend
+
+The `file` feature adds `FileConversationMemory` on native targets. It stores
+each conversation as a JSON Lines file in one directory, one message per line:
+
+```rust,ignore
+use rig_memory::{ConversationMemory, FileConversationMemory};
+
+let memory = FileConversationMemory::new("conversations");
+memory.append(&"thread-1".into(), messages).await?;
+let history = memory.load(&"thread-1".into()).await?;
+let newest_first = memory.list().await?;
+```
+
+- File names are derived from conversation ids, so any id is safe: no path
+  traversal, no collisions on case-insensitive file systems, and long ids are
+  hashed with the id kept in a sibling `.id` file.
+- `append` syncs its lines to disk before returning. A last line left
+  incomplete by a crash is skipped on load and truncated by the next append;
+  a malformed line elsewhere is an error.
+- `replace` swaps a conversation's whole history atomically, for example after
+  compaction.
+- Operations on one conversation through one value, or its clones, run one at
+  a time. Nothing locks across separately constructed values or processes, so
+  give each conversation one writer at a time.
