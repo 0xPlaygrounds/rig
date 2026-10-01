@@ -449,8 +449,8 @@ impl ToolSet {
     /// Every definition, in insertion order.
     pub fn tool_definitions(&self) -> Vec<ToolDefinition> {
         self.tools
-            .iter()
-            .map(|(_, registration)| registration.tool.definition())
+            .values()
+            .map(|registration| registration.tool.definition())
             .collect()
     }
 

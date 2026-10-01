@@ -155,10 +155,17 @@ where
             }
         }
 
-        tools
+        // One nameless tool is a server bug; it should not hide the server's other tools.
+        Ok(tools
             .into_iter()
-            .map(|tool| Ok(self.build_tool(tool, peer.clone())?))
-            .collect()
+            .filter_map(|tool| match self.build_tool(tool, peer.clone()) {
+                Ok(tool) => Some(tool),
+                Err(error) => {
+                    tracing::warn!(%error, "skipping an MCP tool the server listed without a name");
+                    None
+                }
+            })
+            .collect())
     }
 
     pub(crate) async fn try_start_refresh(&self) -> bool {

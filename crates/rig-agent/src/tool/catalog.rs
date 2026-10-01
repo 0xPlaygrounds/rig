@@ -44,9 +44,9 @@ pub struct ToolCatalog {
 }
 
 impl ToolCatalog {
-    /// A catalog over `tools`, advertised under their map names.
+    /// A catalog over `tools`, advertised under their own definitions.
     pub(crate) fn from_registered(tools: IndexMap<String, RegisteredTool>) -> Self {
-        let definitions = tools.iter().map(|(_, tool)| tool.definition()).collect();
+        let definitions = tools.values().map(RegisteredTool::definition).collect();
         Self {
             definitions,
             tools,

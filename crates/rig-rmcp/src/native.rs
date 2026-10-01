@@ -438,10 +438,6 @@ pub enum McpClientError {
     /// The server did not finish returning its tool list before the deadline.
     #[error("Timed out fetching MCP tool list after {0:?}")]
     ToolFetchTimeout(Duration),
-
-    /// The server listed a tool with an empty name.
-    #[error("MCP server listed a tool with an empty name")]
-    EmptyToolName(#[from] EmptyToolName),
 }
 
 /// Wrap every tool of an MCP server's list as an [`McpTool`] sharing one
