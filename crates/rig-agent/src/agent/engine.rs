@@ -101,8 +101,9 @@ pub(crate) trait TurnSource: WasmCompatSend + WasmCompatSync {
 
     /// Feed a dispatched answer into the run, resolving any invalid tool
     /// calls, and yield this medium's items. Ends with
-    /// [`TurnIngest::Accepted`] for a turn the run parked, or without it when
-    /// invalid-call recovery rolled the turn back for another model call.
+    /// [`TurnIngest::Accepted`] for a turn the run parked. Ends without it after
+    /// an `Err`, or when invalid-call recovery abandoned or rolled back the
+    /// turn for another model call.
     fn ingest_turn<'b>(
         &'b mut self,
         runner: &'b AgentRunner,
@@ -872,7 +873,8 @@ impl StreamingTurnSource {
 impl TurnSource for StreamingTurnSource {
     const FORWARDS_ITEMS: bool = true;
     type Answer = rig_core::streaming::CompletionStream;
-    /// The provider's raw choice, which the final item surfaces as-is.
+    /// The provider's raw choice, which the final item surfaces unless a hook
+    /// replaced the turn.
     type Kept = Vec<AssistantContent>;
 
     fn open_chat_span(
@@ -1649,9 +1651,9 @@ pub(crate) struct UnaryTurnSource {
     ///
     /// Atomic rather than `Cell` despite being driven by a single sequential
     /// task: the engine passes `chain_span` as a closure into
-    /// `drive_tool_calls`, whose returned `DriveStream` is `Send`. That makes the
-    /// closure capture `&self`, so `&UnaryTurnSource` must be `Send`, i.e.
-    /// `UnaryTurnSource: Sync`, which `AtomicU64` provides and `Cell` does not.
+    /// `drive_tool_calls`, whose returned `DriveStream` is `Send`. That closure
+    /// borrows the source, so every `TurnSource` must be `Sync`, which
+    /// `AtomicU64` provides and `Cell` does not.
     current_span_id: AtomicU64,
     record_telemetry_content: bool,
 }
