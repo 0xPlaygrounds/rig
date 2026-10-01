@@ -21,7 +21,7 @@ async fn multimodal_image_prompt() {
 
     let image_bytes = std::fs::read(IMAGE_FIXTURE_PATH).expect("fixture image should be readable");
     let image = Image {
-        data: DocumentSourceKind::base64(&BASE64_STANDARD.encode(image_bytes)),
+        data: DocumentSourceKind::base64(BASE64_STANDARD.encode(image_bytes)),
         media_type: Some(ImageMediaType::JPEG),
         ..Default::default()
     };

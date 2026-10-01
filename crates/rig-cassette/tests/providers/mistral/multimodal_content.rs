@@ -77,7 +77,7 @@ fn pdf_document() -> UserContent {
 
 fn speech_audio() -> UserContent {
     let bytes = std::fs::read(AUDIO_FIXTURE_PATH).expect("audio fixture should be readable");
-    UserContent::audio(
+    UserContent::audio_base64(
         base64::engine::general_purpose::STANDARD.encode(bytes),
         Some(rig::message::AudioMediaType::MP3),
     )
@@ -841,7 +841,7 @@ async fn blocking_text_document_still_flattens_into_the_prompt() -> Result<()> {
             let response = agent
                 .prompt(user_message(vec![
                     UserContent::text("What code word is in these notes?"),
-                    UserContent::document("# Notes\nThe code word is WALRUS-4412.", None),
+                    UserContent::document_text("# Notes\nThe code word is WALRUS-4412.", None),
                 ]))
                 .await?;
             assert_mentions(&response.output, "WALRUS-4412");

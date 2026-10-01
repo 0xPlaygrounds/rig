@@ -32,7 +32,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Compose `Image` for prompt
     let image = Image {
-        data: DocumentSourceKind::base64(&image_base64),
+        data: DocumentSourceKind::base64(image_base64),
         media_type: Some(ImageMediaType::PNG),
         ..Default::default()
     };

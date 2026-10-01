@@ -672,7 +672,7 @@ impl CompletionRequest {
 
         let content = documents
             .iter()
-            .map(|doc| UserContent::document(doc.to_string(), Some(DocumentMediaType::TXT)))
+            .map(|doc| UserContent::document_text(doc.to_string(), Some(DocumentMediaType::TXT)))
             .collect();
 
         Some(Message::User { content })

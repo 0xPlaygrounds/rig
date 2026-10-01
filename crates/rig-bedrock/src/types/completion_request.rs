@@ -191,7 +191,7 @@ impl AwsCompletionRequest {
                 .collect::<Vec<_>>()
                 .join(" | ");
 
-            let content = vec![UserContent::document(
+            let content = vec![UserContent::document_text(
                 messages,
                 Some(DocumentMediaType::TXT),
             )];

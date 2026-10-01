@@ -18,7 +18,7 @@ const VISION_MODEL: &str = "google/gemini-2.5-flash";
 fn image_message() -> Image {
     let bytes = std::fs::read(IMAGE_FIXTURE_PATH).expect("fixture image should be readable");
     Image {
-        data: DocumentSourceKind::base64(&BASE64_STANDARD.encode(bytes)),
+        data: DocumentSourceKind::base64(BASE64_STANDARD.encode(bytes)),
         media_type: Some(ImageMediaType::JPEG),
         detail: None,
         additional_params: None,
@@ -28,22 +28,22 @@ fn image_message() -> Image {
 fn pdf_document() -> Document {
     let bytes = std::fs::read(PDF_FIXTURE_PATH).expect("fixture pdf should be readable");
     Document {
-        data: DocumentSourceKind::base64(&BASE64_STANDARD.encode(bytes)),
+        data: DocumentSourceKind::base64(BASE64_STANDARD.encode(bytes)),
         media_type: Some(DocumentMediaType::PDF),
         additional_params: None,
     }
 }
 
-/// Builds base64 video content via the `UserContent::video` helper.
+/// Builds base64 video content via the `UserContent::video_base64` helper.
 fn video_content() -> UserContent {
     let bytes = std::fs::read(VIDEO_FIXTURE_PATH).expect("fixture video should be readable");
-    UserContent::video(BASE64_STANDARD.encode(bytes), Some(VideoMediaType::MP4))
+    UserContent::video_base64(BASE64_STANDARD.encode(bytes), Some(VideoMediaType::MP4))
 }
 
-/// Builds base64 audio content via the `UserContent::audio` helper.
+/// Builds base64 audio content via the `UserContent::audio_base64` helper.
 fn audio_content() -> UserContent {
     let bytes = std::fs::read(AUDIO_FIXTURE_PATH).expect("fixture audio should be readable");
-    UserContent::audio(BASE64_STANDARD.encode(bytes), Some(AudioMediaType::MP3))
+    UserContent::audio_base64(BASE64_STANDARD.encode(bytes), Some(AudioMediaType::MP3))
 }
 
 #[tokio::test]

@@ -406,7 +406,7 @@ fn user(parts: Vec<UserContent>) -> Message {
 
 fn red_square() -> UserContent {
     UserContent::Image(Image {
-        data: DocumentSourceKind::base64(&BASE64_STANDARD.encode(RED_SQUARE)),
+        data: DocumentSourceKind::base64(BASE64_STANDARD.encode(RED_SQUARE)),
         media_type: Some(ImageMediaType::PNG),
         ..Default::default()
     })

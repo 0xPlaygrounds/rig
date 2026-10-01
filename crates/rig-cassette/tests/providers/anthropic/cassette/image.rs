@@ -25,7 +25,7 @@ async fn image_prompt_from_fixture() {
             .await
             .expect("fixture image should be readable");
         let image = Image {
-            data: DocumentSourceKind::base64(&BASE64_STANDARD.encode(image_bytes)),
+            data: DocumentSourceKind::base64(BASE64_STANDARD.encode(image_bytes)),
             media_type: Some(ImageMediaType::JPEG),
             ..Default::default()
         };
