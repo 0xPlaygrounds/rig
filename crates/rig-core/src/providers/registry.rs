@@ -445,6 +445,34 @@ impl ProviderConfig {
         self
     }
 
+    /// The base URL this configuration sends requests to. Endpoint paths,
+    /// such as `/chat/completions` or `/v1/messages`, resolve against it.
+    /// A route the dialect serves at the server root drops a trailing `/v1`
+    /// from it first.
+    ///
+    /// A Copilot preset built with a session token holds the endpoint that
+    /// token names. [`with_credential`](Self::with_credential) keeps the URL
+    /// it finds.
+    pub fn base_url(&self) -> &str {
+        match self {
+            Self::OpenAi(provider) => &provider.base_url,
+            Self::Anthropic(provider) => &provider.base_url,
+            Self::Gemini(provider) => &provider.base_url,
+        }
+    }
+
+    /// The same configuration sending to `base_url`, such as a proxy, with
+    /// every other setting kept. A Messages-format configuration normalizes
+    /// the URL with [`anthropic::wire::normalize_base_url`].
+    pub fn with_base_url(self, base_url: impl Into<String>) -> Self {
+        let base_url = base_url.into();
+        match self {
+            Self::OpenAi(provider) => Self::OpenAi(provider.with_base_url(base_url)),
+            Self::Anthropic(provider) => Self::Anthropic(provider.with_base_url(base_url)),
+            Self::Gemini(provider) => Self::Gemini(provider.with_base_url(base_url)),
+        }
+    }
+
     /// The completion wire for `model`, bound to `http`, erased behind a
     /// [`ModelAdapter`] labelled `label`.
     ///

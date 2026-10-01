@@ -677,3 +677,143 @@ fn the_family_name_is_the_configuration_tag() {
         );
     }
 }
+
+/// The URI a completion request built from `config` is sent to.
+fn completion_uri(config: &ProviderConfig) -> String {
+    use crate::completion::CompletionRequest;
+    use crate::wire::{Mode, Wire};
+
+    let request = CompletionRequest::new("hello");
+    let encoded = match config {
+        ProviderConfig::OpenAi(provider) => {
+            provider.completion("gpt-4o").encode(request, Mode::Unary)
+        }
+        ProviderConfig::Anthropic(provider) => provider
+            .completion("claude-haiku-4-5")
+            .encode(request, Mode::Unary),
+        ProviderConfig::Gemini(provider) => provider
+            .completion("gemini-2.5-flash")
+            .encode(request, Mode::Unary),
+    };
+    encoded
+        .expect("the request encodes")
+        .request
+        .uri()
+        .to_string()
+}
+
+/// `config` with its base URL field set to `base_url` directly, bypassing any
+/// normalization: what "only the URL changed" means.
+fn with_base_url_field(mut config: ProviderConfig, base_url: &str) -> ProviderConfig {
+    match &mut config {
+        ProviderConfig::OpenAi(provider) => provider.base_url = base_url.to_owned(),
+        ProviderConfig::Anthropic(provider) => provider.base_url = base_url.to_owned(),
+        ProviderConfig::Gemini(provider) => provider.base_url = base_url.to_owned(),
+    }
+    config
+}
+
+/// Each family's preset reports the dialect's default host.
+#[test]
+fn a_preset_reports_its_dialect_s_default_base_url() {
+    for (selection, expected) in [
+        ("openai/openai", "https://api.openai.com/v1"),
+        ("deepseek/openai", "https://api.deepseek.com"),
+        ("anthropic/anthropic", "https://api.anthropic.com"),
+        ("zai/anthropic", "https://api.z.ai/api/anthropic"),
+        (
+            "gcp.gemini/gemini",
+            "https://generativelanguage.googleapis.com",
+        ),
+    ] {
+        let config = ProviderId::resolve(selection).unwrap().config("k");
+        assert_eq!(config.base_url(), expected, "{selection}");
+    }
+}
+
+/// For every registered selection, the reported base URL is where the
+/// completion request goes, before and after pointing it at a proxy, and
+/// pointing it elsewhere changes nothing but the URL.
+#[test]
+fn every_preset_sends_to_the_base_url_it_reports() {
+    const PROXY: &str = "http://127.0.0.1:9/proxy";
+    for id in ProviderId::all() {
+        let preset = id.config("k");
+        let uri = completion_uri(&preset);
+        assert!(
+            uri.starts_with(preset.base_url().trim_end_matches('/')),
+            "{id}: `{uri}` is not under `{}`",
+            preset.base_url()
+        );
+
+        let proxied = preset.clone().with_base_url(PROXY);
+        assert_eq!(proxied.base_url(), PROXY, "{id}");
+        assert_eq!(proxied, with_base_url_field(preset, PROXY), "{id}");
+        let uri = completion_uri(&proxied);
+        assert!(
+            uri.starts_with(PROXY),
+            "{id}: `{uri}` is not under the proxy"
+        );
+    }
+}
+
+/// A configured URL survives serialization, for every family.
+#[test]
+fn a_configured_base_url_round_trips_through_serialization() {
+    const HOST: &str = "https://gateway.invalid/v2";
+    for selection in ["openai/openai", "anthropic/anthropic", "gcp.gemini/gemini"] {
+        let config = ProviderId::resolve(selection)
+            .unwrap()
+            .config("sk-secret")
+            .with_base_url(HOST);
+        let json = serde_json::to_string(&config).expect("a configuration serializes");
+        assert!(json.contains(HOST), "{selection}: {json}");
+        let read: ProviderConfig = serde_json::from_str(&json).expect("and reads back");
+        assert_eq!(read.base_url(), HOST, "{selection}");
+        assert_eq!(read, config.with_credential(""), "{selection}");
+    }
+}
+
+/// A Messages-format URL is normalized the way the family's own builder
+/// normalizes it, so a pasted endpoint does not repeat its path.
+#[test]
+fn a_messages_format_base_url_drops_its_endpoint_suffix() {
+    let anthropic = ProviderId::resolve("anthropic/anthropic").unwrap();
+    for pasted in [
+        "http://127.0.0.1:9/",
+        "http://127.0.0.1:9/v1",
+        "http://127.0.0.1:9/v1/messages",
+    ] {
+        let config = anthropic.config("k").with_base_url(pasted);
+        assert_eq!(config.base_url(), "http://127.0.0.1:9", "{pasted}");
+        assert_eq!(completion_uri(&config), "http://127.0.0.1:9/v1/messages");
+    }
+}
+
+/// A Copilot preset built with a session token reports the endpoint the
+/// token names, keeps it when the credential changes, and still takes an
+/// explicit host.
+#[test]
+fn a_copilot_preset_reports_its_token_s_endpoint() {
+    let token = "tid=1;proxy-ep=proxy.individual.githubcopilot.com;exp=2";
+    let copilot = ProviderId::resolve("copilot").unwrap();
+    assert_eq!(
+        copilot.config("tid=1").base_url(),
+        "https://api.githubcopilot.com"
+    );
+    let resolved = copilot.config(token);
+    assert_eq!(
+        resolved.base_url(),
+        "https://api.individual.githubcopilot.com"
+    );
+    assert_eq!(
+        resolved.clone().with_credential("rotated").base_url(),
+        "https://api.individual.githubcopilot.com"
+    );
+    let explicit = resolved.with_base_url("https://gateway.invalid/copilot");
+    assert_eq!(explicit.base_url(), "https://gateway.invalid/copilot");
+    assert_eq!(
+        completion_uri(&explicit),
+        "https://gateway.invalid/copilot/chat/completions"
+    );
+}
