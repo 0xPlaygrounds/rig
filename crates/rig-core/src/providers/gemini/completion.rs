@@ -8,6 +8,8 @@
 //! # Ok(())
 //! # }
 //! ```
+/// `gemini-3.8-flash` completion model
+pub const GEMINI_3_8_FLASH: &str = "gemini-3.8-flash";
 /// `gemini-3.1-flash-lite-preview` completion model
 pub const GEMINI_3_1_FLASH_LITE_PREVIEW: &str = "gemini-3.1-flash-lite-preview";
 /// `gemini-3-flash-preview` completion model
