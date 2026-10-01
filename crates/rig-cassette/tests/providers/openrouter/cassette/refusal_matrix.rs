@@ -221,9 +221,10 @@ async fn blocking_raw_and_normalized_agree() {
             let document = openrouter::CompletionResponse::deserialize(&normalized.raw)
                 .expect("raw is OpenRouter's own completion response");
             let raw_refusal = document
+                .openai
                 .choices
                 .first()
-                .and_then(|choice| match &choice.message {
+                .and_then(|choice| match &choice.openai.message {
                     OpenAiMessage::Assistant { refusal, .. } => refusal.clone(),
                     _ => None,
                 })

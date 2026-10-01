@@ -8,11 +8,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::completion;
-use crate::providers::internal::openai_chat_completions_compatible::{
-    map_native_finish_reason, map_openai_finish_reason,
-};
-use crate::providers::openai::completion::Message;
+use crate::providers::openai;
 
 /// The `qwen/qwq-32b` model. Find more models at <https://openrouter.ai/models>.
 pub const QWEN_QWQ_32B: &str = "qwen/qwq-32b";
@@ -521,104 +517,40 @@ impl ProviderPreferences {
     }
 }
 
-fn deserialize_openrouter_choices_dropping_incomplete_tool_calls<'de, D>(
-    deserializer: D,
-) -> Result<Vec<Choice>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    crate::providers::internal::openai_chat_completions_compatible::deserialize_choices_dropping_incomplete_tool_calls_when(
-        deserializer,
-        |choice| {
-            let normalized = choice
-                .get("finish_reason")
-                .and_then(serde_json::Value::as_str)
-                .filter(|reason| !reason.is_empty());
-            if let Some(reason) = normalized {
-                return matches!(map_openai_finish_reason(reason), completion::FinishReason::Length);
-            }
-
-            choice
-                .get("native_finish_reason")
-                .and_then(serde_json::Value::as_str)
-                .filter(|reason| !reason.is_empty())
-                .is_some_and(|reason| {
-                    matches!(map_native_finish_reason(reason), completion::FinishReason::Length)
-                })
-        },
-    )
-}
-
-/// Typed OpenRouter completion response.
+/// Typed OpenRouter completion response, read back from
+/// [`crate::completion::CompletionResponse::raw`].
 ///
 /// For more information, see the
 /// [OpenRouter Chat Completions reference](https://openrouter.ai/docs/api/api-reference/chat/create-a-chat-completion).
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CompletionResponse {
-    pub id: String,
-    pub object: String,
-    pub created: u64,
-    pub model: String,
-    #[serde(deserialize_with = "deserialize_openrouter_choices_dropping_incomplete_tool_calls")]
-    pub choices: Vec<Choice>,
-    pub system_fingerprint: Option<String>,
+    /// The OpenAI-compatible reply.
+    #[serde(flatten)]
+    pub openai: openai::completion::ChatCompletionResponse<Usage, Choice>,
     /// Upstream provider selected by OpenRouter for this response.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub provider: Option<String>,
-    /// Service tier reported by the routed provider, when present.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub service_tier: Option<String>,
-    pub usage: Option<Usage>,
 }
 
+/// An OpenAI-compatible choice plus the routed upstream's own finish reason.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Choice {
-    pub index: usize,
+    /// The OpenAI-compatible choice.
+    #[serde(flatten)]
+    pub openai: openai::completion::Choice,
+    /// The upstream's finish reason, reported beside the normalized one.
     pub native_finish_reason: Option<String>,
-    pub message: Message,
-    pub finish_reason: Option<String>,
-    /// Per-token probability metadata returned when `logprobs` is requested.
-    ///
-    /// Normalized completions intentionally omit provider-native
-    /// probabilities; they stay readable through `CompletionResponse::raw`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub logprobs: Option<serde_json::Value>,
 }
 
+/// OpenRouter's accounting: the OpenAI-compatible counters plus the billed cost.
 #[derive(Clone, Copy, Debug, Default, Deserialize, Serialize)]
 pub struct Usage {
-    pub prompt_tokens: usize,
-    #[serde(default)]
-    pub completion_tokens: usize,
-    pub total_tokens: usize,
+    /// The OpenAI-compatible counters.
+    #[serde(flatten)]
+    pub openai: openai::Usage,
+    /// Credits OpenRouter billed for the request.
     #[serde(default)]
     pub cost: f64,
-    /// Prompt-token cache breakdown, when reported.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub prompt_tokens_details: Option<PromptTokensDetails>,
-    /// Completion-token breakdown, including the reasoning share when reported.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub completion_tokens_details: Option<CompletionTokensDetails>,
-}
-
-/// Prompt-token breakdown reported by OpenRouter for cached requests.
-#[derive(Clone, Copy, Debug, Deserialize, Serialize, Default)]
-pub struct PromptTokensDetails {
-    /// Tokens served from cache (cache hit).
-    #[serde(default)]
-    pub cached_tokens: usize,
-    /// Tokens written to cache on this call (cache miss that populated the cache).
-    #[serde(default)]
-    pub cache_write_tokens: usize,
-}
-
-/// Completion-token breakdown containing the reported reasoning share.
-#[derive(Clone, Copy, Debug, Deserialize, Serialize, Default)]
-pub struct CompletionTokensDetails {
-    /// Tokens the upstream spent on hidden reasoning, counted inside
-    /// `completion_tokens`.
-    #[serde(default)]
-    pub reasoning_tokens: usize,
 }
 
 #[cfg(test)]

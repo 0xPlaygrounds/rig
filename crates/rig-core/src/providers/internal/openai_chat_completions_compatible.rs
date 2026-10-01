@@ -68,8 +68,9 @@ pub(crate) fn map_native_finish_reason(reason: &str) -> FinishReason {
 }
 
 /// Deserialize choices, dropping incomplete tool calls only for length finishes.
-/// Dropping requires a copy with arguments repaired to `{}` to deserialize as `T`.
-/// Other defects remain deserialization errors.
+/// A choice without a `finish_reason` falls back to a gateway's
+/// `native_finish_reason`. Dropping requires a copy with arguments repaired to
+/// `{}` to deserialize as `T`. Other defects remain deserialization errors.
 pub(crate) fn deserialize_choices_dropping_incomplete_tool_calls<'de, D, T>(
     deserializer: D,
 ) -> Result<Vec<T>, D::Error>
@@ -77,30 +78,10 @@ where
     D: Deserializer<'de>,
     T: serde::de::DeserializeOwned,
 {
-    deserialize_choices_dropping_incomplete_tool_calls_when(deserializer, |choice| {
-        choice
-            .get("finish_reason")
-            .and_then(serde_json::Value::as_str)
-            .is_some_and(|reason| matches!(map_openai_finish_reason(reason), FinishReason::Length))
-    })
-}
-
-/// Deserialize choices using `is_output_length` to select truncated turns.
-/// Applies [`deserialize_choices_dropping_incomplete_tool_calls`]'s repair check
-/// before dropping incomplete calls.
-pub(crate) fn deserialize_choices_dropping_incomplete_tool_calls_when<'de, D, T, F>(
-    deserializer: D,
-    is_output_length: F,
-) -> Result<Vec<T>, D::Error>
-where
-    D: Deserializer<'de>,
-    T: serde::de::DeserializeOwned,
-    F: Fn(&serde_json::Value) -> bool,
-{
     Vec::<serde_json::Value>::deserialize(deserializer)?
         .into_iter()
         .map(|mut choice| {
-            if is_output_length(&choice) {
+            if reports_output_length(&choice) {
                 let dropped = drop_tool_calls_cut_by_budget::<T>(&mut choice);
                 if dropped > 0 {
                     tracing::debug!(
@@ -113,6 +94,22 @@ where
             serde_json::from_value(choice).map_err(serde::de::Error::custom)
         })
         .collect()
+}
+
+/// Whether a raw choice blames the output-token budget. A nonempty
+/// `finish_reason` decides; otherwise `native_finish_reason` does.
+fn reports_output_length(choice: &serde_json::Value) -> bool {
+    let reason = |key: &str| {
+        choice
+            .get(key)
+            .and_then(serde_json::Value::as_str)
+            .filter(|reason| !reason.is_empty())
+    };
+    match reason("finish_reason") {
+        Some(reason) => matches!(map_openai_finish_reason(reason), FinishReason::Length),
+        None => reason("native_finish_reason")
+            .is_some_and(|native| matches!(map_native_finish_reason(native), FinishReason::Length)),
+    }
 }
 
 /// Drop incomplete argument strings from a choice and return the number removed.

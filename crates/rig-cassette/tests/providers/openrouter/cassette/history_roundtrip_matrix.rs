@@ -217,9 +217,10 @@ async fn run_cell(client: OpenAiModels, cell: Cell, observed: SharedObservation)
             Observation {
                 text: content_text(&response.raw["choices"][0]["message"]["content"]),
                 saw_terminal: wire
+                    .openai
                     .choices
                     .iter()
-                    .all(|choice| choice.finish_reason.is_some()),
+                    .all(|choice| !choice.openai.finish_reason.is_empty()),
             }
         }
         (Transport::Blocking, Surface::Normalized) => {
