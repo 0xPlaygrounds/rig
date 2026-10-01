@@ -862,7 +862,7 @@ fn event_timeout_error(timeout: Duration) -> ProviderError {
 /// Failures without a provider response retain transport error classification.
 fn websocket_provider_error(error: http_client::Error) -> ProviderError {
     let provider_request_id = error.non_success_headers().and_then(|headers| {
-        crate::providers::internal::request_id_from_headers(headers, REQUEST_ID_HEADER)
+        crate::driver::http_transport::request_id_from(headers, REQUEST_ID_HEADER)
     });
     ProviderError::from_transport_error(error).with_provider_request_id(provider_request_id)
 }
