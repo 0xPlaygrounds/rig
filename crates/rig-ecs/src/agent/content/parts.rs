@@ -54,9 +54,7 @@ pub enum ContentPart {
     Json(#[reflect(remote = super::reflect::JsonPartReflect)] serde_json::Value),
     /// A provider item with no canonical meaning, sealed to its issuer and
     /// replayed only to its own wire format.
-    Native(
-        #[reflect(remote = super::reflect::NativePartReflect)] message::Sealed<message::Native>,
-    ),
+    Native(#[reflect(remote = super::reflect::NativePartReflect)] message::Sealed<message::Native>),
 }
 
 /// A request-only edit on an ordered link entity owned by a fresh turn.

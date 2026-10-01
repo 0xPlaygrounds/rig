@@ -250,7 +250,9 @@ impl NativeBlock {
                 .insert("input".to_owned(), serde_json::from_str(&self.input_json)?);
         }
         let content: Content = serde_json::from_value(Value::Object(self.block))?;
-        Ok(crate::message::Native::new::<super::completion::MessagesFormat>(&content)?)
+        Ok(crate::message::Native::new::<
+            super::completion::MessagesFormat,
+        >(&content)?)
     }
 }
 
@@ -313,7 +315,9 @@ impl<'id> MessagesDecoder<'id> {
         out: &mut Out<'id, Completion>,
     ) -> Result<(), ProviderError> {
         match event {
-            StreamingEvent::ContentBlockDelta { index, delta } if self.natives.contains_key(&index) => {
+            StreamingEvent::ContentBlockDelta { index, delta }
+                if self.natives.contains_key(&index) =>
+            {
                 if let Some(native) = self.natives.get_mut(&index) {
                     match delta {
                         ContentDelta::TextDelta { text } => native.append_str("text", &text),

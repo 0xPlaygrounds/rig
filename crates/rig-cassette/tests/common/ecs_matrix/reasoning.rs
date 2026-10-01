@@ -138,7 +138,8 @@ pub(crate) fn completions(log: &EffectLog) -> Vec<&CompletionResponse> {
 fn rank(part: &AssistantContent) -> u8 {
     match part {
         AssistantContent::Reasoning(_) => 0,
-        AssistantContent::Text(_) => 1,
+        // Native items travel with text, as the stream fold groups them.
+        AssistantContent::Text(_) | AssistantContent::Native(_) => 1,
         AssistantContent::ToolCall(_) => 2,
         AssistantContent::Image(_) => 3,
     }

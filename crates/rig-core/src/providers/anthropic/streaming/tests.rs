@@ -859,123 +859,101 @@ fn test_text_content_block_start_allows_null_citations() {
     assert!(citations.is_empty());
 }
 
-#[test]
-fn test_web_search_content_block_start_events_deserialize() {
-    let server_tool_use = r#"{
-            "type": "content_block_start",
-            "index": 1,
-            "content_block": {
-                "type": "server_tool_use",
-                "id": "srvtoolu_01",
-                "name": "web_search",
-                "input": {
-                    "query": "claude shannon birth date"
-                }
-            }
-        }"#;
-    let event: StreamingEvent = serde_json::from_str(server_tool_use).unwrap();
-    assert!(matches!(
-        event,
-        StreamingEvent::ContentBlockStart {
-            content_block: Content::ServerToolUse {
-                ref id,
-                ref name,
-                ref input
-            },
-            ..
-        } if id == "srvtoolu_01"
-            && name == "web_search"
-            && input["query"] == "claude shannon birth date"
-    ));
+/// The native item `content` holds, as the JSON it replays as.
+fn native_json(content: &AssistantContent) -> serde_json::Value {
+    let AssistantContent::Native(native) = content else {
+        panic!("expected a native item, got {content:?}");
+    };
+    native.value().item().clone()
+}
 
-    let web_search_tool_result = r#"{
-            "type": "content_block_start",
-            "index": 2,
-            "content_block": {
-                "type": "web_search_tool_result",
-                "tool_use_id": "srvtoolu_01",
-                "content": [{
-                    "type": "web_search_result",
-                    "url": "https://example.com/shannon",
-                    "title": "Claude Shannon",
-                    "encrypted_content": "encrypted-content"
-                }]
-            }
-        }"#;
-    let event: StreamingEvent = serde_json::from_str(web_search_tool_result).unwrap();
+#[test]
+fn test_unmodelled_content_block_start_events_deserialize_verbatim() {
+    let block = serde_json::json!({
+        "type": "server_tool_use",
+        "id": "srvtoolu_01",
+        "name": "web_search",
+        "input": {"query": "claude shannon birth date"}
+    });
+    let event = classified(
+        &serde_json::json!({"type": "content_block_start", "index": 1, "content_block": block})
+            .to_string(),
+    );
     assert!(matches!(
         event,
         StreamingEvent::ContentBlockStart {
-            content_block: Content::WebSearchToolResult {
-                ref tool_use_id,
-                ref content
-            },
+            content_block: Content::Unknown(ref value),
             ..
-        } if tool_use_id == "srvtoolu_01"
-            && content[0]["encrypted_content"] == "encrypted-content"
+        } if *value == block
     ));
 }
 
 #[test]
 fn test_code_execution_tool_result_block_is_preserved() {
+    let block = serde_json::json!({
+        "type": "code_execution_tool_result",
+        "tool_use_id": "srvtoolu_01",
+        "content": {
+            "type": "code_execution_result",
+            "return_code": 0,
+            "stdout": "42\n",
+            "stderr": "",
+            "content": []
+        }
+    });
     let event: StreamingEvent = serde_json::from_value(serde_json::json!({
         "type": "content_block_start",
         "index": 1,
-        "content_block": {
-            "type": "code_execution_tool_result",
-            "tool_use_id": "srvtoolu_01",
-            "content": {
-                "type": "code_execution_result",
-                "return_code": 0,
-                "stdout": "42\n",
-                "stderr": "",
-                "content": []
-            }
-        }
+        "content_block": block,
     }))
     .unwrap();
     let decoded = decode([event, stop(1)]);
     let ended = decoded.ended();
-    let [AssistantContent::Text(text)] = ended.as_slice() else {
-        panic!("the result block is a text part: {:?}", decoded.events());
+    let [native] = ended.as_slice() else {
+        panic!(
+            "the result block is one native part: {:?}",
+            decoded.events()
+        );
     };
-    let additional_params = text.additional_params.as_ref().expect("its raw content");
-    assert_eq!(
-        additional_params[crate::providers::anthropic::completion::ANTHROPIC_RAW_CONTENT_KEY]["type"],
-        "code_execution_tool_result"
-    );
-    assert_eq!(
-        additional_params[crate::providers::anthropic::completion::ANTHROPIC_RAW_CONTENT_KEY]["content"]
-            ["stdout"],
-        "42\n"
-    );
+    assert_eq!(native_json(native), block);
+    assert!(matches!(
+        decoded.events().first(),
+        Some(StreamEvent::Start {
+            kind: PartKind::Native,
+            ..
+        })
+    ));
 }
 
 #[test]
 fn test_streaming_web_search_blocks_are_preserved_on_final_choice() {
+    let result_block = serde_json::json!({
+        "type": "web_search_tool_result",
+        "tool_use_id": "srvtoolu_01",
+        "content": [{
+            "type": "web_search_result",
+            "url": "https://example.com/shannon",
+            "title": "Claude Shannon",
+            "encrypted_content": "encrypted-content"
+        }]
+    });
     let decoded = decode([
         StreamingEvent::ContentBlockStart {
             index: 0,
-            content_block: Content::ServerToolUse {
-                id: "srvtoolu_01".to_string(),
-                name: "web_search".to_string(),
-                input: serde_json::Value::Null,
-            },
+            content_block: Content::Unknown(serde_json::json!({
+                "type": "server_tool_use",
+                "id": "srvtoolu_01",
+                "name": "web_search",
+                "input": {}
+            })),
         },
         input_json(0, r#"{"query":"claude shannon birth date"}"#),
         stop(0),
         StreamingEvent::ContentBlockStart {
             index: 1,
-            content_block: Content::WebSearchToolResult {
-                tool_use_id: "srvtoolu_01".to_string(),
-                content: serde_json::json!([{
-                    "type": "web_search_result",
-                    "url": "https://example.com/shannon",
-                    "title": "Claude Shannon",
-                    "encrypted_content": "encrypted-content"
-                }]),
-            },
+            content_block: Content::Unknown(result_block.clone()),
         },
+        stop(1),
         StreamingEvent::ContentBlockStart {
             index: 2,
             content_block: Content::Text {
@@ -1014,30 +992,17 @@ fn test_streaming_web_search_blocks_are_preserved_on_final_choice() {
             .all(|item| !matches!(item, crate::message::AssistantContent::ToolCall(_))),
         "provider-owned web-search blocks must not become Rig client tool calls"
     );
-
-    let Some(crate::message::AssistantContent::Text(server_tool_use)) = choice_items.first() else {
-        panic!("expected raw server_tool_use metadata");
-    };
+    // The streamed input lands in the block, as a whole reply states it.
     assert_eq!(
-        server_tool_use.additional_params.as_ref().unwrap()
-            [crate::providers::anthropic::completion::ANTHROPIC_RAW_CONTENT_KEY]["type"],
-        "server_tool_use"
+        native_json(&choice_items[0]),
+        serde_json::json!({
+            "type": "server_tool_use",
+            "id": "srvtoolu_01",
+            "name": "web_search",
+            "input": {"query": "claude shannon birth date"}
+        })
     );
-    assert_eq!(
-        server_tool_use.additional_params.as_ref().unwrap()
-            [crate::providers::anthropic::completion::ANTHROPIC_RAW_CONTENT_KEY]["input"]["query"],
-        "claude shannon birth date"
-    );
-
-    let Some(crate::message::AssistantContent::Text(web_search_result)) = choice_items.get(1)
-    else {
-        panic!("expected raw web_search_tool_result metadata");
-    };
-    assert_eq!(
-        web_search_result.additional_params.as_ref().unwrap()
-            [crate::providers::anthropic::completion::ANTHROPIC_RAW_CONTENT_KEY]["content"][0]["encrypted_content"],
-        "encrypted-content"
-    );
+    assert_eq!(native_json(&choice_items[1]), result_block);
 
     let Some(crate::message::AssistantContent::Text(answer)) = choice_items.get(2) else {
         panic!("expected answer text");

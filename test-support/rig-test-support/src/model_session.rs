@@ -957,15 +957,12 @@ pub async fn anthropic(
     use futures::StreamExt;
     while let Some(item) = stream.next().await {
         if let rig_core::streaming::Item::Event(rig_core::streaming::StreamEvent::End {
-            content: AssistantContent::Text(text),
+            content: AssistantContent::Native(native),
             ..
         }) = item.unwrap_or_else(|error| panic!("{}: web search item: {error}", session.run))
-            && let Some(kind) = text
-                .additional_params
-                .as_ref()
-                .and_then(|params| params.get("anthropic_content"))
-                .and_then(|raw| raw.get("type"))
-                .and_then(Value::as_str)
+            && let Some(kind) = native
+                .open(native.issuer())
+                .and_then(rig_core::message::Native::kind)
         {
             raw_types.push(kind.to_owned());
         }

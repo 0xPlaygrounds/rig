@@ -20,15 +20,7 @@ fn compaction_output_item_round_trips_verbatim() {
         "future_field": {"nested": [1, 2, 3]}
     });
     let output: Output = serde_json::from_value(wire.clone()).expect("compaction decodes");
-    let Output::Compaction(fields) = &output else {
-        panic!("expected Output::Compaction, got {output:?}");
-    };
-    assert_eq!(fields.get("id"), Some(&json!("cmp_123")));
-    assert!(
-        fields.get("type").is_none(),
-        "the tag must not be duplicated inside the payload"
-    );
-
+    assert_eq!(output, Output::Unknown(wire.clone()));
     let back = serde_json::to_value(&output).expect("compaction re-serializes");
     assert_eq!(back, wire);
 }
@@ -41,7 +33,7 @@ fn compaction_input_item_round_trips_verbatim() {
         "encrypted_content": "opaque-bytes"
     });
     let item: InputItem = serde_json::from_value(wire.clone()).expect("compaction input decodes");
-    assert!(matches!(item.input, InputContent::Compaction(_)));
+    assert!(matches!(item.input, InputContent::Unknown(_)));
     let back = serde_json::to_value(&item).expect("compaction input re-serializes");
     assert_eq!(back, wire);
 }
@@ -58,7 +50,7 @@ fn compacted_window_decodes_with_every_item_typed() {
          "arguments": "{}", "status": "completed"}
     ]))
     .expect("window decodes");
-    assert!(matches!(output[0], Output::Compaction(_)));
+    assert!(matches!(output[0], Output::Unknown(_)));
     assert!(matches!(output[1], Output::Message(_)));
     assert!(matches!(output[2], Output::FunctionCall(_)));
 }

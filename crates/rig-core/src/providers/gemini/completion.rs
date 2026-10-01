@@ -1159,12 +1159,9 @@ pub mod gemini_api_types {
                         additional_params: None,
                     })
                 }
-                message::AssistantContent::Native(native) => {
-                    Err(MessageError::ConversionError(format!(
-                        "Gemini cannot replay a native `{}` item",
-                        native.issuer()
-                    )))
-                }
+                message::AssistantContent::Native(native) => Err(MessageError::ConversionError(
+                    format!("Gemini cannot replay a native `{}` item", native.issuer()),
+                )),
             }
         }
     }

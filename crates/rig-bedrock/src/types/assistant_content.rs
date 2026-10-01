@@ -258,6 +258,8 @@ pub(crate) fn to_aws(
         AssistantContent::Image(_) => Err(ProviderError::Provider(
             "AWS Bedrock does not support image content in assistant messages".to_owned(),
         )),
+        // Converse replays no native items.
+        AssistantContent::Native(_) => Ok(None),
     }
 }
 

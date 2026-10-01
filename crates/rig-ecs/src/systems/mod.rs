@@ -293,7 +293,8 @@ impl TurnRead {
             AssistantContent::ToolCall(call) => Some(call),
             AssistantContent::Text(_)
             | AssistantContent::Reasoning(_)
-            | AssistantContent::Image(_) => None,
+            | AssistantContent::Image(_)
+            | AssistantContent::Native(_) => None,
         })
     }
 }
@@ -1867,7 +1868,8 @@ pub fn land_batch(
                 AssistantContent::ToolCall(_)
                 | AssistantContent::Text(_)
                 | AssistantContent::Reasoning(_)
-                | AssistantContent::Image(_) => None,
+                | AssistantContent::Image(_)
+                | AssistantContent::Native(_) => None,
             })
         });
         match output_call {
@@ -2029,9 +2031,11 @@ fn edited_content(
             Resolution::Ignore => {
                 content.retain(|part| match part {
                     AssistantContent::ToolCall(tool_call) => tool_call.id != call.id,
+                    // Ignoring a call leaves every other part, native items included.
                     AssistantContent::Text(_)
                     | AssistantContent::Reasoning(_)
-                    | AssistantContent::Image(_) => true,
+                    | AssistantContent::Image(_)
+                    | AssistantContent::Native(_) => true,
                 });
             }
             Resolution::Fail | Resolution::Retry { .. } | Resolution::Skip { .. } => {}

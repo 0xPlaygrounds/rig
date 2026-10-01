@@ -1,7 +1,7 @@
 //! Streamed server-tool blocks, recorded from the real API.
 //!
-//! `streaming.rs` models `server_tool_use`, `web_search_tool_result` and
-//! `code_execution_tool_result` on `content_block_start`/`content_block_stop`,
+//! `streaming.rs` keeps every block without a canonical meaning
+//! (`server_tool_use`, `web_search_tool_result`, ...) as a native item,
 //! including assembling a `server_tool_use`'s `input_json_delta` fragments —
 //! but no cassette in the suite carried streamed server-tool traffic, so that
 //! assembly had only hand-built unit streams behind it. Every recorded
@@ -54,14 +54,12 @@ fn recorded_block_types(scenario: &str) -> Vec<String> {
         .collect()
 }
 
-/// The raw Anthropic block type rig preserved on a normalized text part.
-fn raw_block_type(content: &AssistantContent) -> Option<String> {
-    let AssistantContent::Text(text) = content else {
+/// The Messages block type of a native item rig kept in the turn.
+fn native_block_type(content: &AssistantContent) -> Option<String> {
+    let AssistantContent::Native(native) = content else {
         return None;
     };
-    let params = text.additional_params.as_ref()?;
-    let raw = params.get("anthropic_content")?;
-    raw.get("type")?.as_str().map(str::to_string)
+    native.open(native.issuer())?.kind().map(str::to_string)
 }
 
 #[tokio::test]
@@ -80,18 +78,11 @@ async fn streamed_web_search_preserves_server_tool_blocks() {
 
             let mut raw_types = Vec::new();
             while let Some(item) = stream.next().await {
-                if let Item::Event(StreamEvent::End {
-                    content: rig::message::AssistantContent::Text(text),
-                    ..
-                }) = item.expect("stream item should not error")
-                    && let Some(raw) = text
-                        .additional_params
-                        .as_ref()
-                        .and_then(|params| params.get("anthropic_content"))
-                        .and_then(|raw| raw.get("type"))
-                        .and_then(|value| value.as_str())
+                if let Item::Event(StreamEvent::End { content, .. }) =
+                    item.expect("stream item should not error")
+                    && let Some(kind) = native_block_type(&content)
                 {
-                    raw_types.push(raw.to_string());
+                    raw_types.push(kind);
                 }
             }
             stream
@@ -145,7 +136,7 @@ async fn blocking_web_search_preserves_server_tool_blocks() {
             let raw_types: Vec<_> = response
                 .choice
                 .iter()
-                .filter_map(raw_block_type)
+                .filter_map(native_block_type)
                 .collect();
 
             assert!(

@@ -8,8 +8,8 @@
 //! replayed as one item under one id and one `phase`. OpenAI documents a
 //! dropped `phase` as a quality regression on follow-ups.
 //!
-//! **Fix.** `InputContent::Compaction` / `Output::Compaction` round-trip
-//! the item verbatim; `OutputMessage.phase` is captured on unary and
+//! **Fix.** A `compaction` item is an unmodelled [`Output::Unknown`]
+//! kept in the turn as a native item and replayed verbatim, in place; `OutputMessage.phase` is captured on unary and
 //! streamed text alike, rides rig history on the text block's own-wire
 //! extras (with the item's id when a reply has several message items), and
 //! is lifted back onto each assistant input item at replay. Exposing the
@@ -53,9 +53,7 @@ use futures::StreamExt;
 use rig::completion::ToolDefinition;
 use rig::message::{AssistantContent, Message, Text, ToolResultContent, UserContent};
 use rig::providers::openai;
-use rig::providers::openai::responses_api::{
-    CompletionResponse as ProviderResponse, InputItem, Output,
-};
+use rig::providers::openai::responses_api::{CompletionResponse as ProviderResponse, Output};
 use rig_test_support::cassette_models::OpenAiModels;
 use serde::Deserialize;
 use serde_json::Value;
@@ -182,26 +180,40 @@ async fn compaction_item_decodes_on_the_response() {
                 .output
                 .iter()
                 .find_map(|item| match item {
-                    Output::Compaction(fields) => Some(fields.clone()),
+                    Output::Unknown(value) if value["type"] == "compaction" => Some(value.clone()),
                     _ => None,
                 })
-                .expect("turn 1's output must decode the compaction item as Output::Compaction");
-            assert_eq!(compaction.get("id"), Some(&Value::from("cmp_REDACTED_1")));
-            assert!(compaction.get("type").is_none());
+                .expect("turn 1's output must keep the compaction item verbatim");
+            assert_eq!(compaction["id"], "cmp_REDACTED_1");
 
-            // The regular items beside it still decode and normalize.
-            assert!(!response.choice.is_empty());
+            // The item is part of the turn: a native item, in its position.
+            let Some(AssistantContent::Native(native)) = response.choice.first() else {
+                panic!("the compaction item leads the turn: {:?}", response.choice);
+            };
+            assert_eq!(native.issuer().as_str(), "openai");
+            assert!(matches!(
+                response.choice.get(1),
+                Some(AssistantContent::Text(_))
+            ));
 
-            // The same item, re-serialized, is accepted on the input side
-            // byte-for-byte — this is what a stateless client sends back.
-            let wire = serde_json::to_value(Output::Compaction(compaction)).expect("serializes");
-            let input: InputItem =
-                serde_json::from_value(wire.clone()).expect("the input side accepts the item");
-            assert_eq!(
-                serde_json::to_value(&input).expect("re-serializes"),
-                wire,
-                "the input item must re-emit the compaction item verbatim"
-            );
+            // A follow-up built from history sends it back first, verbatim.
+            let mut history = vec![Message::user(TURN_ONE)];
+            history.extend(response.message());
+            history.push(Message::user(TURN_TWO));
+            let encoded = rig::wire::Wire::encode(
+                &model.wire,
+                CompletionRequest::from(history),
+                rig::wire::Mode::Unary,
+            )
+            .expect("the follow-up encodes");
+            let rig::wire::Body::Bytes(body) = encoded.request.body() else {
+                panic!("a JSON body");
+            };
+            let body: Value = serde_json::from_slice(body).expect("JSON");
+            let input = body["input"].as_array().expect("input items");
+            assert_eq!(input[1], compaction, "the compaction item replays in place");
+            assert_eq!(input[2]["type"], "message");
+            assert_eq!(input[2]["role"], "assistant");
         },
     )
     .await;

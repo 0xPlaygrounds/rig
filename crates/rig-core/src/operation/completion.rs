@@ -22,8 +22,8 @@ use std::marker::PhantomData;
 use crate::completion::{CompletionRequest, CompletionResponse, FinishReason, Usage};
 use crate::error::{MalformedToolInput, ProviderError};
 use crate::message::{
-    AdditionalParams, AssistantContent, CallId, Image, Issuer, LocalCallId, Native,
-    ProviderCallId, Reasoning, ReasoningContent, Sealed, Text, ToolCall, ToolFunction, ToolName,
+    AdditionalParams, AssistantContent, CallId, Image, Issuer, LocalCallId, Native, ProviderCallId,
+    Reasoning, ReasoningContent, Sealed, Text, ToolCall, ToolFunction, ToolName,
 };
 use crate::streaming::{Item, Part, PartKind, StreamEvent};
 use crate::telemetry::{GenAiOperation, SpanBuilder, SpanCombinator};

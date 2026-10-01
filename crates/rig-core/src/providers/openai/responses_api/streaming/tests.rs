@@ -934,11 +934,10 @@ fn reasoning_text_delta_emits_reasoning_delta() {
 }
 
 #[test]
-fn unknown_output_item_surfaces_as_raw_unknown_choice() {
+fn unknown_output_item_becomes_a_native_part() {
     // A hosted-tool item (web_search_call) arriving on
-    // `response.output_item.done` reaches stream consumers as an unmodeled
-    // item carrying the verbatim item, mirroring how the non-streaming
-    // decode preserves it on `CompletionResponse.output`.
+    // `response.output_item.done` becomes a native part of the turn,
+    // verbatim, as the non-streaming decode writes it.
     let item = json!({
         "type": "web_search_call",
         "id": "ws_001",
@@ -955,14 +954,24 @@ fn unknown_output_item_surfaces_as_raw_unknown_choice() {
         })]),
         None,
     );
-    let unknown = decoded.items.iter().find_map(|event| match event {
-        Ok(Item::Unknown(value)) => Some(value),
+    let native = decoded.items.iter().find_map(|event| match event {
+        Ok(Item::Event(crate::streaming::StreamEvent::End {
+            content: crate::message::AssistantContent::Native(native),
+            ..
+        })) => Some(native.value().item().clone()),
         _ => None,
     });
     assert_eq!(
-        unknown,
-        Some(&item.into()),
-        "the raw web_search_call item should reach the consumer verbatim",
+        native,
+        Some(item),
+        "the web_search_call item is a native part"
+    );
+    assert!(
+        !decoded
+            .items
+            .iter()
+            .any(|event| matches!(event, Ok(Item::Unknown(_)))),
+        "an output item is never only passed through"
     );
 }
 

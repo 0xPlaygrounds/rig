@@ -158,7 +158,8 @@ fn finish_lookup(
                         AssistantContent::Text(text) => Some(text.text.trim().to_owned()),
                         AssistantContent::ToolCall(_)
                         | AssistantContent::Reasoning(_)
-                        | AssistantContent::Image(_) => None,
+                        | AssistantContent::Image(_)
+                        | AssistantContent::Native(_) => None,
                     })
                     .collect::<Vec<_>>()
                     .join(" "),

@@ -118,6 +118,8 @@ fn finished_text(part: &AssistantContent) -> String {
                 ReasoningContent::Encrypted(_) | ReasoningContent::Redacted { .. } => "",
             })
             .collect(),
-        AssistantContent::ToolCall(_) | AssistantContent::Image(_) => String::new(),
+        AssistantContent::ToolCall(_)
+        | AssistantContent::Image(_)
+        | AssistantContent::Native(_) => String::new(),
     }
 }

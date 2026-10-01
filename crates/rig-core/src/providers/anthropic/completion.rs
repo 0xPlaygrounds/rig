@@ -2101,7 +2101,7 @@ fn assistant_ends_in_server_tool_block(message: &message::Message) -> bool {
     *native.format() == <MessagesFormat as message::NativeDialect>::FORMAT
         && native
             .kind()
-        .is_some_and(|kind| kind == "server_tool_use" || kind.ends_with("_tool_result"))
+            .is_some_and(|kind| kind == "server_tool_use" || kind.ends_with("_tool_result"))
 }
 
 /// Parameters for building an AnthropicCompletionRequest

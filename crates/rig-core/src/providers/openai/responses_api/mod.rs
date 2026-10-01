@@ -184,8 +184,12 @@ pub enum InputContent {
 }
 
 /// The `type` tags [`InputContent`] models.
-const MODELLED_INPUT_TYPES: &[&str] =
-    &["message", "reasoning", "function_call", "function_call_output"];
+const MODELLED_INPUT_TYPES: &[&str] = &[
+    "message",
+    "reasoning",
+    "function_call",
+    "function_call_output",
+];
 
 impl Serialize for InputContent {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
