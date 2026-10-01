@@ -2,6 +2,7 @@ use super::*;
 use crate::error::ProviderError;
 use crate::message::EMPTY_RESPONSE_ERROR;
 use crate::providers::anthropic::wire::AnthropicConfig;
+use crate::test_utils::json_body;
 use crate::wire::WireFrame;
 use serde_json::json;
 use serde_path_to_error::deserialize;
@@ -313,43 +314,27 @@ fn completion_request_with_tools(
     tools: Vec<completion::ToolDefinition>,
     additional_params: Option<serde_json::Value>,
 ) -> CompletionRequest {
-    CompletionRequest {
-        model: None,
-        chat_history: vec![
-            message::Message::system("System prompt"),
-            message::Message::from("Hello"),
-        ],
-        documents: Vec::new(),
-        tools,
-        temperature: None,
-        max_tokens: Some(64),
-        tool_choice: None,
-        additional_params,
-        output_schema: None,
-        record_telemetry_content: false,
-    }
+    CompletionRequest::from(vec![
+        message::Message::system("System prompt"),
+        message::Message::from("Hello"),
+    ])
+    .max_tokens(64)
+    .tools(tools)
+    .additional_params(additional_params)
 }
 
 fn completion_request_with_history(
     chat_history: Vec<message::Message>,
     preamble: Option<String>,
 ) -> CompletionRequest {
-    CompletionRequest {
-        model: None,
-        chat_history: preamble
+    CompletionRequest::from(
+        preamble
             .map(message::Message::system)
             .into_iter()
             .chain(chat_history)
             .collect::<Vec<_>>(),
-        documents: Vec::new(),
-        tools: Vec::new(),
-        temperature: None,
-        max_tokens: Some(64),
-        tool_choice: None,
-        additional_params: None,
-        output_schema: None,
-        record_telemetry_content: false,
-    }
+    )
+    .max_tokens(64)
 }
 
 #[test]
@@ -392,11 +377,7 @@ fn strict_tool_hook_is_a_noop_for_anthropic_compatible_gateways() {
     .with_strict_tools()
     .encode(request, Mode::Unary)
     .expect("the request encodes");
-    let crate::wire::Body::Bytes(body) = &encoded.request.body() else {
-        panic!("the Messages endpoint takes JSON")
-    };
-    let value: serde_json::Value =
-        serde_json::from_slice(body).expect("the body is the JSON the wire built");
+    let value = json_body(&encoded.request);
 
     assert!(value["tools"][0].get("strict").is_none());
     assert!(

@@ -7,50 +7,40 @@
 use super::*;
 use crate::completion::ToolDefinition;
 use crate::message::{AssistantContent, Message, ToolResultContent, UserContent};
-use crate::wire::Body;
+use crate::test_utils::json_body;
 
 use super::super::OPENROUTER;
 
 /// A turn with a system prompt, a tool and a tool result, so each option
 /// under test has something in the body it could change.
 fn request() -> CompletionRequest {
-    CompletionRequest {
-        model: None,
-        chat_history: vec![
-            Message::system("be brief"),
-            "probe".into(),
-            Message::Assistant {
-                id: None,
-                content: vec![AssistantContent::tool_call(
-                    "call_1",
-                    crate::message::ToolName::new("lookup").expect("tool name"),
-                    serde_json::json!({"q": "x"}),
-                )],
-            },
-            Message::User {
-                content: vec![UserContent::tool_result(
-                    crate::message::CallId::from_wire("call_1"),
-                    crate::message::ToolName::new("lookup").expect("tool name"),
-                    vec![ToolResultContent::text("the answer")],
-                )],
-            },
-        ],
-        documents: vec![],
-        tools: vec![ToolDefinition {
-            name: "lookup".to_owned(),
-            description: "look something up".to_owned(),
-            parameters: serde_json::json!({
-                "type": "object",
-                "properties": {"q": {"type": "string"}}
-            }),
-        }],
-        temperature: None,
-        max_tokens: None,
-        tool_choice: None,
-        additional_params: None,
-        output_schema: None,
-        record_telemetry_content: false,
-    }
+    CompletionRequest::from(vec![
+        Message::system("be brief"),
+        "probe".into(),
+        Message::Assistant {
+            id: None,
+            content: vec![AssistantContent::tool_call(
+                "call_1",
+                crate::message::ToolName::new("lookup").expect("tool name"),
+                serde_json::json!({"q": "x"}),
+            )],
+        },
+        Message::User {
+            content: vec![UserContent::tool_result(
+                crate::message::CallId::from_wire("call_1"),
+                crate::message::ToolName::new("lookup").expect("tool name"),
+                vec![ToolResultContent::text("the answer")],
+            )],
+        },
+    ])
+    .tools(vec![ToolDefinition {
+        name: "lookup".to_owned(),
+        description: "look something up".to_owned(),
+        parameters: serde_json::json!({
+            "type": "object",
+            "properties": {"q": {"type": "string"}}
+        }),
+    }])
 }
 
 /// What `provider`'s route sends after `option` rewrote its wire.
@@ -69,11 +59,7 @@ fn body_with_request(
     let encoded = option(provider.completion("gpt-5.2"))
         .encode(request, Mode::Unary)
         .expect("the request encodes");
-    let request = &encoded.request;
-    match request.body() {
-        Body::Bytes(bytes) => serde_json::from_slice(bytes).expect("the body is JSON"),
-        Body::Multipart(_) => panic!("neither completion route sends a multipart body"),
-    }
+    json_body(&encoded.request)
 }
 
 /// The wire unchanged, as the baseline every assertion compares against.

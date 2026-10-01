@@ -7,18 +7,7 @@ use serde_json::json;
 /// exercise, so the request only has to be well-formed.
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 fn interactions_request() -> crate::completion::CompletionRequest {
-    crate::completion::CompletionRequest {
-        model: None,
-        chat_history: vec![crate::message::Message::user("hello")],
-        documents: Vec::new(),
-        tools: Vec::new(),
-        temperature: None,
-        max_tokens: None,
-        tool_choice: None,
-        additional_params: None,
-        output_schema: None,
-        record_telemetry_content: false,
-    }
+    crate::completion::CompletionRequest::new("hello")
 }
 
 /// The Interactions wire bound to a transport answering with `frames` as

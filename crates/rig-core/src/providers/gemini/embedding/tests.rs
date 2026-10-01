@@ -71,15 +71,10 @@ fn the_batch_request_is_the_recorded_one() {
     );
     // The GenerateContent family authenticates by query parameter.
     assert_eq!(request.uri().query(), Some("key=test-key"));
-    let body = match request.body() {
-        Body::Bytes(bytes) => String::from_utf8_lossy(bytes).into_owned(),
-        Body::Multipart(_) => unreachable!("the embedding wire sends JSON"),
-    };
     // Compared as documents, not as strings: a workspace build that enables
     // `serde_json/preserve_order` serializes the object in insertion order
     // rather than sorted, and the recording is a document either way.
-    let sent: serde_json::Value =
-        serde_json::from_str(&body).expect("the encoded body is one JSON document");
+    let sent = crate::test_utils::json_body(request);
     let recorded: serde_json::Value =
         serde_json::from_str(RECORDED_BATCH).expect("the recording is one JSON document");
     assert_eq!(sent, recorded);

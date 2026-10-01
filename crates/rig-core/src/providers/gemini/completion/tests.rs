@@ -198,18 +198,7 @@ fn test_logprobs_result_deserializes_official_json_field_names() {
 
 #[test]
 fn test_resolve_request_model_uses_override() {
-    let request = CompletionRequest {
-        model: Some("gemini-2.5-flash".to_string()),
-        chat_history: vec!["Hello".into()],
-        documents: vec![],
-        tools: vec![],
-        temperature: None,
-        max_tokens: None,
-        tool_choice: None,
-        additional_params: None,
-        output_schema: None,
-        record_telemetry_content: false,
-    };
+    let request = CompletionRequest::new("Hello").model("gemini-2.5-flash".to_string());
 
     let request_model = resolve_request_model("gemini-2.0-flash", &request);
     assert_eq!(request_model, "gemini-2.5-flash");
@@ -225,18 +214,7 @@ fn test_resolve_request_model_uses_override() {
 
 #[test]
 fn test_resolve_request_model_uses_default_when_unset() {
-    let request = CompletionRequest {
-        model: None,
-        chat_history: vec!["Hello".into()],
-        documents: vec![],
-        tools: vec![],
-        temperature: None,
-        max_tokens: None,
-        tool_choice: None,
-        additional_params: None,
-        output_schema: None,
-        record_telemetry_content: false,
-    };
+    let request = CompletionRequest::new("Hello");
 
     assert_eq!(
         resolve_request_model("gemini-2.0-flash", &request),
@@ -1493,37 +1471,16 @@ fn test_create_request_body_with_documents() {
         },
     ];
 
-    let documents_message = CompletionRequest {
-        chat_history: vec![Message::user("placeholder")],
-        documents,
-        tools: vec![],
-        temperature: None,
-        model: None,
-        output_schema: None,
-        record_telemetry_content: false,
-        max_tokens: None,
-        tool_choice: None,
-        additional_params: None,
-    }
-    .normalized_documents()
-    .unwrap();
+    let documents_message = CompletionRequest::new("placeholder")
+        .documents(documents)
+        .normalized_documents()
+        .unwrap();
 
-    let completion_request = CompletionRequest {
-        chat_history: vec![
-            Message::system("You are a helpful assistant"),
-            documents_message,
-            Message::user("What are my notes about?"),
-        ],
-        documents: vec![],
-        tools: vec![],
-        temperature: None,
-        model: None,
-        output_schema: None,
-        record_telemetry_content: false,
-        max_tokens: None,
-        tool_choice: None,
-        additional_params: None,
-    };
+    let completion_request = CompletionRequest::from(vec![
+        Message::system("You are a helpful assistant"),
+        documents_message,
+        Message::user("What are my notes about?"),
+    ]);
 
     let request = create_request_body(completion_request).unwrap();
 
@@ -1575,23 +1532,9 @@ fn test_create_request_body_with_documents() {
 fn test_create_request_body_without_documents() {
     // Test backward compatibility: requests without documents work as before
     use crate::completion::request::CompletionRequest;
-    use crate::message::Message;
 
-    let completion_request = CompletionRequest {
-        chat_history: vec![
-            Message::system("You are a helpful assistant"),
-            Message::user("Hello"),
-        ],
-        documents: vec![], // No documents
-        tools: vec![],
-        temperature: None,
-        max_tokens: None,
-        tool_choice: None,
-        model: None,
-        output_schema: None,
-        record_telemetry_content: false,
-        additional_params: None,
-    };
+    let completion_request =
+        CompletionRequest::new("Hello").preamble("You are a helpful assistant");
 
     let request = create_request_body(completion_request).unwrap();
 
@@ -1707,18 +1650,7 @@ const SIGNED_STREAM: &str = concat!(
 );
 
 fn wire_request(prompt: &str) -> CompletionRequest {
-    CompletionRequest {
-        model: None,
-        chat_history: vec![prompt.into()],
-        documents: vec![],
-        tools: vec![],
-        temperature: None,
-        max_tokens: None,
-        tool_choice: None,
-        additional_params: None,
-        output_schema: None,
-        record_telemetry_content: false,
-    }
+    CompletionRequest::new(prompt)
 }
 
 fn wire(model: &str) -> GenerateContent {
@@ -2021,25 +1953,15 @@ fn a_text_signature_reaches_no_other_wire() {
             "c2lnbmVkLWFuc3dlcg==".to_owned(),
         ),
     };
-    let request = CompletionRequest {
-        model: None,
-        chat_history: vec![
-            message::Message::user("q"),
-            message::Message::Assistant {
-                id: None,
-                content: vec![message::AssistantContent::Text(signed)],
-            },
-            message::Message::user("again"),
-        ],
-        documents: Vec::new(),
-        tools: Vec::new(),
-        temperature: None,
-        max_tokens: Some(16),
-        tool_choice: None,
-        additional_params: None,
-        output_schema: None,
-        record_telemetry_content: false,
-    };
+    let request = CompletionRequest::from(vec![
+        message::Message::user("q"),
+        message::Message::Assistant {
+            id: None,
+            content: vec![message::AssistantContent::Text(signed)],
+        },
+        message::Message::user("again"),
+    ])
+    .max_tokens(16);
 
     let openai = crate::providers::openai::wire::OpenAIConfig::new("sk-test");
     for (wire, encoded) in [

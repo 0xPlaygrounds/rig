@@ -44,27 +44,17 @@ fn local() -> CallId {
 pub(crate) fn adapter_request() -> crate::completion::CompletionRequest {
     let id = local();
     let later = local();
-    crate::completion::CompletionRequest {
-        model: None,
-        chat_history: vec![
-            Message::system("system"),
-            call(id.clone()),
-            call(provider(SHARED)),
-            result(provider(SHARED)),
-            Message::assistant("intervening text"),
-            result(id),
-            call(later.clone()),
-            result(later),
-        ],
-        documents: vec![],
-        tools: vec![],
-        temperature: None,
-        max_tokens: Some(128),
-        tool_choice: None,
-        additional_params: None,
-        output_schema: None,
-        record_telemetry_content: false,
-    }
+    crate::completion::CompletionRequest::from(vec![
+        Message::system("system"),
+        call(id.clone()),
+        call(provider(SHARED)),
+        result(provider(SHARED)),
+        Message::assistant("intervening text"),
+        result(id),
+        call(later.clone()),
+        result(later),
+    ])
+    .max_tokens(128)
 }
 
 pub(crate) fn assert_adapter_pairs(wire: serde_json::Value) {

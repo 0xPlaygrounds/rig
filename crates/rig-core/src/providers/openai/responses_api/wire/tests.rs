@@ -9,8 +9,9 @@ use crate::completion::CompletionRequest;
 use crate::message::{self, Message};
 use crate::providers::chatgpt::DIALECT as CHATGPT;
 use crate::providers::xai::DIALECT as XAI;
+use crate::test_utils::json_body;
 use crate::test_utils::{MockStreamingClient, RecordingHttpClient};
-use crate::wire::{Body, Mode};
+use crate::wire::Mode;
 use bytes::Bytes;
 use futures::StreamExt;
 
@@ -85,18 +86,7 @@ fn terminal_response_body(sse: &str) -> String {
 }
 
 fn prompt() -> CompletionRequest {
-    CompletionRequest {
-        model: None,
-        chat_history: vec![Message::user("say hi")],
-        documents: Vec::new(),
-        tools: Vec::new(),
-        temperature: None,
-        max_tokens: None,
-        tool_choice: None,
-        additional_params: None,
-        output_schema: None,
-        record_telemetry_content: false,
-    }
+    CompletionRequest::new("say hi")
 }
 
 /// Fold a recorded unary body through the wire, as `Model::call`
@@ -219,10 +209,7 @@ fn encoded_body(wire: &Responses, mode: Mode) -> serde_json::Value {
 /// One request's body, for a turn other than the bare [`prompt`].
 fn encoded_body_of(wire: &Responses, request: CompletionRequest, mode: Mode) -> serde_json::Value {
     let encoded = wire.encode(request, mode).expect("the request encodes");
-    let Body::Bytes(body) = encoded.request.body() else {
-        panic!("a Responses body is bytes");
-    };
-    serde_json::from_slice(body).expect("the body is JSON")
+    json_body(&encoded.request)
 }
 
 /// The bare [`prompt`] with a history of its own.
