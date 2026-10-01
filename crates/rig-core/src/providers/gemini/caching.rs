@@ -1,6 +1,6 @@
 //! Automatic explicit caching for long Gemini runs.
 //!
-//! [`Caching`] is a transport that wraps another. Every `generateContent`
+//! [`Caching`](super::Caching) is a transport that wraps another. Every `generateContent`
 //! and `streamGenerateContent` request passes through it with its encoded
 //! body, and a shared [`CacheBook`] decides what the request reads from a
 //! cache and when a new cache is worth creating:
@@ -90,10 +90,6 @@ use serde_json::value::RawValue;
 use sha2::{Digest, Sha256};
 
 use crate::completion::CacheCost;
-
-mod transport;
-
-pub use transport::Caching;
 
 /// Unix seconds.
 pub type Clock = Arc<dyn Fn() -> u64 + Send + Sync>;

@@ -15,14 +15,12 @@
 //! Pair a wire with a transport in a [`crate::Model`] to execute it.
 //! `Ollama::from_env` reads
 //! `OLLAMA_API_BASE_URL` and `OLLAMA_API_KEY` for remote or authenticated daemons.
-use crate::client::macros::http_client;
 use crate::completion::Usage;
-use crate::driver::Model;
 use crate::error::EncodeError;
 use crate::error::ProviderError;
 use crate::message::DocumentSourceKind;
 use crate::message::{CallId, ToolName};
-use crate::model::{ModelInfo, ModelList};
+use crate::model::ModelInfo;
 use crate::operation::{Completion, Finish, TextPart};
 use crate::providers::internal;
 use crate::providers::internal::thoughts::Thoughts;
@@ -36,6 +34,7 @@ use serde_json::{Value, json};
 
 pub mod wire;
 
+pub use crate::client::ollama::Ollama;
 pub use wire::{Chat, Embeddings, Models, OllamaConfig};
 
 /// The address of a local daemon.
@@ -767,51 +766,6 @@ impl From<crate::message::ToolCall> for ToolCall {
                 arguments: tool_call.function.arguments,
             },
         }
-    }
-}
-
-http_client!(
-    /// An Ollama daemon: its [`OllamaConfig`] on a transport. Every model it
-    /// builds sends through that transport.
-    Ollama,
-    OllamaConfig
-);
-
-impl Ollama {
-    /// The local daemon, unauthenticated, on the shared reqwest client.
-    #[cfg(feature = "reqwest")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "reqwest")))]
-    #[allow(
-        clippy::new_without_default,
-        reason = "the configuration is the default; a client also names its transport"
-    )]
-    pub fn new() -> Self {
-        OllamaConfig::new().client()
-    }
-
-    /// The daemon `OLLAMA_API_BASE_URL` names, with the token
-    /// `OLLAMA_API_KEY` carries, on the shared reqwest client. Both are
-    /// optional.
-    #[cfg(feature = "reqwest")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "reqwest")))]
-    pub fn from_env() -> Result<Self, crate::client::env::EnvError> {
-        Ok(OllamaConfig::from_env()?.client())
-    }
-
-    /// The chat model for `model`.
-    pub fn completion(&self, model: impl Into<String>) -> Model<Chat> {
-        self.model(self.config.completion(model))
-    }
-
-    /// The embedding model for `model`. `ndims` is the width it reports,
-    /// defaulting to the model's known width.
-    pub fn embedding(&self, model: impl Into<String>, ndims: Option<usize>) -> Model<Embeddings> {
-        self.model(self.config.embedding(model, ndims))
-    }
-
-    /// The models the daemon serves.
-    pub async fn list_models(&self) -> Result<ModelList, ProviderError> {
-        self.model(self.config.models()).list().await
     }
 }
 
