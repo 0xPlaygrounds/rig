@@ -109,7 +109,7 @@ async fn resumed_outputs(
         Ok(run) => unary
             .resume(run)
             .await
-            .map(|response| response.output)
+            .map(|response| response.output())
             .map_err(|error| error.to_string()),
         Err(error) => Err(error),
     };

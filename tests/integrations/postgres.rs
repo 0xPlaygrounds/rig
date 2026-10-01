@@ -223,7 +223,7 @@ async fn vector_search_test() {
         1,
         "only glarb-glarb matches, got {results:?}"
     );
-    assert_eq!(results[0].2.name, "glarb-glarb");
+    assert_eq!(results[0].document.name, "glarb-glarb");
 
     let similar = VectorSearchRequest::builder()
         .query(query)
@@ -237,10 +237,10 @@ async fn vector_search_test() {
         .top_n::<Word>(similar)
         .await
         .expect("a bound similar_to filter must be valid SQL");
-    results.sort_by(|a, b| a.2.name.cmp(&b.2.name));
+    results.sort_by(|a, b| a.document.name.cmp(&b.document.name));
     let matched: Vec<_> = results
         .iter()
-        .map(|(_, _, word)| word.name.as_str())
+        .map(|result| result.document.name.as_str())
         .collect();
     assert_eq!(matched, ["flurbo", "linglingdong"]);
 }
