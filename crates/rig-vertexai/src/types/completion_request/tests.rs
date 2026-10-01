@@ -111,7 +111,7 @@ fn test_tool_choice_auto_conversion() {
         model: None,
         tool_choice: Some(ToolChoice::Auto),
         tools: vec![ToolDefinition {
-            name: "test_tool".to_string(),
+            name: rig_core::message::ToolName::new("test_tool").expect("tool name"),
             description: "A test tool".to_string(),
             parameters: serde_json::json!({
                 "type": "object",
@@ -142,7 +142,7 @@ fn test_tool_choice_required_conversion() {
         model: None,
         tool_choice: Some(ToolChoice::Required),
         tools: vec![ToolDefinition {
-            name: "test_tool".to_string(),
+            name: rig_core::message::ToolName::new("test_tool").expect("tool name"),
             description: "A test tool".to_string(),
             parameters: serde_json::json!({
                 "type": "object",
@@ -173,7 +173,7 @@ fn test_tool_choice_none_conversion() {
         model: None,
         tool_choice: Some(ToolChoice::None),
         tools: vec![ToolDefinition {
-            name: "test_tool".to_string(),
+            name: rig_core::message::ToolName::new("test_tool").expect("tool name"),
             description: "A test tool".to_string(),
             parameters: serde_json::json!({
                 "type": "object",
@@ -203,10 +203,10 @@ fn test_tool_choice_specific_conversion() {
     let request = CompletionRequest {
         model: None,
         tool_choice: Some(ToolChoice::Specific {
-            function_names: vec!["test_tool".to_string()],
+            function_names: vec![rig_core::message::ToolName::new("test_tool").expect("tool name")],
         }),
         tools: vec![ToolDefinition {
-            name: "test_tool".to_string(),
+            name: rig_core::message::ToolName::new("test_tool").expect("tool name"),
             description: "A test tool".to_string(),
             parameters: serde_json::json!({
                 "type": "object",
@@ -291,7 +291,7 @@ fn test_tools_conversion() {
     let request = CompletionRequest {
         model: None,
         tools: vec![ToolDefinition {
-            name: "add".to_string(),
+            name: rig_core::message::ToolName::new("add").expect("tool name"),
             description: "Add two numbers".to_string(),
             parameters: serde_json::json!({
                 "type": "object",
@@ -327,7 +327,7 @@ fn test_no_tool_choice_when_not_specified() {
         model: None,
         tool_choice: None, // Not set
         tools: vec![ToolDefinition {
-            name: "test_tool".to_string(),
+            name: rig_core::message::ToolName::new("test_tool").expect("tool name"),
             description: "A test tool".to_string(),
             parameters: serde_json::json!({
                 "type": "object",
@@ -358,7 +358,7 @@ fn test_tool_with_empty_parameters() {
     let request = CompletionRequest {
         model: None,
         tools: vec![ToolDefinition {
-            name: "document_list".to_string(),
+            name: rig_core::message::ToolName::new("document_list").expect("tool name"),
             description: "Lists all documents".to_string(),
             parameters: serde_json::json!({
                 "type": "object",
@@ -388,7 +388,7 @@ fn test_tool_with_parameters() {
     let request = CompletionRequest {
         model: None,
         tools: vec![ToolDefinition {
-            name: "get_weather".to_string(),
+            name: rig_core::message::ToolName::new("get_weather").expect("tool name"),
             description: "Get weather for a location".to_string(),
             parameters: serde_json::json!({
                 "type": "object",

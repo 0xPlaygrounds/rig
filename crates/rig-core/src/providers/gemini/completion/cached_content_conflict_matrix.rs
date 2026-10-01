@@ -25,7 +25,7 @@ fn build(system: bool, tools: bool, tool_choice: bool) -> GenerateContentRequest
         )
         .tools(if tools {
             vec![ToolDefinition {
-                name: "probe".to_owned(),
+                name: crate::message::ToolName::new("probe").expect("tool name"),
                 description: "probe".to_owned(),
                 parameters: serde_json::json!({"type": "object", "properties": {}}),
             }]

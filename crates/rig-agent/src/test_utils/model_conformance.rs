@@ -1982,16 +1982,23 @@ where
     T: rig_core::driver::Transport<W>,
     A: Fn(CompletionRequest) -> CompletionRequest,
 {
-    let definition = |name: &str| ToolDefinition {
-        name: name.to_string(),
+    let tool_name = |name: &str| {
+        rig_core::message::ToolName::new(name)
+            .map_err(|error| ScenarioError::contract("tool_choice_modes", error.to_string()))
+    };
+    let definition = |name: rig_core::message::ToolName| ToolDefinition {
         description: format!("Return the supplied integer using {name}."),
+        name,
         parameters: serde_json::json!({
             "type": "object",
             "properties": {"value": {"type": "integer"}},
             "required": ["value"]
         }),
     };
-    let tools = vec![definition("alpha"), definition("beta")];
+    let tools = vec![
+        definition(tool_name("alpha")?),
+        definition(tool_name("beta")?),
+    ];
     let started = Instant::now();
     let none = model
         .call(adjust(
@@ -2039,7 +2046,7 @@ where
             CompletionRequest::new("Call beta with value 9.")
                 .tools(tools)
                 .tool_choice(ToolChoice::Specific {
-                    function_names: vec!["beta".to_string()],
+                    function_names: vec![tool_name("beta")?],
                 })
                 .temperature(0.0)
                 .max_tokens(96),

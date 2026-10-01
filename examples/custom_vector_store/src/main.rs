@@ -11,7 +11,10 @@ use rig::{
     operation::Embedding,
     prelude::*,
     providers::openai::{self, OpenAI},
-    vector_store::{VectorSearchRequest, VectorStoreError, VectorStoreIndex, request::Filter},
+    vector_store::{
+        VectorSearchIdResult, VectorSearchRequest, VectorSearchResult, VectorStoreError,
+        VectorStoreIndex, request::Filter,
+    },
 };
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
@@ -92,7 +95,7 @@ impl VectorStoreIndex for RedisVectorStore {
     async fn top_n<T: DeserializeOwned + Send>(
         &self,
         req: VectorSearchRequest<Self::Filter>,
-    ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
+    ) -> Result<Vec<VectorSearchResult<T>>, VectorStoreError> {
         // Get the embedding vector for your content
         let embedding = self
             .embedding_model
@@ -134,7 +137,11 @@ impl VectorStoreIndex for RedisVectorStore {
                 .map_or_else(|| serde_json::from_str("{}"), Ok)
                 .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
 
-            output.push((score, id, metadata));
+            output.push(VectorSearchResult {
+                score,
+                id,
+                document: metadata,
+            });
         }
 
         Ok(output)
@@ -143,7 +150,7 @@ impl VectorStoreIndex for RedisVectorStore {
     async fn top_n_ids(
         &self,
         req: VectorSearchRequest<Self::Filter>,
-    ) -> Result<Vec<(f64, String)>, VectorStoreError> {
+    ) -> Result<Vec<VectorSearchIdResult>, VectorStoreError> {
         let embedding = self
             .embedding_model
             .embed_text(req.query())
@@ -167,8 +174,10 @@ impl VectorStoreIndex for RedisVectorStore {
             .await
             .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
 
-        // Convert from (id, score) to (score, id)
-        Ok(results.into_iter().map(|(id, score)| (score, id)).collect())
+        Ok(results
+            .into_iter()
+            .map(|(id, score)| VectorSearchIdResult { score, id })
+            .collect())
     }
 }
 
@@ -233,11 +242,14 @@ async fn main() -> Result<(), anyhow::Error> {
         .build();
 
     // Execute the query
-    let results: Vec<(f64, String, Document)> = store.top_n(req).await?;
+    let results = store.top_n::<Document>(req).await?;
 
     println!("\nResults:");
-    for (score, id, doc) in results {
-        println!("  [{:.4}] {} - '{}'", score, id, doc.title);
+    for result in results {
+        println!(
+            "  [{:.4}] {} - '{}'",
+            result.score, result.id, result.document.title
+        );
     }
 
     Ok(())

@@ -23,9 +23,11 @@ fn assert_event(output: &str) {
 
 fn tool_names(log: &rig::cassette::effect_log::EffectLog) -> Vec<String> {
     match &log.records[0].kind {
-        EffectKind::Completion { request, .. } => {
-            request.tools.iter().map(|tool| tool.name.clone()).collect()
-        }
+        EffectKind::Completion { request, .. } => request
+            .tools
+            .iter()
+            .map(|tool| tool.name.to_string())
+            .collect(),
         other => panic!("a completion, not {other:?}"),
     }
 }

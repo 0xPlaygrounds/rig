@@ -44,12 +44,9 @@ pub struct ToolCatalog {
 }
 
 impl ToolCatalog {
-    /// A catalog over `tools`, advertised under their map names.
+    /// A catalog over `tools`, advertised under their own definitions.
     pub(crate) fn from_registered(tools: IndexMap<String, RegisteredTool>) -> Self {
-        let definitions = tools
-            .iter()
-            .map(|(name, tool)| tool.definition_with_name(name.clone()))
-            .collect();
+        let definitions = tools.values().map(RegisteredTool::definition).collect();
         Self {
             definitions,
             tools,
@@ -125,7 +122,7 @@ impl ToolCatalog {
     /// Keep only `names`.
     pub(crate) fn retain_names(&mut self, names: &BTreeSet<String>) {
         self.definitions
-            .retain(|definition| names.contains(&definition.name));
+            .retain(|definition| names.contains(definition.name.as_str()));
         self.tools.retain(|name, _| names.contains(name));
     }
 

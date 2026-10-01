@@ -23,7 +23,7 @@ use lancedb::{
 };
 use rig_core::{
     vector_store::{
-        VectorStoreError, VectorStoreIndex,
+        VectorSearchIdResult, VectorSearchResult, VectorStoreError, VectorStoreIndex,
         request::{FilterError, SearchFilter, VectorSearchRequest},
     },
     wasm_compat::WasmCompatSend,
@@ -353,7 +353,7 @@ impl SearchParams {
 impl VectorStoreIndex for LanceDbVectorIndex {
     type Filter = LanceDBFilter;
 
-    /// Returns matches as `(distance, id, row)` with embedding columns projected
+    /// Returns matches scored by distance, with embedding columns projected
     /// out. A row missing its distance scores zero, and a row whose id column is
     /// absent or non-textual gets a placeholder id.
     ///
@@ -382,7 +382,7 @@ impl VectorStoreIndex for LanceDbVectorIndex {
     async fn top_n<T: DeserializeOwned + WasmCompatSend>(
         &self,
         req: VectorSearchRequest<LanceDBFilter>,
-    ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
+    ) -> Result<Vec<VectorSearchResult<T>>, VectorStoreError> {
         let prompt_embedding = self.model.embed_text(req.query()).await?;
         let schema = self
             .table
@@ -407,17 +407,17 @@ impl VectorStoreIndex for LanceDbVectorIndex {
             .into_iter()
             .enumerate()
             .map(|(i, value)| {
-                Ok((
-                    match value.get("_distance") {
+                Ok(VectorSearchResult {
+                    score: match value.get("_distance") {
                         Some(Value::Number(distance)) => distance.as_f64().unwrap_or_default(),
                         _ => 0.0,
                     },
-                    match value.get(self.id_field.as_str()) {
+                    id: match value.get(self.id_field.as_str()) {
                         Some(Value::String(id)) => id.clone(),
                         _ => format!("unknown{i}"),
                     },
-                    serde_json::from_value(value).map_err(VectorStoreError::JsonError)?,
-                ))
+                    document: serde_json::from_value(value).map_err(VectorStoreError::JsonError)?,
+                })
             })
             .collect()
     }
@@ -427,7 +427,7 @@ impl VectorStoreIndex for LanceDbVectorIndex {
     async fn top_n_ids(
         &self,
         req: VectorSearchRequest<LanceDBFilter>,
-    ) -> Result<Vec<(f64, String)>, VectorStoreError> {
+    ) -> Result<Vec<VectorSearchIdResult>, VectorStoreError> {
         let prompt_embedding = self.model.embed_text(req.query()).await?;
 
         let mut query = self
@@ -447,16 +447,16 @@ impl VectorStoreIndex for LanceDbVectorIndex {
             .await?
             .into_iter()
             .map(|value| {
-                Ok((
-                    match value.get("distance") {
+                Ok(VectorSearchIdResult {
+                    score: match value.get("distance") {
                         Some(Value::Number(distance)) => distance.as_f64().unwrap_or_default(),
                         _ => 0.0,
                     },
-                    match value.get(self.id_field.as_str()) {
+                    id: match value.get(self.id_field.as_str()) {
                         Some(Value::String(id)) => id.clone(),
                         _ => "".to_string(),
                     },
-                ))
+                })
             })
             .collect()
     }

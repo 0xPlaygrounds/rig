@@ -75,7 +75,7 @@ fn check_add_prps(schema: &Value) -> bool {
 fn test_nested_objects() {
     let schema = schema_for!(Person);
     let tool_def = ToolDefinition {
-        name: "submit".to_string(),
+        name: rig_core::message::ToolName::new("submit").expect("tool name"),
         description: "Submit".to_string(),
         parameters: serde_json::to_value(schema).unwrap(),
     };
@@ -91,7 +91,7 @@ fn test_nested_objects() {
 fn test_array_items() {
     let schema = schema_for!(Company);
     let tool_def = ToolDefinition {
-        name: "submit".to_string(),
+        name: rig_core::message::ToolName::new("submit").expect("tool name"),
         description: "Submit".to_string(),
         parameters: serde_json::to_value(schema).unwrap(),
     };
@@ -107,7 +107,7 @@ fn test_array_items() {
 fn test_enum_schemas() {
     let schema = schema_for!(Product);
     let tool_def = ToolDefinition {
-        name: "submit".to_string(),
+        name: rig_core::message::ToolName::new("submit").expect("tool name"),
         description: "Submit".to_string(),
         parameters: serde_json::to_value(schema).unwrap(),
     };

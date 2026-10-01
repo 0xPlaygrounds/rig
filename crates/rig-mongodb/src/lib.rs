@@ -12,7 +12,8 @@ use rig_core::{
     Embed,
     embeddings::embedding::Embedding,
     vector_store::{
-        InsertDocuments, VectorStoreError, VectorStoreIndex,
+        InsertDocuments, VectorSearchIdResult, VectorSearchResult, VectorStoreError,
+        VectorStoreIndex,
         request::{DynamicSearchFilter, Filter, FilterError, SearchFilter, VectorSearchRequest},
     },
     wasm_compat::WasmCompatSend,
@@ -392,12 +393,12 @@ where
 {
     type Filter = MongoDbSearchFilter;
 
-    /// Returns matches as `(score, id, document)`. The embedding field is
+    /// Returns matches with the search score. The embedding field is
     /// projected out, so `T` must not require it.
     async fn top_n<T: DeserializeOwned + WasmCompatSend>(
         &self,
         req: VectorSearchRequest<MongoDbSearchFilter>,
-    ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
+    ) -> Result<Vec<VectorSearchResult<T>>, VectorStoreError> {
         let project_stage = doc! {
             "$project": {
                 self.embedded_field.clone(): 0
@@ -409,7 +410,11 @@ where
             .into_iter()
             .map(|(score, id, doc)| {
                 let doc_t: T = serde_json::from_value(doc).map_err(VectorStoreError::JsonError)?;
-                Ok((score, id, doc_t))
+                Ok(VectorSearchResult {
+                    score,
+                    id,
+                    document: doc_t,
+                })
             })
             .collect()
     }
@@ -418,7 +423,7 @@ where
     async fn top_n_ids(
         &self,
         req: VectorSearchRequest<MongoDbSearchFilter>,
-    ) -> Result<Vec<(f64, String)>, VectorStoreError> {
+    ) -> Result<Vec<VectorSearchIdResult>, VectorStoreError> {
         let project_stage = doc! {
             "$project": {
                 "_id": 1,
@@ -430,7 +435,7 @@ where
             .run_search_pipeline(&req, project_stage)
             .await?
             .into_iter()
-            .map(|(score, id, _)| (score, id))
+            .map(|(score, id, _)| VectorSearchIdResult { score, id })
             .collect())
     }
 }

@@ -98,7 +98,7 @@ fn main() {
     assert_prelude_portable::<StablePortableTool>();
 
     let dynamic = rig::tool::DynamicTool::new(
-        "dynamic",
+        rig::message::ToolName::new("dynamic").unwrap(),
         "context-free dynamic tool",
         serde_json::json!({"type": "object"}),
         |arguments| Box::pin(async move { Ok(rig::tool::ToolOutput::json(arguments)) }),

@@ -71,7 +71,7 @@ fn thinking_params() -> Value {
 
 fn file_report_tool() -> ToolDefinition {
     ToolDefinition {
-        name: "file_report".to_owned(),
+        name: rig_core::message::ToolName::new("file_report").expect("tool name"),
         description: "File an incident report.".to_owned(),
         parameters: json!({
             "type": "object",
@@ -88,7 +88,7 @@ fn file_report_tool() -> ToolDefinition {
 
 fn page_oncall_tool() -> ToolDefinition {
     ToolDefinition {
-        name: "page_oncall".to_owned(),
+        name: rig_core::message::ToolName::new("page_oncall").expect("tool name"),
         description: "Page the on-call engineer.".to_owned(),
         parameters: json!({
             "type": "object",

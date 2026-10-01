@@ -5,7 +5,7 @@ use super::*;
 
 fn tool(name: &str) -> ToolDefinition {
     ToolDefinition {
-        name: name.to_string(),
+        name: rig_core::message::ToolName::new(name).expect("tool name"),
         description: format!("Call {name}."),
         parameters: serde_json::json!({
             "type": "object",
@@ -145,7 +145,7 @@ fn renderers_reject_reserved_markers_in_untrusted_content() {
 fn qwen_tool_choice_filters_and_requires() {
     let mut request = request(vec![Message::user("use lookup")]);
     request.tool_choice = Some(ToolChoice::Specific {
-        function_names: vec!["lookup".to_string()],
+        function_names: vec![rig_core::message::ToolName::new("lookup").expect("tool name")],
     });
     let prompt = render_prompt(&request, ConversationProtocol::Qwen3).expect("specific tool");
     assert!(prompt.contains("\"name\":\"lookup\""));
@@ -333,7 +333,7 @@ fn qwen_protocol_rejects_wrong_delimiters_definitions_and_native_schema() {
     }
 
     let mut invalid_name = qwen_request.clone();
-    invalid_name.tools[0].name = "bad name".to_string();
+    invalid_name.tools[0].name = rig_core::message::ToolName::new("bad name").expect("tool name");
     assert!(matches!(
         render_prompt(&invalid_name, ConversationProtocol::Qwen3),
         Err(CandleError::InvalidToolDefinition { .. })

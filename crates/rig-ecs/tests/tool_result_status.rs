@@ -27,7 +27,7 @@ use rig_ecs::{
         content::parts::{ContentPart, ToolResultStatus, read_message},
     },
     bus::RigSchedule,
-    checkpoint::{Checkpoint, RestoreMode, load_world, save_world},
+    checkpoint::{Checkpoint, CheckpointError, RestoreMode, load_world, save_world},
     systems::{RigSet, RunCommands},
 };
 use run_support::*;
@@ -349,9 +349,11 @@ fn a_checkpoint_keeps_the_status_and_refuses_it_off_a_result_part() {
     let count = app.world().entities().len();
     let error = load_world(&misplaced, app.world_mut(), RestoreMode::Strict, []).unwrap_err();
     assert!(
-        error.message.contains("tool result status"),
-        "{}",
-        error.message
+        matches!(
+            error,
+            CheckpointError::InvalidGraph("tool result status is not on a tool result part")
+        ),
+        "{error:?}"
     );
     assert_eq!(app.world().entities().len(), count);
 }

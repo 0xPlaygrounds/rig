@@ -523,7 +523,7 @@ impl From<completion::ToolDefinition> for ToolDefinition {
         Self {
             r#type: "function".into(),
             function: FunctionDefinition {
-                name: tool.name,
+                name: tool.name.into(),
                 description: tool.description,
                 parameters: tool.parameters,
                 strict: None,
@@ -622,7 +622,7 @@ impl TryFrom<crate::message::ToolChoice> for ToolChoice {
                         "Provider only supports forcing exactly one specific tool".to_string(),
                     ));
                 };
-                Self::function(name)
+                Self::function(name.as_str())
             }
             message::ToolChoice::Auto => Self::Auto,
             message::ToolChoice::None => Self::None,

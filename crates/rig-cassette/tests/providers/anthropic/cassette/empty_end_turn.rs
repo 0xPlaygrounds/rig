@@ -41,7 +41,7 @@ struct NotifyError;
 
 fn notify_tool_definition() -> ToolDefinition {
     ToolDefinition {
-        name: Notify::NAME.to_string(),
+        name: rig_core::message::ToolName::new(Notify::NAME).expect("tool name"),
         description: "Send a short notification for a user status update.".to_string(),
         parameters: json!({
             "type": "object",

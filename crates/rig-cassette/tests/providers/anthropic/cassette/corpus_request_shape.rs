@@ -169,7 +169,9 @@ async fn tool_choice_specific_effect_log_is_the_golden_fixture() {
                 .preamble(TOOLS_PREAMBLE)
                 .temperature(0.0)
                 .tool_choice(ToolChoice::Specific {
-                    function_names: vec!["add".to_owned()],
+                    function_names: vec![
+                        rig_core::message::ToolName::new("add").expect("tool name"),
+                    ],
                 })
                 .tool(Adder)
                 .record_to(recorder.clone())

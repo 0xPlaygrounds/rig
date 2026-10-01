@@ -182,7 +182,7 @@ async fn main() -> Result<()> {
                     .await?;
                 let tool_names: BTreeSet<String> = tool_definitions
                     .iter()
-                    .map(|def| def.name.clone())
+                    .map(|def| def.name.to_string())
                     .collect();
                 let mut outcome = run.model_response(ModelTurn::new(
                     response.message_id.clone(),

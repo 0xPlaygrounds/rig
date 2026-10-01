@@ -209,7 +209,7 @@ impl From<completion::ToolDefinition> for Tool {
         Self {
             r#type: ToolType::default(),
             function: Function {
-                name: tool.name,
+                name: tool.name.into(),
                 description: Some(tool.description),
                 parameters: tool.parameters,
             },

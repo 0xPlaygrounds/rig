@@ -1403,7 +1403,7 @@ pub enum ToolChoice {
     None,
     Required,
     Specific {
-        function_names: Vec<String>,
+        function_names: Vec<ToolName>,
     },
 }
 

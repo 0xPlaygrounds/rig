@@ -41,7 +41,7 @@ async fn required_tool_choice_is_accepted() {
             let request = CompletionRequest::new(TOOLS_PROMPT)
                 .preamble(TOOLS_PREAMBLE.to_string())
                 .tool(ToolDefinition {
-                    name: "subtract".to_string(),
+                    name: rig_core::message::ToolName::new("subtract").expect("tool name"),
                     description: "Subtract y from x (i.e.: x - y)".to_string(),
                     parameters: serde_json::json!({
                         "type": "object",

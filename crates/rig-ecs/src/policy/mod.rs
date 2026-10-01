@@ -94,7 +94,8 @@ pub struct RequestGraph<'a> {
 /// Construct a completion request from ordered graph inputs and resolved output
 /// policy. Non-tool descriptors are omitted; an invalid native schema is omitted.
 /// A graph with neither a preamble nor an utterance holds no conversation and
-/// is [`ContentError::Missing`](crate::agent::content::parts::ContentError::Missing).
+/// is [`ContentError::Missing`](crate::agent::content::parts::ContentError::Missing),
+/// as is an empty output tool name.
 pub fn fold_request(
     graph: &RequestGraph<'_>,
 ) -> Result<CompletionRequest, crate::agent::content::parts::ContentError> {
@@ -114,7 +115,8 @@ pub fn fold_request(
         && let (Some(name), Some(schema)) = (graph.output_tool, graph.schema)
     {
         tools.push(ToolDefinition {
-            name: name.to_owned(),
+            name: ToolName::new(name)
+                .map_err(|_| crate::agent::content::parts::ContentError::Missing)?,
             description: graph
                 .output_tool_config
                 .and_then(|config| config.description.as_deref())
@@ -189,7 +191,7 @@ pub(crate) fn tool_name(descriptor: &HandlerDescriptor) -> Option<&str> {
 }
 
 /// Convert a tool descriptor to its model-facing definition; return `None` for
-/// other effect families.
+/// other effect families and for a tool with an empty name.
 pub fn tool_definition(descriptor: &HandlerDescriptor) -> Option<ToolDefinition> {
     match &descriptor.family {
         rig_core::effect::FamilyDescriptor::Tool {
@@ -198,7 +200,7 @@ pub fn tool_definition(descriptor: &HandlerDescriptor) -> Option<ToolDefinition>
             parameters,
             ..
         } => Some(ToolDefinition {
-            name: name.clone(),
+            name: ToolName::new(name.as_str()).ok()?,
             description: description.clone(),
             parameters: parameters.clone(),
         }),

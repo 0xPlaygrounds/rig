@@ -25,7 +25,7 @@ async fn context_propagates_into_sub_agent() {
         MockTurn::text("outer done"),
     ]);
     let outer = AgentBuilder::new(outer_model)
-        .dynamic_tool(inner.into_tool())
+        .dynamic_tool(inner.into_tool().expect("tool name"))
         .build();
 
     let mut context = ToolContext::new();
@@ -40,4 +40,16 @@ async fn context_propagates_into_sub_agent() {
 
     assert_eq!(out.output(), "outer done");
     assert_eq!(probe.observed().as_deref(), Some("session:abc-123"));
+}
+
+#[test]
+fn an_agent_with_an_empty_name_is_not_a_tool() {
+    let agent = AgentBuilder::new(MockCompletionModel::text("ok"))
+        .name("")
+        .build();
+    assert!(agent.into_tool().is_err());
+
+    let unnamed = AgentBuilder::new(MockCompletionModel::text("ok")).build();
+    let tool = unnamed.into_tool().expect("default tool name");
+    assert_eq!(tool.name(), "agent_tool");
 }

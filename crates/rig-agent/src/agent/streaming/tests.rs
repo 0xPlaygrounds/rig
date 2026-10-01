@@ -544,7 +544,7 @@ struct CountingOperationArgs {
 
 fn arithmetic_tool_definition(name: &str, description: &str) -> ToolDefinition {
     ToolDefinition {
-        name: name.to_string(),
+        name: rig_core::message::ToolName::new(name).expect("tool name"),
         description: description.to_string(),
         parameters: serde_json::json!({
             "type": "object",
@@ -3359,7 +3359,7 @@ async fn disallowed_specific_tool_call_fails_before_streaming_second_request() {
         .tool(MockAddTool)
         .tool(MockSubtractTool)
         .tool_choice(ToolChoice::Specific {
-            function_names: vec!["add".to_string()],
+            function_names: vec![rig_core::message::ToolName::new("add").expect("tool name")],
         })
         .build();
 
@@ -3431,7 +3431,7 @@ async fn mixed_specific_tool_calls_fail_before_any_tool_execution() {
         })
         .tool(MockSubtractTool)
         .tool_choice(ToolChoice::Specific {
-            function_names: vec!["add".to_string()],
+            function_names: vec![rig_core::message::ToolName::new("add").expect("tool name")],
         })
         .build();
 

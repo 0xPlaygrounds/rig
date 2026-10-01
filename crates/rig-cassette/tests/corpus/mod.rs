@@ -301,7 +301,7 @@ impl Choice {
             Self::None => ToolChoice::None,
             Self::Required => ToolChoice::Required,
             Self::Specific(name) => ToolChoice::Specific {
-                function_names: vec![name.to_owned()],
+                function_names: vec![rig_core::message::ToolName::new(name).expect("tool name")],
             },
         }
     }
@@ -3626,10 +3626,10 @@ async fn hand_drive(program: &Program, resume: Resume) {
                         let results = within(context.top_n::<serde_json::Value>(req))
                             .await
                             .expect("the replayer answered the context query");
-                        let docs = results.into_iter().map(|(_, id, value)| Document {
-                            id,
-                            text: serde_json::to_string_pretty(&value)
-                                .unwrap_or_else(|_| value.to_string()),
+                        let docs = results.into_iter().map(|result| Document {
+                            text: serde_json::to_string_pretty(&result.document)
+                                .unwrap_or_else(|_| result.document.to_string()),
+                            id: result.id,
                             additional_props: Default::default(),
                         });
                         turn_patch = Some(turn_patch.unwrap_or_default().extra_context(docs));

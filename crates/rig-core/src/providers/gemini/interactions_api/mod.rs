@@ -1884,7 +1884,7 @@ pub mod interactions_api_types {
 
         fn try_from(tool: crate::completion::ToolDefinition) -> Result<Self, Self::Error> {
             Ok(Tool::Function(FunctionTool {
-                name: Some(tool.name),
+                name: Some(tool.name.into()),
                 description: Some(tool.description),
                 parameters: Some(tool.parameters),
             }))
@@ -1903,7 +1903,7 @@ pub mod interactions_api_types {
                     Ok(ToolChoice::Config(ToolChoiceConfig {
                         allowed_tools: AllowedTools {
                             mode: Some(ToolChoiceType::Validated),
-                            tools: Some(function_names),
+                            tools: Some(function_names.into_iter().map(String::from).collect()),
                         },
                     }))
                 }

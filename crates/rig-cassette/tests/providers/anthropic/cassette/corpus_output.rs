@@ -286,7 +286,9 @@ async fn tool_choice_specific_output_effect_log_is_the_golden_fixture() {
                 .output_schema_raw(event_schema())
                 .output_mode(OutputMode::Tool)
                 .tool_choice(ToolChoice::Specific {
-                    function_names: vec!["final_result".to_owned()],
+                    function_names: vec![
+                        rig_core::message::ToolName::new("final_result").expect("tool name"),
+                    ],
                 })
                 .record_to(recorder.clone())
                 .build();

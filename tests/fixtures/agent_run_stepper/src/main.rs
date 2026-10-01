@@ -112,7 +112,7 @@ impl Transport<MockScript> for Scripted {
 
 fn add_tool() -> DynamicTool {
     DynamicTool::new(
-        "add",
+        ToolName::new("add").expect("tool name"),
         "Add x and y",
         serde_json::json!({
             "type": "object",

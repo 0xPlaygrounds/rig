@@ -18,7 +18,10 @@ use std::{
 use ordered_float::OrderedFloat;
 use serde::{Serialize, de::DeserializeOwned};
 
-use super::{IndexStrategy, VectorStoreError, VectorStoreIndex, request::VectorSearchRequest};
+use super::{
+    IndexStrategy, VectorSearchIdResult, VectorSearchResult, VectorStoreError, VectorStoreIndex,
+    request::VectorSearchRequest,
+};
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use crate::{
     driver::DynModel,
@@ -428,7 +431,7 @@ where
     async fn top_n<T: DeserializeOwned>(
         &self,
         req: VectorSearchRequest,
-    ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
+    ) -> Result<Vec<VectorSearchResult<T>>, VectorStoreError> {
         let prompt_embedding = &self.model.embed_text(req.query()).await?;
 
         let docs = self.store.vector_search(
@@ -441,14 +444,14 @@ where
         ranked(docs)
             .into_iter()
             .map(|RankingItem(distance, id, doc)| {
-                Ok((
-                    distance.0,
-                    id.clone(),
-                    serde_json::from_str(
+                Ok(VectorSearchResult {
+                    score: distance.0,
+                    id: id.clone(),
+                    document: serde_json::from_str(
                         &serde_json::to_string(doc).map_err(VectorStoreError::JsonError)?,
                     )
                     .map_err(VectorStoreError::JsonError)?,
-                ))
+                })
             })
             .collect::<Result<Vec<_>, _>>()
     }
@@ -456,7 +459,7 @@ where
     async fn top_n_ids(
         &self,
         req: VectorSearchRequest,
-    ) -> Result<Vec<(f64, String)>, VectorStoreError> {
+    ) -> Result<Vec<VectorSearchIdResult>, VectorStoreError> {
         let prompt_embedding = &self.model.embed_text(req.query()).await?;
 
         let docs = self.store.vector_search(
@@ -466,10 +469,13 @@ where
             req.threshold(),
         )?;
 
-        ranked(docs)
+        Ok(ranked(docs)
             .into_iter()
-            .map(|RankingItem(distance, id, _)| Ok((distance.0, id.clone())))
-            .collect::<Result<Vec<_>, _>>()
+            .map(|RankingItem(distance, id, _)| VectorSearchIdResult {
+                score: distance.0,
+                id: id.clone(),
+            })
+            .collect())
     }
 }
 

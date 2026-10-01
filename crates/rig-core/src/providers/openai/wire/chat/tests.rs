@@ -349,7 +349,7 @@ fn gpt_6_chat_tools_need_effort_none_or_the_responses_wire() {
     let with_tool = |params: Option<serde_json::Value>| {
         let mut request = prompt("look it up");
         request.tools = vec![ToolDefinition {
-            name: "lookup".to_owned(),
+            name: crate::message::ToolName::new("lookup").expect("tool name"),
             description: "Look something up.".to_owned(),
             parameters: serde_json::json!({"type": "object", "properties": {}}),
         }];

@@ -142,7 +142,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .top_n::<Document>(req)
         .await?
         .into_iter()
-        .map(|(score, id, doc)| (score, id, doc.document))
+        .map(|result| (result.score, result.id, result.document.document))
         .collect::<Vec<_>>();
 
     println!("Results: {results:?}");

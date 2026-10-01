@@ -11,7 +11,7 @@ use rig::completion::CompletionRequest;
 
 fn strict_value_tool(name: &str) -> ToolDefinition {
     ToolDefinition {
-        name: name.to_string(),
+        name: rig_core::message::ToolName::new(name).expect("tool name"),
         description: "Record one exact string value.".to_string(),
         parameters: json!({
             "type": "object",
@@ -23,7 +23,7 @@ fn strict_value_tool(name: &str) -> ToolDefinition {
 
 fn empty_tool(name: impl Into<String>) -> ToolDefinition {
     ToolDefinition {
-        name: name.into(),
+        name: rig_core::message::ToolName::new(name).expect("tool name"),
         description: "A no-argument strict tool.".to_string(),
         parameters: json!({ "type": "object", "properties": {} }),
     }
@@ -164,7 +164,9 @@ async fn specific_choice_selects_one_of_multiple_strict_tools() {
                     strict_value_tool("strict_second"),
                 ])
                 .tool_choice(ToolChoice::Specific {
-                    function_names: vec!["strict_second".to_string()],
+                    function_names: vec![
+                        rig_core::message::ToolName::new("strict_second").expect("tool name"),
+                    ],
                 });
 
             let response = model
@@ -189,7 +191,9 @@ async fn rig_strict_and_provider_non_strict_tools_coexist() {
                 .max_tokens(1024)
                 .tool(strict_value_tool("rig_strict_tool"))
                 .tool_choice(ToolChoice::Specific {
-                    function_names: vec!["raw_provider_tool".to_string()],
+                    function_names: vec![
+                        rig_core::message::ToolName::new("raw_provider_tool").expect("tool name"),
+                    ],
                 })
                 .additional_params(json!({
                     "tools": [{
@@ -227,7 +231,7 @@ async fn twenty_rig_strict_plus_one_provider_non_strict_tool_is_accepted() {
                         .collect(),
                 )
                 .tool_choice(ToolChoice::Specific {
-                    function_names: vec!["raw_boundary_tool".to_string()],
+                    function_names: vec![rig_core::message::ToolName::new("raw_boundary_tool").expect("tool name")],
                 })
                 .additional_params(json!({
                     "tools": [{

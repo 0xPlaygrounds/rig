@@ -155,7 +155,13 @@ fn a_tool_granted_by_a_relationship_is_advertised_and_gone_after_removal() {
     let requests = requests.lock().expect("requests");
     let advertised: Vec<Vec<String>> = requests
         .iter()
-        .map(|request| request.tools.iter().map(|tool| tool.name.clone()).collect())
+        .map(|request| {
+            request
+                .tools
+                .iter()
+                .map(|tool| tool.name.to_string())
+                .collect()
+        })
         .collect();
     assert_eq!(
         advertised,

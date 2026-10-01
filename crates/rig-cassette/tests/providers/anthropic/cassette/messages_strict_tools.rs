@@ -41,7 +41,7 @@ pub(super) async fn strict_tool_call_arguments(
         .max_tokens(1024)
         .tool_choice(ToolChoice::Required)
         .tool(ToolDefinition {
-            name: tool_name.to_string(),
+            name: rig_core::message::ToolName::new(tool_name).expect("tool name"),
             description: "Record the exact structured arguments requested by the user.".to_string(),
             parameters,
         });
@@ -83,7 +83,7 @@ async fn strict_tools_opt_in_roundtrip() {
             .max_tokens(1024)
             .tool_choice(ToolChoice::Required)
             .tool(ToolDefinition {
-                name: "record_booking".to_string(),
+                name: rig_core::message::ToolName::new("record_booking").expect("tool name"),
                 description: "Record a passenger count and cabin class.".to_string(),
                 parameters: json!({
                     "type": "object",

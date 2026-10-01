@@ -461,7 +461,7 @@ impl TryFrom<Vec<completion::ToolDefinition>> for Tool {
             })?;
 
             function_declarations.push(FunctionDeclaration {
-                name: tool.name,
+                name: tool.name.into(),
                 description: tool.description,
                 parameters,
             });
@@ -2120,7 +2120,9 @@ pub mod gemini_api_types {
                     allowed_function_names: None,
                 },
                 message::ToolChoice::Specific { function_names } => Self::Any {
-                    allowed_function_names: Some(function_names),
+                    allowed_function_names: Some(
+                        function_names.into_iter().map(String::from).collect(),
+                    ),
                 },
             };
 

@@ -166,7 +166,7 @@ fn anthropic_custom_dialects_are_executable_but_not_lossily_persisted() {
         },
     ] {
         let config =
-            ProviderConfig::Anthropic(anthropic::wire::AnthropicConfig::with_dialect("", &dialect));
+            ProviderConfig::Anthropic(anthropic::wire::AnthropicConfig::with_key(&dialect, ""));
         assert!(serde_json::to_value(&config).is_err());
         let _handler = config.completion_handler("custom", "model", transport());
     }

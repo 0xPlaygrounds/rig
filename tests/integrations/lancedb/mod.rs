@@ -4,6 +4,7 @@ use crate::common::{mock_embeddings, openai_client};
 use fixture::{FLUMBUZZLE, as_record_batch, flumbuzzles, words};
 use lancedb::index::vector::IvfPqIndexBuilder;
 use rig::lancedb::{LanceDbVectorIndex, SearchParams};
+use rig::vector_store::VectorSearchResult;
 use rig::{
     driver::Model, embeddings::EmbeddingsBuilder, prelude::*, providers::openai,
     vector_store::VectorStoreIndex,
@@ -45,7 +46,11 @@ async fn vector_search_test() {
         .await
         .unwrap();
 
-    let (distance, _, value) = &results.first().unwrap();
+    let VectorSearchResult {
+        score: distance,
+        document: value,
+        ..
+    } = &results.first().unwrap();
 
     assert_eq!(
         *value,

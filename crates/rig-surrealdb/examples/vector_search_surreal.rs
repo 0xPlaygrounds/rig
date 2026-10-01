@@ -75,8 +75,11 @@ async fn main() -> Result<(), anyhow::Error> {
     let results = vector_store.top_n::<WordDefinition>(req).await?;
 
     println!("{} results for query: {}", results.len(), query);
-    for (distance, _id, doc) in results.iter() {
-        println!("Result distance {distance} for word: {doc}");
+    for result in &results {
+        println!(
+            "Result distance {} for word: {}",
+            result.score, result.document
+        );
     }
 
     // Use the midpoint as similarity threshold to guarantee exactly one result is returned.
@@ -86,7 +89,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let Some(second_result) = results.get(1) else {
         return Err(anyhow::anyhow!("expected at least two results"));
     };
-    let midpoint = (first_result.0 + second_result.0) / 2.0;
+    let midpoint = (first_result.score + second_result.score) / 2.0;
 
     println!(
         "Attempting vector search with cosine similarity threshold of {midpoint} and query: {query}"
@@ -106,8 +109,11 @@ async fn main() -> Result<(), anyhow::Error> {
         results.len()
     );
 
-    for (distance, _id, doc) in results.iter() {
-        println!("Result distance {distance} for word: {doc}");
+    for result in &results {
+        println!(
+            "Result distance {} for word: {}",
+            result.score, result.document
+        );
     }
 
     Ok(())

@@ -24,7 +24,7 @@ use bus_support::*;
 use rig_core::{effect::HandlerKey, error::ErrorKind, serve::ErasedHandler};
 use rig_ecs::{
     bus::{BusSet, EffectOutcome, InFlight, PendingEffect, RigSchedule},
-    checkpoint::{RestoreMode, load_world},
+    checkpoint::{CheckpointError, RestoreMode, load_world},
 };
 
 #[test]
@@ -133,8 +133,10 @@ fn a_rebind_of_the_wrong_family_panics_at_the_hosts_line() {
     // No panic anywhere: the gap is data, refused at the host's line.
     let error = load_world(&saved, app.world_mut(), RestoreMode::Strict, [])
         .expect_err("the family differs");
-    assert_eq!(error.kind, ErrorKind::Request);
-    assert!(error.message.contains("model"), "{error:?}");
+    assert!(
+        matches!(&error, CheckpointError::FamilyChanged { key, .. } if key.as_str() == "model"),
+        "{error:?}"
+    );
     assert_eq!(app.world().entities().len(), before, "nothing spawned");
 }
 

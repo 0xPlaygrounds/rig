@@ -7,7 +7,7 @@ fn request_with(preamble: Option<&str>, tools: bool) -> GenerateContentRequest {
     let mut tool_defs = Vec::new();
     if tools {
         tool_defs.push(crate::completion::ToolDefinition {
-            name: "probe".to_owned(),
+            name: crate::message::ToolName::new("probe").expect("tool name"),
             description: "probe".to_owned(),
             parameters: serde_json::json!({"type": "object", "properties": {}}),
         });

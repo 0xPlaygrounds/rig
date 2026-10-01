@@ -14,7 +14,7 @@ use rig::completion::CompletionRequest;
 
 fn specific_add_choice() -> ToolChoice {
     ToolChoice::Specific {
-        function_names: vec![Adder::NAME.to_string()],
+        function_names: vec![rig_core::message::ToolName::new(Adder::NAME).expect("tool name")],
     }
 }
 

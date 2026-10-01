@@ -382,7 +382,7 @@ where
                         let names: Vec<String> = advertised
                             .definitions
                             .iter()
-                            .map(|definition| definition.name.clone())
+                            .map(|definition| definition.name.to_string())
                             .collect();
                         pending_tool_snapshot = Some(Arc::new(
                             runner.tool_server_handle.snapshot_with_dynamic(&names),

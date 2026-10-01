@@ -119,7 +119,7 @@ impl Transport<GenerateContent> for VertexAi {
         Opening::new(async move {
             let service = match client.inner().await {
                 Ok(service) => service,
-                Err(error) => return Err(ProviderError::Provider(error.to_string())),
+                Err(error) => return Err(ProviderError::request(error)),
             };
             let mut request_builder = service
                 .generate_content()

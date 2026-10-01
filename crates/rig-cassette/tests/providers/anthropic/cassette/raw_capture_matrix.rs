@@ -96,7 +96,7 @@ fn thinking_request() -> rig::completion::CompletionRequest {
 /// From `empty_stop_sequence_matrix.rs`.
 fn weather_tool() -> ToolDefinition {
     ToolDefinition {
-        name: "get_weather".to_string(),
+        name: rig_core::message::ToolName::new("get_weather").expect("tool name"),
         description: "Get the current weather for a city.".to_string(),
         parameters: json!({
             "type": "object",

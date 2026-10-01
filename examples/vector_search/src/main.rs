@@ -4,9 +4,8 @@
 
 use rig::prelude::*;
 use rig::providers::openai::{self, OpenAI};
+use rig::vector_store::{VectorSearchIdResult, VectorSearchResult};
 use serde::{Deserialize, Serialize};
-
-type SearchMatch = (f64, String, String);
 
 // Shape of data that needs to be RAG'ed.
 // The definition field will be used to generate embeddings.
@@ -47,17 +46,20 @@ fn sample_documents() -> Vec<WordDefinition> {
     ]
 }
 
-fn print_matches(label: &str, matches: &[SearchMatch]) {
+fn print_matches(label: &str, matches: &[VectorSearchResult<WordDefinition>]) {
     println!("{label}:");
-    for (score, id, word) in matches {
-        println!("  score={score:.4} id={id} word={word}");
+    for result in matches {
+        println!(
+            "  score={:.4} id={} word={}",
+            result.score, result.id, result.document.word
+        );
     }
 }
 
-fn print_id_matches(label: &str, matches: &[(f64, String)]) {
+fn print_id_matches(label: &str, matches: &[VectorSearchIdResult]) {
     println!("{label}:");
-    for (score, id) in matches {
-        println!("  score={score:.4} id={id}");
+    for result in matches {
+        println!("  score={:.4} id={}", result.score, result.id);
     }
 }
 
@@ -85,14 +87,9 @@ async fn main() -> Result<(), anyhow::Error> {
         .build();
 
     let index = vector_store.index(embedding_model);
-    let results = index
-        .top_n::<WordDefinition>(req.clone())
-        .await?
-        .into_iter()
-        .map(|(score, id, doc)| (score, id, doc.word))
-        .collect::<Vec<SearchMatch>>();
+    let results = index.top_n::<WordDefinition>(req.clone()).await?;
 
-    let id_results = index.top_n_ids(req).await?.into_iter().collect::<Vec<_>>();
+    let id_results = index.top_n_ids(req).await?;
 
     print_matches("Top document matches", &results);
     print_id_matches("Top document ids", &id_results);

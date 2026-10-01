@@ -307,7 +307,7 @@ async fn unicode_arguments_streaming() {
             )
             .max_tokens(1024)
             .tool(ToolDefinition {
-                name: "echo".to_string(),
+                name: rig_core::message::ToolName::new("echo").expect("tool name"),
                 description: "Echo a message back to the user.".to_string(),
                 parameters: json!({
                     "type": "object",
