@@ -16,21 +16,22 @@
 //!     .expiry(CacheExpiry::ttl(Duration::from_secs(600)));
 //! ```
 
-use crate::wire::Flow;
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
 use super::completion::gemini_api_types::{Content, Part, Role, Tool, ToolConfig};
+use crate::driver::{Model, Transport};
 use crate::error::EncodeError;
 use crate::error::ProviderError;
-use crate::operation;
+use crate::operation::Whole;
 use crate::providers::internal::{
     wire::{classify_or, classify_untyped_line},
     with_query_pairs,
 };
 use crate::wire::{
-    Body, Decoder, Descriptor, Encoded, Framing, Mode, Out, Wire, WireEvent, WireFrame,
+    Body, Call, Decoder, Descriptor, Encoded, Flow, Framing, Free, Mode, Operation, Out, Wire,
+    WireEvent, WireFrame,
 };
 
 /// The `cachedContents` collection path.
@@ -42,7 +43,7 @@ const MAX_PAGE_SIZE: usize = 1000;
 /// Converts a 403 or 404 reply for the existing handle `name` to
 /// [`ProviderError::CacheExpired`], keeping the reply. Other failures are
 /// unchanged. Call only for existing handles, never for cache creation.
-pub(crate) fn on_handle(error: ProviderError, name: &str) -> ProviderError {
+fn on_handle(error: ProviderError, name: &str) -> ProviderError {
     match error {
         ProviderError::ProviderResponse(response)
             if matches!(
@@ -227,7 +228,7 @@ pub struct CachedContent {
     pub usage_metadata: Option<CachedContentUsage>,
 }
 
-/// One `cachedContents` verb: what [`operation::ContextCache`] sends.
+/// One `cachedContents` verb: what [`ContextCache`] sends.
 #[derive(Debug)]
 pub enum CachedContentRequest {
     /// `POST /v1beta/cachedContents`; answers with the resource.
@@ -318,11 +319,29 @@ impl CachedContentReply {
     }
 }
 
+/// Creates, reads, lists, updates expiry, or deletes explicit context caches.
+/// Requests use [`CachedContentRequest`]; a listing reads one page per call.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ContextCache;
+
+impl Operation for ContextCache {
+    type Request = CachedContentRequest;
+    type Event = std::convert::Infallible;
+    type End = CachedContentReply;
+    type Response = CachedContentReply;
+    type Fold = Whole<Self>;
+    type Emit = Free;
+
+    fn fold(_request: &Self::Request, _call: &mut Call<'_>) -> Self::Fold {
+        Whole::new()
+    }
+}
+
 /// Gemini's `cachedContents` resource: the wire for
-/// [`operation::ContextCache`].
+/// [`ContextCache`].
 ///
 /// Built by [`Gemini::cached_contents`](super::Gemini::cached_contents); the
-/// calls are the inherent methods of a [`Model`](crate::Model) over it.
+/// calls are the inherent methods of a [`Model`] over it.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct CachedContents {
     /// The provider this wire speaks to.
@@ -367,7 +386,7 @@ impl super::GeminiConfig {
 }
 
 impl Wire for CachedContents {
-    type Op = operation::ContextCache;
+    type Op = ContextCache;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
     type Decoder<'id> = CachedContentsDecoder;
@@ -411,10 +430,73 @@ impl Wire for CachedContents {
     }
 }
 
+/// Explicit context-cache operations. Requests targeting an existing handle
+/// map HTTP 403 and 404 to [`ProviderError::CacheExpired`].
+impl<T> Model<CachedContents, T>
+where
+    T: Transport<CachedContents>,
+{
+    /// Creates cached content and returns its handle and storage usage metadata.
+    pub async fn create(&self, request: NewCachedContent) -> Result<CachedContent, ProviderError> {
+        self.call(CachedContentRequest::Create(request))
+            .await?
+            .resource()
+    }
+
+    /// Fetch one cached content by handle.
+    pub async fn get(&self, name: &str) -> Result<CachedContent, ProviderError> {
+        self.call(CachedContentRequest::Get(name.to_owned()))
+            .await
+            .map_err(|error| on_handle(error, name))?
+            .resource()
+    }
+
+    /// Every cached content this API key can see, following pagination at
+    /// the wire's page size.
+    pub async fn list(&self) -> Result<Vec<CachedContent>, ProviderError> {
+        let pages =
+            crate::driver::follow_cursors(self.name(), "cached_content", |page_token| async move {
+                let reply = self.call(CachedContentRequest::List { page_token }).await?;
+                let next = reply.next_page_token();
+                Ok((reply.entries()?, next))
+            })
+            .await?;
+        Ok(pages.into_iter().flatten().collect())
+    }
+
+    /// Changes cache expiry without modifying its immutable content.
+    /// Returns the updated resource or an error, including `Expired` for HTTP 403/404.
+    pub async fn update_expiry(
+        &self,
+        name: &str,
+        expiry: CacheExpiry,
+    ) -> Result<CachedContent, ProviderError> {
+        let request = CachedContentRequest::UpdateExpiry {
+            name: name.to_owned(),
+            expiry,
+        };
+        self.call(request)
+            .await
+            .map_err(|error| on_handle(error, name))?
+            .resource()
+    }
+
+    /// Deletes cached content before its expiry. Callers should also clean up
+    /// task-scoped caches on failure to avoid continued storage charges.
+    /// Handles other than `cachedContents/<id>` or bare `<id>` return
+    /// [`ProviderError::Request`] before dispatch.
+    pub async fn delete(&self, name: &str) -> Result<(), ProviderError> {
+        self.call(CachedContentRequest::Delete(name.to_owned()))
+            .await
+            .map_err(|error| on_handle(error, name))?;
+        Ok(())
+    }
+}
+
 /// Decodes one `cachedContents` reply.
 pub struct CachedContentsDecoder;
 
-impl<'id> Decoder<'id, operation::ContextCache> for CachedContentsDecoder {
+impl<'id> Decoder<'id, ContextCache> for CachedContentsDecoder {
     type Event = CachedContentReply;
 
     /// Classify a page, empty acknowledgement, or resource.
@@ -429,14 +511,14 @@ impl<'id> Decoder<'id, operation::ContextCache> for CachedContentsDecoder {
     fn decode(
         &mut self,
         reply: Self::Event,
-        out: Out<'id, operation::ContextCache>,
+        out: Out<'id, ContextCache>,
     ) -> Result<Flow, ProviderError> {
         Ok(out.end(reply))
     }
 
     /// A reply with no body at all is an acknowledgement: the status
     /// already answered.
-    fn eof(&mut self, out: Out<'id, operation::ContextCache>) -> Result<Flow, ProviderError> {
+    fn eof(&mut self, out: Out<'id, ContextCache>) -> Result<Flow, ProviderError> {
         Ok(out.end(CachedContentReply::Acknowledged))
     }
 }

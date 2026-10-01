@@ -11,7 +11,7 @@
 //! # }
 //! ```
 //!
-//! Pair a wire with a transport in a [`Model`](crate::driver::Model) to call it.
+//! Pair a wire with a transport in a [`Model`] to call it.
 
 pub mod cached_content;
 pub mod caching;
@@ -25,10 +25,10 @@ pub mod model_listing;
 pub mod streaming;
 pub mod transcription;
 
-pub use crate::client::gemini::Gemini;
-pub use crate::client::gemini_caching::Caching;
 pub use cached_content::{CacheExpiry, CachedContent, CachedContents, NewCachedContent};
-pub use caching::{AutoCache, CacheBook, CacheEvent, CacheReport, Clock, CreatedCache, Lease};
+pub use caching::{
+    AutoCache, CacheBook, CacheEvent, CacheReport, Caching, Clock, CreatedCache, Lease,
+};
 pub use completion::ThoughtReplay;
 pub use embedding::{EMBEDDING_001, EMBEDDING_004};
 #[cfg(feature = "image")]
@@ -36,7 +36,17 @@ pub use image_generation::GEMINI_2_5_FLASH_IMAGE;
 pub use model_listing::*;
 
 use crate::client::env::{self, EnvError};
+use crate::client::macros::http_client;
+use crate::driver::Model;
+use crate::error::ProviderError;
+use crate::model::ModelList;
 use crate::wire::Secret;
+use completion::GenerateContent;
+use embedding::Embeddings;
+#[cfg(feature = "image")]
+use image_generation::Images;
+use interactions_api::{InteractionResume, Interactions};
+use transcription::Transcriptions;
 
 /// Stable descriptor name for both Gemini surfaces, as records and
 /// telemetry spell it.
@@ -201,6 +211,94 @@ impl GeminiConfig {
             Some(last_event_id) => wire.after_event(last_event_id),
             None => wire,
         }
+    }
+}
+
+http_client!(
+    /// Gemini: its [`GeminiConfig`] on a transport. Every model it builds
+    /// sends through that transport.
+    Gemini,
+    GeminiConfig
+);
+
+impl Gemini {
+    /// Gemini with `api_key` and the public base URL, on the shared reqwest
+    /// client.
+    #[cfg(feature = "reqwest")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "reqwest")))]
+    pub fn new(api_key: impl Into<Secret>) -> Self {
+        GeminiConfig::new(api_key).client()
+    }
+
+    /// Gemini from `GEMINI_API_KEY`, on the shared reqwest client.
+    #[cfg(feature = "reqwest")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "reqwest")))]
+    pub fn from_env() -> Result<Self, EnvError> {
+        Ok(GeminiConfig::from_env()?.client())
+    }
+
+    /// The `generateContent` / `streamGenerateContent` model for `model`.
+    pub fn completion(&self, model: impl Into<String>) -> Model<GenerateContent> {
+        self.model(self.config.completion(model))
+    }
+
+    /// The Interactions API model for `model`.
+    pub fn interactions(&self, model: impl Into<String>) -> Model<Interactions> {
+        self.model(self.config.interactions(model))
+    }
+
+    /// The `batchEmbedContents` embedding model for `model`. `ndims`
+    /// defaults from the model identifier.
+    pub fn embedding(&self, model: impl Into<String>, ndims: Option<usize>) -> Model<Embeddings> {
+        self.model(self.config.embedding(model, ndims))
+    }
+
+    /// The audio transcription model for `model`.
+    pub fn transcription(&self, model: impl Into<String>) -> Model<Transcriptions> {
+        self.model(self.config.transcription(model))
+    }
+
+    /// The image-generation model for `model`.
+    #[cfg(feature = "image")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "image")))]
+    pub fn image_generation(&self, model: impl Into<String>) -> Model<Images> {
+        self.model(self.config.image_generation(model))
+    }
+
+    /// Gemini's explicit context cache (`cachedContents`).
+    pub fn cached_contents(&self) -> Model<CachedContents> {
+        self.model(self.config.cached_contents())
+    }
+
+    /// The model that retrieves the interaction `interaction_id`, or resumes
+    /// its stream. A unary call fetches the current resource; the caller
+    /// controls repeated polling.
+    pub fn interaction(&self, interaction_id: impl Into<String>) -> Model<InteractionResume> {
+        self.model(self.config.interaction(interaction_id))
+    }
+
+    /// [`Self::interaction`], resuming a streamed read after the last event
+    /// the consumer saw.
+    pub fn interaction_resumed(
+        &self,
+        interaction_id: impl Into<String>,
+        last_event_id: Option<&str>,
+    ) -> Model<InteractionResume> {
+        self.model(
+            self.config
+                .interaction_resumed(interaction_id, last_event_id),
+        )
+    }
+
+    /// The models this API key can use, every page followed.
+    pub async fn list_models(&self) -> Result<ModelList, ProviderError> {
+        self.model(self.config.models()).list().await
+    }
+
+    /// Check that the provider accepts the configured key. A 401 or 403
+    /// reply is [`ProviderError::InvalidAuthentication`].
+    pub async fn verify(&self) -> Result<(), ProviderError> {
+        self.model(self.config.verify()).verify().await
     }
 }
 

@@ -342,8 +342,14 @@ where
 
 /// The provider's transport request id, when it names such a header and the
 /// reply carries a non-empty value.
-fn request_id_from(headers: &http::HeaderMap, header: Option<&str>) -> Option<String> {
-    crate::providers::internal::request_id_from_headers(headers, header)
+pub(crate) fn request_id_from(headers: &http::HeaderMap, header: Option<&str>) -> Option<String> {
+    header.and_then(|header| {
+        headers
+            .get(header)
+            .and_then(|value| value.to_str().ok())
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+    })
 }
 
 /// Defaults byte-body requests to `application/json`, including bodyless GETs.

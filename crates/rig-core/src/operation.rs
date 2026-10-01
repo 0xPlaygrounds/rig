@@ -17,13 +17,11 @@
 use crate::error::ProviderError;
 use crate::wire::{Fold, Operation, Reply};
 
-mod cached_content;
 pub(crate) mod completion;
 mod listing;
 mod modality;
 mod verify;
 
-pub use cached_content::{CachedContentFold, ContextCache};
 pub use completion::{
     CallFragment, CallPart, Completion, Finish, IfMalformed, ReasoningPart, Seal, TextPart, Turn,
 };

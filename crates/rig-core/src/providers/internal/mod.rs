@@ -90,22 +90,6 @@ pub(crate) mod named_dialect {
     }
 }
 
-/// Reads the provider's transport request id off a response's headers, when
-/// the provider names such a header and the response carries a non-empty
-/// value. `None` is the documented "not reported" outcome.
-pub(crate) fn request_id_from_headers(
-    headers: &http::HeaderMap,
-    request_id_header: Option<&str>,
-) -> Option<String> {
-    request_id_header.and_then(|header| {
-        headers
-            .get(header)
-            .and_then(|value| value.to_str().ok())
-            .filter(|value| !value.is_empty())
-            .map(str::to_string)
-    })
-}
-
 /// Append `pairs` to `path` as a percent-encoded query string.
 /// Encoding preserves cursor delimiters and prevents query-parameter injection.
 pub(crate) fn with_query_pairs(path: &str, pairs: &[(&str, &str)]) -> String {

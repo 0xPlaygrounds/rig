@@ -36,7 +36,7 @@ use crate::wire::{
 };
 
 mod dyn_model;
-mod http_transport;
+pub(crate) mod http_transport;
 mod local;
 
 pub use dyn_model::DynModel;

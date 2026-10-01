@@ -18,8 +18,10 @@ use serde::{Deserialize, Serialize};
 
 pub mod wire;
 
-pub use crate::client::voyageai::VoyageAi;
 pub use wire::{Embeddings, Rerank, VoyageAiConfig};
+
+use crate::client::macros::http_client;
+use crate::driver::Model;
 
 /// Voyage AI's API root.
 const VOYAGEAI_API_BASE_URL: &str = "https://api.voyageai.com/v1";
@@ -107,6 +109,42 @@ pub struct RerankApiData {
     pub relevance_score: f64,
     #[serde(default)]
     pub document: Option<String>,
+}
+
+http_client!(
+    /// Voyage AI: its [`VoyageAiConfig`] on a transport. Every model it
+    /// builds sends through that transport.
+    VoyageAi,
+    VoyageAiConfig
+);
+
+impl VoyageAi {
+    /// Voyage AI with `api_key` and default settings, on the shared reqwest
+    /// client.
+    #[cfg(feature = "reqwest")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "reqwest")))]
+    pub fn new(api_key: impl Into<crate::wire::Secret>) -> Self {
+        VoyageAiConfig::new(api_key).client()
+    }
+
+    /// Voyage AI from `VOYAGE_API_KEY`, on the shared reqwest client.
+    #[cfg(feature = "reqwest")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "reqwest")))]
+    pub fn from_env() -> Result<Self, crate::client::env::EnvError> {
+        Ok(VoyageAiConfig::from_env()?.client())
+    }
+
+    /// The embedding model for `model`. `ndims` is the width it reports,
+    /// defaulting to the model's known width; see
+    /// [`Embeddings::with_output_dimension`] to request another.
+    pub fn embedding(&self, model: impl Into<String>, ndims: Option<usize>) -> Model<Embeddings> {
+        self.model(self.config.embedding(model, ndims))
+    }
+
+    /// The rerank model for `model`.
+    pub fn rerank(&self, model: impl Into<String>) -> Model<Rerank> {
+        self.model(self.config.rerank(model))
+    }
 }
 
 #[cfg(test)]

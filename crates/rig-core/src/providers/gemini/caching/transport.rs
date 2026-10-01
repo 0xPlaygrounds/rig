@@ -1,18 +1,17 @@
 //! The [`Caching`] transport and the cache book's I/O: the part of Gemini's
 //! automatic caching that sends requests. What to read, create and retire is
-//! decided by [`CacheBook`] in [`crate::providers::gemini::caching`], from
-//! bytes alone.
+//! decided by [`CacheBook`] in the parent module, from bytes alone.
 
 use futures::StreamExt;
 use serde::Deserialize;
 
-use crate::driver::{Exchange, Model, Opened, Opening, Transport};
-use crate::error::ProviderError;
-use crate::providers::gemini::cached_content::CachedContents;
-use crate::providers::gemini::caching::{
+use super::{
     CacheBook, Create, Lease, Parsed, cache_body, digests, is_user_text, parse, short_digest,
     stripped,
 };
+use crate::driver::{Exchange, Model, Opened, Opening, Transport};
+use crate::error::ProviderError;
+use crate::providers::gemini::cached_content::CachedContents;
 use crate::providers::gemini::completion::{GenerateContent, ThoughtReplay};
 use crate::providers::internal::wire::classify_untyped_line;
 use crate::wire::{Body, Encoded, Framing, Mode, WireEvent, WireFrame};
