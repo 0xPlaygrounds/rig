@@ -7,11 +7,10 @@
 //! from this wire's #2501 recordings (the scripted rows, against the
 //! rig-agent runner over the same frames). This file holds the scenario
 //! literals, the frames' provenance, the wire's models and its `#[ignore]`
-//! reasons; the drivers are `tests/common/ecs_matrix/{world,agent,extra}.rs`.
+//! reasons; the drivers are `tests/common/ecs_matrix/{world,agent,extra,faults}.rs`.
 
 use rig::providers::openai::GPT_5_MINI;
 use rig::providers::openai::wire::OpenAIConfig;
-use rig::test_utils::{MockHttpResponse, SequencedHttpClient};
 use rig_test_support::cassette_models::OpenAiModels;
 
 use super::super::support::{OpenAiCassette, with_openai_cassette};
@@ -19,18 +18,19 @@ use crate::ecs_matrix::{
     Wire, cells,
     cells::Cell,
     corpus::Program,
-    extra::{Cut, cancel_at},
     faults::{self, Fault},
     world::{run_scripted, run_world},
 };
-use crate::stream_faults::{
-    CHAT_REFUSAL_TEXT, SseShape, recorded_sse_frames, scripted, sse_bytes, status_reply,
-};
+use crate::stream_faults::{CHAT_REFUSAL_TEXT, SseShape};
 
 fn wire(client: &OpenAiCassette) -> Wire<rig::Model<rig::providers::openai::wire::Chat>> {
+    gpt_5_mini(&client.openai)
+}
+
+fn gpt_5_mini(models: &OpenAiModels) -> Wire<rig::Model<rig::providers::openai::wire::Chat>> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::OpenAiChat,
-        model: client.openai.chat(GPT_5_MINI),
+        model: models.chat(GPT_5_MINI),
         route: None,
         temperature: None,
         additional_params: None,
@@ -70,54 +70,24 @@ pub(super) const SETUP_STREAMED: Cell = Cell {
     ..SETUP_UNARY
 };
 
-/// A key the scripted cells send: it must never reach a recording or a
-/// trace.
-const SCRIPTED_KEY: &str = "sk-scripted-fault-key-7f3a9c";
-const SHAPE: SseShape = SseShape::Chat;
-/// The #2501 recordings the scripted rows cut: a streamed text answer and
-/// a streamed tool call, on this wire's own model.
-const TEXT_STREAM: &str = "corpus_matrix_chat/shaping_extra_context_streamed";
-const TOOL_STREAM: &str = "corpus_matrix_chat/hooks_patch_tool_args_streamed";
-/// The recorded setup failure the status rows rewrite.
-const SETUP_REPLY: &str = "corpus_faults_chat/setup_unary";
-
-fn recorded(scenario: &str) -> Vec<String> {
-    recorded_sse_frames("openai", scenario, 0)
-}
-
-fn reply(status: u16, retry_after: bool) -> MockHttpResponse {
-    status_reply("openai", SETUP_REPLY, status, retry_after)
-}
-
-/// The wire over a transport that answers one streaming request with
-/// `frames`, then EOF.
-fn scripted_stream(frames: &[String]) -> Wire<rig::Model<rig::providers::openai::wire::Chat>> {
-    let client = OpenAIConfig::new(SCRIPTED_KEY);
-    let http = rig::http_client::DynHttpClient::new(scripted(vec![sse_bytes(frames)]));
-    Wire {
-        thinking: crate::ecs_matrix::cells::ThinkingWire::OpenAiChat,
-        model: OpenAiModels::new(client, http.clone()).chat(GPT_5_MINI),
-        route: None,
-        temperature: None,
-        additional_params: None,
-    }
-}
-
-/// The wire over a transport that answers each unary request with the
-/// next of `replies`.
-fn scripted_unary(
-    replies: Vec<MockHttpResponse>,
-) -> Wire<rig::Model<rig::providers::openai::wire::Chat>> {
-    let client = OpenAIConfig::new(SCRIPTED_KEY);
-    let http = SequencedHttpClient::new(replies);
-    Wire {
-        thinking: crate::ecs_matrix::cells::ThinkingWire::OpenAiChat,
-        model: OpenAiModels::new(client, http.clone()).chat(GPT_5_MINI),
-        route: None,
-        temperature: None,
-        additional_params: None,
-    }
-}
+/// The scripted rows' facts: the #2501 recordings they cut (a streamed
+/// text answer and a streamed tool call, on this wire's own model) and the
+/// recorded setup failure the status rows rewrite.
+const SCRIPTED: faults::Scripted<rig::Model<rig::providers::openai::wire::Chat>> =
+    faults::Scripted {
+        provider: "openai",
+        shape: SseShape::Chat,
+        text_stream: "corpus_matrix_chat/shaping_extra_context_streamed",
+        tool_stream: "corpus_matrix_chat/hooks_patch_tool_args_streamed",
+        setup_reply: "corpus_faults_chat/setup_unary",
+        code: Some("model_not_found"),
+        wire: |http| {
+            gpt_5_mini(&OpenAiModels::new(
+                OpenAIConfig::new("sk-scripted-fault-key-7f3a9c"),
+                http,
+            ))
+        },
+    };
 
 crate::matrix::native_matrix! {
     wrapper: with_openai_cassette, wire: missing, run: run_world;
@@ -137,76 +107,46 @@ crate::matrix::native_matrix! {
     batch_second_fails: ("corpus_faults_chat/batch_second_fails", faults::BATCH_SECOND_FAILS, "openai_chat_batch_second_fails");
     #[tokio::test]
     batch_second_fails_concurrent: ("corpus_faults_chat/batch_second_fails", faults::BATCH_SECOND_FAILS_CONCURRENT, "openai_chat_batch_second_fails_concurrent");
+    /// Row 9 over `endings_tool_outcome_cancelled`'s recording.
+    #[tokio::test]
+    stop_while_tool_runs: ("corpus_matrix_chat/endings_tool_outcome_cancelled", faults::STOP_WHILE_TOOL_RUNS, "openai_faults_chat_stop_while_tool_runs");
+    /// Row 13 over `resume_tool_turn`'s recording.
+    #[tokio::test]
+    scene_tool_in_flight: ("corpus_matrix_chat/resume_tool_turn", faults::SCENE_TOOL_IN_FLIGHT, "openai_faults_chat_scene_tool_in_flight");
 }
 
-/// Row 9 over `endings_tool_outcome_cancelled`'s recording.
-#[tokio::test]
-async fn stop_while_tool_runs() {
-    crate::goldens::capture_world_programs(async {
-        with_openai_cassette(
-            "corpus_matrix_chat/endings_tool_outcome_cancelled",
-            |client| async move {
-                run_world(&wire(&client), &faults::STOP_WHILE_TOOL_RUNS, |log| {
-                    crate::goldens::world_golden_effects(
-                        "openai_faults_chat_stop_while_tool_runs",
-                        log,
-                    )
-                })
-                .await;
-            },
-        )
-        .await;
-    })
-    .await
-}
-
-/// Row 13 over `resume_tool_turn`'s recording.
-#[tokio::test]
-async fn scene_tool_in_flight() {
-    crate::goldens::capture_world_programs(async {
-        with_openai_cassette("corpus_matrix_chat/resume_tool_turn", |client| async move {
-            run_world(&wire(&client), &faults::SCENE_TOOL_IN_FLIGHT, |log| {
-                crate::goldens::world_golden_effects("openai_faults_chat_scene_tool_in_flight", log)
-            })
-            .await;
-        })
-        .await;
-    })
-    .await
+crate::matrix::native_matrix! {
+    wrapper: with_openai_cassette, wire: wire, run: faults::cancel_after_terminal;
+    /// Row 11: a bare `Cancelled` once the terminal record has landed and
+    /// before `Fold`: a whole completion, the run cancelled, despawned at once.
+    #[tokio::test]
+    cancel_after_terminal: ("corpus_matrix_chat/endings_text_delta_stop", cells::ENDINGS_TEXT_DELTA_STOP, "openai_faults_chat_cancel_after_terminal");
 }
 
 crate::matrix::case_matrix! {
-    family: wire_matrix_case;
+    family: ecs_faults_case;
     #[tokio::test]
-    truncated_after_text: truncated_after_text_0 => "openai_faults_chat_truncated_after_text";
+    truncated_after_text: SCRIPTED => "openai_faults_chat_truncated_after_text";
     #[tokio::test]
-    truncated_after_tool_call: truncated_after_tool_call_1 => "openai_faults_chat_truncated_after_tool_call";
-    /// The in-band error frame's facts, as the funnel reports them on this
-    /// shape (`SseShape::error_{code,message,status}`).
+    truncated_after_tool_call: SCRIPTED => "openai_faults_chat_truncated_after_tool_call";
     #[tokio::test]
-    error_after_text: error_after_text_2 => "openai_faults_chat_error_after_text";
+    error_after_text: SCRIPTED => "openai_faults_chat_error_after_text";
     #[tokio::test]
-    filtered_with_text: filtered_with_text_3 => "openai_faults_chat_filtered_with_text";
+    filtered_with_text: SCRIPTED => "openai_faults_chat_filtered_with_text";
     #[tokio::test]
-    filtered_empty: filtered_empty_4 => "openai_faults_chat_filtered_empty";
-    /// Row 10: no request reaches the wire; the transport answers nothing.
+    filtered_empty: SCRIPTED => "openai_faults_chat_filtered_empty";
     #[tokio::test]
-    failing_load: failing_load_5 => "openai_faults_chat_failing_load";
+    failing_load: SCRIPTED => "openai_faults_chat_failing_load";
     #[tokio::test]
-    failing_load_streamed: failing_load_streamed_6 => "openai_faults_chat_failing_load_streamed";
-    /// Row 11: a bare `Cancelled` at the first tool-call delta; the stream is
-    /// left to its handler, the tool never dispatched. The recorded tool turn
-    /// is served whole by the sequenced transport: a cancelled run makes one
-    /// request, and the recording holds two.
+    failing_load_streamed: SCRIPTED => "openai_faults_chat_failing_load_streamed";
     #[tokio::test]
-    cancel_at_first_tool_call_delta: cancel_at_first_tool_call_delta_7 => "openai_faults_chat_cancel_at_first_tool_call_delta";
+    cancel_at_first_tool_call_delta: SCRIPTED => "openai_faults_chat_cancel_at_first_tool_call_delta";
     #[tokio::test]
-    status_429: status_429_23 => "openai_faults_chat_status_429";
+    status_429: SCRIPTED => "openai_faults_chat_status_429";
     #[tokio::test]
-    status_503: status_503_24 => "openai_faults_chat_status_503";
-    /// World-only: the default budget re-issues the completion three times.
+    status_503: SCRIPTED => "openai_faults_chat_status_503";
     #[tokio::test]
-    status_503_retried: status_503_retried_25 => "openai_faults_chat_status_503_retried";
+    status_503_retried: SCRIPTED => "openai_faults_chat_status_503_retried";
 }
 
 /// The refusal streams as the answer: the text the adapter's unit tests
@@ -214,10 +154,10 @@ crate::matrix::case_matrix! {
 #[tokio::test]
 async fn refusal() {
     crate::goldens::capture_world_programs(async {
-        let frames = SHAPE.refusal(&[]);
+        let frames = SCRIPTED.shape.refusal(&[]);
         let log = run_scripted(
             &faults::REFUSAL,
-            || scripted_stream(&frames),
+            || SCRIPTED.stream(&frames),
             |log| crate::goldens::world_golden_effects("openai_faults_chat_refusal", log),
         )
         .await;
@@ -225,33 +165,6 @@ async fn refusal() {
             crate::ecs_matrix::corpus::golden_answer(&log),
             CHAT_REFUSAL_TEXT
         );
-    })
-    .await
-}
-
-/// Row 11: a bare `Cancelled` once the terminal record has landed and
-/// before `Fold`: a whole completion, the run cancelled, despawned at once.
-#[tokio::test]
-async fn cancel_after_terminal() {
-    crate::goldens::capture_world_programs(async {
-        with_openai_cassette(
-            "corpus_matrix_chat/endings_text_delta_stop",
-            |client| async move {
-                cancel_at(
-                    &wire(&client),
-                    &cells::ENDINGS_TEXT_DELTA_STOP,
-                    Cut::AfterTerminal,
-                    |log| {
-                        crate::goldens::world_golden_effects(
-                            "openai_faults_chat_cancel_after_terminal",
-                            log,
-                        )
-                    },
-                )
-                .await;
-            },
-        )
-        .await;
     })
     .await
 }
