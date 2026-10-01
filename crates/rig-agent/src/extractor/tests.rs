@@ -11,7 +11,8 @@ use crate::completion::{PromptError, StructuredOutputError, Usage};
 use crate::test_utils::{MockCompletionModel, MockTurn};
 use rig_core::message::{AssistantContent, ToolCall, ToolFunction};
 use rig_core::vector_store::{
-    VectorSearchRequest, VectorStoreError, VectorStoreIndex, request::Filter,
+    VectorSearchIdResult, VectorSearchRequest, VectorSearchResult, VectorStoreError,
+    VectorStoreIndex, request::Filter,
 };
 use serde::Deserialize;
 
@@ -149,20 +150,27 @@ impl VectorStoreIndex for ExtractorContextIndex {
     async fn top_n<T: DeserializeOwned + WasmCompatSend>(
         &self,
         req: VectorSearchRequest,
-    ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
+    ) -> Result<Vec<VectorSearchResult<T>>, VectorStoreError> {
         self.queries
             .lock()
             .expect("extractor query recorder")
             .push((req.query().to_string(), req.samples()));
         let value = serde_json::from_value(json!({ "question": "retrieved" }))?;
-        Ok(vec![(1.0, "extractor-context".to_string(), value)])
+        Ok(vec![VectorSearchResult {
+            score: 1.0,
+            id: "extractor-context".to_string(),
+            document: value,
+        }])
     }
 
     async fn top_n_ids(
         &self,
         _req: VectorSearchRequest,
-    ) -> Result<Vec<(f64, String)>, VectorStoreError> {
-        Ok(vec![(1.0, "extractor-context".to_string())])
+    ) -> Result<Vec<VectorSearchIdResult>, VectorStoreError> {
+        Ok(vec![VectorSearchIdResult {
+            score: 1.0,
+            id: "extractor-context".to_string(),
+        }])
     }
 }
 

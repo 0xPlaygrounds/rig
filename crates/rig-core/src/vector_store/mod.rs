@@ -134,28 +134,39 @@ pub trait VectorStoreIndex: WasmCompatSend + WasmCompatSync {
     /// The filter type for this backend.
     type Filter: SearchFilter + WasmCompatSend + WasmCompatSync;
 
-    /// Returns the top N most similar documents as `(score, id, document)` tuples.
+    /// Returns the top N most similar documents, most similar first.
     fn top_n<T: DeserializeOwned + WasmCompatSend>(
         &self,
         req: VectorSearchRequest<Self::Filter>,
-    ) -> impl std::future::Future<Output = Result<Vec<(f64, String, T)>, VectorStoreError>>
+    ) -> impl std::future::Future<Output = Result<Vec<VectorSearchResult<T>>, VectorStoreError>>
     + WasmCompatSend;
 
-    /// Returns the top N most similar document IDs as `(score, id)` tuples.
+    /// Returns the top N most similar document IDs, most similar first.
     fn top_n_ids(
         &self,
         req: VectorSearchRequest<Self::Filter>,
-    ) -> impl std::future::Future<Output = Result<Vec<(f64, String)>, VectorStoreError>> + WasmCompatSend;
+    ) -> impl std::future::Future<Output = Result<Vec<VectorSearchIdResult>, VectorStoreError>>
+    + WasmCompatSend;
 }
 
-#[derive(Serialize, Deserialize, Debug)]
-pub struct VectorStoreOutput {
-    /// Similarity score returned by the vector store.
+/// One document returned by [`VectorStoreIndex::top_n`].
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct VectorSearchResult<T> {
+    /// Backend similarity score. Its scale and direction follow the backend's metric.
     pub score: f64,
-    /// Document ID returned by the vector store.
+    /// Backend document ID.
     pub id: String,
-    /// Serialized document payload.
-    pub document: Value,
+    /// The stored document, deserialized as `T`.
+    pub document: T,
+}
+
+/// One document ID returned by [`VectorStoreIndex::top_n_ids`].
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct VectorSearchIdResult {
+    /// Backend similarity score. Its scale and direction follow the backend's metric.
+    pub score: f64,
+    /// Backend document ID.
+    pub id: String,
 }
 
 impl<T, F> PortableTool for T
@@ -169,7 +180,7 @@ where
     const NAME: &'static str = "search_vector_store";
     type Error = VectorStoreError;
     type Args = VectorSearchRequest<F>;
-    type Output = Vec<VectorStoreOutput>;
+    type Output = Vec<VectorSearchResult<Value>>;
 
     fn description(&self) -> String {
         "Retrieves the most relevant documents from a vector store based on a query.".to_string()
@@ -199,15 +210,7 @@ where
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
-        let results = self.top_n(args).await?;
-        Ok(results
-            .into_iter()
-            .map(|(score, id, document)| VectorStoreOutput {
-                score,
-                id,
-                document,
-            })
-            .collect())
+        self.top_n(args).await
     }
 }
 

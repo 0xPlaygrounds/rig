@@ -37,7 +37,8 @@ use rig_core::message::{
 };
 use rig_core::operation::Finish;
 use rig_core::vector_store::{
-    VectorSearchRequest, VectorStoreError, VectorStoreIndex, request::Filter,
+    VectorSearchIdResult, VectorSearchRequest, VectorSearchResult, VectorStoreError,
+    VectorStoreIndex, request::Filter,
 };
 use rig_core::wasm_compat::WasmCompatSend;
 
@@ -6362,20 +6363,27 @@ impl VectorStoreIndex for RecordingContextIndex {
     async fn top_n<T: for<'a> Deserialize<'a> + WasmCompatSend>(
         &self,
         req: VectorSearchRequest,
-    ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
+    ) -> Result<Vec<VectorSearchResult<T>>, VectorStoreError> {
         self.queries
             .lock()
             .expect("context query recorder lock")
             .push((req.query().to_string(), req.samples()));
         let value = serde_json::from_value(json!({ "source": self.id }))?;
-        Ok(vec![(1.0, self.id.to_string(), value)])
+        Ok(vec![VectorSearchResult {
+            score: 1.0,
+            id: self.id.to_string(),
+            document: value,
+        }])
     }
 
     async fn top_n_ids(
         &self,
         _req: VectorSearchRequest,
-    ) -> Result<Vec<(f64, String)>, VectorStoreError> {
-        Ok(vec![(1.0, self.id.to_string())])
+    ) -> Result<Vec<VectorSearchIdResult>, VectorStoreError> {
+        Ok(vec![VectorSearchIdResult {
+            score: 1.0,
+            id: self.id.to_string(),
+        }])
     }
 }
 
@@ -6387,7 +6395,7 @@ impl VectorStoreIndex for FailingContextIndex {
     async fn top_n<T: for<'a> Deserialize<'a> + WasmCompatSend>(
         &self,
         _req: VectorSearchRequest,
-    ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
+    ) -> Result<Vec<VectorSearchResult<T>>, VectorStoreError> {
         Err(VectorStoreError::datastore(std::io::Error::other(
             "context index unavailable",
         )))
@@ -6396,7 +6404,7 @@ impl VectorStoreIndex for FailingContextIndex {
     async fn top_n_ids(
         &self,
         _req: VectorSearchRequest,
-    ) -> Result<Vec<(f64, String)>, VectorStoreError> {
+    ) -> Result<Vec<VectorSearchIdResult>, VectorStoreError> {
         Err(VectorStoreError::datastore(std::io::Error::other(
             "context index unavailable",
         )))
@@ -6413,19 +6421,22 @@ impl VectorStoreIndex for QueryRecordingToolIndex {
     async fn top_n<T: for<'a> Deserialize<'a> + WasmCompatSend>(
         &self,
         _req: VectorSearchRequest,
-    ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
+    ) -> Result<Vec<VectorSearchResult<T>>, VectorStoreError> {
         Ok(Vec::new())
     }
 
     async fn top_n_ids(
         &self,
         req: VectorSearchRequest,
-    ) -> Result<Vec<(f64, String)>, VectorStoreError> {
+    ) -> Result<Vec<VectorSearchIdResult>, VectorStoreError> {
         self.queries
             .lock()
             .expect("query recorder lock")
             .push(req.query().to_string());
-        Ok(vec![(1.0, MockAddTool::NAME.to_string())])
+        Ok(vec![VectorSearchIdResult {
+            score: 1.0,
+            id: MockAddTool::NAME.to_string(),
+        }])
     }
 }
 
@@ -7235,18 +7246,21 @@ impl VectorStoreIndex for LateFinalResultIndex {
     async fn top_n<T: for<'a> Deserialize<'a> + WasmCompatSend>(
         &self,
         _req: VectorSearchRequest,
-    ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
+    ) -> Result<Vec<VectorSearchResult<T>>, VectorStoreError> {
         Ok(Vec::new())
     }
 
     async fn top_n_ids(
         &self,
         _req: VectorSearchRequest,
-    ) -> Result<Vec<(f64, String)>, VectorStoreError> {
+    ) -> Result<Vec<VectorSearchIdResult>, VectorStoreError> {
         if self.searches.fetch_add(1, SeqCst) == 0 {
             Ok(Vec::new())
         } else {
-            Ok(vec![(1.0, "final_result".to_string())])
+            Ok(vec![VectorSearchIdResult {
+                score: 1.0,
+                id: "final_result".to_string(),
+            }])
         }
     }
 }

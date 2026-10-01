@@ -43,8 +43,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build();
     let results = vector_store.top_n::<Document>(req).await?;
     
-    for (score, id, doc) in results {
-        println!("Score: {}, ID: {}, Document: {:?}", score, id, doc);
+    for result in results {
+        println!(
+            "Score: {}, ID: {}, Document: {:?}",
+            result.score, result.id, result.document
+        );
     }
     
     Ok(())

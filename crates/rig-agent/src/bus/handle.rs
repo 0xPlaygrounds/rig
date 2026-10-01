@@ -36,7 +36,10 @@ use rig_core::{
     operation::RerankRequest,
     streaming::CompletionStream,
     tool::ToolContext,
-    vector_store::request::{Filter, VectorSearchRequest},
+    vector_store::{
+        VectorSearchIdResult, VectorSearchResult,
+        request::{Filter, VectorSearchRequest},
+    },
 };
 
 use super::{DispatchOptions, Dispatcher, EffectStream, Pending};
@@ -295,7 +298,7 @@ impl Future for ToolCall {
     }
 }
 /// A retrieval in flight, deserialized on this side of the bus.
-pub type Retrieval<T> = Typed<family::Retrieve, Vec<(f64, String, T)>>;
+pub type Retrieval<T> = Typed<family::Retrieve, Vec<VectorSearchResult<T>>>;
 
 impl<F: Family> Handle<F> {
     /// Dispatch a typed request of this family: one implementation for
@@ -509,13 +512,17 @@ impl MemoryHandle {
 /// JSON, the type parameter never crosses it.
 fn deserialize_scored<T: DeserializeOwned>(
     documents: RetrievedDocuments,
-) -> Result<Vec<(f64, String, T)>, ErrorReport> {
+) -> Result<Vec<VectorSearchResult<T>>, ErrorReport> {
     match documents {
         RetrievedDocuments::Scored(results) => results
             .into_iter()
             .map(
                 |(score, id, document)| match serde_json::from_value::<T>(document) {
-                    Ok(document) => Ok((score, id, document)),
+                    Ok(document) => Ok(VectorSearchResult {
+                        score,
+                        id,
+                        document,
+                    }),
                     Err(error) => Err(ErrorReport::new(
                         ErrorKind::Json,
                         format!("retrieved document `{id}` did not deserialize: {error}"),
@@ -545,11 +552,14 @@ impl IndexHandle {
     pub fn top_n_ids(
         &self,
         req: VectorSearchRequest<Filter<serde_json::Value>>,
-    ) -> Typed<family::Retrieve, Vec<(f64, String)>> {
+    ) -> Typed<family::Retrieve, Vec<VectorSearchIdResult>> {
         Typed::narrow(
             self.dispatch_wrapped(family::Retrieve::wrap(RetrieveQuery::TopNIds { req })),
             |documents| match documents {
-                RetrievedDocuments::Ids(results) => Ok(results),
+                RetrievedDocuments::Ids(results) => Ok(results
+                    .into_iter()
+                    .map(|(score, id)| VectorSearchIdResult { score, id })
+                    .collect()),
                 RetrievedDocuments::Scored(_) => {
                     Err(wrong_shape("scored ids", family::Retrieve::FAMILY))
                 }

@@ -8,6 +8,7 @@ use mongodb::{
     options::ClientOptions,
 };
 use rig::mongodb::{MongoDbVectorIndex, SearchParams};
+use rig::vector_store::VectorSearchResult;
 use rig::vector_store::request::VectorSearchRequest;
 use rig::{
     Embed,
@@ -115,12 +116,12 @@ async fn vector_search_test() {
             Ok(search_results) => {
                 observed_results = search_results
                     .iter()
-                    .map(|(_, _, value)| value.clone())
+                    .map(|result| result.document.clone())
                     .collect();
 
                 if search_results
                     .first()
-                    .and_then(|(_, _, value)| value.get("_id"))
+                    .and_then(|result| result.document.get("_id"))
                     == Some(&json!("doc2"))
                 {
                     results = search_results;
@@ -141,7 +142,11 @@ async fn vector_search_test() {
         "expected doc2 to be the top vector search result after {VECTOR_SEARCH_MAX_ATTEMPTS} attempts; observed results: {observed_results:?}"
     );
 
-    let (score, _, value) = &results.first().unwrap();
+    let VectorSearchResult {
+        score,
+        document: value,
+        ..
+    } = &results.first().unwrap();
 
     assert_eq!(
         *value,

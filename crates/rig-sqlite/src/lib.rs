@@ -10,7 +10,9 @@
 use rig_core::Embed;
 use rig_core::embeddings::Embedding;
 use rig_core::vector_store::request::{FilterError, SearchFilter, VectorSearchRequest};
-use rig_core::vector_store::{InsertDocuments, VectorStoreError, VectorStoreIndex};
+use rig_core::vector_store::{
+    InsertDocuments, VectorSearchIdResult, VectorSearchResult, VectorStoreError, VectorStoreIndex,
+};
 use rig_core::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use rusqlite::OptionalExtension;
 use rusqlite::types::{Type, Value, ValueRef};
@@ -1930,7 +1932,7 @@ impl<T: SqliteVectorStoreTable> VectorStoreIndex for SqliteVectorIndex<T> {
     async fn top_n<D>(
         &self,
         req: VectorSearchRequest<SqliteSearchFilter>,
-    ) -> Result<Vec<(f64, String, D)>, VectorStoreError>
+    ) -> Result<Vec<VectorSearchResult<D>>, VectorStoreError>
     where
         D: serde::de::DeserializeOwned,
     {
@@ -1974,7 +1976,11 @@ impl<T: SqliteVectorStoreTable> VectorStoreIndex for SqliteVectorIndex<T> {
         for (id, doc_value, score) in rows {
             match serde_json::from_value::<D>(doc_value) {
                 Ok(doc) => {
-                    top_n.push((score, id, doc));
+                    top_n.push(VectorSearchResult {
+                        score,
+                        id,
+                        document: doc,
+                    });
                 }
                 Err(e) => {
                     debug!("Failed to deserialize document {}: {}", id, e);
@@ -1990,7 +1996,7 @@ impl<T: SqliteVectorStoreTable> VectorStoreIndex for SqliteVectorIndex<T> {
     async fn top_n_ids(
         &self,
         req: VectorSearchRequest<SqliteSearchFilter>,
-    ) -> Result<Vec<(f64, String)>, VectorStoreError> {
+    ) -> Result<Vec<VectorSearchIdResult>, VectorStoreError> {
         tracing::debug!(
             "Finding top {} document IDs for query",
             req.samples() as usize
@@ -2001,10 +2007,10 @@ impl<T: SqliteVectorStoreTable> VectorStoreIndex for SqliteVectorIndex<T> {
 
         let results = self
             .search_rows(&req, "d.id".to_string(), |row| {
-                Ok((
-                    row.get::<_, f64>(1)?,
-                    sqlite_id_value_to_string(0, row.get_ref(0)?)?,
-                ))
+                Ok(VectorSearchIdResult {
+                    score: row.get::<_, f64>(1)?,
+                    id: sqlite_id_value_to_string(0, row.get_ref(0)?)?,
+                })
             })
             .await?;
 

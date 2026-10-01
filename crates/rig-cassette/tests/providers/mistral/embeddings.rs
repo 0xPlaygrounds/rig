@@ -47,7 +47,7 @@ async fn derive_embeddings_and_vector_search() {
 
     assert_eq!(results.len(), 1);
     assert!(
-        results[0].2.message.contains("Hello"),
+        results[0].document.message.contains("Hello"),
         "expected the hello document to be the closest match"
     );
 }

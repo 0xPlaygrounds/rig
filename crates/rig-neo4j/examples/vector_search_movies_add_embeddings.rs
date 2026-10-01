@@ -126,11 +126,11 @@ async fn main() -> Result<(), anyhow::Error> {
         .top_n::<Movie>(req)
         .await?
         .into_iter()
-        .map(|(score, id, doc)| display::SearchResult {
-            title: doc.title,
-            id,
-            description: doc.plot,
-            score,
+        .map(|result| display::SearchResult {
+            title: result.document.title,
+            id: result.id,
+            description: result.document.plot,
+            score: result.score,
         })
         .collect::<Vec<_>>();
 

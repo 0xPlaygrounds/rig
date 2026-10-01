@@ -8,7 +8,8 @@ use rig_core::{
     Embed,
     embeddings::Embedding,
     vector_store::{
-        InsertDocuments, VectorStoreError, VectorStoreIndex,
+        InsertDocuments, VectorSearchIdResult, VectorSearchResult, VectorStoreError,
+        VectorStoreIndex,
         request::{
             DynamicSearchFilter, Filter, FilterError, SearchFilter, SqlCondition,
             VectorSearchRequest,
@@ -444,30 +445,36 @@ impl InsertDocuments for ScyllaDbVectorStore {
 impl VectorStoreIndex for ScyllaDbVectorStore {
     type Filter = ScyllaSearchFilter;
 
-    /// Returns matches as `(cosine similarity, row id, document)`. Scoring reads
+    /// Returns matches scored by cosine similarity and keyed by row id. Scoring reads
     /// every row the filter admits, so cost grows with the scanned table.
     async fn top_n<T: DeserializeOwned + WasmCompatSend>(
         &self,
         req: VectorSearchRequest<ScyllaSearchFilter>,
-    ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
+    ) -> Result<Vec<VectorSearchResult<T>>, VectorStoreError> {
         self.search_candidates(&req)
             .await?
             .into_iter()
-            .map(|(score, id, metadata)| Ok((score, id, serde_json::from_str(&metadata)?)))
+            .map(|(score, id, metadata)| {
+                Ok(VectorSearchResult {
+                    score,
+                    id,
+                    document: serde_json::from_str(&metadata)?,
+                })
+            })
             .collect()
     }
 
-    /// Like `top_n` but returns `(cosine similarity, row id)` without
-    /// deserializing documents.
+    /// Like `top_n` but returns scores and row ids without deserializing
+    /// documents.
     async fn top_n_ids(
         &self,
         req: VectorSearchRequest<ScyllaSearchFilter>,
-    ) -> Result<Vec<(f64, String)>, VectorStoreError> {
+    ) -> Result<Vec<VectorSearchIdResult>, VectorStoreError> {
         Ok(self
             .search_candidates(&req)
             .await?
             .into_iter()
-            .map(|(score, id, _)| (score, id))
+            .map(|(score, id, _)| VectorSearchIdResult { score, id })
             .collect())
     }
 }

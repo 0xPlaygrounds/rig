@@ -151,7 +151,7 @@ async fn vector_search_test() {
     // Query the index
     let results = index.top_n::<serde_json::Value>(req).await.expect("");
 
-    let (_, _, value) = &results.first().expect("");
+    let value = &results.first().expect("").document;
 
     assert_eq!(
         value,

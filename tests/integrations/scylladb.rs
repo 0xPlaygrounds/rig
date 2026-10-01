@@ -2,6 +2,7 @@ use crate::common::{WORD_DEFINITIONS, axis_embedding, mock_embeddings, openai_cl
 use rig::providers::openai;
 use rig::scylladb::{ScyllaDbVectorStore, create_session};
 use rig::vector_store::request::VectorSearchRequest;
+use rig::vector_store::{VectorSearchIdResult, VectorSearchResult};
 use rig::{
     Embed,
     embeddings::EmbeddingsBuilder,
@@ -123,7 +124,11 @@ async fn vector_search_test() {
         results.len()
     );
 
-    let (distance, id, doc) = results[0].clone();
+    let VectorSearchResult {
+        score: distance,
+        id,
+        document: doc,
+    } = results[0].clone();
     println!("Distance: {distance}, id: {id}, document: {doc:?}");
 
     assert_eq!(doc.id, "doc1");
@@ -142,7 +147,10 @@ async fn vector_search_test() {
         id_results.len()
     );
 
-    let (id_distance, result_id) = id_results[0].clone();
+    let VectorSearchIdResult {
+        score: id_distance,
+        id: result_id,
+    } = id_results[0].clone();
     println!("Distance: {id_distance}, id: {result_id}");
 
     assert_eq!(result_id, id);
@@ -160,7 +168,7 @@ async fn vector_search_test() {
         .expect("Failed to search for linglingdong");
 
     assert_eq!(results2.len(), 1);
-    let (_, _, doc2) = &results2[0];
+    let VectorSearchResult { document: doc2, .. } = &results2[0];
     assert_eq!(doc2.id, "doc2");
     assert!(doc2.definition.contains("linglingdong"));
 

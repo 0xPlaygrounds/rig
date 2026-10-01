@@ -6,7 +6,10 @@
 
 use reqwest::{Client, StatusCode};
 use rig_core::{
-    vector_store::{InsertDocuments, VectorStoreError, VectorStoreIndex, request::Filter},
+    vector_store::{
+        InsertDocuments, VectorSearchIdResult, VectorSearchResult, VectorStoreError,
+        VectorStoreIndex, request::Filter,
+    },
     wasm_compat::WasmCompatSend,
 };
 use serde::{Deserialize, Serialize};
@@ -220,13 +223,13 @@ impl VectorStoreIndex for HelixDBVectorStore {
 
     // HelixDB reports cosine distance; `-(score - 1)` converts it to similarity.
 
-    /// Returns matches as `(cosine similarity, id, document)`, discarding hits
+    /// Returns matches scored by cosine similarity, discarding hits
     /// below the threshold or rejected by the request filter, which is evaluated
     /// client-side against each stored JSON payload.
     async fn top_n<T: for<'a> serde::Deserialize<'a> + WasmCompatSend>(
         &self,
         req: rig_core::vector_store::VectorSearchRequest<HelixDBFilter>,
-    ) -> Result<Vec<(f64, String, T)>, rig_core::vector_store::VectorStoreError> {
+    ) -> Result<Vec<VectorSearchResult<T>>, VectorStoreError> {
         let docs = self
             .vector_search(&req)
             .await?
@@ -247,26 +250,33 @@ impl VectorStoreIndex for HelixDBVectorStore {
             .map(|x| {
                 let doc: T = serde_json::from_str(&x.json_payload)?;
 
-                Ok((-(x.score - 1.), x.id, doc))
+                Ok(VectorSearchResult {
+                    score: -(x.score - 1.),
+                    id: x.id,
+                    document: doc,
+                })
             })
             .collect::<Result<Vec<_>, VectorStoreError>>()?;
 
         Ok(docs)
     }
 
-    /// Like `top_n` but returns `(cosine similarity, id)` and ignores the
+    /// Like `top_n` but returns only scores and ids, and ignores the
     /// request filter.
     async fn top_n_ids(
         &self,
         req: rig_core::vector_store::VectorSearchRequest<HelixDBFilter>,
-    ) -> Result<Vec<(f64, String)>, rig_core::vector_store::VectorStoreError> {
+    ) -> Result<Vec<VectorSearchIdResult>, VectorStoreError> {
         let docs = self
             .vector_search(&req)
             .await?
             .into_iter()
             .filter(|x| -(x.score - 1.) >= req.threshold().unwrap_or_default())
-            .map(|x| Ok((-(x.score - 1.), x.id)))
-            .collect::<Result<Vec<_>, VectorStoreError>>()?;
+            .map(|x| VectorSearchIdResult {
+                score: -(x.score - 1.),
+                id: x.id,
+            })
+            .collect();
 
         Ok(docs)
     }

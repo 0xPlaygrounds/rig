@@ -545,8 +545,12 @@ where
                                     Outcome::Documents(RetrievedDocuments::Scored(
                                         results
                                             .into_iter()
-                                            .map(|(score, id, doc)| {
-                                                (score, id, F::normalize_dynamic_document(doc))
+                                            .map(|result| {
+                                                (
+                                                    result.score,
+                                                    result.id,
+                                                    F::normalize_dynamic_document(result.document),
+                                                )
                                             })
                                             .collect(),
                                     ))
@@ -561,7 +565,14 @@ where
                                 .index
                                 .top_n_ids(req)
                                 .await
-                                .map(|results| Outcome::Documents(RetrievedDocuments::Ids(results)))
+                                .map(|results| {
+                                    Outcome::Documents(RetrievedDocuments::Ids(
+                                        results
+                                            .into_iter()
+                                            .map(|result| (result.score, result.id))
+                                            .collect(),
+                                    ))
+                                })
                                 .map_err(ErrorReport::from),
                             Err(error) => Err(ErrorReport::from(VectorStoreError::from(error))),
                         }

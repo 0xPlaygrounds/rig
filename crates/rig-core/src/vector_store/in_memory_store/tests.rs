@@ -139,11 +139,17 @@ async fn non_equality_documents_support_search_and_filters() -> anyhow::Result<(
             "unexpected result count"
         );
         for (position, (id, price)) in [("doc1", 2.5), ("doc3", 4.5)].into_iter().enumerate() {
-            anyhow::ensure!(documents[position].1 == id, "document tie order changed");
-            anyhow::ensure!(documents[position].2.price == price, "payload changed");
-            anyhow::ensure!(ids[position].1 == id, "ID tie order changed");
-            anyhow::ensure!(documents[position].0 >= 0.9, "threshold was ignored");
-            anyhow::ensure!(documents[position].0 == ids[position].0, "scores differ");
+            anyhow::ensure!(documents[position].id == id, "document tie order changed");
+            anyhow::ensure!(
+                documents[position].document.price == price,
+                "payload changed"
+            );
+            anyhow::ensure!(ids[position].id == id, "ID tie order changed");
+            anyhow::ensure!(documents[position].score >= 0.9, "threshold was ignored");
+            anyhow::ensure!(
+                documents[position].score == ids[position].score,
+                "scores differ"
+            );
         }
     }
     Ok(())
@@ -677,7 +683,7 @@ async fn top_n_honors_filter_and_threshold() {
             .await
             .unwrap()
             .into_iter()
-            .map(|(_, id)| id)
+            .map(|result| result.id)
             .collect();
         out.sort();
         out
@@ -762,7 +768,7 @@ async fn top_n_excludes_non_finite_similarity() {
         .await
         .unwrap()
         .into_iter()
-        .map(|(_, id)| id)
+        .map(|result| result.id)
         .collect();
     assert_eq!(ids, vec!["good".to_string()]);
 }
@@ -802,8 +808,8 @@ async fn top_n_ranks_document_by_best_finite_embedding() {
         .await
         .unwrap();
     assert_eq!(results.len(), 1);
-    assert_eq!(results[0].1, "mixed");
-    assert!(results[0].0.is_finite());
+    assert_eq!(results[0].id, "mixed");
+    assert!(results[0].score.is_finite());
 }
 
 /// A search returns its documents best first, and documents of one score in
@@ -843,7 +849,7 @@ async fn top_n_returns_documents_best_first_then_by_id() {
             .await
             .expect("a search")
             .into_iter()
-            .map(|(_, id)| id)
+            .map(|result| result.id)
             .collect();
         assert_eq!(ids, ["a", "b", "c", "z"], "best first, ties by id");
     }

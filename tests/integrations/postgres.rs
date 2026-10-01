@@ -3,6 +3,7 @@ use rig::postgres::{PgSearchFilter, PostgresVectorStore};
 use rig::providers::openai;
 use rig::vector_store::request::SearchFilter;
 use rig::vector_store::request::VectorSearchRequest;
+use rig::vector_store::{VectorSearchIdResult, VectorSearchResult};
 use rig::{
     Embed,
     embeddings::EmbeddingsBuilder,
@@ -118,7 +119,11 @@ async fn vector_search_test() {
         results.len()
     );
 
-    let (distance, full_query_id, doc) = results[0].clone();
+    let VectorSearchResult {
+        score: distance,
+        id: full_query_id,
+        document: doc,
+    } = results[0].clone();
     println!("Distance: {distance}, id: {full_query_id}, document: {doc:?}");
 
     assert_eq!(doc.name, "glarb-glarb");
@@ -136,7 +141,10 @@ async fn vector_search_test() {
         results.len()
     );
 
-    let (distance, id) = results[0].clone();
+    let VectorSearchIdResult {
+        score: distance,
+        id,
+    } = results[0].clone();
     println!("Distance: {distance}, id: {id}");
 
     assert_eq!(id, full_query_id);
@@ -166,7 +174,7 @@ async fn vector_search_test() {
         .await
         .expect("filtered + thresholded search must be valid SQL");
     assert_eq!(results.len(), 1, "only glarb-glarb passes the filter");
-    assert_eq!(results[0].2.name, "glarb-glarb");
+    assert_eq!(results[0].document.name, "glarb-glarb");
 
     let single_condition = VectorSearchRequest::builder()
         .query(query)

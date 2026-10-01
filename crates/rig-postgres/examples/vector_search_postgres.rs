@@ -98,8 +98,11 @@ async fn main() -> Result<(), anyhow::Error> {
     let results = vector_store.top_n::<WordDefinition>(req).await?;
 
     println!("#{} results for query: {}", results.len(), query);
-    for (distance, _id, doc) in results.iter() {
-        println!("Result distance {distance} for word: {doc}");
+    for result in &results {
+        println!(
+            "Result distance {} for word: {}",
+            result.score, result.document
+        );
 
         // expected output (even if we have 2 entries on glarb-glarb the index only gives closest match)
         // Result distance 0.2988549857990437 for word: glarb-glarb
