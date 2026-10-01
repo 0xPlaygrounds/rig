@@ -167,6 +167,26 @@ impl<P> SqlCondition<P> {
         }
     }
 
+    /// Renders `<key> >= <placeholder> AND <key> <= <placeholder>` bound to
+    /// `lo` then `hi`, e.g. `price >= ? AND price <= ?`.
+    pub fn range(key: impl AsRef<str>, placeholder: &str, lo: P, hi: P) -> Self {
+        let key = key.as_ref();
+
+        Self {
+            condition: format!("{key} >= {placeholder} AND {key} <= {placeholder}"),
+            params: vec![lo, hi],
+        }
+    }
+
+    /// Renders `<key> between <placeholder> and <placeholder>` bound to `lo`
+    /// then `hi`, e.g. `price between ? and ?`.
+    pub fn between(key: impl AsRef<str>, placeholder: &str, lo: P, hi: P) -> Self {
+        Self {
+            condition: format!("{} between {placeholder} and {placeholder}", key.as_ref()),
+            params: vec![lo, hi],
+        }
+    }
+
     /// Wraps an already-rendered, parameterless condition such as `id is null`.
     pub fn raw(condition: impl Into<String>) -> Self {
         Self {
