@@ -86,7 +86,7 @@ binding reports its key and wrong family. An outstanding tool can finish
 before the next assembly detects the missing model. This differs from
 cancelling an in-flight operation.
 
-The request the model sees is derived, never authored: a run entity, utterances `ChildOf` it in sibling (`Children`) order, documents as their own entities attached to a turn by link entities, tools as the handler entities the bus already has (granted by link entities), the model as a relationship, every setting a component — and one function, `policy::fold_request`, that `fold_turn` calls at `RigSet::Assemble` over what `gather_turn` walked, writing the wire `CompletionRequest` into the turn's `PendingEffect`. `CONTRACT.md` names the walk field by field with the golden that pins each; the world interpreter (`crates/rig-cassette/tests/corpus/world.rs`) exercises request assembly through the maintained corpus, including tools, memory and steering.
+The request the model sees is derived, never authored: a run entity, utterances `ChildOf` it in sibling (`Children`) order, documents as their own entities attached to a turn by link entities, tools as the handler entities the bus already has (granted by link entities), the model as a relationship, every setting a component — and one function, `policy::fold_request`, that `fold_turn` calls at `RigSet::Assemble` over the graph it walked, writing the wire `CompletionRequest` into the turn's `PendingEffect`. `CONTRACT.md` names the walk field by field with the golden that pins each; the world interpreter (`crates/rig-cassette/tests/corpus/world.rs`) exercises request assembly through the maintained corpus, including tools, memory and steering.
 
 | Entity | Components |
 |---|---|
@@ -112,7 +112,7 @@ The agent's sets, around the bus's:
 |---|---|---|
 | `RigSet::Advance` | a run in `Assembling` has no fresh turn | a turn with its adverts and attachments, or `Failed(MaxTurns)` |
 | `RigSet::Select` | a run may lack a model of its own | the agent's `UsesModel`, copied — a routing system before it gives the run another |
-| `RigSet::Assemble` | a fresh turn's graph is complete | `gather_turn` leaves the graph on the turn as `AssemblyInputs`; `fold_turn` folds it and spawns the effect; the run is `AwaitingModel` |
+| `RigSet::Assemble` | a fresh turn's graph is complete | `fold_turn` folds the graph and spawns the effect; the run is `AwaitingModel` |
 | `RigSet::Patch` | the folded effect is a `PendingEffect` | the second steering slot: a user system rewrites the folded request |
 | `RigSet::Release` | a turn's tool batch is out | `release_batch` releases its `rig-ecs/batch` owner up to the concurrency, in call order. Policies use `bus::acquire_hold` and `bus::release_hold` with distinct stable emitter names; `Held` remains until every owner releases. A pre-existing bare `Held` is retained as an independent unknown owner. |
 | *`BusSet::Gate` … `BusSet::Judge`* | | |

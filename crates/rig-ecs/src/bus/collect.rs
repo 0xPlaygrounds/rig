@@ -282,11 +282,11 @@ pub fn collect_streams(
         if delivered != 0
             && let Some(recording) = &recording
         {
-            recording.delivery(
-                batch.0,
-                *id,
-                rig_core::effect::DeliveryKind::Stream { items: delivered },
-            );
+            recording.delivery(rig_core::effect::Delivery {
+                batch: batch.0,
+                id: *id,
+                kind: rig_core::effect::DeliveryKind::Stream { items: delivered },
+            });
         }
         if remaining == 0 {
             // Advance the cursor only when a pass exhausts its allowance. Empty
