@@ -49,7 +49,6 @@
 //!   determinism check in `tests/cassette_cache_prefix.rs` can catch that.
 //! * A cassette pins what the provider did at record time. Only the live
 //!   economics suite catches the provider changing its cache semantics under us.
-#![allow(dead_code)]
 
 use rig_agent::completion::CompletionRequest;
 

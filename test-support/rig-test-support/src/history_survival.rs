@@ -18,7 +18,6 @@
 //! let request = serde_json::json!({ "messages": [] });
 //! assert!(lost_tokens(Dialect::from_path("/v1/messages"), "{}", &request).is_empty());
 //! ```
-#![allow(dead_code)]
 
 pub mod adversarial;
 pub mod driver;

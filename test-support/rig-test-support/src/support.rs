@@ -1,5 +1,4 @@
 //! Shared fixtures, tiny tools, and durable assertions for ignored smoke tests.
-#![allow(dead_code)]
 
 use futures::StreamExt;
 

@@ -4,7 +4,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 use syn::visit::{self, Visit};
 
-use rig_test_support::matrix_registry;
+use rig_test_support::matrix_registry::Matrix;
 
 #[path = "golden_pairing/tests.rs"]
 mod tests;
@@ -88,12 +88,6 @@ impl Sites {
             self.world_calls += 1;
         }
     }
-
-    fn native_rows(&mut self, rows: Vec<matrix_registry::Row>) {
-        for row in rows {
-            self.register(&row.golden.value(), true, row.ignored);
-        }
-    }
 }
 
 impl<'ast> Visit<'ast> for Sites {
@@ -145,61 +139,42 @@ impl<'ast> Visit<'ast> for Sites {
     }
 
     fn visit_macro(&mut self, node: &'ast syn::Macro) {
-        let Some(name) = node.path.segments.last() else {
-            return;
-        };
-        match name.ident.to_string().as_str() {
-            "golden_matrix" => {
-                match syn::parse2::<matrix_registry::GoldenMatrix>(node.tokens.clone()) {
-                    Ok(matrix) => {
-                        let parts: Vec<_> = matrix
-                            .oracle
-                            .segments
-                            .iter()
-                            .map(|s| s.ident.to_string())
-                            .collect();
-                        if parts != ["crate", "goldens", "golden_effects"] {
-                            self.fail("unknown agent matrix oracle");
-                        }
-                        for row in matrix.rows {
-                            self.register(&row.golden.value(), false, row.ignored);
-                        }
-                    }
-                    Err(error) => self.fail(error),
+        match Matrix::of(node) {
+            Some(Ok(Matrix::Golden(matrix))) => {
+                let parts: Vec<_> = matrix
+                    .oracle
+                    .segments
+                    .iter()
+                    .map(|s| s.ident.to_string())
+                    .collect();
+                if parts != ["crate", "goldens", "golden_effects"] {
+                    self.fail("unknown agent matrix oracle");
+                }
+                for row in matrix.rows {
+                    self.register(&row.golden.value(), false, row.ignored);
                 }
             }
-            "native_matrix" => {
-                match syn::parse2::<matrix_registry::NativeMatrix>(node.tokens.clone()) {
-                    Ok(matrix) => self.native_rows(matrix.rows),
-                    Err(error) => self.fail(error),
+            Some(Ok(Matrix::Native(matrix))) => {
+                for row in matrix.rows {
+                    self.register(&row.golden.value(), true, row.ignored);
                 }
             }
-            "resume_matrix" => {
-                match syn::parse2::<matrix_registry::ResumeMatrix>(node.tokens.clone()) {
-                    Ok(matrix) => self.native_rows(matrix.rows),
-                    Err(error) => self.fail(error),
+            Some(Ok(Matrix::Case(matrix))) => {
+                if self.native
+                    && matches!(
+                        matrix.family.to_string().as_str(),
+                        "wire_matrix_case" | "ecs_faults_case" | "ecs_termination_case"
+                    )
+                    && matrix.world_goldens.len() != matrix.registrations
+                {
+                    self.fail("every native wire case requires a literal world golden");
+                }
+                for (name, ignored) in matrix.world_goldens {
+                    self.register(&name.value(), true, ignored);
                 }
             }
-            "case_matrix" => {
-                match syn::parse2::<matrix_registry::CaseMatrix>(node.tokens.clone()) {
-                    Ok(matrix) => {
-                        if self.native
-                            && matches!(
-                                matrix.family.to_string().as_str(),
-                                "wire_matrix_case" | "ecs_faults_case" | "ecs_termination_case"
-                            )
-                            && matrix.world_goldens.len() != matrix.registrations
-                        {
-                            self.fail("every native wire case requires a literal world golden");
-                        }
-                        for (name, ignored) in matrix.world_goldens {
-                            self.register(&name.value(), true, ignored);
-                        }
-                    }
-                    Err(error) => self.fail(error),
-                }
-            }
-            _ => {}
+            Some(Err(error)) => self.fail(error),
+            None => {}
         }
         visit::visit_macro(self, node);
     }
