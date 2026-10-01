@@ -7970,20 +7970,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "multi_turn_agent_extended"
-version = "0.43.0"
-dependencies = [
- "anyhow",
- "rig",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "tokio",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
 name = "multimap"
 version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
