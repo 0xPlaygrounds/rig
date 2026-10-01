@@ -429,11 +429,11 @@ pub fn mcp_result_output(result: &CallToolResult) -> Result<ToolOutput, ToolExec
 pub enum McpClientError {
     /// Failed to establish the MCP connection or complete the handshake.
     #[error("MCP connection error: {0}")]
-    ConnectionError(String),
+    Connection(#[from] rmcp::service::ClientInitializeError),
 
     /// Failed to fetch the tool list from the MCP server.
     #[error("Failed to fetch MCP tool list: {0}")]
-    ToolFetchError(#[from] rmcp::ServiceError),
+    ToolFetch(#[from] rmcp::ServiceError),
 
     /// The server did not finish returning its tool list before the deadline.
     #[error("Timed out fetching MCP tool list after {0:?}")]
