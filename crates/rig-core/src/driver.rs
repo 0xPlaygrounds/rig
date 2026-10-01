@@ -514,50 +514,41 @@ where
     }
 }
 
-/// Fold a fed reply: its items, then its response, or the error that ended
-/// it. `reply.raw` stands unless it is null, when the decoder's record does.
+/// Fold a fed reply as a stream does: its items, then its response, or the
+/// error that ended it. `reply.raw` stands unless it is null, when the
+/// decoder's record does.
 #[cfg(any(test, feature = "websocket", feature = "test-utils"))]
 pub(crate) fn settle<Op: Operation>(
     shared: Mutex<Shared<Op>>,
     fed: Result<(), ProviderError>,
     reply: crate::wire::Reply,
 ) -> Decoded<Op> {
-    let Shared {
-        mut fold,
-        items,
-        end,
-        raw,
-        ..
-    } = shared
+    let mut shared = shared
         .into_inner()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
-    let mut absorbed = Ok(());
-    for item in &items {
-        if let (Ok(crate::streaming::Item::Event(event)), Ok(())) = (item, &absorbed) {
-            absorbed = crate::wire::Fold::absorb(&mut fold, event);
+    if let Err(error) = fed {
+        shared.items.push_back(Err(error));
+    }
+    shared.document = Some(reply.raw).filter(|raw| !raw.is_null());
+    shared.request_id = reply.provider_request_id;
+    let mut items = Vec::new();
+    while let Some(item) = shared.take() {
+        let failed = item.is_err();
+        items.push(item);
+        if failed {
+            break;
         }
     }
-    let outcome = fed.and(absorbed).and_then(|()| {
-        let reply = crate::wire::Reply {
-            raw: if reply.raw.is_null() {
-                raw.unwrap_or(serde_json::Value::Null)
-            } else {
-                reply.raw
-            },
-            ..reply
-        };
-        crate::wire::Fold::finish(fold, end.ok_or(ProviderError::Truncated)?, reply)
-    });
-    #[cfg(any(test, feature = "test-utils"))]
-    let items = {
-        let mut items: Vec<_> = items.into_iter().collect();
-        if let Err(error) = &outcome
-            && !items.iter().any(Result::is_err)
-        {
-            items.push(Err(error.clone()));
-        }
-        items
+    let outcome = match items.last() {
+        Some(Err(error)) => Err(error.clone()),
+        _ => shared.conclude(&reply.provider),
     };
+    #[cfg(any(test, feature = "test-utils"))]
+    if let Err(error) = &outcome
+        && !matches!(items.last(), Some(Err(_)))
+    {
+        items.push(Err(error.clone()));
+    }
     Decoded {
         #[cfg(any(test, feature = "test-utils"))]
         items,
