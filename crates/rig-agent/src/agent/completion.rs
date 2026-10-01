@@ -639,8 +639,10 @@ impl Agent {
     /// resumed under this agent's hooks, tools, and bus, executing pending tool
     /// calls or requesting the next model turn.
     /// The run is authoritative for what it persisted: its prompt, its
-    /// history, its turn budget and its invalid-tool-call retry budget, so
-    /// [`history`](AgentRunner::history) and [`max_turns`](AgentRunner::max_turns)
+    /// history, its turn budget, its invalid-tool-call retry budget and its
+    /// unhandled-invalid-tool-call policy, so
+    /// [`history`](AgentRunner::history), [`max_turns`](AgentRunner::max_turns)
+    /// and [`unhandled_invalid_tool_call`](AgentRunner::unhandled_invalid_tool_call)
     /// on the returned runner have no effect. Everything else still comes
     /// from the agent and the runner: the request shape (preamble, documents,
     /// sampling parameters, additional params, tool choice, output mode),
@@ -652,9 +654,8 @@ impl Agent {
     /// through: the run's persisted tool choice is what invalid-call hooks
     /// see and what gates a `Skip`, while the request's tool choice is the
     /// runner's; and the output tool the run committed stays committed even
-    /// though the schema and mode advertising it are the runner's. The
-    /// unhandled-invalid-tool-call policy is the run's on the blocking path
-    /// and the runner's on the streamed path. Conversation memory is neither
+    /// though the schema and mode advertising it are the runner's.
+    /// Conversation memory is neither
     /// loaded nor appended: the history is already in the run, and the driver
     /// that persisted it owns memory persistence and appends the finished run's
     /// `messages` itself, since a suspended run never reached the `Done`

@@ -952,14 +952,14 @@ impl TurnSource for StreamingTurnSource {
                             } else {
                                 None
                             };
-                            // No hook resolved it: the runner's policy, as the
+                            // No hook resolved it: the run's policy, as the
                             // unary surface applies it (`Ignore` drops the call
                             // and goes on; `Fail` fails the run).
                             let resolved = match hook_action {
                                 Some(action) => {
                                     run.resolve_streamed_invalid_tool_call(&partial, &invalid, action)
                                 }
-                                None => match runner.unhandled_invalid_tool_call {
+                                None => match run.unhandled_invalid_tool_call() {
                                     UnhandledInvalidToolCall::Fail => run
                                         .resolve_streamed_invalid_tool_call(
                                             &partial,
