@@ -2796,8 +2796,8 @@ mod span_safety_net {
             .expect("blocking run should create an invoke_agent span");
 
         // ...and records aggregate usage + completion onto it (created_agent_span).
-        assert_eq!(agent_span.u64("gen_ai.usage.input_tokens"), Some(7 + 13),);
-        assert_eq!(agent_span.u64("gen_ai.usage.output_tokens"), Some(11 + 17),);
+        assert_eq!(agent_span.u64("gen_ai.usage.input_tokens"), Some(7 + 13));
+        assert_eq!(agent_span.u64("gen_ai.usage.output_tokens"), Some(11 + 17));
         assert!(
             agent_span.record_count("gen_ai.completion") > 0,
             "the created agent span records the final completion text"
