@@ -142,6 +142,17 @@ fn assistant_signatures_reasoning_ids_and_images_round_trip() {
                 }
                 .sealed("test"),
             ),
+            // An item with no canonical form, in its place among the parts.
+            AssistantContent::Opaque(Sealed::new(
+                "test",
+                Opaque {
+                    extensions: AdditionalParams::from_entries([(
+                        "test_item",
+                        serde_json::json!({"type": "web_fetch_tool_result", "n": 1.5}),
+                    )])
+                    .expect("non-empty"),
+                },
+            )),
             AssistantContent::Text(Text::new("answer")),
             AssistantContent::ToolCall(call),
             AssistantContent::Image(Image {

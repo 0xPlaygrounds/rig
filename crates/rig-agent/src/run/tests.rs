@@ -1858,3 +1858,89 @@ fn transcript_helpers_build_no_message_from_nothing() {
         None
     );
 }
+
+/// A hosted step the provider kept: an opaque item sealed to its issuer.
+fn hosted_step() -> AssistantContent {
+    AssistantContent::Opaque(rig_core::message::Sealed::new(
+        "vendor",
+        rig_core::message::Opaque {
+            extensions: rig_core::message::AdditionalParams::from_entries([(
+                "vendor_item",
+                json!({"type": "search", "id": "srv_1"}),
+            )])
+            .expect("non-empty"),
+        },
+    ))
+}
+
+/// Repairing an invalid call renames it in place; the opaque step beside it
+/// is untouched and keeps its position.
+#[test]
+fn invalid_tool_call_repair_keeps_opaque_siblings_in_place() {
+    let mut run = AgentRun::new("call something").max_turns(2);
+
+    expect_call_model(&mut run);
+    let turn = ModelTurn::new(
+        None,
+        vec![hosted_step(), tool_call("call_1", "default_api")],
+        Usage::default(),
+        tool_names(&["add"]),
+        tool_names(&["add"]),
+        hand_raw(),
+    );
+    expect_needs_resolution(
+        run.model_response(turn)
+            .expect("model_response should succeed"),
+    );
+    expect_continue(
+        run.resolve_invalid_tool_call(InvalidToolCallAction::repair("add"))
+            .expect("repair should be accepted"),
+    );
+    let calls = expect_call_tools(&mut run);
+    assert_eq!(calls[0].tool_call.function.name, "add");
+
+    let Some(Message::Assistant {
+        content: choice, ..
+    }) = run
+        .messages()
+        .iter()
+        .rev()
+        .find(|message| matches!(message, Message::Assistant { .. }))
+    else {
+        panic!("the repaired turn is in history: {:?}", run.messages());
+    };
+    assert_eq!(choice[0], hosted_step());
+    assert!(matches!(
+        &choice[1],
+        AssistantContent::ToolCall(call) if call.function.name == "add"
+    ));
+}
+
+/// Output-tool finalisation replaces the call with its output; an opaque
+/// step before it stays in history, in its place.
+#[test]
+fn output_tool_finalisation_keeps_opaque_steps_in_history() {
+    let mut run = AgentRun::new("summarize").with_output_tool_name("final_result");
+
+    expect_call_model(&mut run);
+    let turn = ModelTurn::new(
+        None,
+        vec![hosted_step(), tool_call("call_1", "final_result")],
+        Usage::default(),
+        tool_names(&["add"]),
+        tool_names(&["add", "final_result"]),
+        hand_raw(),
+    );
+    expect_continue(
+        run.model_response(turn)
+            .expect("model_response should succeed"),
+    );
+
+    let response = expect_done(&mut run);
+    assert_eq!(response.output(), r#"{"x":1}"#);
+    let Some(Message::Assistant { content, .. }) = response.messages.last() else {
+        panic!("the finalizing turn is the last message");
+    };
+    assert_eq!(content.first(), Some(&hosted_step()));
+    assert_eq!(assistant_text_from_choice(content), r#"{"x":1}"#);
+}

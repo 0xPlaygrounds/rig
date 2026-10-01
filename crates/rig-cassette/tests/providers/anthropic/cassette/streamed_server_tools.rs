@@ -56,12 +56,15 @@ fn recorded_block_types(scenario: &str) -> Vec<String> {
 
 /// The raw Anthropic block type rig preserved on a normalized text part.
 fn raw_block_type(content: &AssistantContent) -> Option<String> {
-    let AssistantContent::Text(text) = content else {
+    let AssistantContent::Opaque(item) = content else {
         return None;
     };
-    let params = text.additional_params.as_ref()?;
-    let raw = params.get("anthropic_content")?;
-    raw.get("type")?.as_str().map(str::to_string)
+    let block = item
+        .extension_for::<rig::providers::anthropic::completion::AnthropicBlock>(&[
+            rig::message::Issuer::from("anthropic"),
+        ])
+        .ok()??;
+    block.block_type().map(str::to_string)
 }
 
 #[tokio::test]
@@ -80,18 +83,11 @@ async fn streamed_web_search_preserves_server_tool_blocks() {
 
             let mut raw_types = Vec::new();
             while let Some(item) = stream.next().await {
-                if let Item::Event(StreamEvent::End {
-                    content: rig::message::AssistantContent::Text(text),
-                    ..
-                }) = item.expect("stream item should not error")
-                    && let Some(raw) = text
-                        .additional_params
-                        .as_ref()
-                        .and_then(|params| params.get("anthropic_content"))
-                        .and_then(|raw| raw.get("type"))
-                        .and_then(|value| value.as_str())
+                if let Item::Event(StreamEvent::End { content, .. }) =
+                    item.expect("stream item should not error")
+                    && let Some(raw) = raw_block_type(&content)
                 {
-                    raw_types.push(raw.to_string());
+                    raw_types.push(raw);
                 }
             }
             stream

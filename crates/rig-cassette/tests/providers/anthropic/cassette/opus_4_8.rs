@@ -4,8 +4,10 @@ use rig::completion::{
     AssistantContent, CompletionResponse as RigCompletionResponse, Document, Message,
     ProviderToolDefinition,
 };
-use rig::message::Text;
-use rig::providers::anthropic::completion::{CLAUDE_OPUS_4_8, CompletionResponse, Content};
+use rig::message::Issuer;
+use rig::providers::anthropic::completion::{
+    AnthropicBlock, Block, CLAUDE_OPUS_4_8, CompletionResponse, Content,
+};
 use serde::Deserialize;
 use serde_json::Value;
 use serde_json::json;
@@ -24,7 +26,7 @@ fn provider_text(response: &RigCompletionResponse) -> Option<String> {
         .content
         .iter()
         .filter_map(|block| match block {
-            Content::Text { text, .. } => Some(text.as_str()),
+            Block::Content(Content::Text { text, .. }) => Some(text.as_str()),
             _ => None,
         })
         .collect();
@@ -61,7 +63,7 @@ async fn web_search_with_dynamic_filtering_succeeds() {
 
             assert!(
                 response.choice.iter().any(|content| {
-                    content_raw_type(content) == Some("code_execution_tool_result")
+                    content_raw_type(content).as_deref() == Some("code_execution_tool_result")
                 }),
                 "dynamic web-search response should preserve a code_execution_tool_result block",
             );
@@ -205,9 +207,7 @@ fn server_tool_assistant_message_from_response(content: Vec<AssistantContent>) -
     let raw_blocks = content
         .into_iter()
         .filter_map(|content| match content {
-            AssistantContent::Text(text) if anthropic_raw_content_type(&text).is_some() => {
-                Some(AssistantContent::Text(text))
-            }
+            item @ AssistantContent::Opaque(_) if content_raw_type(&item).is_some() => Some(item),
             _ => None,
         })
         .collect::<Vec<_>>();
@@ -215,13 +215,13 @@ fn server_tool_assistant_message_from_response(content: Vec<AssistantContent>) -
     assert!(
         raw_blocks
             .iter()
-            .any(|content| content_raw_type(content) == Some("server_tool_use")),
+            .any(|content| content_raw_type(content).as_deref() == Some("server_tool_use")),
         "first Anthropic response should contain a preserved server_tool_use block"
     );
     assert!(
-        raw_blocks
-            .last()
-            .is_some_and(|content| content_raw_type(content) == Some("web_search_tool_result")),
+        raw_blocks.last().is_some_and(|content| {
+            content_raw_type(content).as_deref() == Some("web_search_tool_result")
+        }),
         "first Anthropic response should end the preserved raw transcript with a server-tool result"
     );
 
@@ -231,20 +231,15 @@ fn server_tool_assistant_message_from_response(content: Vec<AssistantContent>) -
     }
 }
 
-fn content_raw_type(content: &AssistantContent) -> Option<&str> {
-    let AssistantContent::Text(text) = content else {
+/// The type of the verbatim Anthropic block an opaque part holds.
+fn content_raw_type(content: &AssistantContent) -> Option<String> {
+    let AssistantContent::Opaque(item) = content else {
         return None;
     };
-
-    anthropic_raw_content_type(text)
-}
-
-fn anthropic_raw_content_type(text: &Text) -> Option<&str> {
-    text.additional_params
-        .as_ref()
-        .and_then(|params| params.get("anthropic_content"))
-        .and_then(|raw_content| raw_content.get("type"))
-        .and_then(Value::as_str)
+    let block = item
+        .extension_for::<AnthropicBlock>(&[Issuer::from("anthropic")])
+        .ok()??;
+    block.block_type().map(str::to_owned)
 }
 
 #[derive(Deserialize)]

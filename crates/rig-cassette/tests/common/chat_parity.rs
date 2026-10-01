@@ -316,6 +316,7 @@ fn project_content(content: &AssistantContent) -> Value {
             })
         }
         AssistantContent::Image(image) => json!({ "image": image }),
+        AssistantContent::Opaque(item) => json!({ "opaque": item }),
     }
 }
 

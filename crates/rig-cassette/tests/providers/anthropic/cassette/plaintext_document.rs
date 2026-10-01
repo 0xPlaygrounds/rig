@@ -20,7 +20,10 @@ fn provider_text(response: &rig::completion::CompletionResponse) -> Option<Strin
         .content
         .iter()
         .filter_map(|block| match block {
-            anthropic_completion::Content::Text { text, .. } => Some(text.as_str()),
+            anthropic_completion::Block::Content(anthropic_completion::Content::Text {
+                text,
+                ..
+            }) => Some(text.as_str()),
             _ => None,
         })
         .collect();

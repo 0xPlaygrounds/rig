@@ -3683,3 +3683,224 @@ fn full_request_preserves_typed_tool_pairs_across_turns() {
         assert_adapter_pairs(serde_json::to_value(wire).unwrap());
     }
 }
+
+/// Blocks Anthropic documents and Rig does not model, plus one no release
+/// has seen yet. Unit-level because no recorded cell carries these types;
+/// the recorded web-search cells pin the live shape of hosted blocks.
+fn unmodelled_blocks() -> Vec<serde_json::Value> {
+    vec![
+        json!({"type": "server_tool_use", "id": "srvtoolu_02", "name": "web_fetch",
+               "input": {"url": "https://example.com"}}),
+        json!({"type": "web_fetch_tool_result", "tool_use_id": "srvtoolu_02",
+               "caller": {"type": "direct"},
+               "content": {"type": "web_fetch_result", "url": "https://example.com",
+                           "retrieved_at": "2026-01-01T00:00:00Z",
+                           "content": {"type": "document",
+                                       "source": {"type": "text", "media_type": "text/plain",
+                                                  "data": "hello"}}}}),
+        json!({"type": "mcp_tool_use", "id": "mcptoolu_01", "name": "echo",
+               "server_name": "tools", "input": {"text": "hi"}}),
+        json!({"type": "mcp_tool_result", "tool_use_id": "mcptoolu_01", "is_error": false,
+               "content": [{"type": "text", "text": "hi"}]}),
+        json!({"type": "container_upload", "file_id": "file_01"}),
+        json!({"type": "block_from_the_future", "anything": [1.5, {"x": null}]}),
+    ]
+}
+
+fn unmodelled_reply() -> serde_json::Value {
+    let mut content = unmodelled_blocks();
+    content.push(json!({"type": "text", "text": "Done."}));
+    json!({
+        "id": "msg_unmodelled",
+        "model": CLAUDE_OPUS_4_8,
+        "role": "assistant",
+        "stop_reason": "end_turn",
+        "stop_sequence": null,
+        "usage": {"input_tokens": 10, "output_tokens": 20},
+        "content": content,
+    })
+}
+
+/// The same reply as a stream states it: tool-use-like blocks open with an
+/// empty `input` and stream it as JSON fragments.
+fn unmodelled_stream() -> Vec<WireFrame> {
+    let reply = unmodelled_reply();
+    let mut events = vec![json!({"type": "message_start", "message": {
+        "id": "msg_unmodelled", "model": CLAUDE_OPUS_4_8, "role": "assistant",
+        "content": [], "stop_reason": null, "stop_sequence": null,
+        "usage": {"input_tokens": 10, "output_tokens": 1}}})];
+    for (index, block) in reply["content"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .enumerate()
+    {
+        let mut opening = block.clone();
+        let streamed_input = block.get("input").map(|input| {
+            opening["input"] = json!({});
+            input.to_string()
+        });
+        if block["type"] == "text" {
+            opening["text"] = json!("");
+        }
+        events
+            .push(json!({"type": "content_block_start", "index": index, "content_block": opening}));
+        if let Some(input) = streamed_input {
+            let (head, tail) = input.split_at(input.len() / 2);
+            for fragment in [head, tail] {
+                events.push(json!({"type": "content_block_delta", "index": index,
+                    "delta": {"type": "input_json_delta", "partial_json": fragment}}));
+            }
+        }
+        if block["type"] == "text" {
+            events.push(json!({"type": "content_block_delta", "index": index,
+                "delta": {"type": "text_delta", "text": block["text"]}}));
+        }
+        events.push(json!({"type": "content_block_stop", "index": index}));
+    }
+    events.push(
+        json!({"type": "message_delta", "delta": {"stop_reason": "end_turn",
+        "stop_sequence": null}, "usage": {"output_tokens": 20}}),
+    );
+    events.push(json!({"type": "message_stop"}));
+    events
+        .into_iter()
+        .map(|event| WireFrame::Text(event.to_string()))
+        .collect()
+}
+
+/// Loss 1: an unmodelled block used to fail the whole reply. Every block is
+/// now kept, in order, and replays to Anthropic exactly as it arrived.
+#[test]
+fn unmodelled_blocks_are_kept_and_replay_verbatim() {
+    let reply = unmodelled_reply();
+    let converted = fold_reply(&reply).expect("an unmodelled block no longer fails the reply");
+    let blocks = unmodelled_blocks();
+    assert_eq!(converted.choice.len(), blocks.len() + 1);
+    for (part, block) in converted.choice.iter().zip(&blocks) {
+        assert_eq!(&anthropic_block(part), block);
+    }
+    let round_trip = replayed(message::Message::Assistant {
+        id: converted.message_id,
+        content: converted.choice,
+    });
+    assert_eq!(
+        serde_json::to_value(&round_trip.content).unwrap(),
+        reply["content"]
+    );
+}
+
+/// The streamed reply folds to the same history as the whole one: both run
+/// through the one decoder, and streamed `input` replaces its placeholder.
+#[test]
+fn streamed_and_whole_unmodelled_replies_fold_to_the_same_history() {
+    let wire = AnthropicConfig::new("test-key").completion(CLAUDE_SONNET_4_6);
+    let streamed = crate::test_utils::decode_reply(
+        &wire,
+        &hello_request(),
+        crate::wire::Mode::Streaming,
+        unmodelled_stream(),
+        serde_json::Value::Null,
+    )
+    .expect("the stream folds");
+    let whole = fold_reply(&unmodelled_reply()).expect("the reply folds");
+    assert_eq!(streamed.choice, whole.choice);
+}
+
+/// The cross-dialect rule: an opaque item replays only where a replay
+/// issuer opens it and the wire owns one of its types. A gateway speaking
+/// the same format with another issuer, and an item another wire wrote,
+/// are left out; the canonical text replays everywhere.
+#[test]
+fn opaque_items_replay_only_to_their_issuer_and_wire() {
+    use crate::wire::{Mode, Wire};
+
+    let anthropic_item = message::AssistantContent::Opaque(message::Sealed::new(
+        "anthropic",
+        message::Opaque::of(&AnthropicBlock(unmodelled_blocks()[4].clone())).unwrap(),
+    ));
+    let foreign_type = message::AssistantContent::Opaque(message::Sealed::new(
+        "anthropic",
+        message::Opaque::of(&crate::providers::openai::responses_api::ResponsesItem(
+            json!({"type": "compaction", "encrypted_content": "x"}),
+        ))
+        .unwrap(),
+    ));
+    let history = vec![
+        message::Message::user("hi"),
+        message::Message::Assistant {
+            id: None,
+            content: vec![
+                anthropic_item,
+                foreign_type,
+                message::AssistantContent::text("answer"),
+            ],
+        },
+        message::Message::user("again"),
+    ];
+    let encode = |dialect: &crate::providers::anthropic::wire::Dialect| {
+        let encoded = AnthropicConfig::with_key(dialect, "k")
+            .completion(CLAUDE_OPUS_4_8)
+            .encode(
+                completion_request_with_history(history.clone(), None),
+                Mode::Unary,
+            )
+            .expect("the request encodes");
+        json_body(&encoded.request)["messages"][1]["content"].clone()
+    };
+    assert_eq!(
+        encode(&crate::providers::anthropic::wire::ANTHROPIC),
+        json!([{"type": "container_upload", "file_id": "file_01"},
+               {"type": "text", "text": "answer"}])
+    );
+    assert_eq!(
+        encode(&crate::providers::anthropic::wire::ZAI),
+        json!([{"type": "text", "text": "answer"}])
+    );
+}
+
+/// The staleness rule for data that describes its text: citations replay
+/// while the text is the one they were decoded with, and are dropped once
+/// the text is edited. Citations an earlier release stored under the bare
+/// `citations` key still read.
+#[test]
+fn citations_go_stale_when_their_text_is_edited() {
+    let reply = json!({
+        "id": "msg_cited", "model": CLAUDE_SONNET_4_6, "role": "assistant",
+        "stop_reason": "end_turn", "stop_sequence": null,
+        "usage": {"input_tokens": 1, "output_tokens": 1},
+        "content": [{"type": "text", "text": "The grass is green.", "citations": [{
+            "type": "char_location", "cited_text": "The grass is green.",
+            "document_index": 0, "start_char_index": 0, "end_char_index": 19}]}],
+    });
+    let converted = fold_reply(&reply).expect("the reply folds");
+    let Some(message::AssistantContent::Text(text)) = converted.choice.first() else {
+        panic!("expected cited text");
+    };
+    let encode = |text: message::Text| {
+        serde_json::to_value(
+            anthropic_text_content_from_message_text(text)
+                .expect("converts")
+                .expect("non-empty"),
+        )
+        .unwrap()
+    };
+    assert_eq!(encode(text.clone()), reply["content"][0]);
+
+    let edited = message::Text {
+        text: "The grass is blue.".to_owned(),
+        ..text.clone()
+    };
+    assert_eq!(
+        encode(edited),
+        json!({"type": "text", "text": "The grass is blue."})
+    );
+
+    let legacy: message::Text = serde_json::from_value(json!({
+        "text": "The grass is green.",
+        "additional_params": {"citations": reply["content"][0]["citations"]},
+    }))
+    .unwrap();
+    assert_eq!(anthropic_citations(&legacy).unwrap().len(), 1);
+    assert_eq!(encode(legacy), reply["content"][0]);
+}

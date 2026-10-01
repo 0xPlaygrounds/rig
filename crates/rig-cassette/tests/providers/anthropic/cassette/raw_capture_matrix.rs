@@ -51,7 +51,7 @@
 use rig::completion::{CompletionResponse as RigCompletionResponse, FinishReason, ToolDefinition};
 use rig::message::{AssistantContent, ReasoningContent, ToolChoice};
 use rig::providers::anthropic;
-use rig::providers::anthropic::completion::{CompletionResponse, Content};
+use rig::providers::anthropic::completion::{Block, CompletionResponse, Content};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -242,7 +242,7 @@ async fn raw_round_trips_into_provider_type() {
     assert!(
         typed.content.iter().any(|block| matches!(
             block,
-            Content::Text { text, .. } if !text.is_empty()
+            Block::Content(Content::Text { text, .. }) if !text.is_empty()
         )),
         "typed access reads the reply's text block"
     );
@@ -406,7 +406,7 @@ async fn normalized_fields_match_raw_renormalized() {
         .content
         .iter()
         .filter_map(|block| match block {
-            Content::Text { text, .. } => Some(text.as_str()),
+            Block::Content(Content::Text { text, .. }) => Some(text.as_str()),
             _ => None,
         })
         .collect();
@@ -510,10 +510,10 @@ async fn raw_exposes_thinking_block_and_signature() {
         .content
         .iter()
         .find_map(|block| match block {
-            Content::Thinking {
+            Block::Content(Content::Thinking {
                 thinking,
                 signature,
-            } => Some((thinking.as_str(), signature.as_deref())),
+            }) => Some((thinking.as_str(), signature.as_deref())),
             _ => None,
         })
         .expect("typed `raw` carries `Content::Thinking`");
@@ -652,7 +652,9 @@ async fn raw_exposes_tool_use_block() {
         .content
         .iter()
         .find_map(|block| match block {
-            Content::ToolUse { id, name, input } => Some((id.as_str(), name.as_str(), input)),
+            Block::Content(Content::ToolUse { id, name, input }) => {
+                Some((id.as_str(), name.as_str(), input))
+            }
             _ => None,
         })
         .expect("typed `raw` carries `Content::ToolUse`");

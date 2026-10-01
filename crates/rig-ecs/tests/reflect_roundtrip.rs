@@ -213,9 +213,19 @@ fn populated() -> bevy_app::App {
         },
         MessageParts::Assistant {
             id: Some("message".into()),
-            content: vec![AssistantContent::Reasoning(
-                Reasoning::new("thought").sealed("test"),
-            )],
+            content: vec![
+                AssistantContent::Reasoning(Reasoning::new("thought").sealed("test")),
+                AssistantContent::Opaque(rig_core::message::Sealed::new(
+                    "test",
+                    rig_core::message::Opaque {
+                        extensions: rig_core::message::AdditionalParams::from_entries([(
+                            "test_item",
+                            serde_json::json!({"type": "compaction"}),
+                        )])
+                        .expect("non-empty"),
+                    },
+                )),
+            ],
         },
     ] {
         let entity = app.world_mut().spawn(Utterance).id();
@@ -266,6 +276,7 @@ fn content_variants_are_reflected_enum_data() {
                 "ToolCall",
                 "ToolResult",
                 "Reasoning",
+                "Opaque",
                 "Json",
             ]
             .map(str::to_owned)

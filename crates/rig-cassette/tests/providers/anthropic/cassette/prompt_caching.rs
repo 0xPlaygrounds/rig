@@ -326,7 +326,10 @@ fn assert_matrix_raw_response(
         .content
         .iter()
         .filter_map(|block| match block {
-            anthropic::completion::Content::Text { text, .. } => Some(text.as_str()),
+            anthropic::completion::Block::Content(anthropic::completion::Content::Text {
+                text,
+                ..
+            }) => Some(text.as_str()),
             _ => None,
         })
         .collect();
