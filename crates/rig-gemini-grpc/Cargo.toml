@@ -19,6 +19,7 @@ futures = { workspace = true }
 prost = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
+thiserror = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 tonic = { workspace = true, features = ["transport", "tls-ring", "tls-webpki-roots", "zstd", "gzip"] }
 tonic-prost = { workspace = true }

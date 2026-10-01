@@ -4,7 +4,7 @@
 //! use rig_core::Model;
 //! use rig_gemini_grpc::{GeminiGrpc, completion::{GEMINI_2_0_FLASH, GenerateContent}};
 //!
-//! # async fn example() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+//! # async fn example() -> Result<(), rig_gemini_grpc::GeminiGrpcError> {
 //! let transport = GeminiGrpc::new("YOUR_API_KEY").await?;
 //! let model = transport.completion(GEMINI_2_0_FLASH);
 //! # let _ = model;
@@ -17,7 +17,7 @@ pub mod completion;
 pub mod embedding;
 pub mod streaming;
 
-pub use client::GeminiGrpc;
+pub use client::{GeminiGrpc, GeminiGrpcError};
 
 /// Generated Gemini protobuf messages and service client.
 ///
