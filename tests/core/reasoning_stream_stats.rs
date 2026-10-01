@@ -38,9 +38,7 @@ async fn collect_stream_stats_tracks_only_final_turn_text() {
             "Sure! Let me check the weather right away!",
         ))),
         Ok(MultiTurnStreamItem::ToolCall { tool_call }),
-        Ok(MultiTurnStreamItem::ToolResult {
-            tool_result: tool_result,
-        }),
+        Ok(MultiTurnStreamItem::ToolResult { tool_result }),
         Ok(MultiTurnStreamItem::StreamAssistantItem(text(
             "It's 72F and sunny in Tokyo.",
         ))),
