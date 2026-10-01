@@ -149,8 +149,9 @@ pub struct ResponseChunk {
     pub kind: ResponseChunkKind,
     /// The response itself
     pub response: CompletionResponse,
-    /// The item sequence
-    pub sequence_number: u64,
+    /// The event's position in the stream. Absent on some compatible gateways.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sequence_number: Option<u64>,
 }
 
 /// Response chunk type.
@@ -218,19 +219,14 @@ fn message_id_from_response(response: &CompletionResponse) -> Option<String> {
     })
 }
 
-/// Fill absent sequence, output, content, and summary indices with zero.
+/// Fill absent output, content, and summary indices with zero.
 /// Preserve existing fields and content. Return `None` for invalid or non-object
 /// JSON or serialization failure. Missing output indices can merge distinct items
 /// into slot zero; callers must enable repair only for compatible dialects.
 fn repair_envelope_less_frame(data: &str) -> Option<String> {
     let mut value = serde_json::from_str::<serde_json::Value>(data).ok()?;
     let object = value.as_object_mut()?;
-    for field in [
-        "sequence_number",
-        "output_index",
-        "content_index",
-        "summary_index",
-    ] {
+    for field in ["output_index", "content_index", "summary_index"] {
         object
             .entry(field)
             .or_insert_with(|| serde_json::Value::from(0));
@@ -1099,14 +1095,16 @@ pub enum ItemChunkKind {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct StreamingItemDoneOutput {
-    pub sequence_number: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sequence_number: Option<u64>,
     pub item: Output,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ContentPartChunk {
     pub content_index: u64,
-    pub sequence_number: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sequence_number: Option<u64>,
     pub part: ContentPartChunkPart,
 }
 
@@ -1166,7 +1164,8 @@ impl<'de> Deserialize<'de> for ContentPartChunkPart {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct DeltaTextChunk {
     pub content_index: u64,
-    pub sequence_number: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sequence_number: Option<u64>,
     pub delta: String,
 }
 
@@ -1174,21 +1173,24 @@ pub struct DeltaTextChunk {
 pub struct DeltaTextChunkWithItemId {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub content_index: Option<u64>,
-    pub sequence_number: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sequence_number: Option<u64>,
     pub delta: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct OutputTextChunk {
     pub content_index: u64,
-    pub sequence_number: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sequence_number: Option<u64>,
     pub text: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct RefusalTextChunk {
     pub content_index: u64,
-    pub sequence_number: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sequence_number: Option<u64>,
     pub refusal: String,
 }
 
@@ -1196,21 +1198,24 @@ pub struct RefusalTextChunk {
 pub struct ArgsTextChunk {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub content_index: Option<u64>,
-    pub sequence_number: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sequence_number: Option<u64>,
     pub arguments: serde_json::Value,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SummaryPartChunk {
     pub summary_index: u64,
-    pub sequence_number: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sequence_number: Option<u64>,
     pub part: SummaryPartChunkPart,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SummaryTextChunk {
     pub summary_index: u64,
-    pub sequence_number: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sequence_number: Option<u64>,
     // `response.reasoning_summary_text.delta` carries `delta`;
     // the `.done` sibling carries the full `text` under the same shape.
     #[serde(alias = "text")]
