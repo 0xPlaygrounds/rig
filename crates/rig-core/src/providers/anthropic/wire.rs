@@ -217,11 +217,12 @@ pub struct AnthropicConfig {
 impl AnthropicConfig {
     /// Anthropic itself, with default settings.
     pub fn new(api_key: impl Into<Secret>) -> Self {
-        Self::with_dialect(api_key, &ANTHROPIC)
+        Self::with_key(&ANTHROPIC, api_key)
     }
 
-    /// A Messages-format provider with default settings.
-    pub fn with_dialect(api_key: impl Into<Secret>, dialect: &Dialect) -> Self {
+    /// `dialect` with `api_key`, at the dialect's default base URL and
+    /// with default settings.
+    pub fn with_key(dialect: &Dialect, api_key: impl Into<Secret>) -> Self {
         Self {
             api_key: api_key.into(),
             base_url: dialect.base_url.to_owned(),
@@ -238,7 +239,7 @@ impl AnthropicConfig {
 
     /// A Messages-format provider from the variables its dialect names.
     pub fn from_env_with(dialect: &Dialect) -> Result<Self, EnvError> {
-        let mut provider = Self::with_dialect(env::required(dialect.api_key_env)?, dialect);
+        let mut provider = Self::with_key(dialect, env::required(dialect.api_key_env)?);
         if let Some(name) = dialect.base_url_env
             && let Some(base_url) = env::optional(name)?
         {
