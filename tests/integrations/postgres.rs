@@ -200,6 +200,49 @@ async fn vector_search_test() {
         results.is_empty(),
         "a threshold above the best similarity must drop every row, got {results:?}"
     );
+
+    // `like`, `similar_to` and `between` bind their patterns and bounds, so a
+    // pattern can be built at runtime and a `$` in it is matched literally.
+    let prefix = names[1].split('-').next().unwrap_or_default();
+    let bound_patterns = VectorSearchRequest::builder()
+        .query(query)
+        .samples(3)
+        .threshold(best_similarity - 0.05)
+        .filter(
+            PgSearchFilter::like("document->>'name'", format!("{prefix}%"))
+                .and(PgSearchFilter::like("document->>'name'", "%$%").not())
+                .and(PgSearchFilter::between("length(document->>'name')", 5..=11)),
+        )
+        .build();
+    let results = vector_store
+        .top_n::<Word>(bound_patterns)
+        .await
+        .expect("bound like/between filters must be valid SQL");
+    assert_eq!(
+        results.len(),
+        1,
+        "only glarb-glarb matches, got {results:?}"
+    );
+    assert_eq!(results[0].2.name, "glarb-glarb");
+
+    let similar = VectorSearchRequest::builder()
+        .query(query)
+        .samples(3)
+        .filter(PgSearchFilter::similar_to(
+            "document->>'name'",
+            "(flurbo|linglingdong)",
+        ))
+        .build();
+    let mut results = vector_store
+        .top_n::<Word>(similar)
+        .await
+        .expect("a bound similar_to filter must be valid SQL");
+    results.sort_by(|a, b| a.2.name.cmp(&b.2.name));
+    let matched: Vec<_> = results
+        .iter()
+        .map(|(_, _, word)| word.name.as_str())
+        .collect();
+    assert_eq!(matched, ["flurbo", "linglingdong"]);
 }
 
 async fn start_container() -> ContainerAsync<GenericImage> {

@@ -1,4 +1,4 @@
-use super::{Filter, SearchFilter};
+use super::{Filter, SearchFilter, SqlCondition};
 use serde_json::json;
 
 type F = Filter<serde_json::Value>;
@@ -87,4 +87,38 @@ fn try_interpret_propagates_conversion_errors() {
     let out: Result<Filter<u64>, String> =
         f.try_interpret(|v| u64::try_from(v).map_err(|e| e.to_string()));
     assert!(out.is_err());
+}
+
+#[test]
+fn sql_condition_renders_only_constructor_placeholders() {
+    let condition = SqlCondition::binary("doc->>'$a'", "=", "$", 1)
+        .and(SqlCondition::raw("col$ is null").not())
+        .or(SqlCondition::list("id", "IN", "$", vec![2, 3]))
+        .and(SqlCondition::between("n$", "$", 4, 5))
+        .and(SqlCondition::range("m", "$", 6, 7));
+
+    assert_eq!(
+        condition.render_placeholders(|i| format!("${}", i + 10)),
+        "((((doc->>'$a' = $10) AND (NOT (col$ is null))) OR (id IN ($11, $12))) \
+         AND (n$ between $13 and $14)) AND (m >= $15 AND m <= $16)"
+    );
+    assert_eq!(condition.params(), &[1, 2, 3, 4, 5, 6, 7]);
+}
+
+#[test]
+fn sql_condition_keeps_placeholders_through_serde() {
+    let condition = SqlCondition::binary("k$", "=", "$", 1).and(SqlCondition::list(
+        "id",
+        "IN",
+        "$",
+        Vec::<i32>::new(),
+    ));
+    let json = serde_json::to_value(&condition).unwrap();
+    let restored: SqlCondition<i32> = serde_json::from_value(json).unwrap();
+
+    assert_eq!(restored.condition(), "(k$ = $) AND (id IN ())");
+    assert_eq!(
+        restored.render_placeholders(|_| "?"),
+        "(k$ = ?) AND (id IN ())"
+    );
 }
