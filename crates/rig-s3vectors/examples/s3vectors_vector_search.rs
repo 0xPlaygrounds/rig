@@ -75,8 +75,11 @@ async fn main() -> Result<(), anyhow::Error> {
     let results = store.top_n::<Word>(req).await?;
 
     println!("#{} results for query: {}", results.len(), query);
-    for (distance, _id, doc) in results.iter() {
-        println!("Result distance {distance} for word: {doc:?}");
+    for result in &results {
+        println!(
+            "Result distance {} for word: {:?}",
+            result.score, result.document
+        );
 
         // expected output
         // Result distance 0.693218142100547 for word: glarb-glarb

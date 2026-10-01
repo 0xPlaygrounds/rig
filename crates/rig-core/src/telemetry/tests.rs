@@ -130,7 +130,7 @@ fn embedding_seam_and_vector_search_record_on_the_span() {
                 .query("hello")
                 .samples(1)
                 .build();
-            let hits: Vec<(f64, String, String)> =
+            let hits: Vec<crate::vector_store::VectorSearchResult<String>> =
                 index.top_n(request).await.expect("search succeeds");
             assert_eq!(hits.len(), 1);
         });

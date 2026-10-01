@@ -113,7 +113,7 @@ async fn vector_search_test() {
 
     let results = vector_store.top_n::<serde_json::Value>(req).await.unwrap();
 
-    let (_, _, value) = &results.first().unwrap();
+    let value = &results.first().unwrap().document;
 
     assert_eq!(
         value,

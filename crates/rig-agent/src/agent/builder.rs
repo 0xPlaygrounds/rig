@@ -80,11 +80,13 @@ impl AgentHook for DynamicContext {
             .build();
         match index.top_n::<serde_json::Value>(request).await {
             Ok(results) => CompletionCallAction::patch(RequestPatch::new().extra_context(
-                results.into_iter().map(|(_, id, value)| Document {
-                    id,
-                    text:
-                        serde_json::to_string_pretty(&value).unwrap_or_else(|_| value.to_string()),
-                    additional_props: Default::default(),
+                results.into_iter().map(|result| {
+                    Document {
+                        text: serde_json::to_string_pretty(&result.document)
+                            .unwrap_or_else(|_| result.document.to_string()),
+                        id: result.id,
+                        additional_props: Default::default(),
+                    }
                 }),
             )),
             Err(error) => {

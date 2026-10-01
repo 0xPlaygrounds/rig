@@ -11,7 +11,8 @@ use rig_core::{
     Embed,
     embeddings::Embedding,
     vector_store::{
-        InsertDocuments, VectorStoreError, VectorStoreIndex,
+        InsertDocuments, VectorSearchIdResult, VectorSearchResult, VectorStoreError,
+        VectorStoreIndex,
         request::{SearchFilter, SqlCondition, VectorSearchRequest},
     },
     wasm_compat::WasmCompatSend,
@@ -214,10 +215,14 @@ pub struct SearchResultOnlyId {
 }
 
 impl SearchResult {
-    pub fn into_result<T: DeserializeOwned>(self) -> Result<(f64, String, T), VectorStoreError> {
-        let document: T =
-            serde_json::from_value(self.document).map_err(VectorStoreError::JsonError)?;
-        Ok((self.distance, self.id.to_string(), document))
+    pub fn into_result<T: DeserializeOwned>(
+        self,
+    ) -> Result<VectorSearchResult<T>, VectorStoreError> {
+        Ok(VectorSearchResult {
+            score: self.distance,
+            id: self.id.to_string(),
+            document: serde_json::from_value(self.document).map_err(VectorStoreError::JsonError)?,
+        })
     }
 }
 
@@ -386,15 +391,15 @@ impl InsertDocuments for PostgresVectorStore {
 impl VectorStoreIndex for PostgresVectorStore {
     type Filter = PgSearchFilter;
 
-    /// Returns up to `samples` documents as `(distance, id, document)` ordered by
+    /// Returns up to `samples` documents scored by distance, ordered by
     /// ascending distance. Rows whose documents fail to deserialize are skipped.
     async fn top_n<T: DeserializeOwned + WasmCompatSend>(
         &self,
         req: VectorSearchRequest<PgSearchFilter>,
-    ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
+    ) -> Result<Vec<VectorSearchResult<T>>, VectorStoreError> {
         let rows: Vec<SearchResult> = self.run_search(&req, true).await?;
 
-        let rows: Vec<(f64, String, T)> = rows
+        let rows: Vec<VectorSearchResult<T>> = rows
             .into_iter()
             .flat_map(SearchResult::into_result)
             .collect();
@@ -402,16 +407,19 @@ impl VectorStoreIndex for PostgresVectorStore {
         Ok(rows)
     }
 
-    /// Like `top_n` but returns `(distance, id)` without deserializing documents.
+    /// Like `top_n` but returns only scores and ids, without deserializing documents.
     async fn top_n_ids(
         &self,
         req: VectorSearchRequest<PgSearchFilter>,
-    ) -> Result<Vec<(f64, String)>, VectorStoreError> {
+    ) -> Result<Vec<VectorSearchIdResult>, VectorStoreError> {
         let rows: Vec<SearchResultOnlyId> = self.run_search(&req, false).await?;
 
-        let rows: Vec<(f64, String)> = rows
+        let rows: Vec<VectorSearchIdResult> = rows
             .into_iter()
-            .map(|row| (row.distance, row.id.to_string()))
+            .map(|row| VectorSearchIdResult {
+                score: row.distance,
+                id: row.id.to_string(),
+            })
             .collect();
 
         Ok(rows)

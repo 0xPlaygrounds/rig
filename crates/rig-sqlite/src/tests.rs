@@ -890,10 +890,10 @@ async fn live_search_orders_by_similarity_and_applies_threshold() -> anyhow::Res
     let results = index.top_n::<TestDocument>(req.clone()).await?;
     let ids = results
         .iter()
-        .map(|(_, id, _)| id.as_str())
+        .map(|result| result.id.as_str())
         .collect::<Vec<_>>();
-    let exact_score = results.first().map(|(score, _, _)| *score);
-    let close_score = results.get(1).map(|(score, _, _)| *score);
+    let exact_score = results.first().map(|result| result.score);
+    let close_score = results.get(1).map(|result| result.score);
 
     anyhow::ensure!(
         ids.as_slice() == ["exact", "close"],
@@ -906,14 +906,14 @@ async fn live_search_orders_by_similarity_and_applies_threshold() -> anyhow::Res
         "expected exact score to be greater than close score: {results:?}"
     );
     anyhow::ensure!(
-        results.iter().all(|(score, _, _)| *score > 0.75),
+        results.iter().all(|result| result.score > 0.75),
         "threshold should remove low-scoring rows: {results:?}"
     );
 
     let id_results = index.top_n_ids(req).await?;
     let result_ids = id_results
         .iter()
-        .map(|(_, id)| id.as_str())
+        .map(|result| result.id.as_str())
         .collect::<Vec<_>>();
 
     anyhow::ensure!(
@@ -921,7 +921,7 @@ async fn live_search_orders_by_similarity_and_applies_threshold() -> anyhow::Res
         "unexpected top_n_ids ids: {id_results:?}"
     );
     anyhow::ensure!(
-        id_results.iter().all(|(score, _)| *score > 0.75),
+        id_results.iter().all(|result| result.score > 0.75),
         "top_n_ids threshold should remove low-scoring rows: {id_results:?}"
     );
 
@@ -964,7 +964,7 @@ async fn live_reinsert_same_document_id_removes_stale_vec0_candidates() -> anyho
     let results = index.top_n::<TestDocument>(req.clone()).await?;
     let ids = results
         .iter()
-        .map(|(_, id, _)| id.as_str())
+        .map(|result| result.id.as_str())
         .collect::<Vec<_>>();
     anyhow::ensure!(
         ids.as_slice() == ["fresh"],
@@ -974,7 +974,7 @@ async fn live_reinsert_same_document_id_removes_stale_vec0_candidates() -> anyho
     let id_results = index.top_n_ids(req).await?;
     let result_ids = id_results
         .iter()
-        .map(|(_, id)| id.as_str())
+        .map(|result| result.id.as_str())
         .collect::<Vec<_>>();
     anyhow::ensure!(
         result_ids.as_slice() == ["fresh"],
@@ -1043,7 +1043,7 @@ async fn live_reinsert_preserves_unrelated_multivector_embeddings() -> anyhow::R
     let results = index.top_n::<TestDocument>(req.clone()).await?;
     let ids = results
         .iter()
-        .map(|(_, id, _)| id.as_str())
+        .map(|result| result.id.as_str())
         .collect::<Vec<_>>();
     anyhow::ensure!(
         ids.as_slice() == ["multi"],
@@ -1053,7 +1053,7 @@ async fn live_reinsert_preserves_unrelated_multivector_embeddings() -> anyhow::R
     let id_results = index.top_n_ids(req).await?;
     let result_ids = id_results
         .iter()
-        .map(|(_, id)| id.as_str())
+        .map(|result| result.id.as_str())
         .collect::<Vec<_>>();
     anyhow::ensure!(
         result_ids.as_slice() == ["multi"],
@@ -1098,7 +1098,7 @@ async fn live_multiple_embeddings_per_document_use_best_embedding() -> anyhow::R
     let results = index.top_n::<TestDocument>(req.clone()).await?;
     let ids = results
         .iter()
-        .map(|(_, id, _)| id.as_str())
+        .map(|result| result.id.as_str())
         .collect::<Vec<_>>();
     anyhow::ensure!(
         ids.as_slice() == ["multi", "single"],
@@ -1108,7 +1108,7 @@ async fn live_multiple_embeddings_per_document_use_best_embedding() -> anyhow::R
     let id_results = index.top_n_ids(req).await?;
     let result_ids = id_results
         .iter()
-        .map(|(_, id)| id.as_str())
+        .map(|result| result.id.as_str())
         .collect::<Vec<_>>();
     anyhow::ensure!(
         result_ids.as_slice() == ["multi", "single"],
@@ -1123,7 +1123,7 @@ async fn live_multiple_embeddings_per_document_use_best_embedding() -> anyhow::R
     let threshold_results = index.top_n::<TestDocument>(threshold_req.clone()).await?;
     let threshold_ids = threshold_results
         .iter()
-        .map(|(_, id, _)| id.as_str())
+        .map(|result| result.id.as_str())
         .collect::<Vec<_>>();
     anyhow::ensure!(
         threshold_ids.as_slice() == ["multi"],
@@ -1133,7 +1133,7 @@ async fn live_multiple_embeddings_per_document_use_best_embedding() -> anyhow::R
     let threshold_id_results = index.top_n_ids(threshold_req).await?;
     let threshold_result_ids = threshold_id_results
         .iter()
-        .map(|(_, id)| id.as_str())
+        .map(|result| result.id.as_str())
         .collect::<Vec<_>>();
     anyhow::ensure!(
         threshold_result_ids.as_slice() == ["multi"],
@@ -1185,7 +1185,7 @@ async fn live_multivector_search_beyond_knn_k_cap_succeeds() -> anyhow::Result<(
     let results = index.top_n::<TestDocument>(req.clone()).await?;
     let ids = results
         .iter()
-        .map(|(_, id, _)| id.as_str())
+        .map(|result| result.id.as_str())
         .collect::<Vec<_>>();
     anyhow::ensure!(
         ids.as_slice() == ["best", "mid", "filler"],
@@ -1195,7 +1195,7 @@ async fn live_multivector_search_beyond_knn_k_cap_succeeds() -> anyhow::Result<(
     let id_results = index.top_n_ids(req).await?;
     let result_ids = id_results
         .iter()
-        .map(|(_, id)| id.as_str())
+        .map(|result| result.id.as_str())
         .collect::<Vec<_>>();
     anyhow::ensure!(
         result_ids.as_slice() == ["best", "mid", "filler"],
@@ -1234,7 +1234,7 @@ async fn live_post_filter_search_beyond_knn_k_cap_succeeds() -> anyhow::Result<(
     let results = index.top_n::<TestDocument>(req.clone()).await?;
     let ids = results
         .iter()
-        .map(|(_, id, _)| id.as_str())
+        .map(|result| result.id.as_str())
         .collect::<Vec<_>>();
     anyhow::ensure!(
         ids.as_slice() == ["wanted"],
@@ -1244,7 +1244,7 @@ async fn live_post_filter_search_beyond_knn_k_cap_succeeds() -> anyhow::Result<(
     let id_results = index.top_n_ids(req).await?;
     let result_ids = id_results
         .iter()
-        .map(|(_, id)| id.as_str())
+        .map(|result| result.id.as_str())
         .collect::<Vec<_>>();
     anyhow::ensure!(
         result_ids.as_slice() == ["wanted"],
@@ -1273,7 +1273,7 @@ async fn live_equal_score_results_are_ordered_by_document_id() -> anyhow::Result
     let results = index.top_n::<TestDocument>(req.clone()).await?;
     let ids = results
         .iter()
-        .map(|(_, id, _)| id.as_str())
+        .map(|result| result.id.as_str())
         .collect::<Vec<_>>();
     anyhow::ensure!(
         ids.as_slice() == ["a", "b"],
@@ -1283,7 +1283,7 @@ async fn live_equal_score_results_are_ordered_by_document_id() -> anyhow::Result
     let id_results = index.top_n_ids(req).await?;
     let result_ids = id_results
         .iter()
-        .map(|(_, id)| id.as_str())
+        .map(|result| result.id.as_str())
         .collect::<Vec<_>>();
     anyhow::ensure!(
         result_ids.as_slice() == ["a", "b"],
@@ -1313,7 +1313,10 @@ async fn live_common_sqlite_text_types_round_trip_in_top_n() -> anyhow::Result<(
         .build();
     let results = index.top_n::<CommonTypeDocument>(req).await?;
 
-    let Some((_, id, doc)) = results.first() else {
+    let Some(VectorSearchResult {
+        id, document: doc, ..
+    }) = results.first()
+    else {
         anyhow::bail!("expected common type document result");
     };
     anyhow::ensure!(id == "common", "unexpected id: {id}");
@@ -1356,7 +1359,10 @@ async fn live_json_column_structured_metadata_round_trips_in_top_n() -> anyhow::
         .top_n::<StructuredJsonMetadataDocument>(req.clone())
         .await?;
 
-    let Some((_, id, doc)) = results.first() else {
+    let Some(VectorSearchResult {
+        id, document: doc, ..
+    }) = results.first()
+    else {
         anyhow::bail!("expected structured JSON metadata document result");
     };
     anyhow::ensure!(id == "structured", "unexpected id: {id}");
@@ -1367,7 +1373,9 @@ async fn live_json_column_structured_metadata_round_trips_in_top_n() -> anyhow::
 
     let id_results = index.top_n_ids(req).await?;
     anyhow::ensure!(
-        id_results.first().is_some_and(|(_, id)| id == "structured"),
+        id_results
+            .first()
+            .is_some_and(|result| result.id == "structured"),
         "top_n_ids should still return the structured metadata document id: {id_results:?}"
     );
 
@@ -1394,7 +1402,7 @@ async fn live_text_affinity_metadata_filters_during_candidate_search() -> anyhow
     let results = index.top_n::<CommonTypeDocument>(req.clone()).await?;
     let ids = results
         .iter()
-        .map(|(_, id, _)| id.as_str())
+        .map(|result| result.id.as_str())
         .collect::<Vec<_>>();
 
     anyhow::ensure!(
@@ -1405,7 +1413,7 @@ async fn live_text_affinity_metadata_filters_during_candidate_search() -> anyhow
     let id_results = index.top_n_ids(req).await?;
     let result_ids = id_results
         .iter()
-        .map(|(_, id)| id.as_str())
+        .map(|result| result.id.as_str())
         .collect::<Vec<_>>();
 
     anyhow::ensure!(
@@ -1443,16 +1451,16 @@ async fn live_l2_metric_is_consistent() -> anyhow::Result<()> {
     let results = index.top_n::<TestDocument>(req.clone()).await?;
     let ids = results
         .iter()
-        .map(|(_, id, _)| id.as_str())
+        .map(|result| result.id.as_str())
         .collect::<Vec<_>>();
     let exact_score = results
         .iter()
-        .find(|(_, id, _)| id == "exact")
-        .map(|(score, _, _)| *score);
+        .find(|result| result.id == "exact")
+        .map(|result| result.score);
     let close_score = results
         .iter()
-        .find(|(_, id, _)| id == "l2-close")
-        .map(|(score, _, _)| *score);
+        .find(|result| result.id == "l2-close")
+        .map(|result| result.score);
 
     anyhow::ensure!(
         ids.as_slice() == ["exact", "l2-close"],
@@ -1465,14 +1473,14 @@ async fn live_l2_metric_is_consistent() -> anyhow::Result<()> {
         "expected L2 scores to be ordered and thresholded: {results:?}"
     );
     anyhow::ensure!(
-        results.iter().all(|(score, _, _)| *score > -2.0),
+        results.iter().all(|result| result.score > -2.0),
         "threshold should be applied to L2 scores: {results:?}"
     );
 
     let id_results = index.top_n_ids(req).await?;
     let result_ids = id_results
         .iter()
-        .map(|(_, id)| id.as_str())
+        .map(|result| result.id.as_str())
         .collect::<Vec<_>>();
 
     anyhow::ensure!(
@@ -1511,7 +1519,7 @@ async fn live_indexed_filter_is_applied_during_candidate_search() -> anyhow::Res
     let results = index.top_n::<TestDocument>(req.clone()).await?;
     let ids = results
         .iter()
-        .map(|(_, id, _)| id.as_str())
+        .map(|result| result.id.as_str())
         .collect::<Vec<_>>();
 
     anyhow::ensure!(
@@ -1522,7 +1530,7 @@ async fn live_indexed_filter_is_applied_during_candidate_search() -> anyhow::Res
     let id_results = index.top_n_ids(req).await?;
     let result_ids = id_results
         .iter()
-        .map(|(_, id)| id.as_str())
+        .map(|result| result.id.as_str())
         .collect::<Vec<_>>();
 
     anyhow::ensure!(
@@ -1556,7 +1564,7 @@ async fn live_nonindexed_filter_is_applied_after_candidate_search() -> anyhow::R
     let results = index.top_n::<TestDocument>(req.clone()).await?;
     let ids = results
         .iter()
-        .map(|(_, id, _)| id.as_str())
+        .map(|result| result.id.as_str())
         .collect::<Vec<_>>();
     anyhow::ensure!(
         ids.as_slice() == ["wanted"],
@@ -1566,7 +1574,7 @@ async fn live_nonindexed_filter_is_applied_after_candidate_search() -> anyhow::R
     let id_results = index.top_n_ids(req).await?;
     let result_ids = id_results
         .iter()
-        .map(|(_, id)| id.as_str())
+        .map(|result| result.id.as_str())
         .collect::<Vec<_>>();
     anyhow::ensure!(
         result_ids.as_slice() == ["wanted"],
@@ -1599,7 +1607,7 @@ async fn live_json_metadata_filter_is_applied_after_candidate_search() -> anyhow
     let results = index.top_n::<JsonMetadataDocument>(req.clone()).await?;
     let ids = results
         .iter()
-        .map(|(_, id, _)| id.as_str())
+        .map(|result| result.id.as_str())
         .collect::<Vec<_>>();
     anyhow::ensure!(
         ids.as_slice() == ["matched"],
@@ -1609,7 +1617,7 @@ async fn live_json_metadata_filter_is_applied_after_candidate_search() -> anyhow
     let id_results = index.top_n_ids(req).await?;
     let result_ids = id_results
         .iter()
-        .map(|(_, id)| id.as_str())
+        .map(|result| result.id.as_str())
         .collect::<Vec<_>>();
     anyhow::ensure!(
         result_ids.as_slice() == ["matched"],
@@ -1642,7 +1650,7 @@ async fn live_json_arrow_filter_compares_against_json_text() -> anyhow::Result<(
     let results = index.top_n::<JsonMetadataDocument>(req.clone()).await?;
     let ids = results
         .iter()
-        .map(|(_, id, _)| id.as_str())
+        .map(|result| result.id.as_str())
         .collect::<Vec<_>>();
     anyhow::ensure!(
         ids.as_slice() == ["matched"],
@@ -1652,7 +1660,7 @@ async fn live_json_arrow_filter_compares_against_json_text() -> anyhow::Result<(
     let id_results = index.top_n_ids(req).await?;
     let result_ids = id_results
         .iter()
-        .map(|(_, id)| id.as_str())
+        .map(|result| result.id.as_str())
         .collect::<Vec<_>>();
     anyhow::ensure!(
         result_ids.as_slice() == ["matched"],
@@ -1704,7 +1712,7 @@ async fn live_mixed_indexed_and_json_metadata_filters_are_applied() -> anyhow::R
     let results = index.top_n::<JsonMetadataDocument>(req.clone()).await?;
     let ids = results
         .iter()
-        .map(|(_, id, _)| id.as_str())
+        .map(|result| result.id.as_str())
         .collect::<Vec<_>>();
     anyhow::ensure!(
         ids.as_slice() == ["matched"],
@@ -1714,7 +1722,7 @@ async fn live_mixed_indexed_and_json_metadata_filters_are_applied() -> anyhow::R
     let id_results = index.top_n_ids(req).await?;
     let result_ids = id_results
         .iter()
-        .map(|(_, id)| id.as_str())
+        .map(|result| result.id.as_str())
         .collect::<Vec<_>>();
     anyhow::ensure!(
         result_ids.as_slice() == ["matched"],
@@ -1749,7 +1757,7 @@ async fn live_negated_eq_filter_is_applied_during_candidate_search() -> anyhow::
     let results = index.top_n::<TestDocument>(req.clone()).await?;
     let ids = results
         .iter()
-        .map(|(_, id, _)| id.as_str())
+        .map(|result| result.id.as_str())
         .collect::<Vec<_>>();
 
     anyhow::ensure!(
@@ -1760,7 +1768,7 @@ async fn live_negated_eq_filter_is_applied_during_candidate_search() -> anyhow::
     let id_results = index.top_n_ids(req).await?;
     let result_ids = id_results
         .iter()
-        .map(|(_, id)| id.as_str())
+        .map(|result| result.id.as_str())
         .collect::<Vec<_>>();
 
     anyhow::ensure!(
@@ -1796,7 +1804,10 @@ async fn live_top_n_reads_id_by_column_name_not_schema_position() -> anyhow::Res
         .build();
 
     let results = index.top_n::<ReorderedIdDocument>(req.clone()).await?;
-    let Some((_, id, doc)) = results.first() else {
+    let Some(VectorSearchResult {
+        id, document: doc, ..
+    }) = results.first()
+    else {
         anyhow::bail!("expected reordered-id result");
     };
     anyhow::ensure!(
@@ -1810,7 +1821,7 @@ async fn live_top_n_reads_id_by_column_name_not_schema_position() -> anyhow::Res
 
     let id_results = index.top_n_ids(req).await?;
     anyhow::ensure!(
-        id_results.first().map(|(_, id)| id.as_str()) == Some("winner"),
+        id_results.first().map(|result| result.id.as_str()) == Some("winner"),
         "top_n_ids should agree with top_n id handling: {id_results:?}"
     );
 
@@ -1857,7 +1868,12 @@ async fn live_internal_score_and_rank_column_names_do_not_shadow_search_columns(
         .build();
 
     let results = index.top_n::<InternalAliasDocument>(req.clone()).await?;
-    let Some((score, id, doc)) = results.first() else {
+    let Some(VectorSearchResult {
+        score,
+        id,
+        document: doc,
+    }) = results.first()
+    else {
         anyhow::bail!("expected internal-alias document result");
     };
 
@@ -1873,10 +1889,10 @@ async fn live_internal_score_and_rank_column_names_do_not_shadow_search_columns(
 
     let id_results = index.top_n_ids(req).await?;
     anyhow::ensure!(
-        id_results
-            .first()
-            .map(|(score, id)| ((*score - 1.0).abs() <= SCORE_EPSILON, id.as_str()))
-            == Some((true, "winner")),
+        id_results.first().map(|result| (
+            (result.score - 1.0).abs() <= SCORE_EPSILON,
+            result.id.as_str()
+        )) == Some((true, "winner")),
         "top_n_ids should agree with top_n despite internal-looking document columns: {id_results:?}"
     );
 
@@ -1926,7 +1942,10 @@ async fn live_typed_columns_round_trip_and_filter_during_candidate_search() -> a
         "expected one typed document result: {results:?}"
     );
 
-    let Some((_, id, doc)) = results.first() else {
+    let Some(VectorSearchResult {
+        id, document: doc, ..
+    }) = results.first()
+    else {
         anyhow::bail!("expected one typed document result");
     };
     anyhow::ensure!(id == "2", "expected integer id to be returned as string");
@@ -1947,7 +1966,7 @@ async fn live_typed_columns_round_trip_and_filter_during_candidate_search() -> a
     let id_results = index.top_n_ids(req).await?;
     let result_ids = id_results
         .iter()
-        .map(|(_, id)| id.as_str())
+        .map(|result| result.id.as_str())
         .collect::<Vec<_>>();
     anyhow::ensure!(
         result_ids.as_slice() == ["2"],
@@ -2072,12 +2091,16 @@ async fn live_matches_exact_oracle_for_metrics_filters_and_thresholds() -> anyho
         let results = index.top_n::<TypedTestDocument>(req.clone()).await?;
         let scored_ids = results
             .iter()
-            .map(|(score, id, doc)| {
+            .map(|result| {
+                let (id, doc) = (&result.id, &result.document);
                 anyhow::ensure!(
                     id == &doc.id.to_string(),
                     "top_n returned mismatched id and document: id={id}, doc={doc:?}"
                 );
-                Ok((*score, id.clone()))
+                Ok(VectorSearchIdResult {
+                    score: result.score,
+                    id: id.clone(),
+                })
             })
             .collect::<anyhow::Result<Vec<_>>>()?;
         assert_scored_ids_match(&scored_ids, &expected, distance_metric, "top_n")?;
@@ -2119,7 +2142,7 @@ async fn live_or_filter_preserves_mixed_document_semantics() -> anyhow::Result<(
     let results = index.top_n::<TestDocument>(req.clone()).await?;
     let ids = results
         .iter()
-        .map(|(_, id, _)| id.as_str())
+        .map(|result| result.id.as_str())
         .collect::<Vec<_>>();
     anyhow::ensure!(
         ids.as_slice() == ["special"],
@@ -2129,7 +2152,7 @@ async fn live_or_filter_preserves_mixed_document_semantics() -> anyhow::Result<(
     let id_results = index.top_n_ids(req).await?;
     let result_ids = id_results
         .iter()
-        .map(|(_, id)| id.as_str())
+        .map(|result| result.id.as_str())
         .collect::<Vec<_>>();
     anyhow::ensure!(
         result_ids.as_slice() == ["special"],
@@ -2163,7 +2186,7 @@ async fn live_pattern_and_null_filters_are_applied_after_candidate_search() -> a
     let results = index.top_n::<JsonMetadataDocument>(req.clone()).await?;
     let ids = results
         .iter()
-        .map(|(_, id, _)| id.as_str())
+        .map(|result| result.id.as_str())
         .collect::<Vec<_>>();
     anyhow::ensure!(
         ids.as_slice() == ["matched"],
@@ -2173,7 +2196,7 @@ async fn live_pattern_and_null_filters_are_applied_after_candidate_search() -> a
     let id_results = index.top_n_ids(req).await?;
     let result_ids = id_results
         .iter()
-        .map(|(_, id)| id.as_str())
+        .map(|result| result.id.as_str())
         .collect::<Vec<_>>();
     anyhow::ensure!(
         result_ids.as_slice() == ["matched"],
@@ -2648,12 +2671,15 @@ fn oracle_score(
 }
 
 fn assert_scored_ids_match(
-    actual: &[(f64, String)],
+    actual: &[VectorSearchIdResult],
     expected: &[ExpectedScoredId],
     distance_metric: SqliteDistanceMetric,
     context: &str,
 ) -> anyhow::Result<()> {
-    let actual_ids = actual.iter().map(|(_, id)| id.as_str()).collect::<Vec<_>>();
+    let actual_ids = actual
+        .iter()
+        .map(|result| result.id.as_str())
+        .collect::<Vec<_>>();
     let expected_ids = expected
         .iter()
         .map(|expected| expected.id.as_str())
@@ -2663,7 +2689,14 @@ fn assert_scored_ids_match(
         "{context} ids for {distance_metric:?} did not match exact oracle: actual={actual:?}, expected={expected:?}"
     );
 
-    for ((actual_score, actual_id), expected) in actual.iter().zip(expected) {
+    for (
+        VectorSearchIdResult {
+            score: actual_score,
+            id: actual_id,
+        },
+        expected,
+    ) in actual.iter().zip(expected)
+    {
         anyhow::ensure!(
             (actual_score - expected.score).abs() <= SCORE_EPSILON,
             "{context} score for {distance_metric:?} id `{actual_id}` did not match exact oracle: actual={actual_score}, expected={}",

@@ -7,7 +7,10 @@ use serde_json::json;
 
 use rig_core::{
     message::{ImageMediaType, ToolResultContent},
-    vector_store::{VectorSearchRequest, VectorStoreError, VectorStoreIndex, request::Filter},
+    vector_store::{
+        VectorSearchIdResult, VectorSearchRequest, VectorSearchResult, VectorStoreError,
+        VectorStoreIndex, request::Filter,
+    },
     wasm_compat::WasmCompatSend,
 };
 
@@ -447,19 +450,22 @@ impl VectorStoreIndex for MockToolIndex {
     async fn top_n<T: for<'a> Deserialize<'a> + WasmCompatSend>(
         &self,
         _req: VectorSearchRequest,
-    ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
+    ) -> Result<Vec<VectorSearchResult<T>>, VectorStoreError> {
         Ok(vec![])
     }
 
     async fn top_n_ids(
         &self,
         _req: VectorSearchRequest,
-    ) -> Result<Vec<(f64, String)>, VectorStoreError> {
+    ) -> Result<Vec<VectorSearchIdResult>, VectorStoreError> {
         Ok(self
             .tool_ids
             .iter()
             .enumerate()
-            .map(|(i, id)| (1.0 - (i as f64 * 0.1), id.clone()))
+            .map(|(i, id)| VectorSearchIdResult {
+                score: 1.0 - (i as f64 * 0.1),
+                id: id.clone(),
+            })
             .collect())
     }
 }
@@ -486,16 +492,19 @@ impl VectorStoreIndex for BarrierMockToolIndex {
     async fn top_n<T: for<'a> Deserialize<'a> + WasmCompatSend>(
         &self,
         _req: VectorSearchRequest,
-    ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
+    ) -> Result<Vec<VectorSearchResult<T>>, VectorStoreError> {
         Ok(vec![])
     }
 
     async fn top_n_ids(
         &self,
         _req: VectorSearchRequest,
-    ) -> Result<Vec<(f64, String)>, VectorStoreError> {
+    ) -> Result<Vec<VectorSearchIdResult>, VectorStoreError> {
         self.barrier.wait().await;
-        Ok(vec![(1.0, self.tool_id.clone())])
+        Ok(vec![VectorSearchIdResult {
+            score: 1.0,
+            id: self.tool_id.clone(),
+        }])
     }
 }
 

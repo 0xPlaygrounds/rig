@@ -11,7 +11,8 @@ use rig_core::{
     Embed,
     embeddings::Embedding,
     vector_store::{
-        InsertDocuments, VectorStoreError, VectorStoreIndex,
+        InsertDocuments, VectorSearchIdResult, VectorSearchResult, VectorStoreError,
+        VectorStoreIndex,
         request::{DynamicSearchFilter, Filter, FilterError, SearchFilter, VectorSearchRequest},
     },
     wasm_compat::WasmCompatSend,
@@ -86,11 +87,14 @@ pub struct SearchResultOnlyId {
 }
 
 impl SearchResult {
-    pub fn into_result<T: DeserializeOwned>(self) -> Result<(f64, String, T), VectorStoreError> {
-        let document: T =
-            serde_json::from_str(&self.document).map_err(VectorStoreError::JsonError)?;
-
-        Ok((self.distance, record_key_to_string(&self.id.key), document))
+    pub fn into_result<T: DeserializeOwned>(
+        self,
+    ) -> Result<VectorSearchResult<T>, VectorStoreError> {
+        Ok(VectorSearchResult {
+            score: self.distance,
+            id: record_key_to_string(&self.id.key),
+            document: serde_json::from_str(&self.document).map_err(VectorStoreError::JsonError)?,
+        })
     }
 }
 
@@ -328,17 +332,17 @@ where
 {
     type Filter = SurrealSearchFilter;
 
-    /// Returns matches as `(distance, record id, document)` ordered by descending
+    /// Returns matches scored by distance and keyed by record id, ordered by descending
     /// distance value. Errors when a stored document does not deserialize into `T`.
     async fn top_n<T: DeserializeOwned + WasmCompatSend>(
         &self,
         req: VectorSearchRequest<SurrealSearchFilter>,
-    ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
+    ) -> Result<Vec<VectorSearchResult<T>>, VectorStoreError> {
         let mut response = self.run_search_query(&req, true).await?;
 
         let rows: Vec<SearchResult> = response.take(0).map_err(VectorStoreError::datastore)?;
 
-        let rows: Vec<(f64, String, T)> = rows
+        let rows: Vec<VectorSearchResult<T>> = rows
             .into_iter()
             .map(SearchResult::into_result)
             .collect::<Result<Vec<_>, _>>()?;
@@ -346,21 +350,24 @@ where
         Ok(rows)
     }
 
-    /// Like `top_n` but returns `(distance, record id)` without deserializing
-    /// documents.
+    /// Like `top_n` but returns only scores and record ids, without
+    /// deserializing documents.
     async fn top_n_ids(
         &self,
         req: VectorSearchRequest<SurrealSearchFilter>,
-    ) -> Result<Vec<(f64, String)>, VectorStoreError> {
+    ) -> Result<Vec<VectorSearchIdResult>, VectorStoreError> {
         let mut response = self.run_search_query(&req, false).await?;
 
         let rows: Vec<SearchResultOnlyId> = response
             .take::<Vec<SearchResultOnlyId>>(0)
             .map_err(VectorStoreError::datastore)?;
 
-        let rows: Vec<(f64, String)> = rows
+        let rows: Vec<VectorSearchIdResult> = rows
             .into_iter()
-            .map(|row| (row.distance, record_key_to_string(&row.id.key)))
+            .map(|row| VectorSearchIdResult {
+                score: row.distance,
+                id: record_key_to_string(&row.id.key),
+            })
             .collect();
 
         Ok(rows)

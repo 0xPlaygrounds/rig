@@ -1104,15 +1104,24 @@ impl rig_core::vector_store::VectorStoreIndex for AlwaysSlow {
     async fn top_n<T: serde::de::DeserializeOwned + Send>(
         &self,
         _req: rig_core::vector_store::request::VectorSearchRequest<Self::Filter>,
-    ) -> Result<Vec<(f64, String, T)>, rig_core::vector_store::VectorStoreError> {
+    ) -> Result<
+        Vec<rig_core::vector_store::VectorSearchResult<T>>,
+        rig_core::vector_store::VectorStoreError,
+    > {
         Ok(Vec::new())
     }
 
     async fn top_n_ids(
         &self,
         _req: rig_core::vector_store::request::VectorSearchRequest<Self::Filter>,
-    ) -> Result<Vec<(f64, String)>, rig_core::vector_store::VectorStoreError> {
-        Ok(vec![(1.0, "slow".to_owned())])
+    ) -> Result<
+        Vec<rig_core::vector_store::VectorSearchIdResult>,
+        rig_core::vector_store::VectorStoreError,
+    > {
+        Ok(vec![rig_core::vector_store::VectorSearchIdResult {
+            score: 1.0,
+            id: "slow".to_owned(),
+        }])
     }
 }
 

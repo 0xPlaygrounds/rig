@@ -112,7 +112,7 @@ async fn vector_search_test() {
     // Query the index
     let results = index.top_n::<serde_json::Value>(req).await.expect("");
     assert_eq!(results.len(), 1);
-    assert_eq!(results[0].1, "doc1");
+    assert_eq!(results[0].id, "doc1");
 }
 
 #[tokio::test]
