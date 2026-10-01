@@ -495,10 +495,12 @@ impl<'id> ResponsesDecoder<'id> {
         if !message.id.is_empty() && (wins || item.id.is_empty()) {
             item.id.clone_from(&message.id);
         }
-        if let Some(native) = native
-            && (wins || item.native.is_none())
-        {
-            item.native = Some(native.clone());
+        if let Some(native) = native {
+            item.native = Some(match item.native.take() {
+                None => native.clone(),
+                Some(earlier) if wins => restate(native.clone(), earlier),
+                Some(earlier) => restate(earlier, native.clone()),
+            });
         }
         item.done |= statement == Statement::Done;
     }
@@ -658,7 +660,12 @@ impl<'id> ResponsesDecoder<'id> {
             ItemChunkKind::OutputItemAdded(StreamingItemDoneOutput {
                 item: Output::Message(message),
                 ..
-            }) => self.note_message_item(output_index, &message, None, Statement::Added),
+            }) => self.note_message_item(
+                output_index,
+                &message,
+                frame_item(raw).as_ref(),
+                Statement::Added,
+            ),
             ItemChunkKind::OutputItemDone(message) => {
                 // Any completed item ends the one it carried; a fragment
                 // arriving afterwards names its own item.
@@ -1011,28 +1018,45 @@ impl<'id> Decoder<'id, Completion> for ResponsesDecoder<'id> {
     }
 }
 
+/// One item as two statements of it say it together: every member `kept`
+/// states, and those only `other` states.
+fn restate(mut kept: Value, other: Value) -> Value {
+    if let (Value::Object(kept), Value::Object(other)) = (&mut kept, other) {
+        for (key, value) in other {
+            match kept.get(&key) {
+                None | Some(Value::Null) => {
+                    kept.insert(key, value);
+                }
+                Some(_) => {}
+            }
+        }
+    }
+    kept
+}
+
+/// The member at `path` of the JSON payload `raw`, exactly as the payload
+/// stated it.
+fn frame_member(raw: &str, path: &[&str]) -> Option<Value> {
+    let mut member = serde_json::from_str::<Value>(raw).ok()?;
+    for key in path {
+        member = member.get_mut(*key)?.take();
+    }
+    Some(member)
+}
+
 /// The `item` of an output-item frame, exactly as the frame stated it.
 fn frame_item(raw: &str) -> Option<Value> {
-    serde_json::from_str::<Value>(raw)
-        .ok()?
-        .get_mut("item")
-        .map(Value::take)
+    frame_member(raw, &["item"])
 }
 
 /// The `output` items of a response payload, exactly as it stated them:
 /// the payload itself, or its member `envelope`.
 fn frame_output(raw: &str, envelope: Option<&str>) -> Vec<Value> {
-    let Ok(mut payload) = serde_json::from_str::<Value>(raw) else {
-        return Vec::new();
+    let path: &[&str] = match envelope {
+        Some(key) => &[key, "output"],
+        None => &["output"],
     };
-    let response = match envelope {
-        Some(key) => payload.get_mut(key),
-        None => Some(&mut payload),
-    };
-    match response
-        .and_then(|response| response.get_mut("output"))
-        .map(Value::take)
-    {
+    match frame_member(raw, path) {
         Some(Value::Array(items)) => items,
         _ => Vec::new(),
     }

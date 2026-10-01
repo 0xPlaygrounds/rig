@@ -1704,6 +1704,7 @@ fn mixed_text_and_pdf_user_message_produces_two_content_parts() {
 fn request_plans_tool_ids_across_namespaces_turns_and_split_user_content() {
     use crate::message::{AssistantContent, ToolFunction, UserContent};
     let generated = message::ToolCall {
+        native: None,
         id: crate::message::CallId::from_wire(""),
         function: ToolFunction {
             name: crate::message::ToolName::new("test").expect("tool name"),

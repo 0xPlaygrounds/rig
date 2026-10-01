@@ -507,6 +507,7 @@ fn the_xai_dialect_replays_reasoning_by_wire_id_with_its_encrypted_payload() {
                 content: vec![
                     message::AssistantContent::Reasoning(
                         message::Reasoning {
+                            native: None,
                             id: Some("rs_1".to_owned()),
                             content: vec![
                                 message::ReasoningContent::Summary("explain".to_owned()),

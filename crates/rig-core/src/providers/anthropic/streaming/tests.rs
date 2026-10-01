@@ -10,6 +10,7 @@ use crate::completion::request::Document as RigDocument;
 use crate::driver::{Decoded, decode_events};
 use crate::message::{AssistantContent, Reasoning, ReasoningContent};
 use crate::streaming::{PartKind, StreamEvent};
+use serde_json::json;
 
 /// A fresh decoder, for its classifier.
 fn adapter() -> MessagesDecoder<'static> {
@@ -44,6 +45,7 @@ fn reasoning_of(decoded: &Decoded<Completion>) -> Vec<Reasoning> {
 
 fn thinking_start(index: usize, thinking: &str, signature: Option<&str>) -> StreamingEvent {
     StreamingEvent::ContentBlockStart {
+        raw: serde_json::Value::Null,
         index,
         content_block: Content::Thinking {
             thinking: thinking.to_string(),
@@ -67,6 +69,7 @@ fn stop(index: usize) -> StreamingEvent {
 
 fn tool_use(index: usize, id: &str, name: &str) -> StreamingEvent {
     StreamingEvent::ContentBlockStart {
+        raw: serde_json::Value::Null,
         index,
         content_block: Content::ToolUse {
             id: id.to_string(),
@@ -490,6 +493,7 @@ fn test_handle_signature_delta_event() {
 #[test]
 fn test_handle_redacted_thinking_content_block_start_event() {
     let decoded = decode([StreamingEvent::ContentBlockStart {
+        raw: serde_json::Value::Null,
         index: 0,
         content_block: Content::RedactedThinking {
             data: "redacted_blob".to_string(),
@@ -614,6 +618,7 @@ fn test_handle_text_delta_event() {
 #[test]
 fn test_handle_text_block_start_event() {
     let decoded = decode([StreamingEvent::ContentBlockStart {
+        raw: serde_json::Value::Null,
         index: 0,
         content_block: Content::Text {
             text: String::new(),
@@ -877,15 +882,11 @@ fn test_web_search_content_block_start_events_deserialize() {
     assert!(matches!(
         event,
         StreamingEvent::ContentBlockStart {
-            content_block: Content::ServerToolUse {
-                ref id,
-                ref name,
-                ref input
-            },
+            content_block: Content::Native(ref block),
             ..
-        } if id == "srvtoolu_01"
-            && name == "web_search"
-            && input["query"] == "claude shannon birth date"
+        } if block["type"] == "server_tool_use"
+            && block["id"] == "srvtoolu_01"
+            && block["input"]["query"] == "claude shannon birth date"
     ));
 
     let web_search_tool_result = r#"{
@@ -906,49 +907,100 @@ fn test_web_search_content_block_start_events_deserialize() {
     assert!(matches!(
         event,
         StreamingEvent::ContentBlockStart {
-            content_block: Content::WebSearchToolResult {
-                ref tool_use_id,
-                ref content
-            },
+            content_block: Content::Native(ref block),
             ..
-        } if tool_use_id == "srvtoolu_01"
-            && content[0]["encrypted_content"] == "encrypted-content"
+        } if block["tool_use_id"] == "srvtoolu_01"
+            && block["content"][0]["encrypted_content"] == "encrypted-content"
     ));
+}
+
+/// The provider item of each native part that ended, in order.
+fn natives_of(decoded: &Decoded<Completion>) -> Vec<serde_json::Value> {
+    decoded
+        .ended()
+        .into_iter()
+        .filter_map(|content| match content {
+            AssistantContent::Native(native) => native
+                .open_native(DIALECT, &[native.issuer().clone()])
+                .map(|item| item.item().clone()),
+            _ => None,
+        })
+        .collect()
 }
 
 #[test]
 fn test_code_execution_tool_result_block_is_preserved() {
-    let event: StreamingEvent = serde_json::from_value(serde_json::json!({
-        "type": "content_block_start",
-        "index": 1,
-        "content_block": {
-            "type": "code_execution_tool_result",
-            "tool_use_id": "srvtoolu_01",
-            "content": {
-                "type": "code_execution_result",
-                "return_code": 0,
-                "stdout": "42\n",
-                "stderr": "",
-                "content": []
+    let event = classified(
+        &json!({
+            "type": "content_block_start",
+            "index": 1,
+            "content_block": {
+                "type": "code_execution_tool_result",
+                "tool_use_id": "srvtoolu_01",
+                "content": {
+                    "type": "code_execution_result",
+                    "return_code": 0,
+                    "stdout": "42\n",
+                    "stderr": "",
+                    "content": []
+                }
             }
-        }
-    }))
-    .unwrap();
+        })
+        .to_string(),
+    );
     let decoded = decode([event, stop(1)]);
-    let ended = decoded.ended();
-    let [AssistantContent::Text(text)] = ended.as_slice() else {
-        panic!("the result block is a text part: {:?}", decoded.events());
+    let natives = natives_of(&decoded);
+    let [block] = natives.as_slice() else {
+        panic!(
+            "the result block is a provider item: {:?}",
+            decoded.events()
+        );
     };
-    let additional_params = text.additional_params.as_ref().expect("its raw content");
-    assert_eq!(
-        additional_params[crate::providers::anthropic::completion::ANTHROPIC_RAW_CONTENT_KEY]["type"],
-        "code_execution_tool_result"
+    assert_eq!(block["type"], "code_execution_tool_result");
+    assert_eq!(block["content"]["stdout"], "42\n");
+    // Verbatim: an empty member the wire stated is kept.
+    assert_eq!(block["content"]["stderr"], "");
+}
+
+/// Loss 1: a block type this crate does not model no longer fails the
+/// reply. It is kept in place, assembled from the deltas a stream sends.
+#[test]
+fn unmodelled_blocks_are_kept_in_order_streamed() {
+    let frames = [
+        json!({"type": "content_block_start", "index": 0, "content_block":
+            {"type": "server_tool_use", "id": "srvtoolu_9", "name": "web_fetch", "input": {}}}),
+        json!({"type": "content_block_delta", "index": 0, "delta":
+            {"type": "input_json_delta", "partial_json": "{\"url\":\"https://example.com\"}"}}),
+        json!({"type": "content_block_stop", "index": 0}),
+        json!({"type": "content_block_start", "index": 1, "content_block":
+            {"type": "web_fetch_tool_result", "tool_use_id": "srvtoolu_9",
+             "content": {"type": "web_fetch_result", "url": "https://example.com", "retrieved_at": "2026-01-01"}}}),
+        json!({"type": "content_block_stop", "index": 1}),
+        json!({"type": "content_block_start", "index": 2, "content_block": {"type": "text", "text": ""}}),
+        json!({"type": "content_block_delta", "index": 2, "delta": {"type": "text_delta", "text": "Fetched."}}),
+        json!({"type": "content_block_stop", "index": 2}),
+    ];
+    let decoded = decode(
+        frames
+            .iter()
+            .map(|frame| classified(&frame.to_string()))
+            .chain([message_delta("end_turn", PartialUsage::default())]),
     );
-    assert_eq!(
-        additional_params[crate::providers::anthropic::completion::ANTHROPIC_RAW_CONTENT_KEY]["content"]
-            ["stdout"],
-        "42\n"
-    );
+    let choice = decoded.outcome.expect("the reply ended").choice;
+    let kinds: Vec<&str> = choice
+        .iter()
+        .map(|part| match part {
+            AssistantContent::Native(_) => "native",
+            AssistantContent::Text(_) => "text",
+            _ => "other",
+        })
+        .collect();
+    assert_eq!(kinds, ["native", "native", "text"]);
+    let natives = natives_of(&decode(
+        frames.iter().map(|frame| classified(&frame.to_string())),
+    ));
+    assert_eq!(natives[0]["input"]["url"], "https://example.com");
+    assert_eq!(natives[1]["type"], "web_fetch_tool_result");
 }
 
 #[test]
@@ -956,25 +1008,28 @@ fn test_streaming_web_search_blocks_are_preserved_on_final_choice() {
     let decoded = decode([
         StreamingEvent::ContentBlockStart {
             index: 0,
-            content_block: Content::ServerToolUse {
-                id: "srvtoolu_01".to_string(),
-                name: "web_search".to_string(),
-                input: serde_json::Value::Null,
-            },
+            content_block: Content::Native(json!({
+                "type": "server_tool_use",
+                "id": "srvtoolu_01",
+                "name": "web_search",
+            })),
+            raw: serde_json::Value::Null,
         },
         input_json(0, r#"{"query":"claude shannon birth date"}"#),
         stop(0),
         StreamingEvent::ContentBlockStart {
             index: 1,
-            content_block: Content::WebSearchToolResult {
-                tool_use_id: "srvtoolu_01".to_string(),
-                content: serde_json::json!([{
+            content_block: Content::Native(json!({
+                "type": "web_search_tool_result",
+                "tool_use_id": "srvtoolu_01",
+                "content": [{
                     "type": "web_search_result",
                     "url": "https://example.com/shannon",
                     "title": "Claude Shannon",
                     "encrypted_content": "encrypted-content"
-                }]),
-            },
+                }],
+            })),
+            raw: serde_json::Value::Null,
         },
         StreamingEvent::ContentBlockStart {
             index: 2,
@@ -983,6 +1038,7 @@ fn test_streaming_web_search_blocks_are_preserved_on_final_choice() {
                 citations: Vec::new(),
                 cache_control: None,
             },
+            raw: serde_json::Value::Null,
         },
         StreamingEvent::ContentBlockDelta {
             index: 2,
@@ -1015,27 +1071,25 @@ fn test_streaming_web_search_blocks_are_preserved_on_final_choice() {
         "provider-owned web-search blocks must not become Rig client tool calls"
     );
 
-    let Some(crate::message::AssistantContent::Text(server_tool_use)) = choice_items.first() else {
-        panic!("expected raw server_tool_use metadata");
+    let natives: Vec<&serde_json::Value> = choice_items
+        .iter()
+        .filter_map(|item| match item {
+            AssistantContent::Native(native) => native
+                .open_native(DIALECT, &[native.issuer().clone()])
+                .map(|item| item.item()),
+            _ => None,
+        })
+        .collect();
+    let [server_tool_use, web_search_result] = natives.as_slice() else {
+        panic!("expected two provider items: {choice_items:?}");
     };
+    assert_eq!(server_tool_use["type"], "server_tool_use");
     assert_eq!(
-        server_tool_use.additional_params.as_ref().unwrap()
-            [crate::providers::anthropic::completion::ANTHROPIC_RAW_CONTENT_KEY]["type"],
-        "server_tool_use"
-    );
-    assert_eq!(
-        server_tool_use.additional_params.as_ref().unwrap()
-            [crate::providers::anthropic::completion::ANTHROPIC_RAW_CONTENT_KEY]["input"]["query"],
+        server_tool_use["input"]["query"],
         "claude shannon birth date"
     );
-
-    let Some(crate::message::AssistantContent::Text(web_search_result)) = choice_items.get(1)
-    else {
-        panic!("expected raw web_search_tool_result metadata");
-    };
     assert_eq!(
-        web_search_result.additional_params.as_ref().unwrap()
-            [crate::providers::anthropic::completion::ANTHROPIC_RAW_CONTENT_KEY]["content"][0]["encrypted_content"],
+        web_search_result["content"][0]["encrypted_content"],
         "encrypted-content"
     );
 
@@ -1075,8 +1129,12 @@ fn test_handle_citations_delta_event_preserves_metadata() {
     let [AssistantContent::Text(text)] = ended.as_slice() else {
         panic!("the citation rides a text part: {:?}", decoded.events());
     };
-    let additional_params = text.additional_params.as_ref().expect("its citations");
-    assert_eq!(additional_params["citations"][0]["type"], "char_location");
+    let citations = crate::providers::anthropic::completion::anthropic_citations(text)
+        .expect("its citations decode");
+    assert!(matches!(
+        citations.as_slice(),
+        [crate::providers::anthropic::completion::Citation::CharLocation(_)]
+    ));
 }
 
 #[test]
@@ -1093,6 +1151,7 @@ fn test_streaming_citation_deltas_are_preserved_on_final_text() {
 
     let decoded = decode([
         StreamingEvent::ContentBlockStart {
+            raw: serde_json::Value::Null,
             index: 0,
             content_block: Content::Text {
                 text: String::new(),

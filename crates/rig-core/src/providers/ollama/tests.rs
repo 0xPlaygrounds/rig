@@ -1152,6 +1152,7 @@ fn daemon_issued_call_ids_replay_and_minted_handles_do_not() {
     let call = |id: CallId| RigMessage::Assistant {
         id: None,
         content: vec![AssistantContent::ToolCall(ToolCall {
+            native: None,
             id,
             function: ToolFunction {
                 name: crate::message::ToolName::new("add".to_owned()).expect("tool name"),

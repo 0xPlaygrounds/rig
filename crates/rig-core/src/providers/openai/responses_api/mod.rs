@@ -531,8 +531,29 @@ fn input_items(
                 // their own item, id and `phase`.
                 let mut message_items: Vec<(String, usize)> = Vec::new();
 
-                for assistant_content in content {
-                    if let Some(item) = fresh_native(&assistant_content, issuers) {
+                let fresh = fresh_natives(&content, issuers);
+                // A message item replayed as stated keeps its id; canonical
+                // text must not repeat it.
+                let native_ids: Vec<&str> = fresh
+                    .iter()
+                    .filter_map(|replay| match replay {
+                        Replay::Native(item) => Some(item),
+                        Replay::Canonical | Replay::Covered => None,
+                    })
+                    .filter(|item| item.get("type").and_then(Value::as_str) == Some("message"))
+                    .filter_map(|item| item.get("id").and_then(Value::as_str))
+                    .collect();
+                let turn_id = id
+                    .as_deref()
+                    .filter(|id| !id.is_empty() && !native_ids.contains(id));
+                for (assistant_content, fresh) in content.into_iter().zip(fresh) {
+                    let item = match fresh {
+                        Replay::Canonical => None,
+                        Replay::Native(item) => Some(item),
+                        // The run's first block already replayed its item.
+                        Replay::Covered => continue,
+                    };
+                    if let Some(item) = item {
                         match &assistant_content {
                             crate::message::AssistantContent::Reasoning(_) => {
                                 reasoning_items.push(InputItem::native(item));
@@ -552,8 +573,8 @@ fn input_items(
                             if text.is_empty() {
                                 continue;
                             }
-                            let message = match id.as_deref() {
-                                Some(item_id) if !item_id.is_empty() => Message::Assistant {
+                            let message = match turn_id {
+                                Some(item_id) => Message::Assistant {
                                     content: vec![AssistantContentType::Text(
                                         AssistantContent::OutputText(OutputText::new(text)),
                                     )],
@@ -2294,6 +2315,74 @@ fn fresh_native(
     let item = native.open_native(DIALECT, issuers)?;
     let projected = streaming::project(item.item())?;
     message::NativeItem::same_canonical(&projected, content).then(|| item.item().clone())
+}
+
+/// How one block of an assistant message replays.
+enum Replay {
+    /// Encoded canonically.
+    Canonical,
+    /// As the provider item it was projected from.
+    Native(Value),
+    /// Not at all: an earlier block of its run replayed their shared item.
+    Covered,
+}
+
+/// How each block of `content` replays. A message item a gateway's deltas
+/// split across a run of adjacent text blocks, each carrying the item,
+/// replays once in place of the whole run, while the run's text still
+/// projects from it.
+fn fresh_natives(
+    content: &[crate::message::AssistantContent],
+    issuers: &[crate::message::Issuer],
+) -> Vec<Replay> {
+    use crate::message::AssistantContent;
+    let shared_item = |part: &AssistantContent| match part {
+        AssistantContent::Text(text) if text.additional_params.is_none() => text.native.clone(),
+        _ => None,
+    };
+    let mut replays = Vec::with_capacity(content.len());
+    let mut at = 0;
+    while let Some(part) = content.get(at) {
+        let run = shared_item(part)
+            .map(|native| {
+                content
+                    .iter()
+                    .skip(at)
+                    .take_while(|next| shared_item(next).as_ref() == Some(&native))
+                    .count()
+            })
+            .unwrap_or(1);
+        if run > 1 {
+            let joined = AssistantContent::Text(Text {
+                native: shared_item(part),
+                ..Text::new(
+                    content
+                        .iter()
+                        .skip(at)
+                        .take(run)
+                        .filter_map(|part| match part {
+                            AssistantContent::Text(text) => Some(text.text.as_str()),
+                            _ => None,
+                        })
+                        .collect::<String>(),
+                )
+            });
+            match fresh_native(&joined, issuers) {
+                Some(item) => {
+                    replays.push(Replay::Native(item));
+                    replays.extend((1..run).map(|_| Replay::Covered));
+                }
+                None => replays.extend((0..run).map(|_| Replay::Canonical)),
+            }
+        } else {
+            replays.push(match fresh_native(part, issuers) {
+                Some(item) => Replay::Native(item),
+                None => Replay::Canonical,
+            });
+        }
+        at += run;
+    }
+    replays
 }
 
 /// Whether `block`'s canonical Responses encoding states everything `item`

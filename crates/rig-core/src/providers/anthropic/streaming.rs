@@ -360,6 +360,23 @@ impl<'id> MessagesDecoder<'id> {
     ) -> Result<(), ProviderError> {
         match event {
             StreamingEvent::ContentBlockDelta { index, delta } => {
+                // A delta without a start implies the block its type belongs to.
+                let implied = match &delta {
+                    ContentDelta::TextDelta { .. } | ContentDelta::CitationsDelta { .. } => {
+                        Some(serde_json::json!({ "type": "text", "text": "" }))
+                    }
+                    ContentDelta::ThinkingDelta { .. } | ContentDelta::SignatureDelta { .. } => {
+                        Some(serde_json::json!({ "type": "thinking", "thinking": "" }))
+                    }
+                    ContentDelta::InputJsonDelta { .. } | ContentDelta::Unknown(_) => None,
+                };
+                if let Some(block) = implied
+                    && self.current_tool_call.is_none()
+                {
+                    self.blocks
+                        .entry(index)
+                        .or_insert_with(|| Assembly::new(block));
+                }
                 if let Some(block) = self.blocks.get_mut(&index) {
                     block.apply(&delta);
                 }
@@ -422,6 +439,18 @@ impl<'id> MessagesDecoder<'id> {
                 } else {
                     raw
                 };
+                // Blocks are sequential: a provider item still open when the
+                // next block starts is complete, and keeps its place.
+                let mut finished: Vec<usize> = self
+                    .native_only
+                    .iter()
+                    .copied()
+                    .filter(|open| *open < index)
+                    .collect();
+                finished.sort_unstable();
+                for open in finished {
+                    self.interpret_content(StreamingEvent::ContentBlockStop { index: open }, out)?;
+                }
                 self.blocks.insert(index, Assembly::new(raw));
                 match content_block {
                     // Text arrives through deltas.
@@ -451,7 +480,20 @@ impl<'id> MessagesDecoder<'id> {
                         self.thinking
                             .insert(index, (part, String::new(), signature.unwrap_or_default()));
                     }
-                    Content::RedactedThinking { .. } => {}
+                    // Redacted thinking arrives whole in its start.
+                    Content::RedactedThinking { data } => {
+                        if let Some(block) = self.blocks.remove(&index) {
+                            let part = out.reasoning();
+                            out.reasoning_native(&part, block.finish()?, Some(round_trips));
+                            out.close_reasoning(
+                                part,
+                                Seal {
+                                    restated: Some(crate::message::Reasoning::redacted(data)),
+                                    ..Seal::default()
+                                },
+                            );
+                        }
+                    }
                     // Everything else has no canonical form: hosted-tool calls
                     // and results, compaction, and block types added later.
                     Content::Native(_)
@@ -511,21 +553,6 @@ impl<'id> MessagesDecoder<'id> {
                         out.text_native(&part, item, Some(round_trips));
                     }
                     out.close_text(part);
-                    return Ok(());
-                }
-
-                if let Some(item) = item
-                    && let Ok(Content::RedactedThinking { data }) = item.decode::<Content>()
-                {
-                    let part = out.reasoning();
-                    out.reasoning_native(&part, item, Some(round_trips));
-                    out.close_reasoning(
-                        part,
-                        Seal {
-                            restated: Some(crate::message::Reasoning::redacted(data)),
-                            ..Seal::default()
-                        },
-                    );
                 }
             }
             StreamingEvent::Message { .. }
@@ -534,6 +561,32 @@ impl<'id> MessagesDecoder<'id> {
             | StreamingEvent::MessageStop
             | StreamingEvent::Ping
             | StreamingEvent::Error { .. } => {}
+        }
+        Ok(())
+    }
+
+    /// The provider items of the blocks the provider never stopped, put on
+    /// their parts before the reply's end closes them.
+    fn attach_open_blocks(&mut self, out: &mut Out<'id, Completion>) -> Result<(), ProviderError> {
+        let mut open: Vec<usize> = self.blocks.keys().copied().collect();
+        open.sort_unstable();
+        for index in open {
+            let Some(block) = self.blocks.remove(&index) else {
+                continue;
+            };
+            // Input that never completed has no item to keep.
+            let Ok(item) = block.finish() else {
+                continue;
+            };
+            if self.native_only.remove(&index) {
+                out.native(item);
+            } else if let Some((part, _, _)) = self.thinking.get(&index) {
+                out.reasoning_native(part, item, Some(round_trips));
+            } else if self.current_tool_call == Some(index) {
+                out.pending_native(index, item, Some(round_trips));
+            } else if let Some(part) = self.texts.get(&index) {
+                out.text_native(part, item, Some(round_trips));
+            }
         }
         Ok(())
     }
@@ -728,6 +781,7 @@ impl<'id> Decoder<'id, Completion> for MessagesDecoder<'id> {
                     model: self.response_model.clone(),
                 };
                 out.raw(serde_json::to_value(&native)?);
+                self.attach_open_blocks(&mut out)?;
                 Ok(out.end(finish_of(&native)))
             }
             StreamingEvent::Error { raw, .. } => {

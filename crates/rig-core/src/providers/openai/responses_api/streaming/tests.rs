@@ -933,12 +933,11 @@ fn reasoning_text_delta_emits_reasoning_delta() {
     );
 }
 
+/// A hosted-tool item (`web_search_call`) arriving on
+/// `response.output_item.done` is kept in the reply's choice as a provider
+/// item, verbatim and in place, as the unary decode keeps it.
 #[test]
-fn unknown_output_item_surfaces_as_raw_unknown_choice() {
-    // A hosted-tool item (web_search_call) arriving on
-    // `response.output_item.done` reaches stream consumers as an unmodeled
-    // item carrying the verbatim item, mirroring how the non-streaming
-    // decode preserves it on `CompletionResponse.output`.
+fn unknown_output_item_is_kept_as_a_provider_item() {
     let item = json!({
         "type": "web_search_call",
         "id": "ws_001",
@@ -955,14 +954,23 @@ fn unknown_output_item_surfaces_as_raw_unknown_choice() {
         })]),
         None,
     );
-    let unknown = decoded.items.iter().find_map(|event| match event {
-        Ok(Item::Unknown(value)) => Some(value),
-        _ => None,
-    });
-    assert_eq!(
-        unknown,
-        Some(&item.into()),
-        "the raw web_search_call item should reach the consumer verbatim",
+    let natives: Vec<serde_json::Value> = decoded
+        .ended()
+        .into_iter()
+        .filter_map(|content| match content {
+            AssistantContent::Native(native) => native
+                .open_native(super::super::DIALECT, &[native.issuer().clone()])
+                .map(|native| native.item().clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(natives, [item]);
+    assert!(
+        !decoded
+            .items
+            .iter()
+            .any(|event| matches!(event, Ok(Item::Unknown(_)))),
+        "a kept item is not also an unmodeled payload"
     );
 }
 
@@ -2227,14 +2235,28 @@ fn ended_texts(decoded: &Decoded<Completion>) -> Vec<crate::message::Text> {
         .collect()
 }
 
-/// The Responses-owned annotations a text block carries.
-fn annotations_of(text: &crate::message::Text) -> Option<&serde_json::Value> {
-    text.additional_params
-        .as_ref()
-        .and_then(|params| {
-            params.wire_extras(crate::providers::openai::responses_api::OPENAI_RESPONSES_EXTRAS_KEY)
-        })
-        .and_then(|extras| extras.get("annotations"))
+/// The message item a text block keeps as its provider item.
+fn item_of(text: &crate::message::Text) -> Option<&serde_json::Value> {
+    let native = text.native.as_ref()?;
+    native
+        .open_native(
+            crate::providers::openai::responses_api::DIALECT,
+            &[native.issuer().clone()],
+        )
+        .map(crate::message::NativeItem::item)
+}
+
+/// The annotations of every content part of a text block's message item,
+/// in order, when there are any.
+fn annotations_of(text: &crate::message::Text) -> Option<serde_json::Value> {
+    let annotations: Vec<serde_json::Value> = item_of(text)?["content"]
+        .as_array()?
+        .iter()
+        .filter_map(|part| part["annotations"].as_array())
+        .flatten()
+        .cloned()
+        .collect();
+    (!annotations.is_empty()).then_some(serde_json::Value::Array(annotations))
 }
 
 /// The streamed text part carries the annotations its `output_item.done`
@@ -2262,7 +2284,7 @@ fn output_item_done_attaches_annotations_to_the_streamed_text() {
     let texts = ended_texts(&decoded);
     assert_eq!(texts.len(), 1, "{texts:?}");
     assert_eq!(texts[0].text, "Rust is fast.");
-    assert_eq!(annotations_of(&texts[0]), Some(&json!([citation])));
+    assert_eq!(annotations_of(&texts[0]), Some(json!([citation])));
     let response = decoded.outcome.expect("the stream decodes");
     assert_eq!(choice_text_parts(&response), ["Rust is fast."]);
 }
@@ -2292,7 +2314,7 @@ fn terminal_supplies_annotations_no_item_done_covered() {
         texts[0].text, "Rust is fast.",
         "the terminal restates no text"
     );
-    assert_eq!(annotations_of(&texts[0]), Some(&json!([citation])));
+    assert_eq!(annotations_of(&texts[0]), Some(json!([citation])));
 }
 
 /// Every snapshot restates the same annotations: `content_part.done`,
@@ -2352,7 +2374,7 @@ fn repeated_snapshots_attach_annotations_once() {
         assert_eq!(texts.len(), 1, "{texts:?}");
         assert_eq!(
             annotations_of(&texts[0]),
-            Some(&json!([first, second])),
+            Some(json!([first, second])),
             "with_added = {with_added}"
         );
     }
@@ -2374,7 +2396,7 @@ fn empty_annotations_add_no_params() {
     );
     let texts = ended_texts(&decoded);
     assert_eq!(texts.len(), 1, "{texts:?}");
-    assert_eq!(texts[0].additional_params, None);
+    assert_eq!(texts[0].native, None);
 }
 
 /// A message interleaved with a function call keeps its annotations, and
@@ -2416,7 +2438,7 @@ fn annotations_attach_beside_an_interleaved_tool_call() {
     );
     let texts = ended_texts(&decoded);
     assert_eq!(texts.len(), 1, "{texts:?}");
-    assert_eq!(annotations_of(&texts[0]), Some(&json!([citation])));
+    assert_eq!(annotations_of(&texts[0]), Some(json!([citation])));
     let response = decoded.outcome.expect("the stream decodes");
     let calls = calls_of(&response);
     assert_eq!(calls.len(), 1, "{calls:?}");
@@ -2466,7 +2488,7 @@ fn streamed_and_unary_text_carry_equal_extras() {
     assert_eq!(unary_texts.len(), 1, "{unary_texts:?}");
     assert_eq!(
         annotations_of(&unary_texts[0]),
-        Some(&json!([first, second]))
+        Some(json!([first, second]))
     );
     for (label, decoded) in [("streamed", &streamed), ("snapshot only", &snapshot_only)] {
         let texts = ended_texts(decoded);
@@ -2498,11 +2520,17 @@ fn item_added(output_index: u64, sequence: u64, mut item: serde_json::Value) -> 
     })
 }
 
-/// The Responses-owned extras a text block carries.
-fn own_extras(text: &crate::message::Text) -> Option<&serde_json::Map<String, serde_json::Value>> {
-    text.additional_params.as_ref().and_then(|params| {
-        params.wire_extras(crate::providers::openai::responses_api::OPENAI_RESPONSES_EXTRAS_KEY)
-    })
+/// The `phase` of a text block's message item.
+fn phase_of(text: &crate::message::Text) -> Option<&str> {
+    item_of(text)?["phase"].as_str()
+}
+
+/// The `phase` and id of a text block's message item.
+fn phase_and_id(text: &crate::message::Text) -> (Option<&str>, Option<&str>) {
+    (
+        phase_of(text),
+        item_of(text).and_then(|item| item["id"].as_str()),
+    )
 }
 
 /// The unary body whose `output` is `output`, decoded as a buffered replay.
@@ -2543,11 +2571,7 @@ fn streamed_text_carries_its_message_phase_from_any_restatement() {
         let texts = ended_texts(&decoded);
         assert_eq!(texts.len(), 1, "{label}: {texts:?}");
         assert_eq!(texts[0].text, "Hello.", "{label}");
-        assert_eq!(
-            own_extras(&texts[0]),
-            json!({ "phase": "commentary" }).as_object(),
-            "{label}"
-        );
+        assert_eq!(phase_of(&texts[0]), Some("commentary"), "{label}");
     }
 }
 
@@ -2571,7 +2595,7 @@ fn null_and_absent_phase_add_no_params() {
         for (label, decoded) in [("streamed", &streamed), ("unary", &unary)] {
             let texts = ended_texts(decoded);
             assert_eq!(texts.len(), 1, "{label} {phase}: {texts:?}");
-            assert_eq!(texts[0].additional_params, None, "{label} {phase}");
+            assert_eq!(texts[0].native, None, "{label} {phase}");
         }
     }
 }
@@ -2619,10 +2643,7 @@ fn phase_attaches_beside_interleaved_reasoning_and_tool_call() {
     let texts = ended_texts(&decoded);
     assert_eq!(texts.len(), 1, "{texts:?}");
     assert_eq!(texts[0].text, "Checking the weather.");
-    assert_eq!(
-        own_extras(&texts[0]),
-        json!({ "phase": "commentary" }).as_object()
-    );
+    assert_eq!(phase_of(&texts[0]), Some("commentary"));
     let response = decoded.outcome.expect("the stream decodes");
     let calls = calls_of(&response);
     assert_eq!(calls.len(), 1, "{calls:?}");
@@ -2661,21 +2682,15 @@ fn several_messages_each_keep_their_phase_and_id() {
     let unary = unary_of(json!([commentary, answer]));
     for (label, decoded) in [("streamed", &streamed), ("unary", &unary)] {
         let texts = ended_texts(decoded);
-        let facts: Vec<(&str, Option<&serde_json::Map<String, serde_json::Value>>)> = texts
+        let facts: Vec<(&str, (Option<&str>, Option<&str>))> = texts
             .iter()
-            .map(|text| (text.text.as_str(), own_extras(text)))
+            .map(|text| (text.text.as_str(), phase_and_id(text)))
             .collect();
         assert_eq!(
             facts,
             [
-                (
-                    "Let me think.",
-                    json!({ "phase": "commentary", "message_id": "msg_1" }).as_object()
-                ),
-                (
-                    "Apple.",
-                    json!({ "phase": "final_answer", "message_id": "msg_2" }).as_object()
-                ),
+                ("Let me think.", (Some("commentary"), Some("msg_1"))),
+                ("Apple.", (Some("final_answer"), Some("msg_2"))),
             ],
             "{label}"
         );
@@ -2700,10 +2715,7 @@ fn phase_follows_the_output_slot_when_delta_ids_differ() {
     );
     let texts = ended_texts(&decoded);
     assert_eq!(texts.len(), 1, "{texts:?}");
-    assert_eq!(
-        own_extras(&texts[0]),
-        json!({ "phase": "final_answer" }).as_object()
-    );
+    assert_eq!(phase_of(&texts[0]), Some("final_answer"));
 }
 
 /// For equal content the streamed, snapshot-only and unary text blocks
@@ -2733,10 +2745,8 @@ fn streamed_and_unary_text_carry_equal_phase() {
     );
     let unary_texts = ended_texts(&unary_of(json!([message])));
     assert_eq!(unary_texts.len(), 1, "{unary_texts:?}");
-    assert_eq!(
-        own_extras(&unary_texts[0]),
-        json!({ "annotations": [citation], "phase": "final_answer" }).as_object()
-    );
+    assert_eq!(annotations_of(&unary_texts[0]), Some(json!([citation])));
+    assert_eq!(phase_of(&unary_texts[0]), Some("final_answer"));
     for (label, decoded) in [("streamed", &streamed), ("snapshot only", &snapshot_only)] {
         assert_eq!(ended_texts(decoded), unary_texts, "{label}");
     }
@@ -2775,10 +2785,7 @@ fn terminal_phase_follows_the_item_id_when_positions_shift() {
     let phases: Vec<(String, Option<String>)> = ended_texts(&decoded)
         .iter()
         .map(|text| {
-            let phase = own_extras(text)
-                .and_then(|extras| extras.get("phase"))
-                .and_then(serde_json::Value::as_str)
-                .map(str::to_owned);
+            let phase = phase_of(text).map(str::to_owned);
             (text.text.clone(), phase)
         })
         .collect();
@@ -2828,12 +2835,11 @@ fn a_gateway_naming_each_event_differently_replays_each_message_once() {
     let response = decoded.outcome.expect("the stream decodes");
     assert_eq!(response.message_id.as_deref(), Some("done_2"));
     let history = response.message().expect("the reply has content");
-    let items: Vec<serde_json::Value> =
-        Vec::<crate::providers::openai::responses_api::InputItem>::try_from(history)
-            .expect("history converts")
-            .iter()
-            .map(|item| serde_json::to_value(item).expect("item serializes"))
-            .collect();
+    let items: Vec<serde_json::Value> = super::super::input_items(history, &["copilot".into()])
+        .expect("history converts")
+        .iter()
+        .map(|item| serde_json::to_value(item).expect("item serializes"))
+        .collect();
     let replayed: Vec<(&str, &str, String)> = items
         .iter()
         .map(|item| {
@@ -2893,21 +2899,15 @@ fn repaired_indices_keep_each_message_phase_by_id() {
             None,
         );
         let texts = ended_texts(&decoded);
-        let facts: Vec<(&str, Option<&serde_json::Map<String, serde_json::Value>>)> = texts
+        let facts: Vec<(&str, (Option<&str>, Option<&str>))> = texts
             .iter()
-            .map(|text| (text.text.as_str(), own_extras(text)))
+            .map(|text| (text.text.as_str(), phase_and_id(text)))
             .collect();
         assert_eq!(
             facts,
             [
-                (
-                    "Let me think.",
-                    json!({ "phase": "commentary", "message_id": "msg_1" }).as_object()
-                ),
-                (
-                    "Apple.",
-                    json!({ "phase": "final_answer", "message_id": "msg_2" }).as_object()
-                ),
+                ("Let me think.", (Some("commentary"), Some("msg_1"))),
+                ("Apple.", (Some("final_answer"), Some("msg_2"))),
             ],
             "with_added = {with_added}"
         );
@@ -2924,10 +2924,7 @@ fn a_text_beside_an_empty_message_item_keeps_its_own_id() {
     let decoded = unary_of(json!([commentary, empty]));
     let texts = ended_texts(&decoded);
     assert_eq!(texts.len(), 1, "{texts:?}");
-    assert_eq!(
-        own_extras(&texts[0]),
-        json!({ "phase": "commentary", "message_id": "msg_1" }).as_object()
-    );
+    assert_eq!(phase_and_id(&texts[0]), (Some("commentary"), Some("msg_1")));
     let response = decoded.outcome.expect("the body decodes");
     assert_eq!(response.message_id.as_deref(), Some("msg_2"));
 }

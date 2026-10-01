@@ -4,6 +4,7 @@ use crate::tool::ToolOutput;
 
 fn call(id: &str) -> AssistantContent {
     AssistantContent::ToolCall(ToolCall {
+        native: None,
         id: crate::message::CallId::from_wire(id),
         function: ToolFunction {
             name: crate::message::ToolName::new("add").expect("tool name"),

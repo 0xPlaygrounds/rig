@@ -49,106 +49,69 @@ fn wire_request(
 
 #[test]
 fn output_text_extras_survive_generic_conversion_and_replay() {
-    // Ingest capture is unconditional: the wire's sibling keys ride the
-    // generic block under this wire's params key. Replay is gated: only
-    // this wire's serializer reads them back, value-equal.
-    let mut extras = Map::new();
-    extras.insert(
-        "annotations".to_string(),
-        json!([{"type": "url_citation", "url": "https://example.com"}]),
-    );
-    let wire = OutputText {
-        text: "cited".to_string(),
-        extras: extras.clone(),
+    // Ingest keeps the message item the text came from whenever the text
+    // alone cannot restate it. Replay sends the item back as stated, to
+    // this dialect only.
+    let message = json!({
+        "type": "message", "id": "msg_1", "role": "assistant", "status": "completed",
+        "content": [{
+            "type": "output_text", "text": "cited",
+            "annotations": [{"type": "url_citation", "url": "https://example.com"}],
+        }],
+    });
+    let output: Output = serde_json::from_value(message.clone()).expect("the item decodes");
+    let choice = folded_choice(vec![output]);
+    let [completion::AssistantContent::Text(text)] = choice.as_slice() else {
+        panic!("expected one text block, got: {choice:?}");
     };
-    let generic: completion::AssistantContent = AssistantContent::OutputText(wire).into();
-    let completion::AssistantContent::Text(text) = &generic else {
-        panic!("expected a text block, got: {generic:?}");
+    assert_eq!(text.text, "cited");
+    assert_eq!(text.additional_params, None);
+    let native = text
+        .native
+        .as_ref()
+        .expect("the message item rides the text");
+    assert_eq!(native.value().item(), &message);
+
+    let history = message::Message::Assistant {
+        id: Some("msg_1".to_owned()),
+        content: choice.clone(),
     };
+    let items = input_items(history.clone(), &["openai".into()]).expect("convert");
     assert_eq!(
-        text.additional_params
-            .as_ref()
-            .and_then(|params| params.get(OPENAI_RESPONSES_EXTRAS_KEY)),
-        Some(&Value::Object(extras.clone()))
+        serde_json::to_value(&items).expect("serialize"),
+        json!([message]),
+        "the item replays as stated"
     );
 
-    let replayed = OutputText::from_message_text(text.text.clone(), text.additional_params.clone());
-    assert_eq!(replayed.text, "cited");
-    assert_eq!(replayed.extras, extras);
+    // Another service's turn replays canonically: its item cannot reach
+    // this request.
+    let items = input_items(history, &["xai".into()]).expect("convert");
+    assert_eq!(
+        serde_json::to_value(&items).expect("serialize"),
+        json!([{"type": "message", "id": "msg_1", "role": "assistant", "status": "completed",
+                "content": [{"type": "output_text", "text": "cited"}]}])
+    );
 
-    // Extras ride a serde flatten, so the reserved keys the named field
-    // and the tag own must never replay from history — a duplicate JSON
-    // key would let persisted data shadow the block's real text or tag.
-    let hostile = message::AdditionalParams::try_from_value(json!({
-        OPENAI_RESPONSES_EXTRAS_KEY: {
-            "text": "evil",
-            "type": "evil_type",
-            "annotations": ["kept"],
-        }
-    }))
-    .expect("object params");
-    let replayed = OutputText::from_message_text("real", hostile);
-    assert_eq!(replayed.text, "real");
-    assert!(replayed.extras.get("text").is_none());
-    assert!(replayed.extras.get("type").is_none());
-    assert_eq!(replayed.extras.get("annotations"), Some(&json!(["kept"])));
-    let wire = serde_json::to_value(&replayed).expect("serialize");
-    assert_eq!(wire.get("text"), Some(&json!("real")));
-
-    // Replay honors only this wire's extras: an empty text block
-    // annotated with a *foreign* wire's extras (the shape anthropic
-    // ingest writes for raw server-tool content) produces no Responses
-    // item at all — its extras cannot reach this wire, and an empty
-    // assistant item the wire never sent risks a rejection — while an
-    // `openai_responses`-annotated empty block still replays.
+    // An empty text block carrying another dialect's item produces no
+    // Responses item at all.
     let foreign = message::Message::Assistant {
         id: None,
         content: vec![completion::AssistantContent::Text(message::Text {
-            text: String::new(),
-            additional_params: message::AdditionalParams::try_from_value(json!({
-                "anthropic_content": {"type": "server_tool_use", "id": "srv_1"}
-            }))
-            .expect("object params"),
+            native: Some(message::Sealed::new(
+                message::Issuer::from("anthropic"),
+                message::NativeItem::new(
+                    "anthropic.messages",
+                    json!({"type": "server_tool_use", "id": "srv_1"}),
+                ),
+            )),
+            ..message::Text::new("")
         })],
     };
-    let items: Vec<InputItem> = foreign.try_into().expect("convert");
+    let items: Vec<InputItem> =
+        input_items(foreign, &["anthropic".into(), "openai".into()]).expect("convert");
     assert!(
         items.is_empty(),
         "foreign-annotated empty block must produce no Responses item: {items:?}"
-    );
-
-    let own_annotated_empty = |id: Option<String>| message::Message::Assistant {
-        id,
-        content: vec![completion::AssistantContent::Text(message::Text {
-            text: String::new(),
-            additional_params: message::AdditionalParams::try_from_value(json!({
-                OPENAI_RESPONSES_EXTRAS_KEY: {"annotations": ["kept"]}
-            }))
-            .expect("object params"),
-        })],
-    };
-    // With a message id, the Assistant form carries the extras.
-    let items: Vec<InputItem> = own_annotated_empty(Some("msg_1".to_string()))
-        .try_into()
-        .expect("convert");
-    assert_eq!(
-        items.len(),
-        1,
-        "own-wire-annotated empty block must replay when deliverable: {items:?}"
-    );
-    let serialized = serde_json::to_value(&items).expect("serialize");
-    assert_eq!(
-        serialized[0]["content"][0]["annotations"],
-        json!(["kept"]),
-        "the replayed item must carry the extras: {serialized}"
-    );
-    // Without an id the only form is the bare-string `AssistantInput`,
-    // which cannot carry extras — an empty block is skipped rather than
-    // sent as a content-free item with its extras dropped.
-    let items: Vec<InputItem> = own_annotated_empty(None).try_into().expect("convert");
-    assert!(
-        items.is_empty(),
-        "undeliverable annotated empty block must be skipped: {items:?}"
     );
 
     // A bare block stays bare in both directions.
@@ -158,12 +121,7 @@ fn output_text_extras_survive_generic_conversion_and_replay() {
         panic!("expected a text block, got: {bare:?}");
     };
     assert_eq!(text.additional_params, None);
-    assert!(
-        OutputText::from_message_text("plain", None)
-            .extras
-            .is_empty(),
-        "no params, no extras"
-    );
+    assert_eq!(text.native, None);
 }
 
 fn test_document(id: &str, text: &str) -> crate::completion::Document {
@@ -297,6 +255,7 @@ async fn cross_provider_minted_reasoning_ids_are_not_serialized_upstream() {
             id: None,
             content: vec![message::AssistantContent::Reasoning(
                 message::Reasoning {
+                    native: None,
                     id: Some("rs_0123".to_string()),
                     content: vec![message::ReasoningContent::Text {
                         text: "real item".to_string(),
@@ -2031,6 +1990,7 @@ fn structured_reasoning_with_id_still_converts_to_input_item() {
         id: Some("msg_123".to_string()),
         content: vec![message::AssistantContent::Reasoning(
             message::Reasoning {
+                native: None,
                 id: Some("rs_123".to_string()),
                 content: vec![message::ReasoningContent::Summary(
                     "structured summary".to_string(),
@@ -2058,6 +2018,7 @@ fn assistant_reasoning_text_tool_call_convert_in_responses_replay_order() {
         content: vec![
             message::AssistantContent::Reasoning(
                 message::Reasoning {
+                    native: None,
                     id: Some("rs_123".to_string()),
                     content: vec![message::ReasoningContent::Summary(
                         "structured summary".to_string(),
@@ -2780,6 +2741,7 @@ fn a_signature_only_reasoning_item_round_trips_without_text() {
 #[test]
 fn the_last_text_signature_is_the_items() {
     let reasoning = crate::message::Reasoning {
+        native: None,
         id: Some("rs_1".to_owned()),
         content: vec![
             crate::message::ReasoningContent::Text {

@@ -37,6 +37,21 @@ fn fold_reply(body: &serde_json::Value) -> Result<completion::CompletionResponse
     )
 }
 
+/// A Messages provider item issued by Anthropic, as the decoder keeps it.
+fn anthropic_native(item: serde_json::Value) -> message::AssistantContent {
+    message::AssistantContent::Native(message::Sealed::new(
+        message::Issuer::from_static("anthropic"),
+        message::NativeItem::new(DIALECT, item),
+    ))
+}
+
+/// `message` on the Messages wire, as a request replaying Anthropic's
+/// reasoning and provider items converts it.
+fn replayed(message: message::Message) -> Message {
+    Message::from_message(message, &[message::Issuer::from_static("anthropic")])
+        .expect("the message converts")
+}
+
 #[test]
 fn current_model_default_max_tokens_match_anthropic_limits() {
     assert_eq!(
@@ -680,38 +695,22 @@ fn opus_4_8_preserves_system_message_after_assistant_server_tool_result() {
             message::Message::Assistant {
                 id: None,
                 content: vec![
-                    message::AssistantContent::Text(message::Text {
-                        text: String::new(),
-                        additional_params: crate::message::AdditionalParams::try_from_value(
-                            json!({
-                                ANTHROPIC_RAW_CONTENT_KEY: {
-                                    "type": "server_tool_use",
-                                    "id": "srvtoolu_01",
-                                    "name": "web_search",
-                                    "input": {
-                                        "query": "clear daytime sky color"
-                                    }
-                                }
-                            }),
-                        )
-                        .expect("object params"),
-                    }),
-                    message::AssistantContent::Text(message::Text {
-                        text: String::new(),
-                        additional_params: crate::message::AdditionalParams::try_from_value(
-                            json!({
-                                ANTHROPIC_RAW_CONTENT_KEY: {
-                                    "type": "web_search_tool_result",
-                                    "tool_use_id": "srvtoolu_01",
-                                    "content": {
-                                        "type": "web_search_tool_result_error",
-                                        "error_code": "unavailable"
-                                    }
-                                }
-                            }),
-                        )
-                        .expect("object params"),
-                    }),
+                    anthropic_native(json!({
+                        "type": "server_tool_use",
+                        "id": "srvtoolu_01",
+                        "name": "web_search",
+                        "input": {
+                            "query": "clear daytime sky color"
+                        }
+                    })),
+                    anthropic_native(json!({
+                        "type": "web_search_tool_result",
+                        "tool_use_id": "srvtoolu_01",
+                        "content": {
+                            "type": "web_search_tool_result_error",
+                            "error_code": "unavailable"
+                        }
+                    })),
                 ],
             },
             message::Message::System {
@@ -751,21 +750,26 @@ fn opus_4_8_preserves_system_message_after_assistant_server_tool_result() {
 
 #[test]
 fn foreign_annotated_empty_text_produces_no_anthropic_block() {
-    // The Responses ingest mints empty text blocks whose params carry
-    // that wire's extras; the agent deliberately keeps them in history.
-    // Replayed here, they must vanish from the request — the API
-    // rejects empty text blocks and foreign extras cannot reach this
-    // wire — while sibling content converts unaffected.
+    // A Responses message item rides an empty text block as its provider
+    // item. Replayed here, the block must vanish from the request: the API
+    // rejects empty text blocks and another dialect's item cannot reach
+    // this wire. Sibling content converts unaffected.
     let foreign_annotated_empty = message::AssistantContent::Text(message::Text {
-        text: String::new(),
-        additional_params: message::AdditionalParams::try_from_value(json!({
-            "openai_responses": {"annotations": [{"type": "url_citation"}]}
-        }))
-        .expect("object params"),
+        native: Some(message::Sealed::new(
+            message::Issuer::from_static("openai"),
+            message::NativeItem::new(
+                "openai.responses",
+                json!({"type": "message", "content": [{"type": "output_text", "text": ""}]}),
+            ),
+        )),
+        ..message::Text::new("")
     });
     assert_eq!(
-        anthropic_content_from_assistant_content(foreign_annotated_empty.clone(), &[])
-            .expect("conversion succeeds"),
+        anthropic_content_from_assistant_content(
+            foreign_annotated_empty.clone(),
+            &[message::Issuer::from_static("openai")]
+        )
+        .expect("conversion succeeds"),
         Vec::new(),
         "a foreign-annotated empty block must produce no Anthropic content"
     );
@@ -791,20 +795,14 @@ fn opus_4_8_preserves_system_message_after_assistant_server_tool_use() {
         vec![
             message::Message::Assistant {
                 id: None,
-                content: vec![message::AssistantContent::Text(message::Text {
-                    text: String::new(),
-                    additional_params: crate::message::AdditionalParams::try_from_value(json!({
-                        ANTHROPIC_RAW_CONTENT_KEY: {
-                            "type": "server_tool_use",
-                            "id": "srvtoolu_01",
-                            "name": "web_search",
-                            "input": {
-                                "query": "clear daytime sky color"
-                            }
-                        }
-                    }))
-                    .expect("object params"),
-                })],
+                content: vec![anthropic_native(json!({
+                    "type": "server_tool_use",
+                    "id": "srvtoolu_01",
+                    "name": "web_search",
+                    "input": {
+                        "query": "clear daytime sky color"
+                    }
+                }))],
             },
             message::Message::System {
                 content: "For the rest of this conversation, answer in Spanish.".to_string(),
@@ -2577,6 +2575,7 @@ fn test_message_with_plaintext_document_deserialization() {
 #[test]
 fn test_assistant_reasoning_multiblock_to_anthropic_content() {
     let reasoning = message::Reasoning {
+        native: None,
         id: None,
         content: vec![
             message::ReasoningContent::Text {
@@ -2629,6 +2628,7 @@ fn test_assistant_reasoning_multiblock_to_anthropic_content() {
 #[test]
 fn test_assistant_encrypted_reasoning_maps_to_redacted_thinking() {
     let reasoning = message::Reasoning {
+        native: None,
         id: None,
         content: vec![message::ReasoningContent::Encrypted(
             "ciphertext".to_string(),
@@ -3087,21 +3087,19 @@ fn web_search_response_preserves_raw_blocks_and_citations() {
     assert_eq!(answer_text, "Claude Shannon was born on April 30, 1916.");
 
     let items = converted.choice.iter().collect::<Vec<_>>();
-    let message::AssistantContent::Text(server_tool_use) = items[0] else {
-        panic!("expected raw server_tool_use metadata");
+    let message::AssistantContent::Native(server_tool_use) = items[0] else {
+        panic!("expected the server_tool_use provider item");
     };
-    assert_eq!(server_tool_use.text, "");
-    assert_eq!(
-        server_tool_use.additional_params.as_ref().unwrap()[ANTHROPIC_RAW_CONTENT_KEY]["type"],
-        "server_tool_use"
-    );
+    let server_tool_use = server_tool_use
+        .open_native(DIALECT, &[message::Issuer::from_static("anthropic")])
+        .expect("an Anthropic item");
+    assert_eq!(server_tool_use.kind(), Some("server_tool_use"));
 
-    let message::AssistantContent::Text(web_search_result) = items[1] else {
-        panic!("expected raw web_search_tool_result metadata");
+    let message::AssistantContent::Native(web_search_result) = items[1] else {
+        panic!("expected the web_search_tool_result provider item");
     };
     assert_eq!(
-        web_search_result.additional_params.as_ref().unwrap()[ANTHROPIC_RAW_CONTENT_KEY]["content"]
-            [0]["encrypted_content"],
+        web_search_result.value().item()["content"][0]["encrypted_content"],
         "encrypted-content"
     );
 
@@ -3115,29 +3113,14 @@ fn web_search_response_preserves_raw_blocks_and_citations() {
             if citation.encrypted_index == "encrypted-index"
     ));
 
-    let round_trip: Message = message::Message::Assistant {
+    let round_trip = replayed(message::Message::Assistant {
         id: converted.message_id.clone(),
         content: converted.choice,
-    }
-    .try_into()
-    .unwrap();
+    });
 
-    let round_trip_items = round_trip.content.iter().collect::<Vec<_>>();
-    assert!(matches!(
-        round_trip_items.first(),
-        Some(Content::ServerToolUse { id, name, input })
-            if id == "srvtoolu_01"
-                && name == "web_search"
-                && input["query"] == "claude shannon birth date"
-    ));
-    assert!(matches!(
-        round_trip_items.get(1),
-        Some(Content::WebSearchToolResult {
-            tool_use_id,
-            content
-        }) if tool_use_id == "srvtoolu_01"
-            && content[0]["encrypted_content"] == "encrypted-content"
-    ));
+    // Every block replays exactly as the reply stated it.
+    let replayed_blocks = serde_json::to_value(&round_trip.content).unwrap();
+    assert_eq!(replayed_blocks, value["content"]);
 }
 
 #[test]
@@ -3166,12 +3149,11 @@ fn web_search_tool_result_error_object_is_preserved_raw() {
         serde_json::from_value(value.clone()).expect("the body parses into the wire type");
     assert_eq!(typed.content.len(), 1);
     let converted = fold_reply(&value).expect("the reply folds");
-    let Some(message::AssistantContent::Text(web_search_result)) = converted.choice.first() else {
-        panic!("expected raw web_search_tool_result metadata");
+    let Some(message::AssistantContent::Native(web_search_result)) = converted.choice.first()
+    else {
+        panic!("expected the web_search_tool_result provider item");
     };
-
-    let raw_content =
-        &web_search_result.additional_params.as_ref().unwrap()[ANTHROPIC_RAW_CONTENT_KEY];
+    let raw_content = web_search_result.value().item();
     assert_eq!(raw_content["type"], "web_search_tool_result");
     assert_eq!(raw_content["content"]["error_code"], "max_uses_exceeded");
     assert_eq!(
@@ -3179,68 +3161,54 @@ fn web_search_tool_result_error_object_is_preserved_raw() {
         "web_search_tool_result_error"
     );
 
-    let round_trip: Message = message::Message::Assistant {
+    let round_trip = replayed(message::Message::Assistant {
         id: converted.message_id,
         content: converted.choice,
-    }
-    .try_into()
-    .unwrap();
-
-    assert!(matches!(
-        round_trip.content.first(),
-        Some(Content::WebSearchToolResult {
-            tool_use_id,
-            content
-        }) if tool_use_id == "srvtoolu_01"
-            && content["error_code"] == "max_uses_exceeded"
-    ));
+    });
+    assert_eq!(
+        serde_json::to_value(&round_trip.content).unwrap(),
+        value["content"]
+    );
 }
 
 #[test]
 fn code_execution_tool_result_variants_deserialize() {
-    let normal: Content = serde_json::from_value(json!({
-        "type": "code_execution_tool_result",
-        "tool_use_id": "srvtoolu_normal",
-        "content": {
-            "type": "code_execution_result",
-            "return_code": 0,
-            "stdout": "42\n",
-            "stderr": "",
-            "content": []
-        }
-    }))
-    .unwrap();
-    assert!(matches!(
-        normal,
-        Content::CodeExecutionToolResult {
-            ref tool_use_id,
-            ref content
-        } if tool_use_id == "srvtoolu_normal"
-            && content["type"] == "code_execution_result"
-            && content["stdout"] == "42\n"
-    ));
+    for block in [
+        json!({
+            "type": "code_execution_tool_result",
+            "tool_use_id": "srvtoolu_normal",
+            "content": {
+                "type": "code_execution_result",
+                "return_code": 0,
+                "stdout": "42\n",
+                "stderr": "",
+                "content": []
+            }
+        }),
+        json!({
+            "type": "code_execution_tool_result",
+            "tool_use_id": "srvtoolu_encrypted",
+            "content": {
+                "type": "encrypted_code_execution_result",
+                "return_code": 1,
+                "stderr": "failure",
+                "encrypted_stdout": "encrypted-output",
+                "content": []
+            }
+        }),
+    ] {
+        let parsed: Content = serde_json::from_value(block.clone()).unwrap();
+        assert_eq!(parsed, Content::Native(block.clone()));
+        assert_eq!(serde_json::to_value(&parsed).unwrap(), block);
+    }
+}
 
-    let encrypted: Content = serde_json::from_value(json!({
-        "type": "code_execution_tool_result",
-        "tool_use_id": "srvtoolu_encrypted",
-        "content": {
-            "type": "encrypted_code_execution_result",
-            "return_code": 1,
-            "stderr": "failure",
-            "encrypted_stdout": "encrypted-output",
-            "content": []
-        }
-    }))
-    .unwrap();
-    assert!(matches!(
-        encrypted,
-        Content::CodeExecutionToolResult {
-            ref tool_use_id,
-            ref content
-        } if tool_use_id == "srvtoolu_encrypted"
-            && content["type"] == "encrypted_code_execution_result"
-            && content["encrypted_stdout"] == "encrypted-output"
-    ));
+/// A modelled block type that is malformed still fails, rather than
+/// passing as an unmodelled one.
+#[test]
+fn malformed_modelled_blocks_still_fail() {
+    assert!(serde_json::from_value::<Content>(json!({"type": "tool_use", "id": "x"})).is_err());
+    assert!(serde_json::from_value::<Content>(json!({"type": "brand_new_block"})).is_ok());
 }
 
 #[test]
@@ -3273,30 +3241,20 @@ fn code_execution_tool_result_is_preserved_and_round_trips() {
         serde_json::from_value(value.clone()).expect("the body parses into the wire type");
     assert_eq!(typed.content.len(), 1);
     let converted = fold_reply(&value).expect("the reply folds");
-    let Some(message::AssistantContent::Text(code_execution_result)) = converted.choice.first()
+    let Some(message::AssistantContent::Native(code_execution_result)) = converted.choice.first()
     else {
-        panic!("expected raw code_execution_tool_result metadata");
+        panic!("expected the code_execution_tool_result provider item");
     };
-    assert_eq!(
-        code_execution_result.additional_params.as_ref().unwrap()[ANTHROPIC_RAW_CONTENT_KEY],
-        raw_block
-    );
+    assert_eq!(code_execution_result.value().item(), &raw_block);
 
-    let round_trip: Message = message::Message::Assistant {
+    let round_trip = replayed(message::Message::Assistant {
         id: converted.message_id,
         content: converted.choice,
-    }
-    .try_into()
-    .unwrap();
-    assert!(matches!(
-        round_trip.content.first(),
-        Some(Content::CodeExecutionToolResult {
-            tool_use_id,
-            content
-        }) if tool_use_id == "srvtoolu_01"
-            && content["type"] == "code_execution_result"
-            && content["stdout"] == "42\n"
-    ));
+    });
+    assert_eq!(
+        serde_json::to_value(&round_trip.content).unwrap(),
+        json!([raw_block])
+    );
 }
 
 #[test]
@@ -3356,19 +3314,26 @@ fn content_block_location_citation_roundtrips() {
 }
 
 #[test]
-fn anthropic_citations_extracts_from_additional_params() {
+fn anthropic_citations_extracts_from_the_text_item() {
     let text = message::Text {
-        text: "the grass is green".into(),
-        additional_params: crate::message::AdditionalParams::try_from_value(json!({
-            "citations": [{
-                "type": "char_location",
-                "cited_text": "The grass is green.",
-                "document_index": 0,
-                "start_char_index": 0,
-                "end_char_index": 20
-            }]
-        }))
-        .expect("object params"),
+        native: Some(message::Sealed::new(
+            message::Issuer::from_static("anthropic"),
+            message::NativeItem::new(
+                DIALECT,
+                json!({
+                    "type": "text",
+                    "text": "the grass is green",
+                    "citations": [{
+                        "type": "char_location",
+                        "cited_text": "The grass is green.",
+                        "document_index": 0,
+                        "start_char_index": 0,
+                        "end_char_index": 20
+                    }]
+                }),
+            ),
+        )),
+        ..message::Text::new("the grass is green")
     };
     let citations = anthropic_citations(&text).unwrap();
     assert_eq!(citations.len(), 1);
@@ -3380,37 +3345,55 @@ fn anthropic_citations_returns_empty_when_absent() {
     assert!(anthropic_citations(&text).unwrap().is_empty());
 }
 
+/// A cited text block as the decoder keeps it: canonical text, with the
+/// Messages block it came from as its provider item.
+fn cited_text(text: &str) -> message::Text {
+    message::Text {
+        native: Some(message::Sealed::new(
+            message::Issuer::from_static("anthropic"),
+            message::NativeItem::new(
+                DIALECT,
+                json!({
+                    "type": "text",
+                    "text": "the grass is green",
+                    "citations": [{
+                        "type": "char_location",
+                        "cited_text": "The grass is green.",
+                        "document_index": 0,
+                        "start_char_index": 0,
+                        "end_char_index": 20
+                    }]
+                }),
+            ),
+        )),
+        ..message::Text::new(text)
+    }
+}
+
 #[test]
 fn assistant_text_citations_survive_anthropic_request_conversion() {
     let assistant = message::Message::Assistant {
         id: None,
-        content: vec![message::AssistantContent::Text(message::Text {
-            text: "the grass is green".into(),
-            additional_params: crate::message::AdditionalParams::try_from_value(json!({
-                "citations": [{
-                    "type": "char_location",
-                    "cited_text": "The grass is green.",
-                    "document_index": 0,
-                    "start_char_index": 0,
-                    "end_char_index": 20
-                }]
-            }))
-            .expect("object params"),
-        })],
+        content: vec![message::AssistantContent::Text(cited_text(
+            "the grass is green",
+        ))],
     };
 
-    let converted: Message = assistant.try_into().unwrap();
-    let Some(Content::Text {
+    let converted = replayed(assistant);
+    let Some(Content::Native(block)) = converted.content.first() else {
+        panic!("expected the text block replayed as stated");
+    };
+    let Ok(Content::Text {
         citations, text, ..
-    }) = converted.content.first()
+    }) = Content::from_wire(block.clone())
     else {
-        panic!("expected assistant text content");
+        panic!("expected a text block");
     };
 
     assert_eq!(text, "the grass is green");
     assert_eq!(
         citations,
-        &vec![Citation::CharLocation(CharLocationCitation {
+        vec![Citation::CharLocation(CharLocationCitation {
             cited_text: "The grass is green.".into(),
             document_index: 0,
             document_title: None,
@@ -3420,24 +3403,50 @@ fn assistant_text_citations_survive_anthropic_request_conversion() {
     );
 }
 
+/// The staleness rule: once a block's canonical content no longer matches
+/// what its provider item projects to, the block replays canonically and
+/// the item, whose citations point into the old text, is not sent.
 #[test]
-fn assistant_text_invalid_known_citations_are_rejected_for_anthropic_request_conversion() {
-    let text = message::AssistantContent::Text(message::Text {
-        text: "bad citation".into(),
-        additional_params: crate::message::AdditionalParams::try_from_value(json!({
-            "citations": [{
-                "type": "char_location",
-                "cited_text": "bad"
-            }]
-        }))
-        .expect("object params"),
-    });
+fn edited_text_replays_canonically_without_its_stale_item() {
+    let assistant = message::Message::Assistant {
+        id: None,
+        content: vec![message::AssistantContent::Text(cited_text(
+            "an edited answer",
+        ))],
+    };
+    let converted = replayed(assistant);
+    assert_eq!(
+        converted.content,
+        vec![Content::Text {
+            text: "an edited answer".into(),
+            citations: Vec::new(),
+            cache_control: None,
+        }]
+    );
+}
 
-    let result = anthropic_content_from_assistant_content(text, &[]);
-
-    assert!(
-        result.is_err(),
-        "invalid Anthropic citation metadata should not be silently dropped"
+/// The cross-dialect rule: another service's item is not opened, so the
+/// block replays canonically.
+#[test]
+fn another_issuers_item_replays_canonically() {
+    let converted = Message::from_message(
+        message::Message::Assistant {
+            id: None,
+            content: vec![
+                message::AssistantContent::Text(cited_text("the grass is green")),
+                anthropic_native(json!({"type": "server_tool_use", "id": "srvtoolu_1"})),
+            ],
+        },
+        &[message::Issuer::from_static("zai")],
+    )
+    .expect("the message converts");
+    assert_eq!(
+        converted.content,
+        vec![Content::Text {
+            text: "the grass is green".into(),
+            citations: Vec::new(),
+            cache_control: None,
+        }]
     );
 }
 

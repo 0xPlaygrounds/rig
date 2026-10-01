@@ -100,27 +100,11 @@ fn phase_survives_history_and_is_resent_on_the_assistant_item() {
         content,
     };
 
-    let items = Vec::<InputItem>::try_from(history).expect("history converts");
+    let items = replayed(history);
     assert_eq!(items.len(), 1);
-    let InputContent::Message(Message::Assistant {
-        phase, content, id, ..
-    }) = &items[0].input
-    else {
-        panic!("expected an assistant input item, got {:?}", items[0].input);
-    };
-    assert_eq!(id, "msg_1");
-    assert_eq!(phase.as_deref(), Some("final_answer"));
-
-    // Never on the block: the flatten would put it beside `text`.
-    let block = serde_json::to_value(&content[0]).expect("block serializes");
-    assert!(
-        block.get("phase").is_none(),
-        "phase leaked onto the text block: {block}"
-    );
-
-    let wire = serde_json::to_value(&items[0]).expect("item serializes");
-    assert_eq!(wire["phase"], "final_answer");
-    assert_eq!(wire["id"], "msg_1");
+    assert_eq!(items[0]["phase"], "final_answer");
+    assert_eq!(items[0]["id"], "msg_1");
+    assert_no_block_carries_message_fields(&items);
 }
 
 /// A message without a phase replays exactly as before: no `phase` key.
@@ -138,6 +122,11 @@ fn history_without_phase_replays_without_the_key() {
 /// The assistant turn a unary reply with `output` folds into, as history
 /// holds it: the fold's choice under the fold's message id.
 fn history_of(output: serde_json::Value) -> completion::Message {
+    history_of_from("openai", output)
+}
+
+/// [`history_of`], for the Responses dialect `provider`.
+fn history_of_from(provider: &str, output: serde_json::Value) -> completion::Message {
     let response: CompletionResponse = serde_json::from_value(json!({
         "id": "resp_1", "object": "response", "created_at": 0, "status": "completed",
         "error": null, "incomplete_details": null, "instructions": null,
@@ -145,7 +134,7 @@ fn history_of(output: serde_json::Value) -> completion::Message {
         "output": output,
     }))
     .expect("reply decodes");
-    wire::fold_body("openai", response)
+    wire::fold_body(provider, response)
         .expect("the body folds")
         .message()
         .expect("the reply has content")
@@ -240,100 +229,72 @@ fn a_commentary_message_replays_before_its_function_call() {
     assert_eq!(items[2]["call_id"], "call_1");
 }
 
-/// Text blocks naming one message item join it, wherever they sit; a block
-/// naming none joins the assistant message's own item. No input item id
-/// repeats.
+/// Canonical text joins the assistant message's own item, unless a
+/// replayed item already uses that id: no input item id repeats.
 #[test]
-fn text_blocks_of_one_item_join_it_and_no_id_repeats() {
-    let block = |text: &str, extras: serde_json::Value| {
-        message::AssistantContent::Text(Text {
-            text: text.to_owned(),
-            additional_params: message::AdditionalParams::from_entries(Some((
-                OPENAI_RESPONSES_EXTRAS_KEY,
-                extras,
-            ))),
-        })
+fn canonical_text_never_repeats_a_replayed_item_id() {
+    let decoded = history_of(json!([
+        message_item("msg_1", "commentary", "one"),
+        message_item("msg_2", "final_answer", "two"),
+    ]));
+    let completion::Message::Assistant { id, mut content } = decoded else {
+        panic!("expected an assistant turn");
     };
-    let history = completion::Message::Assistant {
-        id: Some("msg_2".to_owned()),
-        content: vec![
-            block("one", json!({"message_id": "msg_1", "phase": "commentary"})),
-            block(
-                "two",
-                json!({"message_id": "msg_2", "phase": "final_answer"}),
-            ),
-            block(
-                "three",
-                json!({"message_id": "msg_1", "phase": "commentary"}),
-            ),
-            message::AssistantContent::Text(Text::new("four")),
-        ],
-    };
-    let items = replayed(history);
+    assert_eq!(id.as_deref(), Some("msg_2"));
+    content.push(message::AssistantContent::Text(Text::new("three")));
+    let items = replayed(completion::Message::Assistant { id, content });
     assert_eq!(
         shape(&items),
         [
             ("message".into(), "msg_1".into(), "commentary".into()),
             ("message".into(), "msg_2".into(), "final_answer".into()),
+            ("message".into(), "-".into(), "-".into()),
         ]
     );
-    let texts = |item: &serde_json::Value| -> Vec<String> {
-        item["content"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .filter_map(|block| block["text"].as_str().map(str::to_owned))
-            .collect()
-    };
-    assert_eq!(texts(&items[0]), ["one", "three"]);
-    assert_eq!(texts(&items[1]), ["two", "four"]);
+    assert_eq!(items[2]["content"], "three");
     assert_no_block_carries_message_fields(&items);
 }
 
-/// Text without any message id replays id-less. With a `phase` it takes the
-/// output-message form, which carries one, and no content-part extras;
-/// without one it keeps the plain input-message form.
+/// The staleness rule: a decoded text block edited afterwards replays
+/// canonically, and its message item, which no longer says what the block
+/// says, is not sent.
 #[test]
-fn idless_text_replays_its_phase_without_an_id() {
-    let history = completion::Message::Assistant {
-        id: None,
-        content: vec![
-            message::AssistantContent::Text(Text {
-                text: "Let me think.".to_owned(),
-                additional_params: message::AdditionalParams::from_entries(Some((
-                    OPENAI_RESPONSES_EXTRAS_KEY,
-                    json!({"phase": "commentary", "annotations": [{"type": "url_citation"}]}),
-                ))),
-            }),
-            message::AssistantContent::Text(Text::new("Apple.")),
-        ],
+fn an_edited_text_block_replays_canonically() {
+    let decoded = history_of(json!([message_item(
+        "msg_1",
+        "commentary",
+        "Let me think."
+    )]));
+    let completion::Message::Assistant { id, mut content } = decoded else {
+        panic!("expected an assistant turn");
     };
-    let items = replayed(history);
+    let Some(message::AssistantContent::Text(text)) = content.first_mut() else {
+        panic!("expected a text block");
+    };
+    assert!(text.native.is_some(), "the phase rides the text's item");
+    text.text = "An edited thought.".to_owned();
+    let items = replayed(completion::Message::Assistant { id, content });
     assert_eq!(
         items,
-        [
-            json!({
-                "type": "message", "role": "assistant", "status": "completed",
-                "phase": "commentary",
-                "content": [{"type": "output_text", "text": "Let me think."}],
-            }),
-            json!({"type": "message", "role": "assistant", "content": "Apple."}),
-        ]
+        [json!({
+            "type": "message", "id": "msg_1", "role": "assistant", "status": "completed",
+            "content": [{"type": "output_text", "text": "An edited thought."}],
+        })]
     );
 }
 
-/// `phase` is an assistant field: extras on a user text block never reach
-/// the user item, and a system message has no seat for it.
+/// `phase` is an assistant field: a provider item on a user text block
+/// never reaches the user item, and a system message has no seat for it.
 #[test]
 fn phase_never_rides_user_or_system_messages() {
-    let phased = message::AdditionalParams::from_entries(Some((
-        OPENAI_RESPONSES_EXTRAS_KEY,
-        json!({"phase": "final_answer", "message_id": "msg_1"}),
-    )));
+    let phased = message::Sealed::new(
+        message::Issuer::from("openai"),
+        message::NativeItem::new(DIALECT, message_item("msg_1", "final_answer", "hi")),
+    );
     let user = completion::Message::User {
         content: vec![message::UserContent::Text(Text {
-            text: "hi".to_owned(),
-            additional_params: phased,
+            native: Some(phased),
+            ..Text::new("hi")
         })],
     };
     let system = completion::Message::system("be brief");
@@ -362,11 +323,15 @@ fn every_responses_dialect_resends_phase() {
         ("copilot", &crate::providers::copilot::wire::DIALECT),
         ("openrouter", &OPENROUTER),
     ];
-    let history = history_of(json!([
-        message_item("msg_1", "commentary", "Let me think."),
-        message_item("msg_2", "final_answer", "Apple."),
-    ]));
     for (name, dialect) in dialects {
+        // Each dialect replays its own turn.
+        let history = history_of_from(
+            name,
+            json!([
+                message_item("msg_1", "commentary", "Let me think."),
+                message_item("msg_2", "final_answer", "Apple."),
+            ]),
+        );
         let wire = OpenAIConfig::with_key(dialect, "dummy-key").responses("gpt-5.3-codex");
         let request = completion::CompletionRequest::new("One more fruit?")
             .messages([completion::Message::user("Three fruits?"), history.clone()]);
