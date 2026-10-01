@@ -492,13 +492,7 @@ fn streamed_run_completes_a_tool_roundtrip() {
     assert_eq!(response.completion_calls[0].usage, usage);
     assert_eq!(response.completion_calls[1].usage, Usage::default());
     // prompt, assistant tool call, tool result, final assistant text
-    assert_eq!(
-        response
-            .messages
-            .expect("messages should be recorded")
-            .len(),
-        4
-    );
+    assert_eq!(response.messages.len(), 4);
 }
 
 #[test]

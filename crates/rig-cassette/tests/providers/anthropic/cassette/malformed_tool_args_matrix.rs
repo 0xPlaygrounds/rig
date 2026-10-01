@@ -62,7 +62,6 @@ use rig::agent::{
 };
 use rig::completion::PromptError;
 use rig::providers::anthropic;
-use rig::streaming::StreamedUserContent;
 use rig_test_support::cassette_models::AnthropicModels;
 use serde_json::Value;
 
@@ -250,10 +249,9 @@ async fn streaming_malformed_skip_feeds_result_back() {
             let mut skipped = None;
             while let Some(item) = stream.next().await {
                 match item {
-                    Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult {
-                        tool_result,
-                        ..
-                    })) => skipped = Some(tool_result),
+                    Ok(MultiTurnStreamItem::ToolResult { tool_result, .. }) => {
+                        skipped = Some(tool_result)
+                    }
                     Ok(MultiTurnStreamItem::ToolCall { .. }) => {
                         panic!("a malformed call must never be executed")
                     }

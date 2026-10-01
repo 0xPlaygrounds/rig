@@ -18,8 +18,6 @@ use rig_core::completion::CompletionResponse;
 
 use rig_core::streaming::{Item, StreamEvent};
 
-use rig_core::streaming::StreamedUserContent;
-
 use rig_core::streaming::CompletionStream;
 
 use rig_core::tool::PortableTool;
@@ -933,7 +931,7 @@ pub async fn collect_stream_observation(stream: &mut StreamingResult) -> StreamO
                 });
                 observation.events.push("tool_call");
             }
-            Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult { .. })) => {
+            Ok(MultiTurnStreamItem::ToolResult { .. }) => {
                 observation.tool_results += 1;
                 observation.final_turn_text.clear();
                 observation.events.push("tool_result");

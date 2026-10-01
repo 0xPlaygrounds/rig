@@ -28,8 +28,8 @@ use crate::{
     run::response::{CompletionCall, PromptResponse},
 };
 
-/// A typed run's response: the deserialized value plus the run's usage and
-/// completion calls.
+/// A typed run's response: the deserialized value plus the accepted attempt's
+/// transcript, the run's usage, and completion calls.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TypedPromptResponse<T> {
     /// The parsed structured output.
@@ -45,6 +45,11 @@ pub struct TypedPromptResponse<T> {
     /// reported no usage metrics for that request.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub completion_calls: Vec<CompletionCall>,
+    /// The accepted attempt's transcript; see
+    /// [`PromptResponse::messages`](crate::agent::PromptResponse::messages).
+    /// Append it to caller-owned history to continue the conversation.
+    #[serde(default)]
+    pub messages: Vec<Message>,
     /// How the accepted attempt's conversation-memory append settled; see
     /// [`PromptResponse::memory_append`](crate::agent::PromptResponse::memory_append).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -58,6 +63,7 @@ impl<T> TypedPromptResponse<T> {
             output,
             usage,
             completion_calls: Vec::new(),
+            messages: Vec::new(),
             memory_append: None,
         }
     }
@@ -178,6 +184,7 @@ where
                         output,
                         usage,
                         completion_calls: response.completion_calls,
+                        messages: response.messages,
                         memory_append: response.memory_append,
                     })
                 }

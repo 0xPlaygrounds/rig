@@ -286,7 +286,7 @@ fn report_from_response(
         tool_calls,
         prompt_tokens: response.usage.input_tokens.unwrap_or(0),
         generated_tokens: response.usage.output_tokens.unwrap_or(0),
-        history_messages: response.messages.as_ref().map_or(0, Vec::len),
+        history_messages: response.messages.len(),
         duration: started.elapsed(),
         response: response.output,
     })

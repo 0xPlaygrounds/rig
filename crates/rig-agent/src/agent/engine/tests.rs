@@ -21,7 +21,7 @@ use crate::agent::hook::{AgentHook, HookContext, RequestPatch, StepEventKind};
 use crate::agent::run::OutputMode;
 use crate::agent::streaming::MultiTurnStreamItem;
 use crate::completion::{FinishReason, Message, PromptError, Usage};
-use crate::streaming::{Item, StreamEvent, StreamedUserContent};
+use crate::streaming::{Item, StreamEvent};
 use crate::test_utils::{
     MockAddTool, MockBarrierTool, MockCompletionModel, MockOperationArgs, MockScript,
     MockStreamEvent, MockSubtractTool, MockToolError, MockTurn, mock_final,
@@ -1012,7 +1012,7 @@ async fn response_scoped_id_is_not_promoted_into_history() {
     .await
     .expect("blocking response");
 
-    let messages = response.messages.expect("history enabled");
+    let messages = response.messages;
     let assistant_ids: Vec<_> = messages
         .iter()
         .filter_map(|message| match message {
@@ -1035,7 +1035,7 @@ async fn message_id_is_promoted_into_history() {
     .await
     .expect("blocking response");
 
-    let messages = response.messages.expect("history enabled");
+    let messages = response.messages;
     let assistant_ids: Vec<_> = messages
         .iter()
         .filter_map(|message| match message {
@@ -1417,9 +1417,7 @@ async fn streamed_tool_call_items_share_one_call_id() {
             MultiTurnStreamItem::ToolExecutionCommitted { tool_call, .. } => {
                 executed_ids.push(tool_call.id)
             }
-            MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult {
-                tool_result,
-            }) => result_ids.push(tool_result.call),
+            MultiTurnStreamItem::ToolResult { tool_result } => result_ids.push(tool_result.call),
             _ => {}
         }
     }
@@ -1611,11 +1609,8 @@ async fn run_and_stream_behave_identically_for_a_tool_call() {
     assert_eq!(blocking_hook.tool_results(), vec!["5".to_string()]);
 
     // Same final message history (compared via serialized form to normalize).
-    let blocking_messages = blocking.messages.expect("blocking messages");
-    let streaming_messages = final_response
-        .messages()
-        .expect("streaming history")
-        .to_vec();
+    let blocking_messages = blocking.messages;
+    let streaming_messages = final_response.messages().to_vec();
     assert_eq!(
         serde_json::to_value(&blocking_messages).expect("serialize blocking"),
         serde_json::to_value(&streaming_messages).expect("serialize streaming"),
@@ -2376,7 +2371,7 @@ mod structured_tool_results {
 
         // The persisted tool results must keep tool-call order regardless of
         // completion timing: `add` (tc_add) before `flaky_tool` (tc_flaky).
-        let messages = response.messages.expect("messages");
+        let messages = response.messages;
         let tool_result_ids: Vec<String> = messages
             .iter()
             .flat_map(|message| match message {
@@ -3153,11 +3148,8 @@ async fn run_and_stream_same_message_history_for_parallel_tool_calls() {
     }
     let final_response = final_response.expect("stream should yield a final response");
 
-    let blocking_messages = blocking.messages.expect("blocking messages");
-    let streaming_messages = final_response
-        .messages()
-        .expect("streaming history")
-        .to_vec();
+    let blocking_messages = blocking.messages;
+    let streaming_messages = final_response.messages().to_vec();
     assert_eq!(
         serde_json::to_value(&blocking_messages).expect("serialize blocking"),
         serde_json::to_value(&streaming_messages).expect("serialize streaming"),
@@ -3233,7 +3225,7 @@ async fn run_preserves_tool_call_order_under_out_of_order_completion() {
         .await
         .expect("run should succeed");
 
-    let messages = response.messages.expect("messages");
+    let messages = response.messages;
     let result_ids: Vec<String> = messages
         .iter()
         .flat_map(|message| match message {
@@ -3341,11 +3333,8 @@ async fn stream_and_run_same_message_history_for_parallel_tool_calls_under_concu
         .stream();
     let final_response = drive_to_final_response(stream).await;
 
-    let blocking_messages = blocking.messages.expect("blocking messages");
-    let streaming_messages = final_response
-        .messages()
-        .expect("streaming history")
-        .to_vec();
+    let blocking_messages = blocking.messages;
+    let streaming_messages = final_response.messages().to_vec();
     assert_eq!(
         serde_json::to_value(&blocking_messages).expect("serialize blocking"),
         serde_json::to_value(&streaming_messages).expect("serialize streaming"),
@@ -3389,7 +3378,7 @@ async fn stream_preserves_history_order_under_out_of_order_completion() {
     .await
     .expect("streamed tools must run concurrently, not deadlock on the first call");
 
-    let messages = final_response.messages().expect("history").to_vec();
+    let messages = final_response.messages().to_vec();
     // History stays in call order (tc1 then tc2), even though tc2 finished first.
     assert_eq!(
         tool_result_ids(&messages),
@@ -3430,10 +3419,7 @@ async fn stream_emits_tool_results_in_call_order_after_batch_settles_under_concu
     tokio::time::timeout(std::time::Duration::from_secs(5), async {
         while let Some(item) = stream.next().await {
             match item.unwrap_or_else(|err| panic!("stream item errored: {err}")) {
-                MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult {
-                    tool_result,
-                    ..
-                }) => streamed_result_ids.push(
+                MultiTurnStreamItem::ToolResult { tool_result, .. } => streamed_result_ids.push(
                     tool_result
                         .call
                         .provider()
@@ -3457,7 +3443,7 @@ async fn stream_emits_tool_results_in_call_order_after_batch_settles_under_concu
     );
     let final_response = final_response.expect("stream should yield a final response");
     assert_eq!(
-        tool_result_ids(final_response.messages().expect("history")),
+        tool_result_ids(final_response.messages()),
         vec!["tc1".to_string(), "tc2".to_string()]
     );
 }
@@ -3531,9 +3517,7 @@ async fn stream_emits_model_tool_calls_then_atomic_execution_items() {
                 MultiTurnStreamItem::ToolExecutionCommitted { .. } => {
                     markers.push("exec-commit");
                 }
-                MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult { .. }) => {
-                    markers.push("result")
-                }
+                MultiTurnStreamItem::ToolResult { .. } => markers.push("result"),
                 _ => {}
             }
         }
@@ -4133,9 +4117,7 @@ async fn concurrent_termination_surfaces_no_execution_items() {
             while let Some(item) = stream.next().await {
                 match item {
                     Ok(MultiTurnStreamItem::ToolExecutionCommitted { .. }) => exec_commits += 1,
-                    Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult {
-                        ..
-                    })) => results += 1,
+                    Ok(MultiTurnStreamItem::ToolResult { .. }) => results += 1,
                     Ok(MultiTurnStreamItem::FinalResponse(_)) => saw_final = true,
                     Ok(_) => {}
                     Err(_) => saw_error = true,
@@ -4263,7 +4245,7 @@ async fn stream_hook_skip_surfaces_result_without_execution_commit() {
     while let Some(item) = stream.next().await {
         match item.unwrap_or_else(|err| panic!("stream item errored: {err}")) {
             MultiTurnStreamItem::ToolExecutionCommitted { .. } => exec_commits += 1,
-            MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult { .. }) => {
+            MultiTurnStreamItem::ToolResult { .. } => {
                 results += 1;
             }
             MultiTurnStreamItem::FinalResponse(resp) => final_response = Some(resp),
@@ -4282,7 +4264,7 @@ async fn stream_hook_skip_surfaces_result_without_execution_commit() {
     );
     let final_response = final_response.expect("stream should yield a final response");
     // The skip result is committed to history (the model sees the reason).
-    let history = final_response.messages().expect("history");
+    let history = final_response.messages();
     assert!(
         history.iter().any(|m| serde_json::to_string(m)
             .map(|s| s.contains("blocked by policy"))
@@ -4833,11 +4815,8 @@ async fn invalid_tool_call_repair_parity_across_run_and_stream() {
     assert_eq!(blocking_hook.tool_results(), vec!["5".to_string()]);
 
     // Same final message history.
-    let blocking_messages = blocking.messages.expect("blocking messages");
-    let streaming_messages = final_response
-        .messages()
-        .expect("streaming history")
-        .to_vec();
+    let blocking_messages = blocking.messages;
+    let streaming_messages = final_response.messages().to_vec();
     assert_eq!(
         serde_json::to_value(&blocking_messages).expect("serialize blocking"),
         serde_json::to_value(&streaming_messages).expect("serialize streaming"),
@@ -4905,8 +4884,8 @@ async fn invalid_tool_call_scalar_args_are_canonical_across_run_and_complete_str
     assert_eq!(blocking.output, "done");
     assert_eq!(final_response.output(), "done");
     assert_eq!(
-        serde_json::to_value(blocking.messages.expect("blocking history")).unwrap(),
-        serde_json::to_value(final_response.messages().expect("streaming history")).unwrap()
+        serde_json::to_value(blocking.messages).unwrap(),
+        serde_json::to_value(final_response.messages()).unwrap()
     );
 }
 
@@ -5034,7 +5013,7 @@ async fn run_blocking_scenario(prompt: &'static str, turns: &[ScriptedTurn]) -> 
         .expect("blocking scenario should succeed");
     ParityOutcome {
         output: response.output,
-        messages: response.messages.expect("blocking messages"),
+        messages: response.messages,
         shared_events: hook.shared_events(),
         tool_results: hook.tool_results(),
     }
@@ -5067,10 +5046,7 @@ async fn run_streaming_scenario(
     let final_response = final_response.expect("streaming scenario should yield a final response");
     ParityOutcome {
         output: final_response.output().to_string(),
-        messages: final_response
-            .messages()
-            .expect("streaming history")
-            .to_vec(),
+        messages: final_response.messages().to_vec(),
         shared_events: hook.shared_events(),
         tool_results: hook.tool_results(),
     }
@@ -5245,11 +5221,8 @@ async fn invalid_tool_call_skip_parity_across_run_and_stream() {
         "the hook must observe the invalid tool call"
     );
 
-    let blocking_messages = blocking.messages.expect("blocking messages");
-    let streaming_messages = final_response
-        .messages()
-        .expect("streaming history")
-        .to_vec();
+    let blocking_messages = blocking.messages;
+    let streaming_messages = final_response.messages().to_vec();
     assert_eq!(
         serde_json::to_value(&blocking_messages).expect("serialize blocking"),
         serde_json::to_value(&streaming_messages).expect("serialize streaming"),
@@ -5478,11 +5451,8 @@ async fn valid_tool_call_skip_parity_across_run_and_stream() {
         "a skipped tool fires a ToolResult hook with the verbatim skip reason"
     );
 
-    let blocking_messages = blocking.messages.expect("blocking messages");
-    let streaming_messages = final_response
-        .messages()
-        .expect("streaming history")
-        .to_vec();
+    let blocking_messages = blocking.messages;
+    let streaming_messages = final_response.messages().to_vec();
     assert_eq!(
         serde_json::to_value(&blocking_messages).expect("serialize blocking"),
         serde_json::to_value(&streaming_messages).expect("serialize streaming"),
@@ -6159,11 +6129,8 @@ async fn valid_tool_result_rewrite_parity_across_run_and_stream() {
 
     // The model-visible history carries the REWRITTEN result, not "5", and is
     // byte-identical across drivers.
-    let blocking_messages = blocking.messages.expect("blocking messages");
-    let streaming_messages = final_response
-        .messages()
-        .expect("streaming history")
-        .to_vec();
+    let blocking_messages = blocking.messages;
+    let streaming_messages = final_response.messages().to_vec();
     assert_eq!(
         serde_json::to_value(&blocking_messages).expect("serialize blocking"),
         serde_json::to_value(&streaming_messages).expect("serialize streaming"),
@@ -6202,7 +6169,7 @@ async fn rewrite_result_is_delivered_verbatim_not_reparsed() {
         .await
         .expect("run should succeed with a JSON-shaped rewritten result");
 
-    let messages = result.messages.expect("messages");
+    let messages = result.messages;
     assert!(
         tool_result_text_in_history(&messages, IMAGE_JSON),
         "the JSON-shaped replacement must reach history verbatim as text, not be \
@@ -6948,7 +6915,7 @@ async fn history_patch_changes_sent_messages_not_transcript_on_both_surfaces() {
         "the overridden history reaches the provider"
     );
     assert!(
-        !messages_have_sentinel(blocking.messages.as_deref().unwrap_or_default()),
+        !messages_have_sentinel(&blocking.messages),
         "the persisted transcript is untouched by the per-turn history override"
     );
 
@@ -6965,7 +6932,7 @@ async fn history_patch_changes_sent_messages_not_transcript_on_both_surfaces() {
         "the overridden history reaches the provider on the streaming surface too"
     );
     assert!(
-        !messages_have_sentinel(final_response.messages().expect("history")),
+        !messages_have_sentinel(final_response.messages()),
         "the persisted transcript is untouched by the per-turn history override on \
              the streaming surface too"
     );
@@ -8005,11 +7972,8 @@ async fn human_in_the_loop_approve_deny_edit_parity_across_run_and_stream() {
     // Model-visible history is identical across drivers (compared structurally
     // as serde_json::Value) and carries the denial reason and the edited result
     // 101 (not the model's 1 + 1 = 2).
-    let blocking_messages = blocking.messages.expect("blocking messages");
-    let streaming_messages = final_response
-        .messages()
-        .expect("streaming history")
-        .to_vec();
+    let blocking_messages = blocking.messages;
+    let streaming_messages = final_response.messages().to_vec();
     assert_eq!(
         serde_json::to_value(&blocking_messages).expect("serialize blocking"),
         serde_json::to_value(&streaming_messages).expect("serialize streaming"),
@@ -8188,7 +8152,7 @@ async fn approval_policy_allow_list_with_sticky_decisions() {
         policy.evaluated(),
         vec!["add".to_string(), "subtract".to_string()]
     );
-    let messages = out.messages.expect("messages");
+    let messages = out.messages;
     assert!(
         tool_result_text_in_history(&messages, "denied by policy: `subtract` not allowed"),
         "the policy denial reason must reach the model as the subtract tool result"
@@ -8724,7 +8688,7 @@ async fn blocking_model_turn_repeat_preserves_prompt_history_with_fresh_preparat
     assert_eq!(response.output, "accepted");
     assert_eq!(response.usage, first_usage + second_usage);
     assert_eq!(response.completion_calls.len(), 2);
-    let messages = response.messages.expect("response messages");
+    let messages = response.messages;
     assert_eq!(
         messages,
         vec![Message::user("question"), Message::assistant("accepted")]
@@ -8763,7 +8727,7 @@ async fn blocking_model_turn_feedback_preserves_rejected_response() {
 
     assert_eq!(response.output, "accepted");
     assert_eq!(
-        response.messages.expect("response messages"),
+        response.messages,
         vec![
             Message::user("question"),
             Message::assistant("rejected"),
@@ -8807,7 +8771,7 @@ async fn blocking_empty_feedback_retry_omits_empty_assistant_history() {
     assert_eq!(response.usage, first_usage + second_usage);
     assert_eq!(response.completion_calls.len(), 2);
     assert_eq!(
-        response.messages.expect("response messages"),
+        response.messages,
         vec![
             Message::user("question"),
             Message::user("provide an answer"),
@@ -8868,7 +8832,7 @@ async fn streaming_model_turn_retry_marks_rollback_and_matches_blocking_accounti
     assert_eq!(response.usage, first_usage + second_usage);
     assert_eq!(response.completion_calls.len(), 2);
     assert_eq!(
-        response.messages.expect("response messages"),
+        response.messages,
         vec![Message::user("question"), Message::assistant("accepted")]
     );
     assert_eq!(model.requests().len(), 2);
@@ -8994,7 +8958,7 @@ async fn streaming_empty_feedback_retry_omits_empty_assistant_history() {
     assert_eq!(response.usage, first_usage + second_usage);
     assert_eq!(response.completion_calls.len(), 2);
     assert_eq!(
-        response.messages.expect("response messages"),
+        response.messages,
         vec![
             Message::user("question"),
             Message::user("provide an answer"),
@@ -9218,9 +9182,7 @@ async fn streaming_model_turn_retry_rejects_tool_turn_without_committed_executio
     while let Some(item) = stream.next().await {
         match item {
             Ok(MultiTurnStreamItem::ToolExecutionCommitted { .. }) => execution_commits += 1,
-            Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult { .. })) => {
-                tool_results += 1
-            }
+            Ok(MultiTurnStreamItem::ToolResult { .. }) => tool_results += 1,
             Ok(MultiTurnStreamItem::CompletionCall(_)) => completion_calls += 1,
             Ok(MultiTurnStreamItem::FinalResponse(_)) => agent_finals += 1,
             Ok(MultiTurnStreamItem::ModelTurnRetried { .. }) => retry_markers += 1,
@@ -9752,9 +9714,7 @@ async fn outcome_replacement_preserves_tool_execution_commit_disposition() {
         while let Some(item) = stream.next().await {
             match item.expect("replacement stream succeeds") {
                 MultiTurnStreamItem::ToolExecutionCommitted { .. } => committed += 1,
-                MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult { .. }) => {
-                    results += 1
-                }
+                MultiTurnStreamItem::ToolResult { .. } => results += 1,
                 _ => {}
             }
         }

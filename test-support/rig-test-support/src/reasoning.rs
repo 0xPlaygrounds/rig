@@ -40,8 +40,6 @@ use rig_core::message::UserContent;
 
 use rig_core::streaming::{Item, StreamEvent};
 
-use rig_core::streaming::StreamedUserContent;
-
 use rig_core::tool::Tool;
 
 use serde::Deserialize;
@@ -674,12 +672,10 @@ pub async fn collect_stream_stats(
                 }
                 Item::Event(_) | Item::Unknown(_) => {}
             },
-            Ok(MultiTurnStreamItem::StreamUserItem(ref content)) => match content {
-                StreamedUserContent::ToolResult { .. } => {
-                    stats.tool_results_in_stream += 1;
-                    stats.final_turn_text.clear();
-                }
-            },
+            Ok(MultiTurnStreamItem::ToolResult { .. }) => {
+                stats.tool_results_in_stream += 1;
+                stats.final_turn_text.clear();
+            }
             Ok(MultiTurnStreamItem::FinalResponse(response)) => {
                 stats.final_response_text = Some(response.output().to_owned());
                 stats.got_final_response = true;

@@ -205,7 +205,7 @@ pub async fn chat_streamed(
         }
         let error = match (done, failure) {
             (Some(response), None) => {
-                history.extend(response.messages.clone().unwrap_or_default());
+                history.extend(response.messages.clone());
                 log.usages
                     .extend(response.completion_calls.iter().map(|call| call.usage));
                 return;

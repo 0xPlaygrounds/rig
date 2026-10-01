@@ -322,7 +322,7 @@ fn text_only_run_completes_in_one_turn() {
 
     let response = expect_done(&mut run);
     assert_eq!(response.output, "hi there");
-    let messages = response.messages.expect("messages should be recorded");
+    let messages = response.messages;
     assert_eq!(messages.len(), 2);
     assert!(run.is_done());
 }
@@ -344,13 +344,7 @@ fn input_history_prefixes_request_history() {
     );
     let response = expect_done(&mut run);
     // Returned messages exclude the input history.
-    assert_eq!(
-        response
-            .messages
-            .expect("messages should be recorded")
-            .len(),
-        2
-    );
+    assert_eq!(response.messages.len(), 2);
 }
 
 #[test]
@@ -384,7 +378,7 @@ fn repeated_model_turn_reuses_prompt_without_recording_rejected_response() {
     assert_eq!(response.output, "accepted");
     assert_eq!(response.usage, first_usage + second_usage);
     assert_eq!(response.completion_calls.len(), 2);
-    let messages = response.messages.expect("response history");
+    let messages = response.messages;
     assert_eq!(messages.len(), 2);
     assert!(!format!("{messages:?}").contains("rejected"));
 }
@@ -491,13 +485,7 @@ fn tool_roundtrip_threads_history_and_usage() {
     assert_eq!(response.completion_calls[0].usage, usage(10, 5));
     assert_eq!(response.completion_calls[1].usage, usage(20, 7));
     // prompt, assistant tool call, tool result, final assistant text
-    assert_eq!(
-        response
-            .messages
-            .expect("messages should be recorded")
-            .len(),
-        4
-    );
+    assert_eq!(response.messages.len(), 4);
 }
 
 #[test]
@@ -1247,7 +1235,7 @@ fn output_tool_call_finalizes_run_with_arguments() {
 
     // The finalizing turn is persisted as assistant text, not as the raw
     // output-tool call, so the saved history has no dangling tool_use.
-    let messages = response.messages.expect("messages should be recorded");
+    let messages = response.messages;
     assert_no_orphan_tool_use(&messages);
     assert!(matches!(
         messages.last(),
@@ -1278,7 +1266,7 @@ fn scalar_output_tool_call_is_serialized_as_reparseable_json() {
     );
     assert_eq!(response.output, r#""complete""#);
 
-    let messages = response.messages.expect("messages should be recorded");
+    let messages = response.messages;
     assert_no_orphan_tool_use(&messages);
     assert!(matches!(
         messages.last(),
@@ -1318,7 +1306,7 @@ fn output_tool_call_wins_over_sibling_real_tool_calls() {
 
     // Both the sibling `add` call and the output-tool call are dropped from
     // the persisted assistant message, leaving no unanswered tool_use.
-    let messages = response.messages.expect("messages should be recorded");
+    let messages = response.messages;
     assert_no_orphan_tool_use(&messages);
     assert!(
         messages.iter().all(|message| match message {
@@ -1462,7 +1450,7 @@ fn tool_mode_finalizes_best_effort_when_output_retry_budget_exhausted() {
 
     let response = expect_done(&mut run);
     assert_eq!(response.output, r#"{"x":1}"#);
-    let messages = response.messages.expect("messages should be recorded");
+    let messages = response.messages;
     assert_no_orphan_tool_use(&messages);
 }
 

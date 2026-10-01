@@ -115,7 +115,7 @@ impl CliChat for AgentImpl {
             .stream();
 
         let mut acc = String::new();
-        let mut messages = None;
+        let mut messages = Vec::new();
 
         let result = loop {
             let Some(chunk) = response_stream.next().await else {
@@ -133,22 +133,15 @@ impl CliChat for AgentImpl {
                 }
                 Ok(MultiTurnStreamItem::FinalResponse(final_response)) => {
                     self.usage = final_response.usage();
-                    messages = final_response
-                        .messages()
-                        .map(<[rig_core::completion::Message]>::to_vec);
+                    messages = final_response.messages;
                 }
                 Err(e) => break Err(e),
                 _ => continue,
             }
         };
 
-        if let Ok(response) = &result {
-            if let Some(messages) = messages {
-                history.extend(messages);
-            } else {
-                history.push(Message::user(prompt));
-                history.push(Message::assistant(response.as_str()));
-            }
+        if result.is_ok() {
+            history.extend(messages);
         }
 
         result

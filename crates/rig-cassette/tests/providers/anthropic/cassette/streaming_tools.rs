@@ -8,7 +8,7 @@ use futures::StreamExt;
 use rig::agent::{MultiTurnStreamItem, StreamingResult};
 use rig::message::{CallId, Message, UserContent};
 use rig::providers::anthropic;
-use rig::streaming::{StreamEvent, StreamedUserContent};
+use rig::streaming::StreamEvent;
 use rig::tool::Tool;
 use serde::Deserialize;
 use serde_json::Value;
@@ -328,10 +328,7 @@ async fn collect_concurrent_tool_observation(
             Ok(MultiTurnStreamItem::ToolExecutionCommitted { .. }) => {
                 observation.events.push("tool_execution_committed");
             }
-            Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult {
-                tool_result,
-                ..
-            })) => {
+            Ok(MultiTurnStreamItem::ToolResult { tool_result, .. }) => {
                 observation
                     .streamed_tool_results
                     .push(tool_name_for_result(&tool_names_by_id, &tool_result.call));

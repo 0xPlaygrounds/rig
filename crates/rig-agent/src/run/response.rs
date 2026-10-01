@@ -101,8 +101,9 @@ pub struct PromptResponse {
     /// excluding the input history the run started from. This is what a
     /// configured conversation memory is asked to persist; whether that
     /// append was acknowledged is [`memory_append`](Self::memory_append).
-    /// `None` only for a response built without a run behind it.
-    pub messages: Option<Vec<Message>>,
+    /// Empty only for a response built without a run behind it.
+    #[serde(default)]
+    pub messages: Vec<Message>,
     /// How the run's conversation-memory append settled, when the run had a
     /// memory backend and conversation to append to; `None` when memory was
     /// not configured for the run, bypassed by explicit history, disabled, or
@@ -171,7 +172,7 @@ impl PromptResponse {
             output,
             usage,
             completion_calls: Vec::new(),
-            messages: None,
+            messages: Vec::new(),
             memory_append: None,
             output_tool_calls: 0,
         }
@@ -182,9 +183,9 @@ impl PromptResponse {
         Self::new(String::new(), Usage::default())
     }
 
-    /// Attach the run's accumulated message history.
+    /// Attach the run's transcript.
     pub fn with_messages(mut self, messages: Vec<Message>) -> Self {
-        self.messages = Some(messages);
+        self.messages = messages;
         self
     }
 
@@ -228,9 +229,9 @@ impl PromptResponse {
         self.usage
     }
 
-    /// The run's accumulated message history, if tracked.
-    pub fn messages(&self) -> Option<&[Message]> {
-        self.messages.as_deref()
+    /// The run's transcript (see the [field](Self::messages)).
+    pub fn messages(&self) -> &[Message] {
+        &self.messages
     }
 
     /// How the run's conversation-memory append settled, when the run had

@@ -51,6 +51,7 @@ pub use run::TurnTools;
 pub use run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome, OutputMode, PendingToolCall};
 pub use runner::AgentRunner;
 pub use streaming::{
-    MultiTurnStreamItem, RUN_EVENTS_CAPACITY, RunEvents, StreamingResult, stream_to_stdout,
+    MultiTurnStreamItem, RUN_EVENTS_CAPACITY, RunEvents, StreamToStdoutError, StreamingResult,
+    stream_to_stdout,
 };
 pub use typed::{TypedOutput, TypedPromptResponse, TypedRun};
