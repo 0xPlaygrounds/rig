@@ -1,3 +1,4 @@
+#![cfg_attr(docsrs, feature(doc_cfg))]
 #![cfg_attr(
     test,
     allow(
@@ -11,6 +12,8 @@
 //! Conversation-history windows, demotion hooks, and rolling summaries.
 //! Window policies remove leading orphaned tool results along with truncated
 //! history. Stateful adapters deliver evicted prefixes to hooks or compactors.
+//! The `file` feature adds `FileConversationMemory`, a backend that stores
+//! each conversation as a JSON Lines file on native targets.
 //!
 //! ```
 //! use rig_memory::{InMemoryConversationMemory, IntoFilter, SlidingWindowMemory};
@@ -31,6 +34,12 @@ pub use rig_core::memory::{
     Compactor, ConversationMemory, DemotionHook, InMemoryConversationMemory, MemoryError,
     NoopDemotionHook,
 };
+
+#[cfg(all(feature = "file", not(target_family = "wasm")))]
+mod file;
+#[cfg(all(feature = "file", not(target_family = "wasm")))]
+#[cfg_attr(docsrs, doc(cfg(all(feature = "file", not(target_family = "wasm")))))]
+pub use file::{FileConversationMemory, FileMemoryError, StoredConversation};
 
 use rig_core::completion::Message;
 use rig_core::id::ConversationId;
