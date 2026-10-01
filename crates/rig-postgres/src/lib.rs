@@ -254,10 +254,10 @@ impl PostgresVectorStore {
         R: for<'r> sqlx::FromRow<'r, sqlx::postgres::PgRow> + Send + Unpin,
     {
         if req.samples() > i64::MAX as u64 {
-            return Err(VectorStoreError::BuilderError(format!(
-                "The maximum amount of samples to return with the `rig` Postgres integration cannot be larger than {}",
-                i64::MAX
-            )));
+            return Err(VectorStoreError::SamplesOutOfRange {
+                requested: req.samples(),
+                max: i64::MAX as u64,
+            });
         }
 
         let embedded_query: pgvector::Vector = self

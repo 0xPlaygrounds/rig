@@ -170,10 +170,10 @@ impl S3VectorsVectorStore {
         return_metadata: bool,
     ) -> Result<Vec<(f64, aws_sdk_s3vectors::types::QueryOutputVector)>, VectorStoreError> {
         if req.samples() > i32::MAX as u64 {
-            return Err(VectorStoreError::BuilderError(format!(
-                "The number of samples to return with the `rig` AWS S3Vectors integration cannot be higher than {}",
-                i32::MAX
-            )));
+            return Err(VectorStoreError::SamplesOutOfRange {
+                requested: req.samples(),
+                max: i32::MAX as u64,
+            });
         }
 
         let embedding = self

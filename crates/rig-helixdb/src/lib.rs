@@ -237,10 +237,9 @@ impl VectorStoreIndex for HelixDBVectorStore {
                 is_threshold
                     && req
                         .filter()
-                        .clone()
                         .zip(serde_json::from_str(&x.json_payload).ok())
                         .is_none_or(
-                            |(filter, payload): (Filter<serde_json::Value>, serde_json::Value)| {
+                            |(filter, payload): (&Filter<serde_json::Value>, serde_json::Value)| {
                                 filter.satisfies(&payload)
                             },
                         )

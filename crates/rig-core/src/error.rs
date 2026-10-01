@@ -878,7 +878,7 @@ impl From<&VectorStoreError> for ErrorReport {
             }
             VectorStoreError::JsonError(_) => (ErrorKind::Json, None),
             VectorStoreError::DatastoreError(_) => (ErrorKind::Provider, None),
-            VectorStoreError::FilterError(_) | VectorStoreError::BuilderError(_) => {
+            VectorStoreError::FilterError(_) | VectorStoreError::SamplesOutOfRange { .. } => {
                 (ErrorKind::Request, None)
             }
             VectorStoreError::MissingIdError(_) => (ErrorKind::Response, None),

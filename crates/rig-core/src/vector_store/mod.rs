@@ -70,9 +70,14 @@ pub enum VectorStoreError {
     #[error("External call to API returned an error. Error code: {0} Message: {1}")]
     ExternalAPIError(StatusCode, String),
 
-    /// A vector search request builder received invalid input.
-    #[error("Error while building VectorSearchRequest: {0}")]
-    BuilderError(String),
+    /// The requested sample count exceeds what the backend can express.
+    #[error("Requested {requested} samples, but this vector store returns at most {max}")]
+    SamplesOutOfRange {
+        /// Sample count from the search request.
+        requested: u64,
+        /// Largest sample count the backend accepts.
+        max: u64,
+    },
 }
 
 impl VectorStoreError {

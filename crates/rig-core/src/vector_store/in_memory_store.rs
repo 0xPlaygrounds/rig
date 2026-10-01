@@ -434,7 +434,7 @@ where
         let docs = self.store.vector_search(
             prompt_embedding,
             req.samples() as usize,
-            req.filter().as_ref(),
+            req.filter(),
             req.threshold(),
         )?;
 
@@ -462,7 +462,7 @@ where
         let docs = self.store.vector_search(
             prompt_embedding,
             req.samples() as usize,
-            req.filter().as_ref(),
+            req.filter(),
             req.threshold(),
         )?;
 

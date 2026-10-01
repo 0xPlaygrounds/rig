@@ -236,6 +236,26 @@ fn vector_response_less_transport_reports_preserve_classification_and_sources() 
 }
 
 #[test]
+fn samples_out_of_range_is_a_non_retryable_request_error() {
+    let error = VectorStoreError::SamplesOutOfRange {
+        requested: u64::MAX,
+        max: i64::MAX as u64,
+    };
+    let report = ErrorReport::from(&error);
+    assert_eq!(report.kind, ErrorKind::Request);
+    assert!(!report.retryable);
+    assert_eq!(report.http_status, None);
+    assert_eq!(
+        report.message,
+        format!(
+            "Requested {} samples, but this vector store returns at most {}",
+            u64::MAX,
+            i64::MAX
+        )
+    );
+}
+
+#[test]
 fn retry_table_per_status() {
     // Each (status, decision) row is a sign-off entry: 408/425/429/5xx retry,
     // every other status does not, a response-less failure does.

@@ -90,7 +90,6 @@ impl QdrantVectorStore {
 
         let filter = req
             .filter()
-            .as_ref()
             .cloned()
             .map(QdrantFilter::interpret)
             .transpose()?
