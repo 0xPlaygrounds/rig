@@ -87,7 +87,7 @@ use rig_core::{
     message::{AssistantContent, Message, UserContent},
     streaming::{Item, StreamEvent},
     tool::{ToolContext, ToolOutput},
-    transcript::tool_result_output,
+    transcript::{assistant_text_from_choice, tool_result_output},
 };
 
 /// A hook the producer added, by type: the header names hooks by their
@@ -666,7 +666,7 @@ impl AgentHook for DemandDone {
         _ctx: &HookContext,
         event: ModelTurnFinished<'_>,
     ) -> ModelTurnAction {
-        if answer_text(event.content).contains("DONE") {
+        if assistant_text_from_choice(event.content).contains("DONE") {
             ModelTurnAction::continue_run()
         } else {
             ModelTurnAction::retry_with_feedback(DONE_FEEDBACK)
@@ -860,16 +860,6 @@ impl AgentHook for SkipUnknown {
     ) -> Option<InvalidToolCallAction> {
         Some(InvalidToolCallAction::skip(SKIP_REASON))
     }
-}
-
-fn answer_text(content: &[AssistantContent]) -> String {
-    content
-        .iter()
-        .filter_map(|content| match content {
-            AssistantContent::Text(text) => Some(text.text.as_str()),
-            _ => None,
-        })
-        .collect()
 }
 
 /// The builder with `hooks` added in order, by name.
@@ -3969,7 +3959,7 @@ async fn hand_drive(program: &Program, resume: Resume) {
                     }
                     if program.hooks.contains(&Hook::DemandDone)
                         && !has_tool_calls
-                        && !answer_text(&choice).contains("DONE")
+                        && !assistant_text_from_choice(&choice).contains("DONE")
                     {
                         run.retry_model_turn(RetryRequest::Feedback(DONE_FEEDBACK.to_owned()))
                             .expect("a text turn is retryable");

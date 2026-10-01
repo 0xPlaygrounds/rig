@@ -164,13 +164,13 @@ fn run_configuration_overrides_and_can_reset_the_agent_configuration() {
     assert_eq!(requests[0].tools[0].name, "final_result");
     assert_eq!(
         requests[0].tools[0].description,
-        rig_ecs::policy::text::OUTPUT_TOOL_DESCRIPTION
+        rig_core::structured_output::OUTPUT_TOOL_DESCRIPTION
     );
     assert_eq!(
         requests[0].system_instructions().unwrap(),
         format!(
             "You are terse.\n\n{}",
-            rig_ecs::policy::text::output_tool_augmentation("final_result")
+            rig_core::structured_output::output_tool_augmentation("final_result")
         )
     );
     assert_eq!(app.world().get::<OutputToolConfig>(agent), Some(&config()));

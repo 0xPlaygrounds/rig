@@ -35,6 +35,11 @@ use rig_core::{
     },
     effect::{EffectKind, FamilyDescriptor, Outcome},
     error::ErrorKind,
+    structured_output::{
+        missing_required_fields, output_tool_callable, output_tool_name, reprompt_missing_fields,
+        reprompt_text_answer, text_satisfies_schema,
+    },
+    transcript::{assistant_text_from_choice, invalid_call_feedback, is_empty_assistant_turn},
 };
 
 use crate::{
@@ -1361,8 +1366,8 @@ fn resolve_output_tool(
         .0
         .clone()
         .or_else(|| reserved_name.map(str::to_owned))
-        .unwrap_or_else(|| policy::output_tool_name(&occupied_names));
-    let callable = policy::output_tool_callable(tool_choice, &output_tool);
+        .unwrap_or_else(|| output_tool_name(|name| occupied_names.contains(&name)));
+    let callable = output_tool_callable(tool_choice, &output_tool);
     let resolved = if minted.0.is_some() || (reserved_name.is_some() && output.schema.is_some()) {
         OutputKind::Tool
     } else {
@@ -1741,7 +1746,7 @@ pub fn fold(effects: Query<EffectView, NotRetrieval>, mut turns: Query<&mut Outp
                 if let Some(streamed) = streamed
                     && !streamed.text.is_empty()
                 {
-                    let current = policy::answer_text(&outputs.content);
+                    let current = assistant_text_from_choice(&outputs.content);
                     if current != streamed.text {
                         outputs.content = vec![AssistantContent::text(&streamed.text)];
                     }
@@ -2206,8 +2211,8 @@ fn abandon_turn(
     let diagnostic_id = &call.id;
     let assistant = MessageParts::assistant(outs.message_id.clone(), content.clone())?;
     spawn_deferred(commands, assets, run, assistant)?;
-    let results = policy::invalid_peer_results(&content, diagnostic_id, feedback)
-        .ok_or(ContentError::Shape)?;
+    let results = MessageParts::user(invalid_call_feedback(&content, diagnostic_id, feedback))
+        .map_err(|_| ContentError::Shape)?;
     let skipped = match &results {
         MessageParts::User { content } => vec![ToolResultStatus::Skipped; content.len()],
         MessageParts::Assistant { .. } => Vec::new(),
@@ -2490,7 +2495,7 @@ fn say_assistant(
         };
         spawn_deferred(commands, assets, run, user).map(drop)
     };
-    if policy::turn_is_empty(&read.content) {
+    if is_empty_assistant_turn(&read.content) {
         commands.entity(turn).remove::<(Retry, TurnRead)>();
         match retry {
             Some(Retry { feedback }) => {
@@ -2651,12 +2656,12 @@ fn reprompt_for(
     match read.calls().find(|call| call.function.name == name) {
         Some(call) => {
             let missing = schema
-                .map(|schema| policy::missing_required_fields(schema, &call.function.arguments))
+                .map(|schema| missing_required_fields(schema, &call.function.arguments))
                 .unwrap_or_default();
             if missing.is_empty() {
                 return None;
             }
-            let feedback = policy::reprompt_missing_fields(name, &missing);
+            let feedback = reprompt_missing_fields(name, &missing);
             let reprompt = MessageParts::User {
                 content: vec![UserContent::ToolResult(
                     call.result(vec![ToolResultContent::text(feedback)]),
@@ -2665,11 +2670,11 @@ fn reprompt_for(
             Some((reprompt, vec![ToolResultStatus::Skipped]))
         }
         None => {
-            if policy::text_satisfies_schema(schema, &policy::answer_text(&read.content)) {
+            if text_satisfies_schema(schema, &assistant_text_from_choice(&read.content)) {
                 return None;
             }
             let reprompt = MessageParts::User {
-                content: vec![UserContent::text(policy::text::reprompt_text_answer(name))],
+                content: vec![UserContent::text(reprompt_text_answer(name))],
             };
             Some((reprompt, Vec::new()))
         }
@@ -2757,9 +2762,10 @@ pub fn materialise_answer(
             _ => None,
         };
         let Some((assistant, call)) = output_call else {
-            commands
-                .entity(run)
-                .end((RunResult(policy::answer_text(&read.content)), Settled));
+            commands.entity(run).end((
+                RunResult(assistant_text_from_choice(&read.content)),
+                Settled,
+            ));
             continue;
         };
         let output = call.function.arguments.to_string();

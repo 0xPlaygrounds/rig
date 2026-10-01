@@ -117,41 +117,6 @@ fn allowed_tool_names_specific_rejects_empty_names() {
 }
 
 #[test]
-fn output_tool_callable_honors_specific_naming_the_output_tool() {
-    // Auto / Required / no explicit choice all permit the output-tool call.
-    assert!(output_tool_callable(None, "final_result"));
-    assert!(output_tool_callable(
-        Some(&ToolChoice::Auto),
-        "final_result"
-    ));
-    assert!(output_tool_callable(
-        Some(&ToolChoice::Required),
-        "final_result"
-    ));
-    // A `Specific` set that NAMES the output tool can call it — the case the
-    // pinned Tool-mode stall warning must not flag (it is accepted by
-    // `allowed_tool_names_for_choice`, which advertises the output tool).
-    assert!(output_tool_callable(
-        Some(&ToolChoice::Specific {
-            function_names: vec!["final_result".to_string()],
-        }),
-        "final_result",
-    ));
-    // A `Specific` set that omits it — or `ToolChoice::None` — genuinely cannot
-    // finalize a pinned Tool-mode turn, so the warning should still fire there.
-    assert!(!output_tool_callable(
-        Some(&ToolChoice::Specific {
-            function_names: vec!["search".to_string()],
-        }),
-        "final_result",
-    ));
-    assert!(!output_tool_callable(
-        Some(&ToolChoice::None),
-        "final_result"
-    ));
-}
-
-#[test]
 fn required_with_no_advertised_tool_is_local_error() {
     let empty = tool_names(&[]);
     let err = allowed_tool_names_for_choice(&empty, Some(&ToolChoice::Required), None, None)
@@ -346,50 +311,4 @@ fn resolve_output_mode_degrades_to_native_when_output_tool_not_callable() {
         resolve_output_mode(true, true, false, false, &OutputMode::Prompted),
         OutputMode::Prompted,
     );
-}
-
-#[test]
-fn output_tool_callable_for_auto_required_unset_or_a_specific_set_naming_it() {
-    assert!(output_tool_callable(None, "final_result"));
-    assert!(output_tool_callable(
-        Some(&ToolChoice::Auto),
-        "final_result"
-    ));
-    assert!(output_tool_callable(
-        Some(&ToolChoice::Required),
-        "final_result"
-    ));
-    assert!(!output_tool_callable(
-        Some(&ToolChoice::None),
-        "final_result"
-    ));
-    assert!(!output_tool_callable(
-        Some(&ToolChoice::Specific {
-            function_names: vec!["add".to_string()],
-        }),
-        "final_result"
-    ));
-    assert!(output_tool_callable(
-        Some(&ToolChoice::Specific {
-            function_names: vec!["add".to_string(), "final_result".to_string()],
-        }),
-        "final_result"
-    ));
-}
-
-#[test]
-fn pick_output_tool_name_defaults_when_unused() {
-    let executable = tool_names(&["add", "subtract"]);
-    assert_eq!(pick_output_tool_name(&executable), DEFAULT_OUTPUT_TOOL_NAME);
-}
-
-#[test]
-fn pick_output_tool_name_avoids_collision_with_real_tools() {
-    // A user tool literally named `final_result` must not be shadowed, or
-    // the model's output call would be dispatched to the tool server.
-    let executable = tool_names(&["final_result"]);
-    assert_eq!(pick_output_tool_name(&executable), "final_result_1");
-
-    let executable = tool_names(&["final_result", "final_result_1"]);
-    assert_eq!(pick_output_tool_name(&executable), "final_result_2");
 }

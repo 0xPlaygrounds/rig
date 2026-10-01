@@ -60,6 +60,7 @@ pub mod rerank;
 pub mod serve;
 
 pub mod streaming;
+pub mod structured_output;
 #[cfg(any(test, feature = "test-utils"))]
 #[cfg_attr(docsrs, doc(cfg(feature = "test-utils")))]
 pub mod test_utils;
