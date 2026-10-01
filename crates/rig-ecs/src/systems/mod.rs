@@ -320,77 +320,73 @@ impl AgentPlugin {
     /// Install agent systems, counters, and observers for a host-driven schedule.
     /// Panics unless the bus policy and schedules have already been installed.
     pub fn install(world: &mut World) {
-        install_agent(world);
+        assert!(
+            world.contains_resource::<crate::bus::Policy>(),
+            "AgentPlugin needs BusPlugin first: it runs in the bus's RigSchedule"
+        );
+        world.init_resource::<BinaryAssets>();
+        world.init_resource::<RunCounter>();
+        world.add_observer(effect_cancelled);
+        world.add_observer(run_cancelled);
+        world.add_observer(batch_marker_follows_the_hold);
+        witness::install(world);
+        let mut schedules = world.resource_mut::<Schedules>();
+        let Some(schedule) = schedules.get_mut(RigSchedule) else {
+            return;
+        };
+        schedule.configure_sets(
+            (
+                RigSet::Advance,
+                RigSet::Select,
+                RigSet::Assemble,
+                RigSet::Patch,
+                RigSet::Release,
+            )
+                .chain()
+                .before(BusSet::Gate),
+        );
+        schedule.configure_sets(
+            (
+                RigSet::Fold,
+                RigSet::Judge,
+                RigSet::Materialise,
+                RigSet::Checkpoint,
+                RigSet::Settle,
+            )
+                .chain()
+                .after(BusSet::Judge),
+        );
+        schedule.add_systems((
+            (open_runs, advance).chain().in_set(RigSet::Advance),
+            attach_retrieved
+                .after(RigSet::Advance)
+                .before(RigSet::Select),
+            select.in_set(RigSet::Select),
+            fold_turn.in_set(RigSet::Assemble),
+            backoff::hold_retries
+                .after(RigSet::Patch)
+                .before(RigSet::Release),
+            release_batch.in_set(RigSet::Release),
+            (fold, discover_streamed_invalid_calls)
+                .chain()
+                .in_set(RigSet::Fold),
+            (
+                land_memory,
+                resolve_invalid_defaults,
+                land_batch,
+                record_usage,
+                judge_invalid_calls,
+                read_turn,
+                materialise_assistant,
+                materialise_batch,
+                materialise_reprompt,
+                materialise_answer,
+            )
+                .chain()
+                .in_set(RigSet::Materialise),
+            append_memory.in_set(RigSet::Settle),
+        ));
     }
-}
-
-fn install_agent(world: &mut World) {
-    assert!(
-        world.contains_resource::<crate::bus::Policy>(),
-        "AgentPlugin needs BusPlugin first: it runs in the bus's RigSchedule"
-    );
-    world.init_resource::<BinaryAssets>();
-    world.init_resource::<RunCounter>();
-    world.add_observer(effect_cancelled);
-    world.add_observer(run_cancelled);
-    world.add_observer(batch_marker_follows_the_hold);
-    witness::install(world);
-    let mut schedules = world.resource_mut::<Schedules>();
-    let Some(schedule) = schedules.get_mut(RigSchedule) else {
-        return;
-    };
-    schedule.configure_sets(
-        (
-            RigSet::Advance,
-            RigSet::Select,
-            RigSet::Assemble,
-            RigSet::Patch,
-            RigSet::Release,
-        )
-            .chain()
-            .before(BusSet::Gate),
-    );
-    schedule.configure_sets(
-        (
-            RigSet::Fold,
-            RigSet::Judge,
-            RigSet::Materialise,
-            RigSet::Checkpoint,
-            RigSet::Settle,
-        )
-            .chain()
-            .after(BusSet::Judge),
-    );
-    schedule.add_systems((
-        (open_runs, advance).chain().in_set(RigSet::Advance),
-        attach_retrieved
-            .after(RigSet::Advance)
-            .before(RigSet::Select),
-        select.in_set(RigSet::Select),
-        fold_turn.in_set(RigSet::Assemble),
-        backoff::hold_retries
-            .after(RigSet::Patch)
-            .before(RigSet::Release),
-        release_batch.in_set(RigSet::Release),
-        (fold, discover_streamed_invalid_calls)
-            .chain()
-            .in_set(RigSet::Fold),
-        (
-            land_memory,
-            resolve_invalid_defaults,
-            land_batch,
-            record_usage,
-            judge_invalid_calls,
-            read_turn,
-            materialise_assistant,
-            materialise_batch,
-            materialise_reprompt,
-            materialise_answer,
-        )
-            .chain()
-            .in_set(RigSet::Materialise),
-        append_memory.in_set(RigSet::Settle),
-    ));
 }
 
 /// The run's phase changes: the next phase, or an ending in its place.

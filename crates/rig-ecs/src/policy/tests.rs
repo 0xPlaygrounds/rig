@@ -292,7 +292,7 @@ fn message_parts_round_trip_but_never_a_system_message() {
         })
         .is_none()
     );
-    let user = user_text("hi");
+    let user = Message::user("hi");
     let parts = MessageParts::from_message(&user).expect("a user message");
     assert_eq!(
         serde_json::to_value(parts.to_message()).expect("serde"),

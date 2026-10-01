@@ -352,12 +352,5 @@ pub fn retrieval_query(utterances: &[MessageParts]) -> String {
         .unwrap_or_default()
 }
 
-/// A user message of one text part.
-pub fn user_text(text: &str) -> Message {
-    Message::User {
-        content: vec![UserContent::text(text)],
-    }
-}
-
 #[cfg(test)]
 mod tests;
