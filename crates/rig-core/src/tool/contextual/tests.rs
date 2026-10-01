@@ -7,7 +7,7 @@ use super::*;
 #[tokio::test]
 async fn dynamic_tools_receive_owned_arguments() {
     let tool = DynamicTool::new(
-        "echo",
+        crate::message::ToolName::new("echo").expect("tool name"),
         "Echo a JSON value",
         serde_json::json!({"type": "object"}),
         |arguments| Box::pin(async move { Ok(ToolOutput::json(arguments)) }),
@@ -52,7 +52,7 @@ fn cancelling_inline_execution_preserves_the_callers_context() {
     use futures::{FutureExt, task::noop_waker_ref};
 
     let tool = DynamicTool::new_with_context(
-        "mutate",
+        crate::message::ToolName::new("mutate").expect("tool name"),
         "test context isolation",
         serde_json::json!({}),
         mutate_context,
@@ -79,7 +79,7 @@ fn cancelling_inline_execution_preserves_the_callers_context() {
 #[tokio::test]
 async fn inline_execution_publishes_only_result_changes() {
     let tool = DynamicTool::new_with_context(
-        "mutate",
+        crate::message::ToolName::new("mutate").expect("tool name"),
         "test context isolation",
         serde_json::json!({}),
         mutate_context,
@@ -106,4 +106,35 @@ async fn inline_execution_publishes_only_result_changes() {
             &scope
         ));
     }
+}
+
+struct Ping;
+
+impl Tool for Ping {
+    const NAME: &'static str = "ping";
+    type Args = serde_json::Value;
+    type Output = String;
+    type Error = std::convert::Infallible;
+
+    fn description(&self) -> String {
+        "Replies with pong.".to_string()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        serde_json::json!({"type": "object"})
+    }
+
+    async fn call(
+        &self,
+        _context: &mut ToolContext,
+        _args: Self::Args,
+    ) -> Result<String, Self::Error> {
+        Ok("pong".to_string())
+    }
+}
+
+#[test]
+fn typed_tools_name_their_definitions() {
+    assert_eq!(tool_name::<Ping>(), "ping");
+    assert_eq!(tool_definition(&Ping).name, tool_name::<Ping>());
 }

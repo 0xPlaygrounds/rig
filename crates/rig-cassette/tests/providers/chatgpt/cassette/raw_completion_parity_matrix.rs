@@ -63,7 +63,7 @@ const TOOL_PROMPT: &str = "Use the get_weather tool for the city Lisbon.";
 
 fn weather_tool() -> ToolDefinition {
     ToolDefinition {
-        name: "get_weather".to_string(),
+        name: rig_core::message::ToolName::new("get_weather").expect("tool name"),
         description: "Get the current weather for a city.".to_string(),
         parameters: json!({
             "type": "object",

@@ -113,7 +113,7 @@ impl Tool for Lookup {
 
 fn tool(name: &str) -> rig::completion::ToolDefinition {
     rig::completion::ToolDefinition {
-        name: name.to_owned(),
+        name: rig_core::message::ToolName::new(name).expect("tool name"),
         description: format!("Record the required {name} value"),
         parameters: json!({
             "type": "object",

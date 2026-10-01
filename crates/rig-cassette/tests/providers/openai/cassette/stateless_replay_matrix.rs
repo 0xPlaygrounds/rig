@@ -572,7 +572,7 @@ async fn commentary_before_a_tool_call_replays_with_its_phase() {
                 let preamble = "Before you call any tool, first send the user one short sentence \
                 saying what you are about to do. Then call the tool.";
                 let tool = ToolDefinition {
-                    name: "get_weather".to_owned(),
+                    name: rig_core::message::ToolName::new("get_weather").expect("tool name"),
                     description: "Look up the current weather for a city.".to_owned(),
                     parameters: serde_json::json!({
                         "type": "object",

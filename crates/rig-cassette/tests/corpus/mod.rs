@@ -301,7 +301,7 @@ impl Choice {
             Self::None => ToolChoice::None,
             Self::Required => ToolChoice::Required,
             Self::Specific(name) => ToolChoice::Specific {
-                function_names: vec![name.to_owned()],
+                function_names: vec![rig_core::message::ToolName::new(name).expect("tool name")],
             },
         }
     }

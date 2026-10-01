@@ -7,7 +7,7 @@ use rig_ecs::{
     agent::{
         Cancelled, Failed, Failure, Grant, MaxTurns, Run, Settled,
         checkpoint::{
-            CheckpointError, ToolTurnCommit, ToolTurnCommitted, ToolTurnHolds, TurnAssistant,
+            ToolTurnCommit, ToolTurnCommitted, ToolTurnHolds, TurnAssistant, TurnHoldError,
             TurnResults, hold_after_tool_turn, release_tool_turn_hold,
         },
         content::parts::read_message,
@@ -73,11 +73,11 @@ fn owners_are_independent_and_invalid_hold_requests_are_rejected() {
     let (mut app, run, requests) = setup(1, 2);
     assert_eq!(
         hold_after_tool_turn(app.world_mut(), run, "", 1),
-        Err(CheckpointError::EmptyOwner)
+        Err(TurnHoldError::EmptyOwner)
     );
     assert_eq!(
         hold_after_tool_turn(app.world_mut(), run, "a", 0),
-        Err(CheckpointError::ZeroTurn)
+        Err(TurnHoldError::ZeroTurn)
     );
     assert!(hold_after_tool_turn(app.world_mut(), run, "a", 1).unwrap());
     assert!(!hold_after_tool_turn(app.world_mut(), run, "a", 2).unwrap());
@@ -91,7 +91,7 @@ fn owners_are_independent_and_invalid_hold_requests_are_rejected() {
     assert!(app.world().get::<ToolTurnHolds>(run).is_none());
     assert_eq!(
         hold_after_tool_turn(app.world_mut(), run, "a", 1),
-        Err(CheckpointError::NotLiveRun)
+        Err(TurnHoldError::NotLiveRun)
     );
 }
 

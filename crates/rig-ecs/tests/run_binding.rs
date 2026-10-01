@@ -11,7 +11,7 @@ use rig_core::{
 };
 use rig_ecs::{
     bus::{Bound, EffectOutcome, Handlers, PendingEffect},
-    checkpoint::{Checkpoint, RestoreMode, load_world, save_world},
+    checkpoint::{Checkpoint, CheckpointError, RestoreMode, load_world, save_world},
 };
 
 const KEY: &str = "host/model";
@@ -274,15 +274,18 @@ fn key_normalization_preserves_every_strict_descriptor_comparison() {
             });
             let result = load_world(&checkpoint, app.world_mut(), mode, [(KEY.into(), supplied)]);
             if mode == RestoreMode::Strict || difference == "family" {
-                let error = result.unwrap_err().to_string();
-                assert!(
-                    error.contains(if difference == "family" {
-                        "changed effect family"
-                    } else {
-                        "original saved descriptor"
-                    }),
-                    "{difference}: {error}"
-                );
+                let error = result.unwrap_err();
+                if difference == "family" {
+                    assert!(
+                        matches!(error, CheckpointError::FamilyChanged { .. }),
+                        "{difference}: {error:?}"
+                    );
+                } else {
+                    assert!(
+                        matches!(error, CheckpointError::DescriptorChanged { .. }),
+                        "{difference}: {error:?}"
+                    );
+                }
                 assert_eq!(app.world().entities().len(), count);
                 assert_eq!(
                     save_world(app.world_mut()).unwrap().to_json().unwrap(),
@@ -314,7 +317,10 @@ fn strict_restore_checks_original_descriptor_before_aliasing() {
         .unwrap();
     let before = save_world(app.world_mut()).unwrap().to_json().unwrap();
     let error = load_world(&checkpoint, app.world_mut(), RestoreMode::Strict, []).unwrap_err();
-    assert!(error.to_string().contains("original saved descriptor"));
+    assert!(
+        matches!(error, CheckpointError::DescriptorChanged { .. }),
+        "{error:?}"
+    );
     assert_eq!(
         save_world(app.world_mut()).unwrap().to_json().unwrap(),
         before
@@ -383,7 +389,10 @@ fn an_incomplete_batch_installs_neither_state_nor_handlers() {
         [(KEY.into(), live)],
     )
     .unwrap_err();
-    assert!(error.to_string().contains("no implementation supplied"));
+    assert!(
+        matches!(error, CheckpointError::MissingHandler { .. }),
+        "{error:?}"
+    );
     assert_eq!(
         save_world(app.world_mut()).unwrap().to_json().unwrap(),
         before
@@ -463,16 +472,24 @@ fn old_provider_bearing_checkpoints_are_refused_not_silently_stripped() {
         checkpoint.entities[0].insert(path.into(), serde_json::json!({"provider":"openai:model"}));
         let mut app = bus_support::app();
         let before = save_world(app.world_mut()).unwrap().to_json().unwrap();
-        let error = checkpoint.validate(app.world()).unwrap_err().to_string();
-        assert!(error.contains(path));
-        assert!(error.contains("format-2"));
-        assert!(error.contains("migrate provider launch settings to the host"));
+        let error = checkpoint.validate(app.world()).unwrap_err();
+        assert!(
+            matches!(&error, CheckpointError::RemovedComponent { path: removed } if removed == path),
+            "{error:?}"
+        );
+        assert!(
+            error
+                .to_string()
+                .contains("migrate provider launch settings to the host")
+        );
         for mode in [RestoreMode::Strict, RestoreMode::Replace] {
             let (live, http) = handler("saved", "new", "https://unused.invalid/v1");
-            let error = load_world(&checkpoint, app.world_mut(), mode, [(KEY.into(), live)])
-                .unwrap_err()
-                .to_string();
-            assert!(error.contains(path));
+            let error =
+                load_world(&checkpoint, app.world_mut(), mode, [(KEY.into(), live)]).unwrap_err();
+            assert!(
+                matches!(&error, CheckpointError::RemovedComponent { path: removed } if removed == path),
+                "{error:?}"
+            );
             assert_eq!(
                 save_world(app.world_mut()).unwrap().to_json().unwrap(),
                 before
@@ -492,21 +509,20 @@ fn inconsistent_or_duplicate_saved_keys_are_refused_atomically() {
     for duplicate in [false, true] {
         for mode in [RestoreMode::Strict, RestoreMode::Replace] {
             let mut checkpoint = saved(&[KEY]);
-            let expected = if duplicate {
+            if duplicate {
                 checkpoint.entities.push(checkpoint.entities[0].clone());
-                "duplicate saved"
             } else {
                 checkpoint.entities[0].get_mut(Bound::type_path()).unwrap()["descriptor"]["key"] =
                     serde_json::json!("different");
-                "descriptor key"
+            }
+            let expected = |error: &CheckpointError| {
+                if duplicate {
+                    matches!(error, CheckpointError::DuplicateSavedHandler { key } if key.as_str() == KEY)
+                } else {
+                    matches!(error, CheckpointError::HandlerKeyMismatch { key } if key.as_str() == KEY)
+                }
             };
-            assert!(
-                checkpoint
-                    .requirements()
-                    .unwrap_err()
-                    .to_string()
-                    .contains(expected)
-            );
+            assert!(expected(&checkpoint.requirements().unwrap_err()));
             let mut app = bus_support::app();
             let (old, old_http) = handler("saved", "old", "https://old.invalid/v1");
             Handlers::with(app.world_mut(), |h| h.register_erased(KEY, old))
@@ -514,17 +530,11 @@ fn inconsistent_or_duplicate_saved_keys_are_refused_atomically() {
                 .unwrap();
             let before = save_world(app.world_mut()).unwrap().to_json().unwrap();
             let count = app.world().entities().len();
-            assert!(
-                checkpoint
-                    .validate(app.world())
-                    .unwrap_err()
-                    .to_string()
-                    .contains(expected)
-            );
+            assert!(expected(&checkpoint.validate(app.world()).unwrap_err()));
             let (new, new_http) = handler("saved", "new", "https://new.invalid/v1");
             let error =
                 load_world(&checkpoint, app.world_mut(), mode, [(KEY.into(), new)]).unwrap_err();
-            assert!(error.to_string().contains(expected));
+            assert!(expected(&error), "{error:?}");
             assert_eq!(app.world().entities().len(), count);
             assert_eq!(
                 save_world(app.world_mut()).unwrap().to_json().unwrap(),
@@ -558,7 +568,10 @@ fn missing_execution_counters_refuse_before_any_installation() {
             [(KEY.into(), handler)],
         )
         .unwrap_err();
-        assert!(error.to_string().contains("execution counters"));
+        assert!(
+            matches!(error, CheckpointError::NotInstalled("execution counters")),
+            "{error:?}"
+        );
         assert_eq!(app.world().entities().len(), count);
         assert_eq!(
             save_world(app.world_mut()).unwrap().to_json().unwrap(),
@@ -611,7 +624,10 @@ fn open_world_handlers_accept_arbitrary_input_kinds_across_strict_resume() {
             [(KEY.into(), task)],
         )
         .unwrap_err();
-        assert!(error.to_string().contains("changed effect family"));
+        assert!(
+            matches!(error, CheckpointError::FamilyChanged { .. }),
+            "{error:?}"
+        );
         assert_eq!(
             save_world(destination.world_mut())
                 .unwrap()
@@ -638,7 +654,10 @@ fn destination_cannot_invent_an_unfinished_effects_original_contract() {
     let before = save_world(app.world_mut()).unwrap().to_json().unwrap();
     for mode in [RestoreMode::Strict, RestoreMode::Replace] {
         let error = load_world(&checkpoint, app.world_mut(), mode, []).unwrap_err();
-        assert!(error.to_string().contains("missing saved handler"));
+        assert!(
+            matches!(&error, CheckpointError::MissingSavedHandler { key } if key.as_str() == KEY),
+            "{error:?}"
+        );
         assert_eq!(
             save_world(app.world_mut()).unwrap().to_json().unwrap(),
             before

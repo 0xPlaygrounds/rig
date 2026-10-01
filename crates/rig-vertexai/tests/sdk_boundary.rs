@@ -98,7 +98,7 @@ async fn unary_completion_converts_the_request_and_maps_the_response() {
     request.max_tokens = Some(64);
     request.tool_choice = Some(ToolChoice::Required);
     request.tools = vec![ToolDefinition {
-        name: "lookup_weather".to_string(),
+        name: rig_core::message::ToolName::new("lookup_weather").expect("tool name"),
         description: "look up the weather".to_string(),
         parameters: serde_json::json!({
             "type": "object",
@@ -364,8 +364,8 @@ async fn supplying_both_a_client_and_credentials_is_refused() {
 }
 
 /// On the deferred path Rig builds the SDK client on the first completion, so
-/// an initialization failure surfaces there — as a Rig-side provider error,
-/// not as a provider reply — and the cached failure is reported identically to
+/// an initialization failure surfaces there — as a Rig-side request error
+/// carrying the SDK's typed error, not as a provider reply — and the cached failure is reported identically to
 /// every later caller.
 #[tokio::test]
 async fn deferred_client_initialization_failure_surfaces_on_first_use() {
@@ -386,10 +386,14 @@ async fn deferred_client_initialization_failure_surfaces_on_first_use() {
             .call(request("hello"))
             .await
             .expect_err("the SDK client cannot be built");
+        let client_error = match &error {
+            ProviderError::Request(source) => source.downcast_ref::<VertexAiClientError>(),
+            _ => None,
+        };
         assert!(
-            matches!(&error, ProviderError::Provider(message)
-                if message.contains("universe domain")),
-            "attempt {attempt}: unexpected error: {error}"
+            matches!(client_error, Some(VertexAiClientError::PredictionService(sdk))
+                if sdk.is_universe_domain_mismatch()),
+            "attempt {attempt}: unexpected error: {error:?}"
         );
         assert_eq!(
             error.provider_response_body(),

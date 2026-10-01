@@ -98,7 +98,7 @@ fn prompt(cell: Cell) -> &'static str {
 
 fn tool_definition() -> rig::completion::ToolDefinition {
     rig::completion::ToolDefinition {
-        name: "add".to_owned(),
+        name: rig_core::message::ToolName::new("add").expect("tool name"),
         description: "Add two integers".to_owned(),
         parameters: json!({
             "type": "object",

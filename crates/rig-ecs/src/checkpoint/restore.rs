@@ -5,7 +5,7 @@
 //! let mut app = bevy_app::App::new();
 //! app.add_plugins(RigPlugin::default());
 //! load_world(&Checkpoint::default(), app.world_mut(), RestoreMode::Strict, [])?;
-//! # Ok::<(), rig_core::error::ErrorReport>(())
+//! # Ok::<(), rig_ecs::checkpoint::CheckpointError>(())
 //! ```
 
 use std::collections::{BTreeMap, HashSet};
@@ -14,11 +14,10 @@ use bevy_ecs::prelude::*;
 use bevy_reflect::TypePath;
 use rig_core::{
     effect::{HandlerDescriptor, HandlerKey},
-    error::ErrorReport,
     serve::ErasedHandler,
 };
 
-use super::{Checkpoint, Loaded, refused};
+use super::{Checkpoint, CheckpointError, Loaded};
 use crate::bus::{Bound, HandlerIndex, handlers::HandlerTable};
 
 /// How the host authorizes the implementations serving a resumed checkpoint.
@@ -41,21 +40,17 @@ impl Checkpoint {
     /// Return original advertised contracts in key order, before destination aliasing.
     /// Returns an error for malformed descriptors, inconsistent keys, or duplicates;
     /// performs no credential lookup or provider construction.
-    pub fn requirements(&self) -> Result<Vec<HandlerDescriptor>, ErrorReport> {
+    pub fn requirements(&self) -> Result<Vec<HandlerDescriptor>, CheckpointError> {
         let mut keys = HashSet::new();
         let mut requirements = Vec::new();
-        for row in &self.entities {
-            if let Some(value) = row.get(Bound::type_path()) {
-                let bound: Bound = serde_json::from_value(value.clone())
-                    .map_err(|error| refused(format!("invalid saved handler: {error}")))?;
+        for (row, entity) in self.entities.iter().enumerate() {
+            if let Some(value) = entity.get(Bound::type_path()) {
+                let bound = super::saved_bound(row, value)?;
                 if bound.key != bound.descriptor.key {
-                    return Err(refused(format!(
-                        "saved handler `{}` has a different descriptor key",
-                        bound.key
-                    )));
+                    return Err(CheckpointError::HandlerKeyMismatch { key: bound.key });
                 }
                 if !keys.insert(bound.key.clone()) {
-                    return Err(refused(format!("duplicate saved handler `{}`", bound.key)));
+                    return Err(CheckpointError::DuplicateSavedHandler { key: bound.key });
                 }
                 requirements.push(bound.descriptor);
             }
@@ -85,21 +80,21 @@ pub fn load_world(
     world: &mut World,
     mode: RestoreMode,
     handlers: impl IntoIterator<Item = (HandlerKey, ErasedHandler)>,
-) -> Result<Loaded, ErrorReport> {
+) -> Result<Loaded, CheckpointError> {
     let requirements = checkpoint.requirements()?;
     let (assets, aliases) = super::validated_state(checkpoint, world)?;
     let mut supplied = BTreeMap::new();
     for (key, handler) in handlers {
         if supplied.insert(key.clone(), handler).is_some() {
-            return Err(refused(format!("duplicate supplied handler `{key}`")));
+            return Err(CheckpointError::DuplicateSuppliedHandler { key });
         }
     }
-    let index = world.get_resource::<HandlerIndex>().ok_or_else(|| {
-        refused("handler index missing: install the bus before restoring handlers")
-    })?;
-    let table = world.get_non_send::<HandlerTable>().ok_or_else(|| {
-        refused("handler table missing: install the bus before restoring handlers")
-    })?;
+    let index = world
+        .get_resource::<HandlerIndex>()
+        .ok_or(CheckpointError::NotInstalled("handler index"))?;
+    let table = world
+        .get_non_send::<HandlerTable>()
+        .ok_or(CheckpointError::NotInstalled("handler table"))?;
     let mut descriptors = BTreeMap::new();
     for saved in &requirements {
         let actual = if let Some(handler) = supplied.get(&saved.key) {
@@ -107,42 +102,33 @@ pub fn load_world(
             descriptor.key = saved.key.clone();
             descriptor
         } else {
-            let entity = index
+            index
                 .entity(&saved.key)
                 .filter(|entity| table.contains(*entity))
-                .ok_or_else(|| {
-                    refused(format!("no implementation supplied for `{}`", saved.key))
-                })?;
-            world
-                .get::<Bound>(entity)
-                .ok_or_else(|| {
-                    refused(format!(
-                        "installed handler `{}` has no descriptor",
-                        saved.key
-                    ))
+                .and_then(|entity| world.get::<Bound>(entity))
+                .ok_or_else(|| CheckpointError::MissingHandler {
+                    key: saved.key.clone(),
                 })?
                 .descriptor
                 .clone()
         };
         if actual.family.family() != saved.family.family() {
-            return Err(refused(format!(
-                "handler `{}` changed effect family",
-                saved.key
-            )));
+            return Err(CheckpointError::FamilyChanged {
+                key: saved.key.clone(),
+                saved: saved.family.family(),
+                found: actual.family.family(),
+            });
         }
         if mode == RestoreMode::Strict && actual != *saved {
-            return Err(refused(format!(
-                "handler `{}` differs from its original saved descriptor",
-                saved.key
-            )));
+            return Err(CheckpointError::DescriptorChanged {
+                key: saved.key.clone(),
+            });
         }
         descriptors.insert(saved.key.clone(), actual);
     }
     for key in supplied.keys() {
         if !descriptors.contains_key(key) {
-            return Err(refused(format!(
-                "supplied handler `{key}` is not required by this checkpoint"
-            )));
+            return Err(CheckpointError::UnrequiredHandler { key: key.clone() });
         }
     }
 

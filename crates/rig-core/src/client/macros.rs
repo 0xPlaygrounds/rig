@@ -121,7 +121,7 @@ macro_rules! anthropic_vendor {
         pub fn $new(
             api_key: impl Into<$crate::wire::Secret>,
         ) -> $crate::providers::anthropic::Anthropic {
-            $crate::providers::anthropic::AnthropicConfig::with_dialect(api_key, &$dialect).client()
+            $crate::providers::anthropic::AnthropicConfig::with_key(&$dialect, api_key).client()
         }
     };
 }

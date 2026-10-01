@@ -126,7 +126,7 @@ fn max_tokens(budget: Budget) -> u64 {
 
 fn tool_definition() -> rig::completion::ToolDefinition {
     rig::completion::ToolDefinition {
-        name: "file_report".to_owned(),
+        name: rig_core::message::ToolName::new("file_report").expect("tool name"),
         description: "File an incident report".to_owned(),
         parameters: json!({
             "type": "object",

@@ -38,7 +38,7 @@ fn assert_same(actual: &CompletionRequest, expected: &CompletionRequest) {
 
 fn tool(name: &str) -> ToolDefinition {
     ToolDefinition {
-        name: name.to_owned(),
+        name: crate::message::ToolName::new(name).expect("tool name"),
         description: format!("the {name} tool"),
         parameters: serde_json::json!({"type": "object"}),
     }

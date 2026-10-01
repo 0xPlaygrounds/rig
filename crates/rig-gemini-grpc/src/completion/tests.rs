@@ -405,7 +405,7 @@ fn create_grpc_request_populates_tool_parameters() {
     use rig_core::completion::ToolDefinition;
 
     let tool = ToolDefinition {
-        name: "get_weather".to_string(),
+        name: rig_core::message::ToolName::new("get_weather").expect("tool name"),
         description: "Look up the current weather for a city.".to_string(),
         parameters: serde_json::json!({
             "type": "object",

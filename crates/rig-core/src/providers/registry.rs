@@ -260,7 +260,7 @@ impl ProviderId {
                 ProviderConfig::OpenAi(openai::wire::OpenAIConfig::with_key(dialect, api_key))
             }
             Registered::Anthropic(dialect) => ProviderConfig::Anthropic(
-                anthropic::wire::AnthropicConfig::with_dialect(api_key, dialect),
+                anthropic::wire::AnthropicConfig::with_key(dialect, api_key),
             ),
             Registered::Gemini => ProviderConfig::Gemini(gemini::GeminiConfig::new(api_key)),
         }

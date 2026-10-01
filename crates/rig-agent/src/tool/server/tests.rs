@@ -30,9 +30,12 @@ async fn execute_tool(
 /// A dynamic tool whose liveness follows `live`, standing in for a remote
 /// tool whose transport can disconnect.
 fn liveness_gated_tool(name: &str, live: Arc<AtomicBool>) -> crate::tool::DynamicTool {
-    crate::tool::DynamicTool::new(name, "gated", serde_json::json!({"type": "object"}), |_| {
-        Box::pin(async { Ok(crate::tool::ToolOutput::text("ok")) })
-    })
+    crate::tool::DynamicTool::new(
+        rig_core::message::ToolName::new(name).expect("tool name"),
+        "gated",
+        serde_json::json!({"type": "object"}),
+        |_| Box::pin(async { Ok(crate::tool::ToolOutput::text("ok")) }),
+    )
     .with_liveness(move || live.load(Ordering::SeqCst))
 }
 

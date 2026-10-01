@@ -102,7 +102,7 @@ async fn unsupported_tools_and_multi_name_tool_choice_are_dropped() {
                 .tool(zero_arg_tool_definition("lookup_alpha"))
                 .tool(zero_arg_tool_definition("lookup_beta"))
                 .tool_choice(ToolChoice::Specific {
-                    function_names: vec!["lookup_alpha".to_string(), "lookup_beta".to_string()],
+                    function_names: vec![rig_core::message::ToolName::new("lookup_alpha").expect("tool name"), rig_core::message::ToolName::new("lookup_beta").expect("tool name")],
                 })
                 .max_tokens(32)
                 .additional_params(json!({"search_context_size": "low"})))

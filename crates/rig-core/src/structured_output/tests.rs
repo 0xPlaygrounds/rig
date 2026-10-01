@@ -3,7 +3,10 @@ use super::*;
 #[test]
 fn the_output_tool_is_callable_unless_the_choice_excludes_it() {
     let specific = |names: &[&str]| ToolChoice::Specific {
-        function_names: names.iter().map(|name| (*name).to_owned()).collect(),
+        function_names: names
+            .iter()
+            .map(|name| crate::message::ToolName::new(*name).expect("tool name"))
+            .collect(),
     };
     assert!(output_tool_callable(None, "final_result"));
     assert!(output_tool_callable(

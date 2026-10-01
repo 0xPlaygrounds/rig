@@ -50,7 +50,7 @@ async fn assert_model_streaming_tool_call(
         .max_tokens(1024)
         .tool_choice(tool_choice)
         .tool(ToolDefinition {
-            name: tool_name.to_string(),
+            name: rig_core::message::ToolName::new(tool_name).expect("tool name"),
             description: "Record the requested values in a streaming strict tool call.".to_string(),
             parameters,
         })
@@ -171,7 +171,9 @@ async fn one_of_and_const_stream_with_specific_choice() {
                     "required": ["event"]
                 }),
                 ToolChoice::Specific {
-                    function_names: vec!["stream_event".to_string()],
+                    function_names: vec![
+                        rig_core::message::ToolName::new("stream_event").expect("tool name"),
+                    ],
                 },
                 json!({ "event": { "kind": "created", "id": 9 } }),
             )

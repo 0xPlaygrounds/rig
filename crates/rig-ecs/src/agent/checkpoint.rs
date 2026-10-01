@@ -86,7 +86,7 @@ pub struct ToolTurnCommitted {
 
 /// An invalid host request to arm or release a checkpoint hold.
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
-pub enum CheckpointError {
+pub enum TurnHoldError {
     /// The entity does not name a live run.
     #[error("checkpoint hold needs a live run")]
     NotLiveRun,
@@ -108,19 +108,19 @@ pub fn hold_after_tool_turn(
     run: Entity,
     owner: impl Into<String>,
     turn: usize,
-) -> Result<bool, CheckpointError> {
+) -> Result<bool, TurnHoldError> {
     if world.get::<Run>(run).is_none()
         || world.get::<Failed>(run).is_some()
         || world.get::<Settled>(run).is_some()
     {
-        return Err(CheckpointError::NotLiveRun);
+        return Err(TurnHoldError::NotLiveRun);
     }
     let owner = owner.into();
     if owner.is_empty() {
-        return Err(CheckpointError::EmptyOwner);
+        return Err(TurnHoldError::EmptyOwner);
     }
     if turn == 0 {
-        return Err(CheckpointError::ZeroTurn);
+        return Err(TurnHoldError::ZeroTurn);
     }
     let mut holds = world.get::<ToolTurnHolds>(run).cloned().unwrap_or_default();
     let previous = holds.0.get(&owner).copied();
@@ -141,12 +141,12 @@ pub fn release_tool_turn_hold(
     world: &mut World,
     run: Entity,
     owner: &str,
-) -> Result<bool, CheckpointError> {
+) -> Result<bool, TurnHoldError> {
     if world.get::<Run>(run).is_none() {
-        return Err(CheckpointError::NotLiveRun);
+        return Err(TurnHoldError::NotLiveRun);
     }
     if owner.is_empty() {
-        return Err(CheckpointError::EmptyOwner);
+        return Err(TurnHoldError::EmptyOwner);
     }
     let Some(mut holds) = world.get_mut::<ToolTurnHolds>(run) else {
         return Ok(false);
@@ -162,11 +162,12 @@ pub fn release_tool_turn_hold(
 /// on a run with named owners and non-zero turns; a commit or its links on
 /// a turn of a run, naming utterances of that run in their roles; a commit
 /// with both links, no batch out, and a turn the run's cursor has reached.
-pub(crate) fn validate(world: &World, entity: Entity) -> Result<(), rig_core::error::ErrorReport> {
+pub(crate) fn validate(
+    world: &World,
+    entity: Entity,
+) -> Result<(), crate::checkpoint::CheckpointError> {
     use super::{Batch, Cursor, Role, Turn, Utterance};
-    let refused = |message: &str| {
-        rig_core::error::ErrorReport::new(rig_core::error::ErrorKind::Request, message)
-    };
+    let refused = crate::checkpoint::CheckpointError::InvalidGraph;
     if let Some(holds) = world.get::<ToolTurnHolds>(entity)
         && (world.get::<Run>(entity).is_none()
             || holds
@@ -185,7 +186,7 @@ pub(crate) fn validate(world: &World, entity: Entity) -> Result<(), rig_core::er
         .get::<ChildOf>(entity)
         .map(ChildOf::parent)
         .filter(|run| world.get::<Run>(*run).is_some())
-        .ok_or_else(|| refused("tool-turn link has no run"))?;
+        .ok_or(refused("tool-turn link has no run"))?;
     if world.get::<Turn>(entity).is_none() {
         return Err(refused("tool-turn link is not on a turn"));
     }

@@ -4,13 +4,10 @@
 use std::any::type_name;
 
 use bevy_ecs::prelude::*;
-use rig_core::{
-    error::ErrorKind,
-    message::{DocumentSourceKind, Image, UserContent},
-};
+use rig_core::message::{DocumentSourceKind, Image, UserContent};
 use rig_ecs::agent::content::{binary::*, parts::*};
 use rig_ecs::agent::{MessageParts, Utterance};
-use rig_ecs::checkpoint::{Checkpoint, RestoreMode, load_world, save_world};
+use rig_ecs::checkpoint::{Checkpoint, CheckpointError, RestoreMode, load_world, save_world};
 
 /// A world with one utterance of two texts and two images (one base64,
 /// one raw) of the same byte.
@@ -70,7 +67,10 @@ fn refused_without_touching_destination(checkpoint: &Checkpoint, what: &str) {
     let sentinel = destination.spawn_empty().id();
     let before = destination.entities().len();
     let error = load_world(checkpoint, &mut destination, RestoreMode::Strict, []).expect_err(what);
-    assert_eq!(error.kind, ErrorKind::Request, "{what}: {error:?}");
+    assert!(
+        !matches!(error, CheckpointError::NotInstalled(_)),
+        "{what}: {error:?}"
+    );
     assert_eq!(destination.entities().len(), before, "{what}");
     assert!(destination.get_entity(sentinel).is_ok(), "{what}");
     assert!(
@@ -136,8 +136,10 @@ fn old_component_checkpoint_format_is_explicitly_refused() {
     let mut checkpoint = save_world(&mut world).unwrap();
     checkpoint.format = 1;
     let error = Checkpoint::from_json(&checkpoint.to_json().unwrap()).unwrap_err();
-    assert!(error.message.contains("format 1"));
-    assert!(error.message.contains("reads format 2"));
+    assert!(
+        matches!(error, CheckpointError::UnsupportedFormat { found: 1 }),
+        "{error:?}"
+    );
     refused_without_touching_destination(&checkpoint, "the old component format");
 }
 
@@ -155,7 +157,7 @@ fn load_merges_with_live_assets_and_enforces_destination_limits() {
     destination.insert_resource(assets);
     let count = destination.entities().len();
     let error = load_world(&saved, &mut destination, RestoreMode::Strict, []).unwrap_err();
-    assert_eq!(error.kind, ErrorKind::Request);
+    assert!(matches!(error, CheckpointError::Binary(_)), "{error:?}");
     assert_eq!(destination.entities().len(), count);
     assert_eq!(
         destination

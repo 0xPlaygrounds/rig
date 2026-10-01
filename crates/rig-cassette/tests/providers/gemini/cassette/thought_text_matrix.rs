@@ -735,7 +735,7 @@ async fn text_response_on_a_tool_call_turn() {
                 .temperature(0.0)
                 .max_tokens(2000)
                 .tools(vec![rig::completion::ToolDefinition {
-                    name: "add".to_string(),
+                    name: rig_core::message::ToolName::new("add").expect("tool name"),
                     description: "Add x and y together".to_string(),
                     parameters: json!({
                         "type": "object",
