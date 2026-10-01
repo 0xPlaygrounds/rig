@@ -3,22 +3,22 @@ use base64::{Engine, prelude::BASE64_STANDARD};
 use rig_core::error::ProviderError;
 use rig_core::message::{DocumentSourceKind, Image, ImageMediaType};
 
-use crate::types::image::RigImage;
+use crate::types::image;
 
 #[test]
 fn test_image_to_aws_image() {
     let encoded_str = BASE64_STANDARD.encode("img_data");
-    let rig_image = RigImage(Image {
+    let rig_image = Image {
         data: DocumentSourceKind::Base64(encoded_str),
         media_type: Some(ImageMediaType::JPEG),
         detail: None,
         additional_params: None,
-    });
-    let aws_image: Result<aws_bedrock::ImageBlock, _> = rig_image.clone().try_into();
+    };
+    let aws_image: Result<aws_bedrock::ImageBlock, _> = image::to_aws(rig_image.clone());
     assert!(aws_image.is_ok());
     let aws_image = aws_image.unwrap();
     assert_eq!(aws_image.format, aws_bedrock::ImageFormat::Jpeg);
-    let DocumentSourceKind::Base64(data) = rig_image.0.data else {
+    let DocumentSourceKind::Base64(data) = rig_image.data else {
         panic!("This shouldn't fail since AWS Bedrock only supports base64 encoded strings!")
     };
     let img_data = BASE64_STANDARD.decode(data).unwrap();
@@ -35,13 +35,13 @@ fn test_image_to_aws_image() {
 #[test]
 fn test_unsupported_image_to_aws_image() {
     let encoded_str = BASE64_STANDARD.encode("img_data");
-    let rig_image = RigImage(Image {
+    let rig_image = Image {
         data: DocumentSourceKind::Base64(encoded_str),
         media_type: Some(ImageMediaType::HEIC),
         detail: None,
         additional_params: None,
-    });
-    let aws_image: Result<aws_bedrock::ImageBlock, _> = rig_image.try_into();
+    };
+    let aws_image: Result<aws_bedrock::ImageBlock, _> = image::to_aws(rig_image);
     assert_eq!(
         aws_image.err().unwrap().to_string(),
         ProviderError::Provider("Unsupported format image/heic".into()).to_string()

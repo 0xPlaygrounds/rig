@@ -1,13 +1,13 @@
-use crate::types::message::RigMessage;
+use crate::types::message;
 use aws_sdk_bedrockruntime::types as aws_bedrock;
 use rig_core::message::{Message, UserContent};
 
 #[test]
 fn message_to_aws_message() {
-    let message = Message::User {
+    let rig_message = Message::User {
         content: vec![UserContent::Text("text".into())],
     };
-    let aws_message: Result<aws_bedrock::Message, _> = RigMessage(message).into_aws(&"test".into());
+    let aws_message: Result<aws_bedrock::Message, _> = message::to_aws(rig_message, &"test".into());
     assert!(aws_message.is_ok());
     let aws_message = aws_message.unwrap();
     assert_eq!(aws_message.role, aws_bedrock::ConversationRole::User);
@@ -38,14 +38,8 @@ fn missing_call_ids_reserve_later_explicit_handles() {
         ))
         .build()
         .unwrap();
-    let convert = || {
-        let message = crate::types::converse_output::Message::try_from(wire.clone()).unwrap();
-        RigMessage::try_from(message).unwrap().0
-    };
-    let first = convert();
-    let Message::Assistant { content, .. } = first else {
-        panic!("assistant");
-    };
+    let reply = crate::types::converse_output::Message::try_from(wire).unwrap();
+    let content = message::assistant_reply(reply).unwrap();
     let calls: Vec<_> = content
         .iter()
         .filter_map(|item| match item {
