@@ -40,10 +40,5 @@ default-filter = '''not (
     | (binary_id(rig::core) & test(=core::agent_run_stepper::agent_run_is_steppable_without_the_futures_driver))
     | (binary_id(rig-derive::dependency_rename) & test(=generated_paths_follow_cargo_dependency_renames))
     | (binary_id(rig-derive::dependency_rename) & test(=contextual_tool_compiles_with_rig_core_only))
-    | (binary_id(rig-derive::tool_args) & test(=invalid_tool_arguments_are_rejected))
-    | (binary_id(rig-derive::custom_name) & test(=test_custom_name_trybuild_cases))
-    | (binary_id(rig-derive::serve) & test(=a_type_that_is_not_a_serve_is_told_to_implement_serve))
-    | (binary_id(rig-derive::embed_attrs) & test(=conflicting_embed_attributes_are_rejected))
-    | (binary_id(rig-derive::context_value) & test(=a_bare_value_is_rejected_with_the_fix_named))
-    | (binary_id(rig-derive::tool_context) & test(=invalid_context_parameters_are_rejected))
+    | (binary_id(rig-derive::ui) & test(=ui_cases))
 )'''
