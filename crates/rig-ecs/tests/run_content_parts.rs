@@ -114,6 +114,7 @@ fn all_user_kinds_nested_results_and_metadata_round_trip() {
 #[test]
 fn assistant_signatures_reasoning_ids_and_images_round_trip() {
     let call = ToolCall {
+        native: None,
         id: CallId::from_dual_wire("item-1", "provider-call-1"),
         function: ToolFunction::new(
             rig_core::message::ToolName::new("lookup").expect("tool name"),
@@ -127,6 +128,7 @@ fn assistant_signatures_reasoning_ids_and_images_round_trip() {
         content: vec![
             AssistantContent::Reasoning(
                 Reasoning {
+                    native: None,
                     id: Some("reasoning-1".into()),
                     content: vec![
                         ReasoningContent::Text {

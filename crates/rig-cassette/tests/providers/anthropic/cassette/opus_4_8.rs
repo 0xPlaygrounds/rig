@@ -204,12 +204,7 @@ async fn documents_keep_leading_system_message_top_level() {
 fn server_tool_assistant_message_from_response(content: Vec<AssistantContent>) -> Message {
     let raw_blocks = content
         .into_iter()
-        .filter_map(|content| match content {
-            AssistantContent::Text(text) if anthropic_raw_content_type(&text).is_some() => {
-                Some(AssistantContent::Text(text))
-            }
-            _ => None,
-        })
+        .filter(|content| matches!(content, AssistantContent::Native(_)))
         .collect::<Vec<_>>();
 
     assert!(
@@ -231,20 +226,17 @@ fn server_tool_assistant_message_from_response(content: Vec<AssistantContent>) -
     }
 }
 
+/// The block type of a Messages provider item the reply kept.
 fn content_raw_type(content: &AssistantContent) -> Option<&str> {
-    let AssistantContent::Text(text) = content else {
+    let AssistantContent::Native(native) = content else {
         return None;
     };
-
-    anthropic_raw_content_type(text)
-}
-
-fn anthropic_raw_content_type(text: &Text) -> Option<&str> {
-    text.additional_params
-        .as_ref()
-        .and_then(|params| params.get("anthropic_content"))
-        .and_then(|raw_content| raw_content.get("type"))
-        .and_then(Value::as_str)
+    native
+        .open_native(
+            rig::providers::anthropic::completion::DIALECT,
+            &[native.issuer().clone()],
+        )
+        .and_then(|item| item.kind())
 }
 
 #[derive(Deserialize)]

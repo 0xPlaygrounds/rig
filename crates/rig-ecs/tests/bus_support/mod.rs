@@ -296,7 +296,8 @@ pub fn text_of(outcome: &Result<Outcome, ErrorReport>) -> String {
                 AssistantContent::Text(text) => Some(text.text.clone()),
                 AssistantContent::Reasoning(_)
                 | AssistantContent::Image(_)
-                | AssistantContent::ToolCall(_) => None,
+                | AssistantContent::ToolCall(_)
+                | AssistantContent::Native(_) => None,
             })
             .collect(),
         other => panic!("not a completion: {other:?}"),

@@ -193,6 +193,7 @@ fn the_two_turn_predicates_diverge_on_recordable_but_answerless_turns() {
         rig_core::message::Reasoning::new("t").sealed("test"),
     )];
     let annotated_empty_text = vec![AssistantContent::Text(Text {
+        native: None,
         text: String::new(),
         additional_params: rig_core::message::AdditionalParams::try_from_value(
             json!({"citations": ["ref"]}),
@@ -253,6 +254,7 @@ fn the_two_turn_predicates_diverge_on_recordable_but_answerless_turns() {
 #[test]
 fn metadata_only_text_is_not_an_answer() {
     let annotated_empty = AssistantContent::Text(Text {
+        native: None,
         text: String::new(),
         additional_params: rig_core::message::AdditionalParams::try_from_value(
             json!({"citations": ["ref"]}),
@@ -605,6 +607,7 @@ fn empty_turn_classification_survives_a_serde_round_trip() {
     // "no extras" in memory is `None` and live/restored classification
     // agree by construction.
     let canonical_absent = vec![AssistantContent::Text(rig_core::message::Text {
+        native: None,
         text: String::new(),
         additional_params: rig_core::message::AdditionalParams::try_from_value(serde_json::json!(
             {}
@@ -1867,6 +1870,7 @@ async fn prompt_request_preserves_metadata_only_text_turn_in_history() {
     .expect("params carry data");
     let model =
         MockCompletionModel::from_turns([MockTurn::from_content(AssistantContent::Text(Text {
+            native: None,
             text: String::new(),
             additional_params: Some(metadata.clone()),
         }))]);

@@ -272,9 +272,11 @@ impl Assembly {
         }
     }
 
-    /// The finished block. Streamed input replaces the opening `input`;
-    /// malformed streamed input fails the reply.
-    fn finish(mut self) -> Result<NativeItem, ProviderError> {
+    /// The finished block. Streamed input replaces the opening `input`.
+    ///
+    /// # Errors
+    /// Malformed streamed input has no item.
+    fn finish(mut self) -> Result<NativeItem, serde_json::Error> {
         if !self.input_json.is_empty() {
             let input: Value = serde_json::from_str(&self.input_json)?;
             if let Some(block) = self.block.as_object_mut() {
@@ -505,16 +507,17 @@ impl<'id> MessagesDecoder<'id> {
                 }
             }
             StreamingEvent::ContentBlockStop { index } => {
-                let item = match self.blocks.remove(&index) {
-                    Some(block) => Some(block.finish()?),
-                    None => None,
-                };
+                let block = self.blocks.remove(&index);
                 if self.native_only.remove(&index) {
-                    if let Some(item) = item {
-                        out.native(item);
+                    // A provider item whose input is malformed fails the reply.
+                    if let Some(block) = block {
+                        out.native(block.finish()?);
                     }
                     return Ok(());
                 }
+                // A canonical block decides malformed input itself; such a
+                // block has no item to keep.
+                let item = block.and_then(|block| block.finish().ok());
 
                 // Signature-only thinking parts carry provider state required
                 // for replay.

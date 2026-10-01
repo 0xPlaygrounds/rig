@@ -141,6 +141,7 @@ fn rank(part: &AssistantContent) -> u8 {
         AssistantContent::Text(_) => 1,
         AssistantContent::ToolCall(_) => 2,
         AssistantContent::Image(_) => 3,
+        AssistantContent::Native(_) => 4,
     }
 }
 

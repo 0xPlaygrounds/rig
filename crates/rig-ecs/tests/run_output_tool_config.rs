@@ -89,6 +89,7 @@ fn output_tool_history_preserves_reasoning_and_commits_arguments_as_text() {
 
     let reasoning = AssistantContent::Reasoning(
         Reasoning {
+            native: None,
             id: Some("reasoning-id".into()),
             content: vec![
                 ReasoningContent::Text {

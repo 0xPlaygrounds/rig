@@ -349,6 +349,7 @@ async fn chat_sourced_history_replays_the_tool_name_not_the_identifier() {
                 rig::message::Message::Assistant {
                     id: None,
                     content: vec![AssistantContent::ToolCall(rig::message::ToolCall {
+                        native: None,
                         id: call_id.clone(),
                         function: rig::message::ToolFunction {
                             name: rig_core::message::ToolName::new("add").expect("tool name"),

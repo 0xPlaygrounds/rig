@@ -820,7 +820,27 @@ pub(super) fn round_trips(block: &message::AssistantContent, item: &serde_json::
         },
         _ => return false,
     };
-    message::same_wire_value(&encoded, item)
+    message::same_wire_value(&encoded, &without_defaults(item))
+}
+
+/// `item` without the members that state the API's documented default.
+/// Omitting such a member states the same thing, so a replay omits it and
+/// it is no residue.
+fn without_defaults(item: &serde_json::Value) -> serde_json::Value {
+    let mut item = item.clone();
+    if let Some(members) = item.as_object_mut() {
+        members.retain(|member, value| !states_default(member, value));
+    }
+    item
+}
+
+/// Whether `value` is the documented default of a block's `member`.
+fn states_default(member: &str, value: &serde_json::Value) -> bool {
+    match member {
+        // A block the model produced itself rather than from executed code.
+        "caller" => *value == serde_json::json!({ "type": "direct" }),
+        _ => false,
+    }
 }
 
 fn anthropic_content_from_assistant_content(
@@ -828,7 +848,7 @@ fn anthropic_content_from_assistant_content(
     issuers: &[message::Issuer],
 ) -> Result<Vec<Content>, MessageError> {
     if let Some(item) = fresh_native(&content, issuers) {
-        return Ok(vec![Content::Native(item)]);
+        return Ok(vec![Content::Native(without_defaults(&item))]);
     }
     match content {
         message::AssistantContent::Text(text) => {
@@ -846,7 +866,7 @@ fn anthropic_content_from_assistant_content(
             // Another dialect's, or another service's, items are not replayed.
             Ok(native
                 .open_native(DIALECT, issuers)
-                .map(|item| Content::Native(item.item().clone()))
+                .map(|item| Content::Native(without_defaults(item.item())))
                 .into_iter()
                 .collect())
         }
