@@ -3,23 +3,19 @@
 use super::*;
 use std::{fs, time::Instant};
 
-pub(super) fn tracked_inputs(root: &Path) -> Result<Vec<String>> {
-    Ok(output(root, "git", &["ls-files", "-z"])?
+/// The paths a `git … -z` command prints, NUL-separated.
+pub(super) fn git_paths(root: &Path, args: &[&str]) -> Result<Vec<String>> {
+    Ok(output(root, "git", args)?
         .split('\0')
         .filter(|s| !s.is_empty())
         .map(str::to_owned)
         .collect())
 }
+pub(super) fn tracked_inputs(root: &Path) -> Result<Vec<String>> {
+    git_paths(root, &["ls-files", "-z"])
+}
 pub(super) fn untracked_inputs(root: &Path) -> Result<Vec<String>> {
-    Ok(output(
-        root,
-        "git",
-        &["ls-files", "--others", "--exclude-standard", "-z"],
-    )?
-    .split('\0')
-    .filter(|s| !s.is_empty())
-    .map(str::to_owned)
-    .collect())
+    git_paths(root, &["ls-files", "--others", "--exclude-standard", "-z"])
 }
 
 /// The command for one step. Verification is always replay, and CLI or
