@@ -91,7 +91,7 @@ impl VectorizeVectorStore {
             top_k: req.samples(),
             return_values: Some(false),
             return_metadata: Some(return_metadata),
-            filter: req.filter().as_ref().map(|f| f.clone().into_inner()),
+            filter: req.filter().map(|f| f.clone().into_inner()),
         };
 
         let result = self.client.query(query_request).await?;

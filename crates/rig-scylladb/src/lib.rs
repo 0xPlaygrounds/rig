@@ -368,7 +368,6 @@ impl ScyllaDbVectorStore {
         let statement = self.get_filter_statement_or_default(req).await?;
         let params = req
             .filter()
-            .as_ref()
             .map(ScyllaSearchFilter::params)
             .unwrap_or_default();
 

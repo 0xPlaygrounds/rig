@@ -11,7 +11,6 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::VectorStoreError;
 use crate::markers::{Missing, Provided};
 
 /// A vector search request for querying a [`super::VectorStoreIndex`].
@@ -26,8 +25,6 @@ pub struct VectorSearchRequest<F = Filter<serde_json::Value>> {
     samples: u64,
     /// Minimum similarity score for results.
     threshold: Option<f64>,
-    /// Backend-specific parameters as a JSON object.
-    additional_params: Option<serde_json::Value>,
     /// Filter expression to narrow results by metadata.
     filter: Option<F>,
 }
@@ -54,8 +51,8 @@ impl<Filter> VectorSearchRequest<Filter> {
     }
 
     /// Returns a reference to the optional filter expression.
-    pub fn filter(&self) -> &Option<Filter> {
-        &self.filter
+    pub fn filter(&self) -> Option<&Filter> {
+        self.filter.as_ref()
     }
 
     /// Transforms the filter type using the provided function.
@@ -70,7 +67,6 @@ impl<Filter> VectorSearchRequest<Filter> {
             query: self.query,
             samples: self.samples,
             threshold: self.threshold,
-            additional_params: self.additional_params,
             filter: self.filter.map(f),
         }
     }
@@ -88,7 +84,6 @@ impl<Filter> VectorSearchRequest<Filter> {
             query: self.query,
             samples: self.samples,
             threshold: self.threshold,
-            additional_params: self.additional_params,
             filter,
         })
     }
@@ -425,7 +420,6 @@ pub struct VectorSearchRequestBuilder<F = Filter<serde_json::Value>, Q = Missing
     query: Q,
     samples: S,
     threshold: Option<f64>,
-    additional_params: Option<serde_json::Value>,
     filter: Option<F>,
 }
 
@@ -435,7 +429,6 @@ impl<F> Default for VectorSearchRequestBuilder<F, Missing, Missing> {
             query: Missing,
             samples: Missing,
             threshold: None,
-            additional_params: None,
             filter: None,
         }
     }
@@ -454,7 +447,6 @@ where
             query: Provided(query.into()),
             samples: self.samples,
             threshold: self.threshold,
-            additional_params: self.additional_params,
             filter: self.filter,
         }
     }
@@ -465,7 +457,6 @@ where
             query: self.query,
             samples: Provided(samples),
             threshold: self.threshold,
-            additional_params: self.additional_params,
             filter: self.filter,
         }
     }
@@ -474,15 +465,6 @@ where
     pub fn threshold(mut self, threshold: f64) -> Self {
         self.threshold = Some(threshold);
         self
-    }
-
-    /// Replaces backend-specific parameters. Accepts any JSON value without validation.
-    pub fn additional_params(
-        mut self,
-        params: serde_json::Value,
-    ) -> Result<Self, VectorStoreError> {
-        self.additional_params = Some(params);
-        Ok(self)
     }
 
     /// Sets a filter expression.
@@ -499,7 +481,6 @@ impl<F> VectorSearchRequestBuilder<F, Provided<String>, Provided<u64>> {
             query: self.query.0,
             samples: self.samples.0,
             threshold: self.threshold,
-            additional_params: self.additional_params,
             filter: self.filter,
         }
     }

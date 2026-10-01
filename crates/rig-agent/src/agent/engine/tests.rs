@@ -6388,18 +6388,18 @@ impl VectorStoreIndex for FailingContextIndex {
         &self,
         _req: VectorSearchRequest,
     ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
-        Err(VectorStoreError::BuilderError(
-            "context index unavailable".to_string(),
-        ))
+        Err(VectorStoreError::datastore(std::io::Error::other(
+            "context index unavailable",
+        )))
     }
 
     async fn top_n_ids(
         &self,
         _req: VectorSearchRequest,
     ) -> Result<Vec<(f64, String)>, VectorStoreError> {
-        Err(VectorStoreError::BuilderError(
-            "context index unavailable".to_string(),
-        ))
+        Err(VectorStoreError::datastore(std::io::Error::other(
+            "context index unavailable",
+        )))
     }
 }
 

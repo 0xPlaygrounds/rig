@@ -296,7 +296,7 @@ where
             .bind((
                 "filter",
                 req.filter()
-                    .clone()
+                    .cloned()
                     .map_or("true".into(), SurrealSearchFilter::inner),
             ))
             .await
