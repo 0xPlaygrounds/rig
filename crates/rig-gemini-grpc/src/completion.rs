@@ -24,12 +24,13 @@ use rig_core::completion::{self, CompletionRequest};
 use rig_core::driver::{Exchange, Opened, Opening, Transport};
 use rig_core::error::EncodeError;
 use rig_core::error::ProviderError;
-use rig_core::message::{self, MimeType};
+use rig_core::message;
 use rig_core::operation::Completion;
 use rig_core::providers::gemini::completion::gemini_api_types::{
-    Schema as GeminiSchema, map_google_finish_reason, tool_parameters_to_schema,
+    Blob, Content, FileData, Part, PartKind, Role, Schema as GeminiSchema,
+    map_google_finish_reason, tool_parameters_to_schema,
 };
-use rig_core::providers::gemini::text_thought_signature;
+use rig_core::providers::gemini::completion::split_system_messages_from_history;
 use rig_core::wire::{Descriptor, Mode, Wire};
 use std::convert::TryFrom;
 
@@ -235,11 +236,14 @@ pub(crate) fn create_grpc_request(
     } = completion_request;
 
     let (history_system, chat_history) = split_system_messages_from_history(chat_history);
-    let mut contents = Vec::new();
-
-    for msg in chat_history {
-        contents.push(rig_message_to_grpc_content(msg)?);
-    }
+    let contents = chat_history
+        .into_iter()
+        .map(|message| {
+            let content =
+                Content::try_from(encode_raw_images(message)).map_err(EncodeError::request)?;
+            grpc_content(content)
+        })
+        .collect::<Result<Vec<_>, _>>()?;
 
     let mut system_parts = Vec::new();
     for content in history_system {
@@ -299,179 +303,91 @@ pub(crate) fn create_grpc_request(
     })
 }
 
-fn rig_message_to_grpc_content(msg: message::Message) -> Result<proto::Content, EncodeError> {
-    match msg {
-        message::Message::System { .. } => Err(EncodeError::request(
-            "System messages must be sent via Gemini gRPC system_instruction",
-        )),
-        message::Message::User { content } => {
-            let parts = content
-                .into_iter()
-                .map(rig_user_content_to_grpc_part)
-                .collect::<Result<Vec<_>, _>>()?;
-
-            Ok(proto::Content {
-                parts,
-                role: "user".to_string(),
-            })
-        }
-        message::Message::Assistant { content, .. } => {
-            let parts = content
-                .into_iter()
-                // Reasoning another service issued is not replayed.
-                .filter(|part| match part {
-                    message::AssistantContent::Reasoning(reasoning) => {
-                        reasoning.open(&ISSUER).is_some()
-                    }
-                    _ => true,
-                })
-                .map(rig_assistant_content_to_grpc_part)
-                .collect::<Result<Vec<_>, _>>()?;
-
-            Ok(proto::Content {
-                parts,
-                role: "model".to_string(),
-            })
-        }
-    }
-}
-
-use rig_core::providers::gemini::completion::split_system_messages_from_history;
-
-fn rig_user_content_to_grpc_part(
-    content: message::UserContent,
-) -> Result<proto::Part, EncodeError> {
-    match content {
-        message::UserContent::Text(message::Text { text, .. }) => Ok(text_part(text)),
-        message::UserContent::ToolResult(result) => {
-            let mut values = result
-                .content
-                .into_iter()
-                .map(|content| match content {
-                    message::ToolResultContent::Text(t) => Ok(serde_json::Value::String(t.text)),
-                    message::ToolResultContent::Json { value } => Ok(value),
-                    message::ToolResultContent::Image(_) => Err(EncodeError::request(
-                        "Gemini gRPC does not support images in tool results",
-                    )),
-                })
-                .collect::<Result<Vec<_>, _>>()?;
-            let result_value = if values.len() == 1 {
-                values.remove(0)
-            } else {
-                serde_json::Value::Array(values)
-            };
-
-            let response_struct =
-                json_to_prost_struct(serde_json::json!({ "result": result_value }))?;
-
-            // Replay the function name and only provider-issued IDs; local
-            // correlation handles must not reach the wire.
-            Ok(data_part(proto::part::Data::FunctionResponse(
-                proto::FunctionResponse {
-                    name: result.name.into(),
-                    response: Some(response_struct),
-                    id: result
-                        .call
-                        .provider()
-                        .map(|provider| provider.call_id.clone())
-                        .unwrap_or_default(),
-                },
-            )))
-        }
-        message::UserContent::Image(img) => {
-            let Some(media_type) = img.media_type else {
-                return Err(EncodeError::request(
-                    "Media type for image is required for Gemini",
-                ));
-            };
-
-            match media_type {
-                message::ImageMediaType::JPEG
-                | message::ImageMediaType::PNG
-                | message::ImageMediaType::WEBP
-                | message::ImageMediaType::HEIC
-                | message::ImageMediaType::HEIF => {}
-                _ => {
-                    return Err(EncodeError::request(format!(
-                        "Unsupported image media type {media_type:?}"
-                    )));
-                }
+/// Encodes raw image bytes as base64, the form the shared Gemini conversion
+/// takes, so gRPC keeps accepting them.
+fn encode_raw_images(mut message: message::Message) -> message::Message {
+    if let message::Message::User { content } = &mut message {
+        for item in content {
+            if let message::UserContent::Image(image) = item
+                && let message::DocumentSourceKind::Raw(bytes) = &image.data
+            {
+                let data = base64::engine::general_purpose::STANDARD.encode(bytes);
+                image.data = message::DocumentSourceKind::Base64(data);
             }
-
-            let mime_type = media_type.to_mime_type().to_string();
-
-            let data = match img.data {
-                message::DocumentSourceKind::Url(file_uri) => {
-                    return Ok(data_part(proto::part::Data::FileData(proto::FileData {
-                        mime_type,
-                        file_uri,
-                    })));
-                }
-                message::DocumentSourceKind::Raw(bytes) => bytes,
-                message::DocumentSourceKind::Base64(data)
-                | message::DocumentSourceKind::String(data) => decode_base64_bytes(&data)?,
-                message::DocumentSourceKind::Unknown => {
-                    return Err(EncodeError::request("Image content has no body"));
-                }
-                _ => {
-                    return Err(EncodeError::request("Unsupported document source kind"));
-                }
-            };
-
-            Ok(data_part(proto::part::Data::InlineData(proto::Blob {
-                mime_type,
-                data,
-            })))
         }
-        _ => Err(EncodeError::request("Unsupported user content type")),
     }
+    message
 }
 
-fn rig_assistant_content_to_grpc_part(
-    content: message::AssistantContent,
-) -> Result<proto::Part, EncodeError> {
-    match content {
-        message::AssistantContent::Text(text) => Ok(proto::Part {
-            thought_signature: decode_optional_base64(
-                text_thought_signature(&text).map(str::to_owned),
-            )?,
-            ..text_part(text.text)
-        }),
-        message::AssistantContent::ToolCall(tool_call) => {
-            let args = json_to_prost_struct(tool_call.function.arguments)?;
+/// Transcodes content built by the shared Gemini conversion into its
+/// protobuf encoding.
+fn grpc_content(content: Content) -> Result<proto::Content, EncodeError> {
+    let role = match content.role {
+        Some(Role::Model) => "model",
+        Some(Role::User) | None => "user",
+    };
+    Ok(proto::Content {
+        parts: content
+            .parts
+            .into_iter()
+            .map(grpc_part)
+            .collect::<Result<Vec<_>, _>>()?,
+        role: role.to_string(),
+    })
+}
 
-            Ok(proto::Part {
-                thought_signature: decode_optional_base64(tool_call.signature)?,
-                ..data_part(proto::part::Data::FunctionCall(proto::FunctionCall {
-                    name: tool_call.function.name.into(),
-                    args: Some(args),
-                    // Only a provider-issued id may travel back on the
-                    // wire; rig-issued ids stay internal.
-                    id: tool_call
-                        .id
-                        .provider()
-                        .map(|provider| provider.call_id.clone())
-                        .unwrap_or_default(),
-                }))
-            })
-        }
-        message::AssistantContent::Reasoning(reasoning) => {
-            let reasoning = reasoning.open(&ISSUER).ok_or_else(|| {
-                EncodeError::request("Gemini cannot replay reasoning another service issued")
-            })?;
-            Ok(proto::Part {
-                data: Some(proto::part::Data::Text(reasoning.display_text())),
-                thought: true,
-                thought_signature: decode_optional_base64(
-                    reasoning
-                        .first_signature()
-                        .map(std::string::ToString::to_string),
-                )?,
-                part_metadata: None,
-            })
-        }
-        _ => Err(EncodeError::request("Unsupported assistant content type")),
+/// Transcodes one Gemini part. Rejects what the gRPC proto cannot carry:
+/// media inside a function response, part metadata, and code execution.
+fn grpc_part(part: Part) -> Result<proto::Part, EncodeError> {
+    if part.additional_params.is_some() {
+        return Err(EncodeError::request(
+            "Gemini gRPC does not support part metadata",
+        ));
     }
+    let data = match part.part {
+        PartKind::Text(text) => proto::part::Data::Text(text),
+        PartKind::InlineData(Blob { mime_type, data }) => {
+            proto::part::Data::InlineData(proto::Blob {
+                mime_type,
+                data: decode_base64_bytes(&data)?,
+            })
+        }
+        PartKind::FileData(FileData {
+            mime_type,
+            file_uri,
+        }) => proto::part::Data::FileData(proto::FileData {
+            mime_type: mime_type.unwrap_or_default(),
+            file_uri,
+        }),
+        PartKind::FunctionCall(call) => proto::part::Data::FunctionCall(proto::FunctionCall {
+            name: call.name,
+            args: Some(json_to_prost_struct(call.args)?),
+            id: call.id.unwrap_or_default(),
+        }),
+        PartKind::FunctionResponse(response) => {
+            if response.parts.is_some() {
+                return Err(EncodeError::request(
+                    "Gemini gRPC does not support images in tool results",
+                ));
+            }
+            proto::part::Data::FunctionResponse(proto::FunctionResponse {
+                name: response.name,
+                response: response.response.map(json_to_prost_struct).transpose()?,
+                id: response.id.unwrap_or_default(),
+            })
+        }
+        PartKind::ExecutableCode(_) | PartKind::CodeExecutionResult(_) => {
+            return Err(EncodeError::request(
+                "Gemini gRPC does not support code execution parts",
+            ));
+        }
+    };
+    Ok(proto::Part {
+        data: Some(data),
+        thought: part.thought.unwrap_or(false),
+        thought_signature: decode_optional_base64(part.thought_signature)?,
+        part_metadata: None,
+    })
 }
 
 fn decode_base64_bytes(input: &str) -> Result<Vec<u8>, EncodeError> {

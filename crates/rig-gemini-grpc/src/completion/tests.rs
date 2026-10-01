@@ -344,6 +344,62 @@ fn create_grpc_request_sends_the_executed_name_not_an_identifier() {
     );
 }
 
+/// Messages go through the shared Gemini conversion. Raw image bytes and
+/// text documents are sent; media inside a tool result is refused.
+#[test]
+fn create_grpc_request_transcodes_the_shared_gemini_content() {
+    use rig_core::message::{
+        DocumentMediaType, DocumentSourceKind, Image, ImageMediaType, ToolResult,
+        ToolResultContent, UserContent,
+    };
+
+    let encode = |content: Vec<UserContent>| {
+        let request = CompletionRequest::new(message::Message::User { content });
+        create_grpc_request("gemini-2.5-flash", request)
+    };
+    let image = Image {
+        data: DocumentSourceKind::Raw(vec![1, 2, 3]),
+        media_type: Some(ImageMediaType::PNG),
+        ..Default::default()
+    };
+
+    let request = encode(vec![
+        UserContent::Image(image.clone()),
+        UserContent::document("notes", Some(DocumentMediaType::TXT)),
+    ])
+    .expect("request build");
+    let data: Vec<_> = request
+        .contents
+        .iter()
+        .flat_map(|content| &content.parts)
+        .map(|part| part.data.clone())
+        .collect();
+    assert_eq!(
+        data,
+        vec![
+            Some(proto::part::Data::InlineData(proto::Blob {
+                mime_type: "image/png".to_owned(),
+                data: vec![1, 2, 3],
+            })),
+            Some(proto::part::Data::Text("notes".to_owned())),
+        ]
+    );
+
+    let error = encode(vec![UserContent::ToolResult(ToolResult {
+        call: rig_core::message::CallId::from_wire("call_1"),
+        name: rig_core::message::ToolName::new("draw".to_owned()).expect("tool name"),
+        content: vec![ToolResultContent::Image(Image {
+            data: DocumentSourceKind::Base64("AQID".to_owned()),
+            ..image
+        })],
+    })])
+    .expect_err("tool-result media has no proto field");
+    assert!(
+        error.to_string().contains("images in tool results"),
+        "{error}"
+    );
+}
+
 #[test]
 fn create_grpc_request_populates_tool_parameters() {
     use rig_core::completion::ToolDefinition;
