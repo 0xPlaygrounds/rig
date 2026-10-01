@@ -14,9 +14,7 @@ use std::{
 use bevy_app::App;
 use bevy_ecs::{prelude::*, schedule::LogLevel};
 use rig_core::{
-    completion::{
-        CompletionRequest, CompletionResponse, Message, ModelRef, ProviderCapabilities, Usage,
-    },
+    completion::{CompletionRequest, CompletionResponse, ModelRef, ProviderCapabilities, Usage},
     effect::{EffectKind, FamilyDescriptor, HandlerDescriptor, HandlerKey, Outcome},
     error::{ErrorKind, ErrorReport},
     message::AssistantContent,
@@ -214,18 +212,7 @@ impl Drop for StreamGuard {
 
 /// A completion request with one user message.
 pub fn request() -> CompletionRequest {
-    CompletionRequest {
-        model: None,
-        chat_history: vec![Message::user("hi")],
-        documents: vec![],
-        tools: vec![],
-        temperature: None,
-        max_tokens: None,
-        tool_choice: None,
-        additional_params: None,
-        output_schema: None,
-        record_telemetry_content: false,
-    }
+    CompletionRequest::new("hi")
 }
 
 /// A unary completion effect.

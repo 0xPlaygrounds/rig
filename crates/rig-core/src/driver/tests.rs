@@ -260,18 +260,7 @@ impl Wire for Echo {
 }
 
 fn prompt() -> CompletionRequest {
-    CompletionRequest {
-        model: None,
-        chat_history: vec![crate::message::Message::user("say hi")],
-        documents: Vec::new(),
-        tools: Vec::new(),
-        temperature: None,
-        max_tokens: None,
-        tool_choice: None,
-        additional_params: None,
-        output_schema: None,
-        record_telemetry_content: false,
-    }
+    CompletionRequest::new("say hi")
 }
 
 // ── the property the model exists for ───────────────────────────────────
@@ -1047,10 +1036,7 @@ async fn the_span_names_the_requests_model_override_not_the_wires() {
 
     let capture = TraceCapture::default();
     let bound = Model::new(Echo::unary(), RecordingHttpClient::new(UNARY_BODY));
-    let request = CompletionRequest {
-        model: Some("echo-override".to_owned()),
-        ..prompt()
-    };
+    let request = prompt().model("echo-override");
     with_default(capture.subscriber(), || {
         futures::executor::block_on(bound.call(request))
     })

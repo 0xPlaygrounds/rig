@@ -19,6 +19,7 @@ use rig_cassette::agent::AgentReplayExt;
 use rig_cassette::effect_log::{EffectLog, EffectLogRecorder};
 use serde_json::json;
 
+use super::tool_result_texts;
 use crate::goldens::{
     CONVERSATION, DenyAllLayer, HOST_DENY_REASON, MockRerank, NOTE_KEY, NeverAsked,
     NoteDeniedAtStart, NoteTaker, NoteUnserializableAtStart, NotesAtStart, UNSERIALIZABLE_KEY,
@@ -29,35 +30,6 @@ const TOOLS_PREAMBLE: &str = "You are a calculator here to help the user perform
 const BASIC_PREAMBLE: &str = "You are a concise assistant. Answer directly.";
 const ADD_PROMPT: &str = "Use the add tool to add 17 and 25, then reply with just the number.";
 const PROMPT: &str = "Reply with the single word: ready.";
-
-fn tool_result_texts(log: &EffectLog) -> Vec<String> {
-    let request = match &log.records.last().expect("a record").kind {
-        rig::effect::EffectKind::Completion { request, .. } => request,
-        other => panic!("the last record is a completion, not {other:?}"),
-    };
-    request
-        .chat_history
-        .iter()
-        .filter_map(|message| match message {
-            rig::message::Message::User { content } => Some(content.iter()),
-            _ => None,
-        })
-        .flatten()
-        .filter_map(|content| match content {
-            rig::message::UserContent::ToolResult(result) => Some(
-                result
-                    .content
-                    .iter()
-                    .map(|part| match part {
-                        rig::message::ToolResultContent::Text(text) => text.text.clone(),
-                        other => format!("{other:?}"),
-                    })
-                    .collect::<String>(),
-            ),
-            _ => None,
-        })
-        .collect()
-}
 
 #[tokio::test]
 async fn denied_tool_effect_log_is_the_golden_fixture() {
@@ -84,7 +56,10 @@ async fn denied_tool_effect_log_is_the_golden_fixture() {
         families(&log),
         [EffectFamily::Completion, EffectFamily::Completion]
     );
-    assert_eq!(tool_result_texts(&log), [HOST_DENY_REASON]);
+    assert_eq!(
+        tool_result_texts(&log, log.records.len() - 1),
+        [HOST_DENY_REASON]
+    );
     assert_eq!(log.header.hooks, ["DenyAllLayer"]);
     crate::goldens::golden_effects("mock_leftovers_denied_tool", &log);
 }
@@ -451,7 +426,10 @@ async fn denied_tool_streamed_effect_log_is_the_golden_fixture() {
         families(&log),
         [EffectFamily::Completion, EffectFamily::Completion]
     );
-    assert_eq!(tool_result_texts(&log), [HOST_DENY_REASON]);
+    assert_eq!(
+        tool_result_texts(&log, log.records.len() - 1),
+        [HOST_DENY_REASON]
+    );
     assert!(log.records[0].events.is_some());
     crate::goldens::golden_effects("mock_leftovers_denied_tool_streamed", &log);
 }

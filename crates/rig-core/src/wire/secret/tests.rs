@@ -86,18 +86,7 @@ fn a_reloaded_wire_sends_no_credential_sentinel() {
 
 /// A minimal request, for a test that only reads the request envelope.
 fn probe_request() -> CompletionRequest {
-    CompletionRequest {
-        model: None,
-        chat_history: vec!["probe".into()],
-        documents: vec![],
-        tools: vec![],
-        temperature: None,
-        max_tokens: None,
-        tool_choice: None,
-        additional_params: None,
-        output_schema: None,
-        record_telemetry_content: false,
-    }
+    CompletionRequest::new("probe")
 }
 
 /// Every URI and header one encode produced, as one searchable string.
