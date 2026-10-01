@@ -139,133 +139,21 @@ struct CassetteScenarioVisitor<'a> {
 
 impl<'ast, 'a> Visit<'ast> for CassetteScenarioVisitor<'a> {
     fn visit_macro(&mut self, node: &'ast syn::Macro) {
-        if node
-            .path
-            .segments
-            .last()
-            .is_some_and(|s| s.ident == "golden_matrix")
-        {
-            match syn::parse2::<matrix_registry::GoldenMatrix>(node.tokens.clone()) {
-                Ok(matrix) => {
-                    let wrapper = matrix
-                        .wrapper
-                        .segments
-                        .last()
-                        .expect("wrapper path")
-                        .ident
-                        .to_string();
-                    if self.wrapper_names.contains(&wrapper.as_str()) {
-                        self.scenarios.extend(
-                            matrix
-                                .rows
-                                .into_iter()
-                                .filter(|row| !row.ignored)
-                                .map(|row| ScenarioSite {
-                                    scenario: row.scenario.value(),
-                                    wrapper: wrapper.clone(),
-                                    declared: Vec::new(),
-                                }),
-                        );
-                    }
+        match matrix_registry::Matrix::of(node).transpose() {
+            Ok(matrix) => {
+                if let Some((wrapper, scenarios)) =
+                    matrix.and_then(matrix_registry::Matrix::recorded)
+                    && self.wrapper_names.contains(&wrapper.as_str())
+                {
+                    self.scenarios
+                        .extend(scenarios.into_iter().map(|scenario| ScenarioSite {
+                            scenario,
+                            wrapper: wrapper.clone(),
+                            declared: Vec::new(),
+                        }));
                 }
-                Err(error) => self.failures.push(error.to_string()),
             }
-        }
-        if node
-            .path
-            .segments
-            .last()
-            .is_some_and(|s| s.ident == "native_matrix")
-        {
-            match syn::parse2::<matrix_registry::NativeMatrix>(node.tokens.clone()) {
-                Ok(matrix) => {
-                    let wrapper = matrix
-                        .wrapper
-                        .segments
-                        .last()
-                        .expect("wrapper path")
-                        .ident
-                        .to_string();
-                    if self.wrapper_names.contains(&wrapper.as_str()) {
-                        self.scenarios.extend(
-                            matrix
-                                .rows
-                                .into_iter()
-                                .filter(|row| !row.ignored)
-                                .map(|row| ScenarioSite {
-                                    scenario: row.scenario.value(),
-                                    wrapper: wrapper.clone(),
-                                    declared: Vec::new(),
-                                }),
-                        );
-                    }
-                }
-                Err(error) => self.failures.push(error.to_string()),
-            }
-        }
-        if node
-            .path
-            .segments
-            .last()
-            .is_some_and(|s| s.ident == "resume_matrix")
-        {
-            match syn::parse2::<matrix_registry::ResumeMatrix>(node.tokens.clone()) {
-                Ok(matrix) => {
-                    let wrapper = matrix
-                        .wrapper
-                        .segments
-                        .last()
-                        .expect("wrapper path")
-                        .ident
-                        .to_string();
-                    if self.wrapper_names.contains(&wrapper.as_str()) {
-                        self.scenarios.extend(
-                            matrix
-                                .rows
-                                .into_iter()
-                                .filter(|row| !row.ignored)
-                                .map(|row| ScenarioSite {
-                                    scenario: row.scenario.value(),
-                                    wrapper: wrapper.clone(),
-                                    declared: Vec::new(),
-                                }),
-                        );
-                    }
-                }
-                Err(error) => self.failures.push(error.to_string()),
-            }
-        }
-        if node
-            .path
-            .segments
-            .last()
-            .is_some_and(|s| s.ident == "case_matrix")
-        {
-            match syn::parse2::<matrix_registry::CaseMatrix>(node.tokens.clone()) {
-                Ok(matrix) => {
-                    let Some(wrapper) = matrix.wrapper else {
-                        return;
-                    };
-                    let wrapper = wrapper
-                        .segments
-                        .last()
-                        .expect("wrapper path")
-                        .ident
-                        .to_string();
-                    if self.wrapper_names.contains(&wrapper.as_str()) {
-                        self.scenarios.extend(
-                            matrix.rows.into_iter().filter(|(_, ignored)| !ignored).map(
-                                |(scenario, _)| ScenarioSite {
-                                    scenario: scenario.value(),
-                                    wrapper: wrapper.clone(),
-                                    declared: Vec::new(),
-                                },
-                            ),
-                        );
-                    }
-                }
-                Err(error) => self.failures.push(error.to_string()),
-            }
+            Err(error) => self.failures.push(error.to_string()),
         }
         visit::visit_macro(self, node);
     }
