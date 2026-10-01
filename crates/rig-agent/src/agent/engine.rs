@@ -2,7 +2,7 @@
 //! streaming [`TurnSource`] implementations supply model responses; the engine
 //! applies lifecycle policy and advances the sans-I/O [`AgentRun`].
 
-use std::collections::VecDeque;
+use std::collections::{BTreeSet, VecDeque};
 use std::sync::{
     Arc,
     atomic::{AtomicU64, Ordering},
@@ -67,9 +67,10 @@ pub(crate) enum DriveItem {
     Done(PromptResponse),
 }
 
-/// Medium-specific turn execution, telemetry, and final-item construction.
-/// Implementations resolve invalid calls during model ingestion and feed accepted
-/// turns or tool results back into the run.
+/// What differs between the unary and streaming media: the dispatch, how an
+/// answer is ingested (invalid tool-call recovery included), the span chain,
+/// the turn telemetry, and the final item. [`run_model_turn`] runs everything
+/// else in a model turn once for both.
 pub(crate) trait TurnSource: WasmCompatSend + WasmCompatSync {
     /// Whether the surface forwards intermediate items. The blocking fold
     /// discards them, so its source skips building them.
@@ -83,19 +84,49 @@ pub(crate) trait TurnSource: WasmCompatSend + WasmCompatSync {
         effective_preamble: Option<&str>,
     ) -> tracing::Span;
 
-    /// Run one model turn: issue the provider call, feed the result into the
-    /// sans-IO machine, and yield any intermediate items. Returning normally
-    /// advances the loop; yielding an `Err` terminates the run.
-    fn run_model_turn<'a>(
-        &'a mut self,
-        runner: &'a AgentRunner,
-        hook_ctx: &'a HookContext,
-        run: &'a mut AgentRun,
-        prepared: PreparedCompletionRequest,
-        chat_span: tracing::Span,
-        agent_span: &'a tracing::Span,
-        prompt: Message,
-    ) -> DriveStream<'a>;
+    /// The provider answer this medium's completion dispatch returns.
+    type Answer: WasmCompatSend;
+
+    /// What the medium keeps from an ingested turn until it is accepted.
+    type Kept: WasmCompatSend;
+
+    /// Dispatch this medium's completion through the agent's bus.
+    fn dispatch<'b>(
+        runner: &'b AgentRunner,
+        hook_ctx: &'b HookContext,
+        run: &'b AgentRun,
+        model: &'b ModelHandle,
+        request: rig_core::completion::CompletionRequest,
+    ) -> impl Future<Output = Result<CompletionDispatch<Self::Answer>, PromptError>> + WasmCompatSend + 'b;
+
+    /// Feed a dispatched answer into the run, resolving any invalid tool
+    /// calls, and yield this medium's items. Ends with
+    /// [`TurnIngest::Accepted`] for a turn the run parked, or without it when
+    /// invalid-call recovery rolled the turn back for another model call.
+    fn ingest_turn<'b>(
+        &'b mut self,
+        runner: &'b AgentRunner,
+        hook_ctx: &'b HookContext,
+        run: &'b mut AgentRun,
+        answer: Self::Answer,
+        executable_tool_names: BTreeSet<String>,
+        allowed_tool_names: BTreeSet<String>,
+        chat_span: &'b tracing::Span,
+    ) -> WasmBoxedStream<'b, Result<TurnIngest<Self::Kept>, PromptError>>;
+
+    /// Record an accepted turn's content telemetry, including one a hook
+    /// stopped. `content` is the choice the settlement hooks saw.
+    fn record_turn_telemetry(
+        &self,
+        agent_span: &tracing::Span,
+        chat_span: &tracing::Span,
+        run: &AgentRun,
+        content: &[AssistantContent],
+    );
+
+    /// Keep an accepted turn's output for the final item, with the content a
+    /// hook replaced it with, if any.
+    fn accept_turn(&mut self, kept: Self::Kept, replaced: Option<Vec<AssistantContent>>);
 
     /// Chain a chat or tool execute span into this medium's span sequence.
     fn chain_span(&self, span: tracing::Span) -> tracing::Span;
@@ -112,6 +143,110 @@ pub(crate) trait TurnSource: WasmCompatSend + WasmCompatSync {
     /// Build the final stream item surfaced at `Done`, or `None` when the
     /// surface discards it (the blocking fold) so the engine skips the work.
     fn final_item(&self, response: &PromptResponse) -> Option<MultiTurnStreamItem>;
+}
+
+/// What a [`TurnSource`] yields while it ingests a model turn.
+pub(crate) enum TurnIngest<K> {
+    /// An item for the consumer.
+    Item(MultiTurnStreamItem),
+    /// The run parked the turn. `response` carries the choice the settlement
+    /// hooks see; a `recovered` turn was changed by invalid-call recovery and
+    /// fires neither settlement hook.
+    Accepted {
+        response: rig_core::completion::CompletionResponse,
+        recovered: bool,
+        kept: K,
+    },
+}
+
+/// Run one model turn on `source`'s medium: dispatch the completion, let the
+/// source ingest the answer, then settle the accepted turn and record its
+/// telemetry. Returning normally advances the loop; yielding an `Err`
+/// terminates the run.
+fn run_model_turn<'a, S>(
+    source: &'a mut S,
+    runner: &'a AgentRunner,
+    hook_ctx: &'a HookContext,
+    run: &'a mut AgentRun,
+    prepared: PreparedCompletionRequest,
+    chat_span: tracing::Span,
+    agent_span: &'a tracing::Span,
+) -> DriveStream<'a>
+where
+    S: TurnSource,
+{
+    Box::pin(async_stream::stream! {
+        // Bound before the request is consumed: the cap this attempt was
+        // prepared with, completion-call patches included. Reading it later
+        // off the agent config would drop a completion-call hook's patch.
+        let max_tokens = prepared.max_tokens;
+        let dispatched = S::dispatch(runner, hook_ctx, run, &prepared.model, prepared.request)
+            .instrument(chat_span.clone())
+            .await;
+        let CompletionDispatch { id, kind, answer } = match dispatched {
+            Ok(dispatched) => dispatched,
+            Err(err) => {
+                yield Err(err);
+                return;
+            }
+        };
+
+        let mut accepted = None;
+        let mut ingest = source.ingest_turn(
+            runner,
+            hook_ctx,
+            run,
+            answer,
+            prepared.executable_tool_names,
+            prepared.allowed_tool_names,
+            &chat_span,
+        );
+        while let Some(event) = ingest.next().await {
+            match event {
+                Ok(TurnIngest::Item(item)) => yield Ok(item),
+                Ok(TurnIngest::Accepted { response, recovered, kept }) => {
+                    accepted = Some((response, recovered, kept));
+                }
+                Err(err) => {
+                    yield Err(err);
+                    return;
+                }
+            }
+        }
+        drop(ingest);
+        let Some((response, recovered, kept)) = accepted else {
+            return;
+        };
+
+        let turn = CompletionDispatch { id, kind, answer: response };
+        let settlement =
+            settle_model_turn(&runner.config.hooks, hook_ctx, run, &turn, max_tokens, recovered)
+                .await;
+        let replaced = match settlement {
+            Ok(ModelTurnDecision::Advance { replaced }) => replaced,
+            Ok(ModelTurnDecision::Retried) => {
+                if S::FORWARDS_ITEMS {
+                    yield Ok(MultiTurnStreamItem::ModelTurnRetried {
+                        turn: hook_ctx.turn(),
+                    });
+                }
+                return;
+            }
+            Ok(ModelTurnDecision::Terminate(reason)) => {
+                // A stop observes an already completed provider turn: its
+                // content telemetry stays visible before the cancellation.
+                source.record_turn_telemetry(agent_span, &chat_span, run, &turn.answer.choice);
+                yield Err(run.cancel_error(reason));
+                return;
+            }
+            Err(err) => {
+                yield Err(err);
+                return;
+            }
+        };
+        source.record_turn_telemetry(agent_span, &chat_span, run, &turn.answer.choice);
+        source.accept_turn(kept, replaced);
+    })
 }
 
 pub(crate) fn store_error_usage(runner: &AgentRunner, run: &AgentRun) {
@@ -324,7 +459,7 @@ where
                         &runner,
                         &hook_ctx,
                         &selected_model,
-                        prompt.clone(),
+                        prompt,
                         &history,
                         committed_output_tool.as_deref(),
                         request_patch.as_ref(),
@@ -358,14 +493,14 @@ where
                     run.set_previous_model(selected_label.clone());
                     previous_model = Some(selected_label);
 
-                    drive_step!('outer, source.run_model_turn(
+                    drive_step!('outer, run_model_turn(
+                        &mut source,
                         &runner,
                         &hook_ctx,
                         &mut run,
                         prepared,
                         chat_span,
                         &agent_span,
-                        prompt,
                     ));
                     pending_tool_snapshot = Some(turn_tool_snapshot);
                 }
@@ -732,26 +867,13 @@ impl StreamingTurnSource {
             has_hooks: !hooks.is_empty(),
         }
     }
-
-    /// Record a completed model turn's canonical output onto the agent and
-    /// chat spans. Only self-created agent spans receive `gen_ai.completion`,
-    /// so neither surface pollutes a caller-supplied span.
-    fn record_turn_telemetry(
-        &self,
-        agent_span: &tracing::Span,
-        chat_span: &tracing::Span,
-        choice: &[AssistantContent],
-        record_content: bool,
-    ) {
-        if self.created_agent_span && self.record_telemetry_content {
-            agent_span.record("gen_ai.completion", assistant_text_from_choice(choice));
-        }
-        rig_core::telemetry::record_model_output(chat_span, choice, record_content);
-    }
 }
 
 impl TurnSource for StreamingTurnSource {
     const FORWARDS_ITEMS: bool = true;
+    type Answer = rig_core::streaming::CompletionStream;
+    /// The provider's raw choice, which the final item surfaces as-is.
+    type Kept = Vec<AssistantContent>;
 
     fn open_chat_span(
         &self,
@@ -761,37 +883,30 @@ impl TurnSource for StreamingTurnSource {
         build_chat_span!(runner, effective_preamble, "chat_streaming", "chat")
     }
 
-    fn run_model_turn<'a>(
-        &'a mut self,
-        runner: &'a AgentRunner,
-        hook_ctx: &'a HookContext,
-        run: &'a mut AgentRun,
-        prepared: PreparedCompletionRequest,
-        chat_span: tracing::Span,
-        agent_span: &'a tracing::Span,
-        _current_prompt: Message,
-    ) -> DriveStream<'a> {
-        Box::pin(async_stream::stream! {
-            // Bound before the builder is consumed: the cap this attempt was
-            // prepared with, completion-call patches included.
-            let attempt_max_tokens = prepared.max_tokens;
+    fn dispatch<'b>(
+        runner: &'b AgentRunner,
+        hook_ctx: &'b HookContext,
+        run: &'b AgentRun,
+        model: &'b ModelHandle,
+        request: rig_core::completion::CompletionRequest,
+    ) -> impl Future<Output = Result<CompletionDispatch<Self::Answer>, PromptError>> + WasmCompatSend + 'b
+    {
+        dispatch_completion_stream(runner, hook_ctx, run, model, request)
+    }
 
-            let dispatched =
-                dispatch_completion_stream(runner, hook_ctx, run, &prepared.model, prepared.request)
-                    .instrument(chat_span.clone())
-                    .await;
-            let CompletionDispatch { id: dispatch_id, kind: dispatched_kind, answer: mut stream } =
-                match dispatched {
-                    Ok(dispatched) => dispatched,
-                    Err(err) => {
-                        yield Err(err);
-                        return;
-                    }
-                };
-            let mut assembler = StreamedTurnAssembler::new(
-                prepared.executable_tool_names.clone(),
-                prepared.allowed_tool_names.clone(),
-            );
+    fn ingest_turn<'b>(
+        &'b mut self,
+        runner: &'b AgentRunner,
+        hook_ctx: &'b HookContext,
+        run: &'b mut AgentRun,
+        mut stream: rig_core::streaming::CompletionStream,
+        executable_tool_names: BTreeSet<String>,
+        allowed_tool_names: BTreeSet<String>,
+        chat_span: &'b tracing::Span,
+    ) -> WasmBoxedStream<'b, Result<TurnIngest<Self::Kept>, PromptError>> {
+        Box::pin(async_stream::stream! {
+            let mut assembler =
+                StreamedTurnAssembler::new(executable_tool_names, allowed_tool_names);
             // A turn whose invalid tool call was repaired is a recovered turn:
             // neither the response hook nor `ModelTurnFinished` fires for it.
             let mut turn_recovered = false;
@@ -881,7 +996,7 @@ impl TurnSource for StreamingTurnSource {
                                 return;
                             }
                             if let Some(item) = item_slot.take() {
-                                yield Ok(MultiTurnStreamItem::stream_item(item));
+                                yield Ok(TurnIngest::Item(MultiTurnStreamItem::stream_item(item)));
                             }
                         }
                         StreamedTurnEvent::HoldToolCall => {
@@ -921,15 +1036,15 @@ impl TurnSource for StreamingTurnSource {
                                     yield Err(run.cancel_error(reason));
                                     return;
                                 }
-                                yield Ok(MultiTurnStreamItem::stream_item(Item::Event(event)));
+                                yield Ok(TurnIngest::Item(MultiTurnStreamItem::stream_item(Item::Event(event))));
                             }
                             if let Some(part) = end {
-                                yield Ok(MultiTurnStreamItem::stream_item(Item::Event(
+                                yield Ok(TurnIngest::Item(MultiTurnStreamItem::stream_item(Item::Event(
                                     StreamEvent::End {
                                         part,
                                         content: AssistantContent::ToolCall(call),
                                     },
-                                )));
+                                ))));
                             }
                         }
                         StreamedTurnEvent::InvalidToolCall(invalid) => {
@@ -1014,7 +1129,7 @@ impl TurnSource for StreamingTurnSource {
                                             response.raw.clone(),
                                         ) {
                                             Ok(call) => {
-                                                yield Ok(MultiTurnStreamItem::CompletionCall(call));
+                                                yield Ok(TurnIngest::Item(MultiTurnStreamItem::CompletionCall(call)));
                                             }
                                             Err(err) => {
                                                 yield Err(err);
@@ -1023,7 +1138,7 @@ impl TurnSource for StreamingTurnSource {
                                         }
                                     }
                                     if let Some(tool_result) = skipped_tool_result {
-                                        yield Ok(MultiTurnStreamItem::ToolResult { tool_result });
+                                        yield Ok(TurnIngest::Item(MultiTurnStreamItem::ToolResult { tool_result }));
                                     }
                                     return;
                                 }
@@ -1053,7 +1168,7 @@ impl TurnSource for StreamingTurnSource {
                 response.finish_reason(),
                 response.raw.clone(),
             ) {
-                Ok(call) => yield Ok(MultiTurnStreamItem::CompletionCall(call)),
+                Ok(call) => yield Ok(TurnIngest::Item(MultiTurnStreamItem::CompletionCall(call))),
                 Err(err) => {
                     yield Err(err);
                     return;
@@ -1065,70 +1180,41 @@ impl TurnSource for StreamingTurnSource {
             // The hooks and run history see the assembled turn: the
             // response's choice without ignored calls, with repaired names.
             // The final item keeps the provider's choice.
-            let mut final_turn_content =
+            let final_turn_content =
                 std::mem::replace(&mut response.choice, streamed_turn.choice.clone());
             if let Err(err) = run.streamed_turn(streamed_turn) {
                 yield Err(err);
                 return;
             }
-            let turn = CompletionDispatch {
-                id: dispatch_id,
-                kind: dispatched_kind,
-                answer: response,
-            };
-            let settlement = settle_model_turn(
-                &runner.config.hooks,
-                hook_ctx,
-                run,
-                &turn,
-                attempt_max_tokens,
-                turn_recovered,
-            )
-            .await;
-            match settlement {
-                Ok(ModelTurnDecision::Advance { replaced }) => {
-                    // The run keeps the replacement, and so does the final
-                    // item the consumer receives: the fragments it saw were
-                    // the provider's, the answer is the hook's.
-                    if let Some(choice) = replaced {
-                        final_turn_content = choice;
-                    }
-                }
-                Ok(ModelTurnDecision::Retried) => {
-                    yield Ok(MultiTurnStreamItem::ModelTurnRetried {
-                        turn: hook_ctx.turn(),
-                    });
-                    return;
-                }
-                Ok(ModelTurnDecision::Terminate(reason)) => {
-                    // A stop observes an already completed provider turn:
-                    // its content telemetry stays visible before the
-                    // cancellation.
-                    self.record_turn_telemetry(
-                        agent_span,
-                        &chat_span,
-                        &turn.answer.choice,
-                        runner.config.record_telemetry_content,
-                    );
-                    yield Err(run.cancel_error(reason));
-                    return;
-                }
-                Err(err) => {
-                    yield Err(err);
-                    return;
-                }
-            }
-
-            // Only hook-accepted canonical output belongs in content telemetry.
-            self.record_turn_telemetry(
-                agent_span,
-                &chat_span,
-                &turn.answer.choice,
-                runner.config.record_telemetry_content,
-            );
-
-            self.last_final_choice = final_turn_content;
+            yield Ok(TurnIngest::Accepted {
+                response,
+                recovered: turn_recovered,
+                kept: final_turn_content,
+            });
         })
+    }
+
+    /// Records the turn's canonical, pre-replacement output onto the chat
+    /// span and, on a self-created agent span only, its text as
+    /// `gen_ai.completion`, so neither surface pollutes a caller-supplied span.
+    fn record_turn_telemetry(
+        &self,
+        agent_span: &tracing::Span,
+        chat_span: &tracing::Span,
+        _run: &AgentRun,
+        content: &[AssistantContent],
+    ) {
+        if self.created_agent_span && self.record_telemetry_content {
+            agent_span.record("gen_ai.completion", assistant_text_from_choice(content));
+        }
+        rig_core::telemetry::record_model_output(chat_span, content, self.record_telemetry_content);
+    }
+
+    /// The final item surfaces the provider's choice, or a hook's replacement:
+    /// the fragments the consumer saw were the provider's, the answer is the
+    /// hook's.
+    fn accept_turn(&mut self, kept: Self::Kept, replaced: Option<Vec<AssistantContent>>) {
+        self.last_final_choice = replaced.unwrap_or(kept);
     }
 
     fn chain_span(&self, span: tracing::Span) -> tracing::Span {
@@ -1205,9 +1291,7 @@ pub(crate) enum ModelTurnDecision {
 /// accepted attempt, so retry history, tool-turn rejection, and state
 /// transitions cannot diverge by medium. `turn` carries this attempt's
 /// response with the choice the hooks see, and `max_tokens` the cap it was
-/// prepared with. The callers own what happens next: the blocking driver
-/// records the accepted turn's telemetry; the streaming driver additionally
-/// surfaces or discards the buffered provisional `Final`.
+/// prepared with. [`run_model_turn`] acts on the decision.
 pub(crate) async fn settle_model_turn(
     hooks: &HookStack,
     hook_ctx: &HookContext,
@@ -1583,6 +1667,8 @@ impl UnaryTurnSource {
 
 impl TurnSource for UnaryTurnSource {
     const FORWARDS_ITEMS: bool = false;
+    type Answer = rig_core::completion::CompletionResponse;
+    type Kept = ();
 
     /// Chain `span` onto the previous step's span and record it as the new chain
     /// head, preserving the blocking driver's linear causal trace.
@@ -1609,50 +1695,32 @@ impl TurnSource for UnaryTurnSource {
         self.chain_span(chat_span)
     }
 
-    fn run_model_turn<'a>(
-        &'a mut self,
-        runner: &'a AgentRunner,
-        hook_ctx: &'a HookContext,
-        run: &'a mut AgentRun,
-        prepared: PreparedCompletionRequest,
-        chat_span: tracing::Span,
-        _agent_span: &'a tracing::Span,
-        _current_prompt: Message,
-    ) -> DriveStream<'a> {
+    fn dispatch<'b>(
+        runner: &'b AgentRunner,
+        hook_ctx: &'b HookContext,
+        run: &'b AgentRun,
+        model: &'b ModelHandle,
+        request: rig_core::completion::CompletionRequest,
+    ) -> impl Future<Output = Result<CompletionDispatch<Self::Answer>, PromptError>> + WasmCompatSend + 'b
+    {
+        dispatch_completion_response(runner, hook_ctx, run, model, request)
+    }
+
+    fn ingest_turn<'b>(
+        &'b mut self,
+        runner: &'b AgentRunner,
+        hook_ctx: &'b HookContext,
+        run: &'b mut AgentRun,
+        response: rig_core::completion::CompletionResponse,
+        executable_tool_names: BTreeSet<String>,
+        allowed_tool_names: BTreeSet<String>,
+        _chat_span: &'b tracing::Span,
+    ) -> WasmBoxedStream<'b, Result<TurnIngest<Self::Kept>, PromptError>> {
         Box::pin(async_stream::stream! {
-            // Content telemetry for the accepted provider turn. Called at each
-            // terminal site (stop, terminate, accept) rather than hoisted: a
-            // retried turn must not record output for the discarded attempt.
-            let record_accepted_turn = |run: &AgentRun| {
-                if runner.config.record_telemetry_content
-                    && let Some(choice) = run.accepted_turn_choice()
-                {
-                    rig_core::telemetry::record_model_output(&chat_span, &choice, true);
-                }
-            };
-
-            // Bound before the builder is consumed: this is the cap this exact
-            // attempt was prepared with, patches included, and it is what the
-            // per-turn hook reports. Reading it later off the agent config would
-            // silently drop a completion-call hook's patch.
-            let attempt_max_tokens = prepared.max_tokens;
-
-            let dispatched =
-                dispatch_completion_response(runner, hook_ctx, run, &prepared.model, prepared.request)
-                    .instrument(chat_span.clone())
-                    .await;
-            let dispatched = match dispatched {
-                Ok(dispatched) => dispatched,
-                Err(err) => {
-                    yield Err(err);
-                    return;
-                }
-            };
-
             let mut outcome = match run.model_response(ModelTurn::from_response_parts(
-                &dispatched.answer,
-                prepared.executable_tool_names,
-                prepared.allowed_tool_names,
+                &response,
+                executable_tool_names,
+                allowed_tool_names,
             )) {
                 Ok(outcome) => outcome,
                 Err(err) => {
@@ -1660,8 +1728,7 @@ impl TurnSource for UnaryTurnSource {
                     return;
                 }
             };
-
-            loop {
+            let recovered = loop {
                 match outcome {
                     ModelTurnOutcome::NeedsResolution(context) => {
                         let action = runner
@@ -1680,39 +1747,37 @@ impl TurnSource for UnaryTurnSource {
                             }
                         };
                     }
-                    ModelTurnOutcome::TurnRetried => break,
+                    ModelTurnOutcome::TurnRetried => return,
                     ModelTurnOutcome::Continue {
                         response_hook_suppressed,
-                    } => {
-                        let settlement = settle_model_turn(
-                            &runner.config.hooks,
-                            hook_ctx,
-                            run,
-                            &dispatched,
-                            attempt_max_tokens,
-                            response_hook_suppressed,
-                        )
-                        .await;
-                        match settlement {
-                            Ok(ModelTurnDecision::Advance { .. }) => {}
-                            Ok(ModelTurnDecision::Retried) => break,
-                            Ok(ModelTurnDecision::Terminate(reason)) => {
-                                record_accepted_turn(run);
-                                yield Err(run.cancel_error(reason));
-                                return;
-                            }
-                            Err(err) => {
-                                yield Err(err);
-                                return;
-                            }
-                        }
-                        record_accepted_turn(run);
-                        break;
-                    }
+                    } => break response_hook_suppressed,
                 }
-            }
+            };
+            yield Ok(TurnIngest::Accepted {
+                response,
+                recovered,
+                kept: (),
+            });
         })
     }
+
+    /// Records the accepted turn's content after any hook replacement onto the
+    /// chat span; a retried attempt records nothing.
+    fn record_turn_telemetry(
+        &self,
+        _agent_span: &tracing::Span,
+        chat_span: &tracing::Span,
+        run: &AgentRun,
+        _content: &[AssistantContent],
+    ) {
+        if self.record_telemetry_content
+            && let Some(choice) = run.accepted_turn_choice()
+        {
+            rig_core::telemetry::record_model_output(chat_span, &choice, true);
+        }
+    }
+
+    fn accept_turn(&mut self, _kept: (), _replaced: Option<Vec<AssistantContent>>) {}
 
     fn record_run_level_telemetry(
         &self,
