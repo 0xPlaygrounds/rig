@@ -15,6 +15,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::providers::openai;
 
+/// `deepseek-flash` completion model. DeepSeek points this unversioned name at
+/// its latest Flash model, which is DeepSeek-V4.1-Flash as of September 2026.
+pub const DEEPSEEK_FLASH: &str = "deepseek-flash";
 pub const DEEPSEEK_V4_FLASH: &str = "deepseek-v4-flash";
 pub const DEEPSEEK_V4_PRO: &str = "deepseek-v4-pro";
 
