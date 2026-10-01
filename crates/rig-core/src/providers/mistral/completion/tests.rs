@@ -1,4 +1,11 @@
 use super::*;
+use crate::providers::openai::completion::{AssistantContent, Message};
+
+fn text(text: &str) -> AssistantContent {
+    AssistantContent::Text {
+        text: text.to_owned(),
+    }
+}
 
 #[test]
 fn deserializes_response_with_array_and_null_content() {
@@ -39,7 +46,7 @@ fn deserializes_response_with_array_and_null_content() {
     let response: CompletionResponse =
         serde_json::from_str(data).expect("response should deserialize");
     match &response.choices[0].message {
-        Message::Assistant { content, .. } => assert_eq!(content, "Hello world"),
+        Message::Assistant { content, .. } => assert_eq!(content, &[text("Hello"), text(" world")]),
         _ => panic!("expected assistant message"),
     }
     match &response.choices[1].message {
@@ -48,7 +55,7 @@ fn deserializes_response_with_array_and_null_content() {
             tool_calls,
             ..
         } => {
-            assert_eq!(content, "");
+            assert!(content.is_empty());
             assert_eq!(tool_calls[0].function.name, "add");
         }
         _ => panic!("expected assistant message"),
@@ -85,7 +92,7 @@ fn truncated_tool_arguments_do_not_destroy_the_response() {
     let choice = response.choices.first().expect("the turn survives");
     assert_eq!(choice.finish_reason, "length");
     assert_eq!(
-        response.usage.expect("usage survives").total_tokens,
+        response.usage.expect("usage survives").openai.total_tokens,
         62,
         "the text and metadata of a truncated turn are kept"
     );
@@ -96,7 +103,7 @@ fn truncated_tool_arguments_do_not_destroy_the_response() {
             tool_calls,
             ..
         } => {
-            assert_eq!(content, "Recording that now.");
+            assert_eq!(content, &[text("Recording that now.")]);
             assert!(
                 tool_calls.is_empty(),
                 "a call with truncated arguments must not be handed to a tool"

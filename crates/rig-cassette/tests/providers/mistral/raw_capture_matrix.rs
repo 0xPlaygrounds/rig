@@ -29,11 +29,10 @@
 //! a finish reason, the correlation-id header, or a tool call fails loudly
 //! instead of covering nothing.
 //!
-//! The format-wide half of cell 3 — "the normalized fields are the recorded
-//! reply's" — is [`chat::assert_reproduces_body`], shared by every
-//! chat-completions dialect. The provider-native half stays here, because
-//! Mistral's decoder maps from [`mistral::CompletionResponse`] rather than
-//! the shared chat-completions type the format helper compares against.
+//! Both halves of cell 3 are the shared chat-completions checks:
+//! [`chat::assert_reproduces_body`] for "the normalized fields are the
+//! recorded reply's" and [`chat::assert_native_matches_normalized`] for "the
+//! typed view of `raw` agrees with them".
 
 use rig::completion::{CompletionRequest, FinishReason, ToolDefinition};
 use rig::message::AssistantContent;
@@ -90,14 +89,6 @@ fn recorded_request_id(scenario: &str) -> Option<String> {
     recorded_response_header(PROVIDER, scenario, 0, REQUEST_ID_HEADER)
 }
 
-/// The assistant text of a provider-native choice, as Mistral spells it.
-fn provider_text(choice: &mistral::Choice) -> &str {
-    match &choice.message {
-        mistral::Message::Assistant { content, .. } => content.as_str(),
-        other => panic!("a completion choice carries an assistant message, got {other:?}"),
-    }
-}
-
 // ================================================================
 // 1. raw round-trips Mistral's own type
 // ================================================================
@@ -133,7 +124,7 @@ async fn raw_round_trips_mistral_type() {
         .expect("raw is Mistral's own CompletionResponse");
     assert_eq!(Some(typed.id.as_str()), response.response_id.as_deref());
     assert_eq!(Some(typed.model.as_str()), response.model.as_deref());
-    let usage = typed.usage.as_ref().expect("Mistral reports usage");
+    let usage = &typed.usage.as_ref().expect("Mistral reports usage").openai;
     assert_eq!(
         Some(usage.total_tokens as u64),
         response.usage.total_tokens,
@@ -216,47 +207,22 @@ async fn normalized_fields_match_raw_renormalized() {
 
     // One reply, two views. `raw` is the document Mistral sent; its own type
     // reads that back, and every provider-native field it exposes must be
-    // the normalized response's. There is one decoder and one mapping now,
-    // so this pins that mapping instead of comparing it with a second one —
-    // which is why the native view here is Mistral's own type rather than
-    // the shared chat-completions one.
+    // the normalized response's. There is one decoder and one mapping, so
+    // this pins that mapping instead of comparing it with a second one.
     let typed =
         mistral::CompletionResponse::deserialize(&response.raw).expect("raw is Mistral's own type");
-    assert_eq!(Some(typed.id.as_str()), response.response_id.as_deref());
-    assert_eq!(Some(typed.model.as_str()), response.model.as_deref());
     assert_eq!(
         typed.choices.len(),
         1,
         "the recorded turn has one candidate"
     );
-    let typed_choice = &typed.choices[0];
     assert_eq!(
-        Some(typed_choice.finish_reason.as_str()),
+        Some(typed.choices[0].finish_reason.as_str()),
         body["choices"][0]["finish_reason"].as_str(),
         "the typed view keeps the wire's own finish spelling"
     );
-    assert_eq!(
-        response.finish_reason(),
-        Some(chat::recorded_chat_finish_reason(&response.raw)),
-        "and the normalized reason is that same spelling, mapped"
-    );
-    assert_eq!(
-        provider_text(typed_choice),
-        assistant_text(&response.choice)
-    );
-    let typed_usage = typed.usage.as_ref().expect("Mistral reports usage");
-    assert_eq!(
-        Some(typed_usage.prompt_tokens as u64),
-        response.usage.input_tokens
-    );
-    assert_eq!(
-        Some(typed_usage.completion_tokens as u64),
-        response.usage.output_tokens
-    );
-    assert_eq!(
-        Some(typed_usage.total_tokens as u64),
-        response.usage.total_tokens
-    );
+    chat::assert_native_matches_normalized(&response, &typed, "the typed view of raw");
+    assert_eq!(chat::native_text(&typed), assistant_text(&response.choice));
 }
 
 // ================================================================

@@ -1115,8 +1115,13 @@ impl FromStr for SystemContent {
     }
 }
 
+/// OpenAI's chat-completions reply.
+pub type CompletionResponse = ChatCompletionResponse<Usage>;
+
+/// A chat-completions reply over the accounting `U`. Compatible providers
+/// that add usage counters read their replies back with their own `U`.
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct CompletionResponse {
+pub struct ChatCompletionResponse<U> {
     pub id: String,
     // Null-or-missing tolerated on deserialization: some OpenAI-compatible
     // gateways (HuggingFace router sub-providers, TGI variants, Copilot's
@@ -1134,7 +1139,7 @@ pub struct CompletionResponse {
         deserialize_with = "crate::providers::internal::openai_chat_completions_compatible::deserialize_choices_dropping_incomplete_tool_calls"
     )]
     pub choices: Vec<Choice>,
-    pub usage: Option<Usage>,
+    pub usage: Option<U>,
 }
 
 /// Return a nonempty top-level refusal only when every content part is empty.
