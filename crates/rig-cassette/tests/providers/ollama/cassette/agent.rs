@@ -21,7 +21,7 @@ async fn completion_smoke() {
             .await
             .expect("completion should succeed");
 
-        assert_nonempty_response(&response.output);
+        assert_nonempty_response(&response.output());
     })
     .await;
 }
@@ -54,7 +54,7 @@ async fn completion_respects_max_tokens() {
             .await
             .expect("completion should succeed");
 
-        assert_nonempty_response(&response.output);
+        assert_nonempty_response(&response.output());
     })
     .await;
 }

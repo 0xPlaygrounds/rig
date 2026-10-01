@@ -220,7 +220,7 @@ async fn document_file_data_roundtrip_live() {
                 .chat(direct_message, &mut history)
                 .await
                 .expect("OpenRouter should read PDF file_data document");
-            assert_verifier_response(&response.output, PAGE_TWO_VERIFIER);
+            assert_verifier_response(&response.output(), PAGE_TWO_VERIFIER);
             assert_history_preserves_single_file_data_document(&history);
 
             let follow_up = agent
@@ -230,7 +230,7 @@ async fn document_file_data_roundtrip_live() {
                 )
                 .await
                 .expect("OpenRouter should reuse PDF file_data document from chat history");
-            assert_verifier_response(&follow_up.output, PAGE_THREE_VERIFIER);
+            assert_verifier_response(&follow_up.output(), PAGE_THREE_VERIFIER);
             assert_history_preserves_single_file_data_document(&history);
 
             let direct_prompt = document_question(1);
@@ -240,7 +240,7 @@ async fn document_file_data_roundtrip_live() {
                 .prompt(direct_prompt)
                 .await
                 .expect("OpenRouter should read direct generic PDF file_data document");
-            assert_verifier_response(&direct_response.output, PAGE_ONE_VERIFIER);
+            assert_verifier_response(&direct_response.output(), PAGE_ONE_VERIFIER);
         },
     )
     .await;

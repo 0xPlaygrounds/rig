@@ -331,7 +331,7 @@ pub async fn run(
                     .chat(prompt.as_str(), &mut history)
                     .await
                     .unwrap_or_else(|error| panic!("[{}] chat failed: {error}", cell.provider));
-                response.output
+                response.output()
             }
             Transport::Streaming => {
                 let mut stream = agent

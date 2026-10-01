@@ -42,7 +42,7 @@ impl Chat for Agent {
     ) -> Result<String, PromptError> {
         Agent::chat(self, prompt, history)
             .await
-            .map(|response| response.output)
+            .map(|response| response.output())
     }
 }
 use futures::StreamExt;

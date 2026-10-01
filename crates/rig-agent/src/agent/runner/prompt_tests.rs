@@ -102,7 +102,7 @@ async fn blocking_prompt_keeps_partial_output_and_records_the_reason() {
         .await
         .expect("a truncated turn that produced text must still succeed");
 
-    assert_eq!(response.output, "a partial ans");
+    assert_eq!(response.output(), "a partial ans");
     assert_eq!(
         response
             .completion_calls
@@ -649,29 +649,38 @@ fn the_type_key_is_the_tag_and_the_untagged_shape_does_not_load() {
 }
 
 #[test]
-fn prompt_response_roundtrip_preserves_explicit_content() {
-    // An explicitly-set `content` (e.g. the streaming surface's structured
-    // final turn) must survive a serialize/deserialize round-trip intact —
-    // `content` and `output` are independent fields.
-    let response = PromptResponse::new("visible text", Usage::default())
-        .with_content(vec![AssistantContent::text("structured")]);
+fn prompt_response_roundtrip_preserves_structured_content() {
+    let response = PromptResponse::from_content(
+        vec![
+            AssistantContent::Reasoning(
+                rig_core::message::Reasoning::new("thinking").sealed("mock"),
+            ),
+            AssistantContent::text("visible "),
+            AssistantContent::text("text"),
+        ],
+        Usage::default(),
+    );
+    assert_eq!(response.output(), "visible text");
 
     let value = serde_json::to_value(&response).expect("serialize prompt response");
     assert!(
         value.get("content").is_some(),
         "content is part of the serialized shape"
     );
+    assert!(
+        value.get("output").is_none(),
+        "output is derived from content, not stored"
+    );
 
     let round: PromptResponse = serde_json::from_value(value).expect("deserialize prompt response");
     assert_eq!(round.output(), "visible text");
-    // The stored content is "structured" — distinct from `output` — so the
-    // round trip demonstrably carried `content` itself rather than anything
-    // derived from `output`. (Compare the text directly to sidestep the
-    // `Text::additional_params` serde round-trip asymmetry.)
-    let Some(AssistantContent::Text(text)) = round.content().first() else {
-        panic!("expected text content, got {:?}", round.content().first());
-    };
-    assert_eq!(text.text, "structured");
+    // Compare parts directly to sidestep the `Text::additional_params` serde
+    // round-trip asymmetry.
+    assert!(matches!(
+        round.content(),
+        [AssistantContent::Reasoning(_), AssistantContent::Text(a), AssistantContent::Text(b)]
+            if a.text == "visible " && b.text == "text"
+    ));
 }
 
 #[test]
@@ -716,7 +725,7 @@ async fn prompt_response_records_completion_call_without_reported_usage() {
 
     let response = agent.prompt("say ok").await.expect("prompt should succeed");
 
-    assert_eq!(response.output, "ok");
+    assert_eq!(response.output(), "ok");
     assert_eq!(response.usage, Usage::default());
     assert_eq!(
         response.completion_calls(),
@@ -932,7 +941,7 @@ async fn tool_context_reaches_tool_through_agent_loop() {
         .await
         .expect("run succeeds");
 
-    assert_eq!(out.output, "done");
+    assert_eq!(out.output(), "done");
     assert_eq!(probe.observed().as_deref(), Some("session:abc-123"));
 }
 
@@ -959,7 +968,7 @@ async fn tool_context_persists_across_multiple_rounds() {
         .await
         .expect("run succeeds");
 
-    assert_eq!(out.output, "done");
+    assert_eq!(out.output(), "done");
     assert_eq!(
         probe.observations(),
         vec!["session:abc-123".to_string(), "session:abc-123".to_string()],
@@ -983,7 +992,7 @@ async fn tool_runs_with_empty_context_when_none_supplied() {
         .await
         .expect("run succeeds");
 
-    assert_eq!(out.output, "done");
+    assert_eq!(out.output(), "done");
     // The single call path receives an empty context and observes no session.
     assert_eq!(probe.observed().as_deref(), Some("no-session"));
 }
@@ -1127,7 +1136,7 @@ async fn invalid_tool_call_hook_can_repair_non_streaming_tool_name() {
         .await
         .expect("repaired tool call should execute");
 
-    assert_eq!(response.output, "done");
+    assert_eq!(response.output(), "done");
     let messages = response.messages;
     assert!(history_contains_tool_call(&messages, "add"));
     assert!(!history_contains_tool_call(&messages, "default_api"));
@@ -1169,7 +1178,7 @@ async fn invalid_tool_call_hook_retry_adds_feedback_and_retries_non_streaming() 
         .await
         .expect("retry should recover");
 
-    assert_eq!(response.output, "retried");
+    assert_eq!(response.output(), "retried");
     assert_eq!(recorded.request_count(), 2);
     let messages = response.messages;
     assert!(messages.iter().any(|message| {
@@ -1232,7 +1241,7 @@ async fn invalid_tool_call_hook_retries_mixed_non_streaming_turn_without_executi
         .await
         .expect("retry should recover");
 
-    assert_eq!(response.output, "retried");
+    assert_eq!(response.output(), "retried");
     assert_eq!(add_calls.load(Ordering::SeqCst), 0);
     let requests = recorded.requests();
     assert_eq!(requests.len(), 2);
@@ -1328,7 +1337,7 @@ async fn invalid_tool_call_hook_skips_mixed_non_streaming_turn_without_executing
         .await
         .expect("skip should recover without executing peer tools");
 
-    assert_eq!(response.output, "skipped");
+    assert_eq!(response.output(), "skipped");
     assert_eq!(add_calls.load(Ordering::SeqCst), 0);
     let messages = response.messages;
     assert!(history_contains_tool_call(&messages, "add"));
@@ -1416,7 +1425,7 @@ async fn invalid_tool_call_hook_can_skip_structured_non_streaming_call() {
         .await
         .expect("skip should continue with synthetic tool result");
 
-    assert_eq!(response.output, "skipped");
+    assert_eq!(response.output(), "skipped");
     let messages = response.messages;
     assert!(history_contains_tool_call(&messages, "default_api"));
     assert!(messages.iter().any(|message| {
@@ -1460,7 +1469,7 @@ async fn skip_under_specific_tool_choice_returns_synthetic_feedback() {
         .await
         .expect("skip should produce synthetic feedback under Specific");
 
-    assert_eq!(response.output, "skipped");
+    assert_eq!(response.output(), "skipped");
     let messages = response.messages;
     assert!(history_contains_tool_call(&messages, "default_api"));
     assert!(messages.iter().any(|message| {
@@ -1725,7 +1734,7 @@ async fn allowed_specific_tool_call_executes_normally() {
         .await
         .expect("allowed specific tool should execute");
 
-    assert_eq!(response.output, "done");
+    assert_eq!(response.output(), "done");
     assert_eq!(recorded.request_count(), 2);
 }
 
@@ -1758,7 +1767,7 @@ async fn prompt_request_stops_cleanly_on_empty_terminal_turn() {
         .await
         .expect("empty terminal turn should not error");
 
-    assert!(response.output.is_empty());
+    assert!(response.output().is_empty());
     assert_eq!(
         response.usage,
         Usage {
@@ -1838,7 +1847,7 @@ async fn prompt_request_concatenates_text_blocks_without_inserted_newlines() {
         .expect("prompt should succeed");
 
     assert_eq!(
-        response.output,
+        response.output(),
         "According to the document, the grass is green and the sky is blue."
     );
 }
@@ -1868,7 +1877,7 @@ async fn prompt_request_preserves_metadata_only_text_turn_in_history() {
         .await
         .expect("metadata-only text turn should succeed");
 
-    assert!(response.output.is_empty());
+    assert!(response.output().is_empty());
     let history = response.messages;
     assert!(history.iter().any(|message| matches!(
         message,
@@ -2282,7 +2291,7 @@ async fn memory_append_error_does_not_drop_response() {
         .await
         .expect("append failure must not block successful completion");
 
-    assert_eq!(response.output, "ack");
+    assert_eq!(response.output(), "ack");
     assert_eq!(
         response.messages.len(),
         2,
@@ -2364,7 +2373,7 @@ async fn the_model_turn_hook_reads_the_reconciled_finish_reason() {
         .max_turns(2)
         .await
         .expect("the run answers");
-    assert_eq!(response.output, "3");
+    assert_eq!(response.output(), "3");
     let reasons = hook.0.lock().expect("finish reasons").clone();
     assert_eq!(
         reasons,

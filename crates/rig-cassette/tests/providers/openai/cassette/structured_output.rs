@@ -102,7 +102,7 @@ async fn classic_tool_mode_maps_through_openai_responses() {
         .prompt(STRUCTURED_OUTPUT_PROMPT)
         .await
         .expect("classic OpenAI Tool-mode run should succeed")
-        .output;
+        .output();
     let structured: SmokeStructuredOutput =
         decode_structured_output("openai_classic_tool_mode", &response)
             .expect("output-tool arguments should deserialize");
@@ -158,7 +158,7 @@ async fn prompt_typed_and_output_schema() {
                 .prompt("What's the weather forecast for Chicago?")
                 .await
                 .expect("output schema prompt should succeed")
-                .output;
+                .output();
             let parsed: WeatherForecast =
                 decode_structured_output("openai_output_schema_weather", &response)
                     .expect("schema response should deserialize");

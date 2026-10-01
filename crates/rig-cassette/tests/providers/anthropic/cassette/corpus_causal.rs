@@ -34,7 +34,7 @@ async fn final_output(stream: &mut rig::agent::StreamingResult) -> String {
     let mut output = None;
     while let Some(item) = stream.next().await {
         if let MultiTurnStreamItem::FinalResponse(response) = item.expect("the stream yields") {
-            output = Some(response.output);
+            output = Some(response.output());
         }
     }
     output.expect("a final response")
@@ -95,7 +95,7 @@ async fn over_host(client: AnthropicModels, host: Host) -> rig::cassette::effect
             .max_turns(3)
             .await
             .expect("the agent answers")
-            .output
+            .output()
     };
     assert!(output.contains("Paris"), "{output}");
     let log = agent.stamp(recorder.take());

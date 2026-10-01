@@ -110,7 +110,7 @@ async fn sequential_tool_calls_nonstreaming() {
                 .chat(SEQUENTIAL_TOOLS_PROMPT, &mut history)
                 .await
                 .expect("sequential tool chat should succeed")
-                .output;
+                .output();
 
             assert_mentions_expected_number(&result, 2);
 
@@ -228,7 +228,7 @@ async fn parallel_tool_calls_single_turn_nonstreaming() {
                 .chat(TWO_TOOL_STREAM_PROMPT, &mut history)
                 .await
                 .expect("parallel tool chat should succeed")
-                .output;
+                .output();
 
             let lowered = result.to_ascii_lowercase();
             assert!(

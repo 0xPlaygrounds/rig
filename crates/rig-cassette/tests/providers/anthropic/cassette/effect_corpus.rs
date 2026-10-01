@@ -38,7 +38,7 @@ async fn tool_call_turn_effect_log_is_the_golden_fixture() {
             .max_turns(3)
             .await
             .expect("the agent answers");
-        assert!(response.output.contains("42"), "{}", response.output);
+        assert!(response.output().contains("42"), "{}", response.output());
         let log = agent.stamp(recorder.take());
         assert_eq!(
             families(&log),

@@ -9,7 +9,7 @@
 //!     .max_turns(3)
 //!     .run()
 //!     .await?;
-//! println!("{}", response.output);
+//! println!("{}", response.output());
 //! # Ok(())
 //! # }
 //! ```

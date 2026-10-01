@@ -17,8 +17,8 @@ enum Agents {
 impl Agents {
     async fn prompt(&self, prompt: &str) -> Result<String, PromptError> {
         match self {
-            Self::Anthropic(agent) => agent.prompt(prompt).await.map(|response| response.output),
-            Self::OpenAI(agent) => agent.prompt(prompt).await.map(|response| response.output),
+            Self::Anthropic(agent) => agent.prompt(prompt).await.map(|response| response.output()),
+            Self::OpenAI(agent) => agent.prompt(prompt).await.map(|response| response.output()),
         }
     }
 }

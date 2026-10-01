@@ -36,7 +36,7 @@ async fn add_tool_between_turns_appears_in_next_request() {
                 .chat("What is 19 + 23?", &mut history)
                 .await
                 .expect("first prompt should succeed with only the add tool");
-            assert_mentions_expected_number(&first.output, 42);
+            assert_mentions_expected_number(&first.output(), 42);
 
             handle.add_tool(subtract);
 
@@ -46,7 +46,7 @@ async fn add_tool_between_turns_appears_in_next_request() {
                 .await
                 .expect("second prompt should see the newly added subtract tool");
 
-            assert_mentions_expected_number(&second.output, 42);
+            assert_mentions_expected_number(&second.output(), 42);
             assert!(
                 history_has_assistant_tool_call(&history, "subtract"),
                 "the added tool should be called on the next request: {history:?}"
@@ -83,7 +83,7 @@ async fn remove_tool_between_turns_drops_definition() {
                 .chat("What is 19 + 23?", &mut history)
                 .await
                 .expect("first prompt should succeed with both tools advertised");
-            assert_mentions_expected_number(&first.output, 42);
+            assert_mentions_expected_number(&first.output(), 42);
             assert_eq!(add_counter.count(), 1, "add should execute on the first prompt");
 
             handle.remove_tool("subtract");
@@ -98,11 +98,11 @@ async fn remove_tool_between_turns_drops_definition() {
                 .expect("second prompt should succeed with the reduced tool set");
 
             assert!(
-                second.output.to_ascii_lowercase().contains("add"),
+                second.output().to_ascii_lowercase().contains("add"),
                 "the remaining tool should still be advertised: {second:?}"
             );
             assert!(
-                !second.output.to_ascii_lowercase().contains("subtract"),
+                !second.output().to_ascii_lowercase().contains("subtract"),
                 "the removed tool should no longer be advertised: {second:?}"
             );
         },
@@ -140,7 +140,7 @@ async fn shared_tool_server_handle_updates_all_agents() {
                 .chat("What is 19 + 23?", &mut history)
                 .await
                 .expect("the first agent should use the shared add tool");
-            assert_mentions_expected_number(&first.output, 42);
+            assert_mentions_expected_number(&first.output(), 42);
 
             handle.add_tool(subtract);
 
@@ -150,7 +150,7 @@ async fn shared_tool_server_handle_updates_all_agents() {
                 .await
                 .expect("the second agent should see the tool added through the shared handle");
 
-            assert_mentions_expected_number(&second.output, 42);
+            assert_mentions_expected_number(&second.output(), 42);
             let result_texts: Vec<String> = history.iter().flat_map(tool_result_texts).collect();
             assert_eq!(
                 result_texts,

@@ -267,7 +267,7 @@ async fn main() -> anyhow::Result<()> {
         .tool_server_handle(tool_server_handle)
         .build();
 
-    let res = agent.prompt("What is 2+5?").max_turns(2).await?.output;
+    let res = agent.prompt("What is 2+5?").max_turns(2).await?.output();
 
     println!("GPT-4o: {res}");
 

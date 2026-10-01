@@ -522,7 +522,7 @@ async fn replacement_and_override_scopes_have_value_semantics() {
             .run()
             .await
             .expect("old runner")
-            .output,
+            .output(),
         "alpha"
     );
     assert_eq!(
@@ -530,7 +530,7 @@ async fn replacement_and_override_scopes_have_value_semantics() {
             .prompt("new runner")
             .await
             .expect("new default")
-            .output,
+            .output(),
         "beta"
     );
 
@@ -539,7 +539,11 @@ async fn replacement_and_override_scopes_have_value_semantics() {
         .build();
     let changed_clone = original.clone().with_model_label("beta");
     assert_eq!(
-        original.prompt("original").await.expect("original").output,
+        original
+            .prompt("original")
+            .await
+            .expect("original")
+            .output(),
         "alpha"
     );
     assert_eq!(
@@ -547,7 +551,7 @@ async fn replacement_and_override_scopes_have_value_semantics() {
             .prompt("clone")
             .await
             .expect("changed clone")
-            .output,
+            .output(),
         "beta"
     );
 
@@ -557,7 +561,7 @@ async fn replacement_and_override_scopes_have_value_semantics() {
             .using_model("beta")
             .await
             .expect("fixed override")
-            .output,
+            .output(),
         "beta"
     );
     assert_eq!(
@@ -565,7 +569,7 @@ async fn replacement_and_override_scopes_have_value_semantics() {
             .prompt("default remains")
             .await
             .expect("default")
-            .output,
+            .output(),
         "alpha"
     );
 
@@ -597,7 +601,7 @@ async fn replacement_and_override_scopes_have_value_semantics() {
             ))
             .await
             .expect("hook overrides run default")
-            .output,
+            .output(),
         "beta"
     );
     assert_eq!(
@@ -626,7 +630,7 @@ async fn agent_and_request_model_selection_hooks_have_expected_scope() {
             .prompt("agent hook")
             .await
             .expect("agent hook route")
-            .output,
+            .output(),
         "agent routed"
     );
 
@@ -641,7 +645,7 @@ async fn agent_and_request_model_selection_hooks_have_expected_scope() {
             ))
             .await
             .expect("request hook route")
-            .output,
+            .output(),
         "request routed"
     );
 
@@ -650,7 +654,7 @@ async fn agent_and_request_model_selection_hooks_have_expected_scope() {
             .prompt("agent hook remains")
             .await
             .expect("agent hook remains")
-            .output,
+            .output(),
         "agent routed"
     );
 }
@@ -944,7 +948,7 @@ async fn runner_default_is_used_for_every_attempt_without_a_selecting_hook() {
         .await
         .expect("default multi-turn run");
 
-    assert_eq!(output.output, "default final");
+    assert_eq!(output.output(), "default final");
     assert_eq!(script.requests().len(), 2);
 }
 
@@ -1088,8 +1092,8 @@ async fn blocking_and_streaming_switch_after_tools_with_equivalent_semantics() {
         stream_call_ids,
     ) = run_streaming().await;
 
-    assert_eq!(blocking.output, "synthesized answer");
-    assert_eq!(blocking.output, streaming.output);
+    assert_eq!(blocking.output(), "synthesized answer");
+    assert_eq!(blocking.output(), streaming.output());
     assert_eq!(blocking.usage, usage(8));
     assert_eq!(blocking.usage, streaming.usage);
     assert_eq!(blocking.messages, streaming.messages);
@@ -1163,7 +1167,7 @@ async fn retries_reenter_selection_without_leaking_rejected_turn_state() {
         .await
         .expect("retry routed run");
 
-    assert_eq!(response.output, "accepted answer");
+    assert_eq!(response.output(), "accepted answer");
     assert_eq!(
         selections.lock().expect("selection lock").as_slice(),
         &[(1, None), (2, Some("alpha".to_owned()))]
@@ -1230,7 +1234,7 @@ async fn invalid_tool_retry_reenters_selection_exactly_once() {
         .await
         .expect("invalid-tool retry run");
 
-    assert_eq!(output.output, "recovered after invalid tool");
+    assert_eq!(output.output(), "recovered after invalid tool");
     assert_eq!(
         selections.lock().expect("selection lock").as_slice(),
         &[(1, None), (2, Some("alpha".to_owned()))]
@@ -1283,7 +1287,7 @@ async fn normalized_stream_preserves_events_message_id_and_usage() {
         Some("rich-message-id")
     );
     let final_response = final_response.expect("agent final response");
-    assert_eq!(final_response.output, "final text");
+    assert_eq!(final_response.output(), "final text");
     assert_eq!(final_response.usage, usage(13));
     assert!(final_response.messages.iter().any(|message| {
         matches!(message, Message::Assistant { id: Some(id), .. } if id == "rich-message-id")
@@ -1430,7 +1434,7 @@ async fn routing_changes_cannot_rebind_an_in_flight_attempt_but_affect_the_next_
         task.await
             .expect("routing task join")
             .expect("routing task result")
-            .output,
+            .output(),
         "after tool"
     );
     assert_eq!(tool_calls.load(Ordering::SeqCst), 1);
@@ -1555,17 +1559,23 @@ async fn concurrent_runs_and_handle_calls_are_independent() {
     ));
     let (alpha, beta) = tokio::join!(alpha_run, beta_run);
     assert_eq!(
-        alpha.expect("alpha concurrent run").output,
+        alpha.expect("alpha concurrent run").output(),
         "alpha concurrent"
     );
-    assert_eq!(beta.expect("beta concurrent run").output, "beta concurrent");
+    assert_eq!(
+        beta.expect("beta concurrent run").output(),
+        "beta concurrent"
+    );
 
     let shared = agent.register_model("shared", alpha_static("shared handle"));
     let first = agent.prompt("first shared").using_model(shared.clone());
     let second = agent.prompt("second shared").using_model(shared);
     let (first, second) = tokio::join!(first, second);
-    assert_eq!(first.expect("first shared call").output, "shared handle");
-    assert_eq!(second.expect("second shared call").output, "shared handle");
+    assert_eq!(first.expect("first shared call").output(), "shared handle");
+    assert_eq!(
+        second.expect("second shared call").output(),
+        "shared handle"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -1706,7 +1716,7 @@ async fn a_request_patch_can_influence_the_selected_model_on_both_surfaces() {
                     .prompt("route by patch")
                     .await
                     .expect("blocking patch-routed run")
-                    .output,
+                    .output(),
                 "beta answer"
             );
         }
@@ -1905,7 +1915,7 @@ async fn an_errored_provider_attempt_still_counts_as_the_previous_model() {
         ))
         .await
         .expect("recovered run");
-    assert_eq!(output.output, "recovered");
+    assert_eq!(output.output(), "recovered");
     let observed = observations.lock().expect("observation lock").clone();
     assert_eq!(observed[0], (1, None, None, None));
     assert_eq!(observed[1], (2, Some("alpha".to_owned()), None, None));
@@ -1931,7 +1941,7 @@ async fn an_agent_level_swap_serves_the_next_run_and_rebinds_live_handles() {
     let before = handle.descriptor();
 
     let first = agent.prompt("hi").run().await.expect("first run");
-    assert_eq!(first.output, "one");
+    assert_eq!(first.output(), "one");
 
     let label = agent.register_model(
         "alpha",
@@ -1948,7 +1958,7 @@ async fn an_agent_level_swap_serves_the_next_run_and_rebinds_live_handles() {
     );
 
     let second = agent.prompt("hi").run().await.expect("second run");
-    assert_eq!(second.output, "two", "the swap serves the next run");
+    assert_eq!(second.output(), "two", "the swap serves the next run");
     let after = handle.descriptor();
     assert_ne!(
         before, after,

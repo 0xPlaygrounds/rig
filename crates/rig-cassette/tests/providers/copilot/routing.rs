@@ -13,7 +13,7 @@ async fn chat_models_route_through_chat_completions() {
         .await
         .expect("chat-completions route should succeed");
 
-    assert_nonempty_response(&response.output);
+    assert_nonempty_response(&response.output());
 }
 
 #[tokio::test]
@@ -28,7 +28,7 @@ async fn codex_models_route_through_responses() {
                 .await
                 .expect("responses route should succeed");
 
-            assert_nonempty_response(&response.output);
+            assert_nonempty_response(&response.output());
         },
     )
     .await;

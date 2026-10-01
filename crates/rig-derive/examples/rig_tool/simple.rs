@@ -102,7 +102,7 @@ async fn main() -> Result<(), anyhow::Error> {
         "Add 100 and 200",
     ] {
         println!("User: {prompt}");
-        println!("Agent: {}", calculator_agent.prompt(prompt).await?.output);
+        println!("Agent: {}", calculator_agent.prompt(prompt).await?.output());
     }
 
     Ok(())

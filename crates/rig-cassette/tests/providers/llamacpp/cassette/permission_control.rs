@@ -203,7 +203,7 @@ async fn permission_control_prompt_example() -> Result<()> {
                 .add_hook(hook)
                 .await?;
 
-            assert_nonempty_response(&response.output);
+            assert_nonempty_response(&response.output());
             let last = last_result.lock().expect("lock last_result").clone();
             if let Some(last) = last {
                 anyhow::ensure!(last == "hello world");

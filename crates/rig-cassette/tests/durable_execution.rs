@@ -171,7 +171,7 @@ async fn reference_run(scenario: Scenario) -> (String, EffectLog) {
     .await
     .expect("the reference run");
     let log = agent.stamp(recorder.take());
-    (response.output, log)
+    (response.output(), log)
 }
 
 /// The interruption: the same program driven by hand over the same keys,
@@ -334,7 +334,8 @@ async fn resumes_identically(scenario: Scenario, tools_before_stop: usize) {
     .await
     .expect("the resumed run");
     assert_eq!(
-        response.output, reference_output,
+        response.output(),
+        reference_output,
         "the same answer from the record"
     );
 
@@ -504,7 +505,7 @@ async fn a_hooks_decision_is_program_not_record() {
     let with_hook = resume(true, continuation.clone(), suspended.clone())
         .await
         .expect("resumed under the same hook");
-    assert_eq!(with_hook.output, reference.output);
+    assert_eq!(with_hook.output(), reference.output());
 
     // Without the hook the program is different: the dispatch is unpatched,
     // the record is patched, and the replayer says so.
@@ -538,7 +539,7 @@ async fn a_resumed_run_loads_nothing_from_memory() {
     let response = within(agent.prompt("go").max_turns(3).run())
         .await
         .expect("the reference run");
-    assert_eq!(response.output, "done");
+    assert_eq!(response.output(), "done");
     let log = agent.stamp(recorder.take());
     let families: Vec<EffectFamily> = log.iter().map(|record| record.kind.family()).collect();
     assert_eq!(
@@ -560,7 +561,7 @@ async fn a_resumed_run_loads_nothing_from_memory() {
     let response = within(agent.resume(state).run())
         .await
         .expect("the resumed run");
-    assert_eq!(response.output, "done");
+    assert_eq!(response.output(), "done");
     let resumed = agent.stamp(recorder.take());
     let families: Vec<EffectFamily> = resumed.iter().map(|record| record.kind.family()).collect();
     assert!(
@@ -655,7 +656,7 @@ async fn resumes_from_a_checkpoint(
     )
     .await
     .expect("the resumed run");
-    assert_eq!(response.output, reference_output);
+    assert_eq!(response.output(), reference_output);
     let resumed_log = recorder.take();
     assert_eq!(
         resumed_log

@@ -184,7 +184,7 @@ async fn rich_json_schema_survives_gemini_conversion() {
                 vec!["itinerary booked: 2 travellers to Lyon by train via Dijon -> Macon".to_string()],
                 "arguments matching the rich schema should deserialize and execute"
             );
-            assert_nonempty_response(&response.output);
+            assert_nonempty_response(&response.output());
         },
     )
     .await;
@@ -221,7 +221,7 @@ async fn duplicate_tool_name_uses_last_registration() {
                 "the last registration of a duplicated tool name should execute"
             );
             assert!(
-                response.output.to_ascii_lowercase().contains("lantern"),
+                response.output().to_ascii_lowercase().contains("lantern"),
                 "final answer should report the echoed word: {response:?}"
             );
         },
@@ -287,7 +287,7 @@ mod derive_macro {
                     "the macro-generated tool should execute with the model's arguments"
                 );
                 assert!(
-                    response.output.contains("42"),
+                    response.output().contains("42"),
                     "final answer should report 42: {response:?}"
                 );
             },

@@ -181,7 +181,7 @@ async fn main() -> Result<()> {
         .max_turns(10)
         .add_hook(policy)
         .await?
-        .output;
+        .output();
 
     println!("\nFinal response:\n{response}");
 

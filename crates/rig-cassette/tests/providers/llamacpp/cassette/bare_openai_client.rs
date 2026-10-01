@@ -61,7 +61,7 @@ async fn caller_supplies_the_v1_prefix_the_provider_would_add() {
                 .prompt("Say the single word: ok")
                 .await
                 .expect("a plain OpenAI configuration should reach the local server");
-            assert_nonempty_response(&response.output);
+            assert_nonempty_response(&response.output());
         },
     )
     .await;
@@ -265,7 +265,7 @@ async fn agent_prompt_through_completions_api() {
                 .await
                 .expect("completions api prompt should succeed");
 
-            assert_nonempty_response(&response.output);
+            assert_nonempty_response(&response.output());
         },
     )
     .await;

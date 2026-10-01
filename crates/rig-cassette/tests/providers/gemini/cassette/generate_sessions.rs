@@ -109,7 +109,7 @@ async fn sequential_tool_calls_ordering_nonstreaming() {
                 .await
                 .expect("sequential tool chat should succeed");
 
-            assert_mentions_expected_number(&result.output, 2);
+            assert_mentions_expected_number(&result.output(), 2);
 
             let calls = history_tool_calls(&history);
             let results = history_tool_results(&history);

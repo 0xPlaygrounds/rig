@@ -2692,7 +2692,7 @@ pub async fn bus_engine_reproduces(program: &Program) {
             while let Some(item) = within(stream.next()).await {
                 match item {
                     Ok(MultiTurnStreamItem::FinalResponse(response)) => {
-                        output = Some(response.output);
+                        output = Some(response.output());
                     }
                     Err(PromptError::Report(report))
                         if program.cancel_after_first_delta
@@ -2790,7 +2790,7 @@ pub async fn bus_engine_reproduces(program: &Program) {
                 continue;
             }
             match (within(runner.run()).await, program.ending) {
-                (Ok(response), Ending::Answer) => Some(response.output),
+                (Ok(response), Ending::Answer) => Some(response.output()),
                 (Err(PromptError::MaxTurns { .. }), Ending::MaxTurns)
                 | (Err(PromptError::UnknownToolCall { .. }), Ending::UnknownToolCall)
                 | (Err(PromptError::Memory(_)), Ending::MemoryError) => None,
@@ -4120,7 +4120,7 @@ async fn hand_drive(program: &Program, resume: Resume) {
     }
     let response = last_response.expect("a run");
     assert_eq!(
-        response.output,
+        response.output(),
         program
             .expected_output
             .map_or_else(|| golden_answer(&replay.log), str::to_owned)

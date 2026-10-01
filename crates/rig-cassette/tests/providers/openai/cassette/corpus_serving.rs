@@ -36,7 +36,7 @@ async fn two_turns_concurrency_two_effect_log_is_the_golden_fixture() {
             .tool_concurrency(2)
             .await
             .expect("the agent answers");
-        assert!(response.output.contains("21"), "{}", response.output);
+        assert!(response.output().contains("21"), "{}", response.output());
         let log = agent.stamp(recorder.take());
         assert_eq!(
             families(&log),

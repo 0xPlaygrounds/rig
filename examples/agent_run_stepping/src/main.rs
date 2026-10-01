@@ -180,7 +180,7 @@ async fn main() -> Result<()> {
                 run = run_resumed;
             }
             AgentRunStep::Done(response) => {
-                println!("✓ {}", response.output);
+                println!("✓ {}", response.output());
                 println!(
                     "  {} model call(s), {} total tokens",
                     response.completion_calls.len(),
@@ -209,7 +209,7 @@ async fn main() -> Result<()> {
         .run()
         .await?;
 
-    println!("✓ {}", resp.output);
+    println!("✓ {}", resp.output());
     println!(
         "  {} model call(s), {} total tokens",
         resp.completion_calls.len(),

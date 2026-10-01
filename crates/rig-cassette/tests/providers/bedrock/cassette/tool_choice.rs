@@ -210,7 +210,7 @@ async fn none_nonstreaming_does_not_emit_tool_calls() {
                 )
                 .await
                 .expect("ToolChoice::None prompt should succeed")
-                .output;
+                .output();
 
             assert_mentions_expected_number(&response, 42);
             assert_history_tool_calls(&chat_history, &[], &[Adder::NAME, Subtract::NAME]);

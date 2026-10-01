@@ -87,7 +87,7 @@ async fn request_hook_records_prompt_and_response() -> Result<()> {
 
             let response = agent.prompt("Entertain me!").add_hook(hook.clone()).await?;
 
-            assert_nonempty_response(&response.output);
+            assert_nonempty_response(&response.output());
             anyhow::ensure!(hook.prompt_calls.load(Ordering::SeqCst) == 1);
             anyhow::ensure!(hook.response_calls.load(Ordering::SeqCst) == 1);
 

@@ -50,7 +50,7 @@ async fn main() -> Result<(), anyhow::Error> {
         "Perform an invalid operation on 'hello world'",
     ] {
         println!("User: {prompt}");
-        println!("Agent: {}", string_agent.prompt(prompt).await?.output);
+        println!("Agent: {}", string_agent.prompt(prompt).await?.output());
     }
 
     Ok(())

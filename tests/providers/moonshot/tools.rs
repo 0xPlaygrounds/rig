@@ -26,7 +26,7 @@ async fn required_tool_choice_agent_roundtrip() {
         .max_turns(3)
         .await
         .expect("required-tool-choice prompt should succeed")
-        .output;
+        .output();
 
     assert_mentions_expected_number(&response, -3);
 }

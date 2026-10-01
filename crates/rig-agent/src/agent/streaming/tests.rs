@@ -10,7 +10,9 @@ use crate::agent::engine::drive_tool_calls;
 use crate::agent::hook::{AgentHook, HookContext};
 use crate::agent::run::{AgentRun, AgentRunStep};
 use crate::completion::{CompletionRequest, FinishReason, PromptError, ToolDefinition, Usage};
+use crate::run::response::finalize_output_tool_choice;
 use crate::run::transcript::TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER;
+use crate::run::transcript::assistant_text_from_choice;
 use crate::run::transcript::tool_result_output;
 use crate::streaming::{Item, StreamEvent};
 use crate::test_utils::{
@@ -180,7 +182,7 @@ async fn tool_call_stream_without_terminal_record_dispatches_no_tools() {
 }
 
 #[test]
-fn finalize_streamed_choice_surfaces_output_over_tool_call_and_prose() {
+fn finalize_output_tool_choice_surfaces_output_over_tool_call_and_prose() {
     use rig_core::message::{ToolCall, ToolFunction};
 
     let output_call = AssistantContent::ToolCall(ToolCall::from_wire(
@@ -197,7 +199,7 @@ fn finalize_streamed_choice_surfaces_output_over_tool_call_and_prose() {
         AssistantContent::text("Sure, here is the weather:"),
         output_call.clone(),
     ];
-    let final_choice = finalize_streamed_choice(&with_prose, r#"{"city":"Tokyo"}"#)
+    let final_choice = finalize_output_tool_choice(&with_prose, r#"{"city":"Tokyo"}"#)
         .expect("a turn with the output-tool call is finalized via it");
     assert_eq!(
         assistant_text_from_choice(&final_choice),
@@ -212,7 +214,7 @@ fn finalize_streamed_choice_surfaces_output_over_tool_call_and_prose() {
 
     // Output-tool call only.
     let only_call = vec![output_call];
-    let final_choice = finalize_streamed_choice(&only_call, r#"{"city":"Tokyo"}"#)
+    let final_choice = finalize_output_tool_choice(&only_call, r#"{"city":"Tokyo"}"#)
         .expect("finalized via output tool");
     assert_eq!(
         assistant_text_from_choice(&final_choice),
@@ -221,7 +223,7 @@ fn finalize_streamed_choice_surfaces_output_over_tool_call_and_prose() {
 
     // A plain-text finalize (no tool call) is left to the caller.
     let text_only = vec![AssistantContent::text(r#"{"city":"Tokyo"}"#)];
-    assert!(finalize_streamed_choice(&text_only, r#"{"city":"Tokyo"}"#).is_none());
+    assert!(finalize_output_tool_choice(&text_only, r#"{"city":"Tokyo"}"#).is_none());
 }
 
 #[test]
@@ -1232,7 +1234,7 @@ async fn unary_repaired_message_telemetry_records_canonical_output() {
         .max_turns(3)
         .await
         .expect("repaired tool call should complete");
-    assert_eq!(output.output, "done");
+    assert_eq!(output.output(), "done");
 
     let output_messages: Vec<String> = spans
         .spans()
@@ -3806,7 +3808,7 @@ async fn tool_call_args_without_a_name_never_become_a_call() {
                 StreamEvent::Start { .. } | StreamEvent::Arguments { .. },
             ))
             | MultiTurnStreamItem::ToolCall { .. } => saw_call = true,
-            MultiTurnStreamItem::FinalResponse(response) => output = Some(response.output),
+            MultiTurnStreamItem::FinalResponse(response) => output = Some(response.output()),
             _ => {}
         }
     }

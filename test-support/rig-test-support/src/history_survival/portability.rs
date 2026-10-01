@@ -249,7 +249,7 @@ pub async fn run(
         });
     Observation {
         history,
-        final_text: response.output,
+        final_text: response.output(),
         tool_calls: calls.load(Ordering::SeqCst),
     }
 }

@@ -923,7 +923,7 @@ fn report_from_response(
 ) -> Result<ScenarioReport, ScenarioError> {
     validate_protocol_hygiene(
         name,
-        &response.output,
+        &response.output(),
         &response.messages,
         &[
             "<tool_call>",
@@ -943,7 +943,7 @@ fn report_from_response(
         generated_tokens: response.usage.output_tokens.unwrap_or(0),
         history_messages: response.messages.len(),
         duration: started.elapsed(),
-        response: response.output,
+        response: response.output(),
     })
 }
 
@@ -1102,14 +1102,14 @@ where
         || !values
             .iter()
             .any(|value| value.as_str() == Some(PING_OUTPUT))
-        || !response.output.contains(PING_OUTPUT)
+        || !response.output().contains(PING_OUTPUT)
     {
         return Err(ScenarioError::contract(
             SCENARIO,
             format!(
                 "calls={}, results={values:?}, response={:?}",
                 calls.load(Ordering::SeqCst),
-                response.output
+                response.output()
             ),
         ));
     }
@@ -1233,7 +1233,7 @@ where
             format!(
                 "calls={}, expected={expected:?}, observed={observed:?}, response={:?}",
                 calls.load(Ordering::SeqCst),
-                response.output
+                response.output()
             ),
         ));
     }
@@ -1684,7 +1684,7 @@ where
                 "calls={}, completion_calls={}, results={results:?}, output={:?}",
                 calls.load(Ordering::SeqCst),
                 response.completion_calls.len(),
-                response.output
+                response.output()
             ),
         ));
     }
@@ -1792,7 +1792,7 @@ where
             "Use the repeat_text tool to repeat the word \"banana\" 3 times, then show me the exact result.",
         )
         .await?;
-    let response = result.output.clone();
+    let response = result.output().clone();
     let tool_calls = calls.load(Ordering::SeqCst);
     if tool_calls == 0
         || response.matches("banana").count() < 1
@@ -1832,7 +1832,7 @@ where
             "Compute (4 + 6) * 2. First call the add tool, then call the multiply tool on the result. Tell me the final number.",
         )
         .await?;
-    let response = result.output.clone();
+    let response = result.output().clone();
     let add = add_calls.load(Ordering::SeqCst);
     let multiply = multiply_calls.load(Ordering::SeqCst);
     if add == 0
@@ -1893,7 +1893,7 @@ where
     let result = final_response.ok_or_else(|| {
         ScenarioError::contract("streaming_tool", "stream produced no final response")
     })?;
-    let response = result.output.clone();
+    let response = result.output().clone();
     let history_messages = result.messages.len();
     let tool_calls = calls.load(Ordering::SeqCst);
     streamed_call_ids.sort();
@@ -1959,7 +1959,7 @@ where
     let result = agent
         .prompt("Use add to calculate 19 + 23. Return answer=42 and a short optional explanation.")
         .await?;
-    let response = result.output.clone();
+    let response = result.output().clone();
     let parsed: ArithmeticResult = serde_json::from_str(&response)?;
     let tool_calls = calls.load(Ordering::SeqCst);
     if tool_calls == 0 || parsed.answer != 42 || !has_tool_roundtrip(&result.messages) {
@@ -2115,7 +2115,7 @@ where
             "stream produced no final response",
         )
     })?;
-    let parsed: ArithmeticResult = serde_json::from_str(&result.output)?;
+    let parsed: ArithmeticResult = serde_json::from_str(&result.output())?;
     let calls = calls.load(Ordering::SeqCst);
     if calls == 0
         || final_count != 1
@@ -2126,7 +2126,7 @@ where
             "streaming_structured_after_tool",
             format!(
                 "calls={calls}, final_count={final_count}, response={:?}",
-                result.output
+                result.output()
             ),
         ));
     }

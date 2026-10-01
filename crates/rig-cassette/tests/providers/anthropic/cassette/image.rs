@@ -34,7 +34,7 @@ async fn image_prompt_from_fixture() {
             .prompt(image)
             .await
             .expect("image prompt should succeed")
-            .output;
+            .output();
 
         assert_nonempty_response(&response);
         assert_contains_any_case_insensitive(&response, &["ant", "insect"]);

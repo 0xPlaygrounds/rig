@@ -56,8 +56,8 @@ impl Tool for TranslatorTool {
         let mut empty_history = Vec::<Message>::new();
         match self.0.chat(&args.prompt, &mut empty_history).await {
             Ok(response) => {
-                println!("Translated prompt: {}", response.output);
-                Ok(response.output)
+                println!("Translated prompt: {}", response.output());
+                Ok(response.output())
             }
             Err(e) => Err(e),
         }

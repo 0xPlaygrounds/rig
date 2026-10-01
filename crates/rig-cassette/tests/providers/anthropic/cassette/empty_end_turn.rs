@@ -209,9 +209,9 @@ async fn prompt_loop_accepts_empty_terminal_turn_after_tool_result() {
                 .expect("agent prompt should not fail on an empty terminal Anthropic turn");
 
             assert!(
-                response.output.trim().is_empty(),
+                response.output().trim().is_empty(),
                 "expected empty final output for the terminal tool prompt, got {:?}",
-                response.output
+                response.output()
             );
             assert!(
                 call_count.load(Ordering::SeqCst) >= 1,
@@ -253,9 +253,9 @@ async fn prompt_loop_preserves_pre_tool_text_when_terminal_followup_is_empty() {
         .expect("agent prompt should preserve prior-turn text when Anthropic ends empty");
 
     assert!(
-        response.output.trim().is_empty(),
+        response.output().trim().is_empty(),
         "expected empty final output for the terminal tool prompt, got {:?}",
-        response.output
+        response.output()
     );
     assert!(
         call_count.load(Ordering::SeqCst) >= 1,

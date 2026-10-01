@@ -53,7 +53,7 @@ async fn streamed_output(agent: &rig::agent::Agent, max_turns: usize) -> String 
     let mut output = None;
     while let Some(item) = stream.next().await {
         if let MultiTurnStreamItem::FinalResponse(response) = item.expect("the stream yields") {
-            output = Some(response.output);
+            output = Some(response.output());
         }
     }
     output.expect("a final response")
@@ -89,7 +89,7 @@ async fn invalid_streamed_retry_once_effect_log_is_the_golden_fixture() {
     let mut output = None;
     while let Some(item) = stream.next().await {
         if let MultiTurnStreamItem::FinalResponse(response) = item.expect("the stream yields") {
-            output = Some(response.output);
+            output = Some(response.output());
         }
     }
     drop(stream);
@@ -136,7 +136,7 @@ async fn invalid_streamed_retry_twice_effect_log_is_the_golden_fixture() {
     let mut output = None;
     while let Some(item) = stream.next().await {
         if let MultiTurnStreamItem::FinalResponse(response) = item.expect("the stream yields") {
-            output = Some(response.output);
+            output = Some(response.output());
         }
     }
     drop(stream);
@@ -180,7 +180,8 @@ async fn invalid_ignore_unary_effect_log_is_the_golden_fixture() {
         .await
         .expect("the ignored call does not fail the run");
     assert_eq!(
-        response.output, "",
+        response.output(),
+        "",
         "an ignored-only turn is an empty answer"
     );
     let log = agent.stamp(recorder.take());
@@ -213,7 +214,7 @@ async fn invalid_ignore_streamed_effect_log_is_the_golden_fixture() {
     let mut output = None;
     while let Some(item) = stream.next().await {
         if let MultiTurnStreamItem::FinalResponse(response) = item.expect("the stream yields") {
-            output = Some(response.output);
+            output = Some(response.output());
         }
     }
     drop(stream);
@@ -247,7 +248,7 @@ async fn invalid_mixed_ignore_effect_log_is_the_golden_fixture() {
         .unhandled_invalid_tool_call(UnhandledInvalidToolCall::Ignore)
         .await
         .expect("the valid call runs");
-    assert_eq!(response.output, ANSWER);
+    assert_eq!(response.output(), ANSWER);
     let log = agent.stamp(recorder.take());
     assert_eq!(
         families(&log),
@@ -284,7 +285,7 @@ async fn invalid_mixed_ignore_streamed_effect_log_is_the_golden_fixture() {
     let mut output = None;
     while let Some(item) = stream.next().await {
         if let MultiTurnStreamItem::FinalResponse(response) = item.expect("the stream yields") {
-            output = Some(response.output);
+            output = Some(response.output());
         }
     }
     drop(stream);
@@ -348,7 +349,7 @@ async fn invalid_repair_to_add_effect_log_is_the_golden_fixture() {
         .max_turns(3)
         .await
         .expect("the repaired call runs");
-    assert_eq!(response.output, ANSWER);
+    assert_eq!(response.output(), ANSWER);
     let log = agent.stamp(recorder.take());
     assert_eq!(
         families(&log),
@@ -385,7 +386,7 @@ async fn invalid_skip_under_auto_effect_log_is_the_golden_fixture() {
         .max_turns(3)
         .await
         .expect("the skipped call does not fail the run");
-    assert_eq!(response.output, ANSWER);
+    assert_eq!(response.output(), ANSWER);
     let log = agent.stamp(recorder.take());
     assert_eq!(
         families(&log),

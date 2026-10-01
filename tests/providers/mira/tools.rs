@@ -22,7 +22,7 @@ async fn tools_smoke() {
         .prompt(TOOLS_PROMPT)
         .await
         .expect("tool prompt should succeed")
-        .output;
+        .output();
 
     assert_mentions_expected_number(&response, -3);
 }

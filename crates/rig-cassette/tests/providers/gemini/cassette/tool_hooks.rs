@@ -43,14 +43,14 @@ async fn on_tool_call_skip_returns_reason_without_executing() {
 
             assert_eq!(counter.count(), 0, "the skipped tool should never execute");
 
-            let messages = response.messages;
+            let messages = response.messages();
             let texts: Vec<String> = messages.iter().flat_map(tool_result_texts).collect();
             assert_eq!(
                 texts,
                 vec![SKIP_REASON.to_string()],
                 "the skip reason should be the synthetic tool result"
             );
-            assert_nonempty_response(&response.output);
+            assert_nonempty_response(&response.output());
         },
     )
     .await;
@@ -151,7 +151,7 @@ async fn hooks_observe_every_tool_call_and_result() {
             );
 
             assert!(
-                response.output.contains("42"),
+                response.output().contains("42"),
                 "final answer should report 42: {response:?}"
             );
         },

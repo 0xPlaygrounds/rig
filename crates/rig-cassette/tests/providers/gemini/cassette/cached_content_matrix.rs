@@ -427,7 +427,7 @@ async fn a_cache_carrying_a_provider_hosted_tool_is_usable_from_an_agent() {
                     );
 
                 assert!(
-                    answer.output.contains("54173879"),
+                    answer.output().contains("54173879"),
                     "the cached codeExecution tool should have run on Gemini's side: {answer:?}"
                 );
             })
@@ -506,7 +506,7 @@ async fn an_agent_that_suppresses_its_tools_may_read_from_a_cache() {
                     );
 
                 assert!(
-                    answer.output.to_lowercase().contains("suppressed"),
+                    answer.output().to_lowercase().contains("suppressed"),
                     "the turn should have run against the cache: {answer:?}"
                 );
             })

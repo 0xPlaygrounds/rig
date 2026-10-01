@@ -99,8 +99,8 @@ async fn prompt_typed_and_output_schema() {
                 .prompt("What's the weather forecast for Chicago?")
                 .await
                 .expect("output schema prompt should succeed");
-            let parsed: WeatherForecast =
-                serde_json::from_str(&response.output).expect("schema response should deserialize");
+            let parsed: WeatherForecast = serde_json::from_str(&response.output())
+                .expect("schema response should deserialize");
             assert_weather_forecast(&parsed, &["chicago"]);
         },
     )

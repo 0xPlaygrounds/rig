@@ -238,7 +238,7 @@ async fn a_one_argument_tool_round_trips_its_value() {
             .expect("a one-argument tool round trip should complete");
 
         assert!(
-            answer.output.contains("8,336,817"),
+            answer.output().contains("8,336,817"),
             "the tool's result must reach the final answer: {answer:?}"
         );
     })
@@ -401,7 +401,7 @@ async fn a_tool_that_errors_reports_the_error_back_to_the_model() {
             .await
             .expect("a failing tool must not abort the run");
         assert!(
-            !answer.output.trim().is_empty(),
+            !answer.output().trim().is_empty(),
             "the loop continues past a tool failure and still answers"
         );
     })

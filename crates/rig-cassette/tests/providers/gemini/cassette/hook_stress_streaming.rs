@@ -284,7 +284,7 @@ async fn blocking_and_streaming_produce_same_final_answer() {
                 .max_turns(6)
                 .await
                 .expect("blocking parity run should succeed");
-            assert_mentions_expected_number(&response.output, EXPECTED);
+            assert_mentions_expected_number(&response.output(), EXPECTED);
         },
     )
     .await;

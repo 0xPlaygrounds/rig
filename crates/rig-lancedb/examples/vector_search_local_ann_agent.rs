@@ -78,7 +78,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let query = "My boss says I zindle too much, what does that mean?";
 
-    let response = agent.prompt(query).await?.output;
+    let response = agent.prompt(query).await?.output();
 
     println!("Response: {response}");
 

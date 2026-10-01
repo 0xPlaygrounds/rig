@@ -69,7 +69,7 @@ async fn suspended(answer: Answer) -> EffectLog {
         .await
         .expect("a suspended layer never hangs the run past its answer")
         .expect("the agent answers");
-        assert_eq!(response.output, "42");
+        assert_eq!(response.output(), "42");
     }
     agent.stamp(recorder.take())
 }
@@ -137,7 +137,7 @@ async fn wrong_family_patch_effect_log_is_the_golden_fixture() {
         .max_turns(3)
         .await
         .expect("the run goes on: the tool failed, the model answered");
-    assert_eq!(response.output, "42");
+    assert_eq!(response.output(), "42");
     let log = agent.stamp(recorder.take());
     // `Internal`, no record: the engine turns the tool's failure into a
     // failed result the model sees, and the run goes on.

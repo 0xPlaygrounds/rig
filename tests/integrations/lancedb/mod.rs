@@ -119,7 +119,7 @@ async fn agent_with_dynamic_context_test() {
 
     let query = "My boss says I zindle too much, what does that mean?";
 
-    let response = agent.prompt(query).await.unwrap().output;
+    let response = agent.prompt(query).await.unwrap().output();
 
     assert!(response.contains("zindle") || response.contains("pretend to be working"));
     assert!(response.contains("important") || response.contains("unproductive"));

@@ -17,7 +17,7 @@ async fn openai_compatible_completion_smoke() {
     .prompt(BASIC_PROMPT)
     .await
     .expect("Xiaomi MiMo OpenAI-compatible completion should succeed")
-    .output;
+    .output();
 
     assert_nonempty_response(&response);
 }

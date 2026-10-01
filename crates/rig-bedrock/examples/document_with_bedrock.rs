@@ -33,7 +33,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let document = UserContent::document_base64(bytes_base64, Some(DocumentMediaType::PDF));
 
-    let response = agent.prompt(document).await?.output;
+    let response = agent.prompt(document).await?.output();
     info!("{}", response);
 
     Ok(())

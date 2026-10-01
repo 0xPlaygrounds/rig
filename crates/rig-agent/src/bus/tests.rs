@@ -2053,7 +2053,7 @@ async fn concurrent_agent_wrappers_receive_distinct_recorder_contexts() {
                     within(agent.prompt("same prompt").run())
                         .await
                         .unwrap()
-                        .output,
+                        .output(),
                     "ok"
                 );
             }

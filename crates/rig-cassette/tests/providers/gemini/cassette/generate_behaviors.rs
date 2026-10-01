@@ -112,7 +112,7 @@ async fn structured_output_nested_arrays_and_optional_fields() {
                 )
                 .await
                 .expect("structured output prompt should succeed");
-            let record: EventRecord = serde_json::from_str(&response.output)
+            let record: EventRecord = serde_json::from_str(&response.output())
                 .expect("structured output should deserialize");
 
             assert!(!record.title.trim().is_empty(), "title should be populated");

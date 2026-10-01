@@ -836,7 +836,7 @@ async fn multimodal_image_input_mixed_text_ordering() -> Result<()> {
                 })
                 .await?;
 
-            assert_nonempty_response(&response.output);
+            assert_nonempty_response(&response.output());
 
             Ok(())
         },

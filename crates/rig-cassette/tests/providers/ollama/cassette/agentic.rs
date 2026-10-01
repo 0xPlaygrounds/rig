@@ -71,7 +71,7 @@ async fn structured_output_raw_with_thinking() {
             .expect("structured output with thinking should succeed");
 
         let parsed: serde_json::Value =
-            serde_json::from_str(&response.output).expect("response should be schema JSON");
+            serde_json::from_str(&response.output()).expect("response should be schema JSON");
         for key in ["title", "summary"] {
             assert!(
                 parsed
@@ -129,7 +129,7 @@ async fn structured_output_with_tools_and_thinking() {
                 .expect("agentic structured output should succeed");
 
             let parsed: serde_json::Value =
-                serde_json::from_str(&response.output).expect("response should be schema JSON");
+                serde_json::from_str(&response.output()).expect("response should be schema JSON");
             for key in ["city", "summary"] {
                 assert!(
                     parsed
@@ -245,7 +245,7 @@ async fn native_mode_emits_structured_output() {
             .expect("native structured output should succeed");
 
         let parsed: serde_json::Value =
-            serde_json::from_str(&response.output).expect("response should be schema JSON");
+            serde_json::from_str(&response.output()).expect("response should be schema JSON");
         for key in ["city", "summary"] {
             assert!(
                 parsed
@@ -282,7 +282,7 @@ async fn prompted_mode_returns_parseable_json() {
             .await
             .expect("prompted structured output should succeed");
 
-        let parsed: serde_json::Value = first_json_object(&response.output);
+        let parsed: serde_json::Value = first_json_object(&response.output());
         for key in ["title", "summary"] {
             assert!(
                 parsed

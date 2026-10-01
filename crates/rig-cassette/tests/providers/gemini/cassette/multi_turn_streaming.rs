@@ -43,7 +43,7 @@ async fn runner_driven_multi_turn_streaming_loop() {
                 if let MultiTurnStreamItem::FinalResponse(final_response) =
                     item.expect("runner-driven multi-turn streaming should succeed")
                 {
-                    response = Some(final_response.output);
+                    response = Some(final_response.output());
                 }
             }
             let response = response.expect("stream should emit a final response");

@@ -43,7 +43,7 @@ async fn basic(model: DynModel<Completion>) -> Result<(), anyhow::Error> {
         .preamble("Answer with json format only")
         .build();
 
-    let response = agent.prompt("Describe solar system").await?.output;
+    let response = agent.prompt("Describe solar system").await?.output();
     info!("{}", response);
 
     Ok(())
@@ -59,7 +59,7 @@ async fn tools(model: DynModel<Completion>) -> Result<(), anyhow::Error> {
 
     info!(
         "Calculator Agent: add 400 and 20\nResult: {}",
-        calculator_agent.prompt("add 400 and 20").await?.output
+        calculator_agent.prompt("add 400 and 20").await?.output()
     );
 
     Ok(())
@@ -78,7 +78,7 @@ async fn context(model: DynModel<Completion>) -> Result<(), anyhow::Error> {
     let response = agent
         .prompt("What does \"glarb-glarb\" mean?")
         .await?
-        .output;
+        .output();
 
     info!("What does \"glarb-glarb\" mean?\n{}", response);
 
@@ -108,7 +108,7 @@ async fn loaders(model: DynModel<Completion>) -> Result<(), anyhow::Error> {
     let response = agent
         .prompt("Which rust example is best suited for the operation 1 + 2")
         .await?
-        .output;
+        .output();
 
     info!("{}", response);
 

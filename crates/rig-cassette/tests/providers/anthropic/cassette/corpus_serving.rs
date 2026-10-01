@@ -36,7 +36,7 @@ async fn final_output(stream: &mut rig::agent::StreamingResult) -> String {
     let mut output = None;
     while let Some(item) = stream.next().await {
         if let MultiTurnStreamItem::FinalResponse(response) = item.expect("the stream yields") {
-            output = Some(response.output);
+            output = Some(response.output());
         }
     }
     output.expect("a final response")
@@ -195,7 +195,7 @@ async fn serial_memory_tools_effect_log_is_the_golden_fixture() {
             .max_turns(3)
             .await
             .expect("the agent answers");
-        assert!(response.output.contains("42"), "{}", response.output);
+        assert!(response.output().contains("42"), "{}", response.output());
         let log = agent.stamp(recorder.take());
         assert_eq!(
             families(&log),
@@ -235,7 +235,7 @@ async fn model_route_effect_log_is_the_golden_fixture() {
             .max_turns(3)
             .await
             .expect("the agent answers");
-        assert!(response.output.contains("42"), "{}", response.output);
+        assert!(response.output().contains("42"), "{}", response.output());
         let log = agent.stamp(recorder.take());
         assert_eq!(
             families(&log),
@@ -279,7 +279,7 @@ async fn model_route_unselected_effect_log_is_the_golden_fixture() {
             .max_turns(3)
             .await
             .expect("the agent answers");
-        assert!(response.output.contains("42"), "{}", response.output);
+        assert!(response.output().contains("42"), "{}", response.output());
         let log = agent.stamp(recorder.take());
         assert_eq!(
             families(&log),
@@ -350,7 +350,7 @@ async fn over_host_bus(
             .max_turns(3)
             .await
             .expect("the agent answers")
-            .output
+            .output()
     };
     assert!(output.contains("42"), "{output}");
     // The run is settled, so the recorder holds every record; the agent

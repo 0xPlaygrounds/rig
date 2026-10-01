@@ -187,7 +187,7 @@ async fn blocking_agent_prompt_surfaces_refusal() {
                 .await
                 .expect("an agent must deliver the refusal, not an empty-response error");
 
-            assert_nonempty_response(&response.output);
+            assert_nonempty_response(&response.output());
         },
     )
     .await;

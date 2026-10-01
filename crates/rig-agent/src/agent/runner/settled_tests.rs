@@ -21,7 +21,7 @@ struct Settled(Arc<Mutex<Option<String>>>);
 impl AgentHook for Settled {
     async fn on_run_settled(&self, _ctx: &HookContext, event: RunSettled<'_>) {
         let seen = match event.outcome {
-            SettledOutcome::Response(response) => format!("response:{}", response.output),
+            SettledOutcome::Response(response) => format!("response:{}", response.output()),
             SettledOutcome::Error(reason) => format!("error:{reason}"),
         };
         *self.0.lock().expect("settled") = Some(seen);

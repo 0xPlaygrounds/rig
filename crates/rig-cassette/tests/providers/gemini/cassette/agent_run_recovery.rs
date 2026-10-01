@@ -156,7 +156,7 @@ async fn repair_renames_tool_call_and_executes_it() {
             };
 
             assert!(repaired_calls >= 1, "at least one call should be repaired");
-            assert_mentions_expected_number(&response.output, 5);
+            assert_mentions_expected_number(&response.output(), 5);
 
             // The repaired name is what history records; the original name
             // never reaches the conversation.
@@ -261,7 +261,7 @@ async fn skip_suppresses_every_call_in_the_turn() {
                 first_turn.iter().any(|name| name == "add"),
                 "the skipped add call still reaches the driver: {first_turn:?}"
             );
-            assert_nonempty_response(&response.output);
+            assert_nonempty_response(&response.output());
         },
     )
     .await;

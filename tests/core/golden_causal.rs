@@ -151,7 +151,7 @@ async fn over_host(host: Host) -> EffectLog {
                 .await
                 .expect("a nested dispatch never hangs the run")
                 .expect("the agent answers")
-                .output;
+                .output();
         assert!(
             started.elapsed() < Duration::from_secs(5),
             "refused or served, never queued behind itself"

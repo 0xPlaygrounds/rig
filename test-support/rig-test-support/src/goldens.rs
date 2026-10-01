@@ -804,7 +804,7 @@ impl rig_agent::agent::AgentHook for RecordSettled {
     ) {
         let seen = match event.outcome {
             rig_agent::agent::SettledOutcome::Response(response) => {
-                format!("response:{}", response.output)
+                format!("response:{}", response.output())
             }
             rig_agent::agent::SettledOutcome::Error(reason) => format!("error:{reason}"),
         };

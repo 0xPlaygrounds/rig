@@ -144,7 +144,7 @@ async fn main() -> Result<(), anyhow::Error> {
     // Prompt the agent and print the response
     let response = comedian_agent.prompt("Entertain me!").await?;
 
-    println!("{}", response.output);
+    println!("{}", response.output());
 
     Ok(())
 }

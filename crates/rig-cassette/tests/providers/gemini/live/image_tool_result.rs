@@ -20,7 +20,7 @@ async fn test_gemini_agent_with_image_tool_result_e2e() -> anyhow::Result<()> {
         .await?;
     println!("Response: {response_text}");
     anyhow::ensure!(
-        !response_text.output.is_empty(),
+        !response_text.output().is_empty(),
         "response should not be empty"
     );
     Ok(())

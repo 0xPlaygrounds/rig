@@ -58,7 +58,7 @@ async fn main() -> Result<()> {
         .default_max_turns(2)
         .build();
 
-    let response = agent.prompt("Calculate 2 - 5.").await?.output;
+    let response = agent.prompt("Calculate 2 - 5.").await?.output();
     println!("{response}");
 
     Ok(())

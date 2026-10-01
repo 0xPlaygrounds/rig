@@ -131,7 +131,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     println!(
         "OpenAI Agent-Using Agent: {}",
-        agent_using_agent.prompt("Calculate 2 - 5").await?.output
+        agent_using_agent.prompt("Calculate 2 - 5").await?.output()
     );
 
     Ok(())

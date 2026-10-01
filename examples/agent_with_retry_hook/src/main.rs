@@ -120,7 +120,7 @@ async fn main() -> Result<()> {
         .run()
         .await?;
 
-    println!("Final response: {}", response.output);
+    println!("Final response: {}", response.output());
     println!("Model calls: {}", response.completion_calls.len());
 
     // Repeat is a distinct policy: it discards the rejected response and reuses

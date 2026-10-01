@@ -70,7 +70,7 @@ async fn own_bus(
         .max_turns(3)
         .await
         .expect("the agent answers");
-    assert!(!response.output.is_empty());
+    assert!(!response.output().is_empty());
     agent.stamp(recorder.take())
 }
 
@@ -171,7 +171,7 @@ async fn host_deny_over_host_bus_effect_log_is_the_golden_fixture() {
             .max_turns(3)
             .await
             .expect("the agent answers");
-        assert!(!response.output.is_empty());
+        assert!(!response.output().is_empty());
         let log = agent.stamp(recorder.take());
         drop((agent, dispatcher, registrar));
         driver.await.expect("the host's driver");
@@ -224,7 +224,7 @@ async fn memory_load_replaced_effect_log_is_the_golden_fixture() {
                 .conversation(CONVERSATION)
                 .add_hook(HistoryIsReplaced).record_to(recorder.clone()).build();
             let response = agent.prompt(NAME_PROMPT).await.expect("the agent answers");
-            assert!(response.output.contains("Ada"), "{}", response.output);
+            assert!(response.output().contains("Ada"), "{}", response.output());
             let log = agent.stamp(recorder.take());
             assert_eq!(
                 families(&log),

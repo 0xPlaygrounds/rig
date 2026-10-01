@@ -939,7 +939,9 @@ impl AgentRun {
                     self.new_messages
                         .extend(assistant_message(message_id, final_items.clone()));
 
-                    return Ok(self.finish(output, final_items, output_tool_calls));
+                    let content = response::finalize_output_tool_choice(&items, &output)
+                        .unwrap_or_else(|| vec![AssistantContent::text(output)]);
+                    return Ok(self.finish(content, output_tool_calls));
                 }
 
                 // Reasoning alone is not an answer. Reject answerless truncated turns
@@ -987,7 +989,7 @@ impl AgentRun {
                         return self.reprompt_for_output();
                     }
 
-                    Ok(self.finish(assistant_text_from_choice(&items), items, 0))
+                    Ok(self.finish(items, 0))
                 }
             }
             RunState::ExecutingTools(calls) => {
@@ -1099,17 +1101,11 @@ impl AgentRun {
     /// Build the run's final [`PromptResponse`], park it in
     /// [`RunState::Done`], and return the `Done` step. Shared by the
     /// output-tool and plain-text finalization paths in `next_step`.
-    fn finish(
-        &mut self,
-        output: String,
-        content: Vec<AssistantContent>,
-        output_tool_calls: usize,
-    ) -> AgentRunStep {
-        let response = PromptResponse::new(output, self.usage)
+    fn finish(&mut self, content: Vec<AssistantContent>, output_tool_calls: usize) -> AgentRunStep {
+        let response = PromptResponse::from_content(content, self.usage)
             .with_messages(self.new_messages.clone())
             .with_completion_calls(self.completion_calls.clone())
-            .with_output_tool_calls(output_tool_calls)
-            .with_content(content);
+            .with_output_tool_calls(output_tool_calls);
         self.state = RunState::Done(response.clone());
         AgentRunStep::Done(response)
     }

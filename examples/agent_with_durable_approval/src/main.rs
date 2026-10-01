@@ -304,7 +304,7 @@ async fn main() -> Result<()> {
             }
 
             AgentRunStep::Done(response) => {
-                println!("\n✓ {}", response.output);
+                println!("\n✓ {}", response.output());
                 return Ok(());
             }
         }

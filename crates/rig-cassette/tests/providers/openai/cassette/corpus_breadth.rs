@@ -42,7 +42,7 @@ async fn final_output(stream: &mut rig::agent::StreamingResult) -> Result<String
     let mut output = None;
     while let Some(item) = stream.next().await {
         match item {
-            Ok(MultiTurnStreamItem::FinalResponse(response)) => output = Some(response.output),
+            Ok(MultiTurnStreamItem::FinalResponse(response)) => output = Some(response.output()),
             Ok(_) => {}
             Err(error) => match error {
                 PromptError::Cancelled { reason, .. } => return Err(reason),
@@ -221,7 +221,7 @@ async fn custom_at_outcome_effect_log_is_the_golden_fixture() {
             .max_turns(3)
             .await
             .expect("the agent answers")
-            .output;
+            .output();
         assert!(output.contains("42"), "{output}");
         let log = agent.stamp(recorder.take());
         drop((agent, dispatcher, registrar));
@@ -283,7 +283,7 @@ async fn memory_two_runs_effect_log_is_the_golden_fixture() {
                 .prompt(prompt)
                 .await
                 .expect("the agent answers")
-                .output;
+                .output();
             assert!(!output.is_empty());
         }
         let log = agent.stamp(recorder.take());

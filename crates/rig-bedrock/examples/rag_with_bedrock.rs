@@ -81,7 +81,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let response = rag_agent
         .prompt("What does \"glarb-glarb\" mean?")
         .await?
-        .output;
+        .output();
 
     info!("{}", response);
 

@@ -66,7 +66,7 @@ impl Agent {
                     .prompt(args.prompt)
                     .tool_context(inherited_context)
                     .await
-                    .map(|response| ToolOutput::text(response.output))
+                    .map(|response| ToolOutput::text(response.output()))
                     .map_err(ToolExecutionError::from_error)
             })
         })

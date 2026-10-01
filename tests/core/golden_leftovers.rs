@@ -50,7 +50,7 @@ async fn denied_tool_effect_log_is_the_golden_fixture() {
         .max_turns(3)
         .await
         .expect("the model sees the skipped result and answers");
-    assert_eq!(response.output, "I could not add them.");
+    assert_eq!(response.output(), "I could not add them.");
     let log = agent.stamp(recorder.take());
     assert_eq!(
         families(&log),
@@ -169,7 +169,7 @@ async fn denied_custom_from_hook_effect_log_is_the_golden_fixture() {
         .add_hook(NoteDeniedAtStart)
         .build();
     let response = agent.prompt(PROMPT).await.expect("the run goes on");
-    assert_eq!(response.output, "ready");
+    assert_eq!(response.output(), "ready");
     let log = agent.stamp(recorder.take());
     drop((agent, dispatcher, registrar));
     driver.await.expect("the host's driver");
@@ -216,7 +216,7 @@ async fn over_host(
             if let rig::agent::MultiTurnStreamItem::FinalResponse(response) =
                 item.expect("the stream yields")
             {
-                output = Some(response.output);
+                output = Some(response.output());
             }
         }
         drop(stream);
@@ -227,7 +227,7 @@ async fn over_host(
             .max_turns(200)
             .await
             .expect("the agent answers")
-            .output
+            .output()
     };
     for _ in 0..64 {
         tokio::task::yield_now().await;

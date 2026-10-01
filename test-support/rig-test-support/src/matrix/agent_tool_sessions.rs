@@ -38,7 +38,7 @@ macro_rules! agent_tool_sessions_case {
                 let mut history = Vec::<Message>::new();
                 let response = agent.chat(COMPLEX_SESSION_PROMPT, &mut history).await?;
                 assert_contains_all_case_insensitive(
-                    &response.output,
+                    &response.output(),
                     &["EMPTY-OK", "MANIFEST-OK", "LABELS-OK", "ESCAPE-OK"],
                 );
                 assert_complex_invocations(&log);
@@ -75,7 +75,7 @@ macro_rules! agent_tool_sessions_case {
                 let mut history = Vec::<Message>::new();
                 let response = agent.chat(COMPLEX_SESSION_PROMPT, &mut history).await?;
                 assert_contains_all_case_insensitive(
-                    &response.output,
+                    &response.output(),
                     &[
                         "EMPTY-OK",
                         "MANIFEST-OK",
@@ -176,7 +176,7 @@ macro_rules! agent_tool_sessions_case {
                 let mut history = Vec::<Message>::new();
                 let response = agent.chat(TWO_TOOL_STREAM_PROMPT, &mut history).await?;
                 assert_contains_all_case_insensitive(
-                    &response.output,
+                    &response.output(),
                     &[ALPHA_SIGNAL_OUTPUT, BETA_SIGNAL_OUTPUT],
                 );
                 let calls = history_tool_calls(&history);

@@ -59,7 +59,7 @@ impl ReasoningAgent {
             serde_json::to_string_pretty(&response.messages)
                 .unwrap_or_else(|_| "<failed to serialize chat history>".to_string())
         );
-        Ok(response.output)
+        Ok(response.output())
     }
 }
 

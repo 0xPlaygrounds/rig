@@ -103,7 +103,7 @@ async fn default_max_turns_allows_multi_step_tool_use() -> Result<()> {
             let response = agent
                 .prompt("Calculate (3 + 5) / 4 and describe the result.")
                 .await?
-                .output;
+                .output();
 
             assert_mentions_expected_number(&response, 2);
 

@@ -255,7 +255,7 @@ async fn main() -> Result<()> {
         .max_turns(10)
         .add_hook(ApprovalHook)
         .await?
-        .output;
+        .output();
 
     println!("\nFinal response:\n{response}");
 

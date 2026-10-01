@@ -293,8 +293,8 @@ fn blocking_body(sink: Observed, route: Route, tools: bool, probe: RawProbe) -> 
                 .await
                 .expect("agent run should succeed");
             *sink.lock().expect("observation mutex") = Some(RunObservation {
+                output: response.output(),
                 calls: response.completion_calls,
-                output: response.output,
                 ..Default::default()
             });
         })
@@ -319,8 +319,8 @@ fn streamed_body(sink: Observed, route: Route, tools: bool, probe: RawProbe) -> 
                 }
             }
             let response = final_response.expect("stream should end with a FinalResponse");
+            observation.output = response.output();
             observation.calls = response.completion_calls;
-            observation.output = response.output;
             *sink.lock().expect("observation mutex") = Some(observation);
         })
     })
@@ -665,8 +665,8 @@ async fn chat_retried_turn_records_retried_attempt_raw() {
                 .await
                 .expect("the feedback retry should recover");
             *sink.lock().expect("observation mutex") = Some(RunObservation {
+                output: response.output(),
                 calls: response.completion_calls,
-                output: response.output,
                 ..Default::default()
             });
         },
