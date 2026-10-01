@@ -183,3 +183,298 @@ fn a_base_url_that_already_names_the_endpoint_is_trimmed() {
         assert_eq!(normalize_base_url(pasted), "https://example.invalid");
     }
 }
+
+/// A conversation whose assistant turn carries `reasoning`, issued by
+/// `issuer`, followed by a new user turn: the shape a replayed tool loop has.
+fn replaying(issuer: &'static str, reasoning: crate::message::Reasoning) -> CompletionRequest {
+    request().messages([
+        crate::message::Message::user("first"),
+        crate::message::Message::Assistant {
+            id: None,
+            content: vec![
+                AssistantContent::Reasoning(reasoning.sealed(issuer)),
+                AssistantContent::text("answer"),
+            ],
+        },
+    ])
+}
+
+/// A request replaying one signed Anthropic thinking block.
+fn replaying_thinking() -> CompletionRequest {
+    replaying(
+        "anthropic",
+        crate::message::Reasoning::new_with_signature("thought", Some("sig".into())),
+    )
+}
+
+fn binding_wire(model: &str) -> Messages {
+    AnthropicConfig::new("sk-test").completion(model)
+}
+
+fn beta_header(encoded: &Encoded) -> Option<&str> {
+    encoded
+        .request
+        .headers()
+        .get("anthropic-beta")
+        .and_then(|value| value.to_str().ok())
+}
+
+const DROP_BLOCK: &str = r#"{"block_binding":{"prefix_mismatch_behavior":"drop_block"}}"#;
+
+#[test]
+fn a_binding_model_replaying_thinking_drops_stale_blocks_in_both_modes() {
+    use super::super::completion::{CLAUDE_FABLE_5, CLAUDE_FABLE_5_1, CLAUDE_OPUS_5_5};
+    let drop_block: serde_json::Value = serde_json::from_str(DROP_BLOCK).expect("JSON");
+    for model in [
+        CLAUDE_OPUS_5_5,
+        CLAUDE_FABLE_5_1,
+        CLAUDE_FABLE_5,
+        "claude-opus-5-5-20260901",
+    ] {
+        for mode in [Mode::Unary, Mode::Streaming] {
+            let encoded = binding_wire(model)
+                .encode(replaying_thinking(), mode)
+                .expect("the request encodes");
+            assert_eq!(
+                json_body(&encoded.request)["thinking"],
+                drop_block,
+                "{model}"
+            );
+            assert_eq!(
+                beta_header(&encoded),
+                Some(THINKING_BINDING_BETA),
+                "{model}"
+            );
+        }
+    }
+}
+
+#[test]
+fn a_replayed_redacted_thinking_block_is_bound_too() {
+    let encoded = binding_wire(super::super::completion::CLAUDE_OPUS_5_5)
+        .encode(
+            replaying("anthropic", crate::message::Reasoning::redacted("opaque")),
+            Mode::Unary,
+        )
+        .expect("the request encodes");
+    let body = json_body(&encoded.request);
+    assert_eq!(
+        body["messages"][1]["content"][0]["type"],
+        "redacted_thinking"
+    );
+    assert_eq!(
+        body["thinking"]["block_binding"]["prefix_mismatch_behavior"],
+        "drop_block"
+    );
+    assert_eq!(beta_header(&encoded), Some(THINKING_BINDING_BETA));
+}
+
+#[test]
+fn a_request_without_replayed_thinking_is_unchanged() {
+    let opus = binding_wire(super::super::completion::CLAUDE_OPUS_5_5);
+    // Nothing to replay.
+    let encoded = opus
+        .encode(request(), Mode::Unary)
+        .expect("the request encodes");
+    assert_eq!(json_body(&encoded.request).get("thinking"), None);
+    assert_eq!(beta_header(&encoded), None);
+
+    // Reasoning another provider issued is not replayed, so nothing is bound.
+    let encoded = opus
+        .encode(
+            replaying(
+                "openai",
+                crate::message::Reasoning::new_with_signature("thought", Some("sig".into())),
+            ),
+            Mode::Unary,
+        )
+        .expect("the request encodes");
+    let body = json_body(&encoded.request);
+    assert_eq!(body.get("thinking"), None);
+    assert_eq!(beta_header(&encoded), None);
+}
+
+#[test]
+fn a_model_that_does_not_bind_thinking_blocks_is_unchanged() {
+    use super::super::completion::{
+        CLAUDE_HAIKU_4_5, CLAUDE_OPUS_4_8, CLAUDE_OPUS_5, CLAUDE_SONNET_4_6, CLAUDE_SONNET_5,
+        CLAUDE_SONNET_5_5,
+    };
+    for model in [
+        CLAUDE_SONNET_5_5,
+        CLAUDE_OPUS_5,
+        CLAUDE_SONNET_5,
+        CLAUDE_OPUS_4_8,
+        CLAUDE_SONNET_4_6,
+        CLAUDE_HAIKU_4_5,
+        // A later model whose id merely starts with a binding model's.
+        "claude-opus-5-5-mini",
+    ] {
+        for behavior in [
+            ThinkingPrefixMismatch::DropBlock,
+            ThinkingPrefixMismatch::Reject,
+        ] {
+            let encoded = AnthropicConfig::new("sk-test")
+                .with_thinking_prefix_mismatch(behavior)
+                .completion(model)
+                .encode(replaying_thinking(), Mode::Streaming)
+                .expect("the request encodes");
+            assert_eq!(json_body(&encoded.request).get("thinking"), None, "{model}");
+            assert_eq!(beta_header(&encoded), None, "{model}");
+        }
+    }
+}
+
+#[test]
+fn reject_sends_the_request_without_a_binding() {
+    let config = AnthropicConfig::new("sk-test")
+        .with_thinking_prefix_mismatch(ThinkingPrefixMismatch::Reject);
+    let model = super::super::completion::CLAUDE_OPUS_5_5;
+    let rejecting = config.completion(model);
+    let encoded = rejecting
+        .encode(replaying_thinking(), Mode::Unary)
+        .expect("the request encodes");
+    assert_eq!(json_body(&encoded.request).get("thinking"), None);
+    assert_eq!(beta_header(&encoded), None);
+
+    // The default is `DropBlock`, and choosing it is the same request.
+    let explicit = config
+        .with_thinking_prefix_mismatch(ThinkingPrefixMismatch::DropBlock)
+        .completion(model)
+        .encode(replaying_thinking(), Mode::Unary)
+        .expect("the request encodes");
+    let default = binding_wire(model)
+        .encode(replaying_thinking(), Mode::Unary)
+        .expect("the request encodes");
+    assert_eq!(json_body(&explicit.request), json_body(&default.request));
+    assert_eq!(beta_header(&explicit), Some(THINKING_BINDING_BETA));
+}
+
+#[test]
+fn the_callers_thinking_settings_are_kept() {
+    let wire = binding_wire(super::super::completion::CLAUDE_OPUS_5_5);
+
+    // The binding merges into the caller's `thinking`.
+    let encoded = wire
+        .encode(
+            replaying_thinking()
+                .additional_params(serde_json::json!({ "thinking": { "type": "adaptive" } })),
+            Mode::Unary,
+        )
+        .expect("the request encodes");
+    let body = json_body(&encoded.request);
+    assert_eq!(body["thinking"]["type"], "adaptive");
+    assert_eq!(
+        body["thinking"]["block_binding"]["prefix_mismatch_behavior"],
+        "drop_block"
+    );
+
+    // The caller's own `block_binding` wins, and still gets its beta flag.
+    let encoded = wire
+        .encode(
+            replaying_thinking().additional_params(serde_json::json!({
+                "thinking": { "block_binding": { "prefix_mismatch_behavior": "error" } }
+            })),
+            Mode::Streaming,
+        )
+        .expect("the request encodes");
+    assert_eq!(
+        json_body(&encoded.request)["thinking"],
+        serde_json::json!({ "block_binding": { "prefix_mismatch_behavior": "error" } })
+    );
+    assert_eq!(beta_header(&encoded), Some(THINKING_BINDING_BETA));
+
+    // Disabled thinking rejects the field, so it is left alone.
+    let encoded = wire
+        .encode(
+            replaying_thinking()
+                .additional_params(serde_json::json!({ "thinking": { "type": "disabled" } })),
+            Mode::Unary,
+        )
+        .expect("the request encodes");
+    assert_eq!(
+        json_body(&encoded.request)["thinking"],
+        serde_json::json!({ "type": "disabled" })
+    );
+    assert_eq!(beta_header(&encoded), None);
+}
+
+#[test]
+fn the_binding_beta_joins_the_callers_flags_once() {
+    let model = super::super::completion::CLAUDE_OPUS_5_5;
+    let encoded = AnthropicConfig::new("sk-test")
+        .with_beta("other-beta")
+        .completion(model)
+        .encode(replaying_thinking(), Mode::Unary)
+        .expect("the request encodes");
+    assert_eq!(
+        beta_header(&encoded),
+        Some("other-beta,thinking-binding-controls-2026-08-01")
+    );
+
+    for betas in [
+        vec![THINKING_BINDING_BETA],
+        vec!["other-beta,thinking-binding-controls-2026-08-01"],
+    ] {
+        let config = betas
+            .iter()
+            .fold(AnthropicConfig::new("sk-test"), |config, beta| {
+                config.with_beta(*beta)
+            });
+        let encoded = config
+            .completion(model)
+            .encode(replaying_thinking(), Mode::Unary)
+            .expect("the request encodes");
+        assert_eq!(beta_header(&encoded), Some(betas.join(",").as_str()));
+    }
+}
+
+#[test]
+fn a_gateway_sends_no_binding_unless_its_quirks_opt_in() {
+    let gateway = AnthropicConfig::with_key(&MINIMAX, "sk-test")
+        .completion(super::super::completion::CLAUDE_OPUS_5_5);
+    let replaying_minimax = || {
+        replaying(
+            MINIMAX.name,
+            crate::message::Reasoning::new_with_signature("thought", Some("sig".into())),
+        )
+    };
+    let encoded = gateway
+        .encode(replaying_minimax(), Mode::Unary)
+        .expect("the request encodes");
+    let body = json_body(&encoded.request);
+    assert_eq!(body["messages"][1]["content"][0]["type"], "thinking");
+    assert_eq!(body.get("thinking"), None);
+    assert_eq!(beta_header(&encoded), None);
+    const _: () = assert!(!MINIMAX.quirks.thinking_block_binding);
+    const _: () = assert!(ANTHROPIC.quirks.thinking_block_binding);
+
+    let mut quirks = Quirks::gateway();
+    quirks.thinking_block_binding = true;
+    let opted_in = Dialect { quirks, ..MINIMAX };
+    let encoded = AnthropicConfig::with_key(&opted_in, "sk-test")
+        .completion(super::super::completion::CLAUDE_OPUS_5_5)
+        .encode(replaying_minimax(), Mode::Unary)
+        .expect("the request encodes");
+    assert_eq!(
+        json_body(&encoded.request)["thinking"]["block_binding"]["prefix_mismatch_behavior"],
+        "drop_block"
+    );
+    assert_eq!(beta_header(&encoded), Some(THINKING_BINDING_BETA));
+}
+
+#[test]
+fn the_default_binding_is_left_out_of_a_serialized_config() {
+    let config = AnthropicConfig::new("sk-test");
+    let json = serde_json::to_value(&config).expect("the config serializes");
+    assert_eq!(json.get("thinking_prefix_mismatch"), None);
+
+    let rejecting = config.with_thinking_prefix_mismatch(ThinkingPrefixMismatch::Reject);
+    let json = serde_json::to_value(&rejecting).expect("the config serializes");
+    assert_eq!(json["thinking_prefix_mismatch"], "reject");
+    let restored: AnthropicConfig = serde_json::from_value(json).expect("the config loads");
+    assert_eq!(
+        restored.thinking_prefix_mismatch,
+        ThinkingPrefixMismatch::Reject
+    );
+}

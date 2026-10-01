@@ -28,7 +28,8 @@ use serde::{Deserialize, Serialize};
 
 use super::completion::{
     AnthropicCompletionRequest, AnthropicRequestParams, CacheTtl, ToolDefinition,
-    default_max_tokens_for_model, rejects_forced_tool_choice, sanitize_strict_tool_schema,
+    binds_thinking_blocks, default_max_tokens_for_model, rejects_forced_tool_choice,
+    sanitize_strict_tool_schema,
 };
 use super::streaming::MessagesDecoder;
 
@@ -63,6 +64,9 @@ pub struct Quirks {
     /// Whether the provider implements Anthropic's constrained tool schemas.
     /// A gateway that does not leaves Rig-generated tools unchanged.
     pub strict_tool_schemas: bool,
+    /// Whether the provider takes `thinking.block_binding`. When it does not,
+    /// [`ThinkingPrefixMismatch`] has no effect and no binding beta is added.
+    pub thinking_block_binding: bool,
 }
 
 impl Quirks {
@@ -71,14 +75,17 @@ impl Quirks {
         Self {
             max_tokens: MaxTokens::ByModel,
             strict_tool_schemas: true,
+            thinking_block_binding: true,
         }
     }
 
-    /// Default to 4096 output tokens without constrained tool schemas.
+    /// Default to 4096 output tokens without constrained tool schemas or
+    /// thinking-block binding controls.
     pub const fn gateway() -> Self {
         Self {
             max_tokens: MaxTokens::Fixed(4096),
             strict_tool_schemas: false,
+            thinking_block_binding: false,
         }
     }
 }
@@ -212,6 +219,40 @@ pub struct AnthropicConfig {
     pub betas: Vec<String>,
     /// Which Messages-format provider this is.
     pub dialect: Dialect,
+    /// What the API does with a replayed thinking block whose conversation
+    /// prefix changed.
+    #[serde(default, skip_serializing_if = "ThinkingPrefixMismatch::is_default")]
+    pub thinking_prefix_mismatch: ThinkingPrefixMismatch,
+}
+
+/// The `anthropic-beta` flag that `thinking.block_binding` requires.
+pub const THINKING_BINDING_BETA: &str = "thinking-binding-controls-2026-08-01";
+
+/// What the API does with a replayed thinking block whose conversation prefix
+/// changed since the block was produced, for example because the tool list
+/// changed between turns.
+///
+/// It applies only to models that bind thinking blocks to their conversation
+/// (Claude Opus 5.5, Fable 5.1 and Fable 5) and only to requests that replay
+/// a `thinking` or `redacted_thinking` block. Other requests are unchanged. A
+/// `thinking.block_binding` set through `additional_params` takes precedence.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ThinkingPrefixMismatch {
+    /// Send `thinking.block_binding.prefix_mismatch_behavior: "drop_block"`
+    /// with the [`THINKING_BINDING_BETA`] flag, so the API drops the stale
+    /// block and answers the request.
+    #[default]
+    DropBlock,
+    /// Send no `block_binding`, so the API keeps its default and rejects the
+    /// request with a 400.
+    Reject,
+}
+
+impl ThinkingPrefixMismatch {
+    fn is_default(&self) -> bool {
+        *self == Self::default()
+    }
 }
 
 impl AnthropicConfig {
@@ -229,6 +270,7 @@ impl AnthropicConfig {
             version: super::completion::ANTHROPIC_VERSION_LATEST.to_owned(),
             betas: Vec::new(),
             dialect: *dialect,
+            thinking_prefix_mismatch: ThinkingPrefixMismatch::default(),
         }
     }
 
@@ -257,6 +299,13 @@ impl AnthropicConfig {
     /// Request an `anthropic-beta` flag.
     pub fn with_beta(mut self, beta: impl Into<String>) -> Self {
         self.betas.push(beta.into());
+        self
+    }
+
+    /// Choose what the API does with a replayed thinking block whose
+    /// conversation prefix changed. See [`ThinkingPrefixMismatch`].
+    pub fn with_thinking_prefix_mismatch(mut self, behavior: ThinkingPrefixMismatch) -> Self {
+        self.thinking_prefix_mismatch = behavior;
         self
     }
 
@@ -297,13 +346,30 @@ impl AnthropicConfig {
 
     /// The request headers every Messages-format endpoint takes.
     fn headers(&self, builder: http::request::Builder) -> http::request::Builder {
+        self.headers_with_beta(builder, None)
+    }
+
+    /// [`Self::headers`], adding `beta` unless the configured flags name it.
+    fn headers_with_beta(
+        &self,
+        builder: http::request::Builder,
+        beta: Option<&str>,
+    ) -> http::request::Builder {
         let builder = builder
             .header("x-api-key", self.api_key.expose())
             .header("anthropic-version", &self.version);
-        if self.betas.is_empty() {
+        let beta = beta.filter(|beta| {
+            !self
+                .betas
+                .iter()
+                .flat_map(|flags| flags.split(','))
+                .any(|flag| flag.trim() == *beta)
+        });
+        let betas: Vec<&str> = self.betas.iter().map(String::as_str).chain(beta).collect();
+        if betas.is_empty() {
             builder
         } else {
-            builder.header("anthropic-beta", self.betas.join(","))
+            builder.header("anthropic-beta", betas.join(","))
         }
     }
 }
@@ -477,6 +543,13 @@ impl Messages {
                 .then_some(strict_tool_transform as fn(&mut ToolDefinition)),
         )?;
         let mut body = serde_json::to_value(&typed)?;
+        if self.provider.dialect.quirks.thinking_block_binding
+            && self.provider.thinking_prefix_mismatch == ThinkingPrefixMismatch::DropBlock
+            && binds_thinking_blocks(&model)
+            && typed.replays_thinking()
+        {
+            drop_stale_thinking_blocks(&mut body);
+        }
         if mode == Mode::Unary {
             return Ok(body);
         }
@@ -492,6 +565,27 @@ impl Messages {
         }
         Ok(body)
     }
+}
+
+/// Merge `block_binding: {prefix_mismatch_behavior: "drop_block"}` into the
+/// body's `thinking`, keeping a caller's own `block_binding`. Disabled thinking
+/// rejects the field, so it is left alone.
+fn drop_stale_thinking_blocks(body: &mut serde_json::Value) {
+    let Some(body) = body.as_object_mut() else {
+        return;
+    };
+    let thinking = body
+        .entry("thinking")
+        .or_insert_with(|| serde_json::json!({}));
+    let Some(thinking) = thinking.as_object_mut() else {
+        return;
+    };
+    if thinking.get("type").and_then(serde_json::Value::as_str) == Some("disabled") {
+        return;
+    }
+    thinking
+        .entry("block_binding")
+        .or_insert_with(|| serde_json::json!({ "prefix_mismatch_behavior": "drop_block" }));
 }
 
 impl Wire for Messages {
@@ -518,12 +612,16 @@ impl Wire for Messages {
             "Anthropic completion request",
             &body,
         );
+        // The field needs its beta flag, whoever set it.
+        let binding_beta = (self.provider.dialect.quirks.thinking_block_binding
+            && body.pointer("/thinking/block_binding").is_some())
+        .then_some(THINKING_BINDING_BETA);
         let request = self
             .provider
-            .headers(http::Request::post(format!(
-                "{}/v1/messages",
-                self.provider.base_url
-            )))
+            .headers_with_beta(
+                http::Request::post(format!("{}/v1/messages", self.provider.base_url)),
+                binding_beta,
+            )
             .header(http::header::CONTENT_TYPE, "application/json")
             .body(Body::Bytes(serde_json::to_vec(&body)?))?;
         Ok(Encoded::new(

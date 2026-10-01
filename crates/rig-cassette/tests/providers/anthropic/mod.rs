@@ -99,6 +99,7 @@ mod cassette {
     mod structured_output;
     mod think_tool;
     mod think_tool_with_other_tools;
+    mod thinking_block_binding;
     mod tool_call_rewrite_args;
     mod tool_result_rewrite;
     mod turn_termination_matrix;

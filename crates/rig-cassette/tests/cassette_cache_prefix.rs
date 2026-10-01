@@ -66,6 +66,12 @@ const MOVES_CACHE_PREFIX: &[(&str, &str)] = &[
          refuses it with the thinking-block binding 400)",
     ),
     (
+        "anthropic/thinking_block_binding/changed_tools.yaml",
+        "the second turn advertises one more tool, so a replayed thinking \
+         block is bound to a different tool list; the changed list is the \
+         behavior being recorded",
+    ),
+    (
         "anthropic/corpus_shaping/active_tools_none_second_turn.yaml",
         "the effect corpus's per-turn shaping matrix: a request patch drops \
          every tool on the second turn — moving the prefix is the behavior \

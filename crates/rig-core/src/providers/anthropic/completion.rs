@@ -1120,6 +1120,17 @@ pub(super) fn rejects_forced_tool_choice(model: &str) -> bool {
         .any(|id| is_model(model, id))
 }
 
+/// Models that bind each thinking block to the conversation it was produced
+/// in, tools included, and accept `thinking.block_binding` without a
+/// `thinking.type`. The other models answer a bare `thinking` object with
+/// `thinking.type: Field required` (API, 2026-10-01).
+const BINDS_THINKING_BLOCKS: [&str; 3] = [CLAUDE_OPUS_5_5, CLAUDE_FABLE_5_1, CLAUDE_FABLE_5];
+
+/// Whether `model` binds replayed thinking blocks to their conversation prefix.
+pub(super) fn binds_thinking_blocks(model: &str) -> bool {
+    BINDS_THINKING_BLOCKS.iter().any(|id| is_model(model, id))
+}
+
 /// Whether `model` accepts `role: "system"` inside `messages`.
 pub(super) fn supports_mid_conversation_system_messages(model: &str) -> bool {
     MID_CONVERSATION_SYSTEM.iter().any(|id| is_model(model, id))
@@ -2112,6 +2123,19 @@ pub struct AnthropicRequestParams<'a> {
 }
 
 impl AnthropicCompletionRequest {
+    /// Whether any message carries a `thinking` or `redacted_thinking` block.
+    pub(super) fn replays_thinking(&self) -> bool {
+        self.messages
+            .iter()
+            .flat_map(|message| &message.content)
+            .any(|content| {
+                matches!(
+                    content,
+                    Content::Thinking { .. } | Content::RedactedThinking { .. }
+                )
+            })
+    }
+
     /// Build the typed request, optionally transforming generated tools with `strict`.
     /// Reject missing token limits, invalid message conversions, and cache conflicts.
     pub(super) fn try_from_params(

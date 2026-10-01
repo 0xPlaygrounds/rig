@@ -1,7 +1,7 @@
 use futures::FutureExt;
 use rig::http_client::{DynHttpClient, ReqwestClient};
 use rig::providers::anthropic::completion::ANTHROPIC_VERSION_2023_06_01;
-use rig::providers::anthropic::wire::AnthropicConfig;
+use rig::providers::anthropic::wire::{AnthropicConfig, ThinkingPrefixMismatch};
 use rig_test_support::cassette_models::AnthropicModels;
 use rig_test_support::model_session::Session;
 use serde::Deserialize;
@@ -81,7 +81,8 @@ where
 /// (`crates/rig-cassette/fixtures/cassettes/anthropic/long_run_caching/`). The
 /// body gets the models and the session's clock, whose record-only pause
 /// spaces a retried turn; it returns whatever the test asserts on after the
-/// session is finished.
+/// session is finished. The runs send no `thinking.block_binding`, as they did
+/// when recorded, so each keeps the request bytes its fixture holds.
 pub(super) async fn with_anthropic_long_run_cassette<F, Fut, R>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
@@ -92,6 +93,7 @@ where
 {
     let spec = spec.into();
     let (cassette, bound) = anthropic_cassette(spec).await;
+    let bound = bound.with_thinking_prefix_mismatch(ThinkingPrefixMismatch::Reject);
     let models = AnthropicModels::new(bound, rig::rig_reqwest::shared());
     let result = AssertUnwindSafe(test_body(models, cassette.clock()))
         .catch_unwind()
@@ -218,7 +220,8 @@ pub(super) async fn with_anthropic_files_cassette<F, Fut>(
 /// (`crates/rig-cassette/fixtures/cassettes/anthropic/models/<model>/`).
 /// The body gets the models, the session's clock and, when `upload_pdf`, a
 /// Files-API client with the verifier PDF uploaded; the upload is deleted
-/// after the body, in the same recording.
+/// after the body, in the same recording. Like the long runs, the sessions
+/// send no `thinking.block_binding`, as they did when recorded.
 pub(super) async fn with_anthropic_model_session_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     upload_pdf: bool,
@@ -242,7 +245,9 @@ where
     .await;
     let base_url = normalize_anthropic_base_url(&cassette.base_url());
     let api_key = cassette.api_key("ANTHROPIC_API_KEY");
-    let config = AnthropicConfig::new(api_key.as_str()).with_base_url(&base_url);
+    let config = AnthropicConfig::new(api_key.as_str())
+        .with_base_url(&base_url)
+        .with_thinking_prefix_mismatch(ThinkingPrefixMismatch::Reject);
     let models = AnthropicModels::new(config.clone(), rig::rig_reqwest::shared());
     let clock = cassette.clock();
     let result = AssertUnwindSafe(async {

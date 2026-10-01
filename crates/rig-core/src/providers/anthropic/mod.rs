@@ -24,5 +24,6 @@ pub use completion::{
     CLAUDE_SONNET_5_5,
 };
 pub use wire::{
-    ANTHROPIC, AnthropicConfig, Dialect, MaxTokens, Messages, Models, Quirks, Verify, compatible,
+    ANTHROPIC, AnthropicConfig, Dialect, MaxTokens, Messages, Models, Quirks,
+    THINKING_BINDING_BETA, ThinkingPrefixMismatch, Verify, compatible,
 };
