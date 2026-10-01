@@ -145,6 +145,7 @@ async fn the_choice_is_in_the_order_its_parts_started() {
             AssistantContent::ToolCall(_) => "call",
             AssistantContent::Reasoning(_) => "reasoning",
             AssistantContent::Image(_) => "image",
+            AssistantContent::Opaque(_) => "opaque",
         })
         .collect();
     assert_eq!(kinds, ["text", "call", "reasoning", "text"]);

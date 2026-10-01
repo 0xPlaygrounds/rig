@@ -934,11 +934,10 @@ fn reasoning_text_delta_emits_reasoning_delta() {
 }
 
 #[test]
-fn unknown_output_item_surfaces_as_raw_unknown_choice() {
+fn unknown_output_item_is_kept_in_the_turn_verbatim() {
     // A hosted-tool item (web_search_call) arriving on
-    // `response.output_item.done` reaches stream consumers as an unmodeled
-    // item carrying the verbatim item, mirroring how the non-streaming
-    // decode preserves it on `CompletionResponse.output`.
+    // `response.output_item.done` is an opaque part of the turn holding the
+    // verbatim item, sealed to the reply's issuer, so history replays it.
     let item = json!({
         "type": "web_search_call",
         "id": "ws_001",
@@ -955,14 +954,18 @@ fn unknown_output_item_surfaces_as_raw_unknown_choice() {
         })]),
         None,
     );
-    let unknown = decoded.items.iter().find_map(|event| match event {
-        Ok(Item::Unknown(value)) => Some(value),
-        _ => None,
-    });
+    let ended = decoded.ended();
+    let [AssistantContent::Opaque(part)] = ended.as_slice() else {
+        panic!("expected one opaque part: {:?}", decoded.events());
+    };
+    assert_eq!(part.issuer().as_str(), "openai");
     assert_eq!(
-        unknown,
-        Some(&item.into()),
-        "the raw web_search_call item should reach the consumer verbatim",
+        part.extension_for::<crate::providers::openai::responses_api::ResponsesItem>(&[
+            crate::message::Issuer::from("openai")
+        ])
+        .expect("well-formed"),
+        Some(crate::providers::openai::responses_api::ResponsesItem(item)),
+        "the raw web_search_call item should reach the turn verbatim",
     );
 }
 
@@ -2232,7 +2235,7 @@ fn annotations_of(text: &crate::message::Text) -> Option<&serde_json::Value> {
     text.additional_params
         .as_ref()
         .and_then(|params| {
-            params.wire_extras(crate::providers::openai::responses_api::OPENAI_RESPONSES_EXTRAS_KEY)
+            params.wire_extras(<crate::providers::openai::responses_api::ResponsesText as crate::message::Extension>::KEY)
         })
         .and_then(|extras| extras.get("annotations"))
 }
@@ -2501,7 +2504,7 @@ fn item_added(output_index: u64, sequence: u64, mut item: serde_json::Value) -> 
 /// The Responses-owned extras a text block carries.
 fn own_extras(text: &crate::message::Text) -> Option<&serde_json::Map<String, serde_json::Value>> {
     text.additional_params.as_ref().and_then(|params| {
-        params.wire_extras(crate::providers::openai::responses_api::OPENAI_RESPONSES_EXTRAS_KEY)
+        params.wire_extras(<crate::providers::openai::responses_api::ResponsesText as crate::message::Extension>::KEY)
     })
 }
 
@@ -2735,7 +2738,12 @@ fn streamed_and_unary_text_carry_equal_phase() {
     assert_eq!(unary_texts.len(), 1, "{unary_texts:?}");
     assert_eq!(
         own_extras(&unary_texts[0]),
-        json!({ "annotations": [citation], "phase": "final_answer" }).as_object()
+        json!({
+            "annotations": [citation],
+            "phase": "final_answer",
+            "text_fingerprint": crate::message::Fingerprint::of("Rust is fast."),
+        })
+        .as_object()
     );
     for (label, decoded) in [("streamed", &streamed), ("snapshot only", &snapshot_only)] {
         assert_eq!(ended_texts(decoded), unary_texts, "{label}");

@@ -107,6 +107,8 @@ pub(crate) fn to_aws(
 ) -> Result<Option<aws_bedrock::ContentBlock>, ProviderError> {
     match content {
         AssistantContent::Text(text) => Ok(Some(aws_bedrock::ContentBlock::Text(text.text))),
+        // Converse owns no opaque item type yet, so none is replayed.
+        AssistantContent::Opaque(_) => Ok(None),
         AssistantContent::ToolCall(tool_call) => {
             // Calls and results must use the same provider-issued identity,
             // not a potentially different local assembly handle.

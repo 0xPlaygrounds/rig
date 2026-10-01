@@ -452,7 +452,8 @@ impl StreamedTurnAssembler {
                 AssistantContent::ToolCall(call) => !self.ignored_calls.contains(&call.id),
                 AssistantContent::Text(_)
                 | AssistantContent::Reasoning(_)
-                | AssistantContent::Image(_) => true,
+                | AssistantContent::Image(_)
+                | AssistantContent::Opaque(_) => true,
             })
             .cloned()
             .map(|content| match content {

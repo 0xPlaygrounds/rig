@@ -707,11 +707,13 @@ pub mod gemini_api_types {
                     role: Some(Role::Model),
                     parts: content
                         .into_iter()
-                        // Reasoning another service issued is not replayed.
+                        // Reasoning another service issued is not replayed,
+                        // and Gemini owns no opaque item type yet.
                         .filter(|part| match part {
                             message::AssistantContent::Reasoning(reasoning) => reasoning
                                 .open(&crate::providers::gemini::completion::ISSUER)
                                 .is_some(),
+                            message::AssistantContent::Opaque(_) => false,
                             _ => true,
                         })
                         .map(std::convert::TryInto::try_into)
@@ -1140,6 +1142,9 @@ pub mod gemini_api_types {
                 }
                 message::AssistantContent::Image(image) => image_to_part(image),
                 message::AssistantContent::ToolCall(tool_call) => Ok(tool_call.into()),
+                message::AssistantContent::Opaque(_) => Err(MessageError::ConversionError(
+                    "Gemini has no form for an opaque item".to_owned(),
+                )),
                 message::AssistantContent::Reasoning(reasoning) => {
                     let reasoning = reasoning
                         .open(&crate::providers::gemini::completion::ISSUER)

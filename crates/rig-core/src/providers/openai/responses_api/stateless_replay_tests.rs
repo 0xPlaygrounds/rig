@@ -10,6 +10,9 @@ use crate::completion;
 use crate::message::{self, Text};
 use serde_json::json;
 
+/// The key [`ResponsesText`] is stored under, which earlier releases used too.
+const OPENAI_RESPONSES_EXTRAS_KEY: &str = <ResponsesText as message::Extension>::KEY;
+
 #[test]
 fn compaction_output_item_round_trips_verbatim() {
     let wire = json!({

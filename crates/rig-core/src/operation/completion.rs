@@ -22,8 +22,9 @@ use std::marker::PhantomData;
 use crate::completion::{CompletionRequest, CompletionResponse, FinishReason, Usage};
 use crate::error::{MalformedToolInput, ProviderError};
 use crate::message::{
-    AdditionalParams, AssistantContent, CallId, Image, Issuer, LocalCallId, ProviderCallId,
-    Reasoning, ReasoningContent, Text, ToolCall, ToolFunction, ToolName,
+    AdditionalParams, AssistantContent, CallId, Extension, ExtensionError, Fingerprint, Image,
+    Issuer, LocalCallId, Opaque, ProviderCallId, Reasoning, ReasoningContent, Sealed, Text,
+    ToolCall, ToolFunction, ToolName, extension_of, with_extension,
 };
 use crate::streaming::{Item, Part, PartKind, StreamEvent};
 use crate::telemetry::{GenAiOperation, SpanBuilder, SpanCombinator};
@@ -700,12 +701,7 @@ impl Turn {
                         .map(|text| AssistantContent::text(text.clone()))
                 })
             })
-            .map(|part| match part {
-                AssistantContent::Reasoning(reasoning) => {
-                    AssistantContent::Reasoning(reasoning.reseal(self.issuer()))
-                }
-                part => part,
-            })
+            .map(|part| reseal(part, &self.issuer()))
             .collect();
         response
     }
@@ -715,12 +711,7 @@ impl Turn {
         let choice = self
             .snapshot()
             .into_iter()
-            .map(|part| match part {
-                AssistantContent::Reasoning(reasoning) => {
-                    AssistantContent::Reasoning(reasoning.reseal(issuer.clone()))
-                }
-                part => part,
-            })
+            .map(|part| reseal(part, &issuer))
             .collect();
         let Finish {
             usage,
@@ -742,6 +733,17 @@ impl Turn {
 }
 
 pub(crate) type Items = std::collections::VecDeque<Result<Item<StreamEvent>, ProviderError>>;
+
+/// `part` sealed to the reply's issuer, when it is sealed at all.
+fn reseal(part: AssistantContent, issuer: &Issuer) -> AssistantContent {
+    match part {
+        AssistantContent::Reasoning(reasoning) => {
+            AssistantContent::Reasoning(reasoning.reseal(issuer.clone()))
+        }
+        AssistantContent::Opaque(item) => AssistantContent::Opaque(item.reseal(issuer.clone())),
+        part => part,
+    }
+}
 
 fn emit(items: &mut Items, event: StreamEvent) {
     items.push_back(Ok(Item::Event(event)));
@@ -784,9 +786,15 @@ impl Fold<Completion> for Turn {
                 if let Some(slot) = self.choice.get_mut(part.index()) {
                     *slot = Some(content.clone());
                 }
-                // A relayed reply's reasoning names its issuer on its seal.
-                if let (None, AssistantContent::Reasoning(reasoning)) = (&self.issuer, content) {
-                    self.issuer = Some(reasoning.issuer().clone());
+                // A relayed reply's sealed parts name its issuer.
+                match (&self.issuer, content) {
+                    (None, AssistantContent::Reasoning(reasoning)) => {
+                        self.issuer = Some(reasoning.issuer().clone());
+                    }
+                    (None, AssistantContent::Opaque(item)) => {
+                        self.issuer = Some(item.issuer().clone());
+                    }
+                    _ => {}
                 }
                 self.open_text.remove(&part.index());
             }
@@ -857,6 +865,51 @@ impl<'id> Out<'id, Completion> {
                 None => *params = Some(additional_params),
             }
         }
+    }
+
+    /// The [`Fingerprint`] of an open text part's text so far, for metadata
+    /// that describes that text.
+    pub fn text_fingerprint(&mut self, part: &TextPart<'id>) -> Fingerprint {
+        match self.lock().fold.drafts.get(part.slot) {
+            Some(Draft::Text { text, .. }) => Fingerprint::of(text),
+            _ => Fingerprint::of(""),
+        }
+    }
+
+    /// Rewrite the `T` extension of an open text part from its text so far
+    /// and its current value. `edit` returning `None` removes it.
+    pub fn edit_text_extension<T: Extension>(
+        &mut self,
+        part: &TextPart<'id>,
+        edit: impl FnOnce(&str, Option<T>) -> Option<T>,
+    ) -> Result<(), ExtensionError> {
+        let mut shared = self.lock();
+        let Shared { fold, items, .. } = &mut *shared;
+        let Some(Draft::Text {
+            part: started,
+            text,
+            params,
+        }) = fold.drafts.get_mut(part.slot)
+        else {
+            return Ok(());
+        };
+        let current = extension_of::<T>(params.as_ref())?;
+        let edited = edit(text, current);
+        let rest = params
+            .take()
+            .and_then(AdditionalParams::without_extension::<T>);
+        *params = match edited {
+            Some(value) => Some(with_extension(rest, &value)?),
+            None => rest,
+        };
+        // Metadata is content: the part starts here if no text started it.
+        if started.is_none() && params.is_some() {
+            let begun = fold.start(items, PartKind::Text);
+            if let Some(Draft::Text { part: started, .. }) = fold.drafts.get_mut(part.slot) {
+                *started = Some(begun);
+            }
+        }
+        Ok(())
     }
 
     /// Close a text part. One with neither text nor metadata is dropped.
@@ -1033,6 +1086,16 @@ impl<'id> Out<'id, Completion> {
         );
     }
 
+    /// An opaque provider item, sealed to the reply's issuer, in its place
+    /// among the reply's parts.
+    pub fn opaque(&mut self, item: Opaque) {
+        let mut shared = self.lock();
+        let Shared { fold, items, .. } = &mut *shared;
+        let part = fold.start(items, PartKind::Opaque);
+        let content = AssistantContent::Opaque(Sealed::new(fold.issuer(), item));
+        emit(items, StreamEvent::End { part, content });
+    }
+
     /// A whole part of an already assembled response.
     pub fn content(&mut self, content: AssistantContent) -> Result<(), ProviderError> {
         match content {
@@ -1053,6 +1116,13 @@ impl<'id> Out<'id, Completion> {
             }
             AssistantContent::ToolCall(call) => self.tool_call(call)?,
             AssistantContent::Image(image) => self.image(image),
+            AssistantContent::Opaque(item) => {
+                let issuer = item.issuer().clone();
+                self.issued_by(issuer.clone());
+                if let Some(item) = item.open(&issuer) {
+                    self.opaque(item.clone());
+                }
+            }
         }
         Ok(())
     }

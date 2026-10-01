@@ -709,6 +709,8 @@ impl TryFrom<crate::message::Message> for Vec<Message> {
                         crate::message::AssistantContent::ToolCall(tool_call) => {
                             tool_calls.push(tool_call);
                         }
+                        // Ollama owns no opaque item type.
+                        crate::message::AssistantContent::Opaque(_) => {}
                         crate::message::AssistantContent::Reasoning(reasoning) => {
                             // Reasoning another service issued is not replayed.
                             let Some(reasoning) = reasoning.open(&ISSUER) else {

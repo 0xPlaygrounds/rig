@@ -16,7 +16,8 @@ use crate::providers::openai::responses_api::{
 use crate::wire::{Decoder, Flow, Out, WireEvent, WireFrame};
 use serde::{Deserialize, Serialize};
 
-use super::{CompletionResponse, Output};
+use super::{CompletionResponse, Output, ResponsesText};
+use crate::message::AdditionalParams;
 
 /// Response lifecycle event or output-item event.
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -508,7 +509,10 @@ impl<'id> ResponsesDecoder<'id> {
     /// a message's deltas with ids its item events do not use. When the
     /// reply carries several message items, each part also records its
     /// item's id, so replay can send each item back as itself.
-    fn attach_message_items(&mut self, out: &mut Out<'id, Completion>) {
+    fn attach_message_items(
+        &mut self,
+        out: &mut Out<'id, Completion>,
+    ) -> Result<(), crate::message::ExtensionError> {
         let item_of = |key: Option<&str>, slot: Option<u64>| {
             key.and_then(|key| {
                 self.message_items
@@ -532,29 +536,20 @@ impl<'id> ResponsesDecoder<'id> {
             .collect();
         let several = self.message_items.len() > 1;
         for (part, item) in parts {
-            let mut extras = serde_json::Map::new();
-            if let Some(phase) = &item.phase {
-                extras.insert(
-                    super::OPENAI_RESPONSES_PHASE_KEY.to_owned(),
-                    serde_json::Value::String(phase.clone()),
-                );
-            }
-            if several && !item.id.is_empty() {
-                extras.insert(
-                    super::OPENAI_RESPONSES_MESSAGE_ID_KEY.to_owned(),
-                    serde_json::Value::String(item.id.clone()),
-                );
-            }
-            if extras.is_empty() {
-                continue;
-            }
-            if let Some(params) = crate::message::AdditionalParams::from_entries(Some((
-                super::OPENAI_RESPONSES_EXTRAS_KEY,
-                serde_json::Value::Object(extras),
-            ))) {
-                out.text_params(part, params);
-            }
+            out.edit_text_extension::<ResponsesText>(part, |text, extras| {
+                let mut extras = extras.unwrap_or_default();
+                extras.phase.clone_from(&item.phase);
+                if several && !item.id.is_empty() {
+                    extras.message_id = Some(item.id.clone());
+                }
+                // The block fields describe the text the reply ended with.
+                if !extras.block.is_empty() {
+                    extras.text_fingerprint = Some(crate::message::Fingerprint::of(text));
+                }
+                (!extras.is_empty()).then_some(extras)
+            })?;
         }
+        Ok(())
     }
 
     /// Record that a delta delivered the visible text of a message item.
@@ -604,11 +599,11 @@ impl<'id> ResponsesDecoder<'id> {
         }
         self.note_extras(output_index, &message.id);
         for content in message.content.iter().cloned() {
-            let text = super::text_block(content);
+            let (text, extras) = super::text_block(content);
             let part = self.text_part(output_index, Some(&message.id), out);
-            out.push_text(part, &text.text);
-            if let Some(additional_params) = text.additional_params {
-                out.text_params(part, additional_params);
+            out.push_text(part, &text);
+            if let Some(extras) = extras.and_then(|extras| AdditionalParams::of(&extras).ok()) {
+                out.text_params(part, extras);
             }
         }
     }
@@ -643,7 +638,8 @@ impl<'id> ResponsesDecoder<'id> {
             .content
             .iter()
             .cloned()
-            .filter_map(|content| super::text_block(content).additional_params)
+            .filter_map(|content| super::text_block(content).1)
+            .filter_map(|extras| AdditionalParams::of(&extras).ok())
             .reduce(|mut extras, next| {
                 extras.merge(next);
                 extras
@@ -844,21 +840,12 @@ impl<'id> ResponsesDecoder<'id> {
                     out.message_id(message.id);
                 }
             }
-            // An unmodeled output item (e.g. a hosted-tool result such as
-            // `web_search_call`): surfaced raw to the consumer, as the
-            // non-streaming decode preserves it on `CompletionResponse.output`.
-            Output::Unknown(value) => {
-                out.unknown(value.into());
-            }
-            // A compaction item: surfaced raw like an unmodeled item so a
-            // stateless consumer can capture it from the stream.
-            Output::Compaction(fields) => {
-                let mut map = fields;
-                map.insert(
-                    "type".to_string(),
-                    serde_json::Value::String("compaction".to_string()),
-                );
-                out.unknown(serde_json::Value::Object(map).into());
+            // An item with no canonical form (a hosted-tool call such as
+            // `web_search_call`, a `compaction` marker, a new item type)
+            // keeps its place in the turn, verbatim, for replay.
+            item @ (Output::Unknown(_) | Output::Compaction(_)) => {
+                let item = serde_json::to_value(&item)?;
+                out.opaque(crate::message::Opaque::of(&super::ResponsesItem(item))?);
             }
         }
         Ok(())
@@ -905,7 +892,7 @@ impl<'id> ResponsesDecoder<'id> {
         for index in out.pending_calls() {
             out.close_pending(index, IfMalformed::Drop)?;
         }
-        self.attach_message_items(&mut out);
+        self.attach_message_items(&mut out)?;
         if let Some(document) = self.document.take() {
             out.raw(document);
         }

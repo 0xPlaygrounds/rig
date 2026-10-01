@@ -1,7 +1,10 @@
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::Value;
 
-use super::completion::{CompletionResponse, Content, anthropic_usage_totals, map_finish_reason};
+use super::completion::{
+    AnthropicBlock, AnthropicCitations, Block, Citation, CompletionResponse, Content,
+    anthropic_usage_totals, map_finish_reason,
+};
 use crate::error::ProviderError;
 use crate::message::ReasoningContent;
 use crate::observe::ObservedError;
@@ -48,7 +51,7 @@ pub enum StreamingEvent {
     },
     ContentBlockStart {
         index: usize,
-        content_block: Content,
+        content_block: Block,
     },
     ContentBlockDelta {
         index: usize,
@@ -201,12 +204,11 @@ impl From<PartialUsage> for crate::completion::Usage {
     }
 }
 
-// Hosted-tool input is assembled locally because it becomes raw text-block
-// metadata rather than an executable tool call.
-struct ServerToolUseState {
-    name: String,
-    id: String,
-    initial_input: Value,
+/// A block with no canonical form, kept verbatim. A server-side tool use
+/// streams its `input` as JSON fragments, which are assembled here because
+/// the block is replayed, not executed.
+struct OpaqueBlock {
+    block: Value,
     input_json: String,
 }
 
@@ -221,7 +223,10 @@ pub struct MessagesDecoder<'id> {
     /// The content block of the open client tool call, whose index its
     /// fragments are buffered under.
     current_tool_call: Option<usize>,
-    server_tool_uses: HashMap<usize, ServerToolUseState>,
+    /// The verbatim blocks still open, by content block.
+    opaque: HashMap<usize, OpaqueBlock>,
+    /// The citations of each open text block.
+    citations: HashMap<usize, Vec<Citation>>,
     input_tokens: u64,
     /// Per-TTL cache-write breakdown from `message_start`; the terminal
     /// `message_delta` usage omits it.
@@ -247,7 +252,8 @@ impl MessagesDecoder<'_> {
             texts: HashMap::new(),
             thinking: HashMap::new(),
             current_tool_call: None,
-            server_tool_uses: HashMap::new(),
+            opaque: HashMap::new(),
+            citations: HashMap::new(),
             input_tokens: 0,
             cache_creation: None,
             cache_read_input_tokens: None,
@@ -274,8 +280,8 @@ impl<'id> MessagesDecoder<'id> {
                     }
                 }
                 ContentDelta::InputJsonDelta { partial_json } => {
-                    if let Some(server_tool_use) = self.server_tool_uses.get_mut(&index) {
-                        server_tool_use.input_json.push_str(&partial_json);
+                    if let Some(opaque) = self.opaque.get_mut(&index) {
+                        opaque.input_json.push_str(&partial_json);
                         return Ok(());
                     }
                     if let Some(call) = self.current_tool_call {
@@ -304,13 +310,8 @@ impl<'id> MessagesDecoder<'id> {
                     fragments.push_str(&signature);
                 }
                 ContentDelta::CitationsDelta { citation } => {
-                    if let Some(params) = crate::message::AdditionalParams::from_entries([(
-                        "citations",
-                        json!([citation]),
-                    )]) {
-                        let part = self.texts.entry(index).or_insert_with(|| out.text());
-                        out.text_params(part, params);
-                    }
+                    self.texts.entry(index).or_insert_with(|| out.text());
+                    self.citations.entry(index).or_default().push(citation);
                 }
                 ContentDelta::Unknown(value) => {
                     // Log only the tag; unknown payloads may contain sensitive model output.
@@ -324,43 +325,27 @@ impl<'id> MessagesDecoder<'id> {
                 index,
                 content_block,
             } => match content_block {
-                // Text arrives through deltas; cache_control is request-only metadata.
-                Content::Text {
-                    text: _,
-                    citations,
-                    cache_control: _,
-                } => {
-                    let part = out.text();
-                    if let Some(params) = crate::message::AdditionalParams::from_entries(
-                        (!citations.is_empty()).then(|| ("citations", json!(citations))),
-                    ) {
-                        out.text_params(&part, params);
-                    }
-                    self.texts.insert(index, part);
-                }
-                Content::ServerToolUse { id, name, input } => {
-                    self.server_tool_uses.insert(
+                Block::Opaque(block) => {
+                    self.opaque.insert(
                         index,
-                        ServerToolUseState {
-                            name,
-                            id,
-                            initial_input: input,
+                        OpaqueBlock {
+                            block,
                             input_json: String::new(),
                         },
                     );
                 }
-                raw @ (Content::WebSearchToolResult { .. }
-                | Content::CodeExecutionToolResult { .. }) => {
-                    if let Some(params) = crate::message::AdditionalParams::from_entries([(
-                        super::completion::ANTHROPIC_RAW_CONTENT_KEY,
-                        json!(raw),
-                    )]) {
-                        let part = out.text();
-                        out.text_params(&part, params);
-                        self.texts.insert(index, part);
+                // Text arrives through deltas; cache_control is request-only metadata.
+                Block::Content(Content::Text {
+                    text: _,
+                    citations,
+                    cache_control: _,
+                }) => {
+                    self.texts.insert(index, out.text());
+                    if !citations.is_empty() {
+                        self.citations.insert(index, citations);
                     }
                 }
-                Content::ToolUse { id, name, .. } => {
+                Block::Content(Content::ToolUse { id, name, .. }) => {
                     self.current_tool_call = Some(index);
                     out.call_fragment(
                         index,
@@ -371,10 +356,10 @@ impl<'id> MessagesDecoder<'id> {
                         },
                     )?;
                 }
-                Content::Thinking {
+                Block::Content(Content::Thinking {
                     thinking,
                     signature,
-                } => {
+                }) => {
                     // Adaptive thinking may carry only a signature, so the
                     // part opens even when the opening text is empty.
                     let part = out.reasoning();
@@ -382,15 +367,20 @@ impl<'id> MessagesDecoder<'id> {
                     self.thinking
                         .insert(index, (part, String::new(), signature.unwrap_or_default()));
                 }
-                Content::RedactedThinking { data } => {
+                Block::Content(Content::RedactedThinking { data }) => {
                     out.reasoning_block(crate::message::Reasoning {
                         id: None,
                         content: vec![ReasoningContent::Redacted { data }],
                     });
                 }
-                // Request-side content kinds; an assistant stream never
-                // opens a block with them, and there is nothing to write.
-                Content::Image { .. } | Content::ToolResult { .. } | Content::Document { .. } => {}
+                // `Block` decodes every other tag as opaque, so the
+                // request-side kinds never arrive here.
+                Block::Content(
+                    Content::Image { .. }
+                    | Content::ToolResult { .. }
+                    | Content::Document { .. }
+                    | Content::Opaque(_),
+                ) => {}
             },
             StreamingEvent::ContentBlockStop { index } => {
                 // Signature-only thinking parts carry provider state required
@@ -411,28 +401,18 @@ impl<'id> MessagesDecoder<'id> {
                     return Ok(());
                 }
 
-                if let Some(server_tool_use) = self.server_tool_uses.remove(&index) {
-                    let input = if server_tool_use.input_json.is_empty() {
-                        if server_tool_use.initial_input.is_null() {
-                            json!({})
-                        } else {
-                            server_tool_use.initial_input
-                        }
-                    } else {
-                        serde_json::from_str(&server_tool_use.input_json)?
-                    };
-                    if let Some(params) = crate::message::AdditionalParams::from_entries([(
-                        super::completion::ANTHROPIC_RAW_CONTENT_KEY,
-                        json!(Content::ServerToolUse {
-                            id: server_tool_use.id,
-                            name: server_tool_use.name,
-                            input,
-                        }),
-                    )]) {
-                        let part = out.text();
-                        out.text_params(&part, params);
-                        out.close_text(part);
+                if let Some(OpaqueBlock {
+                    mut block,
+                    input_json,
+                }) = self.opaque.remove(&index)
+                {
+                    // Streamed input replaces the opening placeholder.
+                    if !input_json.is_empty()
+                        && let Some(fields) = block.as_object_mut()
+                    {
+                        fields.insert("input".to_owned(), serde_json::from_str(&input_json)?);
                     }
+                    out.opaque(crate::message::Opaque::of(&AnthropicBlock(block))?);
                     return Ok(());
                 }
 
@@ -445,6 +425,16 @@ impl<'id> MessagesDecoder<'id> {
                 }
 
                 if let Some(part) = self.texts.remove(&index) {
+                    if let Some(citations) = self.citations.remove(&index) {
+                        let text = Some(out.text_fingerprint(&part));
+                        out.text_params(
+                            &part,
+                            crate::message::AdditionalParams::of(&AnthropicCitations {
+                                citations,
+                                text,
+                            })?,
+                        );
+                    }
                     out.close_text(part);
                 }
             }
@@ -454,6 +444,24 @@ impl<'id> MessagesDecoder<'id> {
             | StreamingEvent::MessageStop
             | StreamingEvent::Ping
             | StreamingEvent::Error { .. } => {}
+        }
+        Ok(())
+    }
+
+    /// Close the blocks whose data this decoder holds until their stop: an
+    /// opaque block, and a text block with citations. A stream that ends
+    /// without their stop still delivers them.
+    fn close_held_blocks(&mut self, out: &mut Out<'id, Completion>) -> Result<(), ProviderError> {
+        let mut held: Vec<usize> = self
+            .opaque
+            .keys()
+            .chain(self.citations.keys())
+            .copied()
+            .collect();
+        held.sort_unstable();
+        held.dedup();
+        for index in held {
+            self.interpret_content(StreamingEvent::ContentBlockStop { index }, out)?;
         }
         Ok(())
     }
@@ -489,12 +497,14 @@ impl<'id> MessagesDecoder<'id> {
             // that have one. Everything else is carried by the block's
             // start frame alone.
             let delta = match &content {
-                Content::Text { text, .. } if !text.is_empty() => {
+                Block::Content(Content::Text { text, .. }) if !text.is_empty() => {
                     Some(ContentDelta::TextDelta { text: text.clone() })
                 }
-                Content::ToolUse { input, .. } => Some(ContentDelta::InputJsonDelta {
-                    partial_json: input.to_string(),
-                }),
+                Block::Content(Content::ToolUse { input, .. }) => {
+                    Some(ContentDelta::InputJsonDelta {
+                        partial_json: input.to_string(),
+                    })
+                }
                 _ => None,
             };
             self.interpret_content(
@@ -611,6 +621,7 @@ impl<'id> Decoder<'id, Completion> for MessagesDecoder<'id> {
                     message_id: self.message_id.clone(),
                     model: self.response_model.clone(),
                 };
+                self.close_held_blocks(&mut out)?;
                 out.raw(serde_json::to_value(&native)?);
                 Ok(out.end(finish_of(&native)))
             }

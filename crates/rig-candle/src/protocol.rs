@@ -124,6 +124,8 @@ fn validate_protocol_inputs(
                         AssistantContent::Text(text) => {
                             validate_protocol_text(&text.text, "assistant text", protocol)?;
                         }
+                        // Never rendered: no local model owns an opaque item.
+                        AssistantContent::Opaque(_) => {}
                         AssistantContent::Reasoning(reasoning) => validate_protocol_text(
                             &reasoning
                                 .open(reasoning.issuer())
@@ -420,6 +422,8 @@ fn render_plain_message(message: &Message) -> Result<(&'static str, String), Can
             for item in content.iter() {
                 match item {
                     AssistantContent::Text(text) => parts.push(text.text.clone()),
+                    // Another service's item: left out, like its reasoning.
+                    AssistantContent::Opaque(_) => {}
                     AssistantContent::ToolCall(_) => {
                         return Err(CandleError::UnsupportedPromptContent("tool calls"));
                     }
@@ -563,6 +567,8 @@ fn render_qwen_message(
             for item in content.iter() {
                 match item {
                     AssistantContent::Text(text) => rendered.push_str(&text.text),
+                    // Another service's item: left out, like its reasoning.
+                    AssistantContent::Opaque(_) => {}
                     AssistantContent::Reasoning(_) => {
                         // Official Qwen guidance omits historical thinking. The
                         // final answer and tool calls remain in history.

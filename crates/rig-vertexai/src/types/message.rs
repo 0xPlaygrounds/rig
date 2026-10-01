@@ -93,11 +93,13 @@ pub(crate) fn content_from_message(
         Message::Assistant { content, .. } => {
             let parts: Result<Vec<vertexai::model::Part>, _> = content
                 .into_iter()
-                // Reasoning another service issued is not replayed.
+                // Reasoning another service issued is not replayed, and
+                // Vertex owns no opaque item type yet.
                 .filter(|part| match part {
                     AssistantContent::Reasoning(reasoning) => reasoning
                         .open(&crate::types::completion_response::ISSUER)
                         .is_some(),
+                    AssistantContent::Opaque(_) => false,
                     _ => true,
                 })
                 .map(|assistant_content| match assistant_content {
@@ -153,6 +155,9 @@ pub(crate) fn content_from_message(
 
                         Ok(part)
                     }
+                    AssistantContent::Opaque(_) => Err(ProviderError::request(
+                        "Vertex has no form for an opaque item",
+                    )),
                     AssistantContent::Reasoning(reasoning) => {
                         let reasoning = reasoning
                             .open(&crate::types::completion_response::ISSUER)

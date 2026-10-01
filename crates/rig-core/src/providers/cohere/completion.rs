@@ -373,6 +373,8 @@ impl TryFrom<message::Message> for Vec<Message> {
                                 }),
                             });
                         }
+                        // Cohere owns no opaque item type.
+                        message::AssistantContent::Opaque(_) => {}
                         message::AssistantContent::Reasoning(reasoning) => {
                             // Reasoning another service issued is not replayed.
                             if let Some(reasoning) = reasoning.open(&super::wire::ISSUER) {

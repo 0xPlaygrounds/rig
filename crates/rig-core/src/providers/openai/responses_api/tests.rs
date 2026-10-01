@@ -65,29 +65,30 @@ fn output_text_extras_survive_generic_conversion_and_replay() {
     let completion::AssistantContent::Text(text) = &generic else {
         panic!("expected a text block, got: {generic:?}");
     };
+    let stored = text
+        .extension::<ResponsesText>()
+        .expect("well-formed")
+        .expect("the block fields");
+    assert_eq!(stored.block, extras);
     assert_eq!(
-        text.additional_params
-            .as_ref()
-            .and_then(|params| params.get(OPENAI_RESPONSES_EXTRAS_KEY)),
-        Some(&Value::Object(extras.clone()))
+        stored.text_fingerprint,
+        Some(message::Fingerprint::of("cited"))
     );
 
-    let replayed = OutputText::from_message_text(text.text.clone(), text.additional_params.clone());
+    let replayed = OutputText::from_message_text(text.text.clone(), Some(&stored));
     assert_eq!(replayed.text, "cited");
     assert_eq!(replayed.extras, extras);
 
     // Extras ride a serde flatten, so the reserved keys the named field
     // and the tag own must never replay from history — a duplicate JSON
     // key would let persisted data shadow the block's real text or tag.
-    let hostile = message::AdditionalParams::try_from_value(json!({
-        OPENAI_RESPONSES_EXTRAS_KEY: {
-            "text": "evil",
-            "type": "evil_type",
-            "annotations": ["kept"],
-        }
+    let hostile: ResponsesText = serde_json::from_value(json!({
+        "text": "evil",
+        "type": "evil_type",
+        "annotations": ["kept"],
     }))
     .expect("object params");
-    let replayed = OutputText::from_message_text("real", hostile);
+    let replayed = OutputText::from_message_text("real".to_owned(), Some(&hostile));
     assert_eq!(replayed.text, "real");
     assert!(replayed.extras.get("text").is_none());
     assert!(replayed.extras.get("type").is_none());
@@ -122,7 +123,7 @@ fn output_text_extras_survive_generic_conversion_and_replay() {
         content: vec![completion::AssistantContent::Text(message::Text {
             text: String::new(),
             additional_params: message::AdditionalParams::try_from_value(json!({
-                OPENAI_RESPONSES_EXTRAS_KEY: {"annotations": ["kept"]}
+                "openai_responses": {"annotations": ["kept"]}
             }))
             .expect("object params"),
         })],
@@ -159,7 +160,7 @@ fn output_text_extras_survive_generic_conversion_and_replay() {
     };
     assert_eq!(text.additional_params, None);
     assert!(
-        OutputText::from_message_text("plain", None)
+        OutputText::from_message_text("plain".to_owned(), None)
             .extras
             .is_empty(),
         "no params, no extras"

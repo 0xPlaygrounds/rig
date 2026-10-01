@@ -27,8 +27,10 @@ pub enum Message {
     },
 }
 
+mod extension;
 mod identity;
 
+pub use extension::{Extension, ExtensionError, Fingerprint, Opaque, extension_of, with_extension};
 pub use identity::{
     CallId, EmptyCallId, EmptyToolName, Issuer, LocalCallId, ProviderCallId, Sealed, ToolName,
 };
@@ -80,21 +82,23 @@ pub fn ordered_assistant_content(
 }
 
 /// Returns whether the choice contains no nonempty text, tool call, or image.
-/// Reasoning alone is not an answer, even when retained in history.
+/// Reasoning and opaque items alone are not an answer, even when retained in
+/// history.
 pub fn turn_delivered_no_answer(choice: &[AssistantContent]) -> bool {
     !choice.iter().any(|content| match content {
         // Real text is an answer; an empty block delivers nothing.
         AssistantContent::Text(text) => !text.text.is_empty(),
         AssistantContent::ToolCall(_) => true,
         AssistantContent::Image(_) => true,
-        // The one exclusion: scratch work, not an answer.
-        AssistantContent::Reasoning(_) => false,
+        // Scratch work and provider-side steps, not an answer.
+        AssistantContent::Reasoning(_) | AssistantContent::Opaque(_) => false,
     })
 }
 
 /// Groups streamed choices as reasoning, text, tool calls, then images,
-/// preserving order within each group. Choices without reasoning or tool calls
-/// retain their original order.
+/// preserving order within each group. Opaque items group with text, because
+/// a hosted step and the text that cites it must keep their order. Choices
+/// without reasoning or tool calls retain their original order.
 pub fn canonical_streamed_choice(choice: Vec<AssistantContent>) -> Vec<AssistantContent> {
     let regroup = choice.iter().any(|part| {
         matches!(
@@ -112,7 +116,7 @@ pub fn canonical_streamed_choice(choice: Vec<AssistantContent>) -> Vec<Assistant
     for part in choice {
         match part {
             AssistantContent::Reasoning(block) => reasoning.push(block),
-            AssistantContent::Text(_) => text.push(part),
+            AssistantContent::Text(_) | AssistantContent::Opaque(_) => text.push(part),
             AssistantContent::ToolCall(_) => calls.push(part),
             AssistantContent::Image(_) => images.push(part),
         }
@@ -139,7 +143,7 @@ pub enum UserContent {
     Document(Document),
 }
 
-/// Assistant text, tool calls, reasoning, or images.
+/// Assistant text, tool calls, reasoning, images, or opaque provider items.
 /// Deserialization requires the lowercase `type` tag.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(tag = "type", rename_all = "lowercase")]
@@ -153,6 +157,9 @@ pub enum AssistantContent {
     Reasoning(Sealed<Reasoning>),
     /// Image content emitted by the assistant.
     Image(Image),
+    /// A provider item with no canonical meaning, readable only by the
+    /// service that issued it. See [`Opaque`].
+    Opaque(Sealed<Opaque>),
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
@@ -724,6 +731,17 @@ impl Text {
     pub fn text(&self) -> &str {
         &self.text
     }
+
+    /// The provider data of type `T` on this block; see [`Extension`].
+    pub fn extension<T: Extension>(&self) -> Result<Option<T>, ExtensionError> {
+        extension_of(self.additional_params.as_ref())
+    }
+
+    /// This block with `value` stored as its `T`.
+    pub fn with_extension<T: Extension>(mut self, value: &T) -> Result<Self, ExtensionError> {
+        self.additional_params = Some(with_extension(self.additional_params.take(), value)?);
+        Ok(self)
+    }
 }
 
 impl std::fmt::Display for Text {
@@ -978,13 +996,14 @@ impl Message {
         }
     }
 
-    /// Whether a service replaying reasoning `issuers` issued has anything to
+    /// Whether a service replaying what `issuers` issued has anything to
     /// read in this message: false only for an assistant message whose every
-    /// part is reasoning none of them opens.
+    /// part is reasoning or an opaque item none of them opens.
     pub fn replays_to(&self, issuers: &[Issuer]) -> bool {
         match self {
             Message::Assistant { content, .. } => content.iter().any(|part| match part {
                 AssistantContent::Reasoning(reasoning) => reasoning.open_for(issuers).is_some(),
+                AssistantContent::Opaque(item) => item.open_for(issuers).is_some(),
                 _ => true,
             }),
             Message::System { .. } | Message::User { .. } => true,
@@ -1412,6 +1431,9 @@ pub enum ToolChoice {
 pub enum MessageError {
     #[error("Message conversion error: {0}")]
     ConversionError(String),
+    /// Provider data stored on a block did not match its type.
+    #[error("Message conversion error: {0}")]
+    Extension(#[from] ExtensionError),
 }
 
 impl From<MessageError> for ProviderError {

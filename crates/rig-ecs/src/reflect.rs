@@ -88,6 +88,7 @@ pub fn install_reflect(world: &mut World) {
             agent::content::reflect::TextPartReflect,
             agent::content::reflect::ToolCallPartReflect,
             agent::content::reflect::ReasoningPartReflect,
+            agent::content::reflect::OpaquePartReflect,
             agent::content::reflect::JsonPartReflect,
             agent::content::reflect::ImageMediaReflect,
             agent::content::reflect::AudioMediaReflect,

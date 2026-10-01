@@ -51,11 +51,108 @@ pub const CLAUDE_HAIKU_4_5: &str = "claude-haiku-4-5";
 pub const ANTHROPIC_VERSION_2023_01_01: &str = "2023-01-01";
 pub const ANTHROPIC_VERSION_2023_06_01: &str = "2023-06-01";
 pub const ANTHROPIC_VERSION_LATEST: &str = ANTHROPIC_VERSION_2023_06_01;
-pub(crate) const ANTHROPIC_RAW_CONTENT_KEY: &str = "anthropic_content";
+
+/// A Messages content block Rig has no canonical form for, verbatim: a
+/// hosted-tool step (`server_tool_use`, `web_search_tool_result`, ...) or a
+/// block type Rig does not model. It rides an [`message::Opaque`] item and
+/// replays unchanged to a Messages-format wire whose issuer opens it.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct AnthropicBlock(pub serde_json::Value);
+
+impl message::Extension for AnthropicBlock {
+    const KEY: &'static str = "anthropic_content";
+}
+
+impl AnthropicBlock {
+    /// The block's `type` tag.
+    pub fn block_type(&self) -> Option<&str> {
+        self.0.get("type").and_then(serde_json::Value::as_str)
+    }
+}
+
+/// Citations Claude attached to a text block.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct AnthropicCitations {
+    /// The citations, in the order Claude sent them.
+    pub citations: Vec<Citation>,
+    /// The text the citations were decoded with. When the block's text no
+    /// longer matches, the citations are stale and are not replayed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub text: Option<message::Fingerprint>,
+}
+
+impl message::Extension for AnthropicCitations {
+    const KEY: &'static str = "anthropic_citations";
+    const LEGACY_KEYS: &'static [&'static str] = &["citations"];
+}
+
+// The legacy key stored the bare citation array.
+impl<'de> Deserialize<'de> for AnthropicCitations {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum Stored {
+            Current {
+                citations: Vec<Citation>,
+                #[serde(default)]
+                text: Option<message::Fingerprint>,
+            },
+            Legacy(Vec<Citation>),
+        }
+        Ok(match Stored::deserialize(deserializer)? {
+            Stored::Current { citations, text } => Self { citations, text },
+            Stored::Legacy(citations) => Self {
+                citations,
+                text: None,
+            },
+        })
+    }
+}
+
+impl AnthropicCitations {
+    /// The citations, unless `text` was edited since they were decoded.
+    fn replayable_for(self, text: &str) -> Vec<Citation> {
+        match self.text {
+            Some(fingerprint) if !fingerprint.matches(text) => Vec::new(),
+            _ => self.citations,
+        }
+    }
+}
+
+/// A Messages response content block: a canonical [`Content`] block, or any
+/// other block verbatim. Canonical tags decode strictly, so a malformed text
+/// or tool-use block still fails the reply.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(untagged)]
+pub enum Block {
+    /// Text, a client tool call, or thinking.
+    Content(Content),
+    /// Every other block, kept for replay.
+    Opaque(serde_json::Value),
+}
+
+/// The response block tags Rig maps onto canonical content.
+const CANONICAL_BLOCK_TYPES: &[&str] = &["text", "tool_use", "thinking", "redacted_thinking"];
+
+impl<'de> Deserialize<'de> for Block {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = serde_json::Value::deserialize(deserializer)?;
+        match value.get("type").and_then(serde_json::Value::as_str) {
+            Some(tag) if CANONICAL_BLOCK_TYPES.contains(&tag) => serde_json::from_value(value)
+                .map(Self::Content)
+                .map_err(serde::de::Error::custom),
+            Some(_) => Ok(Self::Opaque(value)),
+            None => Err(serde::de::Error::custom(
+                "content block is missing a string `type` field",
+            )),
+        }
+    }
+}
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct CompletionResponse {
-    pub content: Vec<Content>,
+    pub content: Vec<Block>,
     pub id: String,
     pub model: String,
     pub role: String,
@@ -283,21 +380,6 @@ pub enum Content {
         name: String,
         input: serde_json::Value,
     },
-    ServerToolUse {
-        id: String,
-        name: String,
-        #[serde(default)]
-        input: serde_json::Value,
-    },
-    WebSearchToolResult {
-        tool_use_id: String,
-        content: serde_json::Value,
-    },
-    /// The result of an Anthropic-hosted code execution tool call.
-    CodeExecutionToolResult {
-        tool_use_id: String,
-        content: serde_json::Value,
-    },
     ToolResult {
         tool_use_id: String,
         #[serde(deserialize_with = "string_or_vec")]
@@ -333,6 +415,10 @@ pub enum Content {
     RedactedThinking {
         data: String,
     },
+    /// A block Rig has no canonical form for, sent verbatim
+    /// ([`AnthropicBlock`]).
+    #[serde(untagged)]
+    Opaque(serde_json::Value),
 }
 
 impl FromStr for Content {
@@ -566,13 +652,12 @@ fn extract_anthropic_doc_params(
 /// Extract Anthropic citations attached to a generic [`message::Text`] block.
 ///
 /// Citations are returned by Claude on assistant text blocks when the request
-/// enabled them via [`CitationsConfig`]. Internally they are stored as JSON in
-/// [`message::Text::additional_params`] so they survive conversion through the
-/// generic [`message::AssistantContent`] surface.
+/// enabled them via [`CitationsConfig`]. They are stored as the
+/// [`AnthropicCitations`] extension of the block.
 ///
 /// Returns `Ok(vec![])` when no citations are attached. Unknown citation types
-/// are preserved as [`Citation::Unknown`]. Returns an error if the `citations`
-/// field is malformed or if a known citation type has an invalid shape.
+/// are preserved as [`Citation::Unknown`]. Returns an error if the stored
+/// citations are malformed or if a known citation type has an invalid shape.
 ///
 /// ```no_run
 /// use rig_core::completion::message::{self, AssistantContent};
@@ -588,67 +673,34 @@ fn extract_anthropic_doc_params(
 /// }
 /// # let _ = message::Text::new("");
 /// ```
-pub fn anthropic_citations(text: &message::Text) -> Result<Vec<Citation>, serde_json::Error> {
-    match text
-        .additional_params
-        .as_ref()
-        .and_then(|v| v.get("citations"))
-    {
-        Some(c) => <Vec<Citation> as serde::Deserialize>::deserialize(c),
-        None => Ok(Vec::new()),
-    }
+pub fn anthropic_citations(text: &message::Text) -> Result<Vec<Citation>, message::ExtensionError> {
+    Ok(text
+        .extension::<AnthropicCitations>()?
+        .map(|citations| citations.citations)
+        .unwrap_or_default())
 }
 
-fn extract_anthropic_text_citations(text: &message::Text) -> Result<Vec<Citation>, MessageError> {
-    anthropic_citations(text).map_err(|err| {
-        MessageError::ConversionError(format!(
-            "Text `additional_params.citations` is not valid Anthropic citations: {err}"
-        ))
-    })
-}
-
-fn anthropic_text_content_from_message_text(text: message::Text) -> Result<Content, MessageError> {
-    if let Some(raw_content) = extract_anthropic_raw_content(&text)? {
-        if !text.text.is_empty() {
-            return Err(MessageError::ConversionError(format!(
-                "Text `{ANTHROPIC_RAW_CONTENT_KEY}` metadata cannot be combined with non-empty text"
-            )));
-        }
-
-        return Ok(raw_content);
+/// `text` as a Messages block: an [`AnthropicBlock`] an earlier release
+/// stored on an empty text block replays as itself, and other text replays
+/// with its citations while they still match it. `None` for empty text,
+/// which Anthropic rejects.
+fn anthropic_text_content_from_message_text(
+    text: message::Text,
+) -> Result<Option<Content>, MessageError> {
+    if text.text.is_empty() {
+        return Ok(text
+            .extension::<AnthropicBlock>()?
+            .map(|block| Content::Opaque(block.0)));
     }
-
-    let citations = extract_anthropic_text_citations(&text)?;
-    Ok(Content::Text {
+    let citations = text
+        .extension::<AnthropicCitations>()?
+        .map(|citations| citations.replayable_for(&text.text))
+        .unwrap_or_default();
+    Ok(Some(Content::Text {
         text: text.text,
         citations,
         cache_control: None,
-    })
-}
-
-fn extract_anthropic_raw_content(text: &message::Text) -> Result<Option<Content>, MessageError> {
-    let Some(raw_content) = text
-        .additional_params
-        .as_ref()
-        .and_then(|value| value.get(ANTHROPIC_RAW_CONTENT_KEY))
-    else {
-        return Ok(None);
-    };
-
-    let content = <Content as serde::Deserialize>::deserialize(raw_content).map_err(|err| {
-        MessageError::ConversionError(format!(
-            "Text `{ANTHROPIC_RAW_CONTENT_KEY}` metadata is not valid Anthropic content: {err}"
-        ))
-    })?;
-
-    match content {
-        Content::ServerToolUse { .. }
-        | Content::WebSearchToolResult { .. }
-        | Content::CodeExecutionToolResult { .. } => Ok(Some(content)),
-        _ => Err(MessageError::ConversionError(format!(
-            "Text `{ANTHROPIC_RAW_CONTENT_KEY}` metadata only supports Anthropic server_tool_use, web_search_tool_result, and code_execution_tool_result blocks"
-        ))),
-    }
+    }))
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
@@ -801,13 +853,17 @@ fn anthropic_content_from_assistant_content(
 ) -> Result<Vec<Content>, MessageError> {
     match content {
         message::AssistantContent::Text(text) => {
-            // Anthropic rejects empty text; only supported raw hosted-tool metadata
-            // can give an otherwise empty block replayable content.
-            if text.text.is_empty() && extract_anthropic_raw_content(&text)?.is_none() {
-                return Ok(Vec::new());
-            }
-            Ok(vec![anthropic_text_content_from_message_text(text)?])
+            Ok(anthropic_text_content_from_message_text(text)?
+                .into_iter()
+                .collect())
         }
+        // An item another service issued, or one no Messages wire wrote, is
+        // left out.
+        message::AssistantContent::Opaque(item) => Ok(item
+            .extension_for::<AnthropicBlock>(issuers)?
+            .map(|block| Content::Opaque(block.0))
+            .into_iter()
+            .collect()),
         message::AssistantContent::Image(_) => Err(MessageError::ConversionError(
             "Anthropic currently doesn't support images.".to_string(),
         )),
@@ -2071,29 +2127,18 @@ fn is_valid_mid_conversation_system_message(history: &[message::Message], index:
     follows_valid_turn && is_last_or_precedes_assistant
 }
 
+/// Whether the assistant turn ends in a server-side block, which a
+/// mid-conversation system message may follow.
 fn assistant_ends_in_server_tool_block(message: &message::Message) -> bool {
     let message::Message::Assistant { content, .. } = message else {
         return false;
     };
-
-    let Some(message::AssistantContent::Text(text)) = content.iter().last() else {
-        return false;
+    let block = match content.last() {
+        Some(message::AssistantContent::Opaque(item)) => item.value().extension(),
+        Some(message::AssistantContent::Text(text)) if text.text.is_empty() => text.extension(),
+        _ => return false,
     };
-
-    let Some(raw_type) = text
-        .additional_params
-        .as_ref()
-        .and_then(|params| params.get(ANTHROPIC_RAW_CONTENT_KEY))
-        .and_then(|raw_content| raw_content.get("type"))
-        .and_then(serde_json::Value::as_str)
-    else {
-        return false;
-    };
-
-    matches!(
-        raw_type,
-        "server_tool_use" | "web_search_tool_result" | "code_execution_tool_result"
-    )
+    matches!(block, Ok(Some(AnthropicBlock(_))))
 }
 
 /// Parameters for building an AnthropicCompletionRequest
@@ -2145,15 +2190,16 @@ impl AnthropicCompletionRequest {
             .cloned()
             .map(|message| Message::from_message(message, issuers))
             .collect::<Result<Vec<_>, _>>()?;
-        // Server-tool references are preserved opaque content, not local calls.
-        // Reserve their genuine handles so arbitrary local hints cannot alias them.
+        // Opaque blocks carry server-side handles, not local calls. Reserve
+        // them so arbitrary local hints cannot alias them.
         let server_ids = messages
             .iter()
             .flat_map(|message| &message.content)
             .filter_map(|part| match part {
-                Content::ServerToolUse { id, .. } => Some(id.clone()),
-                Content::WebSearchToolResult { tool_use_id, .. }
-                | Content::CodeExecutionToolResult { tool_use_id, .. } => Some(tool_use_id.clone()),
+                Content::Opaque(block) => ["id", "tool_use_id"]
+                    .into_iter()
+                    .find_map(|key| block.get(key).and_then(serde_json::Value::as_str))
+                    .map(str::to_owned),
                 _ => None,
             });
         let tool_ids =

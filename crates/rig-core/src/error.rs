@@ -731,6 +731,18 @@ impl From<http::Error> for EncodeError {
     }
 }
 
+impl From<crate::message::ExtensionError> for ProviderError {
+    fn from(error: crate::message::ExtensionError) -> Self {
+        Self::Response(error.to_string())
+    }
+}
+
+impl From<crate::message::ExtensionError> for EncodeError {
+    fn from(error: crate::message::ExtensionError) -> Self {
+        Self::request(error)
+    }
+}
+
 impl From<serde_json::Error> for EncodeError {
     fn from(error: serde_json::Error) -> Self {
         Self::request(error)

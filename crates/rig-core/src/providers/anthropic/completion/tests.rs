@@ -37,6 +37,26 @@ fn fold_reply(body: &serde_json::Value) -> Result<completion::CompletionResponse
     )
 }
 
+/// The verbatim block an opaque part holds, opened as Anthropic.
+fn anthropic_block(part: &message::AssistantContent) -> serde_json::Value {
+    let message::AssistantContent::Opaque(item) = part else {
+        panic!("expected an opaque part, got {part:?}");
+    };
+    let Some(AnthropicBlock(block)) = item
+        .extension_for(&[message::Issuer::from("anthropic")])
+        .expect("a well-formed block")
+    else {
+        panic!("expected an Anthropic block on {item:?}");
+    };
+    block
+}
+
+/// `message` as the Anthropic wire replays it.
+fn replayed(message: message::Message) -> Message {
+    Message::from_message(message, &[message::Issuer::from("anthropic")])
+        .expect("the message converts")
+}
+
 #[test]
 fn current_model_default_max_tokens_match_anthropic_limits() {
     assert_eq!(
@@ -684,7 +704,7 @@ fn opus_4_8_preserves_system_message_after_assistant_server_tool_result() {
                         text: String::new(),
                         additional_params: crate::message::AdditionalParams::try_from_value(
                             json!({
-                                ANTHROPIC_RAW_CONTENT_KEY: {
+                                "anthropic_content": {
                                     "type": "server_tool_use",
                                     "id": "srvtoolu_01",
                                     "name": "web_search",
@@ -700,7 +720,7 @@ fn opus_4_8_preserves_system_message_after_assistant_server_tool_result() {
                         text: String::new(),
                         additional_params: crate::message::AdditionalParams::try_from_value(
                             json!({
-                                ANTHROPIC_RAW_CONTENT_KEY: {
+                                "anthropic_content": {
                                     "type": "web_search_tool_result",
                                     "tool_use_id": "srvtoolu_01",
                                     "content": {
@@ -794,7 +814,7 @@ fn opus_4_8_preserves_system_message_after_assistant_server_tool_use() {
                 content: vec![message::AssistantContent::Text(message::Text {
                     text: String::new(),
                     additional_params: crate::message::AdditionalParams::try_from_value(json!({
-                        ANTHROPIC_RAW_CONTENT_KEY: {
+                        "anthropic_content": {
                             "type": "server_tool_use",
                             "id": "srvtoolu_01",
                             "name": "web_search",
@@ -2797,11 +2817,11 @@ fn end_turn_with_a_tool_call_is_reconciled_to_tool_calls() {
     // builder applies must hold for any provider that reports a plain stop
     // alongside a tool call.
     let response = CompletionResponse {
-        content: vec![Content::ToolUse {
+        content: vec![Block::Content(Content::ToolUse {
             id: "toolu_1".to_string(),
             name: "add".to_string(),
             input: json!({"x": 1}),
-        }],
+        })],
         id: "msg_123".to_string(),
         model: CLAUDE_SONNET_4_6.to_string(),
         role: "assistant".to_string(),
@@ -3087,21 +3107,9 @@ fn web_search_response_preserves_raw_blocks_and_citations() {
     assert_eq!(answer_text, "Claude Shannon was born on April 30, 1916.");
 
     let items = converted.choice.iter().collect::<Vec<_>>();
-    let message::AssistantContent::Text(server_tool_use) = items[0] else {
-        panic!("expected raw server_tool_use metadata");
-    };
-    assert_eq!(server_tool_use.text, "");
+    assert_eq!(anthropic_block(items[0])["type"], "server_tool_use");
     assert_eq!(
-        server_tool_use.additional_params.as_ref().unwrap()[ANTHROPIC_RAW_CONTENT_KEY]["type"],
-        "server_tool_use"
-    );
-
-    let message::AssistantContent::Text(web_search_result) = items[1] else {
-        panic!("expected raw web_search_tool_result metadata");
-    };
-    assert_eq!(
-        web_search_result.additional_params.as_ref().unwrap()[ANTHROPIC_RAW_CONTENT_KEY]["content"]
-            [0]["encrypted_content"],
+        anthropic_block(items[1])["content"][0]["encrypted_content"],
         "encrypted-content"
     );
 
@@ -3115,29 +3123,15 @@ fn web_search_response_preserves_raw_blocks_and_citations() {
             if citation.encrypted_index == "encrypted-index"
     ));
 
-    let round_trip: Message = message::Message::Assistant {
+    let round_trip = replayed(message::Message::Assistant {
         id: converted.message_id.clone(),
         content: converted.choice,
-    }
-    .try_into()
-    .unwrap();
-
-    let round_trip_items = round_trip.content.iter().collect::<Vec<_>>();
-    assert!(matches!(
-        round_trip_items.first(),
-        Some(Content::ServerToolUse { id, name, input })
-            if id == "srvtoolu_01"
-                && name == "web_search"
-                && input["query"] == "claude shannon birth date"
-    ));
-    assert!(matches!(
-        round_trip_items.get(1),
-        Some(Content::WebSearchToolResult {
-            tool_use_id,
-            content
-        }) if tool_use_id == "srvtoolu_01"
-            && content[0]["encrypted_content"] == "encrypted-content"
-    ));
+    });
+    // The same blocks, verbatim, in their place.
+    assert_eq!(
+        serde_json::to_value(&round_trip.content).unwrap(),
+        value["content"]
+    );
 }
 
 #[test]
@@ -3166,12 +3160,7 @@ fn web_search_tool_result_error_object_is_preserved_raw() {
         serde_json::from_value(value.clone()).expect("the body parses into the wire type");
     assert_eq!(typed.content.len(), 1);
     let converted = fold_reply(&value).expect("the reply folds");
-    let Some(message::AssistantContent::Text(web_search_result)) = converted.choice.first() else {
-        panic!("expected raw web_search_tool_result metadata");
-    };
-
-    let raw_content =
-        &web_search_result.additional_params.as_ref().unwrap()[ANTHROPIC_RAW_CONTENT_KEY];
+    let raw_content = anthropic_block(converted.choice.first().expect("one part"));
     assert_eq!(raw_content["type"], "web_search_tool_result");
     assert_eq!(raw_content["content"]["error_code"], "max_uses_exceeded");
     assert_eq!(
@@ -3179,26 +3168,19 @@ fn web_search_tool_result_error_object_is_preserved_raw() {
         "web_search_tool_result_error"
     );
 
-    let round_trip: Message = message::Message::Assistant {
+    let round_trip = replayed(message::Message::Assistant {
         id: converted.message_id,
         content: converted.choice,
-    }
-    .try_into()
-    .unwrap();
-
-    assert!(matches!(
-        round_trip.content.first(),
-        Some(Content::WebSearchToolResult {
-            tool_use_id,
-            content
-        }) if tool_use_id == "srvtoolu_01"
-            && content["error_code"] == "max_uses_exceeded"
-    ));
+    });
+    assert_eq!(
+        serde_json::to_value(&round_trip.content).unwrap(),
+        value["content"]
+    );
 }
 
 #[test]
 fn code_execution_tool_result_variants_deserialize() {
-    let normal: Content = serde_json::from_value(json!({
+    let normal: Block = serde_json::from_value(json!({
         "type": "code_execution_tool_result",
         "tool_use_id": "srvtoolu_normal",
         "content": {
@@ -3212,15 +3194,12 @@ fn code_execution_tool_result_variants_deserialize() {
     .unwrap();
     assert!(matches!(
         normal,
-        Content::CodeExecutionToolResult {
-            ref tool_use_id,
-            ref content
-        } if tool_use_id == "srvtoolu_normal"
-            && content["type"] == "code_execution_result"
-            && content["stdout"] == "42\n"
+        Block::Opaque(ref block) if block["tool_use_id"] == "srvtoolu_normal"
+            && block["content"]["type"] == "code_execution_result"
+            && block["content"]["stdout"] == "42\n"
     ));
 
-    let encrypted: Content = serde_json::from_value(json!({
+    let encrypted: Block = serde_json::from_value(json!({
         "type": "code_execution_tool_result",
         "tool_use_id": "srvtoolu_encrypted",
         "content": {
@@ -3234,12 +3213,9 @@ fn code_execution_tool_result_variants_deserialize() {
     .unwrap();
     assert!(matches!(
         encrypted,
-        Content::CodeExecutionToolResult {
-            ref tool_use_id,
-            ref content
-        } if tool_use_id == "srvtoolu_encrypted"
-            && content["type"] == "encrypted_code_execution_result"
-            && content["encrypted_stdout"] == "encrypted-output"
+        Block::Opaque(ref block) if block["tool_use_id"] == "srvtoolu_encrypted"
+            && block["content"]["type"] == "encrypted_code_execution_result"
+            && block["content"]["encrypted_stdout"] == "encrypted-output"
     ));
 }
 
@@ -3273,30 +3249,19 @@ fn code_execution_tool_result_is_preserved_and_round_trips() {
         serde_json::from_value(value.clone()).expect("the body parses into the wire type");
     assert_eq!(typed.content.len(), 1);
     let converted = fold_reply(&value).expect("the reply folds");
-    let Some(message::AssistantContent::Text(code_execution_result)) = converted.choice.first()
-    else {
-        panic!("expected raw code_execution_tool_result metadata");
-    };
     assert_eq!(
-        code_execution_result.additional_params.as_ref().unwrap()[ANTHROPIC_RAW_CONTENT_KEY],
+        anthropic_block(converted.choice.first().expect("one part")),
         raw_block
     );
 
-    let round_trip: Message = message::Message::Assistant {
+    let round_trip = replayed(message::Message::Assistant {
         id: converted.message_id,
         content: converted.choice,
-    }
-    .try_into()
-    .unwrap();
-    assert!(matches!(
-        round_trip.content.first(),
-        Some(Content::CodeExecutionToolResult {
-            tool_use_id,
-            content
-        }) if tool_use_id == "srvtoolu_01"
-            && content["type"] == "code_execution_result"
-            && content["stdout"] == "42\n"
-    ));
+    });
+    assert_eq!(
+        serde_json::to_value(&round_trip.content).unwrap(),
+        json!([raw_block])
+    );
 }
 
 #[test]

@@ -619,6 +619,8 @@ fn assistant_parts(content: &[AssistantContent]) -> Vec<TelemetryPart> {
             }],
             AssistantContent::Reasoning(reasoning) => reasoning_parts(reasoning.value()),
             AssistantContent::Image(image) => image_part(image).into_iter().collect(),
+            // Provider-side steps carry no content telemetry describes.
+            AssistantContent::Opaque(_) => Vec::new(),
         })
         .collect()
 }
