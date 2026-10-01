@@ -782,9 +782,9 @@ fn coerce_tool_input(input: serde_json::Value) -> serde_json::Value {
     }
 }
 
-/// The Messages item `content` was projected from, when this request may
-/// replay it in the block's place: the item is this dialect's, one of
-/// `issuers` opens it, and the block is unedited since it was decoded.
+/// The Messages item `content` was projected from, as this request replays
+/// it in the block's place: the item is this dialect's, one of `issuers`
+/// opens it, and the block is unedited since it was decoded.
 fn fresh_native(
     content: &message::AssistantContent,
     issuers: &[message::Issuer],
@@ -799,42 +799,45 @@ fn fresh_native(
     }?;
     let item = native.open_native(DIALECT, issuers)?;
     let projected = super::streaming::project(item.item())?;
-    message::NativeItem::same_canonical(&projected, content).then(|| item.item().clone())
+    if !message::NativeItem::same_canonical(&projected, content) {
+        return None;
+    }
+    let canonical = canonical_encoding(content);
+    Some(message::replay_form(
+        item.item(),
+        canonical.as_ref(),
+        states_default,
+    ))
 }
 
-/// Whether `block`'s canonical Messages encoding states everything `item`
-/// states, so the item need not ride the block.
-pub(super) fn round_trips(block: &message::AssistantContent, item: &serde_json::Value) -> bool {
+/// `block`'s canonical Messages encoding, as one wire block.
+fn canonical_encoding(block: &message::AssistantContent) -> Option<serde_json::Value> {
     let issuers = match block {
         message::AssistantContent::Reasoning(reasoning) => vec![reasoning.issuer().clone()],
         _ => Vec::new(),
     };
-    let Ok(encoded) = anthropic_content_from_assistant_content(block.clone(), &issuers) else {
+    let encoded = anthropic_content_from_assistant_content(block.canonical(), &issuers).ok()?;
+    match encoded.as_slice() {
+        // Empty text encodes to nothing: an empty text block says nothing more.
+        [] => matches!(block, message::AssistantContent::Text(_))
+            .then(|| serde_json::json!({ "type": "text" })),
+        [only] => serde_json::to_value(only).ok(),
+        _ => None,
+    }
+}
+
+/// Whether `block`'s canonical Messages encoding states everything `item`
+/// states as it would be replayed, so the item need not ride the block.
+pub(super) fn round_trips(block: &message::AssistantContent, item: &serde_json::Value) -> bool {
+    let Some(canonical) = canonical_encoding(block) else {
         return false;
     };
-    let encoded = match encoded.as_slice() {
-        [] => serde_json::json!({ "type": item.get("type") }),
-        [only] => match serde_json::to_value(only) {
-            Ok(encoded) => encoded,
-            Err(_) => return false,
-        },
-        _ => return false,
-    };
-    message::same_wire_value(&encoded, &without_defaults(item))
+    let replayed = message::replay_form(item, Some(&canonical), states_default);
+    message::same_wire_value(&canonical, &replayed)
 }
 
-/// `item` without the members that state the API's documented default.
-/// Omitting such a member states the same thing, so a replay omits it and
-/// it is no residue.
-fn without_defaults(item: &serde_json::Value) -> serde_json::Value {
-    let mut item = item.clone();
-    if let Some(members) = item.as_object_mut() {
-        members.retain(|member, value| !states_default(member, value));
-    }
-    item
-}
-
-/// Whether `value` is the documented default of a block's `member`.
+/// Whether `value` is the documented default of a block's `member`, which
+/// a replay omitting it states as well.
 fn states_default(member: &str, value: &serde_json::Value) -> bool {
     match member {
         // A block the model produced itself rather than from executed code.
@@ -848,7 +851,7 @@ fn anthropic_content_from_assistant_content(
     issuers: &[message::Issuer],
 ) -> Result<Vec<Content>, MessageError> {
     if let Some(item) = fresh_native(&content, issuers) {
-        return Ok(vec![Content::Native(without_defaults(&item))]);
+        return Ok(vec![Content::Native(item)]);
     }
     match content {
         message::AssistantContent::Text(text) => {
@@ -866,7 +869,9 @@ fn anthropic_content_from_assistant_content(
             // Another dialect's, or another service's, items are not replayed.
             Ok(native
                 .open_native(DIALECT, issuers)
-                .map(|item| Content::Native(without_defaults(item.item())))
+                .map(|item| {
+                    Content::Native(message::replay_form(item.item(), None, states_default))
+                })
                 .into_iter()
                 .collect())
         }

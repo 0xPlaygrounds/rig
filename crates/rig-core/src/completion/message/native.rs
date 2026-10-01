@@ -114,6 +114,58 @@ impl Sealed<NativeItem> {
     }
 }
 
+/// `item` as its dialect replays it. A member that states nothing (null or
+/// empty) or that `is_default` calls the dialect's documented default is
+/// omitted unless `canonical`, the block's canonical encoding, states that
+/// member too. Without a canonical encoding only defaults are omitted, since
+/// an unmodelled item may require an empty member. Objects are compared
+/// member by member, arrays element by element.
+pub fn replay_form(
+    item: &serde_json::Value,
+    canonical: Option<&serde_json::Value>,
+    is_default: fn(&str, &serde_json::Value) -> bool,
+) -> serde_json::Value {
+    use serde_json::Value;
+
+    fn empty(value: &Value) -> bool {
+        match value {
+            Value::Null => true,
+            Value::String(text) => text.is_empty(),
+            Value::Array(items) => items.is_empty(),
+            Value::Object(map) => map.is_empty(),
+            Value::Bool(_) | Value::Number(_) => false,
+        }
+    }
+
+    match item {
+        Value::Object(members) => Value::Object(
+            members
+                .iter()
+                .filter_map(|(key, value)| {
+                    let stated = canonical.and_then(|canonical| canonical.get(key));
+                    let omit = stated.is_none()
+                        && (is_default(key, value) || (canonical.is_some() && empty(value)));
+                    (!omit).then(|| (key.clone(), replay_form(value, stated, is_default)))
+                })
+                .collect(),
+        ),
+        Value::Array(items) => Value::Array(
+            items
+                .iter()
+                .enumerate()
+                .map(|(at, value)| {
+                    let stated = canonical.and_then(|canonical| canonical.get(at));
+                    match stated {
+                        Some(stated) => replay_form(value, Some(stated), is_default),
+                        None => value.clone(),
+                    }
+                })
+                .collect(),
+        ),
+        other => other.clone(),
+    }
+}
+
 /// Whether two wire values state the same thing. Null members, empty
 /// strings, empty arrays and empty objects count as absent, because wires
 /// omit them and restate them interchangeably.

@@ -300,24 +300,24 @@ fn recorded_messages(body: &str) -> Vec<(String, String)> {
 }
 
 /// `(id, phase)` of the message item each text block of a reply's choice
-/// came from: the block's own id when the reply had several message items,
-/// else the reply's message id.
+/// came from: the item the block keeps, else the reply's message id.
 fn text_block_items(response: &rig::completion::CompletionResponse) -> Vec<(String, String)> {
     texts(&response.choice)
         .into_iter()
         .map(|text| {
-            let extras = text
-                .additional_params
-                .as_ref()
-                .and_then(|params| params.wire_extras("openai_responses"));
+            let item = text.native.as_ref().and_then(|native| {
+                native
+                    .open_native(openai::responses_api::DIALECT, &[native.issuer().clone()])
+                    .map(|item| item.item().clone())
+            });
             let field = |key: &str| {
-                extras
-                    .and_then(|extras| extras.get(key))
+                item.as_ref()
+                    .and_then(|item| item.get(key))
                     .and_then(Value::as_str)
                     .map(str::to_owned)
             };
             (
-                field("message_id")
+                field("id")
                     .or_else(|| response.message_id.clone())
                     .unwrap_or_default(),
                 field("phase").unwrap_or_default(),

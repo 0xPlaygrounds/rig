@@ -33,7 +33,7 @@ mod native;
 pub use identity::{
     CallId, EmptyCallId, EmptyToolName, Issuer, LocalCallId, ProviderCallId, Sealed, ToolName,
 };
-pub use native::{NativeItem, same_wire_value};
+pub use native::{NativeItem, replay_form, same_wire_value};
 
 /// Shared error text for an invalid empty response choice.
 /// Provider decoders must exempt legal empty outcomes, including recognized
@@ -1181,6 +1181,27 @@ impl AssistantContent {
     /// Creates reasoning text issued by `issuer`.
     pub fn reasoning(issuer: impl Into<Issuer>, reasoning: impl AsRef<str>) -> Self {
         AssistantContent::Reasoning(Reasoning::new(reasoning.as_ref()).sealed(issuer))
+    }
+
+    /// This block without the provider item it was projected from: what its
+    /// canonical form alone states. A [`Self::Native`] block is unchanged.
+    pub fn canonical(&self) -> Self {
+        match self {
+            AssistantContent::Text(text) => AssistantContent::Text(Text {
+                native: None,
+                ..text.clone()
+            }),
+            AssistantContent::ToolCall(call) => AssistantContent::ToolCall(ToolCall {
+                native: None,
+                ..call.clone()
+            }),
+            AssistantContent::Reasoning(reasoning) => {
+                let mut reasoning = reasoning.clone();
+                reasoning.value_mut().native = None;
+                AssistantContent::Reasoning(reasoning)
+            }
+            other @ (AssistantContent::Image(_) | AssistantContent::Native(_)) => other.clone(),
+        }
     }
 }
 

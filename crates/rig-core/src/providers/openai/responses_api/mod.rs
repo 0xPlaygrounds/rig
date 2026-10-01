@@ -660,7 +660,11 @@ fn input_items(
                         crate::message::AssistantContent::Native(native) => {
                             // Another dialect's, or another service's, items are not replayed.
                             if let Some(item) = native.open_native(DIALECT, issuers) {
-                                other_items.push(InputItem::native(item.item().clone()));
+                                other_items.push(InputItem::native(message::replay_form(
+                                    item.item(),
+                                    None,
+                                    states_default,
+                                )));
                             }
                         }
                         crate::message::AssistantContent::Image(_) => {
@@ -2296,8 +2300,8 @@ pub(crate) fn text_block(value: AssistantContent) -> Text {
 /// The wire dialect Responses provider items are tagged with.
 pub const DIALECT: &str = "openai.responses";
 
-/// The Responses item `content` was projected from, when this request may
-/// replay it in the block's place: the item is this dialect's, one of
+/// The Responses item `content` was projected from, as this request
+/// replays it in the block's place: the item is this dialect's, one of
 /// `issuers` opens it, and the block is unedited since it was decoded.
 fn fresh_native(
     content: &crate::message::AssistantContent,
@@ -2314,7 +2318,43 @@ fn fresh_native(
     }?;
     let item = native.open_native(DIALECT, issuers)?;
     let projected = streaming::project(item.item())?;
-    message::NativeItem::same_canonical(&projected, content).then(|| item.item().clone())
+    if !message::NativeItem::same_canonical(&projected, content) {
+        return None;
+    }
+    let canonical = canonical_encoding(content, item.item());
+    Some(message::replay_form(
+        item.item(),
+        canonical.as_ref(),
+        states_default,
+    ))
+}
+
+/// `block`'s canonical Responses encoding, as one input item. A text block
+/// is encoded as `item`'s own message, since only the reply's message id
+/// is known.
+fn canonical_encoding(block: &crate::message::AssistantContent, item: &Value) -> Option<Value> {
+    use crate::message::AssistantContent as Block;
+    let issuers = match block {
+        Block::Reasoning(reasoning) => vec![reasoning.issuer().clone()],
+        _ => Vec::new(),
+    };
+    let message = crate::completion::Message::Assistant {
+        id: item.get("id").and_then(Value::as_str).map(str::to_owned),
+        content: vec![block.canonical()],
+    };
+    let encoded = input_items(message, &issuers).ok()?;
+    let [encoded] = <[InputItem; 1]>::try_from(encoded).ok()?;
+    serde_json::to_value(&encoded).ok()
+}
+
+/// Whether `value` is the documented default of an item's `member`, which
+/// a replay omitting it states as well.
+fn states_default(member: &str, value: &Value) -> bool {
+    match member {
+        // Every replayed item is complete.
+        "status" => value == "completed",
+        _ => false,
+    }
 }
 
 /// How one block of an assistant message replays.
@@ -2386,25 +2426,13 @@ fn fresh_natives(
 }
 
 /// Whether `block`'s canonical Responses encoding states everything `item`
-/// states, so the item need not ride the block. A text block is encoded as
-/// the item's own message, since only the reply's message id is known.
+/// states as it would be replayed, so the item need not ride the block.
 pub(crate) fn round_trips(block: &crate::message::AssistantContent, item: &Value) -> bool {
-    let issuers = match block {
-        crate::message::AssistantContent::Reasoning(reasoning) => vec![reasoning.issuer().clone()],
-        _ => Vec::new(),
-    };
-    let id = item.get("id").and_then(Value::as_str).map(str::to_owned);
-    let message = crate::completion::Message::Assistant {
-        id,
-        content: vec![block.clone()],
-    };
-    let Ok(encoded) = input_items(message, &issuers) else {
+    let Some(canonical) = canonical_encoding(block, item) else {
         return false;
     };
-    let Ok([encoded]) = <[InputItem; 1]>::try_from(encoded) else {
-        return false;
-    };
-    serde_json::to_value(&encoded).is_ok_and(|encoded| message::same_wire_value(&encoded, item))
+    let replayed = message::replay_form(item, Some(&canonical), states_default);
+    message::same_wire_value(&canonical, &replayed)
 }
 
 impl From<AssistantContent> for completion::AssistantContent {
