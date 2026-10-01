@@ -54,14 +54,11 @@ impl ReasoningAgent {
             .history(&chat_history)
             .max_turns(20)
             .await?;
-        if let Some(messages) = &response.messages {
-            let history_vec: Vec<_> = messages.clone().into_iter().collect();
-            tracing::info!(
-                "full chat history generated: {}",
-                serde_json::to_string_pretty(&history_vec)
-                    .unwrap_or_else(|_| "<failed to serialize chat history>".to_string())
-            );
-        }
+        tracing::info!(
+            "full chat history generated: {}",
+            serde_json::to_string_pretty(&response.messages)
+                .unwrap_or_else(|_| "<failed to serialize chat history>".to_string())
+        );
         Ok(response.output)
     }
 }

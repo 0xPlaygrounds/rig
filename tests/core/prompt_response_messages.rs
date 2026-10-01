@@ -80,9 +80,7 @@ async fn prompt_response_populates_messages() {
     assert_eq!(resp.usage.output_tokens, Some(5));
 
     // Messages should be populated
-    let messages = resp
-        .messages
-        .expect("messages should be Some on the prompt response");
+    let messages = resp.messages;
 
     // Should contain: [User("hi"), Assistant("hello from mock")]
     assert_eq!(messages.len(), 2);
@@ -120,7 +118,7 @@ async fn extended_with_history_both_populated() {
         .await
         .expect("prompt should succeed");
 
-    let response_messages = resp.messages.expect("messages should be Some");
+    let response_messages = resp.messages;
 
     // Response should contain the full conversation (User + Assistant)
     assert_eq!(response_messages.len(), 2);
@@ -174,7 +172,7 @@ async fn multi_turn_messages_include_tool_calls() {
 
     assert_eq!(resp.output, "The answer is 5");
 
-    let messages = resp.messages.expect("messages should be Some");
+    let messages = resp.messages;
 
     // Expected sequence:
     // [0] User: "What is 2 + 3?"
@@ -223,7 +221,7 @@ async fn multi_turn_messages_include_tool_calls() {
 }
 
 /// Test 6: `PromptResponse::new()` backward compatibility — 2-argument constructor
-/// should still work, and `messages` should be `None`.
+/// should still work, and `messages` should be empty.
 #[tokio::test]
 async fn prompt_response_new_backward_compat() {
     use rig::agent::PromptResponse;
@@ -231,7 +229,7 @@ async fn prompt_response_new_backward_compat() {
     let resp = PromptResponse::new("output text", Usage::default());
 
     assert_eq!(resp.output, "output text");
-    assert!(resp.messages.is_none());
+    assert!(resp.messages.is_empty());
 }
 
 /// Test 6b: `PromptResponse` implements `Display`, delegating to `output`.
@@ -255,8 +253,7 @@ async fn prompt_response_with_messages_builder() {
 
     let resp = PromptResponse::new("output", Usage::default()).with_messages(messages);
 
-    assert!(resp.messages.is_some());
-    assert_eq!(resp.messages.as_ref().unwrap().len(), 2);
+    assert_eq!(resp.messages.len(), 2);
 }
 
 /// Test 8: MaxTurns still works — the error should contain the chat history.
@@ -306,9 +303,7 @@ async fn prompt_response_works_without_with_history() {
         .await
         .expect("prompt should succeed");
 
-    let messages = resp
-        .messages
-        .expect("messages should be Some even without with_history()");
+    let messages = resp.messages;
 
     // Should have full multi-turn history
     assert_eq!(messages.len(), 4);
@@ -336,8 +331,8 @@ async fn chat_appends_prompt_and_assistant_to_history() {
     // `chat` returns the same response `prompt` does: the run's transcript
     // is on it, and it is exactly what the caller's history gained.
     assert_eq!(
-        response.messages.as_deref().map(<[Message]>::len),
-        Some(2),
+        response.messages.len(),
+        2,
         "chat keeps the run's messages on the response"
     );
     assert_eq!(
@@ -440,8 +435,8 @@ async fn sequential_prompts_have_independent_histories() {
         .await
         .expect("second prompt should succeed");
 
-    let msgs1 = resp1.messages.expect("messages should be Some");
-    let msgs2 = resp2.messages.expect("messages should be Some");
+    let msgs1 = resp1.messages;
+    let msgs2 = resp2.messages;
 
     // Each should have exactly 2 messages (user + assistant)
     assert_eq!(msgs1.len(), 2);

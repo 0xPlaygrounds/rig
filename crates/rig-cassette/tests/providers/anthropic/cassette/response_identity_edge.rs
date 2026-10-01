@@ -614,7 +614,7 @@ async fn history_replay_does_not_leak_prior_run_identity() {
                 .prompt("Reply with exactly: run A probe")
                 .await
                 .expect("run A should succeed");
-            let history = first.messages.clone().expect("run A history");
+            let history = first.messages.clone();
             let run_a_identity = probe.turn_identities()[0].clone();
 
             let second = agent

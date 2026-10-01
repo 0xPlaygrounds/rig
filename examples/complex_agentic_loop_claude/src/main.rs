@@ -179,23 +179,19 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Print the chat history to show the agentic loop
     println!("\nAgentic Loop Details:");
-    if let Some(messages) = &response.messages {
-        for (i, message) in messages.clone().into_iter().enumerate() {
-            match message {
-                Message::User { content } => println!(
-                    "\nUser [{}]: {}",
-                    i,
-                    serde_json::to_string_pretty(&content)?
-                ),
-                Message::Assistant { content, .. } => println!(
-                    "Assistant [{}]: {}",
-                    i,
-                    serde_json::to_string_pretty(&content)?
-                ),
-                _ => {
-                    // Ignore other message types - the only other type of message that exists is system messages
-                    // which can be ignored
-                }
+    for (i, message) in response.messages.iter().enumerate() {
+        match message {
+            Message::User { content } => {
+                println!("\nUser [{}]: {}", i, serde_json::to_string_pretty(content)?)
+            }
+            Message::Assistant { content, .. } => println!(
+                "Assistant [{}]: {}",
+                i,
+                serde_json::to_string_pretty(content)?
+            ),
+            _ => {
+                // Ignore other message types - the only other type of message that exists is system messages
+                // which can be ignored
             }
         }
     }

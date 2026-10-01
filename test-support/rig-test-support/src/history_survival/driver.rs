@@ -346,7 +346,7 @@ pub async fn run(
                     });
                     if let MultiTurnStreamItem::FinalResponse(response) = item {
                         text = Some(response.output().to_owned());
-                        history.extend(response.messages.unwrap_or_default());
+                        history.extend(response.messages);
                     }
                 }
                 text.unwrap_or_else(|| panic!("[{}] stream ended without a final", cell.provider))

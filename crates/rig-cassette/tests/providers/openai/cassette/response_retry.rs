@@ -65,7 +65,6 @@ async fn rejected_response_is_retried_with_feedback() {
             assert!(response.usage.output_tokens.is_some_and(|n| n > 0));
             let transcript = response
                 .messages
-                .expect("response history")
                 .into_iter()
                 .map(|message| match message {
                     Message::System { content } => ("system", content),

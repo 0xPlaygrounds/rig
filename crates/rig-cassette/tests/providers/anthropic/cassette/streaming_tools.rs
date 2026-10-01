@@ -337,12 +337,11 @@ async fn collect_concurrent_tool_observation(
             Ok(MultiTurnStreamItem::FinalResponse(response)) => {
                 observation.final_response_text = Some(response.output().to_owned());
                 observation.got_final_response = true;
-                if let Some(history) = response.messages() {
-                    observation.history_tool_results =
-                        tool_result_names_in_history(history, &tool_names_by_id);
-                    observation.last_history_tool_result_message =
-                        last_tool_result_message_names(history, &tool_names_by_id);
-                }
+                let history = response.messages();
+                observation.history_tool_results =
+                    tool_result_names_in_history(history, &tool_names_by_id);
+                observation.last_history_tool_result_message =
+                    last_tool_result_message_names(history, &tool_names_by_id);
                 observation.events.push("final_response");
             }
             Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Text {
