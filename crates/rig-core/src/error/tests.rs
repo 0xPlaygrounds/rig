@@ -403,6 +403,47 @@ fn tool_error_uses_override_then_kind_default() {
 }
 
 #[test]
+fn tool_error_survives_a_report_round_trip() {
+    let original = ToolExecutionError::rate_limited("slow down")
+        .with_retryable(false)
+        .with_code("quota")
+        .with_http_status(429);
+    let back = ToolExecutionError::from(original.report());
+    assert_eq!(back.kind(), ToolErrorKind::RateLimited);
+    assert_eq!(back.message(), "slow down");
+    assert_eq!(back.model_feedback(), Some("slow down"));
+    assert_eq!(back.retryable(), Some(false));
+    assert_eq!(back.code(), Some("quota"));
+    assert_eq!(back.http_status(), Some(429));
+    assert!(!back.is_refusal());
+    assert_eq!(
+        back.downcast_ref::<ErrorReport>().map(|report| report.kind),
+        Some(ErrorKind::Tool(ToolErrorKind::RateLimited))
+    );
+
+    let refused = ToolExecutionError::from(ToolExecutionError::refused("no").report());
+    assert!(refused.is_refusal());
+    assert_eq!(refused.kind(), ToolErrorKind::PermissionDenied);
+}
+
+#[test]
+fn dispatch_report_kinds_map_to_tool_kinds() {
+    for (kind, expected) in [
+        (ErrorKind::Timeout, ToolErrorKind::Timeout),
+        (ErrorKind::Cancelled, ToolErrorKind::Cancelled),
+        (ErrorKind::Denied, ToolErrorKind::PermissionDenied),
+        (ErrorKind::HandlerUnavailable, ToolErrorKind::NotFound),
+        (ErrorKind::Http, ToolErrorKind::Network),
+        (ErrorKind::ProviderResponse, ToolErrorKind::Provider),
+        (ErrorKind::Internal, ToolErrorKind::Other),
+    ] {
+        let error = ToolExecutionError::from(ErrorReport::new(kind, "failed").with_retryable(true));
+        assert_eq!(error.kind(), expected, "{kind:?}");
+        assert_eq!(error.retryable(), Some(true), "{kind:?}");
+    }
+}
+
+#[test]
 fn source_chain_is_outermost_first() {
     #[derive(Debug, thiserror::Error)]
     #[error("inner")]
