@@ -670,6 +670,11 @@ impl AgentRun {
         self.output_tool_name.as_deref()
     }
 
+    /// The policy for an invalid tool call no hook resolves.
+    pub(crate) fn unhandled_invalid_tool_call(&self) -> UnhandledInvalidToolCall {
+        self.unhandled_invalid_tool_call
+    }
+
     /// Aggregated token usage across all completed model calls so far.
     pub fn usage(&self) -> Usage {
         self.usage

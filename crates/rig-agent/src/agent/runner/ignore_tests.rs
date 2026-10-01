@@ -1,5 +1,5 @@
-//! The runner's `UnhandledInvalidToolCall::Ignore` policy on the
-//! streaming surface, which the invalid-call matrix found unapplied.
+//! The `UnhandledInvalidToolCall` policy on the streaming surface, for a
+//! fresh run and a resumed one.
 
 use futures::StreamExt;
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent, MockTurn};

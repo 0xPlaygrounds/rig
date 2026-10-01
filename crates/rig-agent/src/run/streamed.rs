@@ -179,7 +179,7 @@ pub enum StreamedResolution {
         skipped_tool_result: Option<ToolResult>,
     },
     /// The invalid call is dropped and the turn goes on without it: the
-    /// runner's `UnhandledInvalidToolCall::Ignore` on the streaming
+    /// run's `UnhandledInvalidToolCall::Ignore` on the streaming
     /// surface. Apply it via
     /// [`StreamedTurnAssembler::resolve_pending_invalid`] and keep consuming
     /// the provider stream; nothing of the call enters the run.

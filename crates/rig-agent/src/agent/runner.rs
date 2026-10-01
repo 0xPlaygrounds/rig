@@ -131,7 +131,8 @@ impl AgentRunner {
         self
     }
 
-    /// Set the policy for invalid tool calls that no hook resolves.
+    /// Set the policy for invalid tool calls that no hook resolves. A resumed
+    /// run keeps the policy it persisted.
     pub fn unhandled_invalid_tool_call(mut self, policy: UnhandledInvalidToolCall) -> Self {
         self.unhandled_invalid_tool_call = policy;
         self
