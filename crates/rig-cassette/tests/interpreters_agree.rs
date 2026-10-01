@@ -178,7 +178,7 @@ async fn bus_interpreter(case: &Case) -> (String, Trace) {
         )),
         "only completions and tool calls in this program"
     );
-    (response.output, trace_of(log.iter()))
+    (response.output(), trace_of(log.iter()))
 }
 
 async fn hand_interpreter(case: &Case) -> (String, Trace) {
@@ -278,7 +278,7 @@ async fn hand_interpreter(case: &Case) -> (String, Trace) {
                 }
                 run.tool_results(results).expect("tool results");
             }
-            AgentRunStep::Done(response) => break response.output,
+            AgentRunStep::Done(response) => break response.output(),
         }
     };
     drop((model, dispatcher, agent));

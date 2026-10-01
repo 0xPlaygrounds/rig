@@ -111,7 +111,7 @@ async fn sequential_tool_calls_nonstreaming() {
                 .await
                 .expect("sequential tool chat should succeed");
 
-            assert_mentions_expected_number(&result.output, 2);
+            assert_mentions_expected_number(&result.output(), 2);
 
             let calls = history_tool_calls(&history);
             let results = history_tool_results(&history);
@@ -228,7 +228,7 @@ async fn parallel_tool_calls_single_turn_nonstreaming() {
                 .await
                 .expect("parallel tool chat should succeed");
 
-            let lowered = result.output.to_ascii_lowercase();
+            let lowered = result.output().to_ascii_lowercase();
             assert!(
                 lowered.contains(ALPHA_SIGNAL_OUTPUT) && lowered.contains(BETA_SIGNAL_OUTPUT),
                 "final response should include both tool outputs, got {result:?}"

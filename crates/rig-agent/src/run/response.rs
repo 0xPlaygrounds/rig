@@ -9,6 +9,7 @@
 use rig_core::completion::{FinishReason, ResponseIdentity, Usage};
 use rig_core::error::ProviderError;
 use rig_core::message::{AssistantContent, Message};
+use rig_core::transcript::assistant_text_from_choice;
 use serde::{Deserialize, Serialize};
 
 /// One completion call of a run: what was asked and what came back.
@@ -84,8 +85,6 @@ impl CompletionCall {
 /// `MultiTurnStreamItem::FinalResponse` stream items.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PromptResponse {
-    /// Concatenated assistant text for the final turn.
-    pub output: String,
     /// Aggregated token usage across the whole run.
     pub usage: Usage,
     /// Successfully completed completion requests made by this agent run.
@@ -112,10 +111,11 @@ pub struct PromptResponse {
     /// protocol's own `Done` response never carries it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub memory_append: Option<MemoryAppend>,
-    /// Structured assistant content for the final turn.
-    ///
-    /// Where [`output`](Self::output) is the concatenated text, this preserves
-    /// the individual content parts (text, reasoning, images, …).
+    /// Structured assistant content for the final turn: its text,
+    /// reasoning, images, and other parts. In output-tool mode the model's
+    /// prose and tool calls are replaced by one text part holding the
+    /// serialized structured output. [`output`](Self::output) is derived
+    /// from it.
     pub content: Vec<AssistantContent>,
     /// Number of synthetic output-tool calls in the turn that finalized this
     /// response. Kept crate-private because it is runner bookkeeping rather
@@ -159,17 +159,21 @@ impl MemoryAppend {
 
 impl std::fmt::Display for PromptResponse {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.output.fmt(f)
+        self.output().fmt(f)
     }
 }
 
 impl PromptResponse {
-    /// A response whose final text is `output`, with the run's `usage`.
+    /// A response whose final turn is the single text part `output`, with the
+    /// run's `usage`.
     pub fn new(output: impl Into<String>, usage: Usage) -> Self {
-        let output = output.into();
+        Self::from_content(vec![AssistantContent::text(output)], usage)
+    }
+
+    /// A response whose final turn is `content`.
+    pub(crate) fn from_content(content: Vec<AssistantContent>, usage: Usage) -> Self {
         Self {
-            content: vec![AssistantContent::text(output.clone())],
-            output,
+            content,
             usage,
             completion_calls: Vec::new(),
             messages: Vec::new(),
@@ -202,14 +206,8 @@ impl PromptResponse {
         self
     }
 
-    /// Set the structured assistant content for the final turn.
-    pub fn with_content(mut self, content: Vec<AssistantContent>) -> Self {
-        self.content = content;
-        self
-    }
-
     /// Record how many times the output tool was called.
-    pub fn with_output_tool_calls(mut self, count: usize) -> Self {
+    pub(crate) fn with_output_tool_calls(mut self, count: usize) -> Self {
         self.output_tool_calls = count;
         self
     }
@@ -219,9 +217,10 @@ impl PromptResponse {
         self.output_tool_calls
     }
 
-    /// The concatenated assistant text for the final turn.
-    pub fn output(&self) -> &str {
-        &self.output
+    /// The concatenated text parts of [`content`](Self::content). In
+    /// output-tool mode this is the serialized structured output.
+    pub fn output(&self) -> String {
+        assistant_text_from_choice(&self.content)
     }
 
     /// Aggregated token usage across the whole run.
@@ -240,7 +239,8 @@ impl PromptResponse {
         self.memory_append.as_ref()
     }
 
-    /// The structured assistant content for the final turn.
+    /// The structured assistant content for the final turn (see the
+    /// [field](Self::content)).
     pub fn content(&self) -> &[AssistantContent] {
         &self.content
     }
@@ -257,6 +257,34 @@ impl PromptResponse {
     pub fn requests(&self) -> usize {
         self.completion_calls.len()
     }
+}
+
+/// Replace calls and prose in a finished output-tool turn with final output text,
+/// retaining reasoning and images. Call only after finalization, when remaining
+/// calls are output-tool calls. Persisted history retains prose independently;
+/// returns `None` if no call is present.
+pub(crate) fn finalize_output_tool_choice(
+    choice: &[AssistantContent],
+    output: &str,
+) -> Option<Vec<AssistantContent>> {
+    let finalized_via_output_tool = choice
+        .iter()
+        .any(|item| matches!(item, AssistantContent::ToolCall(_)));
+    if !finalized_via_output_tool {
+        return None;
+    }
+    let mut items: Vec<AssistantContent> = choice
+        .iter()
+        .filter(|item| {
+            !matches!(
+                item,
+                AssistantContent::ToolCall(_) | AssistantContent::Text(_)
+            )
+        })
+        .cloned()
+        .collect();
+    items.push(AssistantContent::text(output.to_string()));
+    Some(items)
 }
 
 use thiserror::Error;

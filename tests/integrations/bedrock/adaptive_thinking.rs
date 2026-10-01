@@ -40,7 +40,7 @@ async fn adaptive_thinking_prompt_caching_tool_roundtrip_regression() {
         .prompt("Call `lookup_harbor_label` exactly once, then answer with the exact tool output.")
         .await
         .expect("adaptive-thinking prompt-caching tool roundtrip should succeed")
-        .output;
+        .output();
 
     assert_contains_all_case_insensitive(&response, &[ALPHA_SIGNAL_OUTPUT]);
 }

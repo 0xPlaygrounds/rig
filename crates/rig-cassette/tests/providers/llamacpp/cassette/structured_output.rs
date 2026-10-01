@@ -126,7 +126,7 @@ async fn output_schema_structured_output() {
             .await
             .expect("output schema prompt should succeed");
         let parsed: WeatherForecast =
-            serde_json::from_str(&response.output).expect("schema response should deserialize");
+            serde_json::from_str(&response.output()).expect("schema response should deserialize");
         assert_weather_forecast(&parsed, &["chicago"]);
     })
     .await;

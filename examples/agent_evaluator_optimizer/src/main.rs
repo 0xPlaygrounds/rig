@@ -63,7 +63,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .build();
 
     let mut memories: Vec<String> = Vec::new();
-    let mut response = generator_agent.prompt(TASK).await?.output;
+    let mut response = generator_agent.prompt(TASK).await?.output();
     memories.push(response.clone());
 
     loop {
@@ -75,7 +75,7 @@ async fn main() -> Result<(), anyhow::Error> {
             break;
         } else {
             let context = format!("{TASK}\n\n{}", eval_result.feedback);
-            response = generator_agent.prompt(context).await?.output;
+            response = generator_agent.prompt(context).await?.output();
             memories.push(response.clone());
         }
     }

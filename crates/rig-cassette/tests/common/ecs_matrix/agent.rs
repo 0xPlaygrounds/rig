@@ -336,7 +336,7 @@ async fn run_prompts(
             drop(stream);
             let output = expect_ending(
                 result.map(|response| {
-                    let output = response.output.clone();
+                    let output = response.output();
                     outputs.push(response);
                     output
                 }),
@@ -356,7 +356,7 @@ async fn run_prompts(
             let result = runner
                 .await
                 .map(|response| {
-                    let output = response.output.clone();
+                    let output = response.output();
                     outputs.push(response);
                     output
                 })
@@ -459,7 +459,7 @@ where
         for response in &responses {
             super::reasoning::assert_history(cell, &log, &response.messages);
             assert_eq!(
-                response.output,
+                response.output(),
                 corpus::golden_answer(&log),
                 "the reasoning is not the answer"
             );
@@ -485,7 +485,7 @@ where
                 &format!("{}: run {n} history", cell.name),
             );
         }
-        let answer = &responses.last().expect("a run").output;
+        let answer = &responses.last().expect("a run").output();
         super::image::assert_answer(cell, answer);
         assert_eq!(*answer, corpus::golden_answer(&log));
     }

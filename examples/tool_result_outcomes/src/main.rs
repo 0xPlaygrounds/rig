@@ -344,7 +344,7 @@ async fn main() -> Result<()> {
         .add_hook(FailureRecorder)
         .add_hook(FatalFailurePolicy)
         .await?
-        .output;
+        .output();
     println!("\nFinal response:\n{response}");
     Ok(())
 }

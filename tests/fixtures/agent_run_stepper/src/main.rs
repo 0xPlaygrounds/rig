@@ -209,7 +209,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
                 run.tool_results(results)?;
             }
-            AgentRunStep::Done(response) => break response.output,
+            AgentRunStep::Done(response) => break response.output(),
         }
     };
 

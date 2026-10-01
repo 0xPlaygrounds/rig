@@ -156,7 +156,7 @@ async fn tool_result_redacted_by_hook_blocking() {
                 .max_turns(5)
                 .await
                 .expect("blocking lookup should succeed")
-                .output;
+                .output();
 
             assert_answer_hides_secret(&response, execution_probe.produced_secret());
         },

@@ -59,7 +59,7 @@ async fn nonstreaming() {
                     "[openrouter] Non-streaming chat failed - likely 400 from dropped reasoning",
                 );
 
-            reasoning::assert_nonstreaming_universal(&result.output, &call_count, "openrouter");
+            reasoning::assert_nonstreaming_universal(&result.output(), &call_count, "openrouter");
         },
     )
     .await;

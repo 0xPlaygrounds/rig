@@ -35,6 +35,6 @@ async fn tool_prompt_across_subproviders() {
             .prompt("Calculate 2 - 5")
             .await
             .expect("prompt should succeed");
-        assert_mentions_expected_number(&response.output, -3);
+        assert_mentions_expected_number(&response.output(), -3);
     }
 }

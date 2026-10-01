@@ -59,7 +59,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Prompt the agent and print the response
     println!("Calculate 15 + 27");
-    let answer = calculator_agent.prompt("Calculate 15 + 27").await?.output;
+    let answer = calculator_agent.prompt("Calculate 15 + 27").await?.output();
     println!("Vertex AI Calculator Agent: {answer}");
 
     Ok(())

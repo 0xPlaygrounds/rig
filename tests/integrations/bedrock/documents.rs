@@ -41,7 +41,7 @@ async fn plaintext_document_prompt() {
         .prompt(document)
         .await
         .expect("document prompt should succeed")
-        .output;
+        .output();
 
     assert_nonempty_response(&response);
     assert_contains_any_case_insensitive(&response, &["safety", "speed", "concurrency"]);
@@ -65,7 +65,7 @@ async fn plaintext_document_with_instruction() {
         })
         .await
         .expect("instruction prompt should succeed")
-        .output;
+        .output();
 
     assert_contains_any_case_insensitive(&response, &["safety", "speed", "concurrency"]);
 }

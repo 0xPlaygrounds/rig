@@ -3,7 +3,7 @@
 //! ```no_run
 //! # async fn example(agent: rig_agent::Agent) -> Result<(), rig_agent::completion::PromptError> {
 //! let response = agent.prompt("Explain ownership.").await?;
-//! println!("{}", response.output);
+//! println!("{}", response.output());
 //! # Ok(())
 //! # }
 //! ```
@@ -619,7 +619,7 @@ impl Agent {
     /// # use futures::StreamExt;
     /// # async fn example(agent: Agent) -> Result<(), Box<dyn std::error::Error>> {
     /// let response = agent.prompt("What is 2 + 2?").max_turns(3).await?;
-    /// println!("{}", response.output);
+    /// println!("{}", response.output());
     ///
     /// let mut stream = agent.prompt("And 3 + 3?").stream();
     /// while let Some(item) = stream.next().await {

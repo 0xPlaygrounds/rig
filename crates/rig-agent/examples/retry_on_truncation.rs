@@ -171,7 +171,7 @@ async fn main() -> Result<()> {
         .stream();
     while let Some(item) = stream.next().await {
         if let MultiTurnStreamItem::FinalResponse(final_response) = item? {
-            println!("  => {}", final_response.output);
+            println!("  => {}", final_response.output());
         }
     }
 

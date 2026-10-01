@@ -92,7 +92,7 @@ async fn tool_choice_auto_effect_log_is_the_golden_fixture() {
                 .max_turns(3)
                 .await
                 .expect("the agent answers");
-            assert!(response.output.contains("42"), "{}", response.output);
+            assert!(response.output().contains("42"), "{}", response.output());
             let log = agent.stamp(recorder.take());
             assert_eq!(
                 families(&log),
@@ -238,7 +238,7 @@ async fn tool_choice_none_effect_log_is_the_golden_fixture() {
             assert_eq!(request.tool_choice, Some(ToolChoice::None));
             assert_eq!(request.tools.len(), 1, "add is still advertised");
             assert_eq!(
-                response.output, "",
+                response.output(), "",
                 "Sonnet 4.6 answers `tool_choice: none` with empty content; if this changes, the cell changes"
             );
             crate::goldens::golden_effects("anthropic_request_shape_tool_choice_none", &log);
@@ -264,7 +264,7 @@ async fn max_tokens_effect_log_is_the_golden_fixture() {
                 .record_to(recorder.clone())
                 .build();
             let response = agent.prompt(BASIC_PROMPT).await.expect("the agent answers");
-            assert!(!response.output.is_empty());
+            assert!(!response.output().is_empty());
             let log = agent.stamp(recorder.take());
             assert_eq!(families(&log), [EffectFamily::Completion]);
             let request = match &log.records[0].kind {
@@ -296,7 +296,7 @@ async fn thinking_unary_effect_log_is_the_golden_fixture() {
                 .prompt(THINKING_PROMPT)
                 .await
                 .expect("the agent answers");
-            assert!(response.output.contains("144"), "{}", response.output);
+            assert!(response.output().contains("144"), "{}", response.output());
             let log = agent.stamp(recorder.take());
             assert_eq!(families(&log), [EffectFamily::Completion]);
             assert!(reasoning_blocks(&log) >= 1, "the completion reasons");
@@ -326,7 +326,7 @@ async fn thinking_streamed_effect_log_is_the_golden_fixture() {
                 if let MultiTurnStreamItem::FinalResponse(response) =
                     item.expect("the stream yields")
                 {
-                    output = Some(response.output);
+                    output = Some(response.output());
                 }
             }
             drop(stream);
@@ -364,7 +364,7 @@ async fn static_context_effect_log_is_the_golden_fixture() {
                 .prompt(CONTEXT_PROMPT)
                 .await
                 .expect("the agent answers");
-            assert!(!response.output.is_empty());
+            assert!(!response.output().is_empty());
             let log = agent.stamp(recorder.take());
             assert_eq!(families(&log), [EffectFamily::Completion]);
             let request = match &log.records[0].kind {
@@ -393,7 +393,7 @@ async fn append_preamble_effect_log_is_the_golden_fixture() {
                 .record_to(recorder.clone())
                 .build();
             let response = agent.prompt(BASIC_PROMPT).await.expect("the agent answers");
-            assert!(response.output.contains("DONE"), "{}", response.output);
+            assert!(response.output().contains("DONE"), "{}", response.output());
             let log = agent.stamp(recorder.take());
             assert_eq!(families(&log), [EffectFamily::Completion]);
             crate::goldens::golden_effects("anthropic_request_shape_append_preamble", &log);
@@ -416,7 +416,7 @@ async fn without_preamble_effect_log_is_the_golden_fixture() {
                 .record_to(recorder.clone())
                 .build();
             let response = agent.prompt(BASIC_PROMPT).await.expect("the agent answers");
-            assert!(!response.output.is_empty());
+            assert!(!response.output().is_empty());
             let log = agent.stamp(recorder.take());
             assert_eq!(families(&log), [EffectFamily::Completion]);
             let request = match &log.records[0].kind {
@@ -450,12 +450,12 @@ async fn output_schema_unary_effect_log_is_the_golden_fixture() {
                 .prompt(STRUCTURED_OUTPUT_PROMPT)
                 .await
                 .expect("the agent answers");
-            let object: serde_json::Value =
-                serde_json::from_str(&response.output).expect("the answer is the schema's object");
+            let object: serde_json::Value = serde_json::from_str(&response.output())
+                .expect("the answer is the schema's object");
             assert!(object["title"].is_string(), "{object}");
             let log = agent.stamp(recorder.take());
             assert_eq!(families(&log), [EffectFamily::Completion]);
-            assert_eq!(last_text(&log), response.output);
+            assert_eq!(last_text(&log), response.output());
             crate::goldens::golden_effects("anthropic_request_shape_output_schema_unary", &log);
         },
     )
@@ -482,7 +482,7 @@ async fn output_schema_streamed_effect_log_is_the_golden_fixture() {
                 if let MultiTurnStreamItem::FinalResponse(response) =
                     item.expect("the stream yields")
                 {
-                    output = Some(response.output);
+                    output = Some(response.output());
                 }
             }
             drop(stream);
@@ -518,7 +518,7 @@ async fn prior_history_effect_log_is_the_golden_fixture() {
                 .history(prior_history())
                 .await
                 .expect("the agent answers");
-            assert!(response.output.contains("Ada"), "{}", response.output);
+            assert!(response.output().contains("Ada"), "{}", response.output());
             let log = agent.stamp(recorder.take());
             assert_eq!(families(&log), [EffectFamily::Completion]);
             let request = match &log.records[0].kind {

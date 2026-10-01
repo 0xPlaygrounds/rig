@@ -202,7 +202,7 @@ async fn agent_prompt_empty_stop_sequence() {
                 .prompt(IMMEDIATE_PROMPT)
                 .await
                 .expect("agent prompt must not fail on a completed empty turn")
-                .output;
+                .output();
             assert!(
                 response.trim().is_empty(),
                 "the turn produced no text: {response:?}"

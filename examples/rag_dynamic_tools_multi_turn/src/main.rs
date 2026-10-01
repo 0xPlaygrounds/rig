@@ -181,7 +181,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .prompt("Calculate (3 - 7) + 17")
         .max_turns(10)
         .await?
-        .output;
+        .output();
 
     println!("{response}");
 

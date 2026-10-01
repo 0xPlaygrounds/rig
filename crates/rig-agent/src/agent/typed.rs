@@ -103,7 +103,7 @@ enum OutputSource {
 #[derive(Debug)]
 pub struct TypedOutput<T> {
     source: OutputSource,
-    retries: u64,
+    retries: usize,
     _t: PhantomData<fn() -> T>,
 }
 
@@ -151,7 +151,7 @@ where
     /// Retry a failed attempt up to `retries` more times. An attempt fails when
     /// the run errors, produces no output, or produces output that does not
     /// parse as `T`. Usage accumulates across attempts.
-    pub fn retries(mut self, retries: u64) -> Self {
+    pub fn retries(mut self, retries: usize) -> Self {
         self.output.retries = retries;
         self
     }
@@ -215,13 +215,14 @@ fn recover_output<T: DeserializeOwned>(
     response: &PromptResponse,
     source: OutputSource,
 ) -> Result<T, StructuredOutputError> {
+    let output = response.output();
     match source {
         OutputSource::Native => {
-            if response.output.is_empty() {
+            if output.is_empty() {
                 return Err(StructuredOutputError::EmptyResponse);
             }
-            deserialize_structured_output(&response.output)
-                .map_err(|error| deserialization_error(&response.output, error))
+            deserialize_structured_output(&output)
+                .map_err(|error| deserialization_error(&output, error))
         }
         OutputSource::OutputTool => {
             let submissions = response.output_tool_calls();
@@ -229,7 +230,7 @@ fn recover_output<T: DeserializeOwned>(
             // schema-valid text, and a model that rejects forced tool choice
             // answers in native structured output instead of calling the tool.
             if submissions == 0
-                && let Ok(value) = serde_json::from_str::<T>(response.output.trim())
+                && let Ok(value) = serde_json::from_str::<T>(output.trim())
             {
                 return Ok(value);
             }
@@ -244,8 +245,7 @@ fn recover_output<T: DeserializeOwned>(
                     "Multiple submit calls detected, using the first one. Providers / agents should only ensure one submit call."
                 );
             }
-            serde_json::from_str(&response.output)
-                .map_err(|error| deserialization_error(&response.output, error))
+            serde_json::from_str(&output).map_err(|error| deserialization_error(&output, error))
         }
     }
 }

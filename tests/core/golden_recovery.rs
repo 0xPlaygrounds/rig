@@ -67,7 +67,7 @@ async fn invalid_tool_call_recovery_effect_log_is_the_golden_fixture() {
         .max_invalid_tool_call_retries(1)
         .await
         .expect("the retry recovers");
-    assert_eq!(response.output, "2 + 3 = 5");
+    assert_eq!(response.output(), "2 + 3 = 5");
     let log = agent.stamp(recorder.take());
     assert_eq!(
         log.records

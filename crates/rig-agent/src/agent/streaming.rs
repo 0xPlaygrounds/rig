@@ -26,7 +26,6 @@ use tracing_futures::Instrument;
 
 use crate::completion::PromptError;
 use crate::run::response::{CompletionCall, PromptResponse};
-use crate::run::transcript::assistant_text_from_choice;
 use rig_core::message::Message;
 
 /// The stream a streamed run yields: its items, then its ending.
@@ -131,8 +130,7 @@ fn final_response_from_content(
     completion_calls: Vec<CompletionCall>,
     history: Vec<Message>,
 ) -> PromptResponse {
-    PromptResponse::new(assistant_text_from_choice(&content), aggregated_usage)
-        .with_content(content)
+    PromptResponse::from_content(content, aggregated_usage)
         .with_completion_calls(completion_calls)
         .with_messages(history)
 }
@@ -183,34 +181,6 @@ impl MultiTurnStreamItem {
             history,
         ))
     }
-}
-
-/// Replace calls and prose in a finished output-tool turn with final output text,
-/// retaining reasoning and images. Call only after finalization, when remaining
-/// calls are output-tool calls. Persisted history retains prose independently;
-/// returns `None` if no call is present.
-pub(crate) fn finalize_streamed_choice(
-    last_final_choice: &[AssistantContent],
-    output: &str,
-) -> Option<Vec<AssistantContent>> {
-    let finalized_via_output_tool = last_final_choice
-        .iter()
-        .any(|item| matches!(item, AssistantContent::ToolCall(_)));
-    if !finalized_via_output_tool {
-        return None;
-    }
-    let mut items: Vec<AssistantContent> = last_final_choice
-        .iter()
-        .filter(|item| {
-            !matches!(
-                item,
-                AssistantContent::ToolCall(_) | AssistantContent::Text(_)
-            )
-        })
-        .cloned()
-        .collect();
-    items.push(AssistantContent::text(output.to_string()));
-    Some(items)
 }
 
 impl AgentRunner {

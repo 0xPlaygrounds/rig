@@ -181,7 +181,7 @@ async fn reasoning_gpt5_nano_agent_blocking_cap() {
                 .prompt(PROMPT)
                 .await
                 .expect("an agent-level cap must reach a reasoning model")
-                .output;
+                .output();
 
             assert_nonempty_response(&response);
         },
@@ -225,7 +225,7 @@ async fn reasoning_gpt5_nano_tool_turn_cap() {
                 .max_turns(3)
                 .await
                 .expect("a capped tool-calling turn must be accepted")
-                .output;
+                .output();
 
             assert!(response.contains('7'), "{response}");
         },

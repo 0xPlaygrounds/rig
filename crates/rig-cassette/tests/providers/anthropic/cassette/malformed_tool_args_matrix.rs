@@ -170,7 +170,7 @@ async fn blocking_healthy_control() {
                 .prompt(STREAMING_TOOLS_PROMPT)
                 .await
                 .expect("blocking tool prompt should succeed");
-            assert_mentions_expected_number(&response.output, -3);
+            assert_mentions_expected_number(&response.output(), -3);
         },
     )
     .await;

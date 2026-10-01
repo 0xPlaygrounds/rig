@@ -21,7 +21,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let agent = AgentBuilder::new(model.completion())
         .preamble("You are a concise assistant.")
         .build();
-    println!("{}", agent.prompt("Explain ownership briefly.").await?.output);
+    println!("{}", agent.prompt("Explain ownership briefly.").await?.output());
     Ok(())
 }
 ```

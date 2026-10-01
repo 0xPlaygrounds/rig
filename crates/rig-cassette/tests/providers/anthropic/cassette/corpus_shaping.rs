@@ -51,7 +51,7 @@ async fn answer(agent: &Agent, prompt: &str) -> String {
         .max_turns(3)
         .await
         .expect("the agent answers")
-        .output
+        .output()
 }
 
 /// `tool_choice: Required` on turn 1 only: the second request is back to
@@ -173,7 +173,7 @@ async fn extra_context_streamed_effect_log_is_the_golden_fixture() {
                 if let MultiTurnStreamItem::FinalResponse(response) =
                     item.expect("the stream yields")
                 {
-                    output = Some(response.output);
+                    output = Some(response.output());
                 }
             }
             drop(stream);

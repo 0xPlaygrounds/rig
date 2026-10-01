@@ -223,7 +223,7 @@ async fn nested_arguments_roundtrip_nonstreaming() {
                 .chat(NESTED_ARGS_PROMPT, &mut history)
                 .await
                 .expect("nested-args tool chat should succeed")
-                .output;
+                .output();
 
             assert!(
                 result.contains("SAKURA-77"),

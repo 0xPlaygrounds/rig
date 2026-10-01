@@ -177,7 +177,7 @@ async fn chat_blocking_agent_prompt_surfaces_refusal() {
                 .prompt(REFUSED_PROMPT)
                 .await
                 .expect("an agent must deliver the refusal, not an empty-response error")
-                .output;
+                .output();
 
             assert_nonempty_response(&response);
         },
@@ -417,7 +417,7 @@ async fn chat_refusal_turn_survives_into_history() {
                 .chat(REFUSED_PROMPT, &mut history)
                 .await
                 .expect("refusal turn")
-                .output;
+                .output();
             assert_nonempty_response(&refusal);
             assert!(
                 history.len() >= 2,
@@ -428,7 +428,7 @@ async fn chat_refusal_turn_survives_into_history() {
                 .chat(ANSWERABLE_PROMPT, &mut history)
                 .await
                 .expect("a follow-up over a history containing a refusal must be accepted")
-                .output;
+                .output();
             assert_nonempty_response(&followup);
         },
     )
@@ -605,7 +605,7 @@ async fn responses_agent_blocking_refusal_surfaces() {
                 .prompt(REFUSED_PROMPT)
                 .await
                 .expect("refusal turn")
-                .output;
+                .output();
 
             assert_nonempty_response(&response);
         },

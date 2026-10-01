@@ -65,7 +65,7 @@ async fn concurrent_notes_effect_log_is_the_golden_fixture() {
             .tool_concurrency(2)
             .await
             .expect("the agent answers")
-            .output;
+            .output();
         assert!(!output.is_empty());
         let log = agent.stamp(recorder.take());
         drop((agent, dispatcher, registrar));

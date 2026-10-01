@@ -18,7 +18,7 @@ async fn completion_smoke() {
             .prompt(BASIC_PROMPT)
             .await
             .expect("completion should succeed")
-            .output;
+            .output();
 
         assert_nonempty_response(&response);
     })
@@ -42,7 +42,7 @@ async fn completion_with_perplexity_options() {
                 .prompt("Name one notable recent development in Rust programming language tooling.")
                 .await
                 .expect("completion with Perplexity options should succeed")
-                .output;
+                .output();
 
             assert_nonempty_response(&response);
         },

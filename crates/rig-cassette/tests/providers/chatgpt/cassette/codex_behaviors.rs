@@ -167,7 +167,7 @@ async fn explicit_preamble_and_mid_conversation_system_messages_are_instructions
                 .expect("chat with a mid-conversation system message should succeed");
 
             assert!(
-                result.output.contains("FALCON-9"),
+                result.output().contains("FALCON-9"),
                 "the mid-conversation system message must reach the model, got {result:?}"
             );
         },
@@ -195,8 +195,8 @@ async fn default_instructions_merge_with_explicit_preamble() {
                 .expect("default and explicit instructions should both reach the backend");
 
             assert!(
-                result.output.contains("DEFAULT-CODEX-MARKER")
-                    && result.output.contains("EXPLICIT-CODEX-MARKER"),
+                result.output().contains("DEFAULT-CODEX-MARKER")
+                    && result.output().contains("EXPLICIT-CODEX-MARKER"),
                 "merged instructions should influence the answer, got {result:?}"
             );
         },

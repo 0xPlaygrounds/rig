@@ -27,6 +27,6 @@ async fn multimodal_image_prompt() {
     };
     let response = agent.prompt(image).await.expect("prompt should succeed");
 
-    assert_nonempty_response(&response.output);
-    assert_contains_any_case_insensitive(&response.output, &["ant", "insect"]);
+    assert_nonempty_response(&response.output());
+    assert_contains_any_case_insensitive(&response.output(), &["ant", "insect"]);
 }

@@ -51,7 +51,7 @@ async fn main() -> Result<()> {
         .build();
 
     println!("Sending a video-understanding request to Gemini...");
-    let response = agent.prompt(build_video_prompt()?).await?.output;
+    let response = agent.prompt(build_video_prompt()?).await?.output();
     println!("Summary:\n{response}");
 
     Ok(())

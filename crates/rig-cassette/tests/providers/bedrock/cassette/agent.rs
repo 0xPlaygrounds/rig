@@ -21,7 +21,7 @@ async fn completion_smoke() {
             .prompt(BASIC_PROMPT)
             .await
             .expect("completion should succeed")
-            .output;
+            .output();
 
         assert_nonempty_response(&response);
     })
@@ -44,7 +44,7 @@ async fn tool_roundtrip_smoke() {
             .prompt(STREAMING_TOOLS_PROMPT)
             .await
             .expect("tool prompt should succeed")
-            .output;
+            .output();
 
         assert_mentions_expected_number(&response, -3);
     })
@@ -67,7 +67,7 @@ async fn prompt_caching_completion_smoke() {
                 .prompt(BASIC_PROMPT)
                 .await
                 .expect("prompt-caching completion should succeed")
-                .output;
+                .output();
 
             assert_nonempty_response(&response);
         },

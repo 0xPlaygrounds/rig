@@ -37,7 +37,7 @@ async fn context_smoke() {
             .await
             .expect("context prompt should succeed");
 
-        assert_contains_any_case_insensitive(&response.output, &["ancient tool"]);
+        assert_contains_any_case_insensitive(&response.output(), &["ancient tool"]);
     })
     .await;
 }

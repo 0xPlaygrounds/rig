@@ -481,7 +481,7 @@ async fn parallel_tool_calls_single_turn_nonstreaming() -> Result<()> {
             let response = agent.chat(TWO_TOOL_STREAM_PROMPT, &mut history).await?;
 
             assert_contains_all_case_insensitive(
-                &response.output,
+                &response.output(),
                 &[ALPHA_SIGNAL_OUTPUT, BETA_SIGNAL_OUTPUT],
             );
             let calls = history_tool_calls(&history);

@@ -18,5 +18,5 @@ async fn completion_smoke() {
         .await
         .expect("prompt should succeed");
 
-    assert_nonempty_response(&response.output);
+    assert_nonempty_response(&response.output());
 }

@@ -210,7 +210,7 @@ async fn main() -> Result<()> {
                 })
                 .collect::<Vec<_>>();
             match tokio::time::timeout(TIMEOUT, agent.chat(input, &mut messages)).await {
-                Ok(Ok(response)) => response.output,
+                Ok(Ok(response)) => response.output(),
                 Ok(Err(error)) => {
                     eprintln!("Agent reply failed (conversation unchanged): {error}");
                     continue;

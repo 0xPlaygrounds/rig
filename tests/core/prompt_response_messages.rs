@@ -63,7 +63,7 @@ async fn standard_prompt_returns_string() {
         .prompt("hi")
         .await
         .expect("prompt should succeed")
-        .output;
+        .output();
 
     assert_eq!(result, "hello from mock");
 }
@@ -75,7 +75,7 @@ async fn prompt_response_populates_messages() {
 
     let resp = agent.prompt("hi").await.expect("prompt should succeed");
 
-    assert_eq!(resp.output, "hello from mock");
+    assert_eq!(resp.output(), "hello from mock");
     assert_eq!(resp.usage.input_tokens, Some(10));
     assert_eq!(resp.usage.output_tokens, Some(5));
 
@@ -150,7 +150,7 @@ async fn standard_with_history_works() {
         .await
         .expect("prompt should succeed");
 
-    assert_eq!(result.output, "hello from mock");
+    assert_eq!(result.output(), "hello from mock");
 
     // Note: The input history is not mutated. To get the updated history,
     // access `response.messages`.
@@ -170,7 +170,7 @@ async fn multi_turn_messages_include_tool_calls() {
         .await
         .expect("prompt should succeed");
 
-    assert_eq!(resp.output, "The answer is 5");
+    assert_eq!(resp.output(), "The answer is 5");
 
     let messages = resp.messages;
 
@@ -228,7 +228,7 @@ async fn prompt_response_new_backward_compat() {
 
     let resp = PromptResponse::new("output text", Usage::default());
 
-    assert_eq!(resp.output, "output text");
+    assert_eq!(resp.output(), "output text");
     assert!(resp.messages.is_empty());
 }
 
@@ -303,11 +303,11 @@ async fn prompt_response_works_without_with_history() {
         .await
         .expect("prompt should succeed");
 
-    let messages = resp.messages;
+    let messages = resp.messages();
 
     // Should have full multi-turn history
     assert_eq!(messages.len(), 4);
-    assert_eq!(resp.output, "The answer is 5");
+    assert_eq!(resp.output(), "The answer is 5");
 }
 
 /// Test 10: `Agent::chat` appends the prompt and response messages to the
@@ -322,7 +322,7 @@ async fn chat_appends_prompt_and_assistant_to_history() {
         .await
         .expect("chat should succeed");
 
-    assert_eq!(response.output, "hello from mock");
+    assert_eq!(response.output(), "hello from mock");
     assert_eq!(
         history.len(),
         2,
@@ -381,7 +381,7 @@ async fn chat_appends_tool_roundtrip_to_history() {
         .chat("What is 2 + 3?", &mut history)
         .await
         .expect("chat should succeed")
-        .output;
+        .output();
 
     assert_eq!(output, "The answer is 5");
     assert_eq!(

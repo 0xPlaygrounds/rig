@@ -225,7 +225,7 @@ async fn nested_arguments_roundtrip_nonstreaming() {
                 .expect("nested-args tool chat should succeed");
 
             assert!(
-                result.output.contains("SAKURA-77"),
+                result.output().contains("SAKURA-77"),
                 "final answer should repeat the tool's confirmation code, got {result:?}"
             );
 

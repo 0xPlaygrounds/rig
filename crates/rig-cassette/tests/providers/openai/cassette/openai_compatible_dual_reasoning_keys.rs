@@ -55,7 +55,7 @@ async fn dual_reasoning_keys_tool_roundtrip() {
                 .chat(reasoning::TOOL_USER_PROMPT, &mut Vec::<Message>::new())
                 .await
                 .expect("a reply carrying both reasoning keys decodes")
-                .output;
+                .output();
             reasoning::assert_nonstreaming_universal(&result, &call_count, "dual-reasoning-keys");
         },
     )

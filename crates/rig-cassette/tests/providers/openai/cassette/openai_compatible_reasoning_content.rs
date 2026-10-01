@@ -48,7 +48,7 @@ async fn nonstreaming_reasoning_content_tool_roundtrip() {
                 .chat(reasoning::TOOL_USER_PROMPT, &mut Vec::<Message>::new())
                 .await
                 .expect("OpenAI-compatible provider should accept replayed reasoning content")
-                .output;
+                .output();
 
             reasoning::assert_nonstreaming_universal(&result, &call_count, "openai-compatible");
         },

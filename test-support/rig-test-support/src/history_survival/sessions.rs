@@ -317,7 +317,7 @@ pub async fn run_memory(
                 if let MultiTurnStreamItem::FinalResponse(response) =
                     item.unwrap_or_else(|error| panic!("[{}] stream: {error}", cell.provider))
                 {
-                    output = Some(response.output);
+                    output = Some(response.output());
                 }
             }
             output.expect("a final response")
@@ -327,7 +327,7 @@ pub async fn run_memory(
                 .max_turns(3)
                 .await
                 .unwrap_or_else(|error| panic!("[{}] prompt: {error}", cell.provider))
-                .output
+                .output()
         };
         assert!(
             output.contains(crate::support::ALPHA_SIGNAL_OUTPUT),

@@ -63,7 +63,7 @@ async fn image_analysis_prompt() {
             .await
             .expect("image prompt should succeed");
 
-        assert_nonempty_response(&response.output);
+        assert_nonempty_response(&response.output());
     })
     .await;
 }
@@ -85,7 +85,7 @@ async fn pdf_analysis_prompt() {
             .await
             .expect("pdf prompt should succeed");
 
-        assert_nonempty_response(&response.output);
+        assert_nonempty_response(&response.output());
     })
     .await;
 }
@@ -109,7 +109,7 @@ async fn mixed_multimodal_prompt() {
             .await
             .expect("mixed content prompt should succeed");
 
-        assert_nonempty_response(&response.output);
+        assert_nonempty_response(&response.output());
     })
     .await;
 }
@@ -131,7 +131,7 @@ async fn video_analysis_prompt() {
             .await
             .expect("video prompt should succeed");
 
-        assert_nonempty_response(&response.output);
+        assert_nonempty_response(&response.output());
     })
     .await;
 }
@@ -153,7 +153,7 @@ async fn audio_analysis_prompt() {
             .await
             .expect("audio prompt should succeed");
 
-        assert_nonempty_response(&response.output);
+        assert_nonempty_response(&response.output());
     })
     .await;
 }

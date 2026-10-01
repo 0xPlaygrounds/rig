@@ -162,7 +162,7 @@ async fn system_messages_as_input_items_mid_conversation() {
                 .chat("What is my codename?", &mut history)
                 .await
                 .expect("chat with a mid-conversation system message should succeed")
-                .output;
+                .output();
 
             assert!(
                 result.contains("FALCON-9"),

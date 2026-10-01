@@ -72,7 +72,7 @@ async fn main() -> Result<(), anyhow::Error> {
         }
     };
 
-    let response = agent.prompt(prompt).await?.output;
+    let response = agent.prompt(prompt).await?.output();
     println!("{response}");
 
     Ok(())

@@ -28,7 +28,7 @@ fn usage(total_tokens: u64) -> Usage {
     }
 }
 
-fn extractor(model: MockCompletionModel, retries: u64) -> Extractor<Person> {
+fn extractor(model: MockCompletionModel, retries: usize) -> Extractor<Person> {
     ExtractorBuilder::new(model).retries(retries).build()
 }
 

@@ -57,7 +57,7 @@ async fn an_awaited_prompt_runs_unary() {
 
     let response = agent.prompt("go").await.expect("a unary run");
 
-    assert_eq!(response.output, "collected");
+    assert_eq!(response.output(), "collected");
     assert!(probe.seen.load(Ordering::SeqCst));
     assert!(!probe.streaming.load(Ordering::SeqCst));
 }
@@ -75,7 +75,7 @@ async fn a_streamed_prompt_runs_streaming() {
     let mut final_output = None;
     while let Some(item) = stream.next().await {
         if let MultiTurnStreamItem::FinalResponse(response) = item.expect("a stream item") {
-            final_output = Some(response.output);
+            final_output = Some(response.output());
         }
     }
 
@@ -152,7 +152,7 @@ async fn resume_continues_a_run_without_a_prompt() {
         .await
         .expect("the resumed run completes");
 
-    assert_eq!(response.output, "collected");
+    assert_eq!(response.output(), "collected");
     assert!(
         probe.seen.load(Ordering::SeqCst),
         "a hook added on the resuming runner fires"
@@ -184,7 +184,7 @@ async fn resume_streams_a_run_without_a_prompt() {
     let mut final_output = None;
     while let Some(item) = stream.next().await {
         if let MultiTurnStreamItem::FinalResponse(response) = item.expect("a stream item") {
-            final_output = Some(response.output);
+            final_output = Some(response.output());
         }
     }
 
@@ -218,7 +218,7 @@ async fn resume_neither_loads_nor_saves_memory() {
         .await
         .expect("the resumed run completes");
 
-    assert_eq!(response.output, "collected");
+    assert_eq!(response.output(), "collected");
     assert_eq!(memory.load_count(), 0);
     assert_eq!(memory.append_count(), 0);
 
@@ -230,7 +230,7 @@ async fn resume_neither_loads_nor_saves_memory() {
     let mut final_output = None;
     while let Some(item) = stream.next().await {
         if let MultiTurnStreamItem::FinalResponse(response) = item.expect("a stream item") {
-            final_output = Some(response.output);
+            final_output = Some(response.output());
         }
     }
     assert_eq!(final_output.as_deref(), Some("streamed"));

@@ -60,7 +60,7 @@ async fn nonstreaming() {
                 .await
                 .expect("[copilot] Non-streaming chat failed");
 
-            reasoning::assert_nonstreaming_universal(&result.output, &call_count, "copilot");
+            reasoning::assert_nonstreaming_universal(&result.output(), &call_count, "copilot");
         },
     )
     .await;

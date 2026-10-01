@@ -140,7 +140,7 @@ async fn main() -> Result<()> {
         .add_hook(ForceToolEveryTurn)
         .await
     {
-        Ok(answer) => println!("(unexpected) got a final answer: {}\n", answer.output),
+        Ok(answer) => println!("(unexpected) got a final answer: {}\n", answer.output()),
         Err(PromptError::MaxTurns { max_turns, .. }) => println!(
             "hit the max-turns limit after {max_turns} model calls — every turn re-forced a tool call, so \
              the model never produced a final answer.\n"
@@ -157,7 +157,7 @@ async fn main() -> Result<()> {
         .max_turns(4)
         .add_hook(ForceToolOnFirstTurn)
         .await?
-        .output;
+        .output();
     println!("final answer: {answer}");
 
     Ok(())

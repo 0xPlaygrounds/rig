@@ -17,7 +17,7 @@ async fn anthropic_compatible_completion_smoke() {
     .prompt(BASIC_PROMPT)
     .await
     .expect("Moonshot Anthropic-compatible completion should succeed")
-    .output;
+    .output();
 
     assert_nonempty_response(&response);
 }

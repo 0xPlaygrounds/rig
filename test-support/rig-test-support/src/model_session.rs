@@ -1004,7 +1004,7 @@ pub async fn anthropic(
             ]))
             .await
             .unwrap_or_else(|error| panic!("{}: file id: {error}", session.run))
-            .output;
+            .output();
         assert!(
             answer.contains(PAGE_ONE_VERIFIER),
             "{}: page one's token: {answer:?}",

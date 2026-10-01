@@ -33,7 +33,7 @@ async fn url_pdf_document_prompt() {
                 })
                 .await
                 .expect("URL PDF document prompt should succeed")
-                .output;
+                .output();
 
             assert_nonempty_response(&response);
             assert_contains_any_case_insensitive(&response, &["bitcoin"]);

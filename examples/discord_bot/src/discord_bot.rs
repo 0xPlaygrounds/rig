@@ -168,7 +168,7 @@ impl Handler {
         // Generate response. `chat` appends the user prompt and generated
         // assistant/tool messages onto the history snapshot.
         let response = match self.state.agent.chat(&msg.content, &mut history).await {
-            Ok(resp) => resp.output,
+            Ok(resp) => resp.output(),
             Err(e) => {
                 eprintln!("Agent error: {e}");
                 let _ = msg

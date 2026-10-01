@@ -40,7 +40,7 @@ async fn output_tool_text_reprompt_effect_log_is_the_golden_fixture() {
         .max_turns(3)
         .await
         .expect("the reprompt recovers");
-    assert_eq!(response.output, event().to_string());
+    assert_eq!(response.output(), event().to_string());
     let log = agent.stamp(recorder.take());
     assert_eq!(
         families(&log),
@@ -73,7 +73,7 @@ async fn output_tool_missing_field_reprompt_effect_log_is_the_golden_fixture() {
         .max_turns(3)
         .await
         .expect("the reprompt recovers");
-    assert_eq!(response.output, event().to_string());
+    assert_eq!(response.output(), event().to_string());
     let log = agent.stamp(recorder.take());
     assert_eq!(
         families(&log),

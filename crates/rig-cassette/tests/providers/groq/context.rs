@@ -26,7 +26,7 @@ async fn context_smoke() {
         .expect("context prompt should succeed");
 
     assert_contains_any_case_insensitive(
-        &response.output,
+        &response.output(),
         &[
             "ancient tool",
             "farming tool",

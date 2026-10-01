@@ -61,7 +61,7 @@ async fn openai_responses_agent_prompt_against_openrouter_completes() {
                 .await
                 .expect("agent.prompt should not fail on OpenRouter service_tier metadata");
 
-            assert_nonempty_response(&response.output);
+            assert_nonempty_response(&response.output());
         },
     )
     .await;

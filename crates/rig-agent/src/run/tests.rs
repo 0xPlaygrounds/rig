@@ -321,7 +321,7 @@ fn text_only_run_completes_in_one_turn() {
     assert!(!suppressed);
 
     let response = expect_done(&mut run);
-    assert_eq!(response.output, "hi there");
+    assert_eq!(response.output(), "hi there");
     let messages = response.messages;
     assert_eq!(messages.len(), 2);
     assert!(run.is_done());
@@ -375,7 +375,7 @@ fn repeated_model_turn_reuses_prompt_without_recording_rejected_response() {
             .expect("second response"),
     );
     let response = expect_done(&mut run);
-    assert_eq!(response.output, "accepted");
+    assert_eq!(response.output(), "accepted");
     assert_eq!(response.usage, first_usage + second_usage);
     assert_eq!(response.completion_calls.len(), 2);
     let messages = response.messages;
@@ -478,7 +478,7 @@ fn tool_roundtrip_threads_history_and_usage() {
     );
 
     let response = expect_done(&mut run);
-    assert_eq!(response.output, "the answer is 2");
+    assert_eq!(response.output(), "the answer is 2");
     assert_eq!(response.usage, usage(30, 12));
     assert_eq!(response.completion_calls.len(), 2);
     assert_eq!(response.completion_calls[0].call_index, 0);
@@ -895,7 +895,7 @@ fn out_of_protocol_calls_are_rejected_without_corrupting_state() {
         run.model_response(text_turn("hi"))
             .expect("model_response should still succeed"),
     );
-    assert_eq!(expect_done(&mut run).output, "hi");
+    assert_eq!(expect_done(&mut run).output(), "hi");
 }
 
 #[test]
@@ -926,8 +926,8 @@ fn done_step_is_idempotent() {
         run.model_response(text_turn("hi"))
             .expect("model_response should succeed"),
     );
-    assert_eq!(expect_done(&mut run).output, "hi");
-    assert_eq!(expect_done(&mut run).output, "hi");
+    assert_eq!(expect_done(&mut run).output(), "hi");
+    assert_eq!(expect_done(&mut run).output(), "hi");
 }
 
 #[test]
@@ -974,7 +974,7 @@ fn serialized_run_alone_carries_pending_tool_calls() {
             .model_response(text_turn("done"))
             .expect("model_response should succeed"),
     );
-    assert_eq!(expect_done(&mut resumed).output, "done");
+    assert_eq!(expect_done(&mut resumed).output(), "done");
 }
 
 #[test]
@@ -1117,7 +1117,7 @@ fn serde_round_trip_mid_run_resumes_identically() {
         serde_json::from_str(&serialized).expect("mid-run state should deserialize");
     let resumed = finish(restored);
 
-    assert_eq!(resumed.output, uninterrupted.output);
+    assert_eq!(resumed.output(), uninterrupted.output());
     assert_eq!(resumed.usage, uninterrupted.usage);
     assert_eq!(resumed.completion_calls, uninterrupted.completion_calls);
     // Direct value comparison: with `additional_params` a named field,
@@ -1230,7 +1230,7 @@ fn output_tool_call_finalizes_run_with_arguments() {
 
     // The output tool is not executed; its arguments become the run output.
     let response = expect_done(&mut run);
-    assert_eq!(response.output, r#"{"x":1}"#);
+    assert_eq!(response.output(), r#"{"x":1}"#);
     assert!(run.is_done());
 
     // The finalizing turn is persisted as assistant text, not as the raw
@@ -1241,6 +1241,47 @@ fn output_tool_call_finalizes_run_with_arguments() {
         messages.last(),
         Some(Message::Assistant { content, .. })
             if assistant_text_from_choice(content) == r#"{"x":1}"#
+    ));
+}
+
+#[test]
+fn output_tool_response_content_is_the_output_while_history_keeps_prose() {
+    let mut run = AgentRun::new("summarize").with_output_tool_name("final_result");
+
+    expect_call_model(&mut run);
+    let turn = ModelTurn::new(
+        None,
+        vec![
+            AssistantContent::text("Here is the summary:"),
+            tool_call("call_1", "final_result"),
+        ],
+        Usage::default(),
+        tool_names(&["add"]),
+        tool_names(&["add", "final_result"]),
+        hand_raw(),
+    );
+    expect_continue(
+        run.model_response(turn)
+            .expect("model_response should succeed"),
+    );
+
+    let response = expect_done(&mut run);
+    assert_eq!(response.output(), r#"{"x":1}"#);
+    assert_eq!(
+        assistant_text_from_choice(response.content()),
+        response.output()
+    );
+    assert!(
+        !response
+            .content()
+            .iter()
+            .any(|item| matches!(item, AssistantContent::ToolCall(_))),
+        "the output-tool call is replaced by its output"
+    );
+    assert!(matches!(
+        response.messages.last(),
+        Some(Message::Assistant { content, .. })
+            if assistant_text_from_choice(content) == r#"Here is the summary:{"x":1}"#
     ));
 }
 
@@ -1260,11 +1301,11 @@ fn scalar_output_tool_call_is_serialized_as_reparseable_json() {
 
     let response = expect_done(&mut run);
     assert_eq!(
-        serde_json::from_str::<serde_json::Value>(&response.output)
+        serde_json::from_str::<serde_json::Value>(&response.output())
             .expect("scalar output must remain valid JSON"),
         json!("complete")
     );
-    assert_eq!(response.output, r#""complete""#);
+    assert_eq!(response.output(), r#""complete""#);
 
     let messages = response.messages;
     assert_no_orphan_tool_use(&messages);
@@ -1301,7 +1342,7 @@ fn output_tool_call_wins_over_sibling_real_tool_calls() {
     );
 
     let response = expect_done(&mut run);
-    assert_eq!(response.output, r#"{"x":1}"#);
+    assert_eq!(response.output(), r#"{"x":1}"#);
     assert!(run.is_done());
 
     // Both the sibling `add` call and the output-tool call are dropped from
@@ -1410,7 +1451,7 @@ fn tool_mode_accepts_valid_json_text_without_reprompting() {
     );
 
     let response = expect_done(&mut run);
-    assert_eq!(response.output, r#"{"summary":"all good"}"#);
+    assert_eq!(response.output(), r#"{"summary":"all good"}"#);
     assert!(run.is_done());
 }
 
@@ -1428,7 +1469,7 @@ fn tool_mode_finalizes_best_effort_when_model_call_budget_exhausted() {
     );
 
     let response = expect_done(&mut run);
-    assert_eq!(response.output, "invalid output");
+    assert_eq!(response.output(), "invalid output");
     assert_eq!(run.turn(), 1);
 }
 
@@ -1449,7 +1490,7 @@ fn tool_mode_finalizes_best_effort_when_output_retry_budget_exhausted() {
     );
 
     let response = expect_done(&mut run);
-    assert_eq!(response.output, r#"{"x":1}"#);
+    assert_eq!(response.output(), r#"{"x":1}"#);
     let messages = response.messages;
     assert_no_orphan_tool_use(&messages);
 }
@@ -1556,7 +1597,7 @@ fn durable_human_in_the_loop_approval_survives_serialize_resume() {
             .expect("model_response 2"),
     );
     let response = expect_done(&mut resumed);
-    assert_eq!(response.output, "done");
+    assert_eq!(response.output(), "done");
 }
 
 // ---------------------------------------------------------------------

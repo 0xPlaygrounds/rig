@@ -39,7 +39,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .build();
 
     let response = agent.prompt("Hello!").await?;
-    println!("{}", response.output);
+    println!("{}", response.output());
 
     Ok(())
 }

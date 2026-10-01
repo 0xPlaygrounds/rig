@@ -32,7 +32,7 @@ async fn middleware_phases_observe_a_unary_completion() {
                 .prompt(BASIC_PROMPT)
                 .await
                 .expect("completion should succeed");
-            assert_nonempty_response(&response.output);
+            assert_nonempty_response(&response.output());
         },
     )
     .await;
@@ -89,7 +89,7 @@ async fn run_start_rewrite_reaches_the_provider() {
                 .await
                 .expect("completion should succeed");
             assert!(
-                response.output.to_uppercase().contains("PINEAPPLE"),
+                response.output().to_uppercase().contains("PINEAPPLE"),
                 "the provider answered the rewritten prompt, not the original: {response:?}"
             );
         },
@@ -150,7 +150,7 @@ async fn run_settles_once_across_a_multi_turn_tool_run_with_durable_state() {
                 .await
                 .expect("tool run should succeed");
             assert!(
-                response.output.contains("22"),
+                response.output().contains("22"),
                 "the tool result reached the final answer: {response:?}"
             );
         },

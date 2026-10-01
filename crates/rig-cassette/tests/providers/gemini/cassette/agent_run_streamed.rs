@@ -189,7 +189,7 @@ async fn streamed_hand_driven_multi_turn_run_completes() {
             };
 
             assert_mentions_expected_number(&streamed_text, 9);
-            assert_mentions_expected_number(&response.output, 9);
+            assert_mentions_expected_number(&response.output(), 9);
             assert!(run.turn() >= 2, "tool use forces at least two model calls");
             assert_eq!(
                 response.completion_calls.len(),
@@ -331,7 +331,7 @@ async fn streamed_repair_continues_the_same_stream() {
             };
 
             assert!(repaired, "the model should call a tool that gets repaired");
-            assert_mentions_expected_number(&response.output, 5);
+            assert_mentions_expected_number(&response.output(), 5);
             let messages = response.messages;
             let recorded: Vec<String> = messages
                 .iter()
@@ -435,7 +435,7 @@ async fn streamed_skip_abandons_the_turn_and_recovers() {
             };
 
             assert!(abandoned, "the restricted first turn should be abandoned");
-            assert_nonempty_response(&response.output);
+            assert_nonempty_response(&response.output());
             assert!(
                 run.completion_calls().len() >= 2,
                 "the abandoned turn still records its completion call"

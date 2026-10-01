@@ -38,7 +38,7 @@ async fn nonstreaming_multi_turn_executes_tools_and_reports_usage() {
                 .await
                 .expect("multi-turn tool prompt should succeed");
 
-            assert_mentions_expected_number(&response.output, CHAINED_RESULT);
+            assert_mentions_expected_number(&response.output(), CHAINED_RESULT);
             assert_eq!(add_counter.count(), 1, "add should execute exactly once");
             assert_eq!(
                 subtract_counter.count(),

@@ -23,7 +23,7 @@ async fn completion_smoke() {
         .prompt("When and where and what type is the next solar eclipse?")
         .await
         .expect("prompt should succeed")
-        .output;
+        .output();
 
     assert_nonempty_response(&response);
 }

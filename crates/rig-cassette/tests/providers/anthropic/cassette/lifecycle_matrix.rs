@@ -32,7 +32,7 @@ async fn middleware_phases_observe_a_unary_completion() {
                 .prompt(BASIC_PROMPT)
                 .await
                 .expect("completion should succeed")
-                .output;
+                .output();
             assert_nonempty_response(&response);
         },
     )
@@ -89,7 +89,7 @@ async fn run_start_rewrite_reaches_the_provider() {
                 .prompt("Tell me about the Rust borrow checker.")
                 .await
                 .expect("completion should succeed")
-                .output;
+                .output();
             assert!(
                 response.to_uppercase().contains("PINEAPPLE"),
                 "the provider answered the rewritten prompt, not the original: {response:?}"
@@ -151,7 +151,7 @@ async fn run_settles_once_across_a_multi_turn_tool_run_with_durable_state() {
                 .max_turns(3)
                 .await
                 .expect("tool run should succeed")
-                .output;
+                .output();
             assert!(
                 response.contains("22"),
                 "the tool result reached the final answer: {response:?}"

@@ -62,7 +62,7 @@ async fn final_output(stream: &mut rig::agent::StreamingResult) -> String {
     let mut output = None;
     while let Some(item) = stream.next().await {
         if let MultiTurnStreamItem::FinalResponse(response) = item.expect("the stream yields") {
-            output = Some(response.output);
+            output = Some(response.output());
         }
     }
     output.expect("a final response")
@@ -87,7 +87,7 @@ async fn tool_unary_effect_log_is_the_golden_fixture() {
             .prompt(STRUCTURED_OUTPUT_PROMPT)
             .await
             .expect("the agent answers");
-        assert_event(&response.output);
+        assert_event(&response.output());
         let log = agent.stamp(recorder.take());
         assert_eq!(families(&log), [EffectFamily::Completion]);
         let request = request_at(&log, 0);
@@ -151,7 +151,7 @@ async fn prompted_unary_effect_log_is_the_golden_fixture() {
             .prompt(STRUCTURED_OUTPUT_PROMPT)
             .await
             .expect("the agent answers");
-        assert_event(&response.output);
+        assert_event(&response.output());
         let log = agent.stamp(recorder.take());
         assert_eq!(families(&log), [EffectFamily::Completion]);
         let request = request_at(&log, 0);
@@ -215,8 +215,8 @@ async fn tool_with_real_tool_effect_log_is_the_golden_fixture() {
                 .max_turns(3)
                 .await
                 .expect("the agent answers");
-            assert_event(&response.output);
-            assert!(response.output.contains("42"), "{}", response.output);
+            assert_event(&response.output());
+            assert!(response.output().contains("42"), "{}", response.output());
             let log = agent.stamp(recorder.take());
             assert_eq!(
                 families(&log),
@@ -254,7 +254,7 @@ async fn prompted_with_real_tool_effect_log_is_the_golden_fixture() {
                 .max_turns(3)
                 .await
                 .expect("the agent answers");
-            assert_prompted_event(&response.output);
+            assert_prompted_event(&response.output());
             let log = agent.stamp(recorder.take());
             assert_eq!(
                 families(&log),
@@ -296,7 +296,7 @@ async fn tool_choice_specific_output_effect_log_is_the_golden_fixture() {
                 .prompt(STRUCTURED_OUTPUT_PROMPT)
                 .await
                 .expect("the agent answers");
-            assert_event(&response.output);
+            assert_event(&response.output());
             let log = agent.stamp(recorder.take());
             assert_eq!(families(&log), [EffectFamily::Completion]);
             assert_eq!(tool_names(request_at(&log, 0)), ["final_result"]);
@@ -329,7 +329,7 @@ async fn tool_choice_required_effect_log_is_the_golden_fixture() {
                 .max_turns(2)
                 .await
                 .expect("the agent answers");
-            assert_event(&response.output);
+            assert_event(&response.output());
             let log = agent.stamp(recorder.take());
             assert_eq!(families(&log), [EffectFamily::Completion]);
             crate::goldens::golden_effects("anthropic_output_tool_choice_required", &log);
@@ -360,7 +360,7 @@ async fn tool_under_none_degrades_effect_log_is_the_golden_fixture() {
                 .prompt(STRUCTURED_OUTPUT_PROMPT)
                 .await
                 .expect("the agent answers");
-            assert_event(&response.output);
+            assert_event(&response.output());
             let log = agent.stamp(recorder.take());
             assert_eq!(families(&log), [EffectFamily::Completion]);
             let request = request_at(&log, 0);
@@ -395,7 +395,7 @@ async fn tool_thinking_effect_log_is_the_golden_fixture() {
             .prompt(STRUCTURED_OUTPUT_PROMPT)
             .await
             .expect("the agent answers");
-        assert_event(&response.output);
+        assert_event(&response.output());
         let log = agent.stamp(recorder.take());
         assert_eq!(families(&log), [EffectFamily::Completion]);
         crate::goldens::golden_effects("anthropic_output_tool_thinking", &log);

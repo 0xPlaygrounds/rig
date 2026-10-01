@@ -60,7 +60,7 @@ async fn main() -> Result<()> {
         .prompt("Remember: my favorite color is teal.")
         .conversation("alice")
         .await?
-        .output;
+        .output();
     println!("[sliding] {reply}");
 
     let token_memory = InMemoryConversationMemory::new()
@@ -75,7 +75,7 @@ async fn main() -> Result<()> {
         .prompt("Plan a 3-day trip to Kyoto.")
         .conversation("alice")
         .await?
-        .output;
+        .output();
     println!("[token]   {reply}");
 
     Ok(())

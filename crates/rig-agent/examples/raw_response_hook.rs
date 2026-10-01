@@ -100,7 +100,7 @@ async fn main() -> Result<()> {
     let response = agent
         .prompt("What does a system fingerprint identify?")
         .await?;
-    println!("  => {}", response.output);
+    println!("  => {}", response.output());
     // The same payload the hook saw is on the run's record, per call.
     for call in &response.completion_calls {
         println!("  call {} recorded raw: {}", call.call_index, call.raw);
@@ -112,7 +112,7 @@ async fn main() -> Result<()> {
         .stream();
     while let Some(item) = stream.next().await {
         if let MultiTurnStreamItem::FinalResponse(final_response) = item? {
-            println!("  => {}", final_response.output);
+            println!("  => {}", final_response.output());
         }
     }
 

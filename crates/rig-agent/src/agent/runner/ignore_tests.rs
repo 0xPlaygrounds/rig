@@ -58,7 +58,7 @@ async fn collect(mut stream: StreamingResult) -> Result<String, String> {
     let mut output = None;
     while let Some(item) = stream.next().await {
         match item {
-            Ok(MultiTurnStreamItem::FinalResponse(response)) => output = Some(response.output),
+            Ok(MultiTurnStreamItem::FinalResponse(response)) => output = Some(response.output()),
             Ok(_) => {}
             Err(error) => return Err(error.to_string()),
         }

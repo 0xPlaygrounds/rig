@@ -29,7 +29,7 @@ async fn completions_api_agent_prompt() {
                 .prompt("Hello world!")
                 .await
                 .expect("completions api prompt should succeed")
-                .output;
+                .output();
 
             assert_nonempty_response(&response);
         },

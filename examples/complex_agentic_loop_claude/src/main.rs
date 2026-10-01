@@ -175,7 +175,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .await?;
 
     // Print the final response
-    println!("\nFinal Response:\n{}", response.output);
+    println!("\nFinal Response:\n{}", response.output());
 
     // Print the chat history to show the agentic loop
     println!("\nAgentic Loop Details:");

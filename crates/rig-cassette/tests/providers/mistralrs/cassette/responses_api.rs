@@ -31,7 +31,7 @@ async fn responses_api_no_think_returns_text() {
                 .prompt("/no_think Explain token usage reporting in one sentence.")
                 .await
                 .expect("Responses API /no_think prompt should succeed")
-                .output;
+                .output();
 
             assert_nonempty_response(&response);
         },
@@ -110,7 +110,7 @@ async fn responses_api_multi_turn_replays_history() {
                 .chat("/no_think Reply with exactly: OK", &mut history)
                 .await
                 .expect("second multi-turn Responses API chat should succeed")
-                .output;
+                .output();
 
             assert!(
                 first_history_len > 0 && history.len() > first_history_len,

@@ -183,7 +183,7 @@ struct WorkspaceStreamObservation {
 }
 
 impl WorkspaceStreamObservation {
-    fn final_response_text(&self) -> Option<&str> {
+    fn final_response_text(&self) -> Option<String> {
         self.final_response
             .as_ref()
             .map(rig::run::PromptResponse::output)

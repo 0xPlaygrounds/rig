@@ -112,7 +112,7 @@ async fn structured_output_without_max_tokens_sends_no_sampling_fields() {
                 .expect("structured output prompt should succeed");
             let structured: SmokeStructuredOutput = decode_structured_output(
                 "gemini_regression_structured_output_without_max_tokens",
-                &response.output,
+                &response.output(),
             )
             .expect("structured output should deserialize");
 
@@ -150,7 +150,7 @@ async fn structured_output_with_max_tokens_sends_only_the_caller_value() {
                 .expect("structured output prompt should succeed");
             let structured: SmokeStructuredOutput = decode_structured_output(
                 "gemini_regression_structured_output_with_max_tokens",
-                &response.output,
+                &response.output(),
             )
             .expect("structured output should deserialize");
 

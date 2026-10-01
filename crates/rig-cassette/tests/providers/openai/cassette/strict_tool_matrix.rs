@@ -242,7 +242,7 @@ async fn agent_tool_turn_sends_strict_false() {
                 .expect("agent tool turn should succeed");
 
             assert!(
-                answer.output.contains("42"),
+                answer.output().contains("42"),
                 "the agent should report the tool's result, got {answer:?}"
             );
         },

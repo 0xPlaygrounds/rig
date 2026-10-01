@@ -101,7 +101,7 @@ async fn main() -> Result<()> {
     .default_max_turns(10)
     .build();
 
-    let response = agent.prompt(PROMPT).await?.output;
+    let response = agent.prompt(PROMPT).await?.output();
     println!("{response}");
 
     Ok(())

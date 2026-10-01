@@ -64,7 +64,7 @@ async fn streamed(
     let mut failure = None;
     while let Some(item) = stream.next().await {
         match item {
-            Ok(MultiTurnStreamItem::FinalResponse(response)) => output = Some(response.output),
+            Ok(MultiTurnStreamItem::FinalResponse(response)) => output = Some(response.output()),
             Ok(_) => {}
             Err(error) => failure = Some(error),
         }
@@ -339,7 +339,7 @@ async fn delta_output_tool_effect_log_is_the_golden_fixture() {
     let mut output = None;
     while let Some(item) = stream.next().await {
         if let MultiTurnStreamItem::FinalResponse(response) = item.expect("the stream yields") {
-            output = Some(response.output);
+            output = Some(response.output());
         }
     }
     drop(stream);

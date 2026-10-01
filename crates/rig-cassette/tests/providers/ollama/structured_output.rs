@@ -28,7 +28,7 @@ async fn structured_output_prompt() {
         .await
         .expect("prompt should succeed");
     let character: Character =
-        serde_json::from_str(&response.output).expect("schema response should deserialize");
+        serde_json::from_str(&response.output()).expect("schema response should deserialize");
 
     assert_nonempty_response(&character.name);
     assert_nonempty_response(&character.bio);

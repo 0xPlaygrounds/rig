@@ -210,7 +210,7 @@ async fn request_overridden_by_hook_blocking() {
                 .max_turns(5)
                 .await
                 .expect("blocking prompt should succeed")
-                .output;
+                .output();
 
             assert!(!response.is_empty(), "agent should produce a final answer");
         },

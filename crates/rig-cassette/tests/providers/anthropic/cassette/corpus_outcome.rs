@@ -36,7 +36,7 @@ async fn final_output(stream: &mut rig::agent::StreamingResult) -> String {
     let mut output = None;
     while let Some(item) = stream.next().await {
         if let MultiTurnStreamItem::FinalResponse(response) = item.expect("the stream yields") {
-            output = Some(response.output);
+            output = Some(response.output());
         }
     }
     output.expect("a final response")
@@ -116,7 +116,7 @@ async fn tool_error_effect_log_is_the_golden_fixture() {
             .max_turns(3)
             .await
             .expect("the agent answers around the failure");
-        assert!(!response.output.is_empty());
+        assert!(!response.output().is_empty());
         let log = agent.stamp(recorder.take());
         assert_eq!(
             families(&log),
@@ -290,7 +290,7 @@ async fn default_max_turns_effect_log_is_the_golden_fixture() {
             .record_to(recorder.clone())
             .build();
         let response = agent.prompt(ADD_PROMPT).await.expect("the agent answers");
-        assert!(response.output.contains("42"), "{}", response.output);
+        assert!(response.output().contains("42"), "{}", response.output());
         let log = agent.stamp(recorder.take());
         assert_eq!(
             families(&log),

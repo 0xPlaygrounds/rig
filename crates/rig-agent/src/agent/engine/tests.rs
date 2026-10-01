@@ -928,7 +928,7 @@ async fn retried_turn_records_the_retried_attempts_own_raw_blocking() {
     .await
     .expect("retried run");
 
-    assert_eq!(response.output, "second attempt");
+    assert_eq!(response.output(), "second attempt");
     assert_eq!(
         *hook.seen.lock().expect("retry raws"),
         [first.clone(), second.clone()],
@@ -982,7 +982,7 @@ async fn retried_turn_records_the_retried_attempts_own_raw_streamed() {
     }
 
     let response = final_response.expect("run final response");
-    assert_eq!(response.output, "second attempt");
+    assert_eq!(response.output(), "second attempt");
     assert_eq!(
         *retry.seen.lock().expect("retry raws"),
         [first.clone(), second.clone()],
@@ -1303,7 +1303,7 @@ async fn frames_after_the_providers_end_are_not_read() {
         assert_eq!(texts, "canonical response", "{case}");
         assert_eq!(completion_calls, 1, "{case}");
         assert_eq!(
-            response.expect("the run completes").output,
+            response.expect("the run completes").output(),
             "canonical response",
             "{case}"
         );
@@ -1583,8 +1583,8 @@ async fn run_and_stream_behave_identically_for_a_tool_call() {
     let final_response = final_response.expect("stream should yield a final response");
 
     // Same final output.
-    assert_eq!(blocking.output, "the answer is 5");
-    assert_eq!(final_response.output(), blocking.output);
+    assert_eq!(blocking.output(), "the answer is 5");
+    assert_eq!(final_response.output(), blocking.output());
 
     // Same medium-independent hook event sequence (model call and its
     // completion outcome, tool dispatch, tool outcome, second model call and
@@ -2514,7 +2514,7 @@ mod span_safety_net {
                 item.expect("streaming retry item")
             {
                 saw_final = true;
-                assert_eq!(response.output, "accepted");
+                assert_eq!(response.output(), "accepted");
             }
         }
         assert!(saw_final, "streaming retry should produce a final response");
@@ -2773,7 +2773,7 @@ mod span_safety_net {
             .run()
             .await
             .expect("blocking run should succeed");
-        assert_eq!(response.output, "the answer is 5");
+        assert_eq!(response.output(), "the answer is 5");
 
         let spans = captured.spans();
 
@@ -2834,7 +2834,7 @@ mod span_safety_net {
 
         let agent = AgentBuilder::new(fixture_telemetry_model("done")).build();
         let response = agent.prompt("hello").await.expect("prompt should succeed");
-        assert_eq!(response.output, "done");
+        assert_eq!(response.output(), "done");
 
         let spans = captured.spans();
         let chat_spans = spans
@@ -2993,7 +2993,7 @@ mod span_safety_net {
             .run()
             .await
             .expect("run should succeed");
-        assert_eq!(response.output, "ok");
+        assert_eq!(response.output(), "ok");
 
         let captured = capture.values_of("gen_ai.tool.call.result");
         let captured: Vec<&str> = captured.iter().filter_map(Value::as_str).collect();
@@ -4473,7 +4473,7 @@ async fn tool_concurrency_zero_is_clamped_and_does_not_hang() {
         .await
         .expect("tool_concurrency(0) must clamp to 1, not hang on buffer_unordered(0)")
         .expect("run should succeed");
-    assert_eq!(response.output, "done");
+    assert_eq!(response.output(), "done");
 }
 
 /// A tool that counts how many times it executes.
@@ -4701,7 +4701,7 @@ async fn multi_hook_stack_parity_across_run_and_stream() {
             StepEventKind::CompletionDispatch,
         ]
     );
-    assert_eq!(blocking.output, "the answer is 5");
+    assert_eq!(blocking.output(), "the answer is 5");
 }
 
 /// Renames an invalid tool call to a known tool; observes everything else.
@@ -4797,8 +4797,8 @@ async fn invalid_tool_call_repair_parity_across_run_and_stream() {
     let final_response = final_response.expect("stream should recover and yield a final response");
 
     // Same recovered output.
-    assert_eq!(blocking.output, "the answer is 5");
-    assert_eq!(final_response.output(), blocking.output);
+    assert_eq!(blocking.output(), "the answer is 5");
+    assert_eq!(final_response.output(), blocking.output());
 
     // Both drivers reported the invalid tool call to the hook, then executed
     // the repaired tool, so the shared event sequences match.
@@ -4882,7 +4882,7 @@ async fn invalid_tool_call_scalar_args_are_canonical_across_run_and_complete_str
     assert_eq!(*streaming_args.lock().unwrap(), canonical_args);
     assert_eq!(blocking_hook.tool_results(), vec!["payload"]);
     assert_eq!(streaming_hook.tool_results(), vec!["payload"]);
-    assert_eq!(blocking.output, "done");
+    assert_eq!(blocking.output(), "done");
     assert_eq!(final_response.output(), "done");
     assert_eq!(
         serde_json::to_value(blocking.messages).unwrap(),
@@ -5013,7 +5013,7 @@ async fn run_blocking_scenario(prompt: &'static str, turns: &[ScriptedTurn]) -> 
         .await
         .expect("blocking scenario should succeed");
     ParityOutcome {
-        output: response.output,
+        output: response.output(),
         messages: response.messages,
         shared_events: hook.shared_events(),
         tool_results: hook.tool_results(),
@@ -5209,8 +5209,8 @@ async fn invalid_tool_call_skip_parity_across_run_and_stream() {
     }
     let final_response = final_response.expect("stream should recover and yield a final response");
 
-    assert_eq!(blocking.output, "acknowledged");
-    assert_eq!(final_response.output(), blocking.output);
+    assert_eq!(blocking.output(), "acknowledged");
+    assert_eq!(final_response.output(), blocking.output());
     assert_eq!(
         blocking_hook.shared_events(),
         streaming_hook.shared_events()
@@ -5292,7 +5292,7 @@ async fn recovered_turn_suppresses_completion_response_on_both_drivers() {
     while stream.next().await.is_some() {}
 
     // Recovery still reaches the same final answer.
-    assert_eq!(blocking.output, "the answer is 5");
+    assert_eq!(blocking.output(), "the answer is 5");
 
     // Blocking: the recovered turn 1 suppresses `CompletionResponse`; only the
     // plain turn 2 fires it.
@@ -5436,8 +5436,8 @@ async fn valid_tool_call_skip_parity_across_run_and_stream() {
     }
     let final_response = final_response.expect("stream should yield a final response");
 
-    assert_eq!(blocking.output, "acknowledged");
-    assert_eq!(final_response.output(), blocking.output);
+    assert_eq!(blocking.output(), "acknowledged");
+    assert_eq!(final_response.output(), blocking.output());
     assert_eq!(
         blocking_hook.shared_events(),
         streaming_hook.shared_events()
@@ -5580,7 +5580,7 @@ async fn check_tool_target_patch_is_refused(streaming: bool) {
         assert!(finished);
     } else {
         assert_eq!(
-            runner.run().await.expect("run remains usable").output,
+            runner.run().await.expect("run remains usable").output(),
             "done"
         );
     }
@@ -5847,8 +5847,8 @@ async fn valid_tool_call_rewrite_args_parity_across_run_and_stream() {
     // The tool ran with the rewritten arguments (2 + 40 = 42), not the
     // model's emitted 2 + 3 = 5 — on both drivers.
     assert_eq!(blocking_hook.tool_results(), vec!["42".to_string()]);
-    assert_eq!(blocking.output, "acknowledged");
-    assert_eq!(final_response.output(), blocking.output);
+    assert_eq!(blocking.output(), "acknowledged");
+    assert_eq!(final_response.output(), blocking.output());
     assert_eq!(
         blocking_hook.shared_events(),
         streaming_hook.shared_events()
@@ -5901,7 +5901,7 @@ async fn string_tool_call_without_rewrite_is_canonical_across_run_and_stream() {
         }
     }
 
-    assert_eq!(blocking.output, "done");
+    assert_eq!(blocking.output(), "done");
     assert_eq!(final_output.as_deref(), Some("done"));
     assert_eq!(blocking_hook.tool_results(), vec!["original"]);
     assert_eq!(streaming_hook.tool_results(), vec!["original"]);
@@ -5955,7 +5955,7 @@ async fn string_tool_call_rewrite_is_canonical_json_across_run_and_stream() {
         }
     }
 
-    assert_eq!(blocking.output, "done");
+    assert_eq!(blocking.output(), "done");
     assert_eq!(final_output.as_deref(), Some("done"));
     assert_eq!(blocking_hook.tool_results(), vec!["sanitized"]);
     assert_eq!(streaming_hook.tool_results(), vec!["sanitized"]);
@@ -5996,7 +5996,7 @@ async fn blocking_turn_dispatches_the_registry_generation_it_advertised() {
     .expect("in-flight blocking replacement must not hang");
     let response = response.expect("blocking run should use its pinned tool generation");
 
-    assert_eq!(response.output, "done");
+    assert_eq!(response.output(), "done");
     assert_eq!(first_calls.load(SeqCst), 1);
     assert_eq!(second_calls.load(SeqCst), 0);
 }
@@ -6120,8 +6120,8 @@ async fn valid_tool_result_rewrite_parity_across_run_and_stream() {
     }
     let final_response = final_response.expect("stream should yield a final response");
 
-    assert_eq!(blocking.output, "acknowledged");
-    assert_eq!(final_response.output(), blocking.output);
+    assert_eq!(blocking.output(), "acknowledged");
+    assert_eq!(final_response.output(), blocking.output());
 
     // The ToolResult event observes the tool's ACTUAL output (5) on both
     // drivers — the replacement is applied after the event fires.
@@ -6270,7 +6270,7 @@ async fn patch_request_parity_across_run_and_stream() {
         .run()
         .await
         .expect("blocking run should succeed");
-    assert_eq!(blocking.output, "done");
+    assert_eq!(blocking.output(), "done");
     let blocking_requests = blocking_probe.requests();
     assert_eq!(blocking_requests.len(), 1);
     assert_request(&blocking_requests[0]);
@@ -7163,7 +7163,7 @@ async fn chained_rewrites_compose_across_hooks() {
         .run()
         .await
         .expect("blocking run should succeed");
-    assert_eq!(blocking.output, "the answer is 5");
+    assert_eq!(blocking.output(), "the answer is 5");
     assert_eq!(
         recorder.tool_results(),
         vec!["B(A(140))".to_string()],
@@ -7338,7 +7338,7 @@ async fn initial_output_tool_collision_uses_a_unique_synthetic_name() {
         .await
         .expect("the real tool should dispatch before the unique output tool finalizes");
 
-    assert!(response.output.contains("done"));
+    assert!(response.output().contains("done"));
     let requests = probe.requests();
     assert_eq!(
         requests.len(),
@@ -7660,10 +7660,10 @@ async fn active_tools_filter_does_not_let_output_tool_collide_with_a_filtered_re
         .await
         .expect("run should finalize via the picked output tool `final_result_1`");
     assert!(
-        response.output.contains("done"),
+        response.output().contains("done"),
         "the intercepted output-tool call should produce the structured result, \
              got {:?}",
-        response.output
+        response.output()
     );
 
     let requests = probe.requests();
@@ -7740,9 +7740,9 @@ async fn model_turn_finished_content_carries_output_tool_call_in_tool_mode() {
         "ModelTurnFinished.content must carry the model-emitted output-tool call (blocking)"
     );
     assert!(
-        response.output.contains("done"),
+        response.output().contains("done"),
         "the run finalizes with the structured output, not the raw tool call: {:?}",
-        response.output
+        response.output()
     );
 
     // Streaming surface — same content contract.
@@ -7978,8 +7978,8 @@ async fn human_in_the_loop_approve_deny_edit_parity_across_run_and_stream() {
         "the denied (second) call should be add(10, 20): {reviewed:?}"
     );
 
-    assert_eq!(blocking.output, "done");
-    assert_eq!(final_response.output(), blocking.output);
+    assert_eq!(blocking.output(), "done");
+    assert_eq!(final_response.output(), blocking.output());
     assert_eq!(
         blocking_recorder.shared_events(),
         streaming_recorder.shared_events()
@@ -8150,7 +8150,7 @@ async fn approval_policy_allow_list_with_sticky_decisions() {
         .await
         .expect("policy run should succeed");
 
-    assert_eq!(out.output, "done");
+    assert_eq!(out.output(), "done");
     // `add` ran twice (auto-approved, then sticky-reused); `subtract` was denied
     // and executed nothing, but its denial reason now surfaces as a ToolResult
     // (structured `Skipped` outcome) between the two `add` results.
@@ -8624,7 +8624,7 @@ async fn a_portable_hook_can_retry_a_truncated_tool_free_turn() {
         .await
         .expect("the retried turn should answer");
 
-    assert_eq!(response.output, "a complete answer");
+    assert_eq!(response.output(), "a complete answer");
     assert_eq!(model.request_count(), 2, "the truncated turn was retried");
     // The counter only advances past the `truncated && !has_tool_call`
     // guard, so exactly one turn tripped it and the `Stop` turn did not.
@@ -8701,7 +8701,7 @@ async fn blocking_model_turn_repeat_preserves_prompt_history_with_fresh_preparat
         .await
         .expect("repeat should recover");
 
-    assert_eq!(response.output, "accepted");
+    assert_eq!(response.output(), "accepted");
     assert_eq!(response.usage, first_usage + second_usage);
     assert_eq!(response.completion_calls.len(), 2);
     let messages = response.messages;
@@ -8741,7 +8741,7 @@ async fn blocking_model_turn_feedback_preserves_rejected_response() {
         .await
         .expect("feedback retry should recover");
 
-    assert_eq!(response.output, "accepted");
+    assert_eq!(response.output(), "accepted");
     assert_eq!(
         response.messages,
         vec![
@@ -8783,7 +8783,7 @@ async fn blocking_empty_feedback_retry_omits_empty_assistant_history() {
         .await
         .expect("feedback retry should recover from an empty turn");
 
-    assert_eq!(response.output, "accepted");
+    assert_eq!(response.output(), "accepted");
     assert_eq!(response.usage, first_usage + second_usage);
     assert_eq!(response.completion_calls.len(), 2);
     assert_eq!(
@@ -8844,7 +8844,7 @@ async fn streaming_model_turn_retry_marks_rollback_and_matches_blocking_accounti
     assert_eq!(retries, vec![1]);
     assert_eq!(completion_calls, 2);
     let response = final_response.expect("run final response");
-    assert_eq!(response.output, "accepted");
+    assert_eq!(response.output(), "accepted");
     assert_eq!(response.usage, first_usage + second_usage);
     assert_eq!(response.completion_calls.len(), 2);
     assert_eq!(
@@ -8905,7 +8905,7 @@ async fn streaming_feedback_retry_matches_blocking_history_and_usage() {
 
     let streaming = streaming.expect("streaming final response");
     assert!(saw_retry);
-    assert_eq!(streaming.output, blocking.output);
+    assert_eq!(streaming.output(), blocking.output());
     assert_eq!(streaming.usage, blocking.usage);
     // `raw` is the one field that legitimately differs by medium: the
     // streamed calls carry the mock's terminal record serialized, the
@@ -8970,7 +8970,7 @@ async fn streaming_empty_feedback_retry_omits_empty_assistant_history() {
     assert_eq!(retries, vec![1]);
     assert_eq!(completion_calls, 2);
     let response = final_response.expect("run final response");
-    assert_eq!(response.output, "accepted");
+    assert_eq!(response.output(), "accepted");
     assert_eq!(response.usage, first_usage + second_usage);
     assert_eq!(response.completion_calls.len(), 2);
     assert_eq!(
@@ -9274,7 +9274,7 @@ async fn concurrent_runs_of_same_agent_have_independent_retry_budgets() {
     let first = first.expect("first run");
     let second = second.expect("second run");
 
-    let outputs = std::collections::HashSet::from([first.output, second.output]);
+    let outputs = std::collections::HashSet::from([first.output(), second.output()]);
     assert_eq!(
         outputs,
         std::collections::HashSet::from(["accepted one".to_string(), "accepted two".to_string(),])
@@ -9539,7 +9539,7 @@ mod run_lifecycle {
             .prompt("hi")
             .await
             .expect("prompt succeeds");
-        assert_eq!(response.output, "done");
+        assert_eq!(response.output(), "done");
 
         assert_eq!(hook.starts.load(SeqCst), 1);
         assert_eq!(

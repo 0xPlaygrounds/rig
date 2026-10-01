@@ -37,11 +37,11 @@ use super::{
         streamed::{StreamedResolution, StreamedTurnAssembler, StreamedTurnEvent},
     },
     run::{
-        response::{MemoryAppend, PromptResponse},
+        response::{MemoryAppend, PromptResponse, finalize_output_tool_choice},
         transcript::{assistant_text_from_choice, is_empty_assistant_turn, tool_result_output},
     },
     runner::AgentRunner,
-    streaming::{MultiTurnStreamItem, finalize_streamed_choice},
+    streaming::MultiTurnStreamItem,
     telemetry::{build_chat_span, new_execute_tool_span},
 };
 use crate::run::UnhandledInvalidToolCall;
@@ -1149,7 +1149,7 @@ impl TurnSource for StreamingTurnSource {
     fn final_item(&self, response: &PromptResponse) -> Option<MultiTurnStreamItem> {
         // In tool output mode, when the finishing turn made the output-tool call,
         // surface the run's structured output as the final content.
-        let final_choice = finalize_streamed_choice(&self.last_final_choice, &response.output)
+        let final_choice = finalize_output_tool_choice(&self.last_final_choice, &response.output())
             .unwrap_or_else(|| {
                 if is_empty_assistant_turn(&self.last_final_choice) {
                     tracing::warn!(
@@ -1725,7 +1725,7 @@ impl TurnSource for UnaryTurnSource {
         // surface additionally records the final completion text.
         if created_agent_span {
             if self.record_telemetry_content {
-                agent_span.record("gen_ai.completion", &response.output);
+                agent_span.record("gen_ai.completion", response.output());
             }
             agent_span.record_token_usage(&response.usage);
         }
