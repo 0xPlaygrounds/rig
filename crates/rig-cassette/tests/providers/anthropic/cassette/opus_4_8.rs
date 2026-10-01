@@ -4,7 +4,6 @@ use rig::completion::{
     AssistantContent, CompletionResponse as RigCompletionResponse, Document, Message,
     ProviderToolDefinition,
 };
-use rig::message::Text;
 use rig::providers::anthropic::completion::{CLAUDE_OPUS_4_8, CompletionResponse, Content};
 use serde::Deserialize;
 use serde_json::Value;
