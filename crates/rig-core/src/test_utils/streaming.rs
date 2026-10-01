@@ -371,6 +371,7 @@ impl<'id> MockDecoder<'id> {
                 let reasoning = crate::message::Reasoning {
                     id: fixture_provider_id(&id).map(str::to_owned),
                     content: vec![content],
+                    native: None,
                 };
                 // A whole reasoning restates the part streamed under its id,
                 // and closes it.

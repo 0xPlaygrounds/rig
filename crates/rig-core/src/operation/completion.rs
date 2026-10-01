@@ -22,8 +22,8 @@ use std::marker::PhantomData;
 use crate::completion::{CompletionRequest, CompletionResponse, FinishReason, Usage};
 use crate::error::{MalformedToolInput, ProviderError};
 use crate::message::{
-    AdditionalParams, AssistantContent, CallId, Image, Issuer, LocalCallId, ProviderCallId,
-    Reasoning, ReasoningContent, Text, ToolCall, ToolFunction, ToolName,
+    AdditionalParams, AssistantContent, CallId, Image, Issuer, LocalCallId, NativeItem,
+    ProviderCallId, Reasoning, ReasoningContent, Sealed, Text, ToolCall, ToolFunction, ToolName,
 };
 use crate::streaming::{Item, Part, PartKind, StreamEvent};
 use crate::telemetry::{GenAiOperation, SpanBuilder, SpanCombinator};
@@ -133,10 +133,12 @@ enum Draft {
         part: Option<Part>,
         text: String,
         params: Option<AdditionalParams>,
+        native: Option<Candidate>,
     },
     Reasoning {
         part: Option<Part>,
         text: String,
+        native: Option<Candidate>,
     },
     Call {
         id: CallId,
@@ -144,8 +146,39 @@ enum Draft {
         arguments: Arguments,
         signature: Option<String>,
         additional_params: Option<serde_json::Value>,
+        native: Option<Candidate>,
     },
     Closed,
+}
+
+/// Whether a block's canonical encoding states everything a provider item
+/// states, so the item need not ride the block. A dialect supplies its own
+/// with each item it attaches; see [`NativeItem`].
+pub type RoundTrip = fn(&AssistantContent, &serde_json::Value) -> bool;
+
+/// The item a part was projected from, kept when the part closes unless
+/// its dialect's [`RoundTrip`] finds the part says it all.
+struct Candidate {
+    item: NativeItem,
+    round_trip: Option<RoundTrip>,
+}
+
+impl Candidate {
+    /// A residue already settled: it rides the block as it is.
+    fn kept(native: Sealed<NativeItem>) -> Self {
+        Self {
+            item: native.into_value(),
+            round_trip: None,
+        }
+    }
+
+    /// The residue `block` keeps, sealed to `issuer`.
+    fn settle(self, block: &AssistantContent, issuer: Issuer) -> Option<Sealed<NativeItem>> {
+        match self.round_trip {
+            Some(round_trip) if round_trip(block, self.item.item()) => None,
+            _ => Some(Sealed::new(issuer, self.item)),
+        }
+    }
 }
 
 /// A tool call's argument text as it arrives.
@@ -211,6 +244,7 @@ struct Pending {
     arguments: Arguments,
     signature: Option<String>,
     additional_params: Option<serde_json::Value>,
+    native: Option<Candidate>,
     /// The call's handle, once it opened.
     open: Option<usize>,
 }
@@ -392,28 +426,34 @@ impl Turn {
     }
 
     fn close_text(&mut self, items: &mut Items, slot: usize) {
-        let Some(Draft::Text { part, text, params }) = self
+        let Some(Draft::Text {
+            part,
+            text,
+            params,
+            native,
+        }) = self
             .drafts
             .get_mut(slot)
             .map(|draft| std::mem::replace(draft, Draft::Closed))
         else {
             return;
         };
-        // A text part survives with text or with the metadata it carries.
-        if text.is_empty() && params.is_none() {
+        let mut content = AssistantContent::Text(Text {
+            text,
+            additional_params: params,
+            native: None,
+        });
+        let native = native.and_then(|native| native.settle(&content, self.issuer()));
+        let AssistantContent::Text(block) = &mut content else {
+            return;
+        };
+        block.native = native;
+        // A text part survives with text, metadata, or provider residue.
+        if block.text.is_empty() && block.additional_params.is_none() && block.native.is_none() {
             return;
         }
         let part = part.unwrap_or_else(|| self.start(items, PartKind::Text));
-        emit(
-            items,
-            StreamEvent::End {
-                part,
-                content: AssistantContent::Text(Text {
-                    text,
-                    additional_params: params,
-                }),
-            },
-        );
+        emit(items, StreamEvent::End { part, content });
     }
 
     fn push_reasoning(&mut self, items: &mut Items, slot: usize, fragment: &str) {
@@ -450,7 +490,7 @@ impl Turn {
     }
 
     fn close_reasoning(&mut self, items: &mut Items, slot: usize, seal: Seal) {
-        let Some(Draft::Reasoning { part, text }) = self
+        let Some(Draft::Reasoning { part, text, native }) = self
             .drafts
             .get_mut(slot)
             .map(|draft| std::mem::replace(draft, Draft::Closed))
@@ -476,6 +516,7 @@ impl Turn {
             None if !text.is_empty() => Reasoning {
                 id,
                 content: vec![ReasoningContent::Text { text, signature }],
+                native: None,
             },
             // A signature with nothing streamed to sign is replay state of
             // its own.
@@ -486,10 +527,16 @@ impl Turn {
                         text: String::new(),
                         signature: Some(signature),
                     }],
+                    native: None,
                 },
                 None => return,
             },
         };
+        let mut reasoning = reasoning;
+        if let Some(native) = native {
+            let block = AssistantContent::Reasoning(reasoning.clone().sealed(self.issuer()));
+            reasoning.native = native.settle(&block, self.issuer());
+        }
         let part = part.unwrap_or_else(|| self.start(items, PartKind::Reasoning));
         let content = AssistantContent::Reasoning(reasoning.sealed(self.issuer()));
         emit(items, StreamEvent::End { part, content });
@@ -507,6 +554,7 @@ impl Turn {
             arguments: Arguments::default(),
             signature: None,
             additional_params: None,
+            native: None,
         }))
     }
 
@@ -568,6 +616,7 @@ impl Turn {
             arguments,
             signature,
             additional_params,
+            native,
         }) = self
             .drafts
             .get_mut(slot)
@@ -580,23 +629,23 @@ impl Turn {
         } else {
             arguments.text
         };
+        let mut content = AssistantContent::ToolCall(ToolCall {
+            id,
+            function: ToolFunction {
+                name,
+                arguments: parsed,
+            },
+            signature,
+            additional_params,
+            native: None,
+        });
+        let native = native.and_then(|native| native.settle(&content, self.issuer()));
+        if let AssistantContent::ToolCall(call) = &mut content {
+            call.native = native;
+        }
         let part = self.start(items, PartKind::ToolCall);
         emit(items, StreamEvent::Arguments { part, json });
-        emit(
-            items,
-            StreamEvent::End {
-                part,
-                content: AssistantContent::ToolCall(ToolCall {
-                    id,
-                    function: ToolFunction {
-                        name,
-                        arguments: parsed,
-                    },
-                    signature,
-                    additional_params,
-                }),
-            },
-        );
+        emit(items, StreamEvent::End { part, content });
         Ok(())
     }
 
@@ -632,16 +681,19 @@ impl Turn {
         let arguments = std::mem::take(&mut pending.arguments);
         let signature = pending.signature.take();
         let additional_params = pending.additional_params.take();
+        let native = pending.native.take();
         if let Some(Draft::Call {
             arguments: open,
             signature: open_signature,
             additional_params: open_params,
+            native: open_native,
             ..
         }) = self.drafts.get_mut(slot)
         {
             *open = arguments;
             *open_signature = signature;
             *open_params = additional_params;
+            *open_native = native;
         }
         Ok(Some(slot))
     }
@@ -700,12 +752,7 @@ impl Turn {
                         .map(|text| AssistantContent::text(text.clone()))
                 })
             })
-            .map(|part| match part {
-                AssistantContent::Reasoning(reasoning) => {
-                    AssistantContent::Reasoning(reasoning.reseal(self.issuer()))
-                }
-                part => part,
-            })
+            .map(|part| reseal_part(part, &self.issuer()))
             .collect();
         response
     }
@@ -715,12 +762,7 @@ impl Turn {
         let choice = self
             .snapshot()
             .into_iter()
-            .map(|part| match part {
-                AssistantContent::Reasoning(reasoning) => {
-                    AssistantContent::Reasoning(reasoning.reseal(issuer.clone()))
-                }
-                part => part,
-            })
+            .map(|part| reseal_part(part, &issuer))
             .collect();
         let Finish {
             usage,
@@ -738,6 +780,30 @@ impl Turn {
         response.model = reported(model);
         response.provider_request_id = reported(reply.provider_request_id);
         response
+    }
+}
+
+/// `part` with its reasoning and provider items sealed to `issuer`, the
+/// reply's issuer once the reply has named it.
+fn reseal_part(part: AssistantContent, issuer: &Issuer) -> AssistantContent {
+    let reseal =
+        |native: Option<Sealed<NativeItem>>| native.map(|native| native.reseal(issuer.clone()));
+    match part {
+        AssistantContent::Reasoning(reasoning) => {
+            let mut reasoning = reasoning.reseal(issuer.clone());
+            reasoning.value_mut().native = reseal(reasoning.value_mut().native.take());
+            AssistantContent::Reasoning(reasoning)
+        }
+        AssistantContent::Text(mut text) => {
+            text.native = reseal(text.native.take());
+            AssistantContent::Text(text)
+        }
+        AssistantContent::ToolCall(mut call) => {
+            call.native = reseal(call.native.take());
+            AssistantContent::ToolCall(call)
+        }
+        AssistantContent::Native(native) => AssistantContent::Native(native.reseal(issuer.clone())),
+        part @ AssistantContent::Image(_) => part,
     }
 }
 
@@ -822,6 +888,7 @@ impl<'id> Out<'id, Completion> {
             part: None,
             text: String::new(),
             params: None,
+            native: None,
         });
         TextPart {
             slot,
@@ -891,6 +958,7 @@ impl<'id> Out<'id, Completion> {
         let slot = self.lock().fold.draft(Draft::Reasoning {
             part: None,
             text: String::new(),
+            native: None,
         });
         ReasoningPart {
             slot,
@@ -1008,13 +1076,20 @@ impl<'id> Out<'id, Completion> {
             function,
             signature,
             additional_params,
+            native,
         } = call;
         let part = self.call(id, function.name)?;
         self.decorate_call(&part, signature, additional_params);
         let mut shared = self.lock();
         let Shared { fold, items, .. } = &mut *shared;
-        if let Some(Draft::Call { arguments, .. }) = fold.drafts.get_mut(part.slot) {
+        if let Some(Draft::Call {
+            arguments,
+            native: open_native,
+            ..
+        }) = fold.drafts.get_mut(part.slot)
+        {
             arguments.announced = Some(function.arguments);
+            *open_native = native.map(Candidate::kept);
         }
         fold.close_call(items, part.slot, IfMalformed::Fail)
     }
@@ -1042,19 +1117,117 @@ impl<'id> Out<'id, Completion> {
                 if let Some(params) = text.additional_params {
                     self.text_params(&part, params);
                 }
+                if let Some(native) = text.native {
+                    self.attach(part.slot, Candidate::kept(native));
+                }
                 self.close_text(part);
             }
             AssistantContent::Reasoning(reasoning) => {
                 let issuer = reasoning.issuer().clone();
                 self.issued_by(issuer.clone());
                 if let Some(reasoning) = reasoning.open(&issuer) {
-                    self.reasoning_block(reasoning.clone());
+                    let mut reasoning = reasoning.clone();
+                    let native = reasoning.native.take();
+                    let part = self.reasoning();
+                    if let Some(native) = native {
+                        self.attach(part.slot, Candidate::kept(native));
+                    }
+                    self.close_reasoning(
+                        part,
+                        Seal {
+                            restated: Some(reasoning),
+                            ..Seal::default()
+                        },
+                    );
                 }
             }
             AssistantContent::ToolCall(call) => self.tool_call(call)?,
             AssistantContent::Image(image) => self.image(image),
+            AssistantContent::Native(native) => {
+                self.issued_by(native.issuer().clone());
+                self.native(native.into_value());
+            }
         }
         Ok(())
+    }
+
+    /// A provider item with no canonical meaning, as its own part, sealed to
+    /// the reply's issuer.
+    pub fn native(&mut self, item: NativeItem) {
+        let mut shared = self.lock();
+        let Shared { fold, items, .. } = &mut *shared;
+        let part = fold.start(items, PartKind::Native);
+        let content = AssistantContent::Native(Sealed::new(fold.issuer(), item));
+        emit(items, StreamEvent::End { part, content });
+    }
+
+    /// The provider item an open text part is projected from. It rides the
+    /// part as its residue unless `round_trip` finds the part says it all;
+    /// `None` always keeps it.
+    pub fn text_native(
+        &mut self,
+        part: &TextPart<'id>,
+        item: NativeItem,
+        round_trip: Option<RoundTrip>,
+    ) {
+        self.attach(part.slot, Candidate { item, round_trip });
+    }
+
+    /// The provider item an open reasoning part is projected from; see
+    /// [`Self::text_native`].
+    pub fn reasoning_native(
+        &mut self,
+        part: &ReasoningPart<'id>,
+        item: NativeItem,
+        round_trip: Option<RoundTrip>,
+    ) {
+        self.attach(part.slot, Candidate { item, round_trip });
+    }
+
+    /// The provider item an open call is projected from; see
+    /// [`Self::text_native`].
+    pub fn call_native(
+        &mut self,
+        part: &CallPart<'id>,
+        item: NativeItem,
+        round_trip: Option<RoundTrip>,
+    ) {
+        self.attach(part.slot, Candidate { item, round_trip });
+    }
+
+    /// The provider item the buffered call at `index` is projected from;
+    /// see [`Self::text_native`]. A later item replaces an earlier one.
+    pub fn pending_native(
+        &mut self,
+        index: usize,
+        item: NativeItem,
+        round_trip: Option<RoundTrip>,
+    ) {
+        let candidate = Candidate { item, round_trip };
+        let mut shared = self.lock();
+        let turn = &mut shared.fold;
+        let Some(pending) = turn.pending.get_mut(&index) else {
+            return;
+        };
+        match pending.open {
+            Some(slot) => {
+                if let Some(Draft::Call { native, .. }) = turn.drafts.get_mut(slot) {
+                    *native = Some(candidate);
+                }
+            }
+            None => pending.native = Some(candidate),
+        }
+    }
+
+    fn attach(&mut self, slot: usize, candidate: Candidate) {
+        match self.lock().fold.drafts.get_mut(slot) {
+            Some(
+                Draft::Text { native, .. }
+                | Draft::Reasoning { native, .. }
+                | Draft::Call { native, .. },
+            ) => *native = Some(candidate),
+            Some(Draft::Closed) | None => {}
+        }
     }
 
     /// Record the assistant message id. It outranks the one the end names.
@@ -1306,6 +1479,7 @@ impl Turn {
             part: None,
             text: String::new(),
             params: None,
+            native: None,
         })
     }
 
@@ -1321,6 +1495,7 @@ impl Turn {
         self.draft(Draft::Reasoning {
             part: None,
             text: String::new(),
+            native: None,
         })
     }
 
@@ -1342,21 +1517,50 @@ impl Turn {
             function,
             signature,
             additional_params,
+            native,
         } = call;
         let slot = self.open_call(id, function.name)?;
         if let Some(Draft::Call {
             arguments,
             signature: open_signature,
             additional_params: open_params,
+            native: open_native,
             ..
         }) = self.drafts.get_mut(slot)
         {
             arguments.announced = Some(function.arguments);
             *open_signature = signature;
             *open_params = additional_params;
+            *open_native = native.map(Candidate::kept);
         }
         self.close_call(items, slot, IfMalformed::Fail)
     }
+}
+
+/// The parts `write` writes into a fresh reply, closed as the reply's end
+/// closes them. A dialect projects one of its provider items this way, to
+/// check that a block still says what the item says.
+pub(crate) fn written_parts(
+    write: impl for<'a> FnOnce(&mut Out<'a, Completion>) -> Result<(), ProviderError>,
+) -> Result<Vec<AssistantContent>, ProviderError> {
+    let shared = std::sync::Mutex::new(Shared::new(Turn::new("")));
+    {
+        let mut out = Out::new(&shared);
+        write(&mut out)?;
+    }
+    let mut shared = shared
+        .into_inner()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let Shared { fold, items, .. } = &mut shared;
+    fold.close_open(items);
+    items
+        .drain(..)
+        .filter_map(|item| match item {
+            Ok(Item::Event(StreamEvent::End { content, .. })) => Some(Ok(content)),
+            Ok(_) => None,
+            Err(error) => Some(Err(error)),
+        })
+        .collect()
 }
 
 /// The events a stream of `response` would have carried: each part whole,

@@ -22,8 +22,10 @@ mod listing;
 mod modality;
 mod verify;
 
+pub(crate) use completion::written_parts;
 pub use completion::{
-    CallFragment, CallPart, Completion, Finish, IfMalformed, ReasoningPart, Seal, TextPart, Turn,
+    CallFragment, CallPart, Completion, Finish, IfMalformed, ReasoningPart, RoundTrip, Seal,
+    TextPart, Turn,
 };
 pub use listing::{ModelListing, ModelPage};
 #[cfg(feature = "audio")]

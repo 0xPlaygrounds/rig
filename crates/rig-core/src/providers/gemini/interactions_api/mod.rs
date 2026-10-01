@@ -1003,11 +1003,13 @@ pub mod interactions_api_types {
                 crate::completion::Message::Assistant { content, .. } => {
                     let contents = content
                         .into_iter()
-                        // Reasoning another service issued is not replayed.
+                        // Reasoning another service issued, and other dialects'
+                        // provider items, are not replayed.
                         .filter(|part| match part {
                             crate::message::AssistantContent::Reasoning(reasoning) => {
                                 reasoning.open(&super::ISSUER).is_some()
                             }
+                            crate::message::AssistantContent::Native(_) => false,
                             _ => true,
                         })
                         .map(Content::try_from)
@@ -1706,6 +1708,12 @@ pub mod interactions_api_types {
                         mime_type: Some(mime_type),
                         resolution: None,
                     }))
+                }
+                message::AssistantContent::Native(native) => {
+                    Err(message::MessageError::ConversionError(format!(
+                        "Gemini cannot replay a `{}` provider item",
+                        native.issuer()
+                    )))
                 }
             }
         }

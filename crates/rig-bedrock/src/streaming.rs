@@ -149,6 +149,7 @@ impl<'id> StreamState<'id> {
                                         // Base64 preserves opaque bytes for replay.
                                         data: BASE64_STANDARD.encode(blob.as_ref()),
                                     }],
+                                    native: None,
                                 });
                             }
                             unknown => {

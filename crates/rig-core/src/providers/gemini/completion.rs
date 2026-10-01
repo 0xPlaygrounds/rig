@@ -707,11 +707,13 @@ pub mod gemini_api_types {
                     role: Some(Role::Model),
                     parts: content
                         .into_iter()
-                        // Reasoning another service issued is not replayed.
+                        // Reasoning another service issued, and other dialects'
+                        // provider items, are not replayed.
                         .filter(|part| match part {
                             message::AssistantContent::Reasoning(reasoning) => reasoning
                                 .open(&crate::providers::gemini::completion::ISSUER)
                                 .is_some(),
+                            message::AssistantContent::Native(_) => false,
                             _ => true,
                         })
                         .map(std::convert::TryInto::try_into)
@@ -1155,6 +1157,9 @@ pub mod gemini_api_types {
                         additional_params: None,
                     })
                 }
+                message::AssistantContent::Native(native) => Err(MessageError::ConversionError(
+                    format!("Gemini cannot replay a `{}` provider item", native.issuer()),
+                )),
             }
         }
     }

@@ -47,6 +47,7 @@ pub(crate) mod shared_parts {
             },
             signature,
             additional_params: None,
+            native: None,
         })
     }
 }

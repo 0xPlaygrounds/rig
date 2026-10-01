@@ -100,6 +100,9 @@ impl Serialize for InputItem {
     where
         S: serde::Serializer,
     {
+        if let InputContent::Native(item) | InputContent::NativeCall(item) = &self.input {
+            return item.serialize(serializer);
+        }
         let mut value = serde_json::to_value(&self.input).map_err(serde::ser::Error::custom)?;
         let map = value.as_object_mut().ok_or_else(|| {
             serde::ser::Error::custom("Input content must serialize to an object")
@@ -119,6 +122,14 @@ impl Serialize for InputItem {
 }
 
 impl InputItem {
+    /// A provider item replayed verbatim.
+    fn native(item: Value) -> Self {
+        Self {
+            role: None,
+            input: InputContent::Native(item),
+        }
+    }
+
     pub fn system_message(content: impl Into<String>) -> Self {
         Self {
             role: Some(Role::System),
@@ -178,6 +189,13 @@ pub enum InputContent {
     /// Opaque compaction data for replaying a compacted context. All fields
     /// other than the separately serialized `type` tag are preserved.
     Compaction(Map<String, Value>),
+    /// A provider item replayed verbatim.
+    #[serde(skip)]
+    Native(Value),
+    /// A `function_call` item replayed verbatim in its call's place: its
+    /// `call_id` is the call's wire id.
+    #[serde(skip)]
+    NativeCall(Value),
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
@@ -514,17 +532,40 @@ fn input_items(
                 let mut message_items: Vec<(String, usize)> = Vec::new();
 
                 for assistant_content in content {
+                    if let Some(item) = fresh_native(&assistant_content, issuers) {
+                        match &assistant_content {
+                            crate::message::AssistantContent::Reasoning(_) => {
+                                reasoning_items.push(InputItem::native(item));
+                            }
+                            crate::message::AssistantContent::ToolCall(_) => {
+                                other_items.push(InputItem {
+                                    role: None,
+                                    input: InputContent::NativeCall(item),
+                                });
+                            }
+                            _ => other_items.push(InputItem::native(item)),
+                        }
+                        continue;
+                    }
                     match assistant_content {
-                        crate::message::AssistantContent::Text(Text {
-                            text,
-                            additional_params,
-                        }) => {
-                            let Some(message) = assistant_text_replay_message(
-                                id.as_deref(),
-                                text,
-                                additional_params,
-                            ) else {
+                        crate::message::AssistantContent::Text(Text { text, .. }) => {
+                            if text.is_empty() {
                                 continue;
+                            }
+                            let message = match id.as_deref() {
+                                Some(item_id) if !item_id.is_empty() => Message::Assistant {
+                                    content: vec![AssistantContentType::Text(
+                                        AssistantContent::OutputText(OutputText::new(text)),
+                                    )],
+                                    id: item_id.to_owned(),
+                                    name: None,
+                                    status: ToolStatus::Completed,
+                                    phase: None,
+                                },
+                                _ => Message::AssistantInput {
+                                    content: text,
+                                    name: None,
+                                },
                             };
                             let joined = match &message {
                                 Message::Assistant { id: item_id, .. } if !item_id.is_empty() => {
@@ -593,6 +634,12 @@ fn input_items(
                                     role: None,
                                     input: InputContent::Reasoning(openai_reasoning),
                                 });
+                            }
+                        }
+                        crate::message::AssistantContent::Native(native) => {
+                            // Another dialect's, or another service's, items are not replayed.
+                            if let Some(item) = native.open_native(DIALECT, issuers) {
+                                other_items.push(InputItem::native(item.item().clone()));
                             }
                         }
                         crate::message::AssistantContent::Image(_) => {
@@ -1232,6 +1279,10 @@ impl TryFrom<ResponsesRequestParams> for CompletionRequest {
             |item| match &mut item.input {
                 InputContent::FunctionCall(call) => vec![&mut call.call_id],
                 InputContent::FunctionCallOutput(result) => vec![&mut result.call_id],
+                InputContent::NativeCall(item) => match item.get_mut("call_id") {
+                    Some(Value::String(call_id)) => vec![call_id],
+                    _ => Vec::new(),
+                },
                 _ => Vec::new(),
             },
         )?;
@@ -2210,166 +2261,61 @@ impl OutputText {
             extras: Map::new(),
         }
     }
-
-    /// Rebuild a wire block from a rig text block, re-attaching only the
-    /// extras this wire recognizes as its own: the sibling keys captured off
-    /// an `output_text` block at ingest (see
-    /// [`From<AssistantContent> for completion::AssistantContent`]).
-    fn from_message_text(
-        text: impl Into<String>,
-        additional_params: Option<crate::message::AdditionalParams>,
-    ) -> Self {
-        let Some(params) = additional_params else {
-            return Self::new(text);
-        };
-        // The caller diagnoses malformed extras before this conversion drops them.
-        let extras = params
-            .into_wire_extras(OPENAI_RESPONSES_EXTRAS_KEY)
-            .map(|map| {
-                map.into_iter()
-                    // Reserved keys would duplicate the block's text or tag.
-                    // Phase and the item id belong on the message, not the
-                    // content block.
-                    .filter(|(key, _)| {
-                        key != "text"
-                            && key != "type"
-                            && key != OPENAI_RESPONSES_PHASE_KEY
-                            && key != OPENAI_RESPONSES_MESSAGE_ID_KEY
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
-        Self {
-            text: text.into(),
-            extras,
-        }
-    }
 }
 
-/// Builds the assistant input one text block replays as, using only
-/// Responses-owned extras. The item is the block's own message item when its
-/// extras name one, and `id` otherwise; its `phase` comes from the extras.
-/// Empty text is skipped unless the item has an id and owned extras. Without
-/// an id the text replays id-less: `phase` rides it, content-part extras do
-/// not. Malformed or dropped extras warn.
-fn assistant_text_replay_message(
-    id: Option<&str>,
-    text: String,
-    additional_params: Option<crate::message::AdditionalParams>,
-) -> Option<Message> {
-    // Diagnose malformed extras before normalization makes them indistinguishable
-    // from absent extras, including when empty text is skipped.
-    if let Some(non_object) = additional_params
-        .as_ref()
-        .and_then(|params| params.get(OPENAI_RESPONSES_EXTRAS_KEY))
-        .filter(|value| !value.is_object())
-    {
-        tracing::warn!(
-            %non_object,
-            "`additional_params[\"{OPENAI_RESPONSES_EXTRAS_KEY}\"]` must be a JSON \
-             object — replaying without these extras"
-        );
-    }
-    let own_extras = additional_params
-        .as_ref()
-        .and_then(|params| params.wire_extras(OPENAI_RESPONSES_EXTRAS_KEY));
-    // `phase` and the item id ride the text block's own-wire extras on
-    // ingest; they belong to the message, so they are lifted here and
-    // filtered from the block.
-    let message_field = |key: &str| {
-        own_extras
-            .and_then(|extras| extras.get(key))
-            .and_then(Value::as_str)
-            .filter(|value| !value.is_empty())
-            .map(str::to_owned)
-    };
-    let phase = message_field(OPENAI_RESPONSES_PHASE_KEY);
-    let id = message_field(OPENAI_RESPONSES_MESSAGE_ID_KEY).or_else(|| id.map(str::to_owned));
-    let content_extras = own_extras.is_some_and(|extras| {
-        extras
-            .keys()
-            .any(|key| key != OPENAI_RESPONSES_PHASE_KEY && key != OPENAI_RESPONSES_MESSAGE_ID_KEY)
-    });
-    if text.is_empty() && !(own_extras.is_some() && id.is_some()) {
-        return None;
-    }
-    if id.is_none() && content_extras {
-        tracing::warn!(
-            "own-wire extras cannot ride the id-less assistant form — \
-             replaying the text without them"
-        );
-    }
-    match (id, phase) {
-        (Some(id), phase) => Some(Message::Assistant {
-            content: vec![AssistantContentType::Text(AssistantContent::OutputText(
-                OutputText::from_message_text(text, additional_params),
-            ))],
-            id,
-            name: None,
-            status: ToolStatus::Completed,
-            phase,
-        }),
-        // The id-less input message form has no `phase`; an output message
-        // without its id carries one.
-        (None, Some(phase)) => Some(Message::Assistant {
-            content: vec![AssistantContentType::Text(AssistantContent::OutputText(
-                OutputText::new(text),
-            ))],
-            id: String::new(),
-            name: None,
-            status: ToolStatus::Completed,
-            phase: Some(phase),
-        }),
-        (None, None) => Some(Message::AssistantInput {
-            content: text,
-            name: None,
-        }),
-    }
-}
-
-/// Responses-owned extras in [`Text::additional_params`](crate::message::Text).
-/// Both paths capture these fields for replay: streamed text takes them from
-/// its message item's snapshot, not from `output_text.annotation.added`.
-pub(crate) const OPENAI_RESPONSES_EXTRAS_KEY: &str = "openai_responses";
-
-/// Key inside the [`OPENAI_RESPONSES_EXTRAS_KEY`] object that carries the
-/// output message's `phase`. It is message-level on the wire but rides the
-/// text block's extras in rig history (the only own-wire seat), and is
-/// lifted back onto the assistant input item at replay.
-pub(crate) const OPENAI_RESPONSES_PHASE_KEY: &str = "phase";
-
-/// Key inside the [`OPENAI_RESPONSES_EXTRAS_KEY`] object that carries the
-/// id of the message item a text block came from. Recorded only when a
-/// reply carries several message items, which one rig assistant message
-/// id cannot name; lifted back onto the assistant input item at replay.
-pub(crate) const OPENAI_RESPONSES_MESSAGE_ID_KEY: &str = "message_id";
-
-/// Converts output text or a refusal to a Rig text block, retaining nonempty
-/// output-text extras under the Responses key.
+/// Converts output text or a refusal to a Rig text block. What else the
+/// block states rides its message item, the text's provider item.
 pub(crate) fn text_block(value: AssistantContent) -> Text {
     match value {
         AssistantContent::Refusal { refusal } => Text::new(refusal),
-        // Keep this destructuring exhaustive so new wire fields force an
-        // explicit capture-or-drop decision.
-        AssistantContent::OutputText(OutputText { text, extras }) => {
-            // Empty metadata must not change replayed request bytes.
-            let extras: Map<String, Value> = extras
-                .into_iter()
-                .filter(|(_, value)| {
-                    !(value.is_null()
-                        || value.as_array().is_some_and(Vec::is_empty)
-                        || value.as_object().is_some_and(Map::is_empty))
-                })
-                .collect();
-            Text {
-                text,
-                additional_params: crate::message::AdditionalParams::from_entries(
-                    (!extras.is_empty())
-                        .then_some((OPENAI_RESPONSES_EXTRAS_KEY, Value::Object(extras))),
-                ),
-            }
-        }
+        AssistantContent::OutputText(OutputText { text, .. }) => Text::new(text),
     }
+}
+
+/// The wire dialect Responses provider items are tagged with.
+pub const DIALECT: &str = "openai.responses";
+
+/// The Responses item `content` was projected from, when this request may
+/// replay it in the block's place: the item is this dialect's, one of
+/// `issuers` opens it, and the block is unedited since it was decoded.
+fn fresh_native(
+    content: &crate::message::AssistantContent,
+    issuers: &[crate::message::Issuer],
+) -> Option<Value> {
+    let native = match content {
+        crate::message::AssistantContent::Text(text) => text.native.as_ref(),
+        crate::message::AssistantContent::ToolCall(call) => call.native.as_ref(),
+        crate::message::AssistantContent::Reasoning(reasoning) => {
+            reasoning.open_for(issuers)?.native.as_ref()
+        }
+        crate::message::AssistantContent::Image(_)
+        | crate::message::AssistantContent::Native(_) => None,
+    }?;
+    let item = native.open_native(DIALECT, issuers)?;
+    let projected = streaming::project(item.item())?;
+    message::NativeItem::same_canonical(&projected, content).then(|| item.item().clone())
+}
+
+/// Whether `block`'s canonical Responses encoding states everything `item`
+/// states, so the item need not ride the block. A text block is encoded as
+/// the item's own message, since only the reply's message id is known.
+pub(crate) fn round_trips(block: &crate::message::AssistantContent, item: &Value) -> bool {
+    let issuers = match block {
+        crate::message::AssistantContent::Reasoning(reasoning) => vec![reasoning.issuer().clone()],
+        _ => Vec::new(),
+    };
+    let id = item.get("id").and_then(Value::as_str).map(str::to_owned);
+    let message = crate::completion::Message::Assistant {
+        id,
+        content: vec![block.clone()],
+    };
+    let Ok(encoded) = input_items(message, &issuers) else {
+        return false;
+    };
+    let Ok([encoded]) = <[InputItem; 1]>::try_from(encoded) else {
+        return false;
+    };
+    serde_json::to_value(&encoded).is_ok_and(|encoded| message::same_wire_value(&encoded, item))
 }
 
 impl From<AssistantContent> for completion::AssistantContent {

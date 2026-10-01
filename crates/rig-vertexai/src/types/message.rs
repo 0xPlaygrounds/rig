@@ -93,11 +93,13 @@ pub(crate) fn content_from_message(
         Message::Assistant { content, .. } => {
             let parts: Result<Vec<vertexai::model::Part>, _> = content
                 .into_iter()
-                // Reasoning another service issued is not replayed.
+                // Reasoning another service issued, and other dialects'
+                // provider items, are not replayed.
                 .filter(|part| match part {
                     AssistantContent::Reasoning(reasoning) => reasoning
                         .open(&crate::types::completion_response::ISSUER)
                         .is_some(),
+                    AssistantContent::Native(_) => false,
                     _ => true,
                 })
                 .map(|assistant_content| match assistant_content {
@@ -122,6 +124,9 @@ pub(crate) fn content_from_message(
                         Ok(part)
                     }
                     AssistantContent::Image(image) => vertex_assistant_image_part(image),
+                    AssistantContent::Native(_) => Err(ProviderError::Provider(
+                        "Vertex AI cannot replay another dialect's provider item".to_string(),
+                    )),
                     AssistantContent::ToolCall(tool_call) => {
                         let serde_json::Value::Object(struct_val) = tool_call.function.arguments
                         else {

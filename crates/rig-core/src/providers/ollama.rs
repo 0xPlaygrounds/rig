@@ -410,6 +410,7 @@ impl<'id> OllamaDecoder<'id> {
                     },
                     signature: None,
                     additional_params: None,
+                    native: None,
                 })?;
             }
         }
@@ -719,6 +720,8 @@ impl TryFrom<crate::message::Message> for Vec<Message> {
                                 thinking = Some(display);
                             }
                         }
+                        // Another dialect's provider items are not replayed.
+                        crate::message::AssistantContent::Native(_) => {}
                         crate::message::AssistantContent::Image(_) => {
                             return Err(crate::message::MessageError::ConversionError(
                                 "Ollama currently doesn't support images.".into(),

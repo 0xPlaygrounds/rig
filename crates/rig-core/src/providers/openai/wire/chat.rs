@@ -1505,6 +1505,7 @@ fn detail_reasoning(detail: &unary::ReasoningDetails) -> Option<crate::message::
     Some(crate::message::Reasoning {
         id: id.clone().filter(|id| !id.is_empty()),
         content: vec![crate::message::ReasoningContent::Encrypted(data.clone())],
+        native: None,
     })
 }
 
@@ -1538,6 +1539,7 @@ fn whole_detail_reasoning(detail: &unary::ReasoningDetails) -> Option<crate::mes
     Some(crate::message::Reasoning {
         id: id.clone().filter(|id| !id.is_empty()),
         content: vec![content],
+        native: None,
     })
 }
 

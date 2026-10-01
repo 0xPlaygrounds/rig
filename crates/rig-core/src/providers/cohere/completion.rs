@@ -380,6 +380,8 @@ impl TryFrom<message::Message> for Vec<Message> {
                                 text_content.push(AssistantContent::Thinking { thinking });
                             }
                         }
+                        // Another dialect's provider items are not replayed.
+                        message::AssistantContent::Native(_) => {}
                         message::AssistantContent::Image(_) => {
                             return Err(message::MessageError::ConversionError(
                                 "Cohere currently doesn't support images.".to_owned(),

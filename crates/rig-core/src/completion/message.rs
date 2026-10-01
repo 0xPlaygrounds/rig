@@ -28,10 +28,12 @@ pub enum Message {
 }
 
 mod identity;
+mod native;
 
 pub use identity::{
     CallId, EmptyCallId, EmptyToolName, Issuer, LocalCallId, ProviderCallId, Sealed, ToolName,
 };
+pub use native::{NativeItem, same_wire_value};
 
 /// Shared error text for an invalid empty response choice.
 /// Provider decoders must exempt legal empty outcomes, including recognized
@@ -87,14 +89,14 @@ pub fn turn_delivered_no_answer(choice: &[AssistantContent]) -> bool {
         AssistantContent::Text(text) => !text.text.is_empty(),
         AssistantContent::ToolCall(_) => true,
         AssistantContent::Image(_) => true,
-        // The one exclusion: scratch work, not an answer.
-        AssistantContent::Reasoning(_) => false,
+        // Scratch work and provider-only items are not an answer.
+        AssistantContent::Reasoning(_) | AssistantContent::Native(_) => false,
     })
 }
 
 /// Groups streamed choices as reasoning, text, tool calls, then images,
-/// preserving order within each group. Choices without reasoning or tool calls
-/// retain their original order.
+/// preserving order within each group. Native items stay in place among the
+/// text. Choices without reasoning or tool calls retain their original order.
 pub fn canonical_streamed_choice(choice: Vec<AssistantContent>) -> Vec<AssistantContent> {
     let regroup = choice.iter().any(|part| {
         matches!(
@@ -112,7 +114,7 @@ pub fn canonical_streamed_choice(choice: Vec<AssistantContent>) -> Vec<Assistant
     for part in choice {
         match part {
             AssistantContent::Reasoning(block) => reasoning.push(block),
-            AssistantContent::Text(_) => text.push(part),
+            AssistantContent::Text(_) | AssistantContent::Native(_) => text.push(part),
             AssistantContent::ToolCall(_) => calls.push(part),
             AssistantContent::Image(_) => images.push(part),
         }
@@ -139,8 +141,8 @@ pub enum UserContent {
     Document(Document),
 }
 
-/// Assistant text, tool calls, reasoning, or images.
-/// Deserialization requires the lowercase `type` tag.
+/// Assistant text, tool calls, reasoning, images, or provider items with no
+/// canonical meaning. Deserialization requires the lowercase `type` tag.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum AssistantContent {
@@ -153,6 +155,10 @@ pub enum AssistantContent {
     Reasoning(Sealed<Reasoning>),
     /// Image content emitted by the assistant.
     Image(Image),
+    /// A provider item with no canonical meaning, such as a hosted-tool call
+    /// or result or a compaction item. It replays verbatim to the dialect and
+    /// issuer that produced it, and to no other.
+    Native(Sealed<NativeItem>),
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
@@ -183,6 +189,10 @@ pub struct Reasoning {
     pub id: Option<String>,
     /// Ordered reasoning content blocks.
     pub content: Vec<ReasoningContent>,
+    /// The provider item this reasoning was projected from, when the
+    /// canonical form loses part of it. See [`NativeItem`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub native: Option<Sealed<NativeItem>>,
 }
 
 impl Reasoning {
@@ -195,6 +205,7 @@ impl Reasoning {
     pub fn new_with_signature(input: &str, signature: Option<String>) -> Self {
         Self {
             id: None,
+            native: None,
             content: vec![ReasoningContent::Text {
                 text: input.to_string(),
                 signature,
@@ -217,6 +228,7 @@ impl Reasoning {
     pub fn multi(input: Vec<String>) -> Self {
         Self {
             id: None,
+            native: None,
             content: input
                 .into_iter()
                 .map(|text| ReasoningContent::Text {
@@ -231,6 +243,7 @@ impl Reasoning {
     pub fn redacted(data: impl Into<String>) -> Self {
         Self {
             id: None,
+            native: None,
             content: vec![ReasoningContent::Redacted { data: data.into() }],
         }
     }
@@ -239,6 +252,7 @@ impl Reasoning {
     pub fn encrypted(data: impl Into<String>) -> Self {
         Self {
             id: None,
+            native: None,
             content: vec![ReasoningContent::Encrypted(data.into())],
         }
     }
@@ -247,6 +261,7 @@ impl Reasoning {
     pub fn summaries(input: Vec<String>) -> Self {
         Self {
             id: None,
+            native: None,
             content: input.into_iter().map(ReasoningContent::Summary).collect(),
         }
     }
@@ -374,6 +389,10 @@ pub struct ToolCall {
     /// Additional provider-specific parameters to be sent to the completion model provider
     #[serde(default)]
     pub additional_params: Option<serde_json::Value>,
+    /// The provider item this call was projected from, when the canonical
+    /// form loses part of it. See [`NativeItem`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub native: Option<Sealed<NativeItem>>,
 }
 
 impl ToolCall {
@@ -384,6 +403,7 @@ impl ToolCall {
             function,
             signature: None,
             additional_params: None,
+            native: None,
         }
     }
 
@@ -709,6 +729,11 @@ pub struct Text {
         skip_serializing_if = "Option::is_none"
     )]
     pub additional_params: Option<AdditionalParams>,
+    /// The provider item this text was projected from, when the canonical
+    /// form loses part of it, such as citations or a message `phase`.
+    /// See [`NativeItem`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub native: Option<Sealed<NativeItem>>,
 }
 
 impl Text {
@@ -717,6 +742,7 @@ impl Text {
         Self {
             text: text.into(),
             additional_params: None,
+            native: None,
         }
     }
 
@@ -985,6 +1011,7 @@ impl Message {
         match self {
             Message::Assistant { content, .. } => content.iter().any(|part| match part {
                 AssistantContent::Reasoning(reasoning) => reasoning.open_for(issuers).is_some(),
+                AssistantContent::Native(native) => native.open_for(issuers).is_some(),
                 _ => true,
             }),
             Message::System { .. } | Message::User { .. } => true,
@@ -1292,6 +1319,7 @@ macro_rules! text_from {
                 Text {
                     text: text.into(),
                     additional_params: None,
+                    native: None,
                 }
             }
         }

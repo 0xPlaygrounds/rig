@@ -399,4 +399,14 @@ impl<T> Sealed<T> {
     pub(crate) fn value(&self) -> &T {
         &self.value
     }
+
+    /// The value, unsealed, for the completion writer that reseals it.
+    pub(crate) fn into_value(self) -> T {
+        self.value
+    }
+
+    /// The value, for the completion writer that reseals what it carries.
+    pub(crate) fn value_mut(&mut self) -> &mut T {
+        &mut self.value
+    }
 }

@@ -998,6 +998,8 @@ pub fn assistant_content_to_messages(
                 });
                 details.extend(entries);
             }
+            // Another dialect's provider items are not replayed.
+            message::AssistantContent::Native(_) => {}
             message::AssistantContent::Image(_) => {
                 return Err(message::MessageError::ConversionError(
                     "OpenAI assistant messages do not support image content in chat completions"

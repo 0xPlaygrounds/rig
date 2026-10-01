@@ -77,6 +77,7 @@ impl<'id> Thoughts<'id> {
                 text: String::new(),
                 signature: Some(signature),
             }],
+            native: None,
         });
     }
 

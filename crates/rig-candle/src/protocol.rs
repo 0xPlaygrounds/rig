@@ -150,7 +150,7 @@ fn validate_protocol_inputs(
                                 protocol,
                             )?;
                         }
-                        AssistantContent::Image(_) => {}
+                        AssistantContent::Image(_) | AssistantContent::Native(_) => {}
                     }
                 }
             }
@@ -431,6 +431,8 @@ fn render_plain_message(message: &Message) -> Result<(&'static str, String), Can
                     AssistantContent::Image(_) => {
                         return Err(CandleError::UnsupportedPromptContent("image content"));
                     }
+                    // Another dialect's provider items are not replayed.
+                    AssistantContent::Native(_) => {}
                 }
             }
             Ok(("assistant", parts.join("\n")))
@@ -610,6 +612,8 @@ fn render_qwen_message(
                             "assistant image content",
                         ));
                     }
+                    // Another dialect's provider items are not replayed.
+                    AssistantContent::Native(_) => {}
                 }
             }
             Ok(RenderedMessage::Normal {

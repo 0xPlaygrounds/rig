@@ -127,6 +127,7 @@ impl StreamWriter {
             function: ToolFunction { name, arguments },
             signature: None,
             additional_params: None,
+            native: None,
         };
         if let Err(error) = self.turn.write_call(&mut self.items, call) {
             return self.error(ErrorReport::from(&error)).await;

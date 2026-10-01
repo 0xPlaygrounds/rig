@@ -16,7 +16,9 @@ use crate::providers::openai::responses_api::{
 use crate::wire::{Decoder, Flow, Out, WireEvent, WireFrame};
 use serde::{Deserialize, Serialize};
 
-use super::{CompletionResponse, Output};
+use super::{CompletionResponse, DIALECT, Output, round_trips};
+use crate::message::NativeItem;
+use serde_json::Value;
 
 /// Response lifecycle event or output-item event.
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -132,6 +134,7 @@ pub(crate) fn reasoning_from_done_item(
     Some(crate::message::Reasoning {
         id: provider_id.map(str::to_owned),
         content: blocks,
+        native: None,
     })
 }
 
@@ -248,8 +251,8 @@ pub enum ResponsesEvent {
         chunk: StreamingCompletionChunk,
     },
     /// The unary reply: the response object itself, which carries no `type`
-    /// discriminator because it is not an event.
-    Whole(Box<CompletionResponse>),
+    /// discriminator because it is not an event, and its payload verbatim.
+    Whole(Box<CompletionResponse>, String),
     /// A success whose body is the provider's error envelope instead of a
     /// response, with the raw body the error preserves. Both the stream's
     /// own `error` event and a 200 whose whole body is an envelope reach
@@ -314,11 +317,6 @@ pub struct ResponsesDecoder<'id> {
     /// text when a gateway changes item IDs between deltas and restatements.
     delta_text_slots: std::collections::HashSet<u64>,
     unattributed_text_delta: bool,
-    /// The message items, by id and output slot, whose content-part extras
-    /// are on their text part. Every snapshot restates them, so only the
-    /// first attaches.
-    extras_items: std::collections::HashSet<String>,
-    extras_slots: std::collections::HashSet<u64>,
     /// The reasoning part of each output slot, fixed by its first fragment.
     reasoning: std::collections::HashMap<u64, ReasoningPart<'id>>,
     /// The output slot of each keyed text part, and of the anonymous one.
@@ -336,7 +334,9 @@ pub struct ResponsesDecoder<'id> {
 #[derive(Default)]
 struct MessageItem {
     id: String,
-    phase: Option<String>,
+    /// The item as the wire stated it: the provider item its text part is
+    /// projected from.
+    native: Option<Value>,
     /// Whether `output_item.done` stated the item. What it states wins, as
     /// its id does for the reply's message id: a gateway may name one item
     /// differently in each event.
@@ -366,8 +366,6 @@ impl<'id> ResponsesDecoder<'id> {
             delta_text_items: std::collections::HashSet::new(),
             delta_text_slots: std::collections::HashSet::new(),
             unattributed_text_delta: false,
-            extras_items: std::collections::HashSet::new(),
-            extras_slots: std::collections::HashSet::new(),
             reasoning: std::collections::HashMap::new(),
             text_slots: std::collections::HashMap::new(),
             anonymous_text_slot: None,
@@ -407,7 +405,7 @@ impl<'id> ResponsesDecoder<'id> {
         }
         let body = |data: &str| {
             wire::classify_marker_keyed_frame::<CompletionResponse>(data, WHOLE_BODY_MARKERS)
-                .map(|response| ResponsesEvent::Whole(Box::new(response)))
+                .map(|response| ResponsesEvent::Whole(Box::new(response), data.to_owned()))
         };
         let envelope = |data: &str| {
             // Error envelopes must retain the provider's diagnostic on every dialect.
@@ -464,6 +462,7 @@ impl<'id> ResponsesDecoder<'id> {
         &mut self,
         output_index: u64,
         message: &super::OutputMessage,
+        native: Option<&Value>,
         statement: Statement,
     ) {
         let known = self
@@ -496,18 +495,20 @@ impl<'id> ResponsesDecoder<'id> {
         if !message.id.is_empty() && (wins || item.id.is_empty()) {
             item.id.clone_from(&message.id);
         }
-        if message.phase.is_some() && (wins || item.phase.is_none()) {
-            item.phase.clone_from(&message.phase);
+        if let Some(native) = native
+            && (wins || item.native.is_none())
+        {
+            item.native = Some(native.clone());
         }
         item.done |= statement == Statement::Done;
     }
 
-    /// Put each message item's `phase` on the text part its content built,
-    /// once, at the end of the reply, when every statement has been read. A
-    /// part is its item's by id, or else by output slot: a gateway may name
-    /// a message's deltas with ids its item events do not use. When the
-    /// reply carries several message items, each part also records its
-    /// item's id, so replay can send each item back as itself.
+    /// Put each message item on the text part its content built, once, at
+    /// the end of the reply, when every statement has been read. A part is
+    /// its item's by id, or else by output slot: a gateway may name a
+    /// message's deltas with ids its item events do not use. When the reply
+    /// carries several message items, each keeps its item whatever it
+    /// states, because one assistant message id cannot name them all.
     fn attach_message_items(&mut self, out: &mut Out<'id, Completion>) {
         let item_of = |key: Option<&str>, slot: Option<u64>| {
             key.and_then(|key| {
@@ -532,27 +533,12 @@ impl<'id> ResponsesDecoder<'id> {
             .collect();
         let several = self.message_items.len() > 1;
         for (part, item) in parts {
-            let mut extras = serde_json::Map::new();
-            if let Some(phase) = &item.phase {
-                extras.insert(
-                    super::OPENAI_RESPONSES_PHASE_KEY.to_owned(),
-                    serde_json::Value::String(phase.clone()),
+            if let Some(native) = &item.native {
+                out.text_native(
+                    part,
+                    NativeItem::new(DIALECT, native.clone()),
+                    (!several).then_some(round_trips as crate::operation::RoundTrip),
                 );
-            }
-            if several && !item.id.is_empty() {
-                extras.insert(
-                    super::OPENAI_RESPONSES_MESSAGE_ID_KEY.to_owned(),
-                    serde_json::Value::String(item.id.clone()),
-                );
-            }
-            if extras.is_empty() {
-                continue;
-            }
-            if let Some(params) = crate::message::AdditionalParams::from_entries(Some((
-                super::OPENAI_RESPONSES_EXTRAS_KEY,
-                serde_json::Value::Object(extras),
-            ))) {
-                out.text_params(part, params);
             }
         }
     }
@@ -602,81 +588,35 @@ impl<'id> ResponsesDecoder<'id> {
         if !message.content.is_empty() {
             self.note_text_delta(output_index, Some(&message.id));
         }
-        self.note_extras(output_index, &message.id);
         for content in message.content.iter().cloned() {
             let text = super::text_block(content);
             let part = self.text_part(output_index, Some(&message.id), out);
             out.push_text(part, &text.text);
-            if let Some(additional_params) = text.additional_params {
-                out.text_params(part, additional_params);
-            }
         }
     }
 
-    /// Record that the message item at `output_index` has its extras on its
-    /// text part.
-    fn note_extras(&mut self, output_index: u64, item_id: &str) {
-        self.extras_slots.insert(output_index);
-        if !item_id.is_empty() {
-            self.extras_items.insert(item_id.to_owned());
-        }
-    }
-
-    /// Attach a message item's content-part extras, such as its citation
-    /// annotations, to the text part its deltas built, in content-part order.
-    /// Nothing attaches when a snapshot already did or no delta built a part
-    /// for the item: text stated only by a snapshot publishes its extras
-    /// with it.
-    fn attach_message_extras(
-        &mut self,
-        output_index: u64,
-        message: &super::OutputMessage,
-        out: &mut Out<'id, Completion>,
-    ) {
-        if self.extras_slots.contains(&output_index) || self.extras_items.contains(&message.id) {
-            return;
-        }
-        let Some(part) = self.texts.get(&message.id) else {
-            return;
-        };
-        let extras = message
-            .content
-            .iter()
-            .cloned()
-            .filter_map(|content| super::text_block(content).additional_params)
-            .reduce(|mut extras, next| {
-                extras.merge(next);
-                extras
-            });
-        if let Some(extras) = extras {
-            out.text_params(part, extras);
-        }
-        self.note_extras(output_index, &message.id);
-    }
-
-    /// Publish nonempty terminal message content when no delta delivered it,
-    /// and otherwise only the extras no `output_item.done` attached.
+    /// Publish nonempty terminal message content when no delta delivered it.
     /// Match by output position, item ID, or the unattributed-delta safeguard.
     fn merge_terminal_body_text(
         &mut self,
         response: &CompletionResponse,
+        raw_output: &[Value],
         out: &mut Out<'id, Completion>,
     ) {
         // The item's position in `output[]` IS the `output_index` its
         // stream events carried, which is how a restatement is matched to
         // the deltas that already delivered it.
         for (output_index, item) in response.output.iter().enumerate() {
+            let native = raw_output.get(output_index);
             let output_index = output_index as u64;
             let Output::Message(message) = item else {
                 continue;
             };
-            self.note_message_item(output_index, message, Statement::Terminal);
+            self.note_message_item(output_index, message, native, Statement::Terminal);
             if message.content.is_empty() {
                 continue;
             }
-            if self.delta_delivered_text(output_index, &message.id) {
-                self.attach_message_extras(output_index, message, out);
-            } else {
+            if !self.delta_delivered_text(output_index, &message.id) {
                 self.publish_message_text(output_index, message, out);
             }
         }
@@ -686,6 +626,7 @@ impl<'id> ResponsesDecoder<'id> {
     fn decode_item_chunk(
         &mut self,
         chunk: ItemChunk,
+        raw: &str,
         out: &mut Out<'id, Completion>,
     ) -> Result<(), ProviderError> {
         let ItemChunk {
@@ -717,12 +658,13 @@ impl<'id> ResponsesDecoder<'id> {
             ItemChunkKind::OutputItemAdded(StreamingItemDoneOutput {
                 item: Output::Message(message),
                 ..
-            }) => self.note_message_item(output_index, &message, Statement::Added),
+            }) => self.note_message_item(output_index, &message, None, Statement::Added),
             ItemChunkKind::OutputItemDone(message) => {
                 // Any completed item ends the one it carried; a fragment
                 // arriving afterwards names its own item.
                 self.current_text_item = None;
-                self.push_output_item_done(message.item, output_index, out)?;
+                let native = frame_item(raw);
+                self.push_output_item_done(message.item, native, output_index, out)?;
             }
             // Text and refusal deltas are the same visible-text stream: a
             // refusal is the assistant's message for that turn.
@@ -762,9 +704,14 @@ impl<'id> ResponsesDecoder<'id> {
     fn push_output_item_done(
         &mut self,
         item: Output,
+        native: Option<Value>,
         output_index: u64,
         out: &mut Out<'id, Completion>,
     ) -> Result<(), ProviderError> {
+        let native = match native {
+            Some(native) => native,
+            None => serde_json::to_value(&item)?,
+        };
         match item {
             Output::FunctionCall(func) => {
                 let index = output_index as usize;
@@ -795,6 +742,7 @@ impl<'id> ResponsesDecoder<'id> {
                     )?,
                     Err(_) => {}
                 }
+                out.pending_native(index, NativeItem::new(DIALECT, native), Some(round_trips));
                 // The done item completes the call.
                 out.close_pending(index, IfMalformed::Drop)?;
             }
@@ -815,50 +763,62 @@ impl<'id> ResponsesDecoder<'id> {
                     encrypted_content,
                     signature,
                 );
+                let native = NativeItem::new(DIALECT, native);
                 match (part, restated) {
                     // The restatement supersedes the part's fragments.
-                    (Some(part), restated) => out.close_reasoning(
-                        part,
-                        Seal {
-                            id: provider_id,
-                            restated,
-                            ..Seal::default()
-                        },
-                    ),
-                    (None, Some(restated)) => out.reasoning_block(restated),
+                    (Some(part), restated) => {
+                        out.reasoning_native(&part, native, Some(round_trips));
+                        out.close_reasoning(
+                            part,
+                            Seal {
+                                id: provider_id,
+                                restated,
+                                ..Seal::default()
+                            },
+                        );
+                    }
+                    (None, Some(restated)) => {
+                        let part = out.reasoning();
+                        out.reasoning_native(&part, native, Some(round_trips));
+                        out.close_reasoning(
+                            part,
+                            Seal {
+                                restated: Some(restated),
+                                ..Seal::default()
+                            },
+                        );
+                    }
                     // A contentless identified item is still replay state.
                     (None, None) => {
                         if let Some(id) = provider_id {
-                            out.reasoning_block(crate::message::Reasoning {
-                                id: Some(id),
-                                content: Vec::new(),
-                            });
+                            let part = out.reasoning();
+                            out.reasoning_native(&part, native, Some(round_trips));
+                            out.close_reasoning(
+                                part,
+                                Seal {
+                                    restated: Some(crate::message::Reasoning {
+                                        id: Some(id),
+                                        content: Vec::new(),
+                                        native: None,
+                                    }),
+                                    ..Seal::default()
+                                },
+                            );
                         }
                     }
                 }
             }
             Output::Message(message) => {
-                self.note_message_item(output_index, &message, Statement::Done);
-                self.attach_message_extras(output_index, &message, out);
+                self.note_message_item(output_index, &message, Some(&native), Statement::Done);
                 if !message.id.is_empty() {
                     out.message_id(message.id);
                 }
             }
-            // An unmodeled output item (e.g. a hosted-tool result such as
-            // `web_search_call`): surfaced raw to the consumer, as the
-            // non-streaming decode preserves it on `CompletionResponse.output`.
-            Output::Unknown(value) => {
-                out.unknown(value.into());
-            }
-            // A compaction item: surfaced raw like an unmodeled item so a
-            // stateless consumer can capture it from the stream.
-            Output::Compaction(fields) => {
-                let mut map = fields;
-                map.insert(
-                    "type".to_string(),
-                    serde_json::Value::String("compaction".to_string()),
-                );
-                out.unknown(serde_json::Value::Object(map).into());
+            // Items with no canonical form, such as hosted-tool calls and
+            // results, compaction, and item types added later, are kept in
+            // place as provider items and replay to this dialect.
+            Output::Unknown(_) | Output::Compaction(_) => {
+                out.native(NativeItem::new(DIALECT, native));
             }
         }
         Ok(())
@@ -868,13 +828,18 @@ impl<'id> ResponsesDecoder<'id> {
     /// extras no item snapshot attached, how the turn ended, which model
     /// answered, and which assistant message (`msg_...`, not the response's
     /// `resp_...`) carried the output.
-    fn record_terminal(&mut self, response: CompletionResponse, out: &mut Out<'id, Completion>) {
+    fn record_terminal(
+        &mut self,
+        response: CompletionResponse,
+        raw_output: &[Value],
+        out: &mut Out<'id, Completion>,
+    ) {
         self.document = serde_json::to_value(&response).ok();
         // The terminal restates the whole turn, so the message text no delta
         // delivered is published here: a gateway that states its answer only
         // in the terminal body still lands it in the choice, and one that
         // streamed the text first does not state it twice.
-        self.merge_terminal_body_text(&response, out);
+        self.merge_terminal_body_text(&response, raw_output, out);
         if let Some(message_id) = message_id_from_response(&response) {
             self.terminal.message_id = Some(message_id);
         }
@@ -924,6 +889,7 @@ impl<'id> ResponsesDecoder<'id> {
     fn replay_whole_response(
         &mut self,
         response: CompletionResponse,
+        raw_output: Vec<Value>,
         mut out: Out<'id, Completion>,
     ) -> Result<Flow, ProviderError> {
         // A compatible backend that reports its reasoning as one top-level
@@ -944,14 +910,15 @@ impl<'id> ResponsesDecoder<'id> {
         }
 
         for (output_index, item) in response.output.iter().cloned().enumerate() {
+            let native = raw_output.get(output_index).cloned();
             let output_index = output_index as u64;
             if let Output::Message(message) = &item {
                 self.publish_message_text(output_index, message, &mut out);
             }
             // Immediate publication keeps the output's order.
-            self.push_output_item_done(item, output_index, &mut out)?;
+            self.push_output_item_done(item, native, output_index, &mut out)?;
         }
-        self.record_terminal(response, &mut out);
+        self.record_terminal(response, &raw_output, &mut out);
         self.end(out)
     }
 }
@@ -1000,10 +967,10 @@ impl<'id> Decoder<'id, Completion> for ResponsesDecoder<'id> {
     ) -> Result<Flow, ProviderError> {
         match event {
             ResponsesEvent::Frame {
+                raw,
                 chunk: StreamingCompletionChunk::Delta(chunk),
-                ..
             } => {
-                self.decode_item_chunk(chunk, &mut out)?;
+                self.decode_item_chunk(chunk, &raw, &mut out)?;
                 Ok(Flow::More)
             }
             ResponsesEvent::Frame {
@@ -1018,7 +985,8 @@ impl<'id> Decoder<'id, Completion> for ResponsesDecoder<'id> {
                     // reason as on the unary path.
                     ResponseChunkKind::ResponseCompleted
                     | ResponseChunkKind::ResponseIncomplete => {
-                        self.record_terminal(response, &mut out);
+                        let raw_output = frame_output(&raw, Some("response"));
+                        self.record_terminal(response, &raw_output, &mut out);
                         self.end(out)
                     }
                     ResponseChunkKind::ResponseFailed => {
@@ -1030,13 +998,61 @@ impl<'id> Decoder<'id, Completion> for ResponsesDecoder<'id> {
                 }
             }
             // The unary reply is the same turn stated at once.
-            ResponsesEvent::Whole(response) => self.replay_whole_response(*response, out),
+            ResponsesEvent::Whole(response, raw) => {
+                let raw_output = frame_output(&raw, None);
+                self.replay_whole_response(*response, raw_output, out)
+            }
             ResponsesEvent::Failure(raw) => {
                 Err(crate::error::ProviderError::from_provider_body(&raw))
             }
             // Nothing to write: the provider's end is `response.completed`.
             ResponsesEvent::Sentinel => Ok(Flow::More),
         }
+    }
+}
+
+/// The `item` of an output-item frame, exactly as the frame stated it.
+fn frame_item(raw: &str) -> Option<Value> {
+    serde_json::from_str::<Value>(raw)
+        .ok()?
+        .get_mut("item")
+        .map(Value::take)
+}
+
+/// The `output` items of a response payload, exactly as it stated them:
+/// the payload itself, or its member `envelope`.
+fn frame_output(raw: &str, envelope: Option<&str>) -> Vec<Value> {
+    let Ok(mut payload) = serde_json::from_str::<Value>(raw) else {
+        return Vec::new();
+    };
+    let response = match envelope {
+        Some(key) => payload.get_mut(key),
+        None => Some(&mut payload),
+    };
+    match response
+        .and_then(|response| response.get_mut("output"))
+        .map(Value::take)
+    {
+        Some(Value::Array(items)) => items,
+        _ => Vec::new(),
+    }
+}
+
+/// The block a Responses item projects to, through this decoder: what a
+/// block carrying the item must still equal for the item to replay.
+pub(crate) fn project(item: &Value) -> Option<crate::message::AssistantContent> {
+    let parts = crate::operation::written_parts(|out| {
+        let output = Output::deserialize(item)?;
+        let mut decoder = ResponsesDecoder::new("");
+        if let Output::Message(message) = &output {
+            decoder.publish_message_text(0, message, out);
+        }
+        decoder.push_output_item_done(output, Some(item.clone()), 0, out)
+    })
+    .ok()?;
+    match <[_; 1]>::try_from(parts) {
+        Ok([part]) => Some(part),
+        Err(_) => None,
     }
 }
 
