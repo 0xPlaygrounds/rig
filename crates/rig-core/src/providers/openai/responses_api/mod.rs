@@ -167,17 +167,58 @@ pub enum Role {
     System,
 }
 
-/// Content carried by an [`InputItem`].
+/// Content carried by an [`InputItem`]. Item types this crate does not
+/// model, such as `compaction`, decode to [`InputContent::Unknown`] and
+/// serialize back verbatim.
 #[derive(Debug, Deserialize, Serialize, Clone)]
-#[serde(tag = "type", rename_all = "snake_case")]
+#[serde(remote = "Self", tag = "type", rename_all = "snake_case")]
+#[non_exhaustive]
 pub enum InputContent {
     Message(Message),
     Reasoning(OpenAIReasoning),
     FunctionCall(OutputFunctionCall),
     FunctionCallOutput(ToolResult),
-    /// Opaque compaction data for replaying a compacted context. All fields
-    /// other than the separately serialized `type` tag are preserved.
-    Compaction(Map<String, Value>),
+    /// An item type this crate does not model, held verbatim with its tag.
+    #[serde(skip)]
+    Unknown(Value),
+}
+
+/// The `type` tags [`InputContent`] models.
+const MODELLED_INPUT_TYPES: &[&str] =
+    &["message", "reasoning", "function_call", "function_call_output"];
+
+impl Serialize for InputContent {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            InputContent::Unknown(value) => value.serialize(serializer),
+            modelled => InputContent::serialize(modelled, serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for InputContent {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = Value::deserialize(deserializer)?;
+        let modelled = value
+            .get("type")
+            .and_then(Value::as_str)
+            .is_some_and(|tag| MODELLED_INPUT_TYPES.contains(&tag));
+        if modelled {
+            InputContent::deserialize(value).map_err(serde::de::Error::custom)
+        } else {
+            Ok(InputContent::Unknown(value))
+        }
+    }
+}
+
+/// The Responses wire format: an [`Output`] item carried as a
+/// [`Native`](crate::message::Native) item replays only to a Responses wire.
+#[derive(Debug, Clone, Copy)]
+pub struct ResponsesItems;
+
+impl message::NativeDialect for ResponsesItems {
+    const FORMAT: message::WireFormat = message::WireFormat::from_static("openai.responses");
+    type Item = Output;
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
@@ -505,7 +546,7 @@ fn input_items(
                 Ok(items)
             }
             crate::completion::Message::Assistant { id, content } => {
-                let mut reasoning_items = Vec::new();
+                // Items replay in the order the turn holds them.
                 let mut other_items: Vec<InputItem> = Vec::new();
                 // Each message item's position, by id. Text blocks of one
                 // item join it as more content parts, because duplicate
@@ -589,9 +630,22 @@ fn input_items(
                                 .open_for(issuers)
                                 .and_then(openai_reasoning_from_core)
                             {
-                                reasoning_items.push(InputItem {
+                                other_items.push(InputItem {
                                     role: None,
                                     input: InputContent::Reasoning(openai_reasoning),
+                                });
+                            }
+                        }
+                        // A native item replays only to a Responses wire its
+                        // issuer opens, verbatim.
+                        crate::message::AssistantContent::Native(native) => {
+                            if let Some(item) = native
+                                .open_for(issuers)
+                                .and_then(message::Native::decode::<ResponsesItems>)
+                            {
+                                other_items.push(InputItem {
+                                    role: None,
+                                    input: InputContent::Unknown(serde_json::to_value(item?)?),
                                 });
                             }
                         }
@@ -604,9 +658,7 @@ fn input_items(
                     }
                 }
 
-                let mut items = reasoning_items;
-                items.extend(other_items);
-                Ok(items)
+                Ok(other_items)
             }
         }
     }
@@ -1883,10 +1935,11 @@ pub enum Include {
     CodeInterpreterCallOutputs,
 }
 
-/// A Responses output item. Unrecognized types, including hosted tools, decode
-/// to [`Output::Unknown`] with their JSON value preserved. Malformed known
-/// types fail deserialization.
+/// A Responses output item. Unrecognized types, including hosted tools and
+/// `compaction`, decode to [`Output::Unknown`] with their JSON value
+/// preserved. Malformed known types fail deserialization.
 #[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
 pub enum Output {
     Message(OutputMessage),
     FunctionCall(OutputFunctionCall),
@@ -1900,11 +1953,6 @@ pub enum Output {
         signature: Option<String>,
         status: Option<ToolStatus>,
     },
-    /// An opaque compaction item (`"type": "compaction"`), preserved verbatim
-    /// so it can be sent back as an input item on the next request. Kept
-    /// distinct from [`Output::Unknown`] because OpenAI documents it as a
-    /// must-replay item, and [`InputContent::Compaction`] is its input twin.
-    Compaction(Map<String, Value>),
     /// Catch-all for output item types this version does not model. Holds the
     /// raw item object exactly as it appeared in the provider's `output[]`
     /// array, so hosted-tool payloads survive the typed decode.
@@ -1990,11 +2038,6 @@ impl Serialize for Output {
                 }
                 Ok(value)
             }
-            Output::Compaction(fields) => {
-                let mut map = fields.clone();
-                map.insert("type".to_string(), Value::String("compaction".to_string()));
-                return Value::Object(map).serialize(serializer);
-            }
             Output::Unknown(value) => return value.serialize(serializer),
         };
         value
@@ -2024,13 +2067,6 @@ impl<'de> Deserialize<'de> for Output {
             "reasoning" => serde_json::from_value::<ReasoningFields>(value)
                 .map(Output::from)
                 .map_err(serde::de::Error::custom),
-            "compaction" => {
-                let Value::Object(mut map) = value else {
-                    return Ok(Output::Unknown(value));
-                };
-                map.remove("type");
-                Ok(Output::Compaction(map))
-            }
             _ => Ok(Output::Unknown(value)),
         }
     }

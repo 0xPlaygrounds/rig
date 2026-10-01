@@ -201,13 +201,57 @@ impl From<PartialUsage> for crate::completion::Usage {
     }
 }
 
-// Hosted-tool input is assembled locally because it becomes raw text-block
-// metadata rather than an executable tool call.
-struct ServerToolUseState {
-    name: String,
-    id: String,
-    initial_input: Value,
+/// A block with no canonical meaning, assembled the way a whole message
+/// states it: its start frame, with each delta appended to the field it
+/// names. It is written as one native item when the block stops.
+struct NativeBlock {
+    block: serde_json::Map<String, Value>,
     input_json: String,
+}
+
+impl NativeBlock {
+    fn new(content: &Content) -> Result<Self, ProviderError> {
+        let Value::Object(block) = serde_json::to_value(content)? else {
+            return Err(ProviderError::Response(
+                "Anthropic content block is not a JSON object".to_owned(),
+            ));
+        };
+        Ok(Self {
+            block,
+            input_json: String::new(),
+        })
+    }
+
+    fn append_str(&mut self, field: &str, fragment: &str) {
+        match self.block.get_mut(field) {
+            Some(Value::String(text)) => text.push_str(fragment),
+            _ => {
+                self.block
+                    .insert(field.to_owned(), Value::String(fragment.to_owned()));
+            }
+        }
+    }
+
+    fn push_citation(&mut self, citation: Value) {
+        match self.block.get_mut("citations") {
+            Some(Value::Array(citations)) => citations.push(citation),
+            _ => {
+                self.block
+                    .insert("citations".to_owned(), Value::Array(vec![citation]));
+            }
+        }
+    }
+
+    /// The finished block. Streamed input replaces the start frame's, and
+    /// input that does not parse fails the reply, as for a client tool call.
+    fn finish(mut self) -> Result<crate::message::Native, ProviderError> {
+        if !self.input_json.is_empty() {
+            self.block
+                .insert("input".to_owned(), serde_json::from_str(&self.input_json)?);
+        }
+        let content: Content = serde_json::from_value(Value::Object(self.block))?;
+        Ok(crate::message::Native::new::<super::completion::MessagesFormat>(&content)?)
+    }
 }
 
 /// Decode Messages replies, a whole message or a stream of events.
@@ -221,7 +265,8 @@ pub struct MessagesDecoder<'id> {
     /// The content block of the open client tool call, whose index its
     /// fragments are buffered under.
     current_tool_call: Option<usize>,
-    server_tool_uses: HashMap<usize, ServerToolUseState>,
+    /// The open blocks with no canonical meaning.
+    natives: HashMap<usize, NativeBlock>,
     input_tokens: u64,
     /// Per-TTL cache-write breakdown from `message_start`; the terminal
     /// `message_delta` usage omits it.
@@ -247,7 +292,7 @@ impl MessagesDecoder<'_> {
             texts: HashMap::new(),
             thinking: HashMap::new(),
             current_tool_call: None,
-            server_tool_uses: HashMap::new(),
+            natives: HashMap::new(),
             input_tokens: 0,
             cache_creation: None,
             cache_read_input_tokens: None,
@@ -260,12 +305,39 @@ impl MessagesDecoder<'_> {
 
 impl<'id> MessagesDecoder<'id> {
     /// The content-block frames: `content_block_start` / `_delta` / `_stop`.
+    /// Every block lifts to a canonical part or to a native item.
+    #[deny(clippy::wildcard_enum_match_arm)]
     fn interpret_content(
         &mut self,
         event: StreamingEvent,
         out: &mut Out<'id, Completion>,
     ) -> Result<(), ProviderError> {
         match event {
+            StreamingEvent::ContentBlockDelta { index, delta } if self.natives.contains_key(&index) => {
+                if let Some(native) = self.natives.get_mut(&index) {
+                    match delta {
+                        ContentDelta::TextDelta { text } => native.append_str("text", &text),
+                        ContentDelta::InputJsonDelta { partial_json } => {
+                            native.input_json.push_str(&partial_json);
+                        }
+                        ContentDelta::ThinkingDelta { thinking } => {
+                            native.append_str("thinking", &thinking);
+                        }
+                        ContentDelta::SignatureDelta { signature } => {
+                            native.append_str("signature", &signature);
+                        }
+                        ContentDelta::CitationsDelta { citation } => {
+                            native.push_citation(serde_json::to_value(citation)?);
+                        }
+                        ContentDelta::Unknown(value) => {
+                            tracing::warn!(
+                                delta_type = value.get("type").and_then(serde_json::Value::as_str),
+                                "skipping unrecognized Anthropic content delta type"
+                            );
+                        }
+                    }
+                }
+            }
             StreamingEvent::ContentBlockDelta { index, delta } => match delta {
                 ContentDelta::TextDelta { text } => {
                     if self.current_tool_call.is_none() {
@@ -274,10 +346,6 @@ impl<'id> MessagesDecoder<'id> {
                     }
                 }
                 ContentDelta::InputJsonDelta { partial_json } => {
-                    if let Some(server_tool_use) = self.server_tool_uses.get_mut(&index) {
-                        server_tool_use.input_json.push_str(&partial_json);
-                        return Ok(());
-                    }
                     if let Some(call) = self.current_tool_call {
                         out.call_fragment(
                             call,
@@ -338,28 +406,6 @@ impl<'id> MessagesDecoder<'id> {
                     }
                     self.texts.insert(index, part);
                 }
-                Content::ServerToolUse { id, name, input } => {
-                    self.server_tool_uses.insert(
-                        index,
-                        ServerToolUseState {
-                            name,
-                            id,
-                            initial_input: input,
-                            input_json: String::new(),
-                        },
-                    );
-                }
-                raw @ (Content::WebSearchToolResult { .. }
-                | Content::CodeExecutionToolResult { .. }) => {
-                    if let Some(params) = crate::message::AdditionalParams::from_entries([(
-                        super::completion::ANTHROPIC_RAW_CONTENT_KEY,
-                        json!(raw),
-                    )]) {
-                        let part = out.text();
-                        out.text_params(&part, params);
-                        self.texts.insert(index, part);
-                    }
-                }
                 Content::ToolUse { id, name, .. } => {
                     self.current_tool_call = Some(index);
                     out.call_fragment(
@@ -388,9 +434,14 @@ impl<'id> MessagesDecoder<'id> {
                         content: vec![ReasoningContent::Redacted { data }],
                     });
                 }
-                // Request-side content kinds; an assistant stream never
-                // opens a block with them, and there is nothing to write.
-                Content::Image { .. } | Content::ToolResult { .. } | Content::Document { .. } => {}
+                // No canonical meaning: hosted-tool blocks, unmodelled block
+                // types, and request-side kinds a reply should not carry.
+                native @ (Content::Unknown(_)
+                | Content::Image { .. }
+                | Content::ToolResult { .. }
+                | Content::Document { .. }) => {
+                    self.natives.insert(index, NativeBlock::new(&native)?);
+                }
             },
             StreamingEvent::ContentBlockStop { index } => {
                 // Signature-only thinking parts carry provider state required
@@ -411,28 +462,8 @@ impl<'id> MessagesDecoder<'id> {
                     return Ok(());
                 }
 
-                if let Some(server_tool_use) = self.server_tool_uses.remove(&index) {
-                    let input = if server_tool_use.input_json.is_empty() {
-                        if server_tool_use.initial_input.is_null() {
-                            json!({})
-                        } else {
-                            server_tool_use.initial_input
-                        }
-                    } else {
-                        serde_json::from_str(&server_tool_use.input_json)?
-                    };
-                    if let Some(params) = crate::message::AdditionalParams::from_entries([(
-                        super::completion::ANTHROPIC_RAW_CONTENT_KEY,
-                        json!(Content::ServerToolUse {
-                            id: server_tool_use.id,
-                            name: server_tool_use.name,
-                            input,
-                        }),
-                    )]) {
-                        let part = out.text();
-                        out.text_params(&part, params);
-                        out.close_text(part);
-                    }
+                if let Some(native) = self.natives.remove(&index) {
+                    out.native(native.finish()?);
                     return Ok(());
                 }
 

@@ -340,7 +340,7 @@ impl Wire for MockScript {
         _mode: Mode,
     ) -> Result<CompletionRequest, EncodeError> {
         let issuers = [crate::message::Issuer::from(self.name.clone())];
-        let mut request = request.replayable_to(&issuers)?;
+        let mut request = request.replayable_to(&issuers, None)?;
         for message in request.chat_history.iter_mut() {
             // `replayable_to` left only messages with a part to keep.
             if let crate::message::Message::Assistant { content, .. } = message {

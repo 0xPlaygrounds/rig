@@ -153,7 +153,7 @@ impl Wire for Chat {
     }
 
     fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, EncodeError> {
-        let request = request.replayable_to(&[super::ISSUER])?;
+        let request = request.replayable_to(&[super::ISSUER], None)?;
         let mut body = OllamaCompletionRequest::try_from((self.model.as_str(), request))?;
         body.stream = mode == Mode::Streaming;
         crate::providers::internal::trace_json(

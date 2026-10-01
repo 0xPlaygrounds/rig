@@ -61,6 +61,8 @@ pub enum PartKind {
     ToolCall,
     /// An image.
     Image,
+    /// A provider item with no canonical meaning.
+    Native,
 }
 
 /// One event of a completion stream: a part starts, grows, or ends with the
@@ -280,6 +282,7 @@ impl Transcript {
                     AssistantContent::Reasoning(_) => PartKind::Reasoning,
                     AssistantContent::ToolCall(_) => PartKind::ToolCall,
                     AssistantContent::Image(_) => PartKind::Image,
+                    AssistantContent::Native(_) => PartKind::Native,
                 }),
             };
             if let Some(kind) = kind {

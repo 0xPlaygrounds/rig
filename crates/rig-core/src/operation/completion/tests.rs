@@ -174,7 +174,7 @@ fn a_turn_that_held_only_foreign_reasoning_is_omitted() {
     assert_eq!(request.chat_history.len(), 4);
     // What the Messages wire keeps of a history before it encodes it.
     let request = request
-        .replayable_to(&["anthropic".into()])
+        .replayable_to(&["anthropic".into()], None)
         .expect("messages are left");
     assert_eq!(request.chat_history.len(), 3, "{:?}", request.chat_history);
     assert!(request.chat_history.iter().all(|message| match message {

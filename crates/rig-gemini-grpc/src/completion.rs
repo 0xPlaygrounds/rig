@@ -70,7 +70,7 @@ impl Wire for GenerateContent {
         request: CompletionRequest,
         _mode: Mode,
     ) -> Result<GenerateContentRequest, EncodeError> {
-        create_grpc_request(&self.model, request.replayable_to(&[ISSUER])?)
+        create_grpc_request(&self.model, request.replayable_to(&[ISSUER], None)?)
     }
 
     fn decoder<'id>(&self) -> Self::Decoder<'id> {

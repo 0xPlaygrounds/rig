@@ -724,6 +724,8 @@ impl TryFrom<crate::message::Message> for Vec<Message> {
                                 "Ollama currently doesn't support images.".into(),
                             ));
                         }
+                        // This wire replays no native items.
+                        crate::message::AssistantContent::Native(_) => {}
                     }
                 }
 

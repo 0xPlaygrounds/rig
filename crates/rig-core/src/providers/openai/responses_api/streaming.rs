@@ -759,6 +759,8 @@ impl<'id> ResponsesDecoder<'id> {
         Ok(())
     }
 
+    /// Every output item lifts to a canonical part or to a native item.
+    #[deny(clippy::wildcard_enum_match_arm)]
     fn push_output_item_done(
         &mut self,
         item: Output,
@@ -844,21 +846,13 @@ impl<'id> ResponsesDecoder<'id> {
                     out.message_id(message.id);
                 }
             }
-            // An unmodeled output item (e.g. a hosted-tool result such as
-            // `web_search_call`): surfaced raw to the consumer, as the
-            // non-streaming decode preserves it on `CompletionResponse.output`.
-            Output::Unknown(value) => {
-                out.unknown(value.into());
-            }
-            // A compaction item: surfaced raw like an unmodeled item so a
-            // stateless consumer can capture it from the stream.
-            Output::Compaction(fields) => {
-                let mut map = fields;
-                map.insert(
-                    "type".to_string(),
-                    serde_json::Value::String("compaction".to_string()),
-                );
-                out.unknown(serde_json::Value::Object(map).into());
+            // An unmodelled output item (a hosted-tool call, `compaction`,
+            // ...): kept in the turn as a native item, in its position, for
+            // replay to this wire.
+            unknown @ Output::Unknown(_) => {
+                out.native(crate::message::Native::new::<super::ResponsesItems>(
+                    &unknown,
+                )?);
             }
         }
         Ok(())

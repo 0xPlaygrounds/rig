@@ -1004,6 +1004,8 @@ pub fn assistant_content_to_messages(
                         .into(),
                 ));
             }
+            // This wire replays no native items.
+            message::AssistantContent::Native(_) => {}
         }
     }
 

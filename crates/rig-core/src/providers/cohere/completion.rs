@@ -385,6 +385,8 @@ impl TryFrom<message::Message> for Vec<Message> {
                                 "Cohere currently doesn't support images.".to_owned(),
                             ));
                         }
+                        // This wire replays no native items.
+                        message::AssistantContent::Native(_) => {}
                     }
                 }
 

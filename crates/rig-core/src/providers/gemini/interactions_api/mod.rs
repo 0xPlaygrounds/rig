@@ -70,7 +70,7 @@ impl crate::wire::Wire for Interactions {
         request: CompletionRequest,
         mode: crate::wire::Mode,
     ) -> Result<crate::wire::Encoded, EncodeError> {
-        let request = request.replayable_to(&[ISSUER])?;
+        let request = request.replayable_to(&[ISSUER], None)?;
         // `stream` is part of the request body on this wire, so the mode is
         // in the bytes as well as in the path.
         let streaming = matches!(mode, crate::wire::Mode::Streaming);
@@ -1008,7 +1008,11 @@ pub mod interactions_api_types {
                             crate::message::AssistantContent::Reasoning(reasoning) => {
                                 reasoning.open(&super::ISSUER).is_some()
                             }
-                            _ => true,
+                            // This wire replays no native items.
+                            crate::message::AssistantContent::Native(_) => false,
+                            crate::message::AssistantContent::Text(_)
+                            | crate::message::AssistantContent::ToolCall(_)
+                            | crate::message::AssistantContent::Image(_) => true,
                         })
                         .map(Content::try_from)
                         .collect::<Result<Vec<_>, _>>()?;
@@ -1706,6 +1710,12 @@ pub mod interactions_api_types {
                         mime_type: Some(mime_type),
                         resolution: None,
                     }))
+                }
+                message::AssistantContent::Native(native) => {
+                    Err(message::MessageError::ConversionError(format!(
+                        "Gemini Interactions cannot replay a native `{}` item",
+                        native.issuer()
+                    )))
                 }
             }
         }

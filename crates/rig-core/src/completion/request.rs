@@ -625,18 +625,21 @@ impl CompletionRequest {
         Ok(())
     }
 
-    /// This request as a service replaying reasoning `issuers` issued reads
-    /// it: assistant messages holding only reasoning none of them opens are
-    /// left out ([`Message::replays_to`]). A wire reads each remaining
-    /// reasoning part through [`Sealed::open_for`](crate::message::Sealed::open_for).
+    /// This request as a wire replaying what `issuers` issued, and native
+    /// items of `format`, reads it: assistant messages holding only reasoning
+    /// or native items that do not open for it are left out
+    /// ([`Message::replays_to`]). A wire reads each remaining sealed part
+    /// through [`Sealed::open_for`](crate::message::Sealed::open_for). A wire
+    /// that replays no native items passes `None`.
     ///
     /// Returns a request error when nothing is left to send.
     pub fn replayable_to(
         mut self,
         issuers: &[crate::message::Issuer],
+        format: Option<&crate::message::WireFormat>,
     ) -> Result<Self, crate::error::EncodeError> {
         self.chat_history
-            .retain(|message| message.replays_to(issuers));
+            .retain(|message| message.replays_to(issuers, format));
         if self.chat_history.is_empty() {
             return Err(crate::error::EncodeError::request(
                 "no message is left once reasoning another service issued is left out",

@@ -856,7 +856,7 @@ fn decoded_bedrock_reasoning_records_the_models_issuer_and_replays_to_it() {
     let issuer =
         rig_core::message::Issuer::from(crate::types::assistant_content::reasoning_issuer(claude));
     let scoped = request
-        .replayable_to(std::slice::from_ref(&issuer))
+        .replayable_to(std::slice::from_ref(&issuer), None)
         .expect("messages are left");
     let Message::Assistant { content, .. } = &scoped.chat_history[1] else {
         panic!("the assistant turn survives");

@@ -22,8 +22,8 @@ use std::marker::PhantomData;
 use crate::completion::{CompletionRequest, CompletionResponse, FinishReason, Usage};
 use crate::error::{MalformedToolInput, ProviderError};
 use crate::message::{
-    AdditionalParams, AssistantContent, CallId, Image, Issuer, LocalCallId, ProviderCallId,
-    Reasoning, ReasoningContent, Text, ToolCall, ToolFunction, ToolName,
+    AdditionalParams, AssistantContent, CallId, Image, Issuer, LocalCallId, Native,
+    ProviderCallId, Reasoning, ReasoningContent, Sealed, Text, ToolCall, ToolFunction, ToolName,
 };
 use crate::streaming::{Item, Part, PartKind, StreamEvent};
 use crate::telemetry::{GenAiOperation, SpanBuilder, SpanCombinator};
@@ -700,12 +700,7 @@ impl Turn {
                         .map(|text| AssistantContent::text(text.clone()))
                 })
             })
-            .map(|part| match part {
-                AssistantContent::Reasoning(reasoning) => {
-                    AssistantContent::Reasoning(reasoning.reseal(self.issuer()))
-                }
-                part => part,
-            })
+            .map(|part| reseal(part, &self.issuer()))
             .collect();
         response
     }
@@ -715,12 +710,7 @@ impl Turn {
         let choice = self
             .snapshot()
             .into_iter()
-            .map(|part| match part {
-                AssistantContent::Reasoning(reasoning) => {
-                    AssistantContent::Reasoning(reasoning.reseal(issuer.clone()))
-                }
-                part => part,
-            })
+            .map(|part| reseal(part, &issuer))
             .collect();
         let Finish {
             usage,
@@ -738,6 +728,19 @@ impl Turn {
         response.model = reported(model);
         response.provider_request_id = reported(reply.provider_request_id);
         response
+    }
+}
+
+/// `part` sealed to the reply's issuer, when it is sealed at all.
+fn reseal(part: AssistantContent, issuer: &Issuer) -> AssistantContent {
+    match part {
+        AssistantContent::Reasoning(reasoning) => {
+            AssistantContent::Reasoning(reasoning.reseal(issuer.clone()))
+        }
+        AssistantContent::Native(native) => AssistantContent::Native(native.reseal(issuer.clone())),
+        part @ (AssistantContent::Text(_)
+        | AssistantContent::ToolCall(_)
+        | AssistantContent::Image(_)) => part,
     }
 }
 
@@ -784,9 +787,19 @@ impl Fold<Completion> for Turn {
                 if let Some(slot) = self.choice.get_mut(part.index()) {
                     *slot = Some(content.clone());
                 }
-                // A relayed reply's reasoning names its issuer on its seal.
-                if let (None, AssistantContent::Reasoning(reasoning)) = (&self.issuer, content) {
-                    self.issuer = Some(reasoning.issuer().clone());
+                // A relayed reply's sealed parts name their issuer.
+                if self.issuer.is_none() {
+                    match content {
+                        AssistantContent::Reasoning(reasoning) => {
+                            self.issuer = Some(reasoning.issuer().clone());
+                        }
+                        AssistantContent::Native(native) => {
+                            self.issuer = Some(native.issuer().clone());
+                        }
+                        AssistantContent::Text(_)
+                        | AssistantContent::ToolCall(_)
+                        | AssistantContent::Image(_) => {}
+                    }
                 }
                 self.open_text.remove(&part.index());
             }
@@ -1033,6 +1046,22 @@ impl<'id> Out<'id, Completion> {
         );
     }
 
+    /// A provider item with no canonical meaning, as one whole part sealed
+    /// to the reply's issuer.
+    pub fn native(&mut self, native: Native) {
+        let mut shared = self.lock();
+        let Shared { fold, items, .. } = &mut *shared;
+        let part = fold.start(items, PartKind::Native);
+        let issuer = fold.issuer();
+        emit(
+            items,
+            StreamEvent::End {
+                part,
+                content: AssistantContent::Native(Sealed::new(issuer, native)),
+            },
+        );
+    }
+
     /// A whole part of an already assembled response.
     pub fn content(&mut self, content: AssistantContent) -> Result<(), ProviderError> {
         match content {
@@ -1053,6 +1082,13 @@ impl<'id> Out<'id, Completion> {
             }
             AssistantContent::ToolCall(call) => self.tool_call(call)?,
             AssistantContent::Image(image) => self.image(image),
+            AssistantContent::Native(native) => {
+                let issuer = native.issuer().clone();
+                self.issued_by(issuer.clone());
+                if let Some(native) = native.open(&issuer) {
+                    self.native(native.clone());
+                }
+            }
         }
         Ok(())
     }

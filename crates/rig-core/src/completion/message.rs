@@ -28,10 +28,12 @@ pub enum Message {
 }
 
 mod identity;
+mod native;
 
 pub use identity::{
     CallId, EmptyCallId, EmptyToolName, Issuer, LocalCallId, ProviderCallId, Sealed, ToolName,
 };
+pub use native::{Native, NativeDialect, WireFormat};
 
 /// Shared error text for an invalid empty response choice.
 /// Provider decoders must exempt legal empty outcomes, including recognized
@@ -87,13 +89,14 @@ pub fn turn_delivered_no_answer(choice: &[AssistantContent]) -> bool {
         AssistantContent::Text(text) => !text.text.is_empty(),
         AssistantContent::ToolCall(_) => true,
         AssistantContent::Image(_) => true,
-        // The one exclusion: scratch work, not an answer.
-        AssistantContent::Reasoning(_) => false,
+        // Scratch work and provider items are not answers.
+        AssistantContent::Reasoning(_) | AssistantContent::Native(_) => false,
     })
 }
 
 /// Groups streamed choices as reasoning, text, tool calls, then images,
-/// preserving order within each group. Choices without reasoning or tool calls
+/// preserving order within each group. Native items stay in the text group,
+/// in their order relative to text. Choices without reasoning or tool calls
 /// retain their original order.
 pub fn canonical_streamed_choice(choice: Vec<AssistantContent>) -> Vec<AssistantContent> {
     let regroup = choice.iter().any(|part| {
@@ -112,7 +115,7 @@ pub fn canonical_streamed_choice(choice: Vec<AssistantContent>) -> Vec<Assistant
     for part in choice {
         match part {
             AssistantContent::Reasoning(block) => reasoning.push(block),
-            AssistantContent::Text(_) => text.push(part),
+            AssistantContent::Text(_) | AssistantContent::Native(_) => text.push(part),
             AssistantContent::ToolCall(_) => calls.push(part),
             AssistantContent::Image(_) => images.push(part),
         }
@@ -153,6 +156,9 @@ pub enum AssistantContent {
     Reasoning(Sealed<Reasoning>),
     /// Image content emitted by the assistant.
     Image(Image),
+    /// A provider item with no canonical meaning, replayed only to the wire
+    /// format and issuer that produced it.
+    Native(Sealed<Native>),
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
@@ -978,14 +984,20 @@ impl Message {
         }
     }
 
-    /// Whether a service replaying reasoning `issuers` issued has anything to
-    /// read in this message: false only for an assistant message whose every
-    /// part is reasoning none of them opens.
-    pub fn replays_to(&self, issuers: &[Issuer]) -> bool {
+    /// Whether a wire replaying what `issuers` issued, and native items of
+    /// `format`, has anything to read in this message: false only for an
+    /// assistant message whose every part is reasoning or a native item that
+    /// does not open for it.
+    pub fn replays_to(&self, issuers: &[Issuer], format: Option<&WireFormat>) -> bool {
         match self {
             Message::Assistant { content, .. } => content.iter().any(|part| match part {
                 AssistantContent::Reasoning(reasoning) => reasoning.open_for(issuers).is_some(),
-                _ => true,
+                AssistantContent::Native(native) => native
+                    .open_for(issuers)
+                    .is_some_and(|native| Some(native.format()) == format),
+                AssistantContent::Text(_)
+                | AssistantContent::ToolCall(_)
+                | AssistantContent::Image(_) => true,
             }),
             Message::System { .. } | Message::User { .. } => true,
         }

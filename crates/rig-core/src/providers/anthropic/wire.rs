@@ -462,7 +462,7 @@ impl Messages {
         let model = request.model.clone().unwrap_or_else(|| self.model.clone());
         // Only reasoning this dialect issued is replayed here.
         let issuers = [Issuer::from_static(self.provider.dialect.name)];
-        let request = request.replayable_to(&issuers)?;
+        let request = request.replayable_to(&issuers, Some(&<super::completion::MessagesFormat as crate::message::NativeDialect>::FORMAT))?;
         let typed = AnthropicCompletionRequest::try_from_params(
             AnthropicRequestParams {
                 model: &model,

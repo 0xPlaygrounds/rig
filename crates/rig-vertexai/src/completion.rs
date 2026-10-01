@@ -75,7 +75,7 @@ impl Wire for GenerateContent {
         request: CompletionRequest,
         _mode: Mode,
     ) -> Result<VertexRequest, EncodeError> {
-        let request = request.replayable_to(&[crate::types::completion_response::ISSUER])?;
+        let request = request.replayable_to(&[crate::types::completion_response::ISSUER], None)?;
         tracing::debug!(
             target: "rig_core::vertexai",
             "Vertex AI completion request: {request:?}"

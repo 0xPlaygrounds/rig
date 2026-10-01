@@ -221,7 +221,7 @@ impl Wire for Converse {
     ) -> Result<ConverseRequest, EncodeError> {
         let model = self.request_model(request.model.as_deref()).to_owned();
         let issuer = rig_core::message::Issuer::from(reasoning_issuer(&model));
-        let request = request.replayable_to(std::slice::from_ref(&issuer))?;
+        let request = request.replayable_to(std::slice::from_ref(&issuer), None)?;
         Ok(ConverseRequest {
             request: AwsCompletionRequest::new(request, issuer, self.prompt_caching),
             model,

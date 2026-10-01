@@ -62,7 +62,7 @@ impl Chat {
         ) -> http::request::Builder,
     ) -> Result<Encoded, EncodeError> {
         let (request, issuers) =
-            super::scope_reasoning(&self.provider.dialect, &self.model, request)?;
+            super::scope_reasoning(&self.provider.dialect, &self.model, request, None)?;
         let quirks = &self.provider.dialect.quirks;
         // Azure's deployment URL remains pinned to the handle, not a request override.
         let uri = self.provider.uri(

@@ -181,7 +181,7 @@ impl Wire for GenerateContent {
     }
 
     fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, EncodeError> {
-        let request = request.replayable_to(&[ISSUER])?;
+        let request = request.replayable_to(&[ISSUER], None)?;
         // The request may name a model of its own; the wire's is the default.
         let model = resolve_request_model(&self.model, &request);
         let mut body = create_request_body(request)?;
@@ -712,7 +712,11 @@ pub mod gemini_api_types {
                             message::AssistantContent::Reasoning(reasoning) => reasoning
                                 .open(&crate::providers::gemini::completion::ISSUER)
                                 .is_some(),
-                            _ => true,
+                            // This wire replays no native items.
+                            message::AssistantContent::Native(_) => false,
+                            message::AssistantContent::Text(_)
+                            | message::AssistantContent::ToolCall(_)
+                            | message::AssistantContent::Image(_) => true,
                         })
                         .map(std::convert::TryInto::try_into)
                         .collect::<Result<Vec<_>, _>>()?,
@@ -1154,6 +1158,12 @@ pub mod gemini_api_types {
                         part: PartKind::Text(reasoning.display_text()),
                         additional_params: None,
                     })
+                }
+                message::AssistantContent::Native(native) => {
+                    Err(MessageError::ConversionError(format!(
+                        "Gemini cannot replay a native `{}` item",
+                        native.issuer()
+                    )))
                 }
             }
         }

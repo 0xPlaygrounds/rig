@@ -1244,7 +1244,8 @@ fn model_vendor(model: &str) -> &str {
 }
 
 /// The issuers whose reasoning a request to its model over `dialect`
-/// replays, and the request as they read it
+/// replays, and the request as they read it, replaying native items of
+/// `format`
 /// ([`CompletionRequest::replayable_to`](crate::completion::CompletionRequest::replayable_to)).
 /// The request's model override, when it names one, is the model replayed
 /// for; `model` otherwise.
@@ -1252,12 +1253,13 @@ pub(crate) fn scope_reasoning(
     dialect: &Dialect,
     model: &str,
     request: crate::completion::CompletionRequest,
+    format: Option<&crate::message::WireFormat>,
 ) -> Result<(crate::completion::CompletionRequest, Vec<Issuer>), EncodeError> {
     let issuers: Vec<Issuer> = replay_issuers(dialect, request.model.as_deref().unwrap_or(model))
         .into_iter()
         .map(Issuer::from)
         .collect();
-    Ok((request.replayable_to(&issuers)?, issuers))
+    Ok((request.replayable_to(&issuers, format)?, issuers))
 }
 
 /// The reasoning issuers a request to `model` over `dialect` replays.

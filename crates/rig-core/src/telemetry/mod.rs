@@ -619,6 +619,8 @@ fn assistant_parts(content: &[AssistantContent]) -> Vec<TelemetryPart> {
             }],
             AssistantContent::Reasoning(reasoning) => reasoning_parts(reasoning.value()),
             AssistantContent::Image(image) => image_part(image).into_iter().collect(),
+            // The GenAI conventions name no part for an opaque provider item.
+            AssistantContent::Native(_) => Vec::new(),
         })
         .collect()
 }

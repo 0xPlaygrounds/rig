@@ -132,7 +132,7 @@ impl Wire for Chat {
     }
 
     fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, EncodeError> {
-        let request = request.replayable_to(&[ISSUER])?;
+        let request = request.replayable_to(&[ISSUER], None)?;
         let mut body = CohereCompletionRequest::try_from((self.model.as_str(), request))?;
         if mode == Mode::Streaming {
             body.additional_params = Some(json_utils::merge(

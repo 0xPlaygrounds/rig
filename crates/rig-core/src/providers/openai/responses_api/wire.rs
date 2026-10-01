@@ -53,6 +53,7 @@ impl Responses {
             &self.provider.dialect,
             &self.model,
             request,
+            Some(&<super::ResponsesItems as crate::message::NativeDialect>::FORMAT),
         )?;
         let quirks = &self.provider.dialect.quirks.responses;
         // The codex gateway only ever answers with an event stream, and

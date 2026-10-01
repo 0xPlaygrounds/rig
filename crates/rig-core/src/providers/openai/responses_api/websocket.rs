@@ -502,6 +502,7 @@ impl ResponsesWebSocketSession {
             &self.wire.provider.dialect,
             &self.wire.model,
             completion_request,
+            Some(&<super::ResponsesItems as crate::message::NativeDialect>::FORMAT),
         )?;
         let mut request = self
             .wire
