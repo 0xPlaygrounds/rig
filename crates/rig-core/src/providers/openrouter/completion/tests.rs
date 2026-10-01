@@ -1,4 +1,5 @@
 use super::*;
+use crate::providers::openai::completion::Message;
 use serde_json::json;
 
 #[test]
@@ -30,16 +31,14 @@ fn test_completion_response_deserialization_gemini_flash() {
     });
 
     let response: CompletionResponse = serde_json::from_value(json).unwrap();
-    assert_eq!(response.id, "gen-AAAAAAAAAA-AAAAAAAAAAAAAAAAAAAA");
-    assert_eq!(response.model, "google/gemini-2.5-flash");
-    assert_eq!(response.choices.len(), 1);
-    assert_eq!(response.choices[0].finish_reason, Some("stop".to_string()));
-    assert_eq!(response.choices[0].logprobs, None);
+    assert_eq!(response.openai.id, "gen-AAAAAAAAAA-AAAAAAAAAAAAAAAAAAAA");
+    assert_eq!(response.openai.model, "google/gemini-2.5-flash");
+    assert_eq!(response.openai.choices.len(), 1);
+    assert_eq!(response.openai.choices[0].openai.finish_reason, "stop");
+    assert_eq!(response.openai.choices[0].openai.logprobs, None);
     let serialized = serde_json::to_value(&response).unwrap();
-    assert!(
-        serialized["choices"][0].get("logprobs").is_none(),
-        "an absent optional native field stays absent when serialized"
-    );
+    assert_eq!(serialized["provider"], "Google");
+    assert_eq!(serialized["choices"][0]["native_finish_reason"], "STOP");
 }
 
 #[test]
@@ -70,7 +69,7 @@ fn raw_completion_choice_retains_logprobs() {
     }))
     .expect("OpenRouter's documented probability object should decode");
 
-    assert_eq!(response.choices[0].logprobs, Some(logprobs));
+    assert_eq!(response.openai.choices[0].openai.logprobs, Some(logprobs));
 }
 
 /// A Gemini route answers with `role: "model"` rather than `"assistant"`,
@@ -104,15 +103,17 @@ fn completion_response_decodes_a_gemini_model_role() {
     let response: CompletionResponse = serde_json::from_value(json).unwrap();
 
     assert_eq!(
-        response.model, "google/gemini-2.5-pro-exp-03-25:free",
+        response.openai.model, "google/gemini-2.5-pro-exp-03-25:free",
         "the reported model is the routed one, not the requested one"
     );
     assert_eq!(response.provider.as_deref(), Some("Google"));
-    let choice = response.choices.first().expect("one choice");
+    let choice = response.openai.choices.first().expect("one choice");
     assert_eq!(choice.native_finish_reason.as_deref(), Some("STOP"));
     assert_eq!(
-        crate::providers::openai::completion::assistant_message_text_response(&choice.message)
-            .as_deref(),
+        crate::providers::openai::completion::assistant_message_text_response(
+            &choice.openai.message
+        )
+        .as_deref(),
         Some("CONTENT")
     );
 }
@@ -152,7 +153,12 @@ fn truncated_tool_arguments_do_not_destroy_the_response() {
         "usage": {"prompt_tokens": 10, "completion_tokens": 24, "total_tokens": 34}
     });
     let response: CompletionResponse = serde_json::from_value(json).unwrap();
-    let choice = response.choices.first().expect("the turn survives");
+    let choice = &response
+        .openai
+        .choices
+        .first()
+        .expect("the turn survives")
+        .openai;
 
     match &choice.message {
         Message::Assistant { tool_calls, .. } => {
@@ -170,7 +176,10 @@ fn truncated_tool_arguments_do_not_destroy_the_response() {
         Some("Acknowledged."),
         "the turn's text survives"
     );
-    assert_eq!(response.usage.expect("usage").total_tokens, 34);
+    assert_eq!(
+        response.openai.usage.expect("usage").openai.total_tokens,
+        34
+    );
 }
 
 /// OpenRouter reports the upstream's own terminal reason when it has no
@@ -201,14 +210,14 @@ fn native_length_authorizes_the_same_tolerance() {
     });
     let response: CompletionResponse = serde_json::from_value(json)
         .expect("the native terminal reason should authorize narrow truncation tolerance");
-    let choice = response.choices.first().expect("the turn survives");
+    let choice = response.openai.choices.first().expect("the turn survives");
 
-    assert_eq!(choice.finish_reason, None);
+    assert_eq!(choice.openai.finish_reason, "");
     assert_eq!(
         choice.native_finish_reason.as_deref(),
         Some("max_output_tokens")
     );
-    match &choice.message {
+    match &choice.openai.message {
         Message::Assistant { tool_calls, .. } => assert!(
             tool_calls.is_empty(),
             "the only call was truncated, so nothing is handed to a tool"

@@ -630,9 +630,10 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
                 response.usage
             );
             anyhow::ensure!(
-                wire.choices
+                wire.openai
+                    .choices
                     .iter()
-                    .all(|choice| choice.finish_reason.is_some()),
+                    .all(|choice| !choice.openai.finish_reason.is_empty()),
                 "the gateway's document should preserve every choice's finish reason"
             );
             anyhow::ensure!(
@@ -640,7 +641,7 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
                 "normalized response should preserve the finish reason: {:?}",
                 response.finish_reason()
             );
-            assert_nonempty_response(&wire.model);
+            assert_nonempty_response(&wire.openai.model);
 
             Ok(())
         },

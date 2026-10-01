@@ -1118,10 +1118,11 @@ impl FromStr for SystemContent {
 /// OpenAI's chat-completions reply.
 pub type CompletionResponse = ChatCompletionResponse<Usage>;
 
-/// A chat-completions reply over the accounting `U`. Compatible providers
-/// that add usage counters read their replies back with their own `U`.
+/// A chat-completions reply over the accounting `U` and choice `C`. Compatible
+/// providers that add usage counters or choice fields read their replies back
+/// with their own `U` and `C`.
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct ChatCompletionResponse<U> {
+pub struct ChatCompletionResponse<U, C = Choice> {
     pub id: String,
     // Null-or-missing tolerated on deserialization: some OpenAI-compatible
     // gateways (HuggingFace router sub-providers, TGI variants, Copilot's
@@ -1136,9 +1137,10 @@ pub struct ChatCompletionResponse<U> {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub service_tier: Option<String>,
     #[serde(
-        deserialize_with = "crate::providers::internal::openai_chat_completions_compatible::deserialize_choices_dropping_incomplete_tool_calls"
+        deserialize_with = "crate::providers::internal::openai_chat_completions_compatible::deserialize_choices_dropping_incomplete_tool_calls",
+        bound(deserialize = "C: serde::de::DeserializeOwned")
     )]
-    pub choices: Vec<Choice>,
+    pub choices: Vec<C>,
     pub usage: Option<U>,
 }
 
