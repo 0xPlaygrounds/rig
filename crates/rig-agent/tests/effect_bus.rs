@@ -703,7 +703,7 @@ impl Tool for NestedSameTool {
         self.inner_outputs
             .lock()
             .expect("lock")
-            .push(response.output().clone());
+            .push(response.output());
         Ok(response.output())
     }
 }

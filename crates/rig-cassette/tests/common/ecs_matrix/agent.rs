@@ -336,7 +336,7 @@ async fn run_prompts(
             drop(stream);
             let output = expect_ending(
                 result.map(|response| {
-                    let output = response.output().clone();
+                    let output = response.output();
                     outputs.push(response);
                     output
                 }),
@@ -356,7 +356,7 @@ async fn run_prompts(
             let result = runner
                 .await
                 .map(|response| {
-                    let output = response.output().clone();
+                    let output = response.output();
                     outputs.push(response);
                     output
                 })
