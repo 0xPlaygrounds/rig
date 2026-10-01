@@ -424,21 +424,6 @@ fn beta_static(text: &str) -> FakeModel {
     scripted(Script::new("beta", [], Turn::text(text, 2, "beta-message")))
 }
 
-fn request(prompt: &str) -> CompletionRequest {
-    CompletionRequest {
-        model: None,
-        chat_history: vec![Message::user(prompt)],
-        documents: Vec::new(),
-        tools: Vec::new(),
-        temperature: None,
-        max_tokens: None,
-        tool_choice: None,
-        additional_params: None,
-        output_schema: None,
-        record_telemetry_content: false,
-    }
-}
-
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
 struct ExtractedValue {
     value: String,
@@ -467,13 +452,13 @@ async fn downstream_models_keep_typed_low_level_apis_and_share_a_concrete_agent_
     assert_agent_stream(alpha_agent.prompt("stream type").stream());
 
     let unary = alpha
-        .call(request("low-level unary"))
+        .call(CompletionRequest::new("low-level unary"))
         .await
         .expect("direct unary response");
     assert_eq!(unary.provider, "alpha");
 
     let mut low_level_stream = beta
-        .stream(request("low-level stream"))
+        .stream(CompletionRequest::new("low-level stream"))
         .expect("direct provider stream");
     while let Some(item) = low_level_stream.next().await {
         item.expect("stream item");

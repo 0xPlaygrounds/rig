@@ -1784,18 +1784,7 @@ async fn a_streamed_completion_names_its_provider_like_a_unary_one() {
             agent.owner()
         )))
         .expect("the route is registered under the agent's owner");
-    let request = |text: &str| rig_core::completion::CompletionRequest {
-        model: None,
-        chat_history: vec![rig_core::message::Message::user(text)],
-        documents: Vec::new(),
-        tools: Vec::new(),
-        temperature: None,
-        max_tokens: None,
-        tool_choice: None,
-        additional_params: None,
-        output_schema: None,
-        record_telemetry_content: false,
-    };
+    let request = |text: &str| rig_core::completion::CompletionRequest::new(text);
 
     let unary = within(model.call(request("hi"))).await.expect("unary");
     let mut stream = streamer.stream(request("hi"));
@@ -1920,18 +1909,7 @@ impl AgentHook for AsksTheModel {
         _event: CompletionCallEvent<'_>,
     ) -> CompletionCallAction {
         let model = ctx.bind(&self.key).expect("bound for this run");
-        let request = rig_core::completion::CompletionRequest {
-            model: None,
-            chat_history: vec![rig_core::message::Message::user("side question")],
-            documents: Vec::new(),
-            tools: Vec::new(),
-            temperature: None,
-            max_tokens: None,
-            tool_choice: None,
-            additional_params: None,
-            output_schema: None,
-            record_telemetry_content: false,
-        };
+        let request = rig_core::completion::CompletionRequest::new("side question");
         let answer = model.call(request).await.expect("the side model answers");
         self.seen.lock().expect("lock").push(
             answer

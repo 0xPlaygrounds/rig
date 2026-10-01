@@ -45,22 +45,12 @@ fn history(own: &str) -> CompletionRequest {
     .map(AssistantContent::Reasoning)
     .chain([AssistantContent::text("The answer is 4.")])
     .collect::<Vec<_>>();
-    CompletionRequest {
-        model: None,
-        chat_history: vec![
+    CompletionRequest::new("And 3 + 3?")
+        .messages([
             Message::user("What is 2 + 2?"),
             Message::Assistant { id: None, content },
-            Message::user("And 3 + 3?"),
-        ],
-        documents: vec![],
-        tools: vec![],
-        temperature: None,
-        max_tokens: Some(64),
-        tool_choice: None,
-        additional_params: None,
-        output_schema: None,
-        record_telemetry_content: false,
-    }
+        ])
+        .max_tokens(64)
 }
 
 /// The body `wire` sends for a history holding its own and another

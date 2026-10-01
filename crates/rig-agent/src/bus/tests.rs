@@ -53,18 +53,7 @@ fn custom(payload: serde_json::Value) -> EffectKind {
 
 fn completion_kind(stream: bool) -> EffectKind {
     EffectKind::Completion {
-        request: CompletionRequest {
-            model: None,
-            chat_history: vec![Message::user("hi")],
-            documents: vec![],
-            tools: vec![],
-            temperature: None,
-            max_tokens: None,
-            tool_choice: None,
-            additional_params: None,
-            output_schema: None,
-            record_telemetry_content: false,
-        },
+        request: CompletionRequest::new("hi"),
         stream,
     }
 }
@@ -1538,11 +1527,11 @@ async fn a_typed_key_binds_with_an_existence_check_and_a_handle_dispatches_its_f
     let _task = spawn(driver);
 
     let model = dispatcher.bind(&key).expect("bound by existence");
-    let response = within(model.dispatch(completion_request_value()))
+    let response = within(model.dispatch(CompletionRequest::new("hi")))
         .await
         .expect("the family's own answer");
     assert_eq!(response.choice, vec![AssistantContent::text("typed")]);
-    let response = within(model.call(completion_request_value()))
+    let response = within(model.call(CompletionRequest::new("hi")))
         .await
         .expect("the convenience is the same dispatch");
     assert_eq!(response.choice, vec![AssistantContent::text("typed")]);
@@ -1625,13 +1614,6 @@ async fn a_custom_effect_round_trips_through_a_typed_handle() {
         .expect_err("another kind");
     assert_eq!(report.kind, ErrorKind::HandlerUnavailable);
     assert!(report.message.contains("test:other"), "{}", report.message);
-}
-
-fn completion_request_value() -> rig_core::completion::CompletionRequest {
-    match completion_kind(false) {
-        EffectKind::Completion { request, .. } => request,
-        other => panic!("a completion kind, got {}", other.name()),
-    }
 }
 
 #[test]
@@ -2128,7 +2110,7 @@ async fn recorder_context_reaches_model_handles_without_overwriting_callers() {
             driver.record_to(recorder.clone());
             let task = tokio::spawn(driver);
             let handle: ModelHandle = dispatcher.handle(&HandlerKey::from("model")).unwrap();
-            let request = completion_request_value();
+            let request = CompletionRequest::new("hi");
             let context =
                 explicit.then(|| AdapterContext::new(sink, Subject::scoped("caller"), "caller"));
             if streamed {
@@ -3296,7 +3278,7 @@ fn retained_lineage_cancels_parked_unary_and_stream_sends() {
     let mut stream = retained.dispatch_stream(
         &HandlerKey::from("missing"),
         EffectKind::Completion {
-            request: completion_request_value(),
+            request: CompletionRequest::new("hi"),
             stream: true,
         },
     );

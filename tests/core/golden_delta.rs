@@ -18,6 +18,7 @@ use rig_cassette::agent::AgentReplayExt;
 use serde_json::json;
 
 use super::golden_recovery::Add;
+use super::{cancelled_reason, stream_turn};
 use crate::goldens::{
     RepairToAdd, RetryUnknownTool, STOP_ON_TOOL_ARGUMENTS_DELTA, SkipUnknown,
     StopOnToolArgumentsDelta, event_schema, families,
@@ -26,12 +27,6 @@ use crate::goldens::{
 const PREAMBLE: &str = "Use the add tool.";
 const PROMPT: &str = "What is 2 + 3?";
 const ANSWER: &str = "2 + 3 = 5";
-
-fn stream_turn(events: Vec<MockStreamEvent>) -> Vec<MockStreamEvent> {
-    let mut events = events;
-    events.push(MockStreamEvent::final_response_with_default_usage());
-    events
-}
 
 /// A call streamed as its name, then its arguments in two fragments.
 fn delta_call(id: &str, name: &str) -> Vec<MockStreamEvent> {
@@ -81,13 +76,6 @@ async fn streamed(
     match failure {
         Some(error) => Err(error),
         None => Ok(output.expect("a final response")),
-    }
-}
-
-fn cancelled_reason(error: &PromptError) -> &str {
-    match error {
-        PromptError::Cancelled { reason, .. } => reason,
-        other => panic!("a cancelled run, not {other:?}"),
     }
 }
 

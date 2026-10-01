@@ -529,18 +529,8 @@ fn test_normalize_documents_with_documents() {
         additional_props: HashMap::new(),
     };
 
-    let request = CompletionRequest {
-        model: None,
-        chat_history: vec!["What is the capital of France?".into()],
-        documents: vec![doc1, doc2],
-        tools: Vec::new(),
-        temperature: None,
-        max_tokens: None,
-        tool_choice: None,
-        additional_params: None,
-        output_schema: None,
-        record_telemetry_content: false,
-    };
+    let request =
+        CompletionRequest::new("What is the capital of France?").documents(vec![doc1, doc2]);
 
     let expected = Message::User {
         content: vec![
@@ -560,18 +550,7 @@ fn test_normalize_documents_with_documents() {
 
 #[test]
 fn test_normalize_documents_without_documents() {
-    let request = CompletionRequest {
-        model: None,
-        chat_history: vec!["What is the capital of France?".into()],
-        documents: Vec::new(),
-        tools: Vec::new(),
-        temperature: None,
-        max_tokens: None,
-        tool_choice: None,
-        additional_params: None,
-        output_schema: None,
-        record_telemetry_content: false,
-    };
+    let request = CompletionRequest::new("What is the capital of France?");
 
     assert_eq!(request.normalized_documents(), None);
 }
@@ -655,23 +634,13 @@ fn build_without_documents_keeps_message_order_unchanged() {
 
 #[test]
 fn chat_history_with_documents_places_documents_after_leading_system_messages() {
-    let request = CompletionRequest {
-        model: None,
-        chat_history: vec![
-            Message::system("System prompt"),
-            Message::assistant("Earlier assistant turn"),
-            Message::user("Earlier user turn"),
-            Message::user("Prompt"),
-        ],
-        documents: vec![test_document("doc1", "Document text.")],
-        tools: Vec::new(),
-        temperature: None,
-        max_tokens: None,
-        tool_choice: None,
-        additional_params: None,
-        output_schema: None,
-        record_telemetry_content: false,
-    };
+    let request = CompletionRequest::from(vec![
+        Message::system("System prompt"),
+        Message::assistant("Earlier assistant turn"),
+        Message::user("Earlier user turn"),
+        Message::user("Prompt"),
+    ])
+    .documents(vec![test_document("doc1", "Document text.")]);
 
     assert_eq!(request.documents.len(), 1);
 
@@ -687,23 +656,13 @@ fn chat_history_with_documents_places_documents_after_leading_system_messages() 
 
 #[test]
 fn chat_history_with_documents_places_documents_before_mid_conversation_system_messages() {
-    let request = CompletionRequest {
-        model: None,
-        chat_history: vec![
-            Message::system("Leading system prompt"),
-            Message::assistant("Earlier assistant turn"),
-            Message::system("Mid-conversation instruction"),
-            Message::user("Prompt"),
-        ],
-        documents: vec![test_document("doc1", "Document text.")],
-        tools: Vec::new(),
-        temperature: None,
-        max_tokens: None,
-        tool_choice: None,
-        additional_params: None,
-        output_schema: None,
-        record_telemetry_content: false,
-    };
+    let request = CompletionRequest::from(vec![
+        Message::system("Leading system prompt"),
+        Message::assistant("Earlier assistant turn"),
+        Message::system("Mid-conversation instruction"),
+        Message::user("Prompt"),
+    ])
+    .documents(vec![test_document("doc1", "Document text.")]);
 
     let history = request.chat_history_with_documents();
     let history = history.iter().collect::<Vec<_>>();
@@ -723,23 +682,13 @@ fn chat_history_with_documents_places_documents_before_mid_conversation_system_m
 
 #[test]
 fn chat_history_with_documents_does_not_duplicate_documents() {
-    let request = CompletionRequest {
-        model: None,
-        chat_history: vec![
-            Message::system("System prompt"),
-            Message::user("Earlier user turn"),
-            Message::assistant("Earlier assistant turn"),
-            Message::user("Prompt"),
-        ],
-        documents: vec![test_document("doc1", "Document text.")],
-        tools: Vec::new(),
-        temperature: None,
-        max_tokens: None,
-        tool_choice: None,
-        additional_params: None,
-        output_schema: None,
-        record_telemetry_content: false,
-    };
+    let request = CompletionRequest::from(vec![
+        Message::system("System prompt"),
+        Message::user("Earlier user turn"),
+        Message::assistant("Earlier assistant turn"),
+        Message::user("Prompt"),
+    ])
+    .documents(vec![test_document("doc1", "Document text.")]);
 
     let history = request.chat_history_with_documents();
     let document_messages = history

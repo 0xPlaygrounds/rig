@@ -18,6 +18,7 @@ use rig_cassette::agent::AgentReplayExt;
 use serde_json::json;
 
 use super::golden_recovery::Add;
+use super::{stream_turn, tool_result_texts};
 use crate::goldens::{RepairToAdd, RetryUnknownTool, SKIP_REASON, SkipUnknown, families};
 
 const PREAMBLE: &str = "Use the add tool.";
@@ -47,12 +48,6 @@ fn two_calls_turn() -> MockTurn {
     ])
 }
 
-fn stream_turn(events: Vec<MockStreamEvent>) -> Vec<MockStreamEvent> {
-    let mut events = events;
-    events.push(MockStreamEvent::final_response_with_default_usage());
-    events
-}
-
 async fn streamed_output(agent: &rig::agent::Agent, max_turns: usize) -> String {
     let mut stream = agent.prompt(PROMPT).max_turns(max_turns).stream();
     let mut output = None;
@@ -62,35 +57,6 @@ async fn streamed_output(agent: &rig::agent::Agent, max_turns: usize) -> String 
         }
     }
     output.expect("a final response")
-}
-
-fn tool_result_texts(log: &rig_cassette::effect_log::EffectLog, at: usize) -> Vec<String> {
-    match &log.records[at].kind {
-        rig::effect::EffectKind::Completion { request, .. } => request
-            .chat_history
-            .iter()
-            .filter_map(|message| match message {
-                rig::message::Message::User { content } => Some(content.iter()),
-                _ => None,
-            })
-            .flatten()
-            .filter_map(|content| match content {
-                rig::message::UserContent::ToolResult(result) => Some(
-                    result
-                        .content
-                        .iter()
-                        .map(|part| match part {
-                            rig::message::ToolResultContent::Text(text) => text.text.clone(),
-                            rig::message::ToolResultContent::Json { value } => value.to_string(),
-                            other => format!("{other:?}"),
-                        })
-                        .collect::<String>(),
-                ),
-                _ => None,
-            })
-            .collect(),
-        other => panic!("a completion, not {other:?}"),
-    }
 }
 
 // -- retries, streamed ---------------------------------------------------------
