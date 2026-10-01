@@ -339,7 +339,7 @@ fn read<W: Wire>(
         } = match opened {
             Ok(opened) => opened,
             Err(error) => {
-                fail(reply, slot_none(), error);
+                fail(reply, None, error);
                 return;
             }
         };
@@ -750,11 +750,6 @@ pub(crate) fn decode_with<Op: Operation>(
             provider_request_id: None,
         },
     )
-}
-
-/// No observation slot, for a reply that failed before it opened.
-fn slot_none() -> Option<&'static AdapterSlot> {
-    None
 }
 
 /// The reply failed: the error is its last item.
