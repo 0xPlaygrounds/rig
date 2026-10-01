@@ -155,7 +155,7 @@ pub struct Unread {
     turn: With<Turn>,
     unread: Without<Materialised>,
 }
-/// What `gather_turn` reads of a run.
+/// What `fold_turn` reads of a run.
 #[derive(QueryData)]
 pub struct AssemblingRun {
     /// The agent.
@@ -169,7 +169,7 @@ pub struct AssemblingRun {
     /// The output tool's name, once minted.
     pub minted: &'static OutputToolName,
 }
-/// The request settings `gather_turn` resolves, the run's over the agent's.
+/// The request settings `fold_turn` resolves, the run's over the agent's.
 #[derive(bevy_ecs::system::SystemParam)]
 pub struct Settings<'w, 's> {
     /// The preamble.
@@ -191,7 +191,7 @@ pub struct Settings<'w, 's> {
     /// The request-time size policy for tool-result text.
     pub tool_result_limits: Query<'w, 's, &'static ToolResultLimit>,
 }
-/// What `gather_turn` reads of a fresh turn: its run, its patch, whether
+/// What `fold_turn` reads of a fresh turn: its run, its patch, whether
 /// it is retrieving.
 #[derive(QueryData)]
 pub struct FreshTurn {
@@ -298,43 +298,6 @@ impl TurnRead {
     }
 }
 
-/// What `gather_turn` gathered of a fresh turn's graph, for `fold_turn`:
-/// everything the fold reads, owned, the settings resolved (the patch
-/// over the run's over the agent's), the history after the turn's part
-/// edits and the size policy, the output mode resolved and the output
-/// tool's name minted. Lives one pass: `fold_turn` removes it.
-#[derive(Component, Debug, Clone)]
-pub struct AssemblyInputs {
-    /// The run's bound completion model.
-    pub model: Entity,
-    /// Whether the run streams.
-    pub stream: bool,
-    /// The preamble.
-    pub preamble: Option<String>,
-    /// The utterances in order, as the request sees them.
-    pub utterances: Vec<MessageParts>,
-    /// The documents attached, in order, then the patch's extra context.
-    pub documents: Vec<rig_core::completion::Document>,
-    /// The tool handler entities advertised and allowed, in advert order.
-    pub tools: Vec<Entity>,
-    /// Sampling.
-    pub temperature: Option<f64>,
-    /// The token budget.
-    pub max_tokens: Option<u64>,
-    /// Provider parameters, the patch's merged over the setting's.
-    pub additional_params: Option<serde_json::Value>,
-    /// The tool choice.
-    pub tool_choice: Option<ToolChoice>,
-    /// The output mode, resolved.
-    pub output: OutputKind,
-    /// The output schema, if any.
-    pub schema: Option<serde_json::Value>,
-    /// The output tool's name, when the mode is `Tool`.
-    pub output_tool: Option<String>,
-    /// The output tool's description and preamble behavior.
-    pub output_tool_config: Option<OutputToolConfig>,
-}
-
 /// The agent runtime: the sets, the counters, the observers and the systems,
 /// in the bus's [`RigSchedule`]. Requires [`crate::bus::BusPlugin`] first.
 #[derive(Debug, Default, Clone, Copy)]
@@ -404,7 +367,7 @@ fn install_agent(world: &mut World) {
             .after(RigSet::Advance)
             .before(RigSet::Select),
         select.in_set(RigSet::Select),
-        (gather_turn, fold_turn).chain().in_set(RigSet::Assemble),
+        fold_turn.in_set(RigSet::Assemble),
         backoff::hold_retries
             .after(RigSet::Patch)
             .before(RigSet::Release),
@@ -849,7 +812,7 @@ pub fn advance(
 /// (CONTRACT §12): the retrieved tools first, in result order, then the
 /// static grants; the static attachments, then one document entity per
 /// result (an existing entity with that id reused). Runs after `Advance`
-/// and before `Select`; `gather_turn` waits for it.
+/// and before `Select`; `fold_turn` waits for it.
 pub fn attach_retrieved(
     mut commands: Commands,
     turns: Query<(Entity, &ChildOf), RetrievingTurn>,
@@ -1292,10 +1255,10 @@ fn allowed_tools<'a>(
 /// selected model, no binding, or a binding that does not serve
 /// completions (a provider `HandlerUnavailable` report: the run never
 /// silently waits).
-fn completion_model(
+fn completion_model<'a>(
     model: Option<&UsesModel>,
-    bound: &Query<&Bound>,
-) -> Result<(Entity, bool), Failure> {
+    bound: &'a Query<&Bound>,
+) -> Result<(Entity, &'a Bound, bool), Failure> {
     let unavailable = |message: String| {
         Failure::Provider(rig_core::error::ErrorReport::new(
             rig_core::error::ErrorKind::HandlerUnavailable,
@@ -1310,9 +1273,11 @@ fn completion_model(
         ));
     };
     match &model_bound.descriptor.family {
-        FamilyDescriptor::Completion { capabilities, .. } => {
-            Ok((model, capabilities.composes_native_output_with_tools))
-        }
+        FamilyDescriptor::Completion { capabilities, .. } => Ok((
+            model,
+            model_bound,
+            capabilities.composes_native_output_with_tools,
+        )),
         FamilyDescriptor::Tool { .. }
         | FamilyDescriptor::Embed { .. }
         | FamilyDescriptor::Rerank { .. }
@@ -1487,12 +1452,13 @@ impl Settings<'_, '_> {
     }
 }
 
-/// Gather fresh turns in run order into [`AssemblyInputs`] and retained tool
-/// access snapshots. Applies request edits, size limits, settings, and output
-/// policy; retrieving turns instead dispatch their initial retrievals.
-/// Missing or incompatible models, output-tool collisions, and content errors
-/// fail the affected run.
-pub fn gather_turn(
+/// Fold fresh turns in run order into completion effects owned by their turns,
+/// with retained tool access snapshots. Applies request edits, size limits,
+/// settings, and output policy, consumes the turn's patch, initializes its
+/// outputs, and moves the run to `AwaitingModel`; retrieving turns instead
+/// dispatch their initial retrievals. Missing or incompatible models,
+/// output-tool collisions, and content errors fail the affected run.
+pub fn fold_turn(
     mut commands: Commands,
     fresh: Query<FreshTurn, With<Fresh>>,
     runs: Query<AssemblingRun, LiveRun>,
@@ -1516,12 +1482,13 @@ pub fn gather_turn(
         })
         .collect();
     turns.sort_by_key(|(seq, _, _)| *seq);
+    let mut folded = Vec::new();
     for (_, turn, run) in turns {
         let Ok(view) = runs.get(run) else {
             continue;
         };
         let agent = view.run_of.0;
-        let (model, composes) = match completion_model(view.model, &bound) {
+        let (model, model_bound, composes) = match completion_model(view.model, &bound) {
             Ok(model) => model,
             Err(failure) => {
                 commands.entity(run).end(Failed(failure));
@@ -1614,100 +1581,43 @@ pub fn gather_turn(
         for link in consumed_edits {
             commands.entity(link).despawn();
         }
-        let Resolved {
-            preamble,
-            temperature,
-            max_tokens,
-            additional_params,
-            tool_choice,
-            output,
-            output_tool_config,
-        } = resolved;
-        commands.entity(turn.entity).insert((
-            access,
-            AssemblyInputs {
-                model,
-                stream: view.stream.0,
-                preamble,
-                utterances: history,
-                documents: attached,
-                tools: tools.into_iter().map(|(tool, _)| tool).collect(),
-                temperature,
-                max_tokens,
-                additional_params,
-                tool_choice,
-                output: mode,
-                schema: output.schema,
-                output_tool: (mode == OutputKind::Tool).then_some(output_tool),
-                output_tool_config,
-            },
-        ));
-    }
-}
-
-/// Fold gathered inputs in run order into completion effects owned by their turns.
-/// Consumes fresh-turn inputs and patches, initializes outputs, and moves runs
-/// to `AwaitingModel`. Turns whose model binding is absent remain unchanged.
-pub fn fold_turn(
-    mut commands: Commands,
-    mut turns: Query<(Entity, &ChildOf, &mut AssemblyInputs), With<Fresh>>,
-    runs: Query<&RunSeq, LiveRun>,
-    bound: Query<&Bound>,
-) {
-    let mut turns: Vec<_> = turns
-        .iter_mut()
-        .filter_map(|(turn, turn_of, inputs)| {
-            let run = turn_of.parent();
-            runs.get(run).ok().map(|seq| (seq.0, turn, run, inputs))
-        })
-        .collect();
-    turns.sort_by_key(|(seq, _, _, _)| *seq);
-    for (_, turn, run, mut inputs) in turns {
-        let Ok(model) = bound.get(inputs.model) else {
-            continue;
-        };
-        let documents = std::mem::take(&mut inputs.documents);
+        commands.entity(turn.entity).insert(access);
         let graph = RequestGraph {
-            preamble: inputs.preamble.as_deref(),
-            utterances: inputs.utterances.iter().collect(),
-            documents,
-            tools: inputs
-                .tools
-                .iter()
-                .filter_map(|tool| bound.get(*tool).ok())
-                .map(|bound| &bound.descriptor)
-                .collect(),
-            temperature: inputs.temperature,
-            max_tokens: inputs.max_tokens,
-            additional_params: inputs.additional_params.as_ref(),
-            tool_choice: inputs.tool_choice.as_ref(),
-            output: inputs.output,
-            schema: inputs.schema.as_ref(),
-            output_tool: inputs.output_tool.as_deref(),
-            output_tool_config: inputs.output_tool_config.as_ref(),
+            preamble: resolved.preamble.as_deref(),
+            utterances: history.iter().collect(),
+            documents: attached,
+            tools: tools.iter().map(|(_, bound)| &bound.descriptor).collect(),
+            temperature: resolved.temperature,
+            max_tokens: resolved.max_tokens,
+            additional_params: resolved.additional_params.as_ref(),
+            tool_choice: resolved.tool_choice.as_ref(),
+            output: mode,
+            schema: resolved.output.schema.as_ref(),
+            output_tool: (mode == OutputKind::Tool).then_some(output_tool.as_str()),
+            output_tool_config: resolved.output_tool_config.as_ref(),
         };
-        let request = match policy::fold_request(&graph) {
-            Ok(request) => request,
-            Err(error) => {
-                fail_content(&mut commands, run, error);
-                continue;
-            }
-        };
-        commands.spawn((
-            PendingEffect::new(
-                model.key.clone(),
-                EffectKind::Completion {
+        match policy::fold_request(&graph) {
+            Ok(request) => {
+                let kind = EffectKind::Completion {
                     request,
-                    stream: inputs.stream,
-                },
-            ),
-            ServedBy(inputs.model),
+                    stream: view.stream.0,
+                };
+                folded.push((turn.entity, run, model, model_bound.key.clone(), kind, mode));
+            }
+            Err(error) => fail_content(&mut commands, run, error),
+        }
+    }
+    // Completions follow this pass's retrievals, keeping their dispatch order.
+    for (turn, run, model, key, kind, mode) in folded {
+        commands.spawn((
+            PendingEffect::new(key, kind),
+            ServedBy(model),
             ChildOf(turn),
         ));
         commands
             .entity(turn)
-            .remove::<(AssemblyInputs, Fresh, RequestPatch)>()
-            .insert((Folded(inputs.output), Outputs::default()));
+            .remove::<(Fresh, RequestPatch)>()
+            .insert((Folded(mode), Outputs::default()));
         commands.entity(run).phase(RunPhase::AwaitingModel);
     }
 }
