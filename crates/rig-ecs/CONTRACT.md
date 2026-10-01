@@ -65,8 +65,9 @@ the image in the second request and after a checkpoint load; `inline_followup`: 
 image loaded from memory, once, before a text-only prompt).
 
 Content entities carry one reflected `agent::content::parts::ContentPart` enum:
-`Text`, `Image`, `Audio`, `Video`, `Document`, `ToolCall`, `Reasoning`, `ToolResult`,
-or `Json`. Query the component and match its variant; media metadata structs
+`Text`, `Image`, `Audio`, `Video`, `Document`, `ToolCall`, `Reasoning`, `Opaque`,
+`ToolResult`, or `Json`. `Opaque` holds a provider item with no canonical form,
+sealed to its issuer, verbatim. Query the component and match its variant; media metadata structs
 are fields, not independent components. A `ToolResult` owns ordered `Text`,
 `Image`, or `Json` child entities. `Role` and the assistant's `MessageId` belong
 to the utterance. Sibling order is `Children` order. Conflicting payload types
@@ -324,7 +325,10 @@ No hook trait: a user system writes a component at a set boundary and a library 
 
 `content::parts::RequestPartEdit` adds entity targeting: spawn a link
 `(RequestPartEdit, EditTarget(part), ChildOf(fresh_turn))` before Assemble.
-`Text` replaces only a `ContentPart::Text`'s text, preserving annotations; `Remove` omits the
+`Text` replaces only a `ContentPart::Text`'s text, preserving annotations; an annotation
+that describes the text it was decoded with (citations, Responses annotations) carries
+that text's `Fingerprint`, and its wire leaves it out of the request once the text
+differs, while identity data (`phase`, message ids) still replays. `Remove` omits the
 part and its nested result items from this request. Stored history and siblings
 are unchanged. Edits run in sibling (`Children`) order; the last edit to a
 target wins. A removed parent takes precedence over edits to its children.

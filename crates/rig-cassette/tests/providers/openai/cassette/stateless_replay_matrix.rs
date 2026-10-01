@@ -41,7 +41,7 @@
 //! | # | cell | transport | proves | fixture |
 //! |---|------|-----------|--------|---------|
 //! | 1 | `phase_round_trips_on_follow_up` | blocking, 2 turns | turn-2 request carries turn-1's `phase` | recorded |
-//! | 2 | `compaction_item_decodes_on_the_response` | blocking | compaction on `output[]` decodes typed; the same item re-serialized is accepted on the input side verbatim | derived from 1 |
+//! | 2 | `compaction_item_decodes_on_the_response` | blocking | compaction on `output[]` decodes typed, leads the turn as an opaque part history replays, and the same item re-serialized is accepted on the input side verbatim | derived from 1 |
 //! | 3 | `streamed_phase_round_trips_on_follow_up` | streamed, 2 turns | a streamed turn's `phase` reaches its text and the follow-up, as unary text carries it | recorded |
 //! | 4 | `commentary_and_final_answer_replay_as_two_items` | streamed, 2 turns | two message items keep their own id and `phase`, in order, and the follow-up is accepted | recorded |
 //! | 5 | `commentary_before_a_tool_call_replays_with_its_phase` | streamed, 2 turns | a commentary message keeps its `phase` and its place before the call | recorded |
@@ -191,6 +191,23 @@ async fn compaction_item_decodes_on_the_response() {
 
             // The regular items beside it still decode and normalize.
             assert!(!response.choice.is_empty());
+
+            // The item is part of the turn, first, as the response states it,
+            // so history replays it to this wire.
+            let Some(AssistantContent::Opaque(kept)) = response.choice.first() else {
+                panic!(
+                    "the compaction item must lead the turn: {:?}",
+                    response.choice
+                );
+            };
+            let kept = kept
+                .extension_for::<openai::responses_api::ResponsesItem>(&[
+                    rig::message::Issuer::from("openai"),
+                ])
+                .expect("well-formed")
+                .expect("an OpenAI Responses item");
+            assert_eq!(kept.0["type"], "compaction");
+            assert_eq!(kept.0["id"], "cmp_REDACTED_1");
 
             // The same item, re-serialized, is accepted on the input side
             // byte-for-byte — this is what a stateless client sends back.

@@ -2939,3 +2939,41 @@ fn a_text_beside_an_empty_message_item_keeps_its_own_id() {
     let response = decoded.outcome.expect("the body decodes");
     assert_eq!(response.message_id.as_deref(), Some("msg_2"));
 }
+
+/// Unmodelled items fold to the same parts, in the same order, streamed or
+/// whole: both run through this decoder, which writes each one as an opaque
+/// part when its `output_item.done` (or the unary body) states it.
+#[test]
+fn unmodelled_items_fold_the_same_streamed_and_whole() {
+    let compaction = json!({"type": "compaction", "id": "cmp_1",
+                            "encrypted_content": "opaque", "status": "completed"});
+    let custom = json!({"type": "custom_tool_call", "id": "ctc_1", "call_id": "call_c1",
+                        "name": "grammar", "input": "x = 1", "status": "completed"});
+    let message = phased_message("msg_1", "Done.", json!("final_answer"));
+    let output = json!([compaction, custom, message]);
+    let streamed = decoded_body(
+        "openai",
+        &body_of(&[
+            item_added(0, 1, compaction.clone()),
+            item_done(0, 2, compaction.clone()),
+            item_added(1, 3, custom.clone()),
+            item_done(1, 4, custom.clone()),
+            item_added(2, 5, message.clone()),
+            text_delta("msg_1", 2, 0, 6, "Done."),
+            item_done(2, 7, message.clone()),
+            completed_with(8, output.clone()),
+        ]),
+        None,
+    );
+    let whole = unary_of(output);
+    let streamed = streamed.ended();
+    assert_eq!(streamed, whole.ended());
+    assert!(matches!(
+        streamed.as_slice(),
+        [
+            AssistantContent::Opaque(_),
+            AssistantContent::Opaque(_),
+            AssistantContent::Text(_)
+        ]
+    ));
+}

@@ -395,3 +395,109 @@ fn every_responses_dialect_resends_phase() {
         );
     }
 }
+
+/// Items Rig has no canonical form for, as the API documents them, plus one
+/// no release has seen yet. The compaction item is the recorded cell's.
+fn unmodelled_items() -> Vec<serde_json::Value> {
+    vec![
+        json!({"encrypted_content": "encrypted_content_REDACTED_1", "id": "cmp_REDACTED_1",
+               "status": "completed", "type": "compaction"}),
+        json!({"type": "web_search_call", "id": "ws_1", "status": "completed",
+               "action": {"type": "search", "query": "rig"}}),
+        json!({"type": "custom_tool_call", "id": "ctc_1", "call_id": "call_c1",
+               "name": "grammar", "input": "x = 1", "status": "completed"}),
+        json!({"type": "item_from_the_future", "id": "fut_1", "payload": [1.5, null]}),
+    ]
+}
+
+/// Loss 2: a compaction item, which OpenAI documents as must-replay, used
+/// to leave the turn as a stream-only unknown item. It is now part of
+/// history, as is every other unmodelled item, and each replays verbatim in
+/// its place among the turn's items.
+#[test]
+fn unmodelled_items_are_kept_and_replay_in_place() {
+    let mut output = unmodelled_items();
+    output.insert(2, message_item("msg_1", "final_answer", "ACK-1"));
+    let history = history_of(json!(output));
+    let completion::Message::Assistant { content, .. } = &history else {
+        panic!("an assistant turn");
+    };
+    assert_eq!(content.len(), output.len());
+    assert!(matches!(content[0], message::AssistantContent::Opaque(_)));
+
+    let items = replayed(history);
+    assert_eq!(items.len(), output.len());
+    for (index, item) in unmodelled_items().into_iter().enumerate() {
+        let at = if index < 2 { index } else { index + 1 };
+        assert_eq!(items[at], item, "item {index} replays verbatim in place");
+    }
+    assert_eq!(
+        shape(&items[2..3]),
+        [("message".into(), "msg_1".into(), "final_answer".into())]
+    );
+}
+
+/// The cross-dialect rule on this wire: items another issuer sealed are
+/// left out, and so are opaque items holding only another wire's types.
+#[test]
+fn opaque_items_replay_only_to_their_issuer_and_wire() {
+    let mut history = history_of(json!([
+        unmodelled_items()[0].clone(),
+        message_item("msg_1", "final_answer", "ACK-1"),
+    ]));
+    let completion::Message::Assistant { content, .. } = &mut history else {
+        panic!("an assistant turn");
+    };
+    content.push(message::AssistantContent::Opaque(message::Sealed::new(
+        "openai",
+        message::Opaque::of(&crate::providers::anthropic::completion::AnthropicBlock(
+            json!({"type": "container_upload", "file_id": "file_01"}),
+        ))
+        .expect("serializes"),
+    )));
+    let types = |issuer: &'static str| -> Vec<String> {
+        super::input_items(history.clone(), &[issuer.into()])
+            .expect("history converts")
+            .iter()
+            .map(|item| serde_json::to_value(item).expect("item serializes"))
+            .map(|item| item["type"].as_str().unwrap_or("-").to_owned())
+            .collect()
+    };
+    assert_eq!(types("openai"), ["compaction", "message"]);
+    assert_eq!(types("xai"), ["message"]);
+}
+
+/// The staleness rule: the block's annotations describe its text, so an
+/// edit drops them; `phase` and the item id are identity and survive.
+#[test]
+fn annotations_go_stale_when_their_text_is_edited_and_phase_survives() {
+    let annotated = json!({
+        "type": "message", "id": "msg_1", "role": "assistant", "status": "completed",
+        "phase": "final_answer",
+        "content": [{"type": "output_text", "text": "Rust is fast.",
+                     "annotations": [{"type": "url_citation", "start_index": 0,
+                                      "end_index": 4, "url": "https://a.example",
+                                      "title": "A"}]}],
+    });
+    let history = history_of(json!([annotated]));
+    let items = replayed(history.clone());
+    assert_eq!(
+        items[0]["content"][0]["annotations"],
+        annotated["content"][0]["annotations"]
+    );
+
+    let completion::Message::Assistant { id, mut content } = history else {
+        panic!("an assistant turn");
+    };
+    let Some(message::AssistantContent::Text(text)) = content.first_mut() else {
+        panic!("a text block");
+    };
+    text.text = "Rust is slow.".to_owned();
+    let items = replayed(completion::Message::Assistant { id, content });
+    assert_eq!(
+        items[0],
+        json!({"type": "message", "role": "assistant", "id": "msg_1",
+               "status": "completed", "phase": "final_answer",
+               "content": [{"type": "output_text", "text": "Rust is slow."}]})
+    );
+}
