@@ -67,9 +67,9 @@ pub(crate) enum DriveItem {
     Done(PromptResponse),
 }
 
-/// Medium-specific turn execution, telemetry, and final-item construction.
-/// Implementations resolve invalid calls during model ingestion and feed accepted
-/// turns or tool results back into the run.
+/// Medium-specific model turns, span chaining, telemetry, and final-item
+/// construction. Implementations resolve invalid calls during model ingestion
+/// and feed accepted turns back into the run; the engine runs tool calls.
 pub(crate) trait TurnSource: WasmCompatSend + WasmCompatSync {
     /// Whether the surface forwards intermediate items. The blocking fold
     /// discards them, so its source skips building them.
@@ -1205,9 +1205,9 @@ pub(crate) enum ModelTurnDecision {
 /// accepted attempt, so retry history, tool-turn rejection, and state
 /// transitions cannot diverge by medium. `turn` carries this attempt's
 /// response with the choice the hooks see, and `max_tokens` the cap it was
-/// prepared with. The callers own what happens next: the blocking driver
-/// records the accepted turn's telemetry; the streaming driver additionally
-/// surfaces or discards the buffered provisional `Final`.
+/// prepared with. The callers own what happens next: both record the accepted
+/// turn's telemetry, and the streaming driver also keeps the content its
+/// final item surfaces.
 pub(crate) async fn settle_model_turn(
     hooks: &HookStack,
     hook_ctx: &HookContext,
@@ -1565,9 +1565,9 @@ pub(crate) struct UnaryTurnSource {
     ///
     /// Atomic rather than `Cell` despite being driven by a single sequential
     /// task: the engine passes `chain_span` as a closure into
-    /// `drive_tool_calls`, whose returned `DriveStream` is `Send`. That makes the
-    /// closure capture `&self`, so `&UnaryTurnSource` must be `Send`, i.e.
-    /// `UnaryTurnSource: Sync`, which `AtomicU64` provides and `Cell` does not.
+    /// `drive_tool_calls`, whose returned `DriveStream` is `Send`. That closure
+    /// borrows the source, so every `TurnSource` must be `Sync`, which
+    /// `AtomicU64` provides and `Cell` does not.
     current_span_id: AtomicU64,
     record_telemetry_content: bool,
 }
