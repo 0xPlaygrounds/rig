@@ -43,10 +43,10 @@ fn last_embedding(response: EmbeddingResponse) -> Result<Embedding, ProviderErro
     })
 }
 
-/// Text embeddings and normalized provider metadata.
+/// Text or image embeddings and normalized provider metadata.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EmbeddingResponse {
-    /// The embeddings returned by the provider, one per input text, in input order.
+    /// The embeddings returned by the provider, one per input, in input order.
     pub embeddings: Vec<Embedding>,
     /// Token usage for this request; every counter is `None` when the
     /// provider reported none (see [`Usage`]).
@@ -84,48 +84,20 @@ impl EmbeddingResponse {
             raw: serde_json::Value::Null,
         }
     }
-}
 
-/// Image embeddings and normalized provider metadata.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ImageEmbeddingResponse {
-    /// The embeddings returned by the provider, one per input image, in input order.
-    pub embeddings: Vec<Embedding>,
-    /// Token usage for this request; every counter is `None` when the
-    /// provider reported none (see [`Usage`]).
-    #[serde(default)]
-    pub usage: Usage,
-    /// Stable descriptor name of the provider that produced this response,
-    /// for example `"openai"`. Always populated.
-    pub provider: String,
-    /// Provider-reported model identifier, when the wire response named one.
-    #[serde(default)]
-    pub model: Option<String>,
-    /// Provider-assigned response-scoped identifier, when reported.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub response_id: Option<String>,
-    /// Transport request identifier from HTTP response headers, or `None` when absent.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub provider_request_id: Option<String>,
-    /// Provider response payload, or null when no raw payload was attached.
-    #[serde(default, skip_serializing_if = "serde_json::Value::is_null")]
-    pub raw: serde_json::Value,
-}
-
-impl ImageEmbeddingResponse {
-    /// A response carrying `embeddings`. The driver writes the provider, the
-    /// transport request id and the reply document; decoders set what the
-    /// provider reported.
-    pub fn new(embeddings: Vec<Embedding>) -> Self {
-        Self {
-            embeddings,
-            usage: Usage::default(),
-            provider: String::new(),
-            model: None,
-            response_id: None,
-            provider_request_id: None,
-            raw: serde_json::Value::Null,
-        }
+    /// A response carrying bare `vectors` in input order. The operation's
+    /// fold pairs each with the input it belongs to, since a reply is not
+    /// trusted to echo its inputs back.
+    pub(crate) fn from_vectors(vectors: impl IntoIterator<Item = Vec<f64>>) -> Self {
+        Self::new(
+            vectors
+                .into_iter()
+                .map(|vec| Embedding {
+                    document: String::new(),
+                    vec,
+                })
+                .collect(),
+        )
     }
 }
 

@@ -131,7 +131,6 @@ macro_rules! stamp {
 
 stamp!(
     crate::embeddings::EmbeddingResponse,
-    crate::embeddings::ImageEmbeddingResponse,
     crate::rerank::RerankResponse,
     crate::transcription::TranscriptionResponse
 );
@@ -155,7 +154,7 @@ modality_operation!(
     /// Embedding a batch of images from their encoded file bytes.
     ImageEmbedding {
         request: Vec<Vec<u8>>,
-        response: crate::embeddings::ImageEmbeddingResponse,
+        response: crate::embeddings::EmbeddingResponse,
         telemetry: Embeddings,
         fold: Embedded,
         seed: |images: &Vec<Vec<u8>>, call: &Call<'_>| Embedded::over(
@@ -257,7 +256,14 @@ impl Embedded {
     }
 }
 
-impl Fold<Embedding> for Embedded {
+impl<Op> Fold<Op> for Embedded
+where
+    Op: Operation<
+            Event = Infallible,
+            End = crate::embeddings::EmbeddingResponse,
+            Response = crate::embeddings::EmbeddingResponse,
+        >,
+{
     fn absorb(&mut self, event: &Infallible) -> Result<(), ProviderError> {
         match *event {}
     }
@@ -267,22 +273,6 @@ impl Fold<Embedding> for Embedded {
         mut response: crate::embeddings::EmbeddingResponse,
         reply: Reply,
     ) -> Result<crate::embeddings::EmbeddingResponse, ProviderError> {
-        response.embeddings = self.zipped(std::mem::take(&mut response.embeddings))?;
-        response.stamp(&reply);
-        Ok(response)
-    }
-}
-
-impl Fold<ImageEmbedding> for Embedded {
-    fn absorb(&mut self, event: &Infallible) -> Result<(), ProviderError> {
-        match *event {}
-    }
-
-    fn finish(
-        self,
-        mut response: crate::embeddings::ImageEmbeddingResponse,
-        reply: Reply,
-    ) -> Result<crate::embeddings::ImageEmbeddingResponse, ProviderError> {
         response.embeddings = self.zipped(std::mem::take(&mut response.embeddings))?;
         response.stamp(&reply);
         Ok(response)

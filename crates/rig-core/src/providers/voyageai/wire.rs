@@ -7,7 +7,6 @@
 //! ```
 
 use crate::client::env::{self, EnvError};
-use crate::embeddings::Embedding as Vector;
 use crate::error::EncodeError;
 use crate::error::ProviderError;
 use crate::operation::{Embedding, Rerank as RerankOp, RerankRequest};
@@ -20,8 +19,8 @@ use crate::wire::{
 use serde::{Deserialize, Serialize};
 
 use super::{
-    EmbeddingResponse as VoyageEmbeddingResponse, RerankApiResponse, RerankErrorEnvelope,
-    VOYAGEAI_API_BASE_URL, model_dimensions_from_identifier,
+    EmbeddingResponse as VoyageEmbeddingResponse, RerankApiResponse, VOYAGEAI_API_BASE_URL,
+    model_dimensions_from_identifier,
 };
 
 /// The provider descriptor name, as records and telemetry spell it.
@@ -218,20 +217,11 @@ impl<'id> Decoder<'id, Embedding> for EmbeddingsDecoder {
             total_tokens: Some(reply.usage.total_tokens as u64),
             ..Default::default()
         };
-        // The vectors only; the operation's fold pairs them with the texts
-        // that were sent, which `/embeddings` does not echo back.
-        let vectors = reply
-            .data
-            .into_iter()
-            .map(|embedding| Vector {
-                document: String::new(),
-                vec: embedding.embedding,
-            })
-            .collect();
+        let vectors = reply.data.into_iter().map(|embedding| embedding.embedding);
         Ok(out.end(crate::embeddings::EmbeddingResponse {
             model: Some(reply.model),
             usage,
-            ..crate::embeddings::EmbeddingResponse::new(vectors)
+            ..crate::embeddings::EmbeddingResponse::from_vectors(vectors)
         }))
     }
 }
@@ -312,48 +302,17 @@ impl Wire for Rerank {
     }
 }
 
-/// Ranking and error-envelope markers. Recognizing `message` permits fallback
-/// decoding of provider errors returned with successful HTTP status.
-const RERANK_REPLY_MARKERS: &[&str] = &["data", "message"];
-
-/// The key that recognizes the error envelope on its own.
-const RERANK_ERROR_MARKERS: &[&str] = &["message"];
-
-/// One `/rerank` reply: the ordering, or the error envelope Voyage can
-/// answer a **200** with instead.
-pub enum RerankReply {
-    /// The ordering Voyage returned.
-    Reply(RerankApiResponse),
-    /// The provider's error envelope, verbatim.
-    Failure(String),
-}
-
 /// Decodes one `/rerank` reply.
 pub struct RerankDecoder;
 
 impl<'id> Decoder<'id, RerankOp> for RerankDecoder {
-    type Event = RerankReply;
+    /// The ordering, or the error envelope Voyage can answer a **200** with.
+    type Event = Result<RerankApiResponse, String>;
 
-    /// Decode a ranking, then an error envelope if ranking decoding fails.
-    /// Retain the ranking diagnostic when neither shape decodes.
     fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
-        let data = frame.as_str();
-        crate::providers::internal::wire::classify_or(
-            &data,
-            |data| {
-                crate::providers::internal::wire::classify_marker_keyed_frame::<RerankApiResponse>(
-                    data,
-                    RERANK_REPLY_MARKERS,
-                )
-                .map(RerankReply::Reply)
-            },
-            |data| {
-                crate::providers::internal::wire::classify_marker_keyed_frame::<RerankErrorEnvelope>(
-                    data,
-                    RERANK_ERROR_MARKERS,
-                )
-                .map(|_| RerankReply::Failure(data.to_owned()))
-            },
+        crate::providers::internal::wire::classify_reply_or_message_envelope(
+            &frame.as_str(),
+            "data",
         )
     }
 
@@ -362,13 +321,7 @@ impl<'id> Decoder<'id, RerankOp> for RerankDecoder {
         reply: Self::Event,
         out: Out<'id, RerankOp>,
     ) -> Result<Flow, ProviderError> {
-        let reply = match reply {
-            RerankReply::Reply(reply) => reply,
-            // Preserve the provider body; the driver adds the actual HTTP status.
-            RerankReply::Failure(body) => {
-                return Err(ProviderError::from_provider_body(body));
-            }
-        };
+        let reply = reply.map_err(ProviderError::from_provider_body)?;
         // Voyage reports one count; every token of a rerank is input.
         let usage = crate::completion::Usage {
             input_tokens: Some(reply.usage.total_tokens as u64),
