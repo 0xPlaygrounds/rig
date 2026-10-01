@@ -308,30 +308,27 @@ impl DirectRecorder {
     }
 
     /// Scrub and append one complete direct request/response exchange.
-    pub async fn record_http_interaction<RequestHeaders, ResponseHeaders>(
+    pub async fn record_http_interaction(
         &self,
-        request: DirectHttpRequest<'_, RequestHeaders>,
-        response: DirectHttpResponse<'_, ResponseHeaders>,
-    ) where
-        RequestHeaders: IntoIterator,
-        RequestHeaders::Item: DirectHeader,
-        ResponseHeaders: IntoIterator,
-        ResponseHeaders::Item: DirectHeader,
-    {
+        request: DirectHttpRequest<
+            '_,
+            impl IntoIterator<Item = (impl AsRef<str>, impl AsRef<str>)>,
+        >,
+        response: DirectHttpResponse<
+            '_,
+            impl IntoIterator<Item = (impl AsRef<str>, impl AsRef<str>)>,
+        >,
+    ) {
         let mut scrubber = CassetteScrubber::new(self.policy);
         let mut interaction = CassetteInteraction {
             when: recorded_request(
                 self.policy,
                 request.method,
                 request.uri,
-                request.headers.into_iter().map(DirectHeader::into_pair),
+                request.headers,
                 request.body,
             ),
-            then: recorded_response(
-                response.status,
-                response.headers.into_iter().map(DirectHeader::into_pair),
-                response.body,
-            ),
+            then: recorded_response(response.status, response.headers, response.body),
         };
         // The ledger sees the exchange before its reply reaches the caller.
         self.log_created(
@@ -344,31 +341,6 @@ impl DirectRecorder {
         scrubber.scrub_request(&mut interaction.when);
         scrubber.scrub_response(&mut interaction.then);
         self.interactions.lock().await.push(interaction);
-    }
-}
-
-/// Convert a direct-recording header into its name and value.
-pub trait DirectHeader {
-    /// The header name representation.
-    type Name: AsRef<str>;
-    /// The header value representation.
-    type Value: AsRef<str>;
-
-    /// Return the header name and value.
-    fn into_pair(self) -> (Self::Name, Self::Value);
-}
-
-impl<Name, Value> DirectHeader for (Name, Value)
-where
-    Name: AsRef<str>,
-    Value: AsRef<str>,
-{
-    type Name = Name;
-    type Value = Value;
-
-    /// Return the header name and value.
-    fn into_pair(self) -> (Self::Name, Self::Value) {
-        self
     }
 }
 
