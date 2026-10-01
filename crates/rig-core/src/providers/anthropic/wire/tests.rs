@@ -37,6 +37,35 @@ fn wire() -> Messages {
     AnthropicConfig::new("sk-test").completion("claude-haiku-4-5")
 }
 
+/// Display names and pagination are decoder behavior, tested locally without
+/// recording a provider completion.
+#[test]
+fn model_catalog_preserves_display_names_and_pagination() {
+    let catalog = serde_json::json!({
+        "data": [{"id": "claude-sonnet-4-6", "display_name": "Claude Sonnet 4.6"}],
+        "has_more": true,
+        "last_id": "claude-sonnet-4-6"
+    });
+    let page = crate::test_utils::decode_reply(
+        &AnthropicConfig::new("test-key").models(),
+        &None,
+        Mode::Unary,
+        [WireFrame::Text(catalog.to_string())],
+        catalog,
+    )
+    .expect("the native catalog decodes");
+    assert_eq!(page.next.as_deref(), Some("claude-sonnet-4-6"));
+    let model = page.models.iter().next().expect("a model entry");
+    assert_eq!(model.id, "claude-sonnet-4-6");
+    assert_eq!(model.display_name(), "Claude Sonnet 4.6");
+    assert!(
+        AnthropicConfig::new("test-key")
+            .verify()
+            .encode((), Mode::Unary)
+            .is_ok()
+    );
+}
+
 fn request() -> CompletionRequest {
     CompletionRequest::new("Reply with exactly: parity probe").max_tokens(32)
 }

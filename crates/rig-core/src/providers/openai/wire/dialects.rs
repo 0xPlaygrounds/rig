@@ -352,6 +352,36 @@ pub const OPENROUTER: Dialect = Dialect {
     )
 };
 
+/// OpenCode Zen's Chat Completions and Responses endpoints.
+pub const OPENCODE_ZEN: Dialect = Dialect {
+    base_url_env: Some("OPENCODE_BASE_URL"),
+    quirks: Quirks {
+        verify_path: "",
+        upstream_reasoning_issuer: true,
+        ..Quirks::openai()
+    },
+    ..Dialect::gateway(
+        "opencode",
+        crate::providers::opencode::ZEN_API_BASE_URL,
+        "OPENCODE_API_KEY",
+    )
+};
+
+/// OpenCode Go's Chat Completions and Responses endpoints.
+pub const OPENCODE_GO: Dialect = Dialect {
+    base_url_env: Some("OPENCODE_GO_BASE_URL"),
+    quirks: Quirks {
+        verify_path: "",
+        upstream_reasoning_issuer: true,
+        ..Quirks::openai()
+    },
+    ..Dialect::gateway(
+        "opencode-go",
+        crate::providers::opencode::GO_API_BASE_URL,
+        "OPENCODE_GO_API_KEY",
+    )
+};
+
 /// Venice.
 pub const VENICE: Dialect = Dialect {
     base_url_env: Some("VENICE_BASE_URL"),

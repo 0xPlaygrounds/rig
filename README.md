@@ -170,6 +170,12 @@ for dependency guarantees, ECS replay installation and migration paths.
 
 ## Supported Integrations
 
+Built-in providers include OpenCode Zen and Go through
+[`rig::providers::opencode`](crates/rig-core/src/providers/opencode.rs), with
+Chat Completions, Responses, and Messages clients. Choose the protocol listed
+for your model in the [Zen](https://opencode.ai/docs/zen/#endpoints) or
+[Go](https://opencode.ai/docs/go/#endpoints) catalog. The module example shows
+how Go clients set an application user agent and a session ID per conversation.
 The built-in `rig::vector_store::in_memory_store::InMemoryVectorStore` stores
 serializable documents without requiring `Eq` or `Default`. Its custom ID
 callbacks accept closures that capture and mutate application state. See the
