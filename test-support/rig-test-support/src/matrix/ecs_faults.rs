@@ -1,4 +1,4 @@
-//! Scripted ECS fault rows over a wire's `faults::Scripted` suite.
+//! Scripted ECS fault rows over a wire's `faults::Scripted` or `long_loop::Scripted` suite.
 
 /// Emit a scripted fault row: the suite's method of the row's own name,
 /// asserted against the row's literal world golden.
