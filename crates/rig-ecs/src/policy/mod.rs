@@ -175,6 +175,19 @@ fn system_message(graph: &RequestGraph<'_>) -> Option<String> {
     }
 }
 
+/// The name a tool descriptor is called by; `None` for other effect families.
+pub(crate) fn tool_name(descriptor: &HandlerDescriptor) -> Option<&str> {
+    match &descriptor.family {
+        rig_core::effect::FamilyDescriptor::Tool { name, .. } => Some(name),
+        rig_core::effect::FamilyDescriptor::Completion { .. }
+        | rig_core::effect::FamilyDescriptor::Embed { .. }
+        | rig_core::effect::FamilyDescriptor::Rerank { .. }
+        | rig_core::effect::FamilyDescriptor::Memory { .. }
+        | rig_core::effect::FamilyDescriptor::Retrieve { .. }
+        | rig_core::effect::FamilyDescriptor::Custom { .. } => None,
+    }
+}
+
 /// Convert a tool descriptor to its model-facing definition; return `None` for
 /// other effect families.
 pub fn tool_definition(descriptor: &HandlerDescriptor) -> Option<ToolDefinition> {

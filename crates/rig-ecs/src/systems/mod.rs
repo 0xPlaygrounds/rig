@@ -893,19 +893,8 @@ pub fn attach_retrieved(
             links.iter().find_map(|(Grant(tool), _)| {
                 bound
                     .get(*tool)
-                    .ok()
-                    .and_then(|bound| match &bound.descriptor.family {
-                        FamilyDescriptor::Tool {
-                            name: bound_name, ..
-                        } if bound_name == name => Some(*tool),
-                        FamilyDescriptor::Tool { .. }
-                        | FamilyDescriptor::Completion { .. }
-                        | FamilyDescriptor::Embed { .. }
-                        | FamilyDescriptor::Rerank { .. }
-                        | FamilyDescriptor::Memory { .. }
-                        | FamilyDescriptor::Retrieve { .. }
-                        | FamilyDescriptor::Custom { .. } => None,
-                    })
+                    .is_ok_and(|bound| policy::tool_name(&bound.descriptor) == Some(name))
+                    .then_some(*tool)
             })
         };
         for name in &retrieved_tools {
@@ -1230,16 +1219,10 @@ fn allowed_tools<'a>(
         .filter_map(|(link, tool, bound)| {
             let allowed = match (
                 patch.and_then(|p| p.active_tools.as_ref()),
-                &bound.descriptor.family,
+                policy::tool_name(&bound.descriptor),
             ) {
-                (Some(allowed), FamilyDescriptor::Tool { name, .. }) => allowed.contains(name),
-                (Some(_), FamilyDescriptor::Completion { .. })
-                | (Some(_), FamilyDescriptor::Embed { .. })
-                | (Some(_), FamilyDescriptor::Rerank { .. })
-                | (Some(_), FamilyDescriptor::Memory { .. })
-                | (Some(_), FamilyDescriptor::Retrieve { .. })
-                | (Some(_), FamilyDescriptor::Custom { .. })
-                | (None, _) => true,
+                (Some(allowed), Some(name)) => allowed.iter().any(|allowed| allowed == name),
+                (Some(_), None) | (None, _) => true,
             };
             if allowed {
                 Some((tool, bound))
@@ -1307,15 +1290,7 @@ fn resolve_output_tool(
 ) -> Result<(OutputKind, String), String> {
     let granted_names: Vec<&str> = tools
         .iter()
-        .filter_map(|(_, bound)| match &bound.descriptor.family {
-            FamilyDescriptor::Tool { name, .. } => Some(name.as_str()),
-            FamilyDescriptor::Completion { .. }
-            | FamilyDescriptor::Embed { .. }
-            | FamilyDescriptor::Rerank { .. }
-            | FamilyDescriptor::Memory { .. }
-            | FamilyDescriptor::Retrieve { .. }
-            | FamilyDescriptor::Custom { .. } => None,
-        })
+        .filter_map(|(_, bound)| policy::tool_name(&bound.descriptor))
         .collect();
     let occupied_names: Vec<&str> = granted_names
         .iter()
@@ -1392,9 +1367,9 @@ fn tool_access_for(
     let executable = access.executable.get_or_insert_with(|| {
         tools
             .iter()
-            .filter_map(|(_, bound)| match &bound.descriptor.family {
-                FamilyDescriptor::Tool { name, .. } => Some((name.clone(), bound.key.clone())),
-                _ => None,
+            .filter_map(|(_, bound)| {
+                policy::tool_name(&bound.descriptor)
+                    .map(|name| (name.to_owned(), bound.key.clone()))
             })
             .collect()
     });
@@ -1988,18 +1963,12 @@ fn granted_tools(
     links_in_order(turn, children, adverts)
         .into_iter()
         .filter_map(|Advert(tool)| bound.get(*tool).ok().map(|bound| (*tool, bound)))
-        .filter_map(|(tool, bound)| match &bound.descriptor.family {
-            FamilyDescriptor::Tool { name, .. } => Some(GrantedTool {
-                name: name.clone(),
+        .filter_map(|(tool, bound)| {
+            policy::tool_name(&bound.descriptor).map(|name| GrantedTool {
+                name: name.to_owned(),
                 key: bound.key.clone(),
                 handler: Some(tool),
-            }),
-            FamilyDescriptor::Completion { .. }
-            | FamilyDescriptor::Embed { .. }
-            | FamilyDescriptor::Rerank { .. }
-            | FamilyDescriptor::Memory { .. }
-            | FamilyDescriptor::Retrieve { .. }
-            | FamilyDescriptor::Custom { .. } => None,
+            })
         })
         .collect()
 }

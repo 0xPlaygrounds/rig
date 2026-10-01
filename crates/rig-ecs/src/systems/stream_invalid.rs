@@ -96,10 +96,7 @@ pub fn discover_streamed_invalid_calls(
         let mut allowed: Vec<String> = links_in_order(turn, &children, &adverts)
             .into_iter()
             .filter_map(|Advert(entity)| bound.get(*entity).ok())
-            .filter_map(|bound| match &bound.descriptor.family {
-                FamilyDescriptor::Tool { name, .. } => Some(name.clone()),
-                _ => None,
-            })
+            .filter_map(|bound| crate::policy::tool_name(&bound.descriptor).map(str::to_owned))
             .collect();
         if let Some(names) = access
             .get(turn)
