@@ -16,8 +16,7 @@ use crate::providers::openai::responses_api::{
 use crate::wire::{Decoder, Flow, Out, WireEvent, WireFrame};
 use serde::{Deserialize, Serialize};
 
-use super::{CompletionResponse, DIALECT, Output, round_trips};
-use crate::message::NativeItem;
+use super::{CompletionResponse, NATIVE, Output};
 use serde_json::Value;
 
 /// Response lifecycle event or output-item event.
@@ -538,8 +537,8 @@ impl<'id> ResponsesDecoder<'id> {
             if let Some(native) = &item.native {
                 out.text_native(
                     part,
-                    NativeItem::new(DIALECT, native.clone()),
-                    (!several).then_some(round_trips as crate::operation::RoundTrip),
+                    NATIVE.item(native.clone()),
+                    (!several).then_some(&NATIVE),
                 );
             }
         }
@@ -749,7 +748,7 @@ impl<'id> ResponsesDecoder<'id> {
                     )?,
                     Err(_) => {}
                 }
-                out.pending_native(index, NativeItem::new(DIALECT, native), Some(round_trips));
+                out.pending_native(index, NATIVE.item(native), Some(&NATIVE));
                 // The done item completes the call.
                 out.close_pending(index, IfMalformed::Drop)?;
             }
@@ -770,11 +769,11 @@ impl<'id> ResponsesDecoder<'id> {
                     encrypted_content,
                     signature,
                 );
-                let native = NativeItem::new(DIALECT, native);
+                let native = NATIVE.item(native);
                 match (part, restated) {
                     // The restatement supersedes the part's fragments.
                     (Some(part), restated) => {
-                        out.reasoning_native(&part, native, Some(round_trips));
+                        out.reasoning_native(&part, native, Some(&NATIVE));
                         out.close_reasoning(
                             part,
                             Seal {
@@ -786,7 +785,7 @@ impl<'id> ResponsesDecoder<'id> {
                     }
                     (None, Some(restated)) => {
                         let part = out.reasoning();
-                        out.reasoning_native(&part, native, Some(round_trips));
+                        out.reasoning_native(&part, native, Some(&NATIVE));
                         out.close_reasoning(
                             part,
                             Seal {
@@ -799,7 +798,7 @@ impl<'id> ResponsesDecoder<'id> {
                     (None, None) => {
                         if let Some(id) = provider_id {
                             let part = out.reasoning();
-                            out.reasoning_native(&part, native, Some(round_trips));
+                            out.reasoning_native(&part, native, Some(&NATIVE));
                             out.close_reasoning(
                                 part,
                                 Seal {
@@ -825,7 +824,7 @@ impl<'id> ResponsesDecoder<'id> {
             // results, compaction, and item types added later, are kept in
             // place as provider items and replay to this dialect.
             Output::Unknown(_) | Output::Compaction(_) => {
-                out.native(NativeItem::new(DIALECT, native));
+                out.native(NATIVE.item(native));
             }
         }
         Ok(())

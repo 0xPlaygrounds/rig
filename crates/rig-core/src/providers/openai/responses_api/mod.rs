@@ -659,12 +659,8 @@ fn input_items(
                         }
                         crate::message::AssistantContent::Native(native) => {
                             // Another dialect's, or another service's, items are not replayed.
-                            if let Some(item) = native.open_native(DIALECT, issuers) {
-                                other_items.push(InputItem::native(message::replay_form(
-                                    item.item(),
-                                    None,
-                                    states_default,
-                                )));
+                            if let Some(item) = NATIVE.replay_item(&native, issuers) {
+                                other_items.push(InputItem::native(item));
                             }
                         }
                         crate::message::AssistantContent::Image(_) => {
@@ -2300,34 +2296,14 @@ pub(crate) fn text_block(value: AssistantContent) -> Text {
 /// The wire dialect Responses provider items are tagged with.
 pub const DIALECT: &str = "openai.responses";
 
-/// The Responses item `content` was projected from, as this request
-/// replays it in the block's place: the item is this dialect's, one of
-/// `issuers` opens it, and the block is unedited since it was decoded.
-fn fresh_native(
-    content: &crate::message::AssistantContent,
-    issuers: &[crate::message::Issuer],
-) -> Option<Value> {
-    let native = match content {
-        crate::message::AssistantContent::Text(text) => text.native.as_ref(),
-        crate::message::AssistantContent::ToolCall(call) => call.native.as_ref(),
-        crate::message::AssistantContent::Reasoning(reasoning) => {
-            reasoning.open_for(issuers)?.native.as_ref()
-        }
-        crate::message::AssistantContent::Image(_)
-        | crate::message::AssistantContent::Native(_) => None,
-    }?;
-    let item = native.open_native(DIALECT, issuers)?;
-    let projected = streaming::project(item.item())?;
-    if !message::NativeItem::same_canonical(&projected, content) {
-        return None;
-    }
-    let canonical = canonical_encoding(content, item.item());
-    Some(message::replay_form(
-        item.item(),
-        canonical.as_ref(),
-        states_default,
-    ))
-}
+/// What the Responses dialect tells core about its provider items.
+pub(crate) static NATIVE: message::NativeDialect = message::NativeDialect {
+    name: DIALECT,
+    project: streaming::project,
+    encode: canonical_encoding,
+    states_default,
+    comparable: decoded_arguments,
+};
 
 /// `block`'s canonical Responses encoding, as one input item. A text block
 /// is encoded as `item`'s own message, since only the reply's message id
@@ -2407,7 +2383,7 @@ fn fresh_natives(
                         .collect::<String>(),
                 )
             });
-            match fresh_native(&joined, issuers) {
+            match NATIVE.replay(&joined, issuers) {
                 Some(item) => {
                     replays.push(Replay::Native(item));
                     replays.extend((1..run).map(|_| Replay::Covered));
@@ -2415,7 +2391,7 @@ fn fresh_natives(
                 None => replays.extend((0..run).map(|_| Replay::Canonical)),
             }
         } else {
-            replays.push(match fresh_native(part, issuers) {
+            replays.push(match NATIVE.replay(part, issuers) {
                 Some(item) => Replay::Native(item),
                 None => Replay::Canonical,
             });
@@ -2423,16 +2399,6 @@ fn fresh_natives(
         at += run;
     }
     replays
-}
-
-/// Whether `block`'s canonical Responses encoding states everything `item`
-/// states as it would be replayed, so the item need not ride the block.
-pub(crate) fn round_trips(block: &crate::message::AssistantContent, item: &Value) -> bool {
-    let Some(canonical) = canonical_encoding(block, item) else {
-        return false;
-    };
-    let replayed = message::replay_form(item, Some(&canonical), states_default);
-    message::same_wire_value(&decoded_arguments(canonical), &decoded_arguments(replayed))
 }
 
 /// `item` with a `function_call`'s `arguments`, which the wire states as

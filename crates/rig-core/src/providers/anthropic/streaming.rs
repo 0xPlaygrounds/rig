@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use super::completion::{
-    CompletionResponse, Content, DIALECT, anthropic_usage_totals, map_finish_reason, round_trips,
+    CompletionResponse, Content, NATIVE, anthropic_usage_totals, map_finish_reason,
 };
 use crate::error::ProviderError;
 use crate::message::NativeItem;
@@ -290,7 +290,7 @@ impl Assembly {
                 block.insert("input".to_owned(), input);
             }
         }
-        Ok(NativeItem::new(DIALECT, self.block))
+        Ok(NATIVE.item(self.block))
     }
 }
 
@@ -493,7 +493,7 @@ impl<'id> MessagesDecoder<'id> {
                     Content::RedactedThinking { data } => {
                         if let Some(block) = self.blocks.remove(&index) {
                             let part = out.reasoning();
-                            out.reasoning_native(&part, block.finish()?, Some(round_trips));
+                            out.reasoning_native(&part, block.finish()?, Some(&NATIVE));
                             out.close_reasoning(
                                 part,
                                 Seal {
@@ -535,7 +535,7 @@ impl<'id> MessagesDecoder<'id> {
                         fragments
                     };
                     if let Some(item) = item {
-                        out.reasoning_native(&part, item, Some(round_trips));
+                        out.reasoning_native(&part, item, Some(&NATIVE));
                     }
                     out.close_reasoning(
                         part,
@@ -552,7 +552,7 @@ impl<'id> MessagesDecoder<'id> {
                 if self.current_tool_call == Some(index) {
                     self.current_tool_call = None;
                     if let Some(item) = item {
-                        out.pending_native(index, item, Some(round_trips));
+                        out.pending_native(index, item, Some(&NATIVE));
                     }
                     out.close_pending(index, IfMalformed::Fail)?;
                     return Ok(());
@@ -560,7 +560,7 @@ impl<'id> MessagesDecoder<'id> {
 
                 if let Some(part) = self.texts.remove(&index) {
                     if let Some(item) = item {
-                        out.text_native(&part, item, Some(round_trips));
+                        out.text_native(&part, item, Some(&NATIVE));
                     }
                     out.close_text(part);
                 }
@@ -591,11 +591,11 @@ impl<'id> MessagesDecoder<'id> {
             if self.native_only.remove(&index) {
                 out.native(item);
             } else if let Some((part, _, _)) = self.thinking.get(&index) {
-                out.reasoning_native(part, item, Some(round_trips));
+                out.reasoning_native(part, item, Some(&NATIVE));
             } else if self.current_tool_call == Some(index) {
-                out.pending_native(index, item, Some(round_trips));
+                out.pending_native(index, item, Some(&NATIVE));
             } else if let Some(part) = self.texts.get(&index) {
-                out.text_native(part, item, Some(round_trips));
+                out.text_native(part, item, Some(&NATIVE));
             }
         }
         Ok(())

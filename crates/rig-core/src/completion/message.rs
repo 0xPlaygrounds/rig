@@ -33,7 +33,7 @@ mod native;
 pub use identity::{
     CallId, EmptyCallId, EmptyToolName, Issuer, LocalCallId, ProviderCallId, Sealed, ToolName,
 };
-pub use native::{NativeItem, replay_form, same_wire_value};
+pub use native::{NativeDialect, NativeItem, replay_form, same_wire_value};
 
 /// Shared error text for an invalid empty response choice.
 /// Provider decoders must exempt legal empty outcomes, including recognized

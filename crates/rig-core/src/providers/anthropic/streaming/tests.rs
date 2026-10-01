@@ -921,7 +921,10 @@ fn natives_of(decoded: &Decoded<Completion>) -> Vec<serde_json::Value> {
         .into_iter()
         .filter_map(|content| match content {
             AssistantContent::Native(native) => native
-                .open_native(DIALECT, &[native.issuer().clone()])
+                .open_native(
+                    super::super::completion::DIALECT,
+                    &[native.issuer().clone()],
+                )
                 .map(|item| item.item().clone()),
             _ => None,
         })
@@ -1076,7 +1079,10 @@ fn test_streaming_web_search_blocks_are_preserved_on_final_choice() {
         .iter()
         .filter_map(|item| match item {
             AssistantContent::Native(native) => native
-                .open_native(DIALECT, &[native.issuer().clone()])
+                .open_native(
+                    super::super::completion::DIALECT,
+                    &[native.issuer().clone()],
+                )
                 .map(|item| item.item()),
             _ => None,
         })

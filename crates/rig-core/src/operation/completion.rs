@@ -22,8 +22,9 @@ use std::marker::PhantomData;
 use crate::completion::{CompletionRequest, CompletionResponse, FinishReason, Usage};
 use crate::error::{MalformedToolInput, ProviderError};
 use crate::message::{
-    AdditionalParams, AssistantContent, CallId, Image, Issuer, LocalCallId, NativeItem,
-    ProviderCallId, Reasoning, ReasoningContent, Sealed, Text, ToolCall, ToolFunction, ToolName,
+    AdditionalParams, AssistantContent, CallId, Image, Issuer, LocalCallId, NativeDialect,
+    NativeItem, ProviderCallId, Reasoning, ReasoningContent, Sealed, Text, ToolCall, ToolFunction,
+    ToolName,
 };
 use crate::streaming::{Item, Part, PartKind, StreamEvent};
 use crate::telemetry::{GenAiOperation, SpanBuilder, SpanCombinator};
@@ -151,16 +152,12 @@ enum Draft {
     Closed,
 }
 
-/// Whether a block's canonical encoding states everything a provider item
-/// states, so the item need not ride the block. A dialect supplies its own
-/// with each item it attaches; see [`NativeItem`].
-pub type RoundTrip = fn(&AssistantContent, &serde_json::Value) -> bool;
-
 /// The item a part was projected from, kept when the part closes unless
-/// its dialect's [`RoundTrip`] finds the part says it all.
+/// its dialect finds the part says it all
+/// ([`NativeDialect::round_trips`]).
 struct Candidate {
     item: NativeItem,
-    round_trip: Option<RoundTrip>,
+    dialect: Option<&'static NativeDialect>,
 }
 
 impl Candidate {
@@ -168,14 +165,14 @@ impl Candidate {
     fn kept(native: Sealed<NativeItem>) -> Self {
         Self {
             item: native.into_value(),
-            round_trip: None,
+            dialect: None,
         }
     }
 
     /// The residue `block` keeps, sealed to `issuer`.
     fn settle(self, block: &AssistantContent, issuer: Issuer) -> Option<Sealed<NativeItem>> {
-        match self.round_trip {
-            Some(round_trip) if round_trip(block, self.item.item()) => None,
+        match self.dialect {
+            Some(dialect) if dialect.round_trips(block, self.item.item()) => None,
             _ => Some(Sealed::new(issuer, self.item)),
         }
     }
@@ -1162,15 +1159,15 @@ impl<'id> Out<'id, Completion> {
     }
 
     /// The provider item an open text part is projected from. It rides the
-    /// part as its residue unless `round_trip` finds the part says it all;
-    /// `None` always keeps it.
+    /// part as its residue unless `dialect` finds the part says it all
+    /// ([`NativeDialect::round_trips`]); `None` always keeps it.
     pub fn text_native(
         &mut self,
         part: &TextPart<'id>,
         item: NativeItem,
-        round_trip: Option<RoundTrip>,
+        dialect: Option<&'static NativeDialect>,
     ) {
-        self.attach(part.slot, Candidate { item, round_trip });
+        self.attach(part.slot, Candidate { item, dialect });
     }
 
     /// The provider item an open reasoning part is projected from; see
@@ -1179,9 +1176,9 @@ impl<'id> Out<'id, Completion> {
         &mut self,
         part: &ReasoningPart<'id>,
         item: NativeItem,
-        round_trip: Option<RoundTrip>,
+        dialect: Option<&'static NativeDialect>,
     ) {
-        self.attach(part.slot, Candidate { item, round_trip });
+        self.attach(part.slot, Candidate { item, dialect });
     }
 
     /// The provider item an open call is projected from; see
@@ -1190,9 +1187,9 @@ impl<'id> Out<'id, Completion> {
         &mut self,
         part: &CallPart<'id>,
         item: NativeItem,
-        round_trip: Option<RoundTrip>,
+        dialect: Option<&'static NativeDialect>,
     ) {
-        self.attach(part.slot, Candidate { item, round_trip });
+        self.attach(part.slot, Candidate { item, dialect });
     }
 
     /// The provider item the buffered call at `index` is projected from;
@@ -1201,9 +1198,9 @@ impl<'id> Out<'id, Completion> {
         &mut self,
         index: usize,
         item: NativeItem,
-        round_trip: Option<RoundTrip>,
+        dialect: Option<&'static NativeDialect>,
     ) {
-        let candidate = Candidate { item, round_trip };
+        let candidate = Candidate { item, dialect };
         let mut shared = self.lock();
         let turn = &mut shared.fold;
         let Some(pending) = turn.pending.get_mut(&index) else {

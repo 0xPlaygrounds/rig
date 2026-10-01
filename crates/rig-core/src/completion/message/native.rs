@@ -106,6 +106,79 @@ enum CanonicalBlock {
     Native(NativeItem),
 }
 
+/// What a wire dialect tells the writer and its encoder about its provider
+/// items. Each migrated dialect declares one; nothing else is per-field.
+#[derive(Debug)]
+pub struct NativeDialect {
+    /// The name its items are tagged with, such as `"anthropic.messages"`.
+    pub name: &'static str,
+    /// The block an item projects to through the dialect's own decoder,
+    /// when it projects to exactly one.
+    pub project: fn(&serde_json::Value) -> Option<AssistantContent>,
+    /// A block's canonical encoding as one wire item. `item` is the item the
+    /// block was projected from, for what only it names, such as its id.
+    pub encode: fn(&AssistantContent, &serde_json::Value) -> Option<serde_json::Value>,
+    /// Whether a member states the dialect's documented default, which a
+    /// replay omitting it states as well.
+    pub states_default: fn(&str, &serde_json::Value) -> bool,
+    /// The form two encodings are compared in, for wire text that holds
+    /// JSON whose spacing states nothing.
+    pub comparable: fn(serde_json::Value) -> serde_json::Value,
+}
+
+impl NativeDialect {
+    /// `value`, as this dialect stated it.
+    pub fn item(&self, value: serde_json::Value) -> NativeItem {
+        NativeItem::new(self.name, value)
+    }
+
+    /// Whether `block`'s canonical encoding states everything `item` states
+    /// as it would be replayed, so the item need not ride the block.
+    pub fn round_trips(&self, block: &AssistantContent, item: &serde_json::Value) -> bool {
+        let Some(canonical) = (self.encode)(&block.canonical(), item) else {
+            return false;
+        };
+        let replayed = replay_form(item, Some(&canonical), self.states_default);
+        same_wire_value(&(self.comparable)(canonical), &(self.comparable)(replayed))
+    }
+
+    /// The item `block` was projected from, as a request replaying
+    /// `issuers` sends it in the block's place: the item is this dialect's,
+    /// one of `issuers` opens it, and the block still says what the item
+    /// projects to. Otherwise the block replays canonically.
+    pub fn replay(
+        &self,
+        block: &AssistantContent,
+        issuers: &[Issuer],
+    ) -> Option<serde_json::Value> {
+        let native = match block {
+            AssistantContent::Text(text) => text.native.as_ref(),
+            AssistantContent::ToolCall(call) => call.native.as_ref(),
+            AssistantContent::Reasoning(reasoning) => reasoning.open_for(issuers)?.native.as_ref(),
+            AssistantContent::Image(_) | AssistantContent::Native(_) => None,
+        }?;
+        let item = native.open_native(self.name, issuers)?.item();
+        let projected = (self.project)(item)?;
+        if !NativeItem::same_canonical(&projected, block) {
+            return None;
+        }
+        let canonical = (self.encode)(&block.canonical(), item);
+        Some(replay_form(item, canonical.as_ref(), self.states_default))
+    }
+
+    /// An item with no canonical form, as a request replaying `issuers`
+    /// sends it: only when it is this dialect's and one of `issuers` opens
+    /// it.
+    pub fn replay_item(
+        &self,
+        native: &Sealed<NativeItem>,
+        issuers: &[Issuer],
+    ) -> Option<serde_json::Value> {
+        let item = native.open_native(self.name, issuers)?;
+        Some(replay_form(item.item(), None, self.states_default))
+    }
+}
+
 impl Sealed<NativeItem> {
     /// The item, when it is `dialect`'s and one of `issuers` opens it.
     pub fn open_native(&self, dialect: &str, issuers: &[Issuer]) -> Option<&NativeItem> {
