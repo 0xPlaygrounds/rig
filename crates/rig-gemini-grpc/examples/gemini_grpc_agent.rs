@@ -10,7 +10,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .init();
 
     // Initialize the Google Gemini gRPC transport
-    let transport = GeminiGrpc::from_env().map_err(|err| anyhow::anyhow!("{err}"))?;
+    let transport = GeminiGrpc::from_env().await?;
 
     // Create agent with a single context prompt
     let model = transport.completion("gemini-2.5-flash");

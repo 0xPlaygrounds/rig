@@ -4,7 +4,7 @@
 //! use rig_core::Model;
 //! use rig_gemini_grpc::{GeminiGrpc, completion::{GEMINI_2_5_FLASH, GenerateContent}};
 //!
-//! # async fn example() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+//! # async fn example() -> Result<(), rig_gemini_grpc::GeminiGrpcError> {
 //! let model = GeminiGrpc::new("API_KEY").await?.completion(GEMINI_2_5_FLASH);
 //! # let _ = model;
 //! # Ok(())
@@ -85,10 +85,7 @@ impl Transport<GenerateContent> for GeminiGrpc {
         exchange: Exchange,
     ) -> Opening<GenerateContentResponse> {
         let mode = exchange.mode;
-        let mut client = match self.grpc_client() {
-            Ok(client) => client,
-            Err(error) => return Opening::failed(ProviderError::Provider(error.to_string())),
-        };
+        let mut client = self.grpc_client();
         Opening::new(async move {
             Ok(match mode {
                 Mode::Unary => match client.generate_content(request).await {
