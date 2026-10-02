@@ -129,7 +129,7 @@
           "origin": {
             "api": "mock.script",
             "provider": "mock",
-            "model": ""
+            "model": "mock-model"
           },
           "finish_reason": null,
           "raw": {
@@ -198,7 +198,7 @@
               "origin": {
                 "api": "mock.script",
                 "provider": "mock",
-                "model": ""
+                "model": "mock-model"
               },
               "stop": "tool_use"
             },
@@ -216,7 +216,8 @@
                       "type": "text",
                       "text": "there is no tool named multiply; use add"
                     }
-                  ]
+                  ],
+                  "is_error": true
                 }
               ]
             }
@@ -273,7 +274,7 @@
           "origin": {
             "api": "mock.script",
             "provider": "mock",
-            "model": ""
+            "model": "mock-model"
           },
           "finish_reason": null,
           "raw": {

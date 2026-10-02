@@ -135,7 +135,7 @@
           "origin": {
             "api": "mock.script",
             "provider": "mock",
-            "model": ""
+            "model": "mock-model"
           },
           "finish_reason": null,
           "raw": {
@@ -204,7 +204,7 @@
               "origin": {
                 "api": "mock.script",
                 "provider": "mock",
-                "model": ""
+                "model": "mock-model"
               },
               "stop": "tool_use"
             },
@@ -222,7 +222,8 @@
                       "type": "text",
                       "text": "layer `WrongFamilyLayer`: patched a tool_call effect into a custom effect; a layer never changes the family"
                     }
-                  ]
+                  ],
+                  "is_error": true
                 }
               ]
             }
@@ -272,7 +273,7 @@
           "origin": {
             "api": "mock.script",
             "provider": "mock",
-            "model": ""
+            "model": "mock-model"
           },
           "finish_reason": null,
           "raw": {

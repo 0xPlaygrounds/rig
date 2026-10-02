@@ -100,7 +100,7 @@ async fn scripted_tool_turn_requests_match_golden() {
 const GOLDEN: &str = r#"
 [
   {
-    "model": null,
+    "model": "mock-model",
     "chat_history": [
       {
         "role": "system",
@@ -175,7 +175,7 @@ const GOLDEN: &str = r#"
     "output_schema": null
   },
   {
-    "model": null,
+    "model": "mock-model",
     "chat_history": [
       {
         "role": "system",
@@ -210,7 +210,7 @@ const GOLDEN: &str = r#"
         "origin": {
           "api": "mock.script",
           "provider": "mock",
-          "model": ""
+          "model": "mock-model"
         },
         "stop": "tool_use"
       },
@@ -292,7 +292,7 @@ const GOLDEN: &str = r#"
     "output_schema": null
   },
   {
-    "model": null,
+    "model": "mock-model",
     "chat_history": [
       {
         "role": "system",
@@ -327,7 +327,7 @@ const GOLDEN: &str = r#"
         "origin": {
           "api": "mock.script",
           "provider": "mock",
-          "model": ""
+          "model": "mock-model"
         },
         "stop": "tool_use"
       },
@@ -360,7 +360,7 @@ const GOLDEN: &str = r#"
         "origin": {
           "api": "mock.script",
           "provider": "mock",
-          "model": ""
+          "model": "mock-model"
         },
         "stop": "stop"
       },

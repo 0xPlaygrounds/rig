@@ -9605,7 +9605,7 @@ fn mock_reply(text: &str) -> Message {
         origin: Some(rig_core::message::Origin::new(
             rig_core::test_utils::MOCK_API,
             rig_core::test_utils::MOCK_PROVIDER,
-            "",
+            rig_core::test_utils::MOCK_MODEL,
         )),
         stop: Some(rig_core::message::StopReason::Stop),
         native: None,

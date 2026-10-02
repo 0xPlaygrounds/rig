@@ -305,6 +305,9 @@ impl MockScript {
 /// The wire format the scripted wire names.
 pub const MOCK_API: crate::message::Api = crate::message::Api::from_static("mock.script");
 
+/// The model a scripted wire addresses when it names none.
+pub const MOCK_MODEL: &str = "mock-model";
+
 impl crate::completion::ReplayTarget for MockScript {
     fn api(&self) -> crate::message::Api {
         MOCK_API
@@ -314,8 +317,9 @@ impl crate::completion::ReplayTarget for MockScript {
         &self.name
     }
 
+    /// The model the script addresses: its id, or [`MOCK_MODEL`].
     fn model(&self) -> &str {
-        self.id.as_deref().unwrap_or_default()
+        self.id.as_deref().unwrap_or(MOCK_MODEL)
     }
 
     fn accepts(&self, _model: &str) -> crate::completion::Accepts {

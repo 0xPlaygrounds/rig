@@ -97,7 +97,7 @@
           "origin": {
             "api": "mock.script",
             "provider": "mock",
-            "model": ""
+            "model": "mock-model"
           },
           "finish_reason": null,
           "raw": {
@@ -148,7 +148,7 @@
               "origin": {
                 "api": "mock.script",
                 "provider": "mock",
-                "model": ""
+                "model": "mock-model"
               },
               "stop": "stop"
             },
@@ -219,7 +219,7 @@
           "origin": {
             "api": "mock.script",
             "provider": "mock",
-            "model": ""
+            "model": "mock-model"
           },
           "finish_reason": null,
           "raw": {

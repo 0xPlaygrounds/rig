@@ -106,7 +106,7 @@
           "origin": {
             "api": "mock.script",
             "provider": "mock",
-            "model": ""
+            "model": "mock-model"
           },
           "finish_reason": null,
           "raw": {
@@ -175,7 +175,7 @@
               "origin": {
                 "api": "mock.script",
                 "provider": "mock",
-                "model": ""
+                "model": "mock-model"
               },
               "stop": "tool_use"
             },
@@ -193,7 +193,8 @@
                       "type": "text",
                       "text": "The `final_result` arguments were missing required field(s): summary. Call `final_result` again with every required field."
                     }
-                  ]
+                  ],
+                  "is_error": true
                 }
               ]
             }
@@ -255,7 +256,7 @@
           "origin": {
             "api": "mock.script",
             "provider": "mock",
-            "model": ""
+            "model": "mock-model"
           },
           "finish_reason": null,
           "raw": {
