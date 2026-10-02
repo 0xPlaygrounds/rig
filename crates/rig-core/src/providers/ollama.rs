@@ -360,6 +360,9 @@ pub struct OllamaDecoder {
     tool_calls: Vec<Value>,
     reasoning: Option<usize>,
     text: Option<usize>,
+    /// How many tool calls had arrived when the reasoning and the text block
+    /// opened: a fragment after a later call opens the next block.
+    opened_at: [usize; 2],
     /// Content held while it may still open with inline reasoning.
     held: String,
     /// Whether the content's shape is known: explicit thinking arrived, or
@@ -378,15 +381,26 @@ impl OllamaDecoder {
         if fragment.is_empty() {
             return Ok(());
         }
-        let index = if reasoning {
-            open_once(
+        let calls = self.tool_calls.len();
+        let (slot, opened_at, block) = if reasoning {
+            (
                 &mut self.reasoning,
+                &mut self.opened_at[0],
                 Block::Reasoning { redacted: false },
-                out,
-            )?
+            )
         } else {
-            open_once(&mut self.text, Block::Text, out)?
+            (&mut self.text, &mut self.opened_at[1], Block::Text)
         };
+        if let Some(index) = *slot
+            && *opened_at < calls
+        {
+            out.close(index, IfMalformed::Fail)?;
+            *slot = None;
+        }
+        if slot.is_none() {
+            *opened_at = calls;
+        }
+        let index = open_once(slot, block, out)?;
         out.push(index, fragment)
     }
 
@@ -435,10 +449,15 @@ impl OllamaDecoder {
             self.settled = true;
             self.push(true, thinking, &mut out)?;
         }
-        let fragment = message
-            .get("content")
-            .and_then(Value::as_str)
-            .unwrap_or_default();
+        let fragment = match message.get("content") {
+            Some(Value::String(content)) => content.as_str(),
+            None | Some(Value::Null) => "",
+            Some(other) => {
+                return Err(ProviderError::Response(format!(
+                    "Ollama message content is not a string: {other}"
+                )));
+            }
+        };
         let permits_omitted_start = response.model.to_ascii_lowercase().contains("qwen3");
         // A call ends the content before it: whatever is held is released.
         let calls_follow = message

@@ -184,6 +184,9 @@ pub struct ChatDecoder {
     content: Items,
     tool_calls: Items,
     citations: Items,
+    /// The writer index of the block each content index currently extends:
+    /// its own index, or a fresh one once a tool call interrupted it.
+    writer: std::collections::BTreeMap<usize, usize>,
     /// The writer index of the tool plan's reasoning.
     plan: Option<usize>,
     message_id: Option<String>,
@@ -207,26 +210,30 @@ impl ChatDecoder {
             }
             StreamingEvent::ContentDelta { index, delta } => {
                 let mut item = delta.unwrap_or_default().take("content");
-                if out.is_open(index) {
+                if out.is_open(self.writer_of(index)) {
                     self.content_fragment(index, item, out)?;
-                } else if self.content.get(index).is_none() {
-                    // A delta of an item whose start never came opens it.
-                    let kind = if item.contains_key("thinking") {
-                        "thinking"
-                    } else {
-                        "text"
-                    };
+                } else {
+                    // A delta of an item whose start never came opens it, and
+                    // one that continues an item a tool call interrupted opens
+                    // the next block in arrival order.
+                    let kind = self
+                        .content
+                        .get(index)
+                        .and_then(|item| item.get("type"))
+                        .and_then(Value::as_str)
+                        .map(str::to_owned)
+                        .unwrap_or_else(|| {
+                            if item.contains_key("thinking") {
+                                "thinking".to_owned()
+                            } else {
+                                "text".to_owned()
+                            }
+                        });
                     item.insert("type".to_owned(), kind.into());
                     self.open_content(index, item, out)?;
                 }
             }
-            StreamingEvent::ContentEnd { index } => {
-                if out.is_open(index) {
-                    let item = self.content.get(index).cloned().unwrap_or_default();
-                    out.edit(index, |slot| *slot = item)?;
-                    out.close(index, IfMalformed::Fail)?;
-                }
-            }
+            StreamingEvent::ContentEnd { index } => self.close_content(index, out)?,
             StreamingEvent::ToolPlanDelta { delta } => {
                 let fragment = delta.unwrap_or_default().message;
                 if let Some(plan) = fragment.get("tool_plan").and_then(Value::as_str) {
@@ -237,6 +244,11 @@ impl ChatDecoder {
                 merge_fields(&mut self.message, &fragment);
             }
             StreamingEvent::ToolCallStart { index, delta } => {
+                // A call ends the content before it, so content that follows
+                // the call is a later block.
+                for content in self.content.open() {
+                    self.close_content(content, out)?;
+                }
                 self.tool_calls
                     .start(index, Value::Object(serde_json::Map::new()));
                 self.call_fragment(index, delta.unwrap_or_default().take("tool_calls"), out)?;
@@ -272,10 +284,36 @@ impl ChatDecoder {
             Some("thinking") => Block::Reasoning { redacted: false },
             _ => Block::Opaque { replay: true },
         };
-        out.open(index, block, Value::Null)?;
+        let writer = if self.writer.contains_key(&index) {
+            out.fresh_index()
+        } else {
+            index
+        };
+        self.writer.insert(index, writer);
+        out.open(writer, block, Value::Null)?;
         self.content
             .start(index, Value::Object(serde_json::Map::new()));
         self.content_fragment(index, item, out)
+    }
+
+    /// The writer index content item `index` currently extends.
+    fn writer_of(&self, index: usize) -> usize {
+        self.writer.get(&index).copied().unwrap_or(index)
+    }
+
+    /// Close content item `index`'s open block, holding the item.
+    fn close_content(
+        &mut self,
+        index: usize,
+        out: &mut Out<'_, Completion>,
+    ) -> Result<(), ProviderError> {
+        let writer = self.writer_of(index);
+        if out.is_open(writer) {
+            let item = self.content.get(index).cloned().unwrap_or_default();
+            out.edit(writer, |slot| *slot = item)?;
+            out.close(writer, IfMalformed::Fail)?;
+        }
+        Ok(())
     }
 
     /// A fragment of content item `index`: its text or thinking grows the
@@ -294,9 +332,10 @@ impl ChatDecoder {
             .or_else(|| fragment.get("type"))
             .and_then(Value::as_str)
             .is_none_or(|kind| !matches!(kind, "text" | "thinking"));
+        let writer = self.writer_of(index);
         for key in ["text", "thinking"] {
             match fragment.get(key) {
-                Some(Value::String(text)) if !opaque => out.push(index, text)?,
+                Some(Value::String(text)) if !opaque => out.push(writer, text)?,
                 Some(Value::String(_)) | None => {}
                 Some(other) => {
                     return Err(ProviderError::from(
@@ -460,11 +499,7 @@ impl ChatDecoder {
             self.close_call(index, &mut out)?;
         }
         for index in self.content.open() {
-            if out.is_open(index) {
-                let item = self.content.get(index).cloned().unwrap_or_default();
-                out.edit(index, |slot| *slot = item)?;
-                out.close(index, IfMalformed::Fail)?;
-            }
+            self.close_content(index, &mut out)?;
         }
         let mut message = std::mem::take(&mut self.message);
         for (key, items) in [

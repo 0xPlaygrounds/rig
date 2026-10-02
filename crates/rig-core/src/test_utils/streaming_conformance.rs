@@ -2614,9 +2614,11 @@ pub mod fixtures {
                 zero_usage_terminal_frames: Some(vec![sse(&json!({"type": "message-end"}))]),
                 bare_terminal_frames: None,
                 malformed_frame: Some(sse_raw("{not json")),
+                // Citations are modeled, so the unknown frame is an invented
+                // event type.
                 unknown_event_frame: Some(sse(&json!({
-                    "type": "citation-start",
-                    "delta": {"message": {"citations": {}}},
+                    "type": "x-unmodeled-event",
+                    "delta": {"message": {}},
                 }))),
                 defective_known_frame: Some(sse_raw(r#"{"type":"content-delta","delta":42}"#)),
                 delta_less_prelude_frame: None,
