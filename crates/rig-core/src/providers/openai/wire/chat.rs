@@ -1213,7 +1213,7 @@ impl ChatDecoder {
 
     /// The `chat.completion` body, restated as the one chunk whose delta is
     /// its whole message, then the end.
-    fn interpret_whole(
+    fn restate_whole(
         &mut self,
         frame: ChatFrame,
         mut out: Out<'_, Completion>,
@@ -1421,7 +1421,7 @@ impl<'id> Decoder<'id, Completion> for ChatDecoder {
                 self.interpret_chunk(frame, &mut out)?;
                 Ok(Flow::More)
             }
-            ChatEvent::Whole(frame) => self.interpret_whole(frame, out),
+            ChatEvent::Whole(frame) => self.restate_whole(frame, out),
             // `[DONE]` without a finish reason still ends the turn.
             ChatEvent::Done => {
                 self.saw_terminal = true;
