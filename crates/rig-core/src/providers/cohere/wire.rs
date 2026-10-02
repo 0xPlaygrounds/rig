@@ -176,6 +176,11 @@ impl crate::completion::ReplayTarget for Chat {
     fn model(&self) -> &str {
         &self.model
     }
+
+    /// Cohere's chat reads text and tools.
+    fn accepts(&self, _model: &str) -> crate::completion::Accepts {
+        crate::completion::Accepts::TEXT
+    }
 }
 
 /// Default retrieval role for embeddings of stored document chunks.

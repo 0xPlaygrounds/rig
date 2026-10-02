@@ -24,8 +24,15 @@ impl ReplayTarget for Target {
         "model-a"
     }
 
-    fn accepts_images(&self, model: &str) -> bool {
-        self.accepts_images && model != "text-only"
+    fn accepts(&self, model: &str) -> Accepts {
+        if self.accepts_images && model != "text-only" {
+            Accepts::ALL
+        } else {
+            Accepts {
+                tools: true,
+                ..Accepts::TEXT
+            }
+        }
     }
 
     fn normalize_tool_call_id(&self, id: &str, _model: &str, _source: Option<&Origin>) -> String {
@@ -314,22 +321,25 @@ fn images_become_placeholders_for_a_model_without_image_input() {
         data: crate::message::DocumentSourceKind::url("https://example.invalid/a.png"),
         ..Image::default()
     };
-    let history = vec![Message::User {
-        content: vec![
-            UserContent::Image(image()),
-            UserContent::Image(image()),
-            UserContent::text("look"),
-            UserContent::ToolResult(ToolResult {
-                is_error: false,
-                call: CallId::from_wire("c1"),
-                name: ToolName::new("lookup").expect("a name"),
-                content: vec![
-                    ToolResultContent::Image(image()),
-                    ToolResultContent::Image(image()),
-                ],
-            }),
-        ],
-    }];
+    let history = vec![
+        turn(Some(same()), vec![call("c1")]),
+        Message::User {
+            content: vec![
+                UserContent::Image(image()),
+                UserContent::Image(image()),
+                UserContent::text("look"),
+                UserContent::ToolResult(ToolResult {
+                    is_error: false,
+                    call: CallId::from_wire("c1"),
+                    name: ToolName::new("lookup").expect("a name"),
+                    content: vec![
+                        ToolResultContent::Image(image()),
+                        ToolResultContent::Image(image()),
+                    ],
+                }),
+            ],
+        },
+    ];
     let adapted = adapt(
         &history,
         &Target {
@@ -337,7 +347,7 @@ fn images_become_placeholders_for_a_model_without_image_input() {
         },
     );
     assert_eq!(
-        adapted,
+        adapted[1..],
         vec![Message::User {
             content: vec![
                 UserContent::text(USER_IMAGE_OMITTED),
@@ -447,4 +457,248 @@ fn a_same_model_block_edited_blank_is_dropped() {
         assistant(&adapt(&history, &TARGET)[1]).content,
         vec![AssistantContent::text("kept")]
     );
+}
+
+/// A target that normalizes every id to its first three characters, so two
+/// distinct ids collide, and reads what `accepts` says.
+#[derive(Debug)]
+struct Narrow {
+    accepts: Accepts,
+}
+
+impl ReplayTarget for Narrow {
+    fn api(&self) -> Api {
+        Api::from_static("test.api")
+    }
+
+    fn provider(&self) -> &str {
+        "test"
+    }
+
+    fn model(&self) -> &str {
+        "model-a"
+    }
+
+    fn accepts(&self, _model: &str) -> Accepts {
+        self.accepts
+    }
+
+    fn normalize_tool_call_id(&self, id: &str, _model: &str, _source: Option<&Origin>) -> String {
+        id.chars().take(3).collect()
+    }
+}
+
+#[test]
+fn blank_system_messages_are_dropped() {
+    let history = vec![
+        Message::system(""),
+        Message::system("  \n"),
+        Message::user("hi"),
+        Message::system("keep"),
+    ];
+    assert_eq!(
+        adapt(&history, &TARGET),
+        vec![Message::user("hi"), Message::system("keep")]
+    );
+}
+
+#[test]
+fn a_result_no_call_asked_for_is_dropped() {
+    let history = vec![
+        Message::User {
+            content: vec![result("gone", "stale"), UserContent::text("next")],
+        },
+        turn(Some(same()), vec![call("c1")]),
+        Message::User {
+            content: vec![result("c1", "one"), result("c1", "again")],
+        },
+    ];
+    assert_eq!(
+        adapt(&history, &TARGET),
+        vec![
+            Message::user("next"),
+            turn(Some(same()), vec![call("c1")]),
+            Message::User {
+                content: vec![result("c1", "one")],
+            },
+        ]
+    );
+}
+
+#[test]
+fn results_split_over_messages_answer_the_turn_before_them() {
+    let history = vec![
+        turn(Some(same()), vec![call("c1"), call("c2")]),
+        Message::User {
+            content: vec![result("c1", "one")],
+        },
+        Message::User {
+            content: vec![result("c2", "two")],
+        },
+    ];
+    assert_eq!(
+        adapt(&history, &TARGET)[1],
+        Message::User {
+            content: vec![result("c1", "one"), result("c2", "two")],
+        }
+    );
+}
+
+#[test]
+fn normalized_ids_that_collide_stay_distinct() {
+    let history = vec![
+        turn(Some(other()), vec![call("abc-1"), call("abc-2")]),
+        Message::User {
+            content: vec![result("abc-1", "one"), result("abc-2", "two")],
+        },
+    ];
+    let target = Narrow {
+        accepts: Accepts::ALL,
+    };
+    let adapted = adapt(&history, &target);
+    let Message::Assistant(turn) = &adapted[0] else {
+        panic!("the turn is first: {adapted:?}");
+    };
+    let ids: Vec<String> = turn.tool_calls().map(|call| call.id.to_string()).collect();
+    assert_eq!(ids.len(), 2);
+    assert_ne!(ids[0], ids[1], "{ids:?}");
+    assert!(ids.iter().all(|id| id.len() == 3), "{ids:?}");
+    let Message::User { content } = &adapted[1] else {
+        panic!("the results follow: {adapted:?}");
+    };
+    let answered: Vec<String> = content
+        .iter()
+        .filter_map(|part| match part {
+            UserContent::ToolResult(result) => Some(result.call.to_string()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(answered, ids, "each result follows its call's new id");
+}
+
+#[test]
+fn tool_result_images_move_to_a_user_message_when_only_users_send_images() {
+    let image = Image {
+        data: crate::message::DocumentSourceKind::base64("aW1hZ2U="),
+        ..Image::default()
+    };
+    let history = vec![
+        turn(Some(same()), vec![call("c1")]),
+        Message::User {
+            content: vec![UserContent::ToolResult(ToolResult {
+                call: CallId::from_wire("c1"),
+                name: ToolName::new("lookup").expect("a name"),
+                content: vec![
+                    ToolResultContent::text("shot"),
+                    ToolResultContent::Image(image.clone()),
+                ],
+                is_error: false,
+            })],
+        },
+    ];
+    let target = Narrow {
+        accepts: Accepts {
+            tool_result_images: false,
+            ..Accepts::ALL
+        },
+    };
+    assert_eq!(
+        adapt(&history, &target)[1],
+        Message::User {
+            content: vec![
+                UserContent::ToolResult(ToolResult {
+                    call: CallId::from_wire("c1"),
+                    name: ToolName::new("lookup").expect("a name"),
+                    content: vec![
+                        ToolResultContent::text("shot"),
+                        ToolResultContent::text(TOOL_IMAGE_ATTACHED),
+                    ],
+                    is_error: false,
+                }),
+                UserContent::text(TOOL_IMAGES_HEADING),
+                UserContent::Image(image),
+            ],
+        }
+    );
+}
+
+#[test]
+fn another_models_assistant_image_becomes_text_for_a_model_that_reads_none() {
+    let image = AssistantContent::Image(Image {
+        data: crate::message::DocumentSourceKind::base64("aW1hZ2U="),
+        ..Image::default()
+    });
+    let history = vec![Message::user("draw"), turn(Some(other()), vec![image])];
+    let target = Narrow {
+        accepts: Accepts {
+            assistant_images: false,
+            ..Accepts::ALL
+        },
+    };
+    assert_eq!(
+        adapt(&history, &target)[1],
+        turn(
+            Some(other()),
+            vec![AssistantContent::text(ASSISTANT_IMAGE_OMITTED)]
+        )
+    );
+}
+
+#[test]
+fn a_model_without_tools_reads_calls_and_results_as_text() {
+    let history = vec![
+        turn(Some(other()), vec![call("c1")]),
+        Message::User {
+            content: vec![result("c1", "sunny")],
+        },
+    ];
+    let target = Narrow {
+        accepts: Accepts {
+            tools: false,
+            ..Accepts::ALL
+        },
+    };
+    assert_eq!(
+        adapt(&history, &target),
+        vec![
+            turn(
+                Some(other()),
+                vec![AssistantContent::text("[called tool lookup with {}]")]
+            ),
+            Message::user("[tool lookup result] sunny"),
+        ]
+    );
+}
+
+#[test]
+fn a_store_that_reorders_keys_keeps_the_native() {
+    let block = AssistantContent::ToolCall(ToolCall::new(
+        CallId::from_wire("c1"),
+        ToolFunction::new(
+            ToolName::new("lookup").expect("a name"),
+            json!({"b": 1, "a": {"y": 2, "x": 3}}),
+        ),
+    ))
+    .with_native(json!({"type": "function_call", "id": "c1"}));
+    fn sorted(value: serde_json::Value) -> serde_json::Value {
+        match value {
+            serde_json::Value::Object(fields) => {
+                let mut fields: Vec<_> = fields.into_iter().collect();
+                fields.sort_by(|left, right| left.0.cmp(&right.0));
+                serde_json::Value::Object(
+                    fields
+                        .into_iter()
+                        .map(|(key, value)| (key, sorted(value)))
+                        .collect(),
+                )
+            }
+            serde_json::Value::Array(values) => {
+                serde_json::Value::Array(values.into_iter().map(sorted).collect())
+            }
+            value => value,
+        }
+    }
+    let stored = sorted(serde_json::to_value(&block).expect("serializes"));
+    let loaded: AssistantContent = serde_json::from_value(stored).expect("loads");
+    assert!(loaded.native_item().is_some(), "{loaded:?}");
 }

@@ -1953,7 +1953,13 @@ async fn explicit_with_history_overrides_memory() {
     );
 
     let received = recorded.requests()[0].chat_history.clone();
-    assert_eq!(received.len(), 2, "caller history (1) + current prompt");
+    // The caller's user message and the prompt become one user message.
+    assert_eq!(received.len(), 1, "caller history (1) + current prompt");
+    assert!(matches!(
+        received.first(),
+        Some(Message::User { content })
+            if matches!(content.last(), Some(UserContent::Text(t)) if t.text == "hello")
+    ));
     assert!(matches!(
         received.first(),
         Some(Message::User { content })

@@ -240,6 +240,10 @@ impl crate::completion::ReplayTarget for Echo {
     fn model(&self) -> &str {
         "echo-1"
     }
+
+    fn accepts(&self, _model: &str) -> crate::completion::Accepts {
+        crate::completion::Accepts::ALL
+    }
 }
 
 impl Wire for Echo {
@@ -1065,6 +1069,10 @@ fn a_stream_the_driver_cannot_send_is_a_request_failure() {
         }
         fn model(&self) -> &str {
             ""
+        }
+
+        fn accepts(&self, _model: &str) -> crate::completion::Accepts {
+            crate::completion::Accepts::ALL
         }
     }
     impl Wire for Multipart {

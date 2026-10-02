@@ -8561,11 +8561,13 @@ async fn blocking_empty_feedback_retry_omits_empty_assistant_history() {
     );
     assert_eq!(
         model.requests()[1].chat_history.clone(),
-        vec![
-            Message::user("question"),
-            Message::user("provide an answer")
-        ],
-        "the retry request must not contain an empty assistant message"
+        vec![Message::User {
+            content: vec![
+                UserContent::text("question"),
+                UserContent::text("provide an answer")
+            ],
+        }],
+        "the retry request holds no empty assistant message, and the user messages it separated become one"
     );
 }
 
@@ -8748,11 +8750,13 @@ async fn streaming_empty_feedback_retry_omits_empty_assistant_history() {
     );
     assert_eq!(
         model.requests()[1].chat_history.clone(),
-        vec![
-            Message::user("question"),
-            Message::user("provide an answer")
-        ],
-        "the retry request must not contain an empty assistant message"
+        vec![Message::User {
+            content: vec![
+                UserContent::text("question"),
+                UserContent::text("provide an answer")
+            ],
+        }],
+        "the retry request holds no empty assistant message, and the user messages it separated become one"
     );
 }
 

@@ -422,26 +422,27 @@ fn openai_chat_request_keeps_documents_after_system_messages() {
         serde_json::to_value(&openai_request.messages).expect("messages should serialize");
     let messages = serialized.as_array().expect("messages should be an array");
 
-    assert_eq!(messages.len(), 5);
+    // The documents open the first user message, so roles keep alternating.
+    assert_eq!(messages.len(), 4);
     assert_eq!(messages[0]["role"], "system");
     assert_eq!(messages[1]["role"], "user");
+    let first = messages[1].to_string();
     assert!(
-        messages[1].to_string().contains("<file id: doc1>"),
-        "document message should follow system message: {messages:?}"
+        first.contains("<file id: doc1>") && first.contains("Earlier user turn"),
+        "the documents open the prior user turn: {messages:?}"
     );
-    assert_eq!(messages[2]["role"], "user");
     assert!(
-        messages[2].to_string().contains("Earlier user turn"),
-        "prior user history should follow document message: {messages:?}"
+        first.find("<file id: doc1>") < first.find("Earlier user turn"),
+        "the documents come first: {messages:?}"
     );
-    assert_eq!(messages[3]["role"], "assistant");
+    assert_eq!(messages[2]["role"], "assistant");
     assert!(
-        messages[3].to_string().contains("Earlier assistant turn"),
+        messages[2].to_string().contains("Earlier assistant turn"),
         "prior assistant history should follow prior user history: {messages:?}"
     );
-    assert_eq!(messages[4]["role"], "user");
+    assert_eq!(messages[3]["role"], "user");
     assert!(
-        messages[4].to_string().contains("Prompt"),
+        messages[3].to_string().contains("Prompt"),
         "prompt should remain last: {messages:?}"
     );
 }

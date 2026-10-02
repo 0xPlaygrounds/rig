@@ -828,6 +828,22 @@ impl crate::completion::ReplayTarget for Chat {
         &self.model
     }
 
+    /// Chat reads no images in assistant messages, and images in tool
+    /// results only on a dialect that says so. Perplexity, Hyperbolic and
+    /// Mira read no tool exchanges.
+    fn accepts(&self, _model: &str) -> crate::completion::Accepts {
+        let quirks = &self.provider.dialect.quirks;
+        crate::completion::Accepts {
+            user_images: true,
+            assistant_images: false,
+            tool_result_images: quirks.supports_image_tool_results,
+            tools: !matches!(
+                quirks.rewrite,
+                BodyRewrite::Perplexity | BodyRewrite::Hyperbolic | BodyRewrite::Mira
+            ),
+        }
+    }
+
     /// pi's rule for this wire. A `call|item` id joins its sanitized halves
     /// with `_`, ending a result over 40 characters in a hash of the whole
     /// id; OpenAI's own ids are cut to 40; any other id is kept. Mistral

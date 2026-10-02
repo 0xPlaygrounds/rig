@@ -551,9 +551,16 @@ impl crate::completion::ReplayTarget for Messages {
         &self.model
     }
 
-    /// MiniMax's M2 models read no images (pi's model data).
-    fn accepts_images(&self, model: &str) -> bool {
-        !(self.provider.dialect.name == MINIMAX.name && model.starts_with("MiniMax-M2"))
+    /// Messages reads images in user turns and tool results, never in
+    /// assistant turns. MiniMax's M2 models read no images (pi's model data).
+    fn accepts(&self, model: &str) -> crate::completion::Accepts {
+        if self.provider.dialect.name == MINIMAX.name && model.starts_with("MiniMax-M2") {
+            return crate::completion::Accepts::TEXT;
+        }
+        crate::completion::Accepts {
+            assistant_images: false,
+            ..crate::completion::Accepts::ALL
+        }
     }
 
     /// Anthropic takes call ids of `[a-zA-Z0-9_-]`, at most 64 long (pi's

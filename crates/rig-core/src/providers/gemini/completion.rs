@@ -226,6 +226,11 @@ impl crate::completion::ReplayTarget for GenerateContent {
         &self.model
     }
 
+    /// Gemini reads images in every role.
+    fn accepts(&self, _model: &str) -> crate::completion::Accepts {
+        crate::completion::Accepts::ALL
+    }
+
     fn normalize_tool_call_id(
         &self,
         id: &str,

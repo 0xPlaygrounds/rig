@@ -259,6 +259,15 @@ impl crate::completion::ReplayTarget for Responses {
         &self.model
     }
 
+    /// Responses reads images in user input and tool outputs, never in
+    /// assistant messages.
+    fn accepts(&self, _model: &str) -> crate::completion::Accepts {
+        crate::completion::Accepts {
+            assistant_images: false,
+            ..crate::completion::Accepts::ALL
+        }
+    }
+
     /// pi's `normalizeIdPart`: characters outside `[a-zA-Z0-9_-]` become
     /// `_`, the id is cut to 64 characters and loses its trailing `_`.
     fn normalize_tool_call_id(

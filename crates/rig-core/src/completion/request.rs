@@ -720,15 +720,24 @@ impl CompletionRequest {
     }
 }
 
-/// Insert `message` at the first non-system position so document context lands
-/// after any leading system messages; telemetry and the sent request must
+/// Place the documents message `message` at the first non-system position,
+/// so document context lands after any leading system messages. A user
+/// message already there takes the documents at its front instead, so the
+/// history keeps alternating roles. Telemetry and the sent request must
 /// agree on this placement.
 fn insert_after_leading_system(chat_history: &mut Vec<Message>, message: Message) {
     let insert_at = chat_history
         .iter()
         .position(|message| !matches!(message, Message::System { .. }))
         .unwrap_or(chat_history.len());
-    chat_history.insert(insert_at, message);
+    match (chat_history.get_mut(insert_at), message) {
+        (Some(Message::User { content }), Message::User { content: documents })
+            if !content.is_empty() =>
+        {
+            content.splice(0..0, documents);
+        }
+        (_, message) => chat_history.insert(insert_at, message),
+    }
 }
 
 fn merge_provider_tools_into_additional_params(

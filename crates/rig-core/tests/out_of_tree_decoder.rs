@@ -94,6 +94,10 @@ impl ReplayTarget for Vendor {
     fn model(&self) -> &str {
         ""
     }
+
+    fn accepts(&self, _model: &str) -> rig_core::completion::Accepts {
+        rig_core::completion::Accepts::ALL
+    }
 }
 
 impl Wire for Vendor {

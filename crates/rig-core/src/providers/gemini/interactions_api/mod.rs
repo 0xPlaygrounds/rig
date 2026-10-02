@@ -120,6 +120,11 @@ impl crate::completion::ReplayTarget for Interactions {
         &self.model
     }
 
+    /// Interactions read images in every role.
+    fn accepts(&self, _model: &str) -> crate::completion::Accepts {
+        crate::completion::Accepts::ALL
+    }
+
     fn normalize_tool_call_id(
         &self,
         id: &str,
@@ -247,6 +252,11 @@ impl crate::completion::ReplayTarget for InteractionResume {
 
     fn model(&self) -> &str {
         ""
+    }
+
+    /// Interactions read images in every role.
+    fn accepts(&self, _model: &str) -> crate::completion::Accepts {
+        crate::completion::Accepts::ALL
     }
 
     fn normalize_tool_call_id(

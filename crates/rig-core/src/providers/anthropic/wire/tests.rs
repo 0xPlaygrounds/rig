@@ -212,16 +212,18 @@ fn a_foreign_call_id_is_normalized_to_anthropic_spelling() {
 fn only_minimax_m2_models_refuse_images() {
     use crate::completion::ReplayTarget;
 
-    assert!(wire().accepts_images(wire().model()));
+    assert!(wire().accepts(wire().model()).user_images);
     let minimax = AnthropicConfig::with_key(&MINIMAX, "sk-test");
     assert!(
         !minimax
             .completion("MiniMax-M3")
-            .accepts_images("MiniMax-M2.7")
+            .accepts("MiniMax-M2.7")
+            .user_images
     );
     assert!(
         minimax
             .completion("MiniMax-M2.7")
-            .accepts_images("MiniMax-M3")
+            .accepts("MiniMax-M3")
+            .user_images
     );
 }

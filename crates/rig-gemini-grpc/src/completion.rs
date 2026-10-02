@@ -90,6 +90,14 @@ impl rig_core::completion::ReplayTarget for GenerateContent {
         &self.model
     }
 
+    /// The gRPC transcode carries no images inside function responses.
+    fn accepts(&self, _model: &str) -> rig_core::completion::Accepts {
+        rig_core::completion::Accepts {
+            tool_result_images: false,
+            ..rig_core::completion::Accepts::ALL
+        }
+    }
+
     fn normalize_tool_call_id(
         &self,
         id: &str,

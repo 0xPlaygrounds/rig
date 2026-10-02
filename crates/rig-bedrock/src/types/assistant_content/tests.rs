@@ -128,8 +128,9 @@ fn the_same_model_gets_its_items_back_verbatim() {
     }
 }
 
-/// Another model gets canonical fields only: reasoning text becomes text
-/// and redacted reasoning is dropped.
+/// Another model gets canonical fields only: reasoning text becomes text,
+/// redacted reasoning is dropped, and an image, which Converse reads only
+/// from the user, becomes a placeholder.
 #[test]
 fn another_model_gets_canonical_fields() {
     for turn in decoded(ANTHROPIC_CLAUDE_SONNET_4_6) {
@@ -137,6 +138,13 @@ fn another_model_gets_canonical_fields() {
         let mut expected = reply_as_sent();
         expected.remove(1);
         expected[0] = aws_bedrock::ContentBlock::Text("let me think".to_owned());
+        for block in &mut expected {
+            if matches!(block, aws_bedrock::ContentBlock::Image(_)) {
+                *block = aws_bedrock::ContentBlock::Text(
+                    rig_core::completion::history::ASSISTANT_IMAGE_OMITTED.to_owned(),
+                );
+            }
+        }
         assert_eq!(messages[1].content, expected);
     }
 }
@@ -195,10 +203,26 @@ fn a_foreign_call_id_is_normalized_with_its_result() {
 
 #[test]
 fn text_only_models_take_no_images() {
-    assert!(!Converse::new(AMAZON_NOVA_MICRO).accepts_images(AMAZON_NOVA_MICRO));
-    assert!(!Converse::new("us.deepseek.r1-v1:0").accepts_images("us.deepseek.r1-v1:0"));
-    assert!(Converse::new(AMAZON_NOVA_LITE).accepts_images(AMAZON_NOVA_LITE));
-    assert!(Converse::new(ANTHROPIC_CLAUDE_SONNET_4_6).accepts_images(ANTHROPIC_CLAUDE_SONNET_4_6));
+    assert!(
+        !Converse::new(AMAZON_NOVA_MICRO)
+            .accepts(AMAZON_NOVA_MICRO)
+            .user_images
+    );
+    assert!(
+        !Converse::new("us.deepseek.r1-v1:0")
+            .accepts("us.deepseek.r1-v1:0")
+            .user_images
+    );
+    assert!(
+        Converse::new(AMAZON_NOVA_LITE)
+            .accepts(AMAZON_NOVA_LITE)
+            .user_images
+    );
+    assert!(
+        Converse::new(ANTHROPIC_CLAUDE_SONNET_4_6)
+            .accepts(ANTHROPIC_CLAUDE_SONNET_4_6)
+            .user_images
+    );
 }
 
 #[test]

@@ -119,14 +119,34 @@ impl StopReason {
     }
 }
 
-/// A 64-bit FNV-1a hash of a value's JSON serialization.
+/// A 64-bit FNV-1a hash of a value's JSON serialization with every object's
+/// keys in sorted order, so a store that reorders keys (Postgres `jsonb`,
+/// sorted-key dumps) never changes it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct Fingerprint(u64);
 
 impl Fingerprint {
-    /// The fingerprint of `value`'s JSON bytes.
+    /// The fingerprint of `value`'s JSON bytes, keys sorted.
     pub fn of(value: &impl Serialize) -> Self {
+        fn sorted(value: serde_json::Value) -> serde_json::Value {
+            match value {
+                serde_json::Value::Object(fields) => {
+                    let mut fields: Vec<_> = fields.into_iter().collect();
+                    fields.sort_by(|(left, _), (right, _)| left.cmp(right));
+                    serde_json::Value::Object(
+                        fields
+                            .into_iter()
+                            .map(|(key, value)| (key, sorted(value)))
+                            .collect(),
+                    )
+                }
+                serde_json::Value::Array(values) => {
+                    serde_json::Value::Array(values.into_iter().map(sorted).collect())
+                }
+                value => value,
+            }
+        }
         struct Fnv(u64);
         impl std::io::Write for Fnv {
             fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
@@ -144,7 +164,9 @@ impl Fingerprint {
         let mut hash = Fnv(0xcbf2_9ce4_8422_2325);
         // Message types always serialize; a failure would only leave a
         // fingerprint no native item matches, which replays canonically.
-        let _ = serde_json::to_writer(&mut hash, value);
+        if let Ok(value) = serde_json::to_value(value) {
+            let _ = serde_json::to_writer(&mut hash, &sorted(value));
+        }
         Self(hash.0)
     }
 }

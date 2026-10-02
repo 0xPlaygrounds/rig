@@ -317,6 +317,10 @@ impl crate::completion::ReplayTarget for MockScript {
     fn model(&self) -> &str {
         self.id.as_deref().unwrap_or_default()
     }
+
+    fn accepts(&self, _model: &str) -> crate::completion::Accepts {
+        crate::completion::Accepts::ALL
+    }
 }
 
 impl Default for MockScript {

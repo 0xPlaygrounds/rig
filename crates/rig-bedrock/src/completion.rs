@@ -250,10 +250,18 @@ impl rig_core::completion::ReplayTarget for Converse {
         &self.model
     }
 
-    fn accepts_images(&self, model: &str) -> bool {
-        !TEXT_ONLY
+    /// Converse reads images in user turns and tool results, never in
+    /// assistant turns, on every model but the text-only families.
+    fn accepts(&self, model: &str) -> rig_core::completion::Accepts {
+        let images = !TEXT_ONLY
             .split_whitespace()
-            .any(|family| model.contains(family))
+            .any(|family| model.contains(family));
+        rig_core::completion::Accepts {
+            user_images: images,
+            assistant_images: false,
+            tool_result_images: images,
+            tools: true,
+        }
     }
 
     /// Converse tool-use ids match `[a-zA-Z0-9_-]{1,64}`.

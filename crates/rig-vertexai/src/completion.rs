@@ -104,6 +104,11 @@ impl rig_core::completion::ReplayTarget for GenerateContent {
         &self.model
     }
 
+    /// Gemini on Vertex reads images in every role.
+    fn accepts(&self, _model: &str) -> rig_core::completion::Accepts {
+        rig_core::completion::Accepts::ALL
+    }
+
     fn normalize_tool_call_id(
         &self,
         id: &str,

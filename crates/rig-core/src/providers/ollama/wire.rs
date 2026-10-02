@@ -192,6 +192,14 @@ impl crate::completion::ReplayTarget for Chat {
     fn model(&self) -> &str {
         &self.model
     }
+
+    /// Ollama reads images in user messages only.
+    fn accepts(&self, _model: &str) -> crate::completion::Accepts {
+        crate::completion::Accepts {
+            user_images: true,
+            ..crate::completion::Accepts::TEXT
+        }
+    }
 }
 
 /// The embedding wire: `POST /api/embed`.

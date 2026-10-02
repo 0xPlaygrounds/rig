@@ -295,6 +295,10 @@ impl crate::completion::ReplayTarget for Scripted {
     fn model(&self) -> &str {
         "model"
     }
+
+    fn accepts(&self, _model: &str) -> crate::completion::Accepts {
+        crate::completion::Accepts::ALL
+    }
 }
 
 impl Wire for Scripted {

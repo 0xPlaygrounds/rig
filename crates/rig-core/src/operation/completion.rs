@@ -74,8 +74,12 @@ impl Operation for Completion {
         }
     }
 
-    /// [`adapt`](crate::completion::adapt) the history for the wire's
-    /// replay target, then [`CompletionRequest::validate_message_content`].
+    /// Resolve the model the request addresses once, as the request's
+    /// `model`: the one it names, else the wire's. The history is checked
+    /// with [`CompletionRequest::validate_message_content`], then
+    /// [`adapt`](crate::completion::adapt)ed for that model on the wire's
+    /// replay target and checked again. Encoders, the fold and replay all
+    /// read the one resolved model.
     fn prepare(
         mut request: Self::Request,
         wire: &Descriptor<'_>,
@@ -86,6 +90,16 @@ impl Operation for Completion {
                 wire.name
             )));
         };
+        // The caller's history is checked as written, so a rejection names
+        // its own messages; adapting never empties a message it keeps.
+        request.validate_message_content()?;
+        // A wire that addresses no model (an interaction read back) leaves
+        // it to the reply, which names the model the turn is from.
+        request.model = request
+            .model
+            .take()
+            .filter(|model| !model.is_empty())
+            .or_else(|| Some(target.model().to_owned()).filter(|model| !model.is_empty()));
         request.chat_history = crate::completion::history::adapt_for_model(
             &request.chat_history,
             target,

@@ -447,17 +447,18 @@ fn message_telemetry_includes_normalized_documents() {
         .message(Message::user("history"))
         .document(test_document("doc1", "static context secret"));
 
+    // The documents open the first user message, so roles keep alternating.
     let messages = request.messages_for_telemetry();
-    assert_eq!(messages.len(), 4);
+    assert_eq!(messages.len(), 3);
     assert!(matches!(messages[0], Message::System { .. }));
     assert!(is_document_message(&messages[1], "doc1"));
     assert!(matches!(
-        &messages[2],
+        &messages[1],
         Message::User { content }
-            if matches!(content.first(), Some(UserContent::Text(text)) if text.text == "history")
+            if matches!(content.last(), Some(UserContent::Text(text)) if text.text == "history")
     ));
     assert!(matches!(
-        &messages[3],
+        &messages[2],
         Message::User { content }
             if matches!(content.first(), Some(UserContent::Text(text)) if text.text == "prompt")
     ));
@@ -578,13 +579,12 @@ fn build_places_documents_after_preamble_system_message() {
 
     let history = request.chat_history_with_documents();
     let history = history.iter().collect::<Vec<_>>();
-    assert_eq!(history.len(), 3);
+    assert_eq!(history.len(), 2);
     assert!(matches!(
         history[0],
         Message::System { content } if content == "System prompt"
     ));
     assert!(is_document_message(history[1], "doc1"));
-    assert!(matches!(history[2], Message::User { .. }));
 }
 
 #[test]
@@ -598,7 +598,7 @@ fn build_places_documents_after_leading_system_messages_before_prior_history() {
 
     let history = request.chat_history_with_documents();
     let history = history.iter().collect::<Vec<_>>();
-    assert_eq!(history.len(), 6);
+    assert_eq!(history.len(), 5);
     assert!(matches!(
         history[0],
         Message::System { content } if content == "System one"
@@ -608,9 +608,8 @@ fn build_places_documents_after_leading_system_messages_before_prior_history() {
         Message::System { content } if content == "System two"
     ));
     assert!(is_document_message(history[2], "doc1"));
-    assert!(matches!(history[3], Message::User { .. }));
-    assert!(matches!(history[4], Message::Assistant(_)));
-    assert!(matches!(history[5], Message::User { .. }));
+    assert!(matches!(history[3], Message::Assistant(_)));
+    assert!(matches!(history[4], Message::User { .. }));
 }
 
 #[test]

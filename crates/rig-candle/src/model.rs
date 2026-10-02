@@ -352,6 +352,11 @@ impl rig_core::completion::ReplayTarget for Generation {
     fn model(&self) -> &str {
         ""
     }
+
+    /// A local text model reads text and tools.
+    fn accepts(&self, _model: &str) -> rig_core::completion::Accepts {
+        rig_core::completion::Accepts::TEXT
+    }
 }
 
 /// Writes local generation events into the reply. Every input is modeled;
