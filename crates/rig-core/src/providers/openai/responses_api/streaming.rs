@@ -321,6 +321,9 @@ fn finish_of(response: &CompletionResponse) -> Finish {
             || "Response incomplete without a provider reason".to_owned(),
             |reason| format!("Response incomplete: {reason}"),
         )),
+        // A failed or cancelled reply never replays (pi's rule).
+        (ResponseStatus::Failed, _) => Some("Response failed".to_owned()),
+        (ResponseStatus::Cancelled, _) => Some("Response cancelled".to_owned()),
         _ => None,
     };
     Finish {

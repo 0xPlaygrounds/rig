@@ -2250,3 +2250,27 @@ fn items_sharing_an_id_stay_distinct_blocks() {
         assert_eq!(natives(&response), output);
     }
 }
+
+/// A failed or cancelled reply ends the turn in an error, so it never
+/// replays.
+#[test]
+fn a_failed_or_cancelled_reply_ends_in_an_error() {
+    for status in [ResponseStatus::Failed, ResponseStatus::Cancelled] {
+        let mut body = serde_json::to_value(sample_response(status))
+            .expect("the sample response serializes");
+        body["output"] = json!([message("msg_1", "partial")]);
+        let decoded = crate::test_utils::decode_reply(
+            &wire(),
+            &CompletionRequest::new("hello"),
+            Mode::Unary,
+            vec![WireFrame::Text(body.to_string())],
+            serde_json::Value::Null,
+        );
+        let response = decoded.expect("the reply decodes");
+        assert!(
+            matches!(response.stop(), crate::message::StopReason::Error(_)),
+            "{:?}",
+            response.stop()
+        );
+    }
+}

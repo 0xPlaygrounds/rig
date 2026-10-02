@@ -213,7 +213,10 @@ fn failed_turns_are_skipped_with_the_results_answering_them() {
         ];
         assert_eq!(
             adapt(&history, &TARGET),
-            vec![Message::user("q"), Message::user("again")]
+            vec![Message::User {
+                content: vec![UserContent::text("q"), UserContent::text("again")],
+            }],
+            "the user messages the skipped turn separated become one"
         );
     }
 }
@@ -345,7 +348,9 @@ fn a_turn_left_empty_is_dropped() {
     ];
     assert_eq!(
         adapt(&history, &TARGET),
-        vec![Message::user("q"), Message::user("again")]
+        vec![Message::User {
+            content: vec![UserContent::text("q"), UserContent::text("again")],
+        }]
     );
 }
 
@@ -384,5 +389,48 @@ fn a_request_model_override_decides_image_input() {
         vec![Message::User {
             content: vec![UserContent::text(USER_IMAGE_OMITTED)],
         }]
+    );
+}
+
+#[test]
+fn a_skipped_turns_ids_do_not_drop_a_later_turns_results() {
+    // Kimi numbers calls per conversation, so a later turn can reuse an id.
+    let failed = Message::Assistant(AssistantMessage {
+        content: vec![call("functions.f:0")],
+        origin: Some(same()),
+        stop: Some(StopReason::Error("refused".into())),
+        native: None,
+    });
+    let history = vec![
+        Message::user("q"),
+        failed,
+        Message::user("again"),
+        turn(Some(same()), vec![call("functions.f:0")]),
+        Message::User {
+            content: vec![result("functions.f:0", "real")],
+        },
+    ];
+    let adapted = adapt(&history, &TARGET);
+    assert_eq!(
+        adapted.last(),
+        Some(&Message::User {
+            content: vec![result("functions.f:0", "real")],
+        })
+    );
+}
+
+#[test]
+fn a_same_model_block_edited_blank_is_dropped() {
+    let mut text = AssistantContent::text("answer").with_native(json!({"text": "answer"}));
+    if let AssistantContent::Text(text) = &mut text {
+        text.text = String::new();
+    }
+    let history = vec![
+        Message::user("q"),
+        turn(Some(same()), vec![text, AssistantContent::text("kept")]),
+    ];
+    assert_eq!(
+        assistant(&adapt(&history, &TARGET)[1]).content,
+        vec![AssistantContent::text("kept")]
     );
 }

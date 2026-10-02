@@ -75,14 +75,15 @@ pub trait ReplayTarget: std::fmt::Debug + WasmCompatSync {
 /// `history` shaped for `target`.
 ///
 /// - A turn whose origin names `target`'s API, provider and model keeps its
-///   provider items. Its reasoning with neither text nor an item, and its
-///   blank text with no item, are dropped.
+///   provider items. Its reasoning and blank text are dropped unless they
+///   still hold a current provider item.
 /// - Any other turn keeps only canonical fields: provider items are cleared,
 ///   reasoning becomes plain text (redacted or empty reasoning is dropped),
 ///   [`Opaque`](crate::message::Opaque) items are dropped and call ids go
 ///   through [`ReplayTarget::normalize_tool_call_id`].
 /// - Opaque items marked not to replay are always dropped, and so is a turn
 ///   that ended in an error or was aborted, with the results answering it.
+///   The user messages such a turn separated become one.
 /// - Every call left unanswered when the next user or assistant message
 ///   arrives, or when the history ends, gets a [`NO_RESULT_PROVIDED`] result.
 ///   A system message that arrives while calls wait is held until they are
@@ -106,7 +107,7 @@ pub(crate) fn adapt_for_model(
     let mut renamed = HashMap::new();
     let shaped = history
         .iter()
-        .filter_map(|message| match message {
+        .map(|message| match message {
             Message::System { .. } => Some(message.clone()),
             Message::User { content } => Some(Message::User {
                 content: user_content(content, &renamed, images),
@@ -165,14 +166,13 @@ fn assistant(
 }
 
 /// Whether a block has anything to send: blank text and empty reasoning
-/// survive only with a provider item, and an opaque item only when it
-/// replays.
+/// survive only with a provider item that is still current, and an opaque
+/// item only when it replays.
 fn kept(block: &AssistantContent) -> bool {
+    let current = block.native_item().is_some();
     match block {
-        AssistantContent::Text(text) => !text.text.trim().is_empty() || text.native.is_some(),
-        AssistantContent::Reasoning(reasoning) => {
-            !reasoning.text.trim().is_empty() || reasoning.native.is_some()
-        }
+        AssistantContent::Text(text) => !text.text.trim().is_empty() || current,
+        AssistantContent::Reasoning(reasoning) => !reasoning.text.trim().is_empty() || current,
         AssistantContent::Opaque(opaque) => opaque.replay,
         AssistantContent::ToolCall(_) | AssistantContent::Image(_) => true,
     }
@@ -242,52 +242,75 @@ fn without_images(content: Vec<ToolResultContent>) -> Vec<ToolResultContent> {
     shaped
 }
 
-/// pi's second pass: skip failed turns, answer every unanswered call, and
-/// hold system messages that arrive while calls wait.
-fn answer_calls(history: Vec<Message>) -> Vec<Message> {
+/// pi's second pass over `history`, where `None` is a turn the first pass
+/// emptied: skip failed turns, answer every unanswered call, and hold system
+/// messages that arrive while calls wait. A skipped turn's results go with
+/// it, and the user messages it separated become one, since a wire that
+/// requires alternating roles would otherwise reject the history.
+fn answer_calls(history: Vec<Option<Message>>) -> Vec<Message> {
     let mut shaped = Vec::with_capacity(history.len());
     let mut waiting: Vec<ToolCall> = Vec::new();
     let mut held = Vec::new();
     let mut skipped = HashSet::new();
+    let mut gap = false;
     for message in history {
+        let Some(message) = message else {
+            close(&mut shaped, &mut waiting, &mut held, Vec::new(), false);
+            gap = true;
+            continue;
+        };
         match message {
             Message::Assistant(turn) => {
-                close(&mut shaped, &mut waiting, &mut held, Vec::new());
+                close(&mut shaped, &mut waiting, &mut held, Vec::new(), false);
                 if turn.stop.as_ref().is_some_and(|stop| stop.is_failure()) {
-                    skipped.extend(turn.tool_calls().map(|call| call.id.clone()));
+                    skipped = turn.tool_calls().map(|call| call.id.clone()).collect();
+                    gap = true;
                     continue;
                 }
+                skipped.clear();
+                gap = false;
                 waiting = distinct(turn.tool_calls());
                 shaped.push(Message::Assistant(turn));
             }
             Message::User { mut content } => {
                 if content.is_empty() {
-                    close(&mut shaped, &mut waiting, &mut held, Vec::new());
+                    close(&mut shaped, &mut waiting, &mut held, Vec::new(), false);
                     shaped.push(Message::User { content });
+                    gap = false;
                     continue;
                 }
                 content.retain(|part| {
                     !matches!(part, UserContent::ToolResult(result) if skipped.contains(&result.call))
                 });
-                close(&mut shaped, &mut waiting, &mut held, content);
+                if content.is_empty() && waiting.is_empty() {
+                    // Only the skipped turn's results: the gap stays open.
+                    continue;
+                }
+                close(&mut shaped, &mut waiting, &mut held, content, gap);
+                gap = false;
             }
             Message::System { .. } if !waiting.is_empty() => held.push(message),
-            system => shaped.push(system),
+            system => {
+                gap = false;
+                shaped.push(system);
+            }
         }
     }
-    close(&mut shaped, &mut waiting, &mut held, Vec::new());
+    close(&mut shaped, &mut waiting, &mut held, Vec::new(), false);
     shaped
 }
 
 /// Push the user message `content` with a result added for each `waiting`
 /// call it does not answer, then the held system messages. The results go
 /// before its first non-result part, in call order. Nothing is pushed for
-/// an empty message.
+/// an empty message, and `merge` appends `content` to a user message that
+/// ends `shaped`.
 fn close(
     shaped: &mut Vec<Message>,
     waiting: &mut Vec<ToolCall>,
     held: &mut Vec<Message>,
     mut content: Vec<UserContent>,
+    merge: bool,
 ) {
     let missing: Vec<UserContent> = waiting
         .drain(..)
@@ -310,7 +333,10 @@ fn close(
         .unwrap_or(content.len());
     content.splice(at..at, missing);
     if !content.is_empty() {
-        shaped.push(Message::User { content });
+        match shaped.last_mut() {
+            Some(Message::User { content: previous }) if merge => previous.extend(content),
+            _ => shaped.push(Message::User { content }),
+        }
     }
     shaped.append(held);
 }
