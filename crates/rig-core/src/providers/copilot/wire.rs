@@ -28,8 +28,8 @@ use crate::providers::openai::responses_api::SystemInstructionsPlacement;
 /// hook.
 pub use crate::providers::openai::wire::Embeddings;
 use crate::providers::openai::wire::{
-    Dialect, DialectHooks, EmbeddingQuirks, OpenAIConfig, OpenAiWire, Quirks, ResponsesQuirks,
-    Route,
+    Dialect, DialectHooks, EmbeddingQuirks, OpenAIConfig, OpenAiDecoder, OpenAiWire, Quirks,
+    ResponsesQuirks, Route,
 };
 use crate::wire::{
     Body, Decoder, Descriptor, Encoded, Framing, Mode, Out, Secret, Wire, WireEvent, WireFrame,
@@ -319,32 +319,21 @@ impl Wire for CopilotWire {
     type Op = Completion;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
-    #[cfg(any())]
-    type Decoder<'id> = OpenAiDecoder<'id>;
-    type Decoder<'id> = crate::providers::internal::Unmigrated;
+    type Decoder<'id> = OpenAiDecoder;
 
     fn describe(&self) -> Descriptor<'_> {
         self.wire.describe()
     }
 
-    #[cfg(any())]
     fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, EncodeError> {
         self.wire
             .encode_with_headers(request, mode, |provider, request, builder| {
                 completion_envelope(provider, request, provider.headers(builder), self.intent)
             })
     }
-    fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, EncodeError> {
-        let _ = (request, mode);
-        Err(crate::providers::internal::Unmigrated::encode_error())
-    }
 
-    #[cfg(any())]
     fn decoder<'id>(&self) -> Self::Decoder<'id> {
         self.wire.decoder()
-    }
-    fn decoder<'id>(&self) -> Self::Decoder<'id> {
-        crate::providers::internal::Unmigrated
     }
 }
 
@@ -455,5 +444,4 @@ impl Wire for Models {
 }
 
 #[cfg(test)]
-#[cfg(any())]
 mod tests;

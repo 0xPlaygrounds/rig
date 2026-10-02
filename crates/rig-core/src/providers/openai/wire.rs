@@ -15,7 +15,6 @@
 use serde::{Deserialize, Serialize};
 
 use crate::client::env::{self, EnvError};
-use crate::error::EncodeError;
 use crate::wire::Secret;
 
 use super::responses_api::SystemInstructionsPlacement;
@@ -36,7 +35,7 @@ pub use modality::{
     RerankDecoder, RerankReply, RerankResultEntry, RerankUsage, Transcriptions,
     TranscriptionsDecoder, Verify, VerifyDecoder,
 };
-pub use route::{OpenAiWire, Route};
+pub use route::{OpenAiDecoder, OpenAiEvent, OpenAiWire, Route};
 
 #[cfg(feature = "image")]
 pub use modality::{ImageDatum, Images, ImagesDecoder, ImagesEvent, ImagesReply};
@@ -560,10 +559,6 @@ pub struct Quirks {
     /// Whether the dialect emits `reasoning_details` entries (OpenRouter's
     /// encrypted reasoning blobs and replay signatures).
     pub reasoning_details: bool,
-    /// Whether reasoning belongs to the upstream model's family rather than
-    /// to this dialect: a gateway relays each upstream's own reasoning state,
-    /// valid only for that family ([`upstream_reasoning_issuer`]).
-    pub upstream_reasoning_issuer: bool,
     /// Whether `completion_tokens_details.reasoning_tokens` can be trusted as
     /// a part of `completion_tokens`, as OpenAI documents it. A dialect whose
     /// replies report more reasoning than completion leaves the count
@@ -634,7 +629,6 @@ impl Quirks {
             output_cap: OutputCap::Legacy,
             native_finish_reason: false,
             reasoning_details: false,
-            upstream_reasoning_issuer: false,
             reliable_reasoning_count: true,
             accepts_bare_string_reply: false,
             accepts_file_ids: true,
@@ -1220,72 +1214,6 @@ impl OpenAIConfig {
         }
         builder
     }
-}
-
-/// The issuer of reasoning a gateway relays from `model` (`vendor/name`):
-/// `anthropic` for Claude, whose thinking signatures Anthropic documents as
-/// valid across its platforms and which verified as valid between OpenRouter
-/// and the Claude API in both directions; `<gateway>/<vendor>` for every
-/// other family, whose signatures and ciphertext are bound to the gateway's
-/// upstream account.
-pub fn upstream_reasoning_issuer(gateway: &str, model: &str) -> String {
-    let vendor = model_vendor(model);
-    if vendor == "anthropic" {
-        vendor.to_owned()
-    } else {
-        format!("{gateway}/{vendor}")
-    }
-}
-
-fn model_vendor(model: &str) -> &str {
-    let vendor = model.split_once('/').map_or(model, |(vendor, _)| vendor);
-    vendor.trim_start_matches('~')
-}
-
-/// The issuers whose reasoning a request to its model over `dialect`
-/// replays, and the request as they read it
-/// ([`CompletionRequest::replayable_to`](crate::completion::CompletionRequest::replayable_to)).
-/// The request's model override, when it names one, is the model replayed
-/// for; `model` otherwise.
-#[cfg(any())]
-pub(crate) fn scope_reasoning(
-    dialect: &Dialect,
-    model: &str,
-    request: crate::completion::CompletionRequest,
-) -> Result<(crate::completion::CompletionRequest, Vec<Issuer>), EncodeError> {
-    let issuers: Vec<Issuer> = replay_issuers(dialect, request.model.as_deref().unwrap_or(model))
-        .into_iter()
-        .map(Issuer::from)
-        .collect();
-    Ok((request.replayable_to(&issuers)?, issuers))
-}
-
-/// The reasoning issuers a request to `model` over `dialect` replays.
-///
-/// A dialect without upstream issuers replays its own reasoning. A gateway
-/// replays the requested model's family, plus reasoning stamped with the
-/// gateway alone, which predates upstream issuers. A model under the
-/// gateway's own vendor (`openrouter/auto`) or a preset (`@preset/name`)
-/// names no family, so the turn may be served by any of them: it replays
-/// every family the gateway relayed and Claude reasoning from any surface,
-/// rather than dropping reasoning a Claude tool loop must send back. An
-/// unrecognised vendor is its own family.
-pub(crate) fn replay_issuers(dialect: &Dialect, model: &str) -> Vec<String> {
-    let gateway = dialect.name;
-    if !dialect.quirks.upstream_reasoning_issuer {
-        return vec![gateway.to_owned()];
-    }
-    if model.starts_with('@') || model_vendor(model) == gateway {
-        return vec![
-            "anthropic".to_owned(),
-            format!("{gateway}/"),
-            gateway.to_owned(),
-        ];
-    }
-    vec![
-        upstream_reasoning_issuer(gateway, model),
-        gateway.to_owned(),
-    ]
 }
 
 #[cfg(test)]

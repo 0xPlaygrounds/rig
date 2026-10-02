@@ -82,69 +82,42 @@ impl CompletionRequest {
     }
 }
 
-/// An input item for [`CompletionRequest`].
-#[derive(Debug, Deserialize, Clone)]
-pub struct InputItem {
-    /// The role of an input item/message.
-    /// Input messages should be Some(Role::User), and output messages should be Some(Role::Assistant).
-    /// Everything else should be None.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    role: Option<Role>,
-    /// The input content itself.
-    #[serde(flatten)]
-    input: InputContent,
-}
-
-impl Serialize for InputItem {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        let mut value = serde_json::to_value(&self.input).map_err(serde::ser::Error::custom)?;
-        let map = value.as_object_mut().ok_or_else(|| {
-            serde::ser::Error::custom("Input content must serialize to an object")
-        })?;
-
-        if let Some(role) = &self.role
-            && !map.contains_key("role")
-        {
-            map.insert(
-                "role".to_string(),
-                serde_json::to_value(role).map_err(serde::ser::Error::custom)?,
-            );
-        }
-
-        value.serialize(serializer)
-    }
+/// An input item for [`CompletionRequest`]: a system or user message, a
+/// function result, or an item the provider stated, sent back as it is.
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum InputItem {
+    /// A system or user message.
+    Message(Message),
+    /// A function call's result.
+    FunctionCallOutput(ToolResult),
+    /// Any other item, in the API's JSON shape: an output item replayed
+    /// verbatim, or one rebuilt from a turn's canonical fields.
+    #[serde(untagged)]
+    Item(Value),
 }
 
 impl InputItem {
     pub fn system_message(content: impl Into<String>) -> Self {
-        Self {
-            role: Some(Role::System),
-            input: InputContent::Message(Message::System {
-                content: vec![SystemContent::InputText {
-                    text: content.into(),
-                }],
-                name: None,
-            }),
-        }
+        Self::Message(Message::System {
+            content: vec![SystemContent::InputText {
+                text: content.into(),
+            }],
+            name: None,
+        })
     }
 
     /// A user-role input item carrying one content part.
     fn user_content(content: UserContent) -> Self {
-        Self {
-            role: Some(Role::User),
-            input: InputContent::Message(Message::User {
-                content: vec![content],
-                name: None,
-            }),
-        }
+        Self::Message(Message::User {
+            content: vec![content],
+            name: None,
+        })
     }
 
     pub(crate) fn system_text(&self) -> Option<String> {
-        match &self.input {
-            InputContent::Message(Message::System { content, .. }) => Some(
+        match self {
+            Self::Message(Message::System { content, .. }) => Some(
                 content
                     .iter()
                     .map(|item| match item {
@@ -156,49 +129,30 @@ impl InputItem {
             _ => None,
         }
     }
-}
 
-/// Message roles. Used by OpenAI Responses API to determine who created a given message.
-#[derive(Debug, Deserialize, Serialize, Clone)]
-#[serde(rename_all = "lowercase")]
-pub enum Role {
-    User,
-    Assistant,
-    System,
-}
-
-/// Content carried by an [`InputItem`].
-#[derive(Debug, Deserialize, Serialize, Clone)]
-#[serde(tag = "type", rename_all = "snake_case")]
-pub enum InputContent {
-    Message(Message),
-    Reasoning(OpenAIReasoning),
-    FunctionCall(OutputFunctionCall),
-    FunctionCallOutput(ToolResult),
-    /// Opaque compaction data for replaying a compacted context. All fields
-    /// other than the separately serialized `type` tag are preserved.
-    Compaction(Map<String, Value>),
-}
-
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
-pub struct OpenAIReasoning {
-    id: String,
-    pub summary: Vec<ReasoningSummary>,
-    #[serde(
-        default,
-        deserialize_with = "deserialize_reasoning_text_content",
-        serialize_with = "serialize_reasoning_text_content",
-        skip_serializing_if = "Vec::is_empty"
-    )]
-    pub content: Vec<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub encrypted_content: Option<String>,
-    /// The upstream's signature over the reasoning text, which a gateway
-    /// (OpenRouter relaying Claude) returns beside it and needs back.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub signature: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub status: Option<ToolStatus>,
+    /// The call id fields a request spells: a call's and a result's.
+    fn call_ids(&mut self) -> Vec<&mut String> {
+        match self {
+            Self::FunctionCallOutput(result) => vec![&mut result.call_id],
+            Self::Item(Value::Object(item))
+                if item
+                    .get("type")
+                    .and_then(Value::as_str)
+                    .is_some_and(|kind| {
+                        matches!(
+                            kind,
+                            "function_call" | "custom_tool_call" | "custom_tool_call_output"
+                        )
+                    }) =>
+            {
+                match item.get_mut("call_id") {
+                    Some(Value::String(call_id)) => vec![call_id],
+                    _ => Vec::new(),
+                }
+            }
+            Self::Message(_) | Self::Item(_) => Vec::new(),
+        }
+    }
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
@@ -208,12 +162,6 @@ pub enum ReasoningSummary {
 }
 
 impl ReasoningSummary {
-    fn new(input: &str) -> Self {
-        Self::SummaryText {
-            text: input.to_string(),
-        }
-    }
-
     pub fn text(&self) -> &str {
         let ReasoningSummary::SummaryText { text } = self;
         text
@@ -232,13 +180,6 @@ fn reasoning_text_content_json(content: &[String]) -> Value {
             })
             .collect(),
     )
-}
-
-fn serialize_reasoning_text_content<S>(content: &[String], serializer: S) -> Result<S::Ok, S::Error>
-where
-    S: Serializer,
-{
-    reasoning_text_content_json(content).serialize(serializer)
 }
 
 fn deserialize_reasoning_text_content<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
@@ -263,7 +204,7 @@ where
 }
 
 /// A tool result.
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 pub struct ToolResult {
     /// The call ID of a tool (this should be linked to the call ID for a tool call, otherwise an error will be received)
     call_id: String,
@@ -379,328 +320,187 @@ fn responses_tool_result_output(
     }
 }
 
-/// The issuer-free conversion: no reasoning opens, so none is replayed. A
-/// request's own conversion ([`ResponsesRequestParams`]) replays the
-/// reasoning its issuers open.
-#[cfg(any())]
-impl TryFrom<crate::completion::Message> for Vec<InputItem> {
-    type Error = EncodeError;
+/// The ids of the calls a request sends as `custom_tool_call` items, whose
+/// results go back as `custom_tool_call_output`.
+type CustomCalls = std::collections::HashSet<String>;
 
-    fn try_from(value: crate::completion::Message) -> Result<Self, Self::Error> {
-        input_items(value, &[])
-    }
-}
-
-/// `value` as input items, replaying the reasoning `issuers` open.
-#[cfg(any())]
+/// The request message at `position` of the history as input items.
+///
+/// An assistant block whose provider item is current is sent as that item;
+/// any other block is rebuilt from its canonical fields, as pi rebuilds a
+/// turn another model produced: text becomes a completed output message
+/// under a synthetic id, a call becomes a `function_call` without an item
+/// id, and reasoning, which only its provider item can carry, is not sent.
 fn input_items(
-    value: crate::completion::Message,
-    issuers: &[crate::message::Issuer],
+    message: crate::completion::Message,
+    position: usize,
+    custom: &mut CustomCalls,
 ) -> Result<Vec<InputItem>, EncodeError> {
-    {
-        match value {
-            crate::completion::Message::System { content } => Ok(vec![InputItem {
-                role: Some(Role::System),
-                input: InputContent::Message(Message::System {
-                    content: vec![content.into()],
-                    name: None,
-                }),
-            }]),
-            crate::completion::Message::User { content } => {
-                let mut items = Vec::new();
-
-                for user_content in content {
-                    match user_content {
-                        crate::message::UserContent::Text(Text { text, .. }) => {
-                            items.push(InputItem::user_content(UserContent::InputText { text }));
-                        }
-                        crate::message::UserContent::ToolResult(tool_result) => {
-                            // Prefer provider identity so results match replayed calls.
-                            let call_id = tool_result.call.wire().into_owned();
-                            let output = responses_tool_result_output(tool_result.content)?;
-                            items.push(InputItem {
-                                role: None,
-                                input: InputContent::FunctionCallOutput(ToolResult {
-                                    call_id,
-                                    output,
-                                    status: ToolStatus::Completed,
-                                }),
-                            });
-                        }
-                        crate::message::UserContent::Document(Document {
-                            data: DocumentSourceKind::FileId(file_id),
-                            ..
-                        }) => items.push(InputItem::user_content(UserContent::InputFile {
-                            file_id: Some(file_id),
-                            file_data: None,
-                            file_url: None,
-                            filename: None,
-                        })),
-                        crate::message::UserContent::Document(Document {
-                            data,
-                            media_type: Some(DocumentMediaType::PDF),
-                            ..
-                        }) => {
-                            let (file_data, file_url, filename) = match data {
-                                DocumentSourceKind::Base64(data) => (
-                                    Some(format!("data:application/pdf;base64,{data}")),
-                                    None,
-                                    Some("document.pdf".to_string()),
-                                ),
-                                DocumentSourceKind::Url(url) => (None, Some(url), None),
-                                source => return Err(unsupported_document_source(source)),
-                            };
-
-                            items.push(InputItem::user_content(UserContent::InputFile {
-                                file_id: None,
-                                file_data,
-                                file_url,
-                                filename,
-                            }));
-                        }
-                        // A URL whose type the caller did not name: `input_file`
-                        // fetches it and reads the type itself.
-                        crate::message::UserContent::Document(Document {
-                            data: DocumentSourceKind::Url(url),
-                            media_type: None,
-                            ..
-                        }) => items.push(InputItem::user_content(UserContent::InputFile {
-                            file_id: None,
-                            file_data: None,
-                            file_url: Some(url),
-                            filename: None,
-                        })),
-                        crate::message::UserContent::Document(Document {
-                            data:
-                                DocumentSourceKind::Base64(text) | DocumentSourceKind::String(text),
-                            ..
-                        }) => items.push(InputItem::user_content(UserContent::InputText { text })),
-                        crate::message::UserContent::Image(crate::message::Image {
-                            data,
-                            media_type,
-                            detail,
-                            ..
-                        }) => {
-                            let url = match data {
-                                DocumentSourceKind::Base64(data) => {
-                                    let media_type = media_type
-                                        .map(|media_type| media_type.to_mime_type().to_string())
-                                        .unwrap_or_default();
-                                    format!("data:{media_type};base64,{data}")
-                                }
-                                DocumentSourceKind::Url(url) => url,
-                                source => return Err(unsupported_document_source(source)),
-                            };
-                            items.push(InputItem::user_content(UserContent::InputImage {
-                                image_url: url,
-                                detail: detail.unwrap_or_default(),
-                            }));
-                        }
-                        message => {
-                            return Err(EncodeError::request(format!(
-                                "Unsupported message: {message:?}"
-                            )));
-                        }
-                    }
-                }
-
-                Ok(items)
-            }
-            crate::completion::Message::Assistant { id, content } => {
-                let mut reasoning_items = Vec::new();
-                let mut other_items: Vec<InputItem> = Vec::new();
-                // Each message item's position, by id. Text blocks of one
-                // item join it as more content parts, because duplicate
-                // input item ids are rejected; blocks of distinct items keep
-                // their own item, id and `phase`.
-                let mut message_items: Vec<(String, usize)> = Vec::new();
-
-                for assistant_content in content {
-                    match assistant_content {
-                        crate::message::AssistantContent::Text(Text {
-                            text,
-                            additional_params,
-                        }) => {
-                            let Some(message) = assistant_text_replay_message(
-                                id.as_deref(),
-                                text,
-                                additional_params,
-                            ) else {
-                                continue;
-                            };
-                            let joined = match &message {
-                                Message::Assistant { id: item_id, .. } if !item_id.is_empty() => {
-                                    message_items
-                                        .iter()
-                                        .find(|(seen, _)| seen == item_id)
-                                        .map(|(_, at)| *at)
-                                }
-                                _ => None,
-                            };
-                            match (message, joined) {
-                                (Message::Assistant { content: more, .. }, Some(at)) => {
-                                    if let Some(InputItem {
-                                        input:
-                                            InputContent::Message(Message::Assistant {
-                                                content, ..
-                                            }),
-                                        ..
-                                    }) = other_items.get_mut(at)
-                                    {
-                                        content.extend(more);
-                                    }
-                                }
-                                (message, _) => {
-                                    if let Message::Assistant { id: item_id, .. } = &message
-                                        && !item_id.is_empty()
-                                    {
-                                        message_items.push((item_id.clone(), other_items.len()));
-                                    }
-                                    other_items.push(InputItem {
-                                        role: Some(Role::Assistant),
-                                        input: InputContent::Message(message),
-                                    });
-                                }
-                            }
-                        }
-                        crate::message::AssistantContent::ToolCall(crate::message::ToolCall {
-                            id,
-                            function,
-                            ..
-                        }) => {
-                            let (call_id, item_id) = match id {
-                                crate::message::CallId::Provider(provider) => {
-                                    (provider.call_id, provider.item_id.unwrap_or_default())
-                                }
-                                local => (local.wire().into_owned(), String::new()),
-                            };
-                            other_items.push(InputItem {
-                                role: None,
-                                input: InputContent::FunctionCall(OutputFunctionCall {
-                                    arguments: function.arguments.into(),
-                                    call_id,
-                                    id: item_id,
-                                    name: function.name.into(),
-                                    status: ToolStatus::Completed,
-                                }),
-                            });
-                        }
-                        crate::message::AssistantContent::Reasoning(reasoning) => {
-                            // Reasoning another service issued is not replayed.
-                            if let Some(openai_reasoning) = reasoning
-                                .open_for(issuers)
-                                .and_then(openai_reasoning_from_core)
-                            {
-                                reasoning_items.push(InputItem {
-                                    role: None,
-                                    input: InputContent::Reasoning(openai_reasoning),
-                                });
-                            }
-                        }
-                        crate::message::AssistantContent::Image(_) => {
-                            return Err(EncodeError::request(
-                                "Assistant image content is not supported in OpenAI Responses API"
-                                    .to_string(),
-                            ));
-                        }
-                    }
-                }
-
-                let mut items = reasoning_items;
-                items.extend(other_items);
-                Ok(items)
-            }
+    match message {
+        crate::completion::Message::System { content } => {
+            Ok(vec![InputItem::Message(Message::System {
+                content: vec![content.into()],
+                name: None,
+            })])
         }
-    }
-}
-
-/// Builds reasoning blocks in summary, text, encrypted-content order.
-/// Empty encrypted content contributes no block. A signature signs the
-/// reasoning text, so it rides on the last text block, or on an empty one
-/// when the item carried no text.
-#[cfg(any())]
-pub(crate) fn reasoning_content_blocks(
-    summary: Vec<ReasoningSummary>,
-    content: Vec<String>,
-    encrypted_content: Option<String>,
-    signature: Option<String>,
-) -> Vec<message::ReasoningContent> {
-    let mut blocks = summary
-        .into_iter()
-        .map(|summary| match summary {
-            ReasoningSummary::SummaryText { text } => message::ReasoningContent::Summary(text),
-        })
-        .collect::<Vec<_>>();
-
-    blocks.extend(
-        content
+        crate::completion::Message::User { content } => content
             .into_iter()
-            .map(|text| message::ReasoningContent::Text {
-                text,
-                signature: None,
-            }),
-    );
-    if let Some(signature) = signature {
-        match blocks.iter_mut().rev().find_map(|block| match block {
-            message::ReasoningContent::Text { signature, .. } => Some(signature),
-            _ => None,
-        }) {
-            Some(slot) => *slot = Some(signature),
-            None => blocks.push(message::ReasoningContent::Text {
-                text: String::new(),
-                signature: Some(signature),
-            }),
+            .map(|content| user_input_item(content, custom))
+            .collect(),
+        crate::completion::Message::Assistant(turn) => {
+            let mut items = Vec::new();
+            let mut texts = 0usize;
+            for block in turn.content {
+                if let Some(item) = block.native_item() {
+                    if item.get("type").and_then(Value::as_str) == Some("custom_tool_call")
+                        && let Some(call_id) = item.get("call_id").and_then(Value::as_str)
+                    {
+                        custom.insert(call_id.to_owned());
+                    }
+                    items.push(InputItem::Item(item.clone()));
+                    continue;
+                }
+                match block {
+                    crate::message::AssistantContent::Text(text) => {
+                        // An empty message says nothing.
+                        if text.text.is_empty() {
+                            continue;
+                        }
+                        let id = match texts {
+                            0 => format!("msg_rig_{position}"),
+                            n => format!("msg_rig_{position}_{n}"),
+                        };
+                        texts += 1;
+                        items.push(InputItem::Item(serde_json::json!({
+                            "type": "message",
+                            "role": "assistant",
+                            "content": [{"type": "output_text", "text": text.text, "annotations": []}],
+                            "status": "completed",
+                            "id": id,
+                        })));
+                    }
+                    crate::message::AssistantContent::ToolCall(call) => {
+                        items.push(InputItem::Item(serde_json::json!({
+                            "type": "function_call",
+                            "call_id": call.id.wire(),
+                            "name": call.function.name.as_str(),
+                            "arguments": call.function.arguments.to_string(),
+                        })));
+                    }
+                    crate::message::AssistantContent::Reasoning(_) => {}
+                    crate::message::AssistantContent::Opaque(opaque) => {
+                        items.push(InputItem::Item(opaque.item));
+                    }
+                    crate::message::AssistantContent::Image(_) => {
+                        return Err(EncodeError::request(
+                            "Assistant image content is not supported in OpenAI Responses API",
+                        ));
+                    }
+                }
+            }
+            Ok(items)
         }
     }
-
-    if let Some(encrypted_content) = encrypted_content.filter(|content| !content.is_empty()) {
-        blocks.push(message::ReasoningContent::Encrypted(encrypted_content));
-    }
-
-    blocks
 }
 
-#[cfg(any())]
-fn openai_reasoning_from_core(reasoning: &crate::message::Reasoning) -> Option<OpenAIReasoning> {
-    // Reasoning without a provider item ID cannot be replayed.
-    let id = reasoning.id.clone()?;
-
-    let mut summary = Vec::new();
-    let mut reasoning_content = Vec::new();
-    let mut encrypted_content = None;
-    let mut text_signature = None;
-    for content in &reasoning.content {
-        match content {
-            crate::message::ReasoningContent::Text { text, signature } => {
-                // An empty block that only carries the signature adds no text.
-                if !(text.is_empty() && signature.is_some()) {
-                    reasoning_content.push(text.clone());
-                }
-                // A signature covers the reasoning before it, so the last
-                // one is the item's, matching where decoding puts it.
-                if let Some(signature) = signature {
-                    text_signature = Some(signature.clone());
-                }
-            }
-            crate::message::ReasoningContent::Summary(text) => {
-                summary.push(ReasoningSummary::new(text));
-            }
-            // OpenAI reasoning input has one opaque payload field; preserve either
-            // encrypted or redacted blocks there, preferring the first one seen.
-            crate::message::ReasoningContent::Encrypted(data)
-            | crate::message::ReasoningContent::Redacted { data } => {
-                encrypted_content.get_or_insert_with(|| data.clone());
+/// One user content part as an input item.
+fn user_input_item(
+    content: crate::message::UserContent,
+    custom: &CustomCalls,
+) -> Result<InputItem, EncodeError> {
+    Ok(match content {
+        crate::message::UserContent::Text(Text { text, .. }) => {
+            InputItem::user_content(UserContent::InputText { text })
+        }
+        crate::message::UserContent::ToolResult(tool_result) => {
+            let call_id = tool_result.call.wire().into_owned();
+            let output = responses_tool_result_output(tool_result.content)?;
+            if custom.contains(&call_id) {
+                InputItem::Item(serde_json::json!({
+                    "type": "custom_tool_call_output",
+                    "call_id": call_id,
+                    "output": output,
+                }))
+            } else {
+                InputItem::FunctionCallOutput(ToolResult {
+                    call_id,
+                    output,
+                    status: ToolStatus::Completed,
+                })
             }
         }
-    }
-
-    Some(OpenAIReasoning {
-        id,
-        summary,
-        content: reasoning_content,
-        encrypted_content,
-        signature: text_signature,
-        status: None,
+        crate::message::UserContent::Document(Document {
+            data: DocumentSourceKind::FileId(file_id),
+            ..
+        }) => InputItem::user_content(UserContent::InputFile {
+            file_id: Some(file_id),
+            file_data: None,
+            file_url: None,
+            filename: None,
+        }),
+        crate::message::UserContent::Document(Document {
+            data,
+            media_type: Some(DocumentMediaType::PDF),
+            ..
+        }) => {
+            let (file_data, file_url, filename) = match data {
+                DocumentSourceKind::Base64(data) => (
+                    Some(format!("data:application/pdf;base64,{data}")),
+                    None,
+                    Some("document.pdf".to_string()),
+                ),
+                DocumentSourceKind::Url(url) => (None, Some(url), None),
+                source => return Err(unsupported_document_source(source)),
+            };
+            InputItem::user_content(UserContent::InputFile {
+                file_id: None,
+                file_data,
+                file_url,
+                filename,
+            })
+        }
+        // A URL whose type the caller did not name: `input_file` fetches it
+        // and reads the type itself.
+        crate::message::UserContent::Document(Document {
+            data: DocumentSourceKind::Url(url),
+            media_type: None,
+            ..
+        }) => InputItem::user_content(UserContent::InputFile {
+            file_id: None,
+            file_data: None,
+            file_url: Some(url),
+            filename: None,
+        }),
+        crate::message::UserContent::Document(Document {
+            data: DocumentSourceKind::Base64(text) | DocumentSourceKind::String(text),
+            ..
+        }) => InputItem::user_content(UserContent::InputText { text }),
+        crate::message::UserContent::Image(crate::message::Image {
+            data,
+            media_type,
+            detail,
+            ..
+        }) => {
+            let url = match data {
+                DocumentSourceKind::Base64(data) => {
+                    let media_type = media_type
+                        .map(|media_type| media_type.to_mime_type().to_string())
+                        .unwrap_or_default();
+                    format!("data:{media_type};base64,{data}")
+                }
+                DocumentSourceKind::Url(url) => url,
+                source => return Err(unsupported_document_source(source)),
+            };
+            InputItem::user_content(UserContent::InputImage {
+                image_url: url,
+                detail: detail.unwrap_or_default(),
+            })
+        }
+        message => {
+            return Err(EncodeError::request(format!(
+                "Unsupported message: {message:?}"
+            )));
+        }
     })
 }
 
@@ -1193,7 +993,6 @@ pub enum SystemInstructionsPlacement {
 }
 
 /// Converts a Rig request using the default system-instruction placement.
-#[cfg(any())]
 impl TryFrom<(String, crate::completion::CompletionRequest)> for CompletionRequest {
     type Error = EncodeError;
     fn try_from(
@@ -1203,23 +1002,18 @@ impl TryFrom<(String, crate::completion::CompletionRequest)> for CompletionReque
             model,
             request,
             system_instructions_placement: SystemInstructionsPlacement::default(),
-            issuers: Vec::new(),
         })
     }
 }
 
 /// Parameters for converting a [`crate::completion::CompletionRequest`] into a
 /// Responses API [`CompletionRequest`] with a non-default configuration.
-#[cfg(any())]
 pub struct ResponsesRequestParams {
     pub model: String,
     pub request: crate::completion::CompletionRequest,
     pub system_instructions_placement: SystemInstructionsPlacement,
-    /// The issuers whose reasoning the request replays.
-    pub issuers: Vec<crate::message::Issuer>,
 }
 
-#[cfg(any())]
 impl TryFrom<ResponsesRequestParams> for CompletionRequest {
     type Error = EncodeError;
 
@@ -1228,19 +1022,19 @@ impl TryFrom<ResponsesRequestParams> for CompletionRequest {
             model,
             request: mut req,
             system_instructions_placement,
-            issuers,
         } = params;
         let chat_history = req.chat_history_with_documents();
         let model = req.model.clone().unwrap_or(model);
         let mut instruction_parts = Vec::new();
+        let mut custom = CustomCalls::new();
+        let mut position = 0;
         let mut input = crate::providers::internal::wire_ids::WireIds::convert(
             chat_history,
-            |message| input_items(message, &issuers),
-            |item| match &mut item.input {
-                InputContent::FunctionCall(call) => vec![&mut call.call_id],
-                InputContent::FunctionCallOutput(result) => vec![&mut result.call_id],
-                _ => Vec::new(),
+            |message| {
+                position += 1;
+                input_items(message, position - 1, &mut custom)
             },
+            InputItem::call_ids,
         )?;
 
         let mut lift_system_text = |text: String| {
@@ -1330,7 +1124,8 @@ impl TryFrom<ResponsesRequestParams> for CompletionRequest {
                 },
             )?
         };
-        if additional_parameters.reasoning.is_some() {
+        // Reasoning replays without stored state only with its ciphertext.
+        if additional_parameters.reasoning.is_some() || additional_parameters.store == Some(false) {
             let include = additional_parameters.include.get_or_insert_with(Vec::new);
             if !include
                 .iter()
@@ -1890,13 +1685,14 @@ pub enum Include {
     CodeInterpreterCallOutputs,
 }
 
-/// A Responses output item. Unrecognized types, including hosted tools, decode
-/// to [`Output::Unknown`] with their JSON value preserved. Malformed known
-/// types fail deserialization.
+/// A Responses output item. Unrecognized types, including hosted tools and
+/// compaction, decode to [`Output::Unknown`] with their JSON value preserved.
+/// Malformed known types fail deserialization.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Output {
     Message(OutputMessage),
     FunctionCall(OutputFunctionCall),
+    CustomToolCall(OutputCustomToolCall),
     Reasoning {
         id: String,
         summary: Vec<ReasoningSummary>,
@@ -1907,11 +1703,6 @@ pub enum Output {
         signature: Option<String>,
         status: Option<ToolStatus>,
     },
-    /// An opaque compaction item (`"type": "compaction"`), preserved verbatim
-    /// so it can be sent back as an input item on the next request. Kept
-    /// distinct from [`Output::Unknown`] because OpenAI documents it as a
-    /// must-replay item, and [`InputContent::Compaction`] is its input twin.
-    Compaction(Map<String, Value>),
     /// Catch-all for output item types this version does not model. Holds the
     /// raw item object exactly as it appeared in the provider's `output[]`
     /// array, so hosted-tool payloads survive the typed decode.
@@ -1971,6 +1762,7 @@ impl Serialize for Output {
         let value = match self {
             Output::Message(message) => tagged_output_object("message", message),
             Output::FunctionCall(call) => tagged_output_object("function_call", call),
+            Output::CustomToolCall(call) => tagged_output_object("custom_tool_call", call),
             Output::Reasoning {
                 id,
                 summary,
@@ -1996,11 +1788,6 @@ impl Serialize for Output {
                     map.insert("signature".to_string(), Value::String(signature.clone()));
                 }
                 Ok(value)
-            }
-            Output::Compaction(fields) => {
-                let mut map = fields.clone();
-                map.insert("type".to_string(), Value::String("compaction".to_string()));
-                return Value::Object(map).serialize(serializer);
             }
             Output::Unknown(value) => return value.serialize(serializer),
         };
@@ -2028,16 +1815,12 @@ impl<'de> Deserialize<'de> for Output {
             "function_call" => serde_json::from_value(value)
                 .map(Output::FunctionCall)
                 .map_err(serde::de::Error::custom),
+            "custom_tool_call" => serde_json::from_value(value)
+                .map(Output::CustomToolCall)
+                .map_err(serde::de::Error::custom),
             "reasoning" => serde_json::from_value::<ReasoningFields>(value)
                 .map(Output::from)
                 .map_err(serde::de::Error::custom),
-            "compaction" => {
-                let Value::Object(mut map) = value else {
-                    return Ok(Output::Unknown(value));
-                };
-                map.remove("type");
-                Ok(Output::Compaction(map))
-            }
             _ => Ok(Output::Unknown(value)),
         }
     }
@@ -2057,6 +1840,19 @@ pub struct OutputFunctionCall {
     pub call_id: String,
     pub name: String,
     pub status: ToolStatus,
+}
+
+/// A call to a custom tool, whose input is free-form text rather than JSON
+/// arguments. Rig's canonical call carries it as `{"input": <text>}`.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+pub struct OutputCustomToolCall {
+    /// Provider-assigned `ctc_...` item ID.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub id: String,
+    pub call_id: String,
+    pub name: String,
+    #[serde(default)]
+    pub input: String,
 }
 
 /// Raw Responses function-call arguments, parsed as JSON at consumption time.
@@ -2144,7 +1940,7 @@ pub enum OutputRole {
     Assistant,
 }
 
-/// An OpenAI Responses API message.
+/// A system or user message of a Responses request.
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 #[serde(tag = "role", rename_all = "lowercase")]
 pub enum Message {
@@ -2158,23 +1954,6 @@ pub enum Message {
     User {
         #[serde(deserialize_with = "string_or_vec")]
         content: Vec<UserContent>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        name: Option<String>,
-    },
-    Assistant {
-        content: Vec<AssistantContentType>,
-        #[serde(skip_serializing_if = "String::is_empty")]
-        id: String,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        name: Option<String>,
-        status: ToolStatus,
-        /// Generation phase preserved from the output message.
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        phase: Option<String>,
-    },
-    #[serde(rename = "assistant", skip_deserializing)]
-    AssistantInput {
-        content: String,
         #[serde(skip_serializing_if = "Option::is_none")]
         name: Option<String>,
     },
@@ -2217,185 +1996,6 @@ impl OutputText {
             extras: Map::new(),
         }
     }
-
-    /// Rebuild a wire block from a rig text block, re-attaching only the
-    /// extras this wire recognizes as its own: the sibling keys captured off
-    /// an `output_text` block at ingest (see
-    /// [`From<AssistantContent> for completion::AssistantContent`]).
-    #[cfg(any())]
-    fn from_message_text(
-        text: impl Into<String>,
-        additional_params: Option<crate::message::AdditionalParams>,
-    ) -> Self {
-        let Some(params) = additional_params else {
-            return Self::new(text);
-        };
-        // The caller diagnoses malformed extras before this conversion drops them.
-        let extras = params
-            .into_wire_extras(OPENAI_RESPONSES_EXTRAS_KEY)
-            .map(|map| {
-                map.into_iter()
-                    // Reserved keys would duplicate the block's text or tag.
-                    // Phase and the item id belong on the message, not the
-                    // content block.
-                    .filter(|(key, _)| {
-                        key != "text"
-                            && key != "type"
-                            && key != OPENAI_RESPONSES_PHASE_KEY
-                            && key != OPENAI_RESPONSES_MESSAGE_ID_KEY
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
-        Self {
-            text: text.into(),
-            extras,
-        }
-    }
-}
-
-/// Builds the assistant input one text block replays as, using only
-/// Responses-owned extras. The item is the block's own message item when its
-/// extras name one, and `id` otherwise; its `phase` comes from the extras.
-/// Empty text is skipped unless the item has an id and owned extras. Without
-/// an id the text replays id-less: `phase` rides it, content-part extras do
-/// not. Malformed or dropped extras warn.
-#[cfg(any())]
-fn assistant_text_replay_message(
-    id: Option<&str>,
-    text: String,
-    additional_params: Option<crate::message::AdditionalParams>,
-) -> Option<Message> {
-    // Diagnose malformed extras before normalization makes them indistinguishable
-    // from absent extras, including when empty text is skipped.
-    if let Some(non_object) = additional_params
-        .as_ref()
-        .and_then(|params| params.get(OPENAI_RESPONSES_EXTRAS_KEY))
-        .filter(|value| !value.is_object())
-    {
-        tracing::warn!(
-            %non_object,
-            "`additional_params[\"{OPENAI_RESPONSES_EXTRAS_KEY}\"]` must be a JSON \
-             object — replaying without these extras"
-        );
-    }
-    let own_extras = additional_params
-        .as_ref()
-        .and_then(|params| params.wire_extras(OPENAI_RESPONSES_EXTRAS_KEY));
-    // `phase` and the item id ride the text block's own-wire extras on
-    // ingest; they belong to the message, so they are lifted here and
-    // filtered from the block.
-    let message_field = |key: &str| {
-        own_extras
-            .and_then(|extras| extras.get(key))
-            .and_then(Value::as_str)
-            .filter(|value| !value.is_empty())
-            .map(str::to_owned)
-    };
-    let phase = message_field(OPENAI_RESPONSES_PHASE_KEY);
-    let id = message_field(OPENAI_RESPONSES_MESSAGE_ID_KEY).or_else(|| id.map(str::to_owned));
-    let content_extras = own_extras.is_some_and(|extras| {
-        extras
-            .keys()
-            .any(|key| key != OPENAI_RESPONSES_PHASE_KEY && key != OPENAI_RESPONSES_MESSAGE_ID_KEY)
-    });
-    if text.is_empty() && !(own_extras.is_some() && id.is_some()) {
-        return None;
-    }
-    if id.is_none() && content_extras {
-        tracing::warn!(
-            "own-wire extras cannot ride the id-less assistant form — \
-             replaying the text without them"
-        );
-    }
-    match (id, phase) {
-        (Some(id), phase) => Some(Message::Assistant {
-            content: vec![AssistantContentType::Text(AssistantContent::OutputText(
-                OutputText::from_message_text(text, additional_params),
-            ))],
-            id,
-            name: None,
-            status: ToolStatus::Completed,
-            phase,
-        }),
-        // The id-less input message form has no `phase`; an output message
-        // without its id carries one.
-        (None, Some(phase)) => Some(Message::Assistant {
-            content: vec![AssistantContentType::Text(AssistantContent::OutputText(
-                OutputText::new(text),
-            ))],
-            id: String::new(),
-            name: None,
-            status: ToolStatus::Completed,
-            phase: Some(phase),
-        }),
-        (None, None) => Some(Message::AssistantInput {
-            content: text,
-            name: None,
-        }),
-    }
-}
-
-/// Responses-owned extras in [`Text::additional_params`](crate::message::Text).
-/// Both paths capture these fields for replay: streamed text takes them from
-/// its message item's snapshot, not from `output_text.annotation.added`.
-pub(crate) const OPENAI_RESPONSES_EXTRAS_KEY: &str = "openai_responses";
-
-/// Key inside the [`OPENAI_RESPONSES_EXTRAS_KEY`] object that carries the
-/// output message's `phase`. It is message-level on the wire but rides the
-/// text block's extras in rig history (the only own-wire seat), and is
-/// lifted back onto the assistant input item at replay.
-pub(crate) const OPENAI_RESPONSES_PHASE_KEY: &str = "phase";
-
-/// Key inside the [`OPENAI_RESPONSES_EXTRAS_KEY`] object that carries the
-/// id of the message item a text block came from. Recorded only when a
-/// reply carries several message items, which one rig assistant message
-/// id cannot name; lifted back onto the assistant input item at replay.
-pub(crate) const OPENAI_RESPONSES_MESSAGE_ID_KEY: &str = "message_id";
-
-/// Converts output text or a refusal to a Rig text block, retaining nonempty
-/// output-text extras under the Responses key.
-#[cfg(any())]
-pub(crate) fn text_block(value: AssistantContent) -> Text {
-    match value {
-        AssistantContent::Refusal { refusal } => Text::new(refusal),
-        // Keep this destructuring exhaustive so new wire fields force an
-        // explicit capture-or-drop decision.
-        AssistantContent::OutputText(OutputText { text, extras }) => {
-            // Empty metadata must not change replayed request bytes.
-            let extras: Map<String, Value> = extras
-                .into_iter()
-                .filter(|(_, value)| {
-                    !(value.is_null()
-                        || value.as_array().is_some_and(Vec::is_empty)
-                        || value.as_object().is_some_and(Map::is_empty))
-                })
-                .collect();
-            Text {
-                text,
-                additional_params: crate::message::AdditionalParams::from_entries(
-                    (!extras.is_empty())
-                        .then_some((OPENAI_RESPONSES_EXTRAS_KEY, Value::Object(extras))),
-                ),
-            }
-        }
-    }
-}
-
-#[cfg(any())]
-impl From<AssistantContent> for completion::AssistantContent {
-    fn from(value: AssistantContent) -> Self {
-        completion::AssistantContent::Text(text_block(value))
-    }
-}
-
-/// The type of assistant content.
-#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
-#[serde(untagged)]
-pub enum AssistantContentType {
-    Text(AssistantContent),
-    ToolCall(OutputFunctionCall),
-    Reasoning(OpenAIReasoning),
 }
 
 /// System content for the OpenAI Responses API.
@@ -2457,8 +2057,6 @@ impl FromStr for UserContent {
 }
 
 #[cfg(test)]
-#[cfg(any())]
 mod stateless_replay_tests;
 #[cfg(test)]
-#[cfg(any())]
 mod tests;

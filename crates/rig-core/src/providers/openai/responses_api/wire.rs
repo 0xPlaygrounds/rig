@@ -16,7 +16,11 @@ use crate::wire::{
 };
 use serde::{Deserialize, Serialize};
 
-use super::{CompletionRequest, Include, ResponsesToolDefinition, SystemInstructionsPlacement};
+use super::streaming::ResponsesDecoder;
+use super::{
+    CompletionRequest, Include, ResponsesRequestParams, ResponsesToolDefinition,
+    SystemInstructionsPlacement,
+};
 
 /// The Responses wire: `POST /responses`, SSE when streamed.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -35,7 +39,6 @@ pub struct Responses {
 }
 
 impl Responses {
-    #[cfg(any())]
     pub(crate) fn encode_with_headers(
         &self,
         request: completion::CompletionRequest,
@@ -46,11 +49,6 @@ impl Responses {
             http::request::Builder,
         ) -> http::request::Builder,
     ) -> Result<Encoded, EncodeError> {
-        let (request, issuers) = crate::providers::openai::wire::scope_reasoning(
-            &self.provider.dialect,
-            &self.model,
-            request,
-        )?;
         let quirks = &self.provider.dialect.quirks.responses;
         // The codex gateway only ever answers with an event stream, and
         // names no content type on it. It is asked for one whatever the
@@ -63,7 +61,7 @@ impl Responses {
             &request,
             http::Request::post(self.provider.uri(quirks.path, None)),
         );
-        let request = self.responses_request(request, issuers, streaming)?;
+        let request = self.responses_request(request, streaming)?;
         crate::providers::internal::trace_json(
             crate::providers::internal::LogTarget::Completions,
             "Responses completion request",
@@ -142,11 +140,9 @@ impl Responses {
     }
 
     /// The Responses request this wire sends, before serialization.
-    #[cfg(any())]
     pub(crate) fn responses_request(
         &self,
         request: completion::CompletionRequest,
-        issuers: Vec<crate::message::Issuer>,
         streaming: bool,
     ) -> Result<CompletionRequest, EncodeError> {
         let quirks = &self.provider.dialect.quirks.responses;
@@ -154,7 +150,6 @@ impl Responses {
             model: self.model.clone(),
             request,
             system_instructions_placement: self.system_instructions,
-            issuers,
         })?;
         request.tools.extend(self.tools.clone());
         if self.strict_tools {
@@ -216,9 +211,7 @@ impl Wire for Responses {
     type Op = Completion;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
-    #[cfg(any())]
-    type Decoder<'id> = ResponsesDecoder<'id>;
-    type Decoder<'id> = crate::providers::internal::Unmigrated;
+    type Decoder<'id> = ResponsesDecoder;
 
     /// The xAI contract does not compose native structured output with tools.
     fn describe(&self) -> Descriptor<'_> {
@@ -232,7 +225,6 @@ impl Wire for Responses {
             .replay(self)
     }
 
-    #[cfg(any())]
     fn encode(
         &self,
         request: completion::CompletionRequest,
@@ -240,32 +232,17 @@ impl Wire for Responses {
     ) -> Result<Encoded, EncodeError> {
         self.encode_with_headers(request, mode, OpenAIConfig::completion_headers)
     }
-    fn encode(
-        &self,
-        request: completion::CompletionRequest,
-        mode: Mode,
-    ) -> Result<Encoded, EncodeError> {
-        let _ = (request, mode);
-        Err(crate::providers::internal::Unmigrated::encode_error())
-    }
 
-    #[cfg(any())]
-    fn decoder<'id>(&self) -> ResponsesDecoder<'id> {
-        let quirks = &self.provider.dialect.quirks.responses;
-        let mut decoder = ResponsesDecoder::new(self.provider.dialect.name);
-        if quirks.contract == ResponsesContract::Codex {
-            // The codex gateway's replayed frames may omit their envelope
-            // bookkeeping; elsewhere an envelope-less frame is a defect
-            // worth surfacing rather than salvaging.
-            decoder = decoder.with_envelope_repair();
-        }
-        if self.provider.dialect.quirks.upstream_reasoning_issuer {
-            decoder = decoder.with_upstream_reasoning_issuer();
-        }
-        decoder
-    }
     fn decoder<'id>(&self) -> Self::Decoder<'id> {
-        crate::providers::internal::Unmigrated
+        let decoder = ResponsesDecoder::new();
+        // The codex gateway's replayed frames may omit their envelope
+        // bookkeeping; elsewhere an envelope-less frame is a defect worth
+        // surfacing rather than salvaging.
+        if self.provider.dialect.quirks.responses.contract == ResponsesContract::Codex {
+            decoder.with_envelope_repair()
+        } else {
+            decoder
+        }
     }
 }
 
@@ -281,33 +258,23 @@ impl crate::completion::ReplayTarget for Responses {
     fn model(&self) -> &str {
         &self.model
     }
-}
 
-/// Normalize a whole Responses body through the decoder and completion fold.
-/// Return serialization, decoder, or fold errors without performing I/O.
-#[cfg(any(test, feature = "websocket"))]
-pub(crate) fn fold_body(
-    provider: &str,
-    response: super::CompletionResponse,
-) -> Result<completion::CompletionResponse, crate::error::ProviderError> {
-    use crate::wire::Reply;
-
-    let reply = Reply {
-        provider: provider.to_owned(),
-        raw: serde_json::to_value(&response)?,
-        provider_request_id: None,
-    };
-    let body = serde_json::to_string(&response)?;
-    let wire = Responses::new(
-        crate::providers::openai::OpenAIConfig::new("decode-only"),
-        String::new(),
-    );
-    crate::driver::decode_body(
-        &wire,
-        crate::operation::Turn::relayed(provider),
-        body,
-        reply,
-    )
+    /// pi's `normalizeIdPart`: characters outside `[a-zA-Z0-9_-]` become
+    /// `_`, the id is cut to 64 characters and loses its trailing `_`.
+    fn normalize_tool_call_id(&self, id: &str, _source: Option<&crate::message::Origin>) -> String {
+        let sanitized: String = id
+            .chars()
+            .map(|c| {
+                if c.is_ascii_alphanumeric() || c == '_' || c == '-' {
+                    c
+                } else {
+                    '_'
+                }
+            })
+            .take(64)
+            .collect();
+        sanitized.trim_end_matches('_').to_owned()
+    }
 }
 
 #[derive(Default, Deserialize)]
@@ -425,5 +392,4 @@ pub(crate) fn project_payload(payload: &[u8], sink: &mut ObservationSink<'_>) {
 }
 
 #[cfg(test)]
-#[cfg(any())]
 mod tests;

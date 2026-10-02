@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use crate::completion::CompletionRequest;
 use crate::error::{EncodeError, ProviderError};
 use crate::operation::Completion;
-use crate::providers::openai::responses_api::streaming::ResponsesEvent;
+use crate::providers::openai::responses_api::streaming::{ResponsesDecoder, ResponsesEvent};
 use crate::providers::openai::responses_api::wire::Responses;
 use crate::providers::openai::responses_api::{
     ResponsesToolDefinition, SystemInstructionsPlacement,
@@ -72,7 +72,6 @@ impl OpenAiWire {
 
     /// A wrapper owning the envelope replaces the dialect's envelope here,
     /// before either encoder consumes the completion request.
-    #[cfg(any())]
     pub(crate) fn encode_with_headers(
         &self,
         request: CompletionRequest,
@@ -83,7 +82,10 @@ impl OpenAiWire {
             http::request::Builder,
         ) -> http::request::Builder,
     ) -> Result<Encoded, EncodeError> {
-        on_route!(self, wire => wire.encode_with_headers(request, mode, headers))
+        match self {
+            Self::Chat(_) => Err(crate::providers::internal::Unmigrated::encode_error()),
+            Self::Responses(wire) => wire.encode_with_headers(request, mode, headers),
+        }
     }
 
     /// The configuration this wire speaks to.
@@ -176,55 +178,44 @@ impl Wire for OpenAiWire {
     type Op = Completion;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
-    #[cfg(any())]
-    type Decoder<'id> = OpenAiDecoder<'id>;
-    type Decoder<'id> = crate::providers::internal::Unmigrated;
+    type Decoder<'id> = OpenAiDecoder;
 
     fn describe(&self) -> Descriptor<'_> {
         on_route!(self, wire => wire.describe())
     }
 
-    #[cfg(any())]
     fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, EncodeError> {
-        on_route!(self, wire => wire.encode(request, mode))
-    }
-    fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, EncodeError> {
-        let _ = (request, mode);
-        Err(crate::providers::internal::Unmigrated::encode_error())
-    }
-
-    #[cfg(any())]
-    fn decoder<'id>(&self) -> OpenAiDecoder<'id> {
         match self {
-            Self::Chat(wire) => OpenAiDecoder::Chat(wire.decoder()),
-            Self::Responses(wire) => OpenAiDecoder::Responses(wire.decoder()),
+            Self::Chat(_) => Err(crate::providers::internal::Unmigrated::encode_error()),
+            Self::Responses(wire) => wire.encode(request, mode),
         }
     }
+
     fn decoder<'id>(&self) -> Self::Decoder<'id> {
-        crate::providers::internal::Unmigrated
+        match self {
+            Self::Chat(_) => OpenAiDecoder::Chat(crate::providers::internal::Unmigrated),
+            Self::Responses(wire) => OpenAiDecoder::Responses(wire.decoder()),
+        }
     }
 }
 
 /// One classified frame of whichever route is answering.
-#[cfg(any())]
 pub enum OpenAiEvent {
     /// A chat-completions frame.
-    Chat(ChatEvent),
+    Chat(()),
     /// A Responses frame.
     Responses(ResponsesEvent),
 }
 
 /// The chosen route's decoder.
-#[cfg(any())]
-pub enum OpenAiDecoder<'id> {
+pub enum OpenAiDecoder {
     /// The chat-completions state machine.
-    Chat(ChatDecoder<'id>),
+    Chat(crate::providers::internal::Unmigrated),
     /// The Responses state machine.
-    Responses(ResponsesDecoder<'id>),
+    Responses(ResponsesDecoder),
 }
 
-#[cfg(any())]
-impl<'id> Decoder<'id, Completion> for OpenAiDecoder<'id> {
+impl<'id> Decoder<'id, Completion> for OpenAiDecoder {
     type Event = OpenAiEvent;
 
     fn classify(&self, frame: WireFrame) -> WireEvent<OpenAiEvent> {
@@ -240,7 +231,9 @@ impl<'id> Decoder<'id, Completion> for OpenAiDecoder<'id> {
         out: Out<'id, Completion>,
     ) -> Result<Flow, ProviderError> {
         match (self, event) {
-            (Self::Chat(decoder), OpenAiEvent::Chat(event)) => decoder.decode(event, out),
+            (Self::Chat(decoder), OpenAiEvent::Chat(event)) => {
+                Decoder::<'id, Completion>::decode(decoder, event, out)
+            }
             (Self::Responses(decoder), OpenAiEvent::Responses(event)) => decoder.decode(event, out),
             // The driver feeds each decoder only events from its own
             // classifier.
@@ -250,7 +243,10 @@ impl<'id> Decoder<'id, Completion> for OpenAiDecoder<'id> {
     }
 
     fn eof(&mut self, out: Out<'id, Completion>) -> Result<Flow, ProviderError> {
-        on_route!(self, decoder => decoder.eof(out))
+        match self {
+            Self::Chat(decoder) => Decoder::<'id, Completion>::eof(decoder, out),
+            Self::Responses(decoder) => decoder.eof(out),
+        }
     }
 }
 

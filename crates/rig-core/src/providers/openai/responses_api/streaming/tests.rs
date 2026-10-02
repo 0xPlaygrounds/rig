@@ -1,11 +1,11 @@
 use super::{
     ContentPartChunkPart, ItemChunkKind, ResponsesDecoder, StreamingCompletionChunk,
-    classify_responses_frame, reasoning_from_done_item,
+    classify_responses_frame,
 };
 use crate::completion::CompletionRequest;
 use crate::driver::{Decoded, feed_frames};
 use crate::error::{ErrorKind, ErrorReport, ProviderError};
-use crate::message::{AssistantContent, ReasoningContent};
+use crate::message::AssistantContent;
 use crate::operation::Completion;
 use crate::providers::internal::openai_chat_completions_compatible::test_support::{
     sse_bytes_from_data_lines, sse_bytes_from_json_events,
@@ -13,12 +13,11 @@ use crate::providers::internal::openai_chat_completions_compatible::test_support
 use crate::providers::openai::OpenAIConfig;
 use crate::providers::openai::responses_api::{
     AdditionalParameters, CompletionResponse, IncompleteDetailsReason, OutputTokensDetails,
-    ReasoningSummary, ResponseError, ResponseObject, ResponseStatus, ResponsesUsage,
+    ResponseError, ResponseObject, ResponseStatus, ResponsesUsage,
 };
 use crate::streaming::{Item, PartKind, StreamEvent};
 use crate::test_utils::MockStreamingClient;
-use crate::wire::WireEvent;
-use crate::wire::WireFrame;
+use crate::wire::{Mode, WireEvent, WireFrame};
 use futures::StreamExt;
 use serde_json::{self, json};
 
@@ -210,94 +209,6 @@ fn sample_response(status: ResponseStatus) -> CompletionResponse {
         tools: Vec::new(),
         additional_parameters: AdditionalParameters::default(),
     }
-}
-
-#[test]
-fn reasoning_done_item_fuses_summary_content_and_encrypted_into_one_end() {
-    let summary = vec![
-        ReasoningSummary::SummaryText {
-            text: "step 1".to_string(),
-        },
-        ReasoningSummary::SummaryText {
-            text: "step 2".to_string(),
-        },
-    ];
-    let content = vec!["private reasoning".to_string()];
-    let reasoning = reasoning_from_done_item(
-        Some("rs_1"),
-        summary,
-        content,
-        Some("enc_blob".to_string()),
-        None,
-    );
-
-    // ONE restatement carrying every block in wire field order — never a
-    // block per entry, which made siblings under one `rs_*` id.
-    let Some(reasoning) = reasoning else {
-        panic!("expected one wire-sent reasoning restatement");
-    };
-    assert_eq!(reasoning.id.as_deref(), Some("rs_1"));
-    assert_eq!(
-        reasoning.content,
-        vec![
-            ReasoningContent::Summary("step 1".to_string()),
-            ReasoningContent::Summary("step 2".to_string()),
-            ReasoningContent::Text {
-                text: "private reasoning".to_string(),
-                signature: None,
-            },
-            ReasoningContent::Encrypted("enc_blob".to_string()),
-        ]
-    );
-}
-
-#[test]
-fn reasoning_done_item_without_encrypted_emits_summary_only() {
-    let summary = vec![ReasoningSummary::SummaryText {
-        text: "only summary".to_string(),
-    }];
-    let reasoning = reasoning_from_done_item(Some("rs_2"), summary, Vec::new(), None, None);
-
-    let Some(reasoning) = reasoning else {
-        panic!("expected one reasoning restatement");
-    };
-    assert_eq!(reasoning.id.as_deref(), Some("rs_2"));
-    assert_eq!(
-        reasoning.content,
-        vec![ReasoningContent::Summary("only summary".to_string())]
-    );
-}
-
-#[test]
-fn empty_encrypted_reasoning_is_not_emitted() {
-    let content = vec!["visible reasoning".to_string()];
-
-    let reasoning =
-        reasoning_from_done_item(Some("rs_1"), Vec::new(), content, Some(String::new()), None);
-
-    let Some(reasoning) = reasoning else {
-        panic!("expected one reasoning restatement");
-    };
-    assert_eq!(
-        reasoning.content,
-        vec![ReasoningContent::Text {
-            text: "visible reasoning".to_string(),
-            signature: None,
-        }],
-        "an empty encrypted payload contributes no block"
-    );
-
-    // An entirely empty done item says nothing at the boundary.
-    assert!(
-        reasoning_from_done_item(
-            Some("rs_1"),
-            Vec::new(),
-            Vec::new(),
-            Some(String::new()),
-            None
-        )
-        .is_none()
-    );
 }
 
 #[test]
@@ -665,12 +576,8 @@ async fn responses_stream_of(events: &[serde_json::Value]) -> crate::streaming::
 }
 
 /// Decode a Responses SSE body — its `data:` lines — through the decoder a
-/// buffered replay runs: envelope repair on, seeded with `initial_usage`.
-fn decoded_body(
-    provider: &str,
-    body: &str,
-    initial_usage: Option<ResponsesUsage>,
-) -> Decoded<Completion> {
+/// buffered replay runs: envelope repair on.
+fn decoded_body(body: &str) -> Decoded<Completion> {
     let frames: Vec<WireFrame> = body
         .lines()
         .filter_map(|line| line.strip_prefix("data:").map(str::trim))
@@ -678,10 +585,8 @@ fn decoded_body(
         .map(|data| WireFrame::Text(data.to_owned()))
         .collect();
     feed_frames!(
-        ResponsesDecoder::new(provider)
-            .with_envelope_repair()
-            .with_initial_usage(initial_usage),
-        provider,
+        ResponsesDecoder::new().with_envelope_repair(),
+        "openai",
         frames
     )
 }
@@ -778,18 +683,14 @@ async fn flushed_tool_call_then_error(
 /// a no-op: replaying it would double every raw-reasoning block.
 #[test]
 fn reasoning_text_done_emits_nothing() {
-    let decoded = decoded_body(
-        "openai",
-        &body_of(&[json!({
-            "type": "response.reasoning_text.done",
-            "item_id": "rs_1",
-            "output_index": 0,
-            "content_index": 0,
-            "sequence_number": 7,
-            "text": "the model's raw chain of thought",
-        })]),
-        None,
-    );
+    let decoded = decoded_body(&body_of(&[json!({
+        "type": "response.reasoning_text.done",
+        "item_id": "rs_1",
+        "output_index": 0,
+        "content_index": 0,
+        "sequence_number": 7,
+        "text": "the model's raw chain of thought",
+    })]));
     assert!(
         decoded.events().is_empty(),
         "the done restatement must not re-emit the reasoning text: {:?}",
@@ -822,7 +723,7 @@ fn a_buffered_body_preserves_its_error_payloads() {
 
     for event in events {
         let payload = serde_json::to_string(&event).expect("event should serialize");
-        let err = decoded_body("ChatGPT", &format!("data: {payload}\n"), None)
+        let err = decoded_body(&format!("data: {payload}\n"))
             .outcome
             .expect_err("error payload should surface as provider response");
 
@@ -834,9 +735,8 @@ fn a_buffered_body_preserves_its_error_payloads() {
 
 #[test]
 fn reasoning_output_item_done_emits_reasoning_text_content() {
-    let decoded = decoded_body(
-        "openai",
-        &body_of(&[json!({
+    let decoded = decoded_body(&body_of(&[
+        json!({
             "type": "response.output_item.done",
             "output_index": 0,
             "sequence_number": 1,
@@ -847,22 +747,18 @@ fn reasoning_output_item_done_emits_reasoning_text_content() {
                 "content": [{ "type": "reasoning_text", "text": "visible reasoning" }],
                 "status": "completed"
             },
-        })]),
-        None,
-    );
-    // The done item is one whole reasoning part, under the item's id.
+        }),
+        completed_with(2, json!([])),
+    ]));
+    // The done item is one whole reasoning part holding the item.
     let ended = decoded.ended();
     let [AssistantContent::Reasoning(reasoning)] = ended.as_slice() else {
         panic!("one reasoning part: {:?}", decoded.events());
     };
-    let reasoning = reasoning.value();
-    assert_eq!(reasoning.id.as_deref(), Some("rs_text_1"));
+    assert_eq!(reasoning.text, "visible reasoning");
     assert_eq!(
-        reasoning.content,
-        vec![ReasoningContent::Text {
-            text: "visible reasoning".to_string(),
-            signature: None,
-        }]
+        ended[0].native_item().and_then(|item| item["id"].as_str()),
+        Some("rs_text_1")
     );
 }
 
@@ -870,55 +766,47 @@ fn reasoning_output_item_done_emits_reasoning_text_content() {
 /// the done item restating the whole part, then visible text.
 #[test]
 fn envelope_less_reasoning_then_text_decodes() {
-    let decoded = decoded_body(
-        "openai",
-        &body_of(&[
-            json!({
-                "type": "response.reasoning_summary_text.delta",
-                "output_index": 0,
-                "summary_index": 0,
-                "sequence_number": 1,
-                "delta": "thinking",
-            }),
-            json!({
-                "type": "response.output_item.done",
-                "output_index": 0,
-                "sequence_number": 2,
-                "item": {
-                    "type": "reasoning",
-                    "id": "",
-                    "summary": [{ "type": "summary_text", "text": "thinking, complete" }],
-                    "status": "completed"
-                },
-            }),
-            json!({
-                "type": "response.output_text.delta",
-                "item_id": "msg_1",
-                "output_index": 1,
-                "content_index": 0,
-                "sequence_number": 3,
-                "delta": "the answer",
-            }),
-        ]),
-        None,
-    );
+    let decoded = decoded_body(&body_of(&[
+        json!({
+            "type": "response.reasoning_summary_text.delta",
+            "output_index": 0,
+            "summary_index": 0,
+            "sequence_number": 1,
+            "delta": "thinking",
+        }),
+        json!({
+            "type": "response.output_item.done",
+            "output_index": 0,
+            "sequence_number": 2,
+            "item": {
+                "type": "reasoning",
+                "id": "",
+                "summary": [{ "type": "summary_text", "text": "thinking, complete" }],
+                "status": "completed"
+            },
+        }),
+        json!({
+            "type": "response.output_text.delta",
+            "item_id": "msg_1",
+            "output_index": 1,
+            "content_index": 0,
+            "sequence_number": 3,
+            "delta": "the answer",
+        }),
+    ]));
     assert_eq!(texts_of(&decoded.events()), ["the answer"]);
 }
 
 #[test]
 fn reasoning_text_delta_emits_reasoning_delta() {
-    let decoded = decoded_body(
-        "openai",
-        &body_of(&[json!({
-            "type": "response.reasoning_text.delta",
-            "item_id": "rs_delta_1",
-            "output_index": 0,
-            "content_index": 0,
-            "sequence_number": 1,
-            "delta": "thinking",
-        })]),
-        None,
-    );
+    let decoded = decoded_body(&body_of(&[json!({
+        "type": "response.reasoning_text.delta",
+        "item_id": "rs_delta_1",
+        "output_index": 0,
+        "content_index": 0,
+        "sequence_number": 1,
+        "delta": "thinking",
+    })]));
     // The first fragment of an unseen item opens its part.
     assert!(
         matches!(
@@ -930,39 +818,6 @@ fn reasoning_text_delta_emits_reasoning_delta() {
         ),
         "{:?}",
         decoded.events()
-    );
-}
-
-#[test]
-fn unknown_output_item_surfaces_as_raw_unknown_choice() {
-    // A hosted-tool item (web_search_call) arriving on
-    // `response.output_item.done` reaches stream consumers as an unmodeled
-    // item carrying the verbatim item, mirroring how the non-streaming
-    // decode preserves it on `CompletionResponse.output`.
-    let item = json!({
-        "type": "web_search_call",
-        "id": "ws_001",
-        "status": "completed",
-        "action": { "type": "search", "queries": ["rig framework"] },
-    });
-    let decoded = decoded_body(
-        "openai",
-        &body_of(&[json!({
-            "type": "response.output_item.done",
-            "output_index": 0,
-            "sequence_number": 1,
-            "item": item,
-        })]),
-        None,
-    );
-    let unknown = decoded.items.iter().find_map(|event| match event {
-        Ok(Item::Unknown(value)) => Some(value),
-        _ => None,
-    });
-    assert_eq!(
-        unknown,
-        Some(&item.into()),
-        "the raw web_search_call item should reach the consumer verbatim",
     );
 }
 
@@ -1020,53 +875,6 @@ async fn response_incomplete_chunk_is_a_successful_terminal_with_mapped_finish_r
     assert_eq!(response.usage.total_tokens, Some(15));
 }
 
-/// A multi-block reasoning done item (summaries + `encrypted_content`)
-/// is exactly ONE reasoning part carrying every block in wire order —
-/// never sibling parts sharing one `rs_*` id, which would replay as
-/// duplicate reasoning input items carrying the identical id.
-#[tokio::test]
-async fn multi_block_reasoning_done_item_yields_one_part() {
-    let reasoning_done = json!({
-        "type": "response.output_item.done",
-        "output_index": 0,
-        "sequence_number": 1,
-        "item": {
-            "type": "reasoning",
-            "id": "rs_1",
-            "summary": [
-                {"type": "summary_text", "text": "step 1"},
-                {"type": "summary_text", "text": "step 2"}
-            ],
-            "content": [],
-            "encrypted_content": "enc_blob"
-        }
-    });
-    let completed = json!({
-        "type": "response.completed",
-        "sequence_number": 2,
-        "response": sample_response(ResponseStatus::Completed),
-    });
-
-    let mut stream = responses_stream_of(&[reasoning_done, completed]).await;
-    while let Some(item) = stream.next().await {
-        item.expect("stream items should be ok");
-    }
-    let choice = stream.finish().await.expect("the reply ended").choice;
-    let [AssistantContent::Reasoning(reasoning)] = choice.as_slice() else {
-        panic!("one reasoning part per rs_* id, got {choice:?}");
-    };
-    assert_eq!(reasoning.value().id.as_deref(), Some("rs_1"));
-    assert_eq!(
-        reasoning.value().content,
-        vec![
-            ReasoningContent::Summary("step 1".to_string()),
-            ReasoningContent::Summary("step 2".to_string()),
-            ReasoningContent::Encrypted("enc_blob".to_string()),
-        ],
-        "every block survives, in wire order, inside the one part"
-    );
-}
-
 /// A `response.failed` after a fully-delivered tool call: the call ended
 /// when its done item arrived, the terminal error follows, and nothing
 /// comes after it.
@@ -1100,9 +908,11 @@ async fn response_failed_follows_the_delivered_tool_call() {
 
     let mut stream = responses_stream_of(&[tool_call_done, failed]).await;
     let (tool_call, err) = flushed_tool_call_then_error(&mut stream).await;
-    let provider = tool_call.id.provider().expect("provider ids are kept");
-    assert_eq!(provider.call_id, "call_123");
-    assert_eq!(provider.item_id.as_deref(), Some("fc_123"));
+    assert_eq!(tool_call.id, crate::message::CallId::from_wire("call_123"));
+    assert_eq!(
+        tool_call.native.as_ref().map(|native| &native.item["id"]),
+        Some(&json!("fc_123"))
+    );
     assert_eq!(tool_call.function.name, "example_tool");
 
     assert_eq!(err.kind, ErrorKind::ProviderResponse);
@@ -1143,9 +953,11 @@ async fn a_transport_error_follows_the_delivered_tool_call() {
     let mut stream = responses_stream(SequencedStreamingHttpClient::new(chunks)).await;
 
     let (tool_call, err) = flushed_tool_call_then_error(&mut stream).await;
-    let provider = tool_call.id.provider().expect("provider ids are kept");
-    assert_eq!(provider.call_id, "call_123");
-    assert_eq!(provider.item_id.as_deref(), Some("fc_123"));
+    assert_eq!(tool_call.id, crate::message::CallId::from_wire("call_123"));
+    assert_eq!(
+        tool_call.native.as_ref().map(|native| &native.item["id"]),
+        Some(&json!("fc_123"))
+    );
     assert_eq!(
         err.http_status,
         Some(http::StatusCode::BAD_GATEWAY.as_u16())
@@ -1242,7 +1054,7 @@ async fn refusal_content_part_frames_are_no_ops_and_refusal_text_streams() {
             "response": sample_response(ResponseStatus::Completed),
         }),
     ];
-    let decoded = decoded_body("openai", &body_of(&events), None);
+    let decoded = decoded_body(&body_of(&events));
     assert_eq!(texts_of(&decoded.events()), ["I can't help with that."]);
     assert!(decoded.outcome.is_ok(), "the terminal must still arrive");
 }
@@ -1295,7 +1107,7 @@ fn corrupt_known_frame_fails_the_buffered_body() {
         "sequence_number": 2,
         "response": sample_response(ResponseStatus::Completed),
     });
-    let err = decoded_body("openai", &body_of(&[corrupt, completed.clone()]), None)
+    let err = decoded_body(&body_of(&[corrupt, completed.clone()]))
         .outcome
         .expect_err("a corrupt known frame must fail the buffered decode");
     assert!(
@@ -1305,11 +1117,11 @@ fn corrupt_known_frame_fails_the_buffered_body() {
 
     // Syntactically invalid JSON fails too.
     let body = format!("data: {{not json\ndata: {completed}\n");
-    assert!(decoded_body("openai", &body, None).outcome.is_err());
+    assert!(decoded_body(&body).outcome.is_err());
 
     // Unknown event types stay skippable.
     let unknown = json!({ "type": "response.rocket_launch", "count": 3 });
-    decoded_body("openai", &body_of(&[unknown, completed]), None)
+    decoded_body(&body_of(&[unknown, completed]))
         .outcome
         .expect("unknown event types must stay skippable");
 }
@@ -1324,50 +1136,34 @@ fn envelope_less_frames_repair_onto_the_shared_interpreter() {
     });
 
     // A ChatGPT-style text delta with no envelope bookkeeping fields.
-    let decoded = decoded_body(
-        "openai",
-        &body_of(&[
-            json!({ "type": "response.output_text.delta", "delta": "hi" }),
-            completed.clone(),
-        ]),
-        None,
-    );
+    let decoded = decoded_body(&body_of(&[
+        json!({ "type": "response.output_text.delta", "delta": "hi" }),
+        completed.clone(),
+    ]));
     assert_eq!(texts_of(&decoded.events()), ["hi"]);
 
     // An id-less, nameless arguments delta repairs and decodes; it never
     // becomes a call.
-    let decoded = decoded_body(
-        "openai",
-        &body_of(&[
-            json!({ "type": "response.function_call_arguments.delta", "delta": "{}" }),
-            completed.clone(),
-        ]),
-        None,
-    );
+    let decoded = decoded_body(&body_of(&[
+        json!({ "type": "response.function_call_arguments.delta", "delta": "{}" }),
+        completed.clone(),
+    ]));
     assert!(calls_of(&decoded.outcome.expect("it decodes")).is_empty());
 
     // An envelope-less bookkeeping event whose data is intact (`.done`
     // events) is a no-op, not an error.
-    decoded_body(
-        "openai",
-        &body_of(&[
-            json!({ "type": "response.output_text.done", "text": "hi" }),
-            completed.clone(),
-        ]),
-        None,
-    )
+    decoded_body(&body_of(&[
+        json!({ "type": "response.output_text.done", "text": "hi" }),
+        completed.clone(),
+    ]))
     .outcome
     .expect("an envelope-less done event must repair to the live no-op");
 
     // An envelope-less reasoning summary delta streams.
-    let decoded = decoded_body(
-        "openai",
-        &body_of(&[
-            json!({ "type": "response.reasoning_summary_text.delta", "delta": "think" }),
-            completed,
-        ]),
-        None,
-    );
+    let decoded = decoded_body(&body_of(&[
+        json!({ "type": "response.reasoning_summary_text.delta", "delta": "think" }),
+        completed,
+    ]));
     assert!(decoded.events().into_iter().any(|event| matches!(
         event,
         StreamEvent::Reasoning { text, .. } if text == "think"
@@ -1401,7 +1197,7 @@ fn an_unparseable_restatement_never_becomes_a_call() {
         },
     });
     for events in [vec![delta, done.clone()], vec![done]] {
-        let decoded = decoded_body("openai", &body_of(&events), None);
+        let decoded = decoded_body(&body_of(&events));
         assert!(
             decoded
                 .ended()
@@ -1411,337 +1207,6 @@ fn an_unparseable_restatement_never_becomes_a_call() {
             decoded.events()
         );
     }
-}
-
-/// A slot mixing id-bearing and id-less reasoning frames (gateways and
-/// ChatGPT's envelope-less replay bodies omit the id on a subset of a
-/// slot's events) is ONE reasoning part: the done item closes the part
-/// the fragments opened, and nothing orphans.
-#[tokio::test]
-async fn mixed_id_and_id_less_reasoning_frames_are_one_part() {
-    let events = [
-        json!({
-            "type": "response.reasoning_summary_text.delta",
-            "item_id": "rs_1",
-            "output_index": 0,
-            "summary_index": 0,
-            "sequence_number": 1,
-            "delta": "s1 ",
-        }),
-        json!({
-            "type": "response.reasoning_summary_text.delta",
-            "output_index": 0,
-            "summary_index": 0,
-            "sequence_number": 2,
-            "delta": "s2",
-        }),
-        json!({
-            "type": "response.output_item.done",
-            "output_index": 0,
-            "sequence_number": 3,
-            "item": {
-                "type": "reasoning",
-                "id": "rs_1",
-                "summary": [{"type": "summary_text", "text": "s1 s2"}],
-                "content": [],
-                "status": "completed",
-            },
-        }),
-        json!({
-            "type": "response.completed",
-            "response": sample_response(ResponseStatus::Completed),
-        }),
-    ];
-    let response = decoded_body("openai", &body_of(&events), None)
-        .outcome
-        .expect("the mixed slot should normalize");
-    let reasoning_parts = response
-        .choice
-        .iter()
-        .filter(|content| matches!(content, AssistantContent::Reasoning(_)))
-        .count();
-    assert_eq!(reasoning_parts, 1, "{:?}", response.choice);
-}
-
-/// #2258 F3: an id-less reasoning delta and the slot's `output_item.done`
-/// (which always carries the real `rs_*` id) are one part: the restated
-/// summary supersedes the fragments instead of duplicating them. This is
-/// the ChatGPT envelope-less replay shape.
-#[tokio::test]
-async fn envelope_less_reasoning_deltas_are_superseded_by_their_done_item() {
-    let events = [
-        json!({ "type": "response.reasoning_summary_text.delta", "delta": "think" }),
-        json!({
-            "type": "response.output_item.done",
-            "output_index": 0,
-            "sequence_number": 2,
-            "item": {
-                "type": "reasoning",
-                "id": "rs_1",
-                "summary": [{"type": "summary_text", "text": "think"}],
-                "content": [],
-                "status": "completed",
-            },
-        }),
-        json!({
-            "type": "response.completed",
-            "response": sample_response(ResponseStatus::Completed),
-        }),
-    ];
-    let response = decoded_body("chatgpt", &body_of(&events), None)
-        .outcome
-        .expect("replay should normalize");
-
-    let reasoning: Vec<_> = response
-        .choice
-        .iter()
-        .filter_map(|content| match content {
-            AssistantContent::Reasoning(reasoning) => Some(reasoning),
-            _ => None,
-        })
-        .collect();
-    assert_eq!(
-        reasoning.len(),
-        1,
-        "deltas and their full block must collapse to one reasoning item: {reasoning:?}"
-    );
-    let occurrences = reasoning
-        .iter()
-        .flat_map(|item| item.value().content.iter())
-        .filter(|content| match content {
-            ReasoningContent::Summary(text) | ReasoningContent::Text { text, .. } => {
-                text.contains("think")
-            }
-            _ => false,
-        })
-        .count();
-    assert_eq!(
-        occurrences, 1,
-        "the restated summary must supersede its deltas, not duplicate them"
-    );
-}
-
-/// #2258 P2: text deltas for one message item interleaved with reasoning
-/// are ONE text part.
-#[tokio::test]
-async fn same_item_text_resumes_as_one_part_across_interleaved_reasoning() {
-    let events = [
-        json!({
-            "type": "response.output_text.delta",
-            "item_id": "msg_1",
-            "output_index": 0,
-            "content_index": 0,
-            "sequence_number": 1,
-            "delta": "hello "
-        }),
-        json!({
-            "type": "response.reasoning_summary_text.delta",
-            "item_id": "rs_2",
-            "output_index": 1,
-            "summary_index": 0,
-            "sequence_number": 2,
-            "delta": "because"
-        }),
-        json!({
-            "type": "response.output_text.delta",
-            "item_id": "msg_1",
-            "output_index": 0,
-            "content_index": 0,
-            "sequence_number": 3,
-            "delta": "world"
-        }),
-        json!({
-            "type": "response.completed",
-            "sequence_number": 4,
-            "response": sample_response(ResponseStatus::Completed),
-        }),
-    ];
-    let response = decoded_body("openai", &body_of(&events), None)
-        .outcome
-        .expect("replay should normalize");
-    assert_eq!(
-        choice_text_parts(&response),
-        ["hello world"],
-        "same-item text must aggregate as one part around the reasoning"
-    );
-    assert!(
-        response
-            .choice
-            .iter()
-            .any(|content| matches!(content, AssistantContent::Reasoning(_))),
-        "the interleaved reasoning must survive"
-    );
-}
-
-/// A slot whose `added` event carries a real `fc_*` id but whose later
-/// args delta arrives id-less is one call, reporting the wire id.
-#[tokio::test]
-async fn mixed_id_and_id_less_events_are_one_call() {
-    let events = [
-        json!({
-            "type": "response.output_item.added",
-            "output_index": 0,
-            "sequence_number": 1,
-            "item": {
-                "type": "function_call",
-                "id": "fc_real",
-                "call_id": "call_a",
-                "name": "tool_a",
-                "arguments": "",
-                "status": "in_progress",
-            },
-        }),
-        json!({
-            "type": "response.function_call_arguments.delta",
-            "output_index": 0,
-            "sequence_number": 2,
-            "delta": "{\"x\":1}"
-        }),
-        json!({
-            "type": "response.output_item.done",
-            "output_index": 0,
-            "sequence_number": 3,
-            "item": {
-                "type": "function_call",
-                "id": "fc_real",
-                "call_id": "call_a",
-                "name": "tool_a",
-                "arguments": "{\"x\":1}",
-                "status": "completed",
-            },
-        }),
-        json!({
-            "type": "response.completed",
-            "sequence_number": 4,
-            "response": sample_response(ResponseStatus::Completed),
-        }),
-    ];
-    let response = decoded_body("openai", &body_of(&events), None)
-        .outcome
-        .expect("replay should normalize");
-    let [call] = calls_of(&response).try_into().expect("one call");
-    assert_eq!(call.function.name, "tool_a");
-    assert_eq!(call.function.arguments, json!({"x": 1}));
-    let provider = call.id.provider().expect("the wire issued ids");
-    assert_eq!(provider.call_id, "call_a");
-    assert_eq!(provider.item_id.as_deref(), Some("fc_real"));
-}
-
-/// #2258 P3: two parallel function calls whose events all lack `fc_*` ids
-/// assemble as two distinct calls.
-#[tokio::test]
-async fn parallel_id_less_function_calls_assemble_distinctly() {
-    let call_item = |name: &str, call_id: &str, arguments: &str| {
-        json!({
-            "type": "function_call",
-            "call_id": call_id,
-            "name": name,
-            "arguments": arguments,
-            "status": "completed",
-        })
-    };
-    let events = [
-        json!({
-            "type": "response.output_item.added",
-            "output_index": 0,
-            "sequence_number": 1,
-            "item": call_item("tool_a", "call_a", ""),
-        }),
-        json!({
-            "type": "response.output_item.added",
-            "output_index": 1,
-            "sequence_number": 2,
-            "item": call_item("tool_b", "call_b", ""),
-        }),
-        json!({
-            "type": "response.function_call_arguments.delta",
-            "output_index": 0,
-            "sequence_number": 3,
-            "delta": "{\"x\":1}"
-        }),
-        json!({
-            "type": "response.function_call_arguments.delta",
-            "output_index": 1,
-            "sequence_number": 4,
-            "delta": "{\"y\":2}"
-        }),
-        json!({
-            "type": "response.output_item.done",
-            "output_index": 0,
-            "sequence_number": 5,
-            "item": call_item("tool_a", "call_a", "{\"x\":1}"),
-        }),
-        json!({
-            "type": "response.output_item.done",
-            "output_index": 1,
-            "sequence_number": 6,
-            "item": call_item("tool_b", "call_b", "{\"y\":2}"),
-        }),
-        json!({
-            "type": "response.completed",
-            "sequence_number": 7,
-            "response": sample_response(ResponseStatus::Completed),
-        }),
-    ];
-    let response = decoded_body("openai", &body_of(&events), None)
-        .outcome
-        .expect("replay should normalize");
-    let calls: Vec<_> = calls_of(&response)
-        .into_iter()
-        .map(|call| (call.function.name.to_string(), call.function.arguments))
-        .collect();
-    assert_eq!(
-        calls,
-        [
-            ("tool_a".to_owned(), json!({"x": 1})),
-            ("tool_b".to_owned(), json!({"y": 2})),
-        ],
-        "each id-less slot must assemble its own call"
-    );
-}
-
-/// A lost `output_item.done` frame followed by a healthy
-/// `response.completed` must not discard the call as truncation: the
-/// provider proved the turn ended, so the still-open call closes at the
-/// terminal from its streamed fragments, with the dual-wire identity the
-/// added event announced.
-#[tokio::test]
-async fn a_lost_done_frame_does_not_discard_a_provider_completed_call() {
-    let events = [
-        json!({
-            "type": "response.output_item.added",
-            "output_index": 0,
-            "sequence_number": 1,
-            "item": {
-                "type": "function_call",
-                "id": "fc_1",
-                "call_id": "call_abc",
-                "name": "get_weather",
-                "arguments": "",
-                "status": "in_progress",
-            },
-        }),
-        json!({
-            "type": "response.function_call_arguments.delta",
-            "output_index": 0,
-            "sequence_number": 2,
-            "delta": "{\"city\":\"Paris\"}"
-        }),
-        json!({
-            "type": "response.completed",
-            "sequence_number": 3,
-            "response": sample_response(ResponseStatus::Completed),
-        }),
-    ];
-    let response = decoded_body("openai", &body_of(&events), None)
-        .outcome
-        .expect("replay should normalize");
-    let [call] = calls_of(&response).try_into().expect("the call survives");
-    assert_eq!(call.function.name, "get_weather");
-    assert_eq!(call.function.arguments, json!({"city": "Paris"}));
-    let provider = call.id.provider().expect("the wire issued ids");
-    assert_eq!(provider.call_id, "call_abc");
-    assert_eq!(provider.item_id.as_deref(), Some("fc_1"));
 }
 
 /// #2258 P3: when the stream truncates before the call completes, partial
@@ -1768,7 +1233,7 @@ async fn truncation_fabricates_no_call() {
             "delta": "{\"loc\":"
         }),
     ];
-    let decoded = decoded_body("openai", &body_of(&events), None);
+    let decoded = decoded_body(&body_of(&events));
     assert!(matches!(decoded.outcome, Err(ProviderError::Truncated)));
     assert!(decoded.ended().is_empty(), "{:?}", decoded.events());
 }
@@ -1802,7 +1267,7 @@ fn refusal_content_part_frames_do_not_fail_the_buffered_body() {
             "response": sample_response(ResponseStatus::Completed),
         }),
     ];
-    let decoded = decoded_body("openai", &body_of(&events), None);
+    let decoded = decoded_body(&body_of(&events));
     assert_eq!(texts_of(&decoded.events()), ["no"]);
     decoded
         .outcome
@@ -1827,7 +1292,7 @@ fn terminal_body_message_text_merges_when_no_delta_delivered_it() {
         "sequence_number": 1,
         "response": raw_response,
     });
-    let response = decoded_body("openai", &body_of(&[completed]), None)
+    let response = decoded_body(&body_of(&[completed]))
         .outcome
         .expect("a body-only terminal must decode");
     assert_eq!(
@@ -1835,7 +1300,12 @@ fn terminal_body_message_text_merges_when_no_delta_delivered_it() {
         ["from body"],
         "text stated only in the terminal body must reach the choice once"
     );
-    assert_eq!(response.message_id.as_deref(), Some("msg_body_1"));
+    assert_eq!(
+        response.choice[0]
+            .native_item()
+            .and_then(|item| item["id"].as_str()),
+        Some("msg_body_1")
+    );
 }
 
 /// The other half of that boundary: a terminal restating text the deltas
@@ -1857,7 +1327,7 @@ fn terminal_body_message_text_restating_a_delta_is_not_duplicated() {
         "sequence_number": 2,
         "response": raw_response,
     });
-    let response = decoded_body("openai", &body_of(&[text_delta, completed]), None)
+    let response = decoded_body(&body_of(&[text_delta, completed]))
         .outcome
         .expect("a restating terminal must decode");
     assert_eq!(
@@ -1870,7 +1340,7 @@ fn terminal_body_message_text_restating_a_delta_is_not_duplicated() {
 #[test]
 fn streaming_error_event_preserves_full_payload() {
     let payload = r#"{"type":"error","error":{"message":"boom","code":"server_error","type":"server_error"}}"#;
-    let err = decoded_body("openai", &format!("data: {payload}\n"), None)
+    let err = decoded_body(&format!("data: {payload}\n"))
         .outcome
         .expect_err("error event should surface as a provider response error");
 
@@ -1908,11 +1378,11 @@ async fn the_end_normalizes_the_terminal_record() {
     }]);
 
     let response = stream_final_from_event(event).await;
-    assert_eq!(response.provider, "openai");
-    assert_eq!(response.model.as_deref(), Some("gpt-5.4"));
-    // The assistant message ID (`msg_...`), never the response ID
-    // (`resp_123`) that the same event carries.
-    assert_eq!(response.message_id.as_deref(), Some("msg_stream_1"));
+    assert_eq!(response.provider(), "openai");
+    assert_eq!(response.model(), Some("gpt-5.4"));
+    assert_eq!(response.response_id(), Some("resp_123"));
+    // The message item the terminal states is the turn's one block.
+    assert_eq!(response.text(), "hi");
     assert_eq!(
         response.finish_reason(),
         Some(crate::completion::FinishReason::Stop)
@@ -1955,30 +1425,6 @@ async fn the_end_reports_tool_calls_when_the_stream_called_a_tool() {
             .finish_reason(),
         Some(crate::completion::FinishReason::ToolCalls)
     );
-}
-
-#[test]
-fn the_end_preserves_an_unknown_incomplete_reason() {
-    let response = super::StreamingCompletionResponse {
-        status: Some(ResponseStatus::Incomplete),
-        incomplete_details: Some(IncompleteDetailsReason {
-            reason: "MAX_TOOL_CALLS".to_string(),
-        }),
-        model: Some("gpt-5.4".to_string()),
-        message_id: Some("msg_1".to_string()),
-        ..super::StreamingCompletionResponse::new(None)
-    };
-
-    let (finish, issuer) = super::finish_of("openai", false, response);
-    assert_eq!(
-        finish.reason,
-        Some(crate::completion::FinishReason::Other(
-            "MAX_TOOL_CALLS".to_string()
-        ))
-    );
-    assert_eq!(finish.message_id.as_deref(), Some("msg_1"));
-    assert_eq!(finish.model.as_deref(), Some("gpt-5.4"));
-    assert_eq!(issuer, None);
 }
 
 #[tokio::test]
@@ -2117,80 +1563,29 @@ async fn a_malformed_frame_ends_the_reply() {
 /// no message; neither panics.
 #[test]
 fn empty_item_ids_identify_nothing_and_do_not_panic() {
-    let decoded = decoded_body(
-        "openai",
-        &body_of(&[
-            json!({
-                "type": "response.output_text.delta",
-                "item_id": "",
-                "output_index": 0,
-                "content_index": 0,
-                "sequence_number": 1,
-                "delta": "still text",
-            }),
-            json!({
-                "type": "response.output_item.done",
-                "output_index": 0,
-                "sequence_number": 2,
-                "item": {
-                    "type": "message",
-                    "id": "",
-                    "role": "assistant",
-                    "status": "completed",
-                    "content": []
-                },
-            }),
-        ]),
-        None,
-    );
+    let decoded = decoded_body(&body_of(&[
+        json!({
+            "type": "response.output_text.delta",
+            "item_id": "",
+            "output_index": 0,
+            "content_index": 0,
+            "sequence_number": 1,
+            "delta": "still text",
+        }),
+        json!({
+            "type": "response.output_item.done",
+            "output_index": 0,
+            "sequence_number": 2,
+            "item": {
+                "type": "message",
+                "id": "",
+                "role": "assistant",
+                "status": "completed",
+                "content": []
+            },
+        }),
+    ]));
     assert_eq!(texts_of(&decoded.events()), ["still text"]);
-}
-
-/// A `url_citation` annotation as the Responses API attaches it to an
-/// `output_text` part.
-fn url_citation(start: u64, end: u64, url: &str) -> serde_json::Value {
-    json!({
-        "type": "url_citation",
-        "start_index": start,
-        "end_index": end,
-        "url": url,
-        "title": "Source",
-    })
-}
-
-/// A completed `message` item whose `output_text` parts are `(text, annotations)`.
-fn annotated_message(id: &str, parts: &[(&str, serde_json::Value)]) -> serde_json::Value {
-    let content: Vec<serde_json::Value> = parts
-        .iter()
-        .map(|(text, annotations)| {
-            json!({ "type": "output_text", "text": text, "annotations": annotations })
-        })
-        .collect();
-    json!({
-        "type": "message",
-        "id": id,
-        "role": "assistant",
-        "status": "completed",
-        "content": content,
-    })
-}
-
-/// One `output_text.delta` of the message item `item_id`.
-fn text_delta(
-    item_id: &str,
-    output_index: u64,
-    content_index: u64,
-    sequence: u64,
-    delta: &str,
-) -> serde_json::Value {
-    json!({
-        "type": "response.output_text.delta",
-        "item_id": item_id,
-        "output_index": output_index,
-        "content_index": content_index,
-        "sequence_number": sequence,
-        "delta": delta,
-    })
 }
 
 /// The `output_item.done` restating `item` at `output_index`.
@@ -2215,719 +1610,524 @@ fn completed_with(sequence: u64, output: serde_json::Value) -> serde_json::Value
     })
 }
 
-/// The text blocks a reply's parts ended with, in order.
-fn ended_texts(decoded: &Decoded<Completion>) -> Vec<crate::message::Text> {
-    decoded
-        .ended()
-        .into_iter()
-        .filter_map(|content| match content {
-            AssistantContent::Text(text) => Some(text),
-            _ => None,
+/// The OpenAI Responses wire every decode below runs.
+fn wire() -> crate::providers::openai::responses_api::wire::Responses {
+    OpenAIConfig::new("test-key").responses("gpt-5.4")
+}
+
+/// One frame per event.
+fn frames(events: &[serde_json::Value]) -> Vec<WireFrame> {
+    events
+        .iter()
+        .map(|event| WireFrame::Text(event.to_string()))
+        .collect()
+}
+
+/// The unary body whose `output` is `output`, as its one frame.
+fn whole(output: &[serde_json::Value]) -> Vec<WireFrame> {
+    let mut body = serde_json::to_value(sample_response(ResponseStatus::Completed))
+        .expect("the sample response serializes");
+    body["output"] = json!(output);
+    vec![WireFrame::Text(body.to_string())]
+}
+
+/// The response `frames` fold into in `mode`, from a request the wire's own
+/// model sent.
+fn decode(mode: Mode, frames: Vec<WireFrame>) -> crate::completion::CompletionResponse {
+    crate::test_utils::decode_reply(
+        &wire(),
+        &CompletionRequest::new("hello"),
+        mode,
+        frames,
+        serde_json::Value::Null,
+    )
+    .expect("the reply decodes")
+}
+
+/// `text` in two deltas, so a restatement is never one fragment.
+fn halves(text: &str) -> [String; 2] {
+    let cut = text
+        .char_indices()
+        .map(|(at, _)| at)
+        .nth(text.chars().count() / 2)
+        .unwrap_or(text.len());
+    [text[..cut].to_owned(), text[cut..].to_owned()]
+}
+
+/// The stream a Responses endpoint sends for `output`: each item added with
+/// no content, its text in deltas, then done; then `response.completed`
+/// restating the output.
+fn restated(output: &[serde_json::Value]) -> Vec<serde_json::Value> {
+    let mut events = vec![json!({
+        "type": "response.created",
+        "sequence_number": 0,
+        "response": sample_response(ResponseStatus::InProgress),
+    })];
+    for (index, item) in output.iter().enumerate() {
+        let mut added = item.clone();
+        match item["type"].as_str() {
+            Some("message") => {
+                added["content"] = json!([]);
+                added["status"] = json!("in_progress");
+            }
+            Some("reasoning") => {
+                added["summary"] = json!([]);
+                if let Some(added) = added.as_object_mut() {
+                    added.shift_remove("content");
+                    added.shift_remove("encrypted_content");
+                }
+            }
+            Some("function_call") => added["arguments"] = json!(""),
+            _ => {}
+        }
+        events.push(json!({
+            "type": "response.output_item.added",
+            "output_index": index,
+            "sequence_number": events.len(),
+            "item": added,
+        }));
+        let mut delta = |kind: &str, part: (&str, usize), text: &str| {
+            for half in halves(text) {
+                events.push(json!({
+                    "type": kind,
+                    "item_id": item["id"],
+                    "output_index": index,
+                    part.0: part.1,
+                    "sequence_number": events.len(),
+                    "delta": half,
+                }));
+            }
+        };
+        match item["type"].as_str() {
+            Some("message") => {
+                for (at, part) in item["content"].as_array().into_iter().flatten().enumerate() {
+                    match part["type"].as_str() {
+                        Some("refusal") => delta(
+                            "response.refusal.delta",
+                            ("content_index", at),
+                            part["refusal"].as_str().unwrap_or_default(),
+                        ),
+                        _ => delta(
+                            "response.output_text.delta",
+                            ("content_index", at),
+                            part["text"].as_str().unwrap_or_default(),
+                        ),
+                    }
+                }
+            }
+            Some("reasoning") => {
+                for (at, part) in item["summary"].as_array().into_iter().flatten().enumerate() {
+                    delta(
+                        "response.reasoning_summary_text.delta",
+                        ("summary_index", at),
+                        part["text"].as_str().unwrap_or_default(),
+                    );
+                }
+            }
+            Some("function_call") => delta(
+                "response.function_call_arguments.delta",
+                ("content_index", 0),
+                item["arguments"].as_str().unwrap_or_default(),
+            ),
+            _ => {}
+        }
+        events.push(item_done(index as u64, events.len() as u64, item.clone()));
+    }
+    events.push(completed_with(events.len() as u64, json!(output)));
+    events
+}
+
+fn message(id: &str, text: &str) -> serde_json::Value {
+    json!({
+        "type": "message",
+        "id": id,
+        "role": "assistant",
+        "status": "completed",
+        "content": [{ "type": "output_text", "annotations": [], "logprobs": [], "text": text }],
+    })
+}
+
+fn reasoning(id: &str, summaries: &[&str]) -> serde_json::Value {
+    json!({
+        "type": "reasoning",
+        "id": id,
+        "summary": summaries
+            .iter()
+            .map(|text| json!({ "type": "summary_text", "text": text }))
+            .collect::<Vec<_>>(),
+        "encrypted_content": format!("ciphertext-of-{id}"),
+    })
+}
+
+fn function_call(id: &str, call_id: &str, arguments: &str) -> serde_json::Value {
+    json!({
+        "type": "function_call",
+        "id": id,
+        "call_id": call_id,
+        "name": "lookup",
+        "arguments": arguments,
+        "status": "completed",
+    })
+}
+
+/// A reply carrying every kind of output item the wire distinguishes, and
+/// a kind and a field no version of rig has seen.
+fn every_kind() -> Vec<serde_json::Value> {
+    vec![
+        reasoning("rs_1", &["Planning.", "Checking twice."]),
+        message("msg_1", "Looking it up."),
+        function_call("fc_1", "call_1", r#"{"q":"rig"}"#),
+        json!({
+            "type": "custom_tool_call",
+            "id": "ctc_1",
+            "call_id": "call_2",
+            "name": "apply_patch",
+            "input": "*** Begin Patch",
+        }),
+        json!({
+            "type": "web_search_call",
+            "id": "ws_1",
+            "status": "completed",
+            "action": { "type": "search", "query": "rig" },
+        }),
+        json!({ "type": "compaction", "id": "cmp_1", "encrypted_content": "compacted" }),
+        json!({
+            "type": "computer_call",
+            "id": "cu_1",
+            "call_id": "call_3",
+            "action": { "type": "click", "x": 1, "y": 2 },
+            "status": "completed",
+        }),
+        json!({
+            "type": "message",
+            "id": "msg_2",
+            "role": "assistant",
+            "status": "completed",
+            "phase": "final_answer",
+            "future_field": { "nested": [1, 2] },
+            "content": [
+                { "type": "output_text", "annotations": [{ "type": "url_citation", "url": "https://rig.rs" }], "text": "Rig is " },
+                { "type": "refusal", "refusal": "all I can say." },
+            ],
+        }),
+        json!({ "type": "future_item", "id": "fut_1", "payload": { "kept": true } }),
+    ]
+}
+
+/// The provider item each block holds: its native, or an opaque block's
+/// item.
+fn natives(response: &crate::completion::CompletionResponse) -> Vec<serde_json::Value> {
+    response
+        .choice
+        .iter()
+        .map(|block| match block {
+            AssistantContent::Opaque(opaque) => opaque.item.clone(),
+            block => block.native_item().cloned().unwrap_or_default(),
         })
         .collect()
 }
 
-/// The Responses-owned annotations a text block carries.
-fn annotations_of(text: &crate::message::Text) -> Option<&serde_json::Value> {
-    text.additional_params
-        .as_ref()
-        .and_then(|params| {
-            params.wire_extras(crate::providers::openai::responses_api::OPENAI_RESPONSES_EXTRAS_KEY)
-        })
-        .and_then(|extras| extras.get("annotations"))
-}
-
-/// The streamed text part carries the annotations its `output_item.done`
-/// restates, once, and its text stays what the deltas delivered. Unit-level
-/// because each snapshot combination below is a frame sequence one live
-/// recording cannot select; the recorded web-search cassettes pin the live
-/// shape.
 #[test]
-fn output_item_done_attaches_annotations_to_the_streamed_text() {
-    let citation = url_citation(0, 4, "https://a.example");
-    let decoded = decoded_body(
-        "openai",
-        &body_of(&[
-            text_delta("msg_1", 0, 0, 1, "Rust "),
-            text_delta("msg_1", 0, 0, 2, "is fast."),
-            item_done(
-                0,
-                3,
-                annotated_message("msg_1", &[("Rust is fast.", json!([citation]))]),
-            ),
-            completed_with(4, json!([])),
-        ]),
-        None,
-    );
-    let texts = ended_texts(&decoded);
-    assert_eq!(texts.len(), 1, "{texts:?}");
-    assert_eq!(texts[0].text, "Rust is fast.");
-    assert_eq!(annotations_of(&texts[0]), Some(&json!([citation])));
-    let response = decoded.outcome.expect("the stream decodes");
-    assert_eq!(choice_text_parts(&response), ["Rust is fast."]);
-}
-
-/// A gateway that sends no `output_item.done` for a streamed message still
-/// states its annotations in the terminal snapshot, which supplies them.
-#[test]
-fn terminal_supplies_annotations_no_item_done_covered() {
-    let citation = url_citation(0, 4, "https://a.example");
-    let decoded = decoded_body(
-        "openai",
-        &body_of(&[
-            text_delta("msg_1", 0, 0, 1, "Rust is fast."),
-            completed_with(
-                2,
-                json!([annotated_message(
-                    "msg_1",
-                    &[("Rust is fast.", json!([citation]))]
-                )]),
-            ),
-        ]),
-        None,
-    );
-    let texts = ended_texts(&decoded);
-    assert_eq!(texts.len(), 1, "{texts:?}");
-    assert_eq!(
-        texts[0].text, "Rust is fast.",
-        "the terminal restates no text"
-    );
-    assert_eq!(annotations_of(&texts[0]), Some(&json!([citation])));
-}
-
-/// Every snapshot restates the same annotations: `content_part.done`,
-/// `output_item.done` and `response.completed`. They attach once, with
-/// or without the incremental `annotation.added` event, which still
-/// reaches the consumer as an unmodeled payload.
-#[test]
-fn repeated_snapshots_attach_annotations_once() {
-    let first = url_citation(0, 4, "https://a.example");
-    let second = url_citation(8, 12, "https://b.example");
-    let message = annotated_message("msg_1", &[("Rust is fast.", json!([first, second]))]);
-    for with_added in [false, true] {
-        let mut events = vec![text_delta("msg_1", 0, 0, 1, "Rust is fast.")];
-        if with_added {
-            for (index, annotation) in [&first, &second].into_iter().enumerate() {
-                events.push(json!({
-                    "type": "response.output_text.annotation.added",
-                    "item_id": "msg_1",
-                    "output_index": 0,
-                    "content_index": 0,
-                    "annotation_index": index,
-                    "sequence_number": 2 + index,
-                    "annotation": annotation,
-                }));
-            }
-        }
-        events.extend([
-            json!({
-                "type": "response.content_part.done",
-                "item_id": "msg_1",
-                "output_index": 0,
-                "content_index": 0,
-                "sequence_number": 4,
-                "part": message["content"][0],
-            }),
-            item_done(0, 5, message.clone()),
-            completed_with(6, json!([message])),
-        ]);
-        let decoded = decoded_body("openai", &body_of(&events), None);
-        let unknown_types: Vec<String> = decoded
-            .items
-            .iter()
-            .filter_map(|item| match item {
-                Ok(Item::Unknown(payload)) => serde_json::to_value(payload)
-                    .ok()
-                    .and_then(|value| value["type"].as_str().map(str::to_owned)),
-                _ => None,
-            })
-            .collect();
-        let expected_unknown = if with_added {
-            vec!["response.output_text.annotation.added"; 2]
-        } else {
-            Vec::new()
-        };
-        assert_eq!(unknown_types, expected_unknown);
-        let texts = ended_texts(&decoded);
-        assert_eq!(texts.len(), 1, "{texts:?}");
-        assert_eq!(
-            annotations_of(&texts[0]),
-            Some(&json!([first, second])),
-            "with_added = {with_added}"
-        );
-    }
-}
-
-/// Empty annotations are no metadata: the text part ends without params,
-/// as the unary path decodes the same content.
-#[test]
-fn empty_annotations_add_no_params() {
-    let message = annotated_message("msg_1", &[("hi", json!([]))]);
-    let decoded = decoded_body(
-        "openai",
-        &body_of(&[
-            text_delta("msg_1", 0, 0, 1, "hi"),
-            item_done(0, 2, message.clone()),
-            completed_with(3, json!([message])),
-        ]),
-        None,
-    );
-    let texts = ended_texts(&decoded);
-    assert_eq!(texts.len(), 1, "{texts:?}");
-    assert_eq!(texts[0].additional_params, None);
-}
-
-/// A message interleaved with a function call keeps its annotations, and
-/// the call is still decoded whole.
-#[test]
-fn annotations_attach_beside_an_interleaved_tool_call() {
-    let citation = url_citation(0, 4, "https://a.example");
-    let call = json!({
-        "type": "function_call",
-        "id": "fc_1",
-        "call_id": "call_1",
-        "name": "lookup",
-        "arguments": "{\"q\":\"rust\"}",
-        "status": "completed",
-    });
-    let message = annotated_message("msg_1", &[("Rust is fast.", json!([citation]))]);
-    let decoded = decoded_body(
-        "openai",
-        &body_of(&[
-            text_delta("msg_1", 0, 0, 1, "Rust is fast."),
-            json!({
-                "type": "response.output_item.added",
-                "output_index": 1,
-                "sequence_number": 2,
-                "item": call,
-            }),
-            json!({
-                "type": "response.function_call_arguments.delta",
-                "item_id": "fc_1",
-                "output_index": 1,
-                "sequence_number": 3,
-                "delta": "{\"q\":\"rust\"}",
-            }),
-            item_done(0, 4, message.clone()),
-            item_done(1, 5, call.clone()),
-            completed_with(6, json!([message, call])),
-        ]),
-        None,
-    );
-    let texts = ended_texts(&decoded);
-    assert_eq!(texts.len(), 1, "{texts:?}");
-    assert_eq!(annotations_of(&texts[0]), Some(&json!([citation])));
-    let response = decoded.outcome.expect("the stream decodes");
-    let calls = calls_of(&response);
-    assert_eq!(calls.len(), 1, "{calls:?}");
-    assert_eq!(calls[0].function.name, "lookup");
-    assert_eq!(calls[0].function.arguments, json!({ "q": "rust" }));
-}
-
-/// Streaming and the unary body end a message's text with equal extras,
-/// content parts in wire order, and a message stated only by snapshots
-/// keeps its text and annotations once.
-#[test]
-fn streamed_and_unary_text_carry_equal_extras() {
-    let first = url_citation(0, 4, "https://a.example");
-    let second = url_citation(0, 4, "https://b.example");
-    let message = annotated_message(
-        "msg_1",
-        &[
-            ("Part one.", json!([first])),
-            ("Part two.", json!([second])),
-        ],
-    );
-
-    let streamed = decoded_body(
-        "openai",
-        &body_of(&[
-            text_delta("msg_1", 0, 0, 1, "Part one."),
-            text_delta("msg_1", 0, 1, 2, "Part two."),
-            item_done(0, 3, message.clone()),
-            completed_with(4, json!([message])),
-        ]),
-        None,
-    );
-    let snapshot_only = decoded_body(
-        "openai",
-        &body_of(&[
-            item_done(0, 1, message.clone()),
-            completed_with(2, json!([message])),
-        ]),
-        None,
-    );
-    let mut body = serde_json::to_value(sample_response(ResponseStatus::Completed))
-        .expect("the sample response serializes");
-    body["output"] = json!([message]);
-    let unary = decoded_body("openai", &format!("data: {body}\n"), None);
-
-    let unary_texts = ended_texts(&unary);
-    assert_eq!(unary_texts.len(), 1, "{unary_texts:?}");
-    assert_eq!(
-        annotations_of(&unary_texts[0]),
-        Some(&json!([first, second]))
-    );
-    for (label, decoded) in [("streamed", &streamed), ("snapshot only", &snapshot_only)] {
-        let texts = ended_texts(decoded);
-        assert_eq!(texts, unary_texts, "{label}");
-    }
-}
-
-/// A completed `message` item with one `output_text` part and `phase`
-/// spelled as given (`Value::Null` states it as `null`).
-fn phased_message(id: &str, text: &str, phase: serde_json::Value) -> serde_json::Value {
-    let mut message = annotated_message(id, &[(text, json!([]))]);
-    if phase != json!("<absent>") {
-        message["phase"] = phase;
-    }
-    message
-}
-
-/// The `output_item.added` opening `item` at `output_index`, with no content.
-fn item_added(output_index: u64, sequence: u64, mut item: serde_json::Value) -> serde_json::Value {
-    if item["type"] == "message" {
-        item["content"] = json!([]);
-        item["status"] = json!("in_progress");
-    }
-    json!({
-        "type": "response.output_item.added",
-        "output_index": output_index,
-        "sequence_number": sequence,
-        "item": item,
-    })
-}
-
-/// The Responses-owned extras a text block carries.
-fn own_extras(text: &crate::message::Text) -> Option<&serde_json::Map<String, serde_json::Value>> {
-    text.additional_params.as_ref().and_then(|params| {
-        params.wire_extras(crate::providers::openai::responses_api::OPENAI_RESPONSES_EXTRAS_KEY)
-    })
-}
-
-/// The unary body whose `output` is `output`, decoded as a buffered replay.
-fn unary_of(output: serde_json::Value) -> Decoded<Completion> {
-    let mut body = serde_json::to_value(sample_response(ResponseStatus::Completed))
-        .expect("the sample response serializes");
-    body["output"] = output;
-    decoded_body("openai", &format!("data: {body}\n"), None)
-}
-
-/// Streamed text carries its message's `phase` whichever restatement
-/// states it: `output_item.added`, `output_item.done`, the terminal, or all
-/// three. It lands once, on the text part, and the text is what the deltas
-/// delivered. Unit-level because a live stream always states it in all
-/// three places; the recorded streams pin that shape.
-#[test]
-fn streamed_text_carries_its_message_phase_from_any_restatement() {
-    let phased = phased_message("msg_1", "Hello.", json!("commentary"));
-    let bare = phased_message("msg_1", "Hello.", json!("<absent>"));
-    let cases = [
-        ("added", &phased, &bare, &bare),
-        ("done", &bare, &phased, &bare),
-        ("terminal", &bare, &bare, &phased),
-        ("all", &phased, &phased, &phased),
+fn each_output_item_is_one_block_holding_the_item_in_output_order() {
+    let output = vec![
+        reasoning("rs_1", &["First thought."]),
+        message("msg_1", "Let me check."),
+        function_call("fc_1", "call_1", r#"{"q":"a"}"#),
+        reasoning("rs_2", &["Second thought."]),
+        message("msg_2", "Done."),
     ];
-    for (label, added, done, terminal) in cases {
-        let decoded = decoded_body(
-            "openai",
-            &body_of(&[
-                item_added(0, 1, added.clone()),
-                text_delta("msg_1", 0, 0, 2, "Hel"),
-                text_delta("msg_1", 0, 0, 3, "lo."),
-                item_done(0, 4, done.clone()),
-                completed_with(5, json!([terminal])),
-            ]),
-            None,
-        );
-        let texts = ended_texts(&decoded);
-        assert_eq!(texts.len(), 1, "{label}: {texts:?}");
-        assert_eq!(texts[0].text, "Hello.", "{label}");
+    for response in [
+        decode(Mode::Streaming, frames(&restated(&output))),
+        decode(Mode::Unary, whole(&output)),
+    ] {
         assert_eq!(
-            own_extras(&texts[0]),
-            json!({ "phase": "commentary" }).as_object(),
-            "{label}"
+            natives(&response),
+            output,
+            "one block per item, nothing hoisted"
+        );
+        let [
+            AssistantContent::Reasoning(first),
+            AssistantContent::Text(check),
+            AssistantContent::ToolCall(call),
+            AssistantContent::Reasoning(second),
+            AssistantContent::Text(done),
+        ] = response.choice.as_slice()
+        else {
+            panic!("blocks follow the output: {:?}", response.choice);
+        };
+        assert_eq!(first.text, "First thought.");
+        assert_eq!(check.text, "Let me check.");
+        assert_eq!(call.id, crate::message::CallId::from_wire("call_1"));
+        assert_eq!(call.function.arguments, json!({ "q": "a" }));
+        assert_eq!(second.text, "Second thought.");
+        assert_eq!(done.text, "Done.");
+        assert_eq!(response.stop(), crate::message::StopReason::ToolUse);
+    }
+}
+
+#[test]
+fn a_whole_reply_and_its_restatement_as_a_stream_agree() {
+    let replies = [
+        every_kind(),
+        vec![message("msg_1", "Just text.")],
+        vec![
+            reasoning("rs_1", &[]),
+            function_call("fc_1", "call_1", ""),
+            function_call("fc_2", "call_2", r#"{"nested":{"deep":[1,2]}}"#),
+        ],
+    ];
+    for output in replies {
+        crate::test_utils::history::assert_restated_agrees(
+            &wire(),
+            whole(&output),
+            frames(&restated(&output)),
         );
     }
 }
 
-/// A `null` or absent `phase` is no phase: the text ends without params,
-/// streamed or unary.
-#[test]
-fn null_and_absent_phase_add_no_params() {
-    for phase in [serde_json::Value::Null, json!("<absent>")] {
-        let message = phased_message("msg_1", "Hello.", phase.clone());
-        let streamed = decoded_body(
-            "openai",
-            &body_of(&[
-                item_added(0, 1, message.clone()),
-                text_delta("msg_1", 0, 0, 2, "Hello."),
-                item_done(0, 3, message.clone()),
-                completed_with(4, json!([message])),
-            ]),
-            None,
-        );
-        let unary = unary_of(json!([message]));
-        for (label, decoded) in [("streamed", &streamed), ("unary", &unary)] {
-            let texts = ended_texts(decoded);
-            assert_eq!(texts.len(), 1, "{label} {phase}: {texts:?}");
-            assert_eq!(texts[0].additional_params, None, "{label} {phase}");
-        }
+/// The wire's output variants, numbered without a wildcard: a new variant
+/// fails to compile here until it is numbered, and fails the test until a
+/// sample decodes to it.
+#[deny(clippy::wildcard_enum_match_arm)]
+fn variant_index(item: &crate::providers::openai::responses_api::Output) -> usize {
+    use crate::providers::openai::responses_api::Output;
+    match item {
+        Output::Message(_) => 0,
+        Output::FunctionCall(_) => 1,
+        Output::CustomToolCall(_) => 2,
+        Output::Reasoning { .. } => 3,
+        Output::Unknown(_) => 4,
     }
 }
 
-/// A commentary message between reasoning and a function call keeps its
-/// `phase`; the reasoning and the call decode as before.
 #[test]
-fn phase_attaches_beside_interleaved_reasoning_and_tool_call() {
-    let reasoning = json!({
-        "type": "reasoning",
-        "id": "rs_1",
-        "summary": [],
-        "encrypted_content": "opaque",
-    });
-    let message = phased_message("msg_1", "Checking the weather.", json!("commentary"));
-    let call = json!({
-        "type": "function_call",
-        "id": "fc_1",
-        "call_id": "call_1",
-        "name": "get_weather",
-        "arguments": "{\"city\":\"Paris\"}",
+fn every_output_variant_decodes_to_a_block() {
+    let output = every_kind();
+    let typed: Vec<crate::providers::openai::responses_api::Output> = output
+        .iter()
+        .map(|item| serde_json::from_value(item.clone()).expect("every sample is well formed"))
+        .collect();
+    crate::test_utils::history::assert_every_variant(&typed, variant_index, 5);
+    for response in [
+        decode(Mode::Streaming, frames(&restated(&output))),
+        decode(Mode::Unary, whole(&output)),
+    ] {
+        assert_eq!(natives(&response), output);
+    }
+}
+
+#[test]
+fn an_invented_item_and_an_invented_field_replay_to_the_same_model() {
+    use crate::message::Message;
+    let output = every_kind();
+    for mode in [Mode::Streaming, Mode::Unary] {
+        let frames = match mode {
+            Mode::Streaming => frames(&restated(&output)),
+            Mode::Unary => whole(&output),
+        };
+        let reply = decode(mode, frames);
+        let mut history = vec![Message::user("hello")];
+        history.extend(reply.message());
+        history.push(Message::User {
+            content: reply
+                .tool_calls()
+                .map(|call| {
+                    crate::message::UserContent::ToolResult(
+                        call.result(vec![crate::message::ToolResultContent::text("ok")]),
+                    )
+                })
+                .collect(),
+        });
+        let input = encoded_input(&wire(), CompletionRequest::from(history));
+        let replayed: Vec<&serde_json::Value> = input
+            .iter()
+            .filter(|item| item.get("id").is_some())
+            .collect();
+        // Everything but the client-executed computer call goes back as it
+        // came, invented kind and field included.
+        let expected: Vec<&serde_json::Value> = output
+            .iter()
+            .filter(|item| item["type"] != "computer_call")
+            .collect();
+        assert_eq!(replayed, expected, "{mode:?}");
+        let results: Vec<(&str, &str)> = input
+            .iter()
+            .filter_map(|item| Some((item["type"].as_str()?, item["call_id"].as_str()?)))
+            .filter(|(kind, _)| kind.ends_with("_output"))
+            .collect();
+        assert_eq!(
+            results,
+            [
+                ("function_call_output", "call_1"),
+                ("custom_tool_call_output", "call_2"),
+            ]
+        );
+    }
+}
+
+/// The `input` a request sends through `wire`, history shaped by the
+/// driver's own `prepare`.
+fn encoded_input(
+    wire: &crate::providers::openai::responses_api::wire::Responses,
+    request: CompletionRequest,
+) -> Vec<serde_json::Value> {
+    use crate::wire::{Operation, Wire};
+    let request = Completion::prepare(request, &wire.describe()).expect("the history is valid");
+    let encoded = wire
+        .encode(request, Mode::Unary)
+        .expect("the request encodes");
+    let body = crate::test_utils::json_body(&encoded.request);
+    body["input"].as_array().cloned().unwrap_or_default()
+}
+
+#[test]
+fn hosted_steps_and_compaction_replay_while_client_executed_calls_stay_home() {
+    let output = vec![
+        json!({ "type": "web_search_call", "id": "ws_1", "status": "completed" }),
+        json!({ "type": "compaction", "id": "cmp_1", "encrypted_content": "x" }),
+        json!({ "type": "mcp_call", "id": "mcp_1", "name": "f", "server_label": "s" }),
+        json!({ "type": "computer_call", "id": "cu_1", "call_id": "c1", "status": "completed" }),
+        json!({ "type": "local_shell_call", "id": "ls_1", "call_id": "c2", "status": "completed" }),
+        json!({ "type": "mcp_approval_request", "id": "ar_1", "name": "f", "server_label": "s" }),
+    ];
+    let response = decode(Mode::Unary, whole(&output));
+    let replays: Vec<(Option<&str>, bool)> = response
+        .choice
+        .iter()
+        .map(|block| match block {
+            AssistantContent::Opaque(opaque) => (opaque.kind(), opaque.replay),
+            other => panic!("every item is opaque: {other:?}"),
+        })
+        .collect();
+    assert_eq!(
+        replays,
+        [
+            (Some("web_search_call"), true),
+            (Some("compaction"), true),
+            (Some("mcp_call"), true),
+            (Some("computer_call"), false),
+            (Some("local_shell_call"), false),
+            (Some("mcp_approval_request"), false),
+        ]
+    );
+}
+
+#[test]
+fn a_refusal_is_the_message_text_and_its_item_keeps_the_part() {
+    let refusal = json!({
+        "type": "message",
+        "id": "msg_1",
+        "role": "assistant",
         "status": "completed",
+        "content": [{ "type": "refusal", "refusal": "I can't help with that." }],
     });
-    let decoded = decoded_body(
-        "openai",
-        &body_of(&[
-            item_added(0, 1, reasoning.clone()),
-            item_done(0, 2, reasoning.clone()),
-            item_added(1, 3, message.clone()),
-            text_delta("msg_1", 1, 0, 4, "Checking the weather."),
-            item_done(1, 5, message.clone()),
-            item_added(2, 6, call.clone()),
-            json!({
-                "type": "response.function_call_arguments.delta",
-                "item_id": "fc_1",
-                "output_index": 2,
-                "sequence_number": 7,
-                "delta": "{\"city\":\"Paris\"}",
-            }),
-            item_done(2, 8, call.clone()),
-            completed_with(9, json!([reasoning, message, call])),
-        ]),
-        None,
-    );
-    let texts = ended_texts(&decoded);
-    assert_eq!(texts.len(), 1, "{texts:?}");
-    assert_eq!(texts[0].text, "Checking the weather.");
-    assert_eq!(
-        own_extras(&texts[0]),
-        json!({ "phase": "commentary" }).as_object()
-    );
-    let response = decoded.outcome.expect("the stream decodes");
-    let calls = calls_of(&response);
-    assert_eq!(calls.len(), 1, "{calls:?}");
-    assert_eq!(calls[0].function.arguments, json!({ "city": "Paris" }));
-    assert!(
-        response
-            .choice
-            .iter()
-            .any(|content| matches!(content, AssistantContent::Reasoning(reasoning) if reasoning.value().id.as_deref() == Some("rs_1"))),
-        "{:?}",
-        response.choice
-    );
-}
-
-/// A reply with a commentary message and a final answer ends two text
-/// blocks, each with its own item's `phase` and id, streamed and unary
-/// alike. A reply with one message records no id: the assistant message's
-/// own id names it.
-#[test]
-fn several_messages_each_keep_their_phase_and_id() {
-    let commentary = phased_message("msg_1", "Let me think.", json!("commentary"));
-    let answer = phased_message("msg_2", "Apple.", json!("final_answer"));
-    let streamed = decoded_body(
-        "openai",
-        &body_of(&[
-            item_added(0, 1, commentary.clone()),
-            text_delta("msg_1", 0, 0, 2, "Let me think."),
-            item_done(0, 3, commentary.clone()),
-            item_added(1, 4, answer.clone()),
-            text_delta("msg_2", 1, 0, 5, "Apple."),
-            item_done(1, 6, answer.clone()),
-            completed_with(7, json!([commentary, answer])),
-        ]),
-        None,
-    );
-    let unary = unary_of(json!([commentary, answer]));
-    for (label, decoded) in [("streamed", &streamed), ("unary", &unary)] {
-        let texts = ended_texts(decoded);
-        let facts: Vec<(&str, Option<&serde_json::Map<String, serde_json::Value>>)> = texts
-            .iter()
-            .map(|text| (text.text.as_str(), own_extras(text)))
-            .collect();
-        assert_eq!(
-            facts,
-            [
-                (
-                    "Let me think.",
-                    json!({ "phase": "commentary", "message_id": "msg_1" }).as_object()
-                ),
-                (
-                    "Apple.",
-                    json!({ "phase": "final_answer", "message_id": "msg_2" }).as_object()
-                ),
-            ],
-            "{label}"
-        );
+    for response in [
+        decode(
+            Mode::Streaming,
+            frames(&restated(std::slice::from_ref(&refusal))),
+        ),
+        decode(Mode::Unary, whole(std::slice::from_ref(&refusal))),
+    ] {
+        assert_eq!(response.text(), "I can't help with that.");
+        assert_eq!(natives(&response), [refusal.clone()]);
+        assert_eq!(response.stop(), crate::message::StopReason::Stop);
     }
 }
 
-/// A gateway that names a message's deltas with another id than its item
-/// events still gets the item's `phase` on the text: the output slot ties
-/// them.
 #[test]
-fn phase_follows_the_output_slot_when_delta_ids_differ() {
-    let message = phased_message("msg_1", "Hello.", json!("final_answer"));
-    let decoded = decoded_body(
-        "copilot",
-        &body_of(&[
-            item_added(0, 1, message.clone()),
-            text_delta("item_a", 0, 0, 2, "Hello."),
-            item_done(0, 3, message.clone()),
-            completed_with(4, json!([message])),
-        ]),
-        None,
-    );
-    let texts = ended_texts(&decoded);
-    assert_eq!(texts.len(), 1, "{texts:?}");
-    assert_eq!(
-        own_extras(&texts[0]),
-        json!({ "phase": "final_answer" }).as_object()
-    );
-}
-
-/// For equal content the streamed, snapshot-only and unary text blocks
-/// carry equal `openai_responses` extras, `phase` among them.
-#[test]
-fn streamed_and_unary_text_carry_equal_phase() {
-    let citation = url_citation(0, 4, "https://a.example");
-    let mut message = annotated_message("msg_1", &[("Rust is fast.", json!([citation]))]);
-    message["phase"] = json!("final_answer");
-    let streamed = decoded_body(
-        "openai",
-        &body_of(&[
-            item_added(0, 1, message.clone()),
-            text_delta("msg_1", 0, 0, 2, "Rust is fast."),
-            item_done(0, 3, message.clone()),
-            completed_with(4, json!([message])),
-        ]),
-        None,
-    );
-    let snapshot_only = decoded_body(
-        "openai",
-        &body_of(&[
-            item_done(0, 1, message.clone()),
-            completed_with(2, json!([message])),
-        ]),
-        None,
-    );
-    let unary_texts = ended_texts(&unary_of(json!([message])));
-    assert_eq!(unary_texts.len(), 1, "{unary_texts:?}");
-    assert_eq!(
-        own_extras(&unary_texts[0]),
-        json!({ "annotations": [citation], "phase": "final_answer" }).as_object()
-    );
-    for (label, decoded) in [("streamed", &streamed), ("snapshot only", &snapshot_only)] {
-        assert_eq!(ended_texts(decoded), unary_texts, "{label}");
-    }
-}
-
-/// A terminal that restates a message at another position than its stream
-/// did (it left an earlier item out) still gives that message its `phase`:
-/// the item's id ties the restatement to it, and the part at the terminal's
-/// position keeps its own.
-#[test]
-fn terminal_phase_follows_the_item_id_when_positions_shift() {
-    let reasoning = json!({ "type": "reasoning", "id": "rs_1", "summary": [] });
-    let commentary = phased_message("msg_1", "Let me think.", json!("<absent>"));
-    let answer = phased_message("msg_2", "Apple.", json!("final_answer"));
-    let decoded = decoded_body(
-        "openai",
-        &body_of(&[
-            item_added(0, 1, answer.clone()),
-            text_delta("msg_2", 0, 0, 2, "Apple."),
-            item_done(0, 3, answer.clone()),
-            item_added(1, 4, reasoning.clone()),
-            item_done(1, 5, reasoning),
-            item_added(2, 6, commentary.clone()),
-            text_delta("msg_1", 2, 0, 7, "Let me think."),
-            item_done(2, 8, commentary),
-            completed_with(
-                9,
-                json!([
-                    answer,
-                    phased_message("msg_1", "Let me think.", json!("commentary"))
-                ]),
-            ),
-        ]),
-        None,
-    );
-    let phases: Vec<(String, Option<String>)> = ended_texts(&decoded)
-        .iter()
-        .map(|text| {
-            let phase = own_extras(text)
-                .and_then(|extras| extras.get("phase"))
-                .and_then(serde_json::Value::as_str)
-                .map(str::to_owned);
-            (text.text.clone(), phase)
-        })
-        .collect();
-    assert_eq!(
-        phases,
-        [
-            ("Apple.".to_owned(), Some("final_answer".to_owned())),
-            ("Let me think.".to_owned(), Some("commentary".to_owned())),
-        ]
-    );
-}
-
-/// Copilot names one message item differently in each event: the
-/// `output_item.added`, every delta and the `output_item.done` carry their
-/// own ids. The output slot still ties the text to its item, the done id
-/// names it (as it names the reply's message id), and a reply with two
-/// items replays as two, each with its own `phase`. The stream shape is a
-/// live Copilot probe's, recorded outside the corpus.
-#[test]
-fn a_gateway_naming_each_event_differently_replays_each_message_once() {
-    let with_id = |message: &serde_json::Value, id: &str| {
-        let mut message = message.clone();
-        message["id"] = json!(id);
-        message
+fn a_custom_tool_call_is_a_call_whose_arguments_hold_its_input() {
+    let call = json!({
+        "type": "custom_tool_call",
+        "id": "ctc_1",
+        "call_id": "call_9",
+        "name": "apply_patch",
+        "input": "*** Begin Patch\n*** End Patch",
+    });
+    let response = decode(Mode::Unary, whole(std::slice::from_ref(&call)));
+    let [AssistantContent::ToolCall(decoded)] = response.choice.as_slice() else {
+        panic!("one call: {:?}", response.choice);
     };
-    let commentary = phased_message("msg", "Let me think.", json!("commentary"));
-    let answer = phased_message("msg", "Apple.", json!("final_answer"));
-    let decoded = decoded_body(
-        "copilot",
-        &body_of(&[
-            item_added(0, 1, with_id(&commentary, "added_1")),
-            text_delta("delta_1", 0, 0, 2, "Let "),
-            text_delta("delta_2", 0, 0, 3, "me think."),
-            item_done(0, 4, with_id(&commentary, "done_1")),
-            item_added(1, 5, with_id(&answer, "added_2")),
-            text_delta("delta_3", 1, 0, 6, "Apple."),
-            item_done(1, 7, with_id(&answer, "done_2")),
-            // The terminal renames the items again and lists them in another
-            // order; what `output_item.done` stated stands.
-            completed_with(
-                8,
-                json!([with_id(&answer, "final_2"), with_id(&commentary, "final_1")]),
-            ),
-        ]),
-        None,
-    );
-    let response = decoded.outcome.expect("the stream decodes");
-    assert_eq!(response.message_id.as_deref(), Some("done_2"));
-    let history = response.message().expect("the reply has content");
-    let items: Vec<serde_json::Value> =
-        Vec::<crate::providers::openai::responses_api::InputItem>::try_from(history)
-            .expect("history converts")
-            .iter()
-            .map(|item| serde_json::to_value(item).expect("item serializes"))
-            .collect();
-    let replayed: Vec<(&str, &str, String)> = items
-        .iter()
-        .map(|item| {
-            let text = item["content"]
-                .as_array()
-                .into_iter()
-                .flatten()
-                .filter_map(|block| block["text"].as_str())
-                .collect::<String>();
-            (
-                item["id"].as_str().unwrap_or("-"),
-                item["phase"].as_str().unwrap_or("-"),
-                text,
-            )
-        })
-        .collect();
+    assert_eq!(decoded.id, crate::message::CallId::from_wire("call_9"));
+    assert_eq!(decoded.function.name, "apply_patch");
     assert_eq!(
-        replayed,
-        [
-            ("done_1", "commentary", "Let me think.".to_owned()),
-            ("done_2", "final_answer", "Apple.".to_owned()),
-        ]
+        decoded.function.arguments,
+        json!({ "input": "*** Begin Patch\n*** End Patch" })
+    );
+    assert_eq!(natives(&response), [call]);
+}
+
+/// Azure states a reasoning item's `encrypted_content` only in the terminal
+/// response: the block waits for it, so a stateless follow-up can replay
+/// the reasoning.
+#[test]
+fn reasoning_takes_the_ciphertext_the_terminal_states() {
+    let item = reasoning("rs_1", &["Thinking."]);
+    let mut without = item.clone();
+    if let Some(without) = without.as_object_mut() {
+        without.shift_remove("encrypted_content");
+    }
+    let mut events = restated(std::slice::from_ref(&item));
+    for event in &mut events {
+        if event["type"] == "response.output_item.done" {
+            event["item"] = without.clone();
+        }
+    }
+    let response = decode(Mode::Streaming, frames(&events));
+    assert_eq!(natives(&response), [item.clone()]);
+    assert_eq!(
+        response.message(),
+        decode(Mode::Unary, whole(&[item])).message(),
+        "the stream and the body it ends with fold into one turn"
     );
 }
 
-/// A stream whose output indices were repaired to zero puts every item in
-/// one slot. Each message's id still ties its text to its own `phase`,
-/// whether or not the stream opens its items with `output_item.added`.
 #[test]
-fn repaired_indices_keep_each_message_phase_by_id() {
-    let strip = |mut event: serde_json::Value| {
-        if let Some(event) = event.as_object_mut() {
-            event.remove("output_index");
-        }
-        event
-    };
-    let commentary = phased_message("msg_1", "Let me think.", json!("commentary"));
-    let answer = phased_message("msg_2", "Apple.", json!("final_answer"));
-    for with_added in [true, false] {
-        let mut events = Vec::new();
-        for (index, (message, text)) in [(&commentary, "Let me think."), (&answer, "Apple.")]
-            .into_iter()
-            .enumerate()
-        {
-            let index = index as u64;
-            let id = message["id"].as_str().unwrap_or_default();
-            if with_added {
-                events.push(item_added(index, 3 * index + 1, message.clone()));
-            }
-            events.push(text_delta(id, index, 0, 3 * index + 2, text));
-            events.push(item_done(index, 3 * index + 3, message.clone()));
-        }
-        events.push(completed_with(7, json!([commentary, answer])));
-        let decoded = decoded_body(
-            "chatgpt",
-            &body_of(&events.into_iter().map(strip).collect::<Vec<_>>()),
-            None,
-        );
-        let texts = ended_texts(&decoded);
-        let facts: Vec<(&str, Option<&serde_json::Map<String, serde_json::Value>>)> = texts
-            .iter()
-            .map(|text| (text.text.as_str(), own_extras(text)))
-            .collect();
-        assert_eq!(
-            facts,
-            [
-                (
-                    "Let me think.",
-                    json!({ "phase": "commentary", "message_id": "msg_1" }).as_object()
-                ),
-                (
-                    "Apple.",
-                    json!({ "phase": "final_answer", "message_id": "msg_2" }).as_object()
-                ),
-            ],
-            "with_added = {with_added}"
-        );
+fn reasoning_parts_are_paragraphs_of_one_block() {
+    let item = reasoning("rs_1", &["First part.", "Second part."]);
+    for response in [
+        decode(
+            Mode::Streaming,
+            frames(&restated(std::slice::from_ref(&item))),
+        ),
+        decode(Mode::Unary, whole(std::slice::from_ref(&item))),
+    ] {
+        assert_eq!(response.reasoning(), "First part.\n\nSecond part.");
+        assert_eq!(response.choice.len(), 1);
     }
 }
 
-/// A reply whose second message item carries no text still names the
-/// first text by its own item: the reply's message id is the second's.
 #[test]
-fn a_text_beside_an_empty_message_item_keeps_its_own_id() {
-    let commentary = phased_message("msg_1", "Let me think.", json!("commentary"));
-    let mut empty = phased_message("msg_2", "", json!("final_answer"));
-    empty["content"] = json!([]);
-    let decoded = unary_of(json!([commentary, empty]));
-    let texts = ended_texts(&decoded);
-    assert_eq!(texts.len(), 1, "{texts:?}");
-    assert_eq!(
-        own_extras(&texts[0]),
-        json!({ "phase": "commentary", "message_id": "msg_1" }).as_object()
-    );
-    let response = decoded.outcome.expect("the body decodes");
-    assert_eq!(response.message_id.as_deref(), Some("msg_2"));
+fn an_incomplete_turn_reports_why_unless_the_token_limit_cut_it() {
+    for (reason, stop) in [
+        ("max_output_tokens", crate::message::StopReason::Length),
+        (
+            "content_filter",
+            crate::message::StopReason::Error("Provider finish_reason: content_filter".into()),
+        ),
+        (
+            "max_tool_calls",
+            crate::message::StopReason::Error("Response incomplete: max_tool_calls".into()),
+        ),
+    ] {
+        let mut body = serde_json::to_value(sample_response(ResponseStatus::Incomplete))
+            .expect("the sample response serializes");
+        body["incomplete_details"] = json!({ "reason": reason });
+        body["output"] = json!([message("msg_1", "partial")]);
+        let response = decode(Mode::Unary, vec![WireFrame::Text(body.to_string())]);
+        assert_eq!(response.stop(), stop, "{reason}");
+        assert_eq!(response.text(), "partial");
+    }
+}
+
+#[test]
+fn a_reply_names_the_model_and_response_it_came_from() {
+    let response = decode(Mode::Unary, whole(&[message("msg_1", "hi")]));
+    let Some(crate::message::Message::Assistant(turn)) = response.message() else {
+        panic!("one assistant turn");
+    };
+    let origin = turn.origin.expect("a decoded turn has an origin");
+    assert_eq!(origin.api.as_str(), "openai.responses");
+    assert_eq!(origin.provider, "openai");
+    assert_eq!(origin.model, "gpt-5.4");
+    assert_eq!(origin.response_id.as_deref(), Some("resp_123"));
 }

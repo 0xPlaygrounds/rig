@@ -327,7 +327,6 @@ pub const OPENROUTER: Dialect = Dialect {
         // reasoning blobs.
         native_finish_reason: true,
         reasoning_details: true,
-        upstream_reasoning_issuer: true,
         response_format_with_tools: true,
         accepts_file_ids: false,
         rewrite: BodyRewrite::OpenRouter,
