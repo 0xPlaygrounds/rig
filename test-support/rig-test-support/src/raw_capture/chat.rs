@@ -20,8 +20,7 @@ use crate::support::{assert_matches_recorded_token, assistant_text};
 
 /// The provider-native terminal record a chat-completions stream's
 /// `raw` holds, over the dialect-tolerant accounting.
-#[cfg(any())]
-pub type Terminal = StreamingCompletionResponse<ChatUsage>;
+pub type Terminal = openai::wire::StreamingCompletionResponse<ChatUsage>;
 
 /// The finish reason a recorded chat-completions body reports.
 ///
@@ -173,16 +172,12 @@ impl OpenAiCounters for mistral::Usage {
 }
 
 /// The text parts of a native reply's first choice, concatenated.
-#[cfg(any())]
 pub fn native_text<U>(native: &openai::completion::ChatCompletionResponse<U>) -> String {
     let choice = native
         .choices
         .first()
         .expect("the reply carries at least one choice");
-    let openai::completion::Message::Assistant(rig_core::message::AssistantMessage {
-        content, ..
-    }) = &choice.message
-    else {
+    let openai::completion::Message::Assistant { content, .. } = &choice.message else {
         panic!("a completion choice carries an assistant message");
     };
     content
@@ -199,21 +194,20 @@ pub fn native_text<U>(native: &openai::completion::ChatCompletionResponse<U>) ->
 ///
 /// As with [`assert_reproduces_body`], the transport id contract is the
 /// cell's to state.
-#[cfg(any())]
 pub fn assert_terminal_reproduces_frame(
     terminal: &CompletionResponse,
     provider: &str,
     frame: &Value,
     context: &str,
 ) {
-    assert_eq!(terminal.provider, provider, "{context}: provider");
+    assert_eq!(terminal.provider(), provider, "{context}: provider");
     assert_matches_recorded_token(
-        terminal.response_id.as_deref(),
+        terminal.response_id(),
         frame["id"].as_str(),
         &format!("{context}: response id"),
     );
     assert_eq!(
-        terminal.model.as_deref(),
+        terminal.model(),
         frame["model"].as_str(),
         "{context}: model"
     );
@@ -240,7 +234,6 @@ pub fn assert_terminal_reproduces_frame(
 /// exact typed round trip the right claim here, unlike the blocking path
 /// where `raw` is the reply *document*. The returned typed record is the
 /// cell's handle on whatever its dialect keeps beside the shared fields.
-#[cfg(any())]
 pub fn assert_terminal_round_trips(terminal: &CompletionResponse) -> Terminal {
     let raw = &terminal.raw;
     let typed = Terminal::deserialize(raw)
@@ -250,8 +243,12 @@ pub fn assert_terminal_round_trips(terminal: &CompletionResponse) -> Terminal {
         *raw,
         "the captured value is the typed terminal serialized, nothing more"
     );
-    assert_eq!(typed.response_id, terminal.response_id, "response id");
-    assert_eq!(typed.model, terminal.model, "model");
+    assert_eq!(
+        typed.response_id.as_deref(),
+        terminal.response_id(),
+        "response id"
+    );
+    assert_eq!(typed.model.as_deref(), terminal.model(), "model");
     assert_eq!(
         typed.finish_reason,
         terminal.finish_reason(),
@@ -261,7 +258,7 @@ pub fn assert_terminal_round_trips(terminal: &CompletionResponse) -> Terminal {
         .usage
         .as_ref()
         .expect("the terminal record carries the reply's accounting");
-    let dialect = openai::wire::by_name(&terminal.provider)
+    let dialect = openai::wire::by_name(terminal.provider())
         .expect("the terminal names a registered chat dialect");
     assert_eq!(
         usage.to_normalized_for(&dialect.quirks),

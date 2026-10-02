@@ -82,10 +82,6 @@ fn assert_reproduces_fixture(
 ) {
     chat::assert_reproduces_body(response, PROVIDER, body, context);
     let identity = response.identity();
-    assert_eq!(
-        identity.message_id, None,
-        "{context}: chat has no message id"
-    );
     assert_matches_recorded_token(
         identity.provider_request_id.as_deref(),
         Some(request_id),
@@ -176,7 +172,6 @@ async fn encode_is_deterministic_and_raw_is_faithful() {
     assert_eq!(second.provider(), first.provider());
     assert_eq!(second.model(), first.model());
     assert_eq!(second.finish_reason(), first.finish_reason());
-    assert_eq!(second.identity().message_id, first.identity().message_id);
     // Identical request bytes tokenize identically; the output side is the
     // model's to vary.
     assert_eq!(second.usage.input_tokens, first.usage.input_tokens);

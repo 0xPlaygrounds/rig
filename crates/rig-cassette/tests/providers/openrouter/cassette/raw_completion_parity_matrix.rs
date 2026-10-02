@@ -62,10 +62,6 @@ fn request() -> CompletionRequest {
 fn assert_reproduces_fixture(response: &CompletionResponse, body: &Value, context: &str) {
     chat::assert_reproduces_body(response, PROVIDER, body, context);
     let identity = response.identity();
-    assert_eq!(
-        identity.message_id, None,
-        "{context}: chat has no message id"
-    );
     assert_no_request_id(identity.provider_request_id.as_deref(), "OpenRouter");
 }
 
@@ -126,7 +122,6 @@ async fn raw_reproduces_the_completion_it_rode_on() {
         second.identity().provider_request_id,
         first.identity().provider_request_id
     );
-    assert_eq!(second.identity().message_id, first.identity().message_id);
 }
 
 // ================================================================

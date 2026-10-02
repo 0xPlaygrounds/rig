@@ -60,8 +60,7 @@ async fn drain_stream(mut stream: rig::streaming::CompletionStream) -> StreamRun
                 content: AssistantContent::Reasoning(reasoning),
                 ..
             }) => {
-                run.reasoning_blocks
-                    .push(reasoning.open(reasoning.issuer()).cloned().expect("opens"));
+                run.reasoning_blocks.push(reasoning);
             }
             Item::Event(StreamEvent::Reasoning { text, .. }) => {
                 run.reasoning_delta.push_str(&text);
@@ -350,8 +349,7 @@ async fn chat_sourced_history_replays_the_tool_name_not_the_identifier() {
                             name: rig_core::message::ToolName::new("add").expect("tool name"),
                             arguments: serde_json::json!({"x": 2, "y": 3}),
                         },
-                        signature: None,
-                        additional_params: None,
+                        native: None,
                     }),
                 ])),
                 rig::message::Message::User {

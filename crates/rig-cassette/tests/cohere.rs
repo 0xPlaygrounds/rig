@@ -11,6 +11,5 @@ use rig_test_support::matrix;
 use rig_test_support::raw_capture;
 use rig_test_support::support;
 
-#[cfg(any())]
 #[path = "providers/cohere/mod.rs"]
 mod cohere;

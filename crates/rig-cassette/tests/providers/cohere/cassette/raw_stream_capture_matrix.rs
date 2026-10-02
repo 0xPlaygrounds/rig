@@ -123,7 +123,7 @@ async fn raw_roundtrips_streaming_completion_response() {
     );
 
     // The typed value agrees with the normalized terminal next to it.
-    assert_eq!(typed.message_id, terminal.response_id());
+    assert_eq!(typed.message_id.as_deref(), terminal.response_id());
     assert_eq!(
         typed
             .usage

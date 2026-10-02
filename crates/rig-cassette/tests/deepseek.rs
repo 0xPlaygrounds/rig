@@ -18,7 +18,6 @@ use rig_test_support::raw_capture;
 use rig_test_support::reasoning;
 use rig_test_support::support;
 
-#[cfg(any())]
 #[path = "providers/deepseek/mod.rs"]
 mod deepseek;
 

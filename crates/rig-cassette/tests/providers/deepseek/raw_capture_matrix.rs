@@ -38,7 +38,7 @@
 //! covering nothing.
 
 use rig::completion::{CompletionRequest, CompletionResponse};
-use rig::message::{AssistantContent, ReasoningContent};
+use rig::message::AssistantContent;
 use rig::providers::{deepseek, openai};
 use serde::Deserialize;
 use serde_json::json;
@@ -75,18 +75,7 @@ fn reasoning_text_of(choice: &[AssistantContent]) -> String {
     choice
         .iter()
         .filter_map(|content| match content {
-            AssistantContent::Reasoning(reasoning) => Some(reasoning),
-            _ => None,
-        })
-        .flat_map(|reasoning| {
-            reasoning
-                .open(reasoning.issuer())
-                .expect("sealed reasoning")
-                .content
-                .iter()
-        })
-        .filter_map(|content| match content {
-            ReasoningContent::Text { text, .. } => Some(text.as_str()),
+            AssistantContent::Reasoning(reasoning) => Some(reasoning.text.as_str()),
             _ => None,
         })
         .collect()
@@ -267,7 +256,7 @@ async fn reasoning_raw_round_trips_and_exposes_reasoning_content() {
     let typed = deepseek::CompletionResponse::deserialize(&response.raw)
         .expect("raw reads back as DeepSeek's own CompletionResponse");
     assert_typed_view_matches(&typed, &response);
-    let openai::completion::Message::Assistant(_) = &typed
+    let openai::completion::Message::Assistant { reasoning, .. } = &typed
         .choices
         .first()
         .expect("a reply carries a choice")

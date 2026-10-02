@@ -93,16 +93,7 @@ async fn reasoning_content_reaches_the_caller_on_both_transports() {
                         response.choice
                     )
                 });
-            let reasoning_text = reasoning
-                .open(reasoning.issuer())
-                .expect("sealed reasoning")
-                .content
-                .iter()
-                .filter_map(|block| match block {
-                    rig::message::ReasoningContent::Text { text, .. } => Some(text.clone()),
-                    _ => None,
-                })
-                .collect::<String>();
+            let reasoning_text = reasoning.text.clone();
             assert!(
                 !reasoning_text.trim().is_empty(),
                 "the reasoning block must carry text — a derived `Debug` is never \

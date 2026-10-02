@@ -21,7 +21,7 @@ fn image_message() -> Image {
         data: DocumentSourceKind::base64(BASE64_STANDARD.encode(bytes)),
         media_type: Some(ImageMediaType::JPEG),
         detail: None,
-        additional_params: None,
+        native: None,
     }
 }
 

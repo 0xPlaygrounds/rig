@@ -322,12 +322,7 @@ pub(super) async fn collect_raw_stream_outcome(
                 content: AssistantContent::Reasoning(reasoning),
                 ..
             })) => {
-                outcome.reasoning.push_str(
-                    &reasoning
-                        .open(reasoning.issuer())
-                        .expect("sealed reasoning")
-                        .display_text(),
-                );
+                outcome.reasoning.push_str(&reasoning.text);
                 note(&mut outcome.order, "reasoning");
             }
             Ok(Item::Event(StreamEvent::Reasoning {

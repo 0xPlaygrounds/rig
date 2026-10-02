@@ -85,7 +85,6 @@ async fn raw_try_into_matches_completion() {
     assert_eq!(first.usage.input_tokens, second.usage.input_tokens);
     let first_identity = first.identity();
     let second_identity = second.identity();
-    assert_eq!(first_identity.message_id, second_identity.message_id);
     assert_eq!(
         first_identity.provider_request_id, None,
         "Cohere has no adopted request-id header, so the driver reports None by design"

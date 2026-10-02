@@ -11,6 +11,5 @@ use rig_test_support::raw_capture;
 use rig_test_support::reasoning;
 use rig_test_support::support;
 
-#[cfg(any())]
 #[path = "providers/ollama/mod.rs"]
 mod ollama;

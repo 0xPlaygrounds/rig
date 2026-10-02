@@ -7,7 +7,6 @@ use rig_test_support::cassettes;
 use rig_test_support::raw_capture;
 use rig_test_support::support;
 
-#[cfg(any())]
 #[path = "providers/groq/mod.rs"]
 mod groq;
 

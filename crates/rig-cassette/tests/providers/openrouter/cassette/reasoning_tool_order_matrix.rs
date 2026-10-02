@@ -335,13 +335,14 @@ fn assert_normalized_order(scenario: &str, cell: Cell, observed: SharedChoice) {
         choice.iter().any(|content| matches!(
             content,
             AssistantContent::Reasoning(reasoning)
-                if reasoning.open(reasoning.issuer()).expect("sealed reasoning").content.iter().any(|part| matches!(
-                    part,
-                    rig::message::ReasoningContent::Text {
-                        signature: Some(signature),
-                        ..
-                    } if !signature.is_empty()
-                ))
+                if reasoning
+                    .native
+                    .as_ref()
+                    .and_then(|native| native.item.get("reasoning_details"))
+                    .and_then(serde_json::Value::as_array)
+                    .is_some_and(|details| details.iter().any(|detail| {
+                        detail["signature"].as_str().is_some_and(|signature| !signature.is_empty())
+                    }))
         )),
         "{scenario}: live reasoning signature must survive normalization: {choice:#?}"
     );

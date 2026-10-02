@@ -79,9 +79,9 @@ async fn observe_stream(
                 content: AssistantContent::Reasoning(reasoning),
                 ..
             })) => {
-                observation.streamed_encrypted.extend(encrypted_blocks_of(
-                    reasoning.open(reasoning.issuer()).expect("reasoning opens"),
-                ));
+                observation
+                    .streamed_encrypted
+                    .extend(encrypted_blocks_of(&reasoning));
             }
             Ok(Item::Event(StreamEvent::End {
                 content: AssistantContent::ToolCall(tool_call),
@@ -97,15 +97,22 @@ async fn observe_stream(
     observation
 }
 
+/// The encrypted `reasoning_details` entries a reasoning block holds in its
+/// provider item, as `(id, data)`.
 fn encrypted_blocks_of(reasoning: &rig::message::Reasoning) -> Vec<(Option<String>, String)> {
     reasoning
-        .content
-        .iter()
-        .filter_map(|content| match content {
-            rig::message::ReasoningContent::Encrypted(data) => {
-                Some((reasoning.id.clone(), data.clone()))
-            }
-            _ => None,
+        .native
+        .as_ref()
+        .and_then(|native| native.item.get("reasoning_details"))
+        .and_then(serde_json::Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter(|detail| detail["type"] == "reasoning.encrypted")
+        .filter_map(|detail| {
+            Some((
+                detail["id"].as_str().map(str::to_owned),
+                detail["data"].as_str()?.to_owned(),
+            ))
         })
         .collect()
 }
@@ -114,9 +121,7 @@ fn encrypted_blocks_in_choice(choice: &[AssistantContent]) -> Vec<(Option<String
     choice
         .iter()
         .filter_map(|content| match content {
-            AssistantContent::Reasoning(reasoning) => {
-                reasoning.open(reasoning.issuer()).map(encrypted_blocks_of)
-            }
+            AssistantContent::Reasoning(reasoning) => Some(encrypted_blocks_of(reasoning)),
             _ => None,
         })
         .flatten()
@@ -161,11 +166,14 @@ async fn stream_encrypted_reasoning_reaches_the_choice() {
                 .expect("expected a streamed get_weather tool call");
             // The encrypted blob is not tool-call metadata: a decoration keyed
             // by the detail's own `rs_*` id could never match this `call_*` id.
+            let call_item = &tool_call
+                .native
+                .as_ref()
+                .expect("the call holds its provider item")
+                .item;
             assert!(
-                tool_call.signature.is_none() && tool_call.additional_params.is_none(),
-                "encrypted reasoning must not ride on the tool call: signature={:?} additional_params={:?}",
-                tool_call.signature,
-                tool_call.additional_params
+                call_item.get("reasoning_details").is_none(),
+                "encrypted reasoning must not ride on the tool call: {call_item}"
             );
 
             let streamed = observation.streamed_encrypted.clone();

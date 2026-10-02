@@ -171,10 +171,8 @@ async fn the_response_id_reaches_the_caller_on_both_transports() {
             while let Some(item) = stream.next().await {
                 item.expect("stream item should be ok");
             }
-            let id = stream
-                .finish()
-                .await
-                .expect("the stream must terminate")
+            let terminal = stream.finish().await.expect("the stream must terminate");
+            let id = terminal
                 .response_id()
                 .expect("the streamed terminal must carry the same handle");
             assert!(id.starts_with("chatcmpl-"), "{id:?}");

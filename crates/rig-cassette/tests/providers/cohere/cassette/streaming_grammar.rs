@@ -6,7 +6,7 @@
 use futures::StreamExt;
 use rig::completion::CompletionResponse;
 use rig::completion::FinishReason;
-use rig::message::{AssistantContent, Reasoning, ReasoningContent, ToolCall, ToolChoice};
+use rig::message::{AssistantContent, Reasoning, ToolCall, ToolChoice};
 use rig::streaming::Item;
 use rig::streaming::StreamEvent;
 
@@ -49,12 +49,7 @@ async fn drain_stream(mut stream: rig::streaming::CompletionStream) -> StreamRun
                 content: AssistantContent::Reasoning(reasoning),
                 ..
             }) => {
-                run.reasoning_blocks.push(
-                    reasoning
-                        .open(reasoning.issuer())
-                        .cloned()
-                        .expect("reasoning opens"),
-                );
+                run.reasoning_blocks.push(reasoning);
             }
             Item::Event(StreamEvent::Reasoning { text, .. }) => {
                 run.reasoning_delta.push_str(&text);
@@ -118,19 +113,7 @@ async fn thinking_stream_keeps_reasoning_and_text_discrete() {
             .choice
             .iter()
             .filter_map(|content| match content {
-                AssistantContent::Reasoning(reasoning) => Some(
-                    reasoning
-                        .open(reasoning.issuer())
-                        .expect("sealed reasoning")
-                        .content
-                        .iter(),
-                ),
-                _ => None,
-            })
-            .flatten()
-            .filter_map(|part| match part {
-                ReasoningContent::Text { text, .. } => Some(text.as_str()),
-                ReasoningContent::Summary(text) => Some(text.as_str()),
+                AssistantContent::Reasoning(reasoning) => Some(reasoning.text.as_str()),
                 _ => None,
             })
             .collect();

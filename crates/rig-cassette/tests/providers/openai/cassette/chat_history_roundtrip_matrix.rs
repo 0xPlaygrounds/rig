@@ -188,10 +188,7 @@ fn provider_text(raw: &Value) -> Result<String> {
         .choices
         .iter()
         .filter_map(|choice| match &choice.message {
-            openai::completion::Message::Assistant(rig_core::message::AssistantMessage {
-                content,
-                ..
-            }) => Some(content),
+            openai::completion::Message::Assistant { content, .. } => Some(content),
             _ => None,
         })
         .flatten()

@@ -18,7 +18,6 @@ use rig_test_support::cache_conformance;
 mod cassette_safety;
 use rig_test_support::cassettes;
 
-#[cfg(any())]
 #[path = "providers/venice/mod.rs"]
 mod venice;
 

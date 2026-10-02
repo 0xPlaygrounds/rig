@@ -40,7 +40,6 @@ use rig::streaming::Item;
 
 use futures::StreamExt as _;
 use rig::completion::CompletionRequest;
-use rig::message::ReasoningContent;
 use rig::providers::deepseek;
 use rig::streaming::StreamEvent;
 use serde::Deserialize;
@@ -104,16 +103,7 @@ async fn collect_reasoning_text_and_terminal(
                 content: AssistantContent::Reasoning(reasoning),
                 ..
             }) => {
-                observation.reasoning = reasoning
-                    .open(reasoning.issuer())
-                    .expect("sealed reasoning")
-                    .content
-                    .iter()
-                    .filter_map(|content| match content {
-                        ReasoningContent::Text { text, .. } => Some(text.as_str()),
-                        _ => None,
-                    })
-                    .collect();
+                observation.reasoning = reasoning.text;
             }
             Item::Event(StreamEvent::Text { text: chunk, .. }) => observation.text.push_str(&chunk),
             _ => {}

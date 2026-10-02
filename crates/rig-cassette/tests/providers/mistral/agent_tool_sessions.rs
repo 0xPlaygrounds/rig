@@ -474,8 +474,7 @@ fn assert_response_metadata(
     raw: &mistral::CompletionResponse,
 ) {
     assert_nonempty_response(&raw.id);
-    assert_eq!(response.response_id().as_deref(), Some(raw.id.as_str()));
-    assert_eq!(response.response_id(), None);
+    assert_eq!(response.response_id(), Some(raw.id.as_str()));
     assert_nonempty_response(&raw.model);
     assert!(
         raw.choices

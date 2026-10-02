@@ -61,10 +61,7 @@ async fn completions_api_raw_response_text_matches_normalized_choice_text() {
                 .choices
                 .iter()
                 .filter_map(|choice| match &choice.message {
-                    openai::completion::Message::Assistant(rig::message::AssistantMessage {
-                        content,
-                        ..
-                    }) => Some(content),
+                    openai::completion::Message::Assistant { content, .. } => Some(content),
                     _ => None,
                 })
                 .flatten()
