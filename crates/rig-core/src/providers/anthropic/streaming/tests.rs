@@ -996,7 +996,7 @@ fn a_delta_without_its_type_or_text_fails_the_reply() {
             vec![block(
                 0,
                 json!({"type": "text", "text": ""}),
-                &[delta.clone()],
+                std::slice::from_ref(&delta),
             )],
             "end_turn",
         );
