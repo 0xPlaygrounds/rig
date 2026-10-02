@@ -242,10 +242,10 @@ pub(super) fn all() -> Vec<Check> {
                     "package(rig-cassette-minimal) and (binary(verify) or binary(effect_log))",
                 ]),
                 // Preserve the former default sweep's dependency graph and
-                // retry policy. The nested runner above preserves the former
-                // minimal serde_json graph; this execution also exercises
-                // preserve_order/float_roundtrip and the unified allocator.
-                // Only the `verify` binary moves out of the default sweep.
+                // retry policy. The nested runner above has no native HTTP
+                // engine; this execution also exercises the unified
+                // allocator. Only the `verify` binary moves out of the
+                // default sweep.
                 cargo(&[
                     "nextest",
                     "run",

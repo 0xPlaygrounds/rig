@@ -27,8 +27,8 @@ its fixtures and integration tests from the published package. The unpublished
 `rig-cassette-minimal` runner at
 `crates/rig-cassette/tests/minimal/Cargo.toml` executes the same `verify` and
 `world_replay` sources, plus the shared effect-log/classic-replay regressions.
-It selects only cassette's `agent,ecs` features: no native HTTP engine,
-`serde_json/preserve_order` or `serde_json/float_roundtrip`.
+It selects only cassette's `agent,ecs` features, without the native HTTP
+engine.
 
 ```sh
 RIG_PROVIDER_TEST_MODE=replay cargo nextest run --locked -p rig-cassette-minimal --all-features --retries 0
