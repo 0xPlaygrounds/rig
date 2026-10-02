@@ -49,10 +49,9 @@ impl Transport<MockScript> for Scripted {
             let mut response = CompletionResponse::new(
                 vec![answer],
                 usage(self.total_tokens),
-                self.provider,
+                rig_core::message::Origin::new("example.api", self.provider, ""),
                 serde_json::Value::Null,
             );
-            response.message_id = Some(format!("{}-message", self.provider));
             response
         };
         Opening::ready(Opened::new(stream::iter([Ok(MockFrame::Response(

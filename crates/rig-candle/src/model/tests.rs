@@ -896,16 +896,12 @@ async fn foreign_reasoning_in_history_is_refused_not_dropped()
     let model = CandleModel::builder(model_data()?).max_tokens(1).build()?;
     let history = vec![
         Message::user("hello"),
-        Message::Assistant {
-            id: None,
-            content: vec![
-                rig_core::message::AssistantContent::Reasoning(
-                    rig_core::message::Reasoning::new("elsewhere")
-                        .sealed(String::from("anthropic")),
-                ),
-                rig_core::message::AssistantContent::text("hi"),
-            ],
-        },
+        Message::Assistant(rig_core::message::AssistantMessage::new(vec![
+            rig_core::message::AssistantContent::Reasoning(rig_core::message::Reasoning::new(
+                "elsewhere",
+            )),
+            rig_core::message::AssistantContent::text("hi"),
+        ])),
         Message::user("again"),
     ];
     let Err(error) = generation(&model).call(request(history)).await else {
@@ -1792,7 +1788,7 @@ async fn stream_terminal_raw_round_trips_into_the_local_record()
     let renormalized = renormalized.finish().await?;
     assert_eq!(terminal.identity(), renormalized.identity());
     assert_eq!(terminal.finish_reason(), renormalized.finish_reason());
-    assert_eq!(terminal.model, renormalized.model);
+    assert_eq!(terminal.model(), renormalized.model());
     assert_eq!(terminal.usage, renormalized.usage);
     assert_eq!(terminal.usage.output_tokens, Some(2));
     Ok(())
@@ -1827,7 +1823,7 @@ async fn an_empty_turn_never_reaches_the_local_runtime()
                 "role": "user",
                 "content": [{
                     "type": "toolresult",
-                    "call": {"provider": {"call_id": "call_1"}},
+                    "call": {"provider": "call_1"},
                     "name": "lookup",
                     "content": [],
                 }],

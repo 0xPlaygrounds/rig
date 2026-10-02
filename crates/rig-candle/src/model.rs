@@ -18,9 +18,10 @@ use futures::StreamExt;
 use rig_core::completion::CompletionRequest;
 use rig_core::driver::{Exchange, Opened, Opening, Transport};
 use rig_core::error::ProviderError;
+use rig_core::message::AssistantContent;
 #[cfg(test)]
 use rig_core::message::{Message, UserContent};
-use rig_core::operation::{Completion, Finish, TextPart};
+use rig_core::operation::{Block, Completion, Finish};
 use rig_core::wire::{Flow, Mode, Out, WireEvent};
 #[cfg(test)]
 use tokenizers::Tokenizer;
@@ -321,7 +322,7 @@ impl rig_core::wire::Wire for Generation {
     type Decoder<'id> = CandleAdapter<'id>;
 
     fn describe(&self) -> rig_core::wire::Descriptor<'_> {
-        rig_core::wire::Descriptor::new(crate::types::PROVIDER_NAME)
+        rig_core::wire::Descriptor::new(crate::types::PROVIDER_NAME).replay(self)
     }
 
     /// The prompt protocol decides which reasoning a local model can render
@@ -339,14 +340,28 @@ impl rig_core::wire::Wire for Generation {
     }
 }
 
+impl rig_core::completion::ReplayTarget for Generation {
+    fn api(&self) -> rig_core::message::Api {
+        rig_core::message::Api::from_static("candle.generate")
+    }
+
+    fn provider(&self) -> &str {
+        crate::types::PROVIDER_NAME
+    }
+
+    fn model(&self) -> &str {
+        ""
+    }
+}
+
 /// Writes local generation events into the reply. Every input is modeled;
 /// no byte decoding or unknown-frame classification occurs. Channel EOF
 /// without a `Final` event means the generator failed or was cancelled: the
-/// reply is truncated.
+/// reply is truncated. Local generation has no provider items: every block
+/// is canonical.
 #[derive(Default)]
 pub struct CandleAdapter<'id> {
-    /// The text part text fragments extend.
-    text: Option<TextPart<'id>>,
+    brand: std::marker::PhantomData<fn(&'id ()) -> &'id ()>,
 }
 
 impl<'id> rig_core::wire::Decoder<'id, Completion, CandleFrame> for CandleAdapter<'id> {
@@ -372,19 +387,19 @@ impl<'id> rig_core::wire::Decoder<'id, Completion, CandleFrame> for CandleAdapte
         };
         match event {
             GenerationEvent::Text(text) => {
-                out.extend_text(&mut self.text, &text);
+                out.run(Block::Text, &text)?;
             }
             GenerationEvent::ToolCall(call) => {
-                out.close_open_text(&mut self.text);
-                out.tool_call(call)?;
+                out.end_run()?;
+                out.content(AssistantContent::ToolCall(call))?;
             }
             GenerationEvent::Reasoning(reasoning) => {
-                out.close_open_text(&mut self.text);
-                out.reasoning_block(reasoning);
+                out.end_run()?;
+                out.content(AssistantContent::Reasoning(reasoning))?;
             }
             // The local response record is the response's `raw`.
             GenerationEvent::Final(response) => {
-                out.close_open_text(&mut self.text);
+                out.end_run()?;
                 out.raw(serde_json::to_value(&response)?);
                 return Ok(out.end(Finish {
                     usage: (&response).into(),

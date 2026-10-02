@@ -41,34 +41,19 @@ struct PrintOpenAiFields;
 impl AgentHook for PrintOpenAiFields {
     /// On the blocking surface `raw` is the Chat Completions response as
     /// OpenAI's wire type parsed it. On the streamed surface it is the
-    /// stream's *terminal record* as OpenAI's wire type accumulated it — the
-    /// top-level chunk fields Rig does not normalize land in its
-    /// `additional_params`.
+    /// stream's terminal record, read here as plain JSON.
     async fn on_outcome(&self, ctx: &HookContext, event: OutcomeEvent<'_>) -> OutcomeAction {
         let Some(response) = event.completion() else {
             return OutcomeAction::proceed();
         };
         if ctx.is_streaming() {
-            match openai::wire::StreamingCompletionResponse::<openai::Usage>::deserialize(
-                &response.raw,
-            ) {
-                Ok(terminal) => {
-                    let extra = |key: &str| {
-                        terminal
-                            .additional_params
-                            .as_ref()
-                            .and_then(|params| params.get(key))
-                            .cloned()
-                    };
-                    println!(
-                        "  id {:?} · system_fingerprint {:?} · service_tier {:?}",
-                        terminal.response_id,
-                        extra("system_fingerprint"),
-                        extra("service_tier"),
-                    );
-                }
-                Err(err) => println!("  raw is not an OpenAI terminal: {err}"),
-            }
+            let field = |key: &str| response.raw.get(key).cloned();
+            println!(
+                "  id {:?} · system_fingerprint {:?} · service_tier {:?}",
+                field("id"),
+                field("system_fingerprint"),
+                field("service_tier"),
+            );
         } else {
             match openai::CompletionResponse::deserialize(&response.raw) {
                 Ok(response) => println!(

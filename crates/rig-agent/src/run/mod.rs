@@ -31,7 +31,8 @@ use rig_core::completion::{CompletionResponse, FinishReason, ToolDefinition};
 use rig_core::error::ProviderError;
 
 use rig_core::message::{
-    AssistantContent, ToolCall, ToolChoice, ToolName, ToolResult, ToolResultContent, UserContent,
+    AssistantContent, AssistantMessage, ToolCall, ToolChoice, ToolName, ToolResult,
+    ToolResultContent, UserContent,
 };
 
 use rig_core::completion::{Message, ResponseIdentity, Usage};
@@ -164,8 +165,8 @@ pub struct PendingToolCall {
 /// A completed model turn fed back to [`AgentRun::model_response`].
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModelTurn {
-    /// Provider-assigned assistant message ID, when available.
-    pub message_id: Option<String>,
+    /// The turn's origin, stop and provider message, without content.
+    pub head: AssistantMessage,
     /// Provider-assigned response-scoped ID, when available.
     pub response_id: Option<String>,
     /// The provider's transport request id for this attempt, when reported.
@@ -205,14 +206,17 @@ impl ModelTurn {
         allowed_tool_names: BTreeSet<String>,
     ) -> Self {
         Self::new(
-            resp.message_id.clone(),
+            resp.head(),
             resp.choice.clone(),
             resp.usage,
             executable_tool_names,
             allowed_tool_names,
             resp.raw.clone(),
         )
-        .with_identity(resp.response_id.clone(), resp.provider_request_id.clone())
+        .with_identity(
+            resp.response_id().map(str::to_owned),
+            resp.provider_request_id.clone(),
+        )
         .with_finish_reason(resp.finish_reason())
     }
 
@@ -220,7 +224,7 @@ impl ModelTurn {
     /// for the turn, and the provider's own response `raw` (see
     /// [`Self::raw`]).
     pub fn new(
-        message_id: Option<String>,
+        head: AssistantMessage,
         choice: Vec<AssistantContent>,
         usage: Usage,
         executable_tool_names: BTreeSet<String>,
@@ -228,7 +232,7 @@ impl ModelTurn {
         raw: serde_json::Value,
     ) -> Self {
         Self {
-            message_id,
+            head,
             response_id: None,
             provider_request_id: None,
             choice,
@@ -286,7 +290,7 @@ pub enum ModelTurnOutcome {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct ResolvingState {
-    message_id: Option<String>,
+    head: AssistantMessage,
     /// The unmodified model output, used for diagnostic histories and retry
     /// messages (repairs are never reflected in those).
     original_choice: Vec<AssistantContent>,
@@ -327,7 +331,7 @@ fn has_tool_calls(items: &[AssistantContent]) -> bool {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct TurnState {
-    message_id: Option<String>,
+    head: AssistantMessage,
     items: Vec<AssistantContent>,
     has_tool_calls: bool,
     /// Keyed by position in `items` (see `ResolvingState::skipped`).
@@ -785,7 +789,7 @@ impl AgentRun {
                 // Feedback may retry an empty answer, but empty assistant messages
                 // must not enter provider history.
                 self.new_messages
-                    .extend(assistant_turn(turn.message_id, turn.items));
+                    .extend(assistant_turn(turn.head, turn.items));
                 self.new_messages.push(Message::user(feedback));
             }
         }
@@ -885,7 +889,7 @@ impl AgentRun {
             }
             RunState::AwaitingAdvance(turn_state) => {
                 let TurnState {
-                    message_id,
+                    head,
                     items,
                     has_tool_calls,
                     skipped,
@@ -922,7 +926,7 @@ impl AgentRun {
                         .unwrap_or_default();
                     if !missing.is_empty() && self.can_reprompt_for_output() {
                         self.new_messages
-                            .extend(assistant_message(message_id, items.clone()));
+                            .extend(assistant_message(head, items.clone()));
                         let feedback =
                             structured_output::reprompt_missing_fields(&output_tool_name, &missing);
                         if let Some(user_message) =
@@ -942,7 +946,7 @@ impl AgentRun {
                         .collect();
                     final_items.push(AssistantContent::text(output.clone()));
                     self.new_messages
-                        .extend(assistant_message(message_id, final_items.clone()));
+                        .extend(assistant_message(head, final_items.clone()));
 
                     let content = response::finalize_output_tool_choice(&items, &output)
                         .unwrap_or_else(|| vec![AssistantContent::text(output)]);
@@ -959,7 +963,7 @@ impl AgentRun {
 
                 // Empty turns may succeed but cannot form provider history entries.
                 self.new_messages
-                    .extend(assistant_turn(message_id, items.clone()));
+                    .extend(assistant_turn(head, items.clone()));
 
                 if has_tool_calls {
                     // Output retries are budgeted per finalization attempt, not per run.
@@ -1049,8 +1053,6 @@ impl AgentRun {
         self.record_completion_call(
             turn.usage,
             ResponseIdentity {
-                // The message id is also written into run history below.
-                message_id: turn.message_id.clone(),
                 response_id: turn.response_id,
                 provider_request_id: turn.provider_request_id,
             },
@@ -1062,7 +1064,7 @@ impl AgentRun {
         let has_tool_calls = has_tool_calls(&items);
 
         self.state = RunState::ResolvingToolCalls(ResolvingState {
-            message_id: turn.message_id,
+            head: turn.head,
             original_choice: turn.choice,
             items,
             next_index: 0,
@@ -1120,13 +1122,13 @@ impl AgentRun {
     /// ingestion paths converge here, differing only in the `skipped` map.
     fn finalize_turn(
         &mut self,
-        message_id: Option<String>,
+        head: AssistantMessage,
         items: Vec<AssistantContent>,
         has_tool_calls: bool,
         skipped: BTreeMap<usize, UserContent>,
     ) {
         self.state = RunState::AwaitingAdvance(TurnState {
-            message_id,
+            head,
             items,
             has_tool_calls,
             skipped,
@@ -1228,7 +1230,7 @@ impl AgentRun {
         match action {
             ValidatedInvalidToolCallAction::Retry { feedback } => {
                 self.new_messages.extend(assistant_message(
-                    resolving.message_id.clone(),
+                    resolving.head.clone(),
                     resolving.original_choice.clone(),
                 ));
                 let Some(user_message) = invalid_tool_retry_user_message(
@@ -1400,7 +1402,7 @@ impl AgentRun {
         }
 
         let ResolvingState {
-            message_id,
+            head,
             items,
             mut skipped,
             recovered,
@@ -1425,7 +1427,7 @@ impl AgentRun {
             }
         }
 
-        self.finalize_turn(message_id, items, has_tool_calls, skipped);
+        self.finalize_turn(head, items, has_tool_calls, skipped);
         Ok(ModelTurnOutcome::Continue {
             response_hook_suppressed: recovered,
         })
@@ -1616,8 +1618,7 @@ impl AgentRun {
                 .contains(tool_call.function.name.as_str())
             {
                 let mut diagnostic_messages = self.new_messages.clone();
-                diagnostic_messages
-                    .extend(assistant_turn(turn.message_id.clone(), turn.choice.clone()));
+                diagnostic_messages.extend(assistant_turn(turn.head.clone(), turn.choice.clone()));
                 let diagnostic_history =
                     build_full_history(self.chat_history.as_deref(), diagnostic_messages);
                 self.state = RunState::Failed;
@@ -1630,12 +1631,7 @@ impl AgentRun {
             }
         }
 
-        self.finalize_turn(
-            turn.message_id,
-            turn.choice,
-            has_tool_calls,
-            BTreeMap::new(),
-        );
+        self.finalize_turn(turn.head, turn.choice, has_tool_calls, BTreeMap::new());
         Ok(())
     }
 
@@ -1658,7 +1654,7 @@ impl AgentRun {
     fn diagnostic_history(&self, resolving: &ResolvingState) -> Vec<Message> {
         let mut diagnostic_messages = self.new_messages.clone();
         diagnostic_messages.extend(assistant_message(
-            resolving.message_id.clone(),
+            resolving.head.clone(),
             resolving.original_choice.clone(),
         ));
         build_full_history(self.chat_history.as_deref(), diagnostic_messages)

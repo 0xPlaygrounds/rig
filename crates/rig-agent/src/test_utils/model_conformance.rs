@@ -98,7 +98,7 @@ pub fn validate_unknown_tool_failure(
     let history_has_call = chat_history.iter().any(|message| {
         matches!(
             message,
-            Message::Assistant { content, .. }
+            Message::Assistant(rig_core::message::AssistantMessage { content, .. })
                 if content.iter().any(|item| matches!(item, AssistantContent::ToolCall(_)))
         )
     });
@@ -134,7 +134,7 @@ pub fn validate_cancelled_failure(
     let history_has_call = chat_history.iter().any(|message| {
         matches!(
             message,
-            Message::Assistant { content, .. }
+            Message::Assistant(rig_core::message::AssistantMessage { content, .. })
                 if content.iter().any(|item| matches!(
                     item,
                     AssistantContent::ToolCall(call) if call.function.name == expected_tool
@@ -376,30 +376,25 @@ fn validate_tool_correlation(
     let mut turn = 0usize;
     for message in messages {
         match message {
-            Message::Assistant { content, .. } => {
+            Message::Assistant(rig_core::message::AssistantMessage { content, .. }) => {
                 turn += 1;
                 calls.extend(content.iter().filter_map(|item| match item {
                     AssistantContent::ToolCall(call) => Some((
                         turn,
                         &call.id,
-                        call.id.provider().map(|provider| provider.call_id.as_str()),
+                        call.id.provider().map(|provider| provider.as_str()),
                     )),
                     _ => None,
                 }));
             }
             Message::User { content } => {
-                results.extend(content.iter().filter_map(|item| {
-                    match item {
-                        UserContent::ToolResult(result) => Some((
-                            turn,
-                            &result.call,
-                            result
-                                .call
-                                .provider()
-                                .map(|provider| provider.call_id.as_str()),
-                        )),
-                        _ => None,
-                    }
+                results.extend(content.iter().filter_map(|item| match item {
+                    UserContent::ToolResult(result) => Some((
+                        turn,
+                        &result.call,
+                        result.call.provider().map(|provider| provider.as_str()),
+                    )),
+                    _ => None,
                 }));
             }
             Message::System { .. } => {}
@@ -798,7 +793,7 @@ fn has_tool_roundtrip(messages: &[Message]) -> bool {
     let saw_call = messages.iter().any(|message| {
         matches!(
             message,
-            Message::Assistant { content, .. }
+            Message::Assistant(rig_core::message::AssistantMessage { content, .. })
                 if content.iter().any(|item| matches!(item, AssistantContent::ToolCall(_)))
         )
     });
@@ -1020,7 +1015,8 @@ where
     let messages = correlated_messages(scenario, &response)?;
 
     let Some((call_index, calls)) = messages.iter().enumerate().find_map(|(index, message)| {
-        let Message::Assistant { content, .. } = message else {
+        let Message::Assistant(rig_core::message::AssistantMessage { content, .. }) = message
+        else {
             return None;
         };
         let calls = content
@@ -1437,7 +1433,7 @@ where
                 return OutcomeAction::proceed();
             };
             *lock_recover(&self.0) = Some(ModelTurn::new(
-                response.message_id.clone(),
+                response.head(),
                 response.choice.clone(),
                 response.usage,
                 BTreeSet::new(),
@@ -1482,7 +1478,7 @@ where
     let executable = BTreeSet::from([CountingAdd::NAME.to_string(), CountingSum::NAME.to_string()]);
     let allowed = BTreeSet::from([CountingSum::NAME.to_string()]);
     let turn = ModelTurn::new(
-        response.message_id,
+        response.head,
         response.choice,
         response.usage,
         executable,

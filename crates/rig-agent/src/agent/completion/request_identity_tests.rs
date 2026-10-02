@@ -100,24 +100,20 @@ async fn scripted_tool_turn_requests_match_golden() {
 const GOLDEN: &str = r#"
 [
   {
-    "additional_params": {
-      "base": 1,
-      "injected": true,
-      "shared": "hook"
-    },
+    "model": null,
     "chat_history": [
       {
-        "content": "patched preamble\n\nWhen you have gathered enough information to answer, call the `final_result` tool exactly once with your final answer. Its arguments are the structured result and must satisfy the required schema. Do not return the final answer as plain text.",
-        "role": "system"
+        "role": "system",
+        "content": "patched preamble\n\nWhen you have gathered enough information to answer, call the `final_result` tool exactly once with your final answer. Its arguments are the structured result and must satisfy the required schema. Do not return the final answer as plain text."
       },
       {
+        "role": "user",
         "content": [
           {
-            "text": "add 2 and 3",
-            "type": "text"
+            "type": "text",
+            "text": "add 2 and 3"
           }
-        ],
-        "role": "user"
+        ]
       }
     ],
     "documents": [
@@ -130,37 +126,33 @@ const GOLDEN: &str = r#"
         "text": "extra context"
       }
     ],
-    "max_tokens": 512,
-    "model": null,
-    "output_schema": null,
-    "temperature": 0.25,
-    "tool_choice": "required",
     "tools": [
       {
-        "description": "Add x and y together",
         "name": "add",
+        "description": "Add x and y together",
         "parameters": {
+          "type": "object",
           "properties": {
             "x": {
-              "description": "The first number to add",
-              "type": "number"
+              "type": "number",
+              "description": "The first number to add"
             },
             "y": {
-              "description": "The second number to add",
-              "type": "number"
+              "type": "number",
+              "description": "The second number to add"
             }
           },
           "required": [
             "x",
             "y"
-          ],
-          "type": "object"
+          ]
         }
       },
       {
-        "description": "Call this tool exactly once with your final answer when you are done. Its arguments are the structured result and must satisfy the output schema.",
         "name": "final_result",
+        "description": "Call this tool exactly once with your final answer when you are done. Its arguments are the structured result and must satisfy the output schema.",
         "parameters": {
+          "type": "object",
           "properties": {
             "answer": {
               "type": "integer"
@@ -168,74 +160,77 @@ const GOLDEN: &str = r#"
           },
           "required": [
             "answer"
-          ],
-          "type": "object"
+          ]
         }
       }
-    ]
-  },
-  {
+    ],
+    "temperature": 0.25,
+    "max_tokens": 512,
+    "tool_choice": "required",
     "additional_params": {
       "base": 1,
-      "injected": true,
-      "shared": "hook"
+      "shared": "hook",
+      "injected": true
     },
+    "output_schema": null
+  },
+  {
+    "model": null,
     "chat_history": [
       {
-        "content": "patched preamble\n\nWhen you have gathered enough information to answer, call the `final_result` tool exactly once with your final answer. Its arguments are the structured result and must satisfy the required schema. Do not return the final answer as plain text.",
-        "role": "system"
+        "role": "system",
+        "content": "patched preamble\n\nWhen you have gathered enough information to answer, call the `final_result` tool exactly once with your final answer. Its arguments are the structured result and must satisfy the required schema. Do not return the final answer as plain text."
       },
       {
+        "role": "user",
         "content": [
           {
-            "text": "add 2 and 3",
-            "type": "text"
+            "type": "text",
+            "text": "add 2 and 3"
           }
-        ],
-        "role": "user"
+        ]
       },
       {
+        "role": "assistant",
         "content": [
           {
-            "additional_params": null,
+            "type": "toolcall",
+            "id": {
+              "provider": "tc1"
+            },
             "function": {
+              "name": "add",
               "arguments": {
                 "x": 2,
                 "y": 3
-              },
-              "name": "add"
-            },
-            "id": {
-              "provider": {
-                "call_id": "tc1"
               }
-            },
-            "signature": null,
-            "type": "toolcall"
+            }
           }
         ],
-        "id": null,
-        "role": "assistant"
+        "origin": {
+          "api": "mock.script",
+          "provider": "mock",
+          "model": ""
+        },
+        "stop": "tool_use"
       },
       {
+        "role": "user",
         "content": [
           {
+            "type": "toolresult",
             "call": {
-              "provider": {
-                "call_id": "tc1"
-              }
+              "provider": "tc1"
             },
+            "name": "add",
             "content": [
               {
                 "type": "json",
                 "value": 5
               }
-            ],
-            "name": "add",
-            "type": "toolresult"
+            ]
           }
-        ],
-        "role": "user"
+        ]
       }
     ],
     "documents": [
@@ -248,37 +243,33 @@ const GOLDEN: &str = r#"
         "text": "extra context"
       }
     ],
-    "max_tokens": 512,
-    "model": null,
-    "output_schema": null,
-    "temperature": 0.25,
-    "tool_choice": "required",
     "tools": [
       {
-        "description": "Add x and y together",
         "name": "add",
+        "description": "Add x and y together",
         "parameters": {
+          "type": "object",
           "properties": {
             "x": {
-              "description": "The first number to add",
-              "type": "number"
+              "type": "number",
+              "description": "The first number to add"
             },
             "y": {
-              "description": "The second number to add",
-              "type": "number"
+              "type": "number",
+              "description": "The second number to add"
             }
           },
           "required": [
             "x",
             "y"
-          ],
-          "type": "object"
+          ]
         }
       },
       {
-        "description": "Call this tool exactly once with your final answer when you are done. Its arguments are the structured result and must satisfy the output schema.",
         "name": "final_result",
+        "description": "Call this tool exactly once with your final answer when you are done. Its arguments are the structured result and must satisfy the output schema.",
         "parameters": {
+          "type": "object",
           "properties": {
             "answer": {
               "type": "integer"
@@ -286,93 +277,101 @@ const GOLDEN: &str = r#"
           },
           "required": [
             "answer"
-          ],
-          "type": "object"
+          ]
         }
       }
-    ]
-  },
-  {
+    ],
+    "temperature": 0.25,
+    "max_tokens": 512,
+    "tool_choice": "required",
     "additional_params": {
       "base": 1,
-      "injected": true,
-      "shared": "hook"
+      "shared": "hook",
+      "injected": true
     },
+    "output_schema": null
+  },
+  {
+    "model": null,
     "chat_history": [
       {
-        "content": "patched preamble\n\nWhen you have gathered enough information to answer, call the `final_result` tool exactly once with your final answer. Its arguments are the structured result and must satisfy the required schema. Do not return the final answer as plain text.",
-        "role": "system"
+        "role": "system",
+        "content": "patched preamble\n\nWhen you have gathered enough information to answer, call the `final_result` tool exactly once with your final answer. Its arguments are the structured result and must satisfy the required schema. Do not return the final answer as plain text."
       },
       {
+        "role": "user",
         "content": [
           {
-            "text": "add 2 and 3",
-            "type": "text"
+            "type": "text",
+            "text": "add 2 and 3"
           }
-        ],
-        "role": "user"
+        ]
       },
       {
+        "role": "assistant",
         "content": [
           {
-            "additional_params": null,
+            "type": "toolcall",
+            "id": {
+              "provider": "tc1"
+            },
             "function": {
+              "name": "add",
               "arguments": {
                 "x": 2,
                 "y": 3
-              },
-              "name": "add"
-            },
-            "id": {
-              "provider": {
-                "call_id": "tc1"
               }
-            },
-            "signature": null,
-            "type": "toolcall"
+            }
           }
         ],
-        "id": null,
-        "role": "assistant"
+        "origin": {
+          "api": "mock.script",
+          "provider": "mock",
+          "model": ""
+        },
+        "stop": "tool_use"
       },
       {
+        "role": "user",
         "content": [
           {
+            "type": "toolresult",
             "call": {
-              "provider": {
-                "call_id": "tc1"
-              }
+              "provider": "tc1"
             },
+            "name": "add",
             "content": [
               {
                 "type": "json",
                 "value": 5
               }
-            ],
-            "name": "add",
-            "type": "toolresult"
+            ]
           }
-        ],
-        "role": "user"
+        ]
       },
       {
+        "role": "assistant",
         "content": [
           {
-            "text": "done",
-            "type": "text"
+            "type": "text",
+            "text": "done"
           }
         ],
-        "id": null,
-        "role": "assistant"
+        "origin": {
+          "api": "mock.script",
+          "provider": "mock",
+          "model": ""
+        },
+        "stop": "stop"
       },
       {
+        "role": "user",
         "content": [
           {
-            "text": "Provide your final answer by calling the `final_result` tool with the structured result as its arguments, not as plain text.",
-            "type": "text"
+            "type": "text",
+            "text": "Provide your final answer by calling the `final_result` tool with the structured result as its arguments, not as plain text."
           }
-        ],
-        "role": "user"
+        ]
       }
     ],
     "documents": [
@@ -385,37 +384,33 @@ const GOLDEN: &str = r#"
         "text": "extra context"
       }
     ],
-    "max_tokens": 512,
-    "model": null,
-    "output_schema": null,
-    "temperature": 0.25,
-    "tool_choice": "required",
     "tools": [
       {
-        "description": "Add x and y together",
         "name": "add",
+        "description": "Add x and y together",
         "parameters": {
+          "type": "object",
           "properties": {
             "x": {
-              "description": "The first number to add",
-              "type": "number"
+              "type": "number",
+              "description": "The first number to add"
             },
             "y": {
-              "description": "The second number to add",
-              "type": "number"
+              "type": "number",
+              "description": "The second number to add"
             }
           },
           "required": [
             "x",
             "y"
-          ],
-          "type": "object"
+          ]
         }
       },
       {
-        "description": "Call this tool exactly once with your final answer when you are done. Its arguments are the structured result and must satisfy the output schema.",
         "name": "final_result",
+        "description": "Call this tool exactly once with your final answer when you are done. Its arguments are the structured result and must satisfy the output schema.",
         "parameters": {
+          "type": "object",
           "properties": {
             "answer": {
               "type": "integer"
@@ -423,11 +418,19 @@ const GOLDEN: &str = r#"
           },
           "required": [
             "answer"
-          ],
-          "type": "object"
+          ]
         }
       }
-    ]
+    ],
+    "temperature": 0.25,
+    "max_tokens": 512,
+    "tool_choice": "required",
+    "additional_params": {
+      "base": 1,
+      "shared": "hook",
+      "injected": true
+    },
+    "output_schema": null
   }
 ]
 "#;

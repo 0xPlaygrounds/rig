@@ -29,7 +29,7 @@ fn approx_token_count(message: &Message) -> usize {
             })
             .collect::<Vec<_>>()
             .join(" "),
-        Message::Assistant { content, .. } => content
+        Message::Assistant(rig_core::message::AssistantMessage { content, .. }) => content
             .iter()
             .filter_map(|c| match c {
                 rig_core::completion::message::AssistantContent::Text(t) => Some(t.text.as_str()),

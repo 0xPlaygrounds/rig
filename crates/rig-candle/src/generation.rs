@@ -634,13 +634,11 @@ fn emit_parsed_items(
             AssistantContent::Text(text) => emit(GenerationEvent::Text(text.text))?,
             AssistantContent::ToolCall(call) => emit(GenerationEvent::ToolCall(call))?,
             AssistantContent::Reasoning(reasoning) => {
-                if let Some(reasoning) = reasoning.open(reasoning.issuer()).cloned() {
-                    emit(GenerationEvent::Reasoning(reasoning))?;
-                }
+                emit(GenerationEvent::Reasoning(reasoning))?;
             }
-            AssistantContent::Image(_) => {
+            AssistantContent::Image(_) | AssistantContent::Opaque(_) => {
                 return Err(CandleError::Inference(
-                    "text-only Qwen output parser produced image content".to_string(),
+                    "text-only Qwen output parser produced non-text content".to_string(),
                 ));
             }
         }

@@ -199,7 +199,7 @@ fn split_window(messages: Vec<Message>, keep_from: usize) -> (Vec<Message>, Vec<
     let mut orphan_prefix_len = 0;
     for (index, message) in window.iter().enumerate() {
         match message {
-            Message::Assistant { .. } => break,
+            Message::Assistant(_) => break,
             Message::User { content }
                 if content
                     .iter()
@@ -329,17 +329,15 @@ impl HeuristicTokenCounter {
         use rig_core::message::AssistantContent;
         match content {
             AssistantContent::Text(text) => self.bytes_to_tokens(text.text.len()),
-            AssistantContent::Reasoning(reasoning) => self.bytes_to_tokens(
-                reasoning
-                    .open(reasoning.issuer())
-                    .map_or(0, |reasoning| reasoning.display_text().len()),
-            ),
+            AssistantContent::Reasoning(reasoning) => self.bytes_to_tokens(reasoning.text.len()),
             AssistantContent::ToolCall(call) => {
                 let name_bytes = call.function.name.len();
                 let args_bytes = call.function.arguments.to_string().len();
                 self.bytes_to_tokens(name_bytes + args_bytes)
             }
             AssistantContent::Image(_) => self.per_attachment_tokens,
+            // A provider-only item is sent back to the model that made it.
+            AssistantContent::Opaque(opaque) => self.bytes_to_tokens(opaque.item.to_string().len()),
         }
     }
 }
@@ -355,9 +353,7 @@ impl TokenCounter for HeuristicTokenCounter {
     fn count(&self, message: &Message) -> usize {
         let content_tokens: usize = match message {
             Message::User { content } => content.iter().map(|c| self.count_user(c)).sum(),
-            Message::Assistant { content, .. } => {
-                content.iter().map(|c| self.count_assistant(c)).sum()
-            }
+            Message::Assistant(turn) => turn.content.iter().map(|c| self.count_assistant(c)).sum(),
             Message::System { content } => self.bytes_to_tokens(content.len()),
         };
         content_tokens.saturating_add(self.per_message_overhead)
@@ -1185,9 +1181,9 @@ fn render_message_line(msg: &Message) -> String {
                 _ => Cow::Borrowed("[attachment]"),
             })),
         ),
-        Message::Assistant { content, .. } => (
+        Message::Assistant(turn) => (
             "assistant",
-            join_parts(content.iter().map(|item| match item {
+            join_parts(turn.content.iter().map(|item| match item {
                 AssistantContent::Text(text) => Cow::Borrowed(text.text.as_str()),
                 AssistantContent::ToolCall(call) => {
                     Cow::Owned(format!("[tool call: {}]", call.function.name))

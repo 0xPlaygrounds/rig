@@ -118,17 +118,14 @@ fn validate_protocol_inputs(
             Message::System { content } => {
                 validate_protocol_text(content, "system message", protocol)?;
             }
-            Message::Assistant { content, .. } => {
-                for item in content.iter() {
+            Message::Assistant(turn) => {
+                for item in turn.content.iter() {
                     match item {
                         AssistantContent::Text(text) => {
                             validate_protocol_text(&text.text, "assistant text", protocol)?;
                         }
                         AssistantContent::Reasoning(reasoning) => validate_protocol_text(
-                            &reasoning
-                                .open(reasoning.issuer())
-                                .map(Reasoning::display_text)
-                                .unwrap_or_default(),
+                            &reasoning.text,
                             "assistant reasoning",
                             protocol,
                         )?,
@@ -150,7 +147,7 @@ fn validate_protocol_inputs(
                                 protocol,
                             )?;
                         }
-                        AssistantContent::Image(_) => {}
+                        AssistantContent::Image(_) | AssistantContent::Opaque(_) => {}
                     }
                 }
             }
@@ -415,9 +412,9 @@ fn render_plain_message(message: &Message) -> Result<(&'static str, String), Can
             }
             Ok(("user", parts.join("\n")))
         }
-        Message::Assistant { content, .. } => {
+        Message::Assistant(turn) => {
             let mut parts = Vec::new();
-            for item in content.iter() {
+            for item in turn.content.iter() {
                 match item {
                     AssistantContent::Text(text) => parts.push(text.text.clone()),
                     AssistantContent::ToolCall(_) => {
@@ -430,6 +427,9 @@ fn render_plain_message(message: &Message) -> Result<(&'static str, String), Can
                     }
                     AssistantContent::Image(_) => {
                         return Err(CandleError::UnsupportedPromptContent("image content"));
+                    }
+                    AssistantContent::Opaque(_) => {
+                        return Err(CandleError::UnsupportedPromptContent("provider items"));
                     }
                 }
             }
@@ -557,10 +557,10 @@ fn render_qwen_message(
             role: "system",
             content: content.clone(),
         }),
-        Message::Assistant { content, .. } => {
+        Message::Assistant(turn) => {
             let mut rendered = String::new();
             let mut call_count = 0usize;
-            for item in content.iter() {
+            for item in turn.content.iter() {
                 match item {
                     AssistantContent::Text(text) => rendered.push_str(&text.text),
                     AssistantContent::Reasoning(_) => {
@@ -576,7 +576,7 @@ fn render_qwen_message(
                             )));
                         }
                         if let Some(provider) = call.id.provider() {
-                            let call_id = &provider.call_id;
+                            let call_id = provider.as_str();
                             if aliases
                                 .get(call_id)
                                 .is_some_and(|existing| existing != &call_key)
@@ -585,7 +585,7 @@ fn render_qwen_message(
                                     "duplicate historical tool call correlation ID `{call_id}`"
                                 )));
                             }
-                            aliases.insert(call_id.clone(), call_key.clone());
+                            aliases.insert(call_id.to_owned(), call_key.clone());
                         }
                         if call_count > 0 || !rendered.is_empty() {
                             rendered.push('\n');
@@ -609,6 +609,9 @@ fn render_qwen_message(
                         return Err(CandleError::UnsupportedPromptContent(
                             "assistant image content",
                         ));
+                    }
+                    AssistantContent::Opaque(_) => {
+                        return Err(CandleError::UnsupportedPromptContent("provider items"));
                     }
                 }
             }
@@ -636,7 +639,7 @@ fn render_qwen_message(
                         let canonical_by_call_id = result
                             .call
                             .provider()
-                            .and_then(|provider| aliases.get(&provider.call_id));
+                            .and_then(|provider| aliases.get(provider.as_str()));
                         if let (Some(by_id), Some(by_call_id)) =
                             (canonical_by_id, canonical_by_call_id)
                             && by_id != by_call_id
@@ -717,9 +720,7 @@ fn parse_qwen3_assistant(
         })?;
         let reasoning = remaining[THINK_START.len()..end].trim();
         if !reasoning.is_empty() {
-            items.push(AssistantContent::Reasoning(
-                Reasoning::new(reasoning).sealed(crate::types::PROVIDER_NAME),
-            ));
+            items.push(AssistantContent::Reasoning(Reasoning::new(reasoning)));
         }
         remaining = remaining[end + THINK_END.len()..].trim_start();
     } else if remaining.contains(THINK_END) {

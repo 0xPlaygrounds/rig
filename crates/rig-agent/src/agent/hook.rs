@@ -13,8 +13,10 @@
 //!     async fn on_outcome(&self, _ctx: &HookContext, event: OutcomeEvent<'_>) -> OutcomeAction {
 //!         if let Some(response) = event.completion() {
 //!             println!(
-//!                 "message {:?}: {:?} ({:?})",
-//!                 response.message_id, response.choice, response.usage
+//!                 "response {:?}: {:?} ({:?})",
+//!                 response.response_id(),
+//!                 response.choice,
+//!                 response.usage
 //!             );
 //!         }
 //!         OutcomeAction::proceed()

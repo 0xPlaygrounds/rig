@@ -3,7 +3,7 @@ use super::super::response::PromptError;
 use super::super::{AgentRun, AgentRunStep};
 use super::*;
 use rig_core::completion::{CompletionResponse, Usage};
-use rig_core::message::{ToolResultContent, UserContent};
+use rig_core::message::{Reasoning, ToolResultContent, UserContent};
 use rig_core::streaming::Transcript;
 use serde_json::json;
 
@@ -82,7 +82,12 @@ fn ingest_all(asm: &mut StreamedTurnAssembler, items: &[Item<StreamEvent>]) {
 }
 
 fn response(choice: Vec<AssistantContent>) -> CompletionResponse {
-    CompletionResponse::new(choice, Usage::default(), "mock", json!({}))
+    CompletionResponse::new(
+        choice,
+        Usage::default(),
+        rig_core::message::Origin::new("test.api", "mock", ""),
+        json!({}),
+    )
 }
 
 /// A mid-stream assembler survives a serde round trip: feeding the rest
@@ -107,8 +112,8 @@ fn assembler_round_trips_mid_stream() {
         AssistantContent::text("thinking "),
         AssistantContent::ToolCall(add),
     ]);
-    let direct = uninterrupted.finish(Some("msg".to_string()), &response);
-    let resumed = restored.finish(Some("msg".to_string()), &response);
+    let direct = uninterrupted.finish(&response);
+    let resumed = restored.finish(&response);
     assert_eq!(resumed.choice, direct.choice);
     assert_eq!(resumed.executable_tool_names, direct.executable_tool_names);
     assert_eq!(resumed.allowed_tool_names, direct.allowed_tool_names);
@@ -218,7 +223,7 @@ fn decode_matrix_cases() -> Vec<(ShapeClass, serde_json::Value)> {
         ),
         (
             ShapeClass::TaggedRigBlock,
-            json!({"type": "toolcall", "id": {"provider": {"call_id": "call_1"}},
+            json!({"type": "toolcall", "id": {"provider": "call_1"},
                    "function": {"name": "add", "arguments": {}}}),
         ),
         (
@@ -227,11 +232,11 @@ fn decode_matrix_cases() -> Vec<(ShapeClass, serde_json::Value)> {
         ),
         (
             ShapeClass::MalformedParamsText,
-            json!({"text": "hi", "additional_params": []}),
+            json!({"text": "hi", "native": []}),
         ),
         (
             ShapeClass::MalformedParamsText,
-            json!({"type": "text", "text": "hi", "additional_params": []}),
+            json!({"type": "text", "text": "hi", "native": []}),
         ),
         (
             ShapeClass::ProviderNativeUnmodeled,
@@ -352,16 +357,13 @@ fn finish_keeps_start_order_without_ignored_calls_and_with_repaired_names() {
         [StreamedTurnEvent::EmitToolCall { call }] if call.function.name == "add"
     ));
 
-    let reasoning = AssistantContent::Reasoning(Reasoning::new("later").sealed("mock"));
-    let turn = asm.finish(
-        None,
-        &response(vec![
-            AssistantContent::text("hi"),
-            AssistantContent::ToolCall(ignored),
-            AssistantContent::ToolCall(repaired.clone()),
-            reasoning.clone(),
-        ]),
-    );
+    let reasoning = AssistantContent::Reasoning(Reasoning::new("later"));
+    let turn = asm.finish(&response(vec![
+        AssistantContent::text("hi"),
+        AssistantContent::ToolCall(ignored),
+        AssistantContent::ToolCall(repaired.clone()),
+        reasoning.clone(),
+    ]));
     let mut renamed = repaired;
     renamed.function.name = ToolName::new("add").expect("tool name");
     assert_eq!(
@@ -386,7 +388,7 @@ fn an_ignored_call_stays_out_of_the_turn_after_a_checkpoint() {
     );
     let asm: StreamedTurnAssembler =
         serde_json::from_str(&serde_json::to_string(&asm).unwrap()).unwrap();
-    let turn = asm.finish(None, &response(vec![AssistantContent::ToolCall(multiply)]));
+    let turn = asm.finish(&response(vec![AssistantContent::ToolCall(multiply)]));
     assert!(turn.choice.is_empty(), "{:?}", turn.choice);
 }
 
@@ -449,10 +451,7 @@ fn streamed_run_completes_a_tool_roundtrip() {
         serde_json::json!({}),
     )
     .expect("record should succeed");
-    let turn = asm.finish(
-        Some("msg_1".to_string()),
-        &response(vec![AssistantContent::ToolCall(add.clone())]),
-    );
+    let turn = asm.finish(&response(vec![AssistantContent::ToolCall(add.clone())]));
     run.streamed_turn(turn)
         .expect("streamed_turn should succeed");
 
@@ -480,7 +479,7 @@ fn streamed_run_completes_a_tool_roundtrip() {
         serde_json::json!({}),
     )
     .expect("record should succeed");
-    run.streamed_turn(asm.finish(None, &response(vec![AssistantContent::text("done")])))
+    run.streamed_turn(asm.finish(&response(vec![AssistantContent::text("done")])))
         .expect("streamed_turn should succeed");
 
     let AgentRunStep::Done(response) = run.next_step().expect("next_step") else {
@@ -510,8 +509,7 @@ fn streamed_invalid_tool_call_retry_rolls_back_with_partial_turn() {
             call(1, &tool_call("tc_1", "default_api")),
         ]),
     );
-    let partial = asm.partial_turn(Some("msg_1".to_string()), &[]);
-    assert_eq!(partial.text.as_deref(), Some("thinking "));
+    let partial = asm.partial_turn(&response(vec![]));
 
     let context = run.streamed_invalid_tool_call_context(&partial, &invalid);
     assert!(context.is_streaming);
@@ -560,7 +558,7 @@ fn streamed_invalid_tool_call_stop_leaves_run_terminal() {
         &mut asm,
         &items([call(0, &tool_call("tc_1", "default_api"))]),
     );
-    let partial = asm.partial_turn(Some("msg_1".to_string()), &[]);
+    let partial = asm.partial_turn(&response(vec![]));
 
     let err = run
         .resolve_streamed_invalid_tool_call(
@@ -596,7 +594,7 @@ fn streamed_invalid_tool_call_retry_cannot_emit_call_past_total_budget() {
         &mut asm,
         &items([call(0, &tool_call("tc_1", "default_api"))]),
     );
-    let partial = asm.partial_turn(Some("msg_1".to_string()), &[]);
+    let partial = asm.partial_turn(&response(vec![]));
     let resolution = run
         .resolve_streamed_invalid_tool_call(
             &partial,
@@ -636,7 +634,7 @@ fn streamed_invalid_tool_call_skip_returns_synthetic_result() {
         &mut asm,
         &items([call(0, &tool_call("tc_1", "default_api"))]),
     );
-    let partial = asm.partial_turn(None, &[]);
+    let partial = asm.partial_turn(&response(vec![]));
 
     let resolution = run
         .resolve_streamed_invalid_tool_call(
@@ -655,7 +653,7 @@ fn streamed_invalid_tool_call_skip_returns_synthetic_result() {
         tool_result
             .call
             .provider()
-            .map(|provider| provider.call_id.as_str()),
+            .map(|provider| provider.as_str()),
         Some("tc_1")
     );
 }
@@ -672,7 +670,7 @@ fn streamed_invalid_tool_call_repair_releases_the_renamed_call() {
     );
     assert_eq!(invalid.args.as_deref(), Some("{\"x\":1}"));
 
-    let partial = asm.partial_turn(None, &[]);
+    let partial = asm.partial_turn(&response(vec![]));
     let resolution = run
         .resolve_streamed_invalid_tool_call(
             &partial,
@@ -701,7 +699,7 @@ fn streamed_turn_rejects_unknown_tool_calls_fail_fast() {
     record_terminal(&mut run);
 
     let turn = StreamedTurn {
-        message_id: None,
+        head: AssistantMessage::default(),
         choice: vec![AssistantContent::ToolCall(tool_call("tc_1", "unknown"))],
         executable_tool_names: tool_names(&["add"]),
         allowed_tool_names: tool_names(&["add"]),
@@ -764,7 +762,7 @@ fn streamed_turn_without_a_recorded_completion_call_is_a_protocol_violation() {
 
     let asm = assembler();
     let err = run
-        .streamed_turn(asm.finish(None, &response(vec![AssistantContent::text("done")])))
+        .streamed_turn(asm.finish(&response(vec![AssistantContent::text("done")])))
         .expect_err("a turn without its completion call recorded is refused");
     assert!(
         matches!(&err, PromptError::Cancelled { reason, .. }
@@ -813,7 +811,7 @@ fn streamed_run_serde_round_trips_while_tools_pend() {
         serde_json::json!({}),
     )
     .expect("record should succeed");
-    run.streamed_turn(asm.finish(None, &response(vec![AssistantContent::ToolCall(add)])))
+    run.streamed_turn(asm.finish(&response(vec![AssistantContent::ToolCall(add)])))
         .expect("streamed_turn should succeed");
     run.next_step().expect("CallTools step");
 
@@ -856,8 +854,7 @@ fn typed_namespaces_survive_pending_tool_checkpoints_and_completed_turn_reuse() 
                     .map(AssistantContent::ToolCall)
                     .collect::<Vec<_>>();
                 record_terminal(&mut run);
-                run.streamed_turn(asm.finish(None, &response(choice)))
-                    .unwrap();
+                run.streamed_turn(asm.finish(&response(choice))).unwrap();
                 if after_call_tools {
                     run.next_step().unwrap();
                 }
@@ -911,30 +908,27 @@ fn typed_namespaces_survive_pending_tool_checkpoints_and_completed_turn_reuse() 
     }
 }
 
-/// The partial turn's reasoning is what the stream folded so far, sealed
-/// to its issuer.
+/// The partial turn is what the stream folded so far, in its order.
 #[test]
-fn a_partial_turn_carries_the_ended_reasoning_sealed_to_its_issuer() {
+fn a_partial_turn_keeps_the_parts_in_the_order_they_arrived() {
     let asm = assembler();
-    let sealed = Reasoning::new("because").sealed("mock");
-    let partial = asm.partial_turn(
-        None,
-        &[
-            AssistantContent::Reasoning(sealed.clone()),
-            AssistantContent::text("ignored: text is the assembler's"),
-        ],
+    let content = vec![
+        AssistantContent::text("first"),
+        AssistantContent::Reasoning(Reasoning::new("because")),
+    ];
+    let partial = asm.partial_turn(&response(content.clone()));
+    assert_eq!(partial.content, content);
+    assert_eq!(
+        partial.assistant_message(None),
+        Some(Message::Assistant(AssistantMessage::new(content)))
     );
-    assert_eq!(partial.reasoning, vec![sealed]);
-    assert_eq!(partial.text, None);
 }
 
 /// A partial turn that produced nothing is no assistant message.
 #[test]
 fn an_empty_partial_turn_is_no_assistant_message() {
     let turn = PartialStreamedTurn {
-        message_id: None,
-        text: Some(String::new()),
-        reasoning: Vec::new(),
+        content: vec![AssistantContent::text("")],
         pending_tool_calls: Vec::new(),
     };
     assert_eq!(turn.assistant_message(None), None);

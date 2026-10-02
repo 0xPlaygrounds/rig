@@ -477,11 +477,7 @@ pub async fn stream_to_stdout(
                 content: AssistantContent::Reasoning(reasoning),
                 ..
             })) => {
-                let reasoning = reasoning
-                    .open(reasoning.issuer())
-                    .map(|reasoning| reasoning.display_text())
-                    .unwrap_or_default();
-                write!(stdout, "{reasoning}")?;
+                write!(stdout, "{}", reasoning.text)?;
                 stdout.flush()?;
             }
             MultiTurnStreamItem::FinalResponse(response) => return Ok(response),

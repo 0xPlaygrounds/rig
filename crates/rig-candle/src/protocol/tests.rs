@@ -397,10 +397,7 @@ fn qwen_missing_ids_are_distinct_and_not_provider_issued() {
     );
     assert!(calls[0].id.provider().is_none());
     assert_eq!(
-        calls[1]
-            .id
-            .provider()
-            .map(|provider| provider.call_id.as_str()),
+        calls[1].id.provider().map(|provider| provider.as_str()),
         Some("tool-0")
     );
     assert_eq!(
@@ -409,7 +406,7 @@ fn qwen_missing_ids_are_distinct_and_not_provider_issued() {
             .provider()
             .as_ref()
             .expect("valid tool-call envelope")
-            .call_id,
+            .as_str(),
         "tool-0"
     );
     assert!(calls[2].id.provider().is_none());
@@ -433,13 +430,10 @@ fn renderer_correlates_generated_and_explicit_equal_spellings() {
         ),
     );
     let history = vec![
-        Message::Assistant {
-            id: None,
-            content: vec![
-                AssistantContent::ToolCall(generated.clone()),
-                AssistantContent::ToolCall(explicit.clone()),
-            ],
-        },
+        Message::Assistant(rig_core::message::AssistantMessage::new(vec![
+            AssistantContent::ToolCall(generated.clone()),
+            AssistantContent::ToolCall(explicit.clone()),
+        ])),
         Message::User {
             content: vec![
                 UserContent::tool_result(

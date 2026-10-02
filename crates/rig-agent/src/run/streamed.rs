@@ -19,7 +19,7 @@ use rig_core::completion::{FinishReason, Message};
 use rig_core::error::ProviderError;
 use rig_core::json_utils;
 use rig_core::message::{
-    AssistantContent, CallId, Reasoning, Sealed, ToolCall, ToolFunction, ToolName, ToolResult,
+    AssistantContent, AssistantMessage, CallId, ToolCall, ToolFunction, ToolName, ToolResult,
 };
 use rig_core::streaming::{Item, PartKind, StreamEvent};
 
@@ -27,7 +27,7 @@ use super::policy::InvalidToolCallReason;
 use super::transcript::{TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER, tool_result_message};
 
 /// Detect unknown payloads containing assistant content that assembly would lose:
-/// tagged assistant blocks or text with malformed additional parameters.
+/// tagged assistant blocks or text with a malformed provider item.
 fn unknown_payload_loses_assistant_content(payload: &serde_json::Value) -> bool {
     // Deserialize by reference to avoid cloning large unknown payloads.
     if AssistantContent::deserialize(payload).is_ok() {
@@ -37,7 +37,7 @@ fn unknown_payload_loses_assistant_content(payload: &serde_json::Value) -> bool 
     payload
         .get("text")
         .is_some_and(serde_json::Value::is_string)
-        && payload.get("additional_params").is_some()
+        && payload.get("native").is_some()
 }
 
 /// One invalid tool call surfaced mid-stream, awaiting a resolution from
@@ -63,47 +63,44 @@ pub struct StreamedInvalidToolCall {
 /// exactly what the model has produced so far.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PartialStreamedTurn {
-    /// Provider-assigned assistant message ID, when already known.
-    pub message_id: Option<String>,
-    /// Aggregated assistant text, when any text was streamed this turn.
-    pub text: Option<String>,
-    /// The reasoning parts that ended so far, sealed to their issuer.
-    pub reasoning: Vec<Sealed<Reasoning>>,
+    /// The parts that arrived so far, in the order they started, text still
+    /// streaming included.
+    pub content: Vec<AssistantContent>,
     /// Tool calls already validated (or repaired) this turn.
     pub pending_tool_calls: Vec<ToolCall>,
 }
 
 impl PartialStreamedTurn {
-    /// The assistant message representing this partial turn (reasoning, then
-    /// text, then calls), including `current_tool_call` when provided.
-    /// `None` when the turn has produced no representable content.
+    /// The assistant message representing this partial turn, in arrival
+    /// order: each validated call as validated, `current_tool_call` in its
+    /// own place, and any other call left out. `None` when the turn has
+    /// produced no representable content.
     pub fn assistant_message(&self, current_tool_call: Option<ToolCall>) -> Option<Message> {
-        let content = self
-            .reasoning
+        let mut calls: Vec<ToolCall> = self
+            .pending_tool_calls
             .iter()
             .cloned()
-            .map(AssistantContent::Reasoning)
-            .chain(
-                self.text
-                    .as_ref()
-                    .filter(|text| !text.is_empty())
-                    .map(|text| AssistantContent::text(text.clone())),
-            )
-            .chain(
-                self.pending_tool_calls
-                    .iter()
-                    .cloned()
-                    .chain(current_tool_call)
-                    .map(AssistantContent::ToolCall),
-            )
-            .collect::<Vec<_>>();
+            .chain(current_tool_call)
+            .collect();
+        let mut content: Vec<AssistantContent> = self
+            .content
+            .iter()
+            .filter_map(|part| match part {
+                AssistantContent::ToolCall(call) => {
+                    let at = calls.iter().position(|kept| kept.id == call.id)?;
+                    Some(AssistantContent::ToolCall(calls.remove(at)))
+                }
+                AssistantContent::Text(text) if text.text.is_empty() => None,
+                part => Some(part.clone()),
+            })
+            .collect();
+        content.extend(calls.into_iter().map(AssistantContent::ToolCall));
         if content.is_empty() {
             return None;
         }
-        Some(Message::Assistant {
-            id: self.message_id.clone(),
-            content,
-        })
+        // The stream was cut short: the turn replays from its canonical
+        // fields, as a hand-built one does.
+        Some(Message::Assistant(AssistantMessage::new(content)))
     }
 
     /// Rollback messages for a retried or skipped streamed turn: the partial
@@ -146,8 +143,8 @@ impl PartialStreamedTurn {
 /// `AgentRun::streamed_turn`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StreamedTurn {
-    /// Provider-assigned assistant message ID, when available.
-    pub message_id: Option<String>,
+    /// The turn's origin, stop and provider message, without content.
+    pub head: AssistantMessage,
     /// The assistant content to record in history, in the order its parts
     /// started, with ignored calls left out and repaired calls renamed.
     pub choice: Vec<AssistantContent>,
@@ -415,24 +412,15 @@ impl StreamedTurnAssembler {
         }
     }
 
-    /// Snapshot of the turn so far, for diagnostics and rollback messages.
-    /// `ended` is what the stream folded so far; its reasoning parts are the
-    /// snapshot's.
+    /// Snapshot of the turn so far, for diagnostics and rollback messages:
+    /// `partial` is what the stream folded so far
+    /// ([`Streamed::partial`](rig_core::streaming::Streamed::partial)).
     pub fn partial_turn(
         &self,
-        message_id: Option<String>,
-        ended: &[AssistantContent],
+        partial: &rig_core::completion::CompletionResponse,
     ) -> PartialStreamedTurn {
         PartialStreamedTurn {
-            message_id,
-            text: (!self.text.is_empty()).then(|| self.text.clone()),
-            reasoning: ended
-                .iter()
-                .filter_map(|content| match content {
-                    AssistantContent::Reasoning(reasoning) => Some(reasoning.clone()),
-                    _ => None,
-                })
-                .collect(),
+            content: partial.choice.clone(),
             pending_tool_calls: self.pending_tool_calls.clone(),
         }
     }
@@ -440,11 +428,7 @@ impl StreamedTurnAssembler {
     /// Assemble the completed turn from the response the stream folded
     /// into: its choice in start order, with the calls this turn ignored
     /// left out and the ones it repaired renamed.
-    pub fn finish(
-        self,
-        message_id: Option<String>,
-        response: &rig_core::completion::CompletionResponse,
-    ) -> StreamedTurn {
+    pub fn finish(self, response: &rig_core::completion::CompletionResponse) -> StreamedTurn {
         let choice = response
             .choice
             .iter()
@@ -452,7 +436,8 @@ impl StreamedTurnAssembler {
                 AssistantContent::ToolCall(call) => !self.ignored_calls.contains(&call.id),
                 AssistantContent::Text(_)
                 | AssistantContent::Reasoning(_)
-                | AssistantContent::Image(_) => true,
+                | AssistantContent::Image(_)
+                | AssistantContent::Opaque(_) => true,
             })
             .cloned()
             .map(|content| match content {
@@ -469,7 +454,7 @@ impl StreamedTurnAssembler {
             .collect();
 
         StreamedTurn {
-            message_id,
+            head: response.head(),
             choice,
             executable_tool_names: self.executable_tool_names.clone(),
             allowed_tool_names: self.allowed_tool_names.clone(),

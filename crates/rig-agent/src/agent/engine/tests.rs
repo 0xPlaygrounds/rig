@@ -163,7 +163,6 @@ struct CanonicalResponseSnapshot {
     prompt: Message,
     content: Vec<AssistantContent>,
     usage: Usage,
-    message_id: Option<String>,
 }
 
 /// Records every completion outcome (both drivers) and every committed
@@ -204,7 +203,6 @@ impl AgentHook for CanonicalResponseHook {
                 prompt,
                 content: response.choice.clone(),
                 usage: response.usage,
-                message_id: response.message_id.clone(),
             });
         OutcomeAction::proceed()
     }
@@ -266,7 +264,6 @@ impl AgentHook for FinishLifecycleHook {
                 prompt,
                 content: response.choice.clone(),
                 usage: response.usage,
-                message_id: response.message_id.clone(),
             });
         if self.stop.load(SeqCst) {
             OutcomeAction::stop("stop at stream EOF")
@@ -307,7 +304,7 @@ fn canonical_usage() -> Usage {
 /// cassette-tested per provider).
 #[tokio::test]
 async fn completion_response_hook_and_calls_carry_identity_metadata() {
-    type IdentityTriple = (Option<String>, Option<String>, Option<String>);
+    type IdentityTriple = (Option<String>, Option<String>);
 
     #[derive(Clone, Default)]
     struct IdentityHook {
@@ -318,8 +315,7 @@ async fn completion_response_hook_and_calls_carry_identity_metadata() {
         async fn on_outcome(&self, _ctx: &HookContext, event: OutcomeEvent<'_>) -> OutcomeAction {
             if let Some(response) = event.completion() {
                 self.seen.lock().expect("identity snapshots").push((
-                    response.message_id.clone(),
-                    response.response_id.clone(),
+                    response.response_id().map(str::to_owned),
                     response.provider_request_id.clone(),
                 ));
             }
@@ -329,7 +325,6 @@ async fn completion_response_hook_and_calls_carry_identity_metadata() {
 
     let hook = IdentityHook::default();
     let response = AgentBuilder::new(MockCompletionModel::from_turns([MockTurn::text("reply")
-        .with_message_id("msg_1")
         .with_response_id("resp_1")
         .with_provider_request_id("req_1")]))
     .add_hook(hook.clone())
@@ -341,14 +336,9 @@ async fn completion_response_hook_and_calls_carry_identity_metadata() {
 
     assert_eq!(
         *hook.seen.lock().expect("identity snapshots"),
-        [(
-            Some("msg_1".to_string()),
-            Some("resp_1".to_string()),
-            Some("req_1".to_string()),
-        )]
+        [(Some("resp_1".to_string()), Some("req_1".to_string()),)]
     );
     let call = &response.completion_calls[0];
-    assert_eq!(call.message_id.as_deref(), Some("msg_1"));
     assert_eq!(call.response_id.as_deref(), Some("resp_1"));
     assert_eq!(call.provider_request_id.as_deref(), Some("req_1"));
 }
@@ -365,7 +355,6 @@ async fn absent_identity_metadata_stays_none() {
         .expect("blocking response");
 
     let call = &response.completion_calls[0];
-    assert_eq!(call.message_id, None);
     assert_eq!(call.response_id, None);
     assert_eq!(call.provider_request_id, None);
 }
@@ -1017,34 +1006,32 @@ async fn response_scoped_id_is_not_promoted_into_history() {
     let assistant_ids: Vec<_> = messages
         .iter()
         .filter_map(|message| match message {
-            Message::Assistant { id, .. } => Some(id.clone()),
+            Message::Assistant(turn) => Some(turn.origin.is_some()),
             _ => None,
         })
         .collect();
-    assert_eq!(assistant_ids, [None]);
+    assert_eq!(assistant_ids, [true]);
 }
 
 #[tokio::test]
 async fn message_id_is_promoted_into_history() {
     let prompt = Message::user("prompt");
-    let response = AgentBuilder::new(MockCompletionModel::from_turns([
-        MockTurn::text("reply").with_message_id("msg_abc")
-    ]))
-    .build()
-    .prompt(prompt)
-    .run()
-    .await
-    .expect("blocking response");
+    let response = AgentBuilder::new(MockCompletionModel::from_turns([MockTurn::text("reply")]))
+        .build()
+        .prompt(prompt)
+        .run()
+        .await
+        .expect("blocking response");
 
     let messages = response.messages;
     let assistant_ids: Vec<_> = messages
         .iter()
         .filter_map(|message| match message {
-            Message::Assistant { id, .. } => Some(id.clone()),
+            Message::Assistant(turn) => Some(turn.origin.is_some()),
             _ => None,
         })
         .collect();
-    assert_eq!(assistant_ids, [Some("msg_abc".to_string())]);
+    assert_eq!(assistant_ids, [true]);
 }
 
 /// The streamed `CompletionResponse` carries the same canonical fields the
@@ -1077,7 +1064,6 @@ async fn streaming_completion_response_receives_canonical_fields() {
     let prompt = Message::user("canonical prompt");
     let hook = CanonicalResponseHook::default();
     let mut stream = relayed([[
-        MockStreamEvent::message_id("msg-canonical"),
         MockStreamEvent::text("canonical response"),
         MockStreamEvent::final_response(canonical_usage()),
     ]])
@@ -1095,7 +1081,6 @@ async fn streaming_completion_response_receives_canonical_fields() {
             prompt,
             content: vec![AssistantContent::text("canonical response")],
             usage: canonical_usage(),
-            message_id: Some("msg-canonical".to_string()),
         }]
     );
 }
@@ -1117,14 +1102,12 @@ async fn streaming_completion_response_without_provider_message_id_reports_none(
 
     let snapshots = hook.snapshots.lock().expect("finish snapshots");
     assert_eq!(snapshots.len(), 1);
-    assert_eq!(snapshots[0].message_id, None);
 }
 
 #[tokio::test]
 async fn streaming_completion_response_runs_once_for_the_ended_reply() {
     let hook = FinishLifecycleHook::default();
     let mut stream = relayed([[
-        MockStreamEvent::message_id("msg-canonical"),
         MockStreamEvent::text("canonical response"),
         MockStreamEvent::final_response(canonical_usage()),
     ]])
@@ -1143,12 +1126,6 @@ async fn streaming_completion_response_runs_once_for_the_ended_reply() {
     }
 
     assert_eq!(completion_calls, 1);
-    assert_eq!(
-        hook.snapshots.lock().expect("finish snapshots")[0]
-            .message_id
-            .as_deref(),
-        Some("msg-canonical")
-    );
     assert_eq!(hook.snapshots.lock().expect("finish snapshots").len(), 1);
     assert_eq!(hook.model_turns.load(SeqCst), 1);
 }
@@ -1610,8 +1587,10 @@ async fn run_and_stream_behave_identically_for_a_tool_call() {
     assert_eq!(blocking_hook.tool_results(), vec!["5".to_string()]);
 
     // Same final message history (compared via serialized form to normalize).
-    let blocking_messages = blocking.messages;
-    let streaming_messages = final_response.messages().to_vec();
+    // A streamed turn cut short at its invalid call replays canonically;
+    // the parity is in the content.
+    let blocking_messages = canonical_history(&blocking.messages);
+    let streaming_messages = canonical_history(final_response.messages());
     assert_eq!(
         serde_json::to_value(&blocking_messages).expect("serialize blocking"),
         serde_json::to_value(&streaming_messages).expect("serialize streaming"),
@@ -2383,7 +2362,7 @@ mod structured_tool_results {
                             result
                                 .call
                                 .provider()
-                                .map(|provider| provider.call_id.as_str())
+                                .map(|provider| provider.as_str())
                                 .expect("explicit provider ID")
                                 .to_owned(),
                         ),
@@ -3237,7 +3216,7 @@ async fn run_preserves_tool_call_order_under_out_of_order_completion() {
                         result
                             .call
                             .provider()
-                            .map(|provider| provider.call_id.as_str())
+                            .map(|provider| provider.as_str())
                             .expect("explicit provider ID")
                             .to_owned(),
                     ),
@@ -3279,7 +3258,7 @@ fn tool_result_ids(messages: &[Message]) -> Vec<String> {
                         result
                             .call
                             .provider()
-                            .map(|provider| provider.call_id.as_str())
+                            .map(|provider| provider.as_str())
                             .expect("explicit provider ID")
                             .to_owned(),
                     ),
@@ -3424,7 +3403,7 @@ async fn stream_emits_tool_results_in_call_order_after_batch_settles_under_concu
                     tool_result
                         .call
                         .provider()
-                        .map(|provider| provider.call_id.as_str())
+                        .map(|provider| provider.as_str())
                         .expect("explicit provider ID")
                         .to_owned(),
                 ),
@@ -5222,8 +5201,10 @@ async fn invalid_tool_call_skip_parity_across_run_and_stream() {
         "the hook must observe the invalid tool call"
     );
 
-    let blocking_messages = blocking.messages;
-    let streaming_messages = final_response.messages().to_vec();
+    // A streamed turn cut short at its invalid call replays canonically;
+    // the parity is in the content.
+    let blocking_messages = canonical_history(&blocking.messages);
+    let streaming_messages = canonical_history(final_response.messages());
     assert_eq!(
         serde_json::to_value(&blocking_messages).expect("serialize blocking"),
         serde_json::to_value(&streaming_messages).expect("serialize streaming"),
@@ -7366,7 +7347,7 @@ async fn initial_output_tool_collision_uses_a_unique_synthetic_name() {
                 if content.iter().any(|item| matches!(
                     item,
                     UserContent::ToolResult(result)
-                        if result.call.provider().map(|provider| provider.call_id.as_str()) == Some("real")
+                        if result.call.provider().map(|provider| provider.as_str()) == Some("real")
                             && result.content.iter().any(|content| matches!(
                                 content,
                                 rig_core::message::ToolResultContent::Text(text)
@@ -8707,7 +8688,7 @@ async fn blocking_model_turn_repeat_preserves_prompt_history_with_fresh_preparat
     let messages = response.messages;
     assert_eq!(
         messages,
-        vec![Message::user("question"), Message::assistant("accepted")]
+        vec![Message::user("question"), mock_reply("accepted")]
     );
 
     let requests = model.requests();
@@ -8746,9 +8727,9 @@ async fn blocking_model_turn_feedback_preserves_rejected_response() {
         response.messages,
         vec![
             Message::user("question"),
-            Message::assistant("rejected"),
+            mock_reply("rejected"),
             Message::user("try another approach"),
-            Message::assistant("accepted"),
+            mock_reply("accepted"),
         ]
     );
     let second_request = &model.requests()[1];
@@ -8756,7 +8737,7 @@ async fn blocking_model_turn_feedback_preserves_rejected_response() {
         second_request.chat_history.clone(),
         vec![
             Message::user("question"),
-            Message::assistant("rejected"),
+            mock_reply("rejected"),
             Message::user("try another approach")
         ]
     );
@@ -8791,7 +8772,7 @@ async fn blocking_empty_feedback_retry_omits_empty_assistant_history() {
         vec![
             Message::user("question"),
             Message::user("provide an answer"),
-            Message::assistant("accepted"),
+            mock_reply("accepted"),
         ]
     );
     assert_eq!(
@@ -8849,7 +8830,7 @@ async fn streaming_model_turn_retry_marks_rollback_and_matches_blocking_accounti
     assert_eq!(response.completion_calls.len(), 2);
     assert_eq!(
         response.messages,
-        vec![Message::user("question"), Message::assistant("accepted")]
+        vec![Message::user("question"), mock_reply("accepted")]
     );
     assert_eq!(model.requests().len(), 2);
 }
@@ -8978,7 +8959,7 @@ async fn streaming_empty_feedback_retry_omits_empty_assistant_history() {
         vec![
             Message::user("question"),
             Message::user("provide an answer"),
-            Message::assistant("accepted"),
+            mock_reply("accepted"),
         ]
     );
     assert_eq!(
@@ -9827,4 +9808,37 @@ async fn outcome_stop_is_terminal_through_nested_hooks_on_both_surfaces() {
             assert_eq!(later.load(SeqCst), 0, "later hooks must not undo stop");
         }
     }
+}
+
+/// The assistant message a scripted mock reply of `text` folds into.
+fn mock_reply(text: &str) -> Message {
+    Message::Assistant(rig_core::message::AssistantMessage {
+        content: vec![AssistantContent::text(text)],
+        origin: Some(rig_core::message::Origin::new(
+            rig_core::test_utils::MOCK_API,
+            rig_core::test_utils::MOCK_PROVIDER,
+            "",
+        )),
+        stop: Some(rig_core::message::StopReason::Stop),
+        native: None,
+    })
+}
+
+/// `messages` with every assistant turn's origin, stop and provider items
+/// left out.
+fn canonical_history(messages: &[Message]) -> Vec<Message> {
+    messages
+        .iter()
+        .map(|message| match message {
+            Message::Assistant(turn) => {
+                Message::Assistant(rig_core::message::AssistantMessage::new(
+                    turn.content
+                        .iter()
+                        .map(AssistantContent::canonical)
+                        .collect(),
+                ))
+            }
+            other => other.clone(),
+        })
+        .collect()
 }

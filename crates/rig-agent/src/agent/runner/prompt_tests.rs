@@ -68,9 +68,9 @@ async fn blocking_prompt_rejects_an_empty_truncated_turn() {
 #[tokio::test]
 async fn blocking_prompt_rejects_a_reasoning_only_truncated_turn() {
     let agent = AgentBuilder::new(MockCompletionModel::from_turns([MockTurn::from_content(
-        AssistantContent::Reasoning(
-            rig_core::message::Reasoning::new("thinking, never answering").sealed("test"),
-        ),
+        AssistantContent::Reasoning(rig_core::message::Reasoning::new(
+            "thinking, never answering",
+        )),
     )
     .with_finish_reason(FinishReason::Length)]))
     .build();
@@ -132,8 +132,7 @@ fn answer_classification_covers_every_assistant_content_variant() {
         Some(rig_core::message::ImageMediaType::PNG),
         Some(rig_core::message::ImageDetail::default()),
     );
-    let reasoning =
-        AssistantContent::Reasoning(rig_core::message::Reasoning::new("thinking").sealed("test"));
+    let reasoning = AssistantContent::Reasoning(rig_core::message::Reasoning::new("thinking"));
     let tool_call = AssistantContent::ToolCall(ToolCall::from_wire(
         "call_1".to_string(),
         ToolFunction::new(
@@ -190,15 +189,10 @@ fn answer_classification_covers_every_assistant_content_variant() {
 #[test]
 fn the_two_turn_predicates_diverge_on_recordable_but_answerless_turns() {
     let reasoning_only = vec![AssistantContent::Reasoning(
-        rig_core::message::Reasoning::new("t").sealed("test"),
+        rig_core::message::Reasoning::new("t"),
     )];
-    let annotated_empty_text = vec![AssistantContent::Text(Text {
-        text: String::new(),
-        additional_params: rig_core::message::AdditionalParams::try_from_value(
-            json!({"citations": ["ref"]}),
-        )
-        .expect("citation params should be a JSON object"),
-    })];
+    let annotated_empty_text =
+        vec![AssistantContent::Text(Text::new("")).with_native(json!({"citations": ["ref"]}))];
 
     // Divergent: recordable, but no answer was delivered.
     for choice in [&reasoning_only, &annotated_empty_text] {
@@ -252,13 +246,8 @@ fn the_two_turn_predicates_diverge_on_recordable_but_answerless_turns() {
 /// silently returns an empty string.
 #[test]
 fn metadata_only_text_is_not_an_answer() {
-    let annotated_empty = AssistantContent::Text(Text {
-        text: String::new(),
-        additional_params: rig_core::message::AdditionalParams::try_from_value(
-            json!({"citations": ["ref"]}),
-        )
-        .expect("citation params should be a JSON object"),
-    });
+    let annotated_empty =
+        AssistantContent::Text(Text::new("")).with_native(json!({"citations": ["ref"]}));
 
     assert!(turn_delivered_no_answer(std::slice::from_ref(
         &annotated_empty
@@ -600,17 +589,8 @@ fn empty_turn_classification_survives_a_serde_round_trip() {
         assert!(is_empty_assistant_turn(&migrated));
     }
 
-    // The old uncanonicalized-`Some({})` hazard is unrepresentable:
-    // `AdditionalParams` has no empty value, so the only way to spell
-    // "no extras" in memory is `None` and live/restored classification
-    // agree by construction.
-    let canonical_absent = vec![AssistantContent::Text(rig_core::message::Text {
-        text: String::new(),
-        additional_params: rig_core::message::AdditionalParams::try_from_value(serde_json::json!(
-            {}
-        ))
-        .expect("object params"),
-    })];
+    // Text with no provider item is empty, live and restored alike.
+    let canonical_absent = vec![AssistantContent::Text(rig_core::message::Text::new(""))];
     assert!(is_empty_assistant_turn(&canonical_absent));
     let restored: Vec<AssistantContent> =
         serde_json::from_value(serde_json::to_value(&canonical_absent).expect("serialize"))
@@ -618,7 +598,7 @@ fn empty_turn_classification_survives_a_serde_round_trip() {
     assert!(is_empty_assistant_turn(&restored));
 
     let annotated: Vec<AssistantContent> = serde_json::from_value(serde_json::json!([
-        {"type": "text", "text": "", "additional_params": {"signature": "sig"}}
+        {"type": "text", "text": "", "native": {"item": {"signature": "sig"}, "fingerprint": 0}}
     ]))
     .expect("deserialize annotated");
     assert!(
@@ -642,7 +622,7 @@ fn the_type_key_is_the_tag_and_the_untagged_shape_does_not_load() {
         panic!("expected one text block, got {tagged:?}");
     };
     assert_eq!(text.text, "ok");
-    assert_eq!(text.additional_params, None, "the tag is not data");
+    assert_eq!(text.native, None, "the tag is not data");
 
     serde_json::from_value::<Vec<AssistantContent>>(serde_json::json!([{"text": "ok"}]))
         .expect_err("the untagged shape must not deserialize");
@@ -652,9 +632,7 @@ fn the_type_key_is_the_tag_and_the_untagged_shape_does_not_load() {
 fn prompt_response_roundtrip_preserves_structured_content() {
     let response = PromptResponse::from_content(
         vec![
-            AssistantContent::Reasoning(
-                rig_core::message::Reasoning::new("thinking").sealed("mock"),
-            ),
+            AssistantContent::Reasoning(rig_core::message::Reasoning::new("thinking")),
             AssistantContent::text("visible "),
             AssistantContent::text("text"),
         ],
@@ -809,11 +787,11 @@ fn validate_follow_up_tool_history(request: &CompletionRequest) {
     // that one id and the result answers it.
     assert!(matches!(
         history.get(1),
-        Some(Message::Assistant { content, .. })
+        Some(Message::Assistant(rig_core::message::AssistantMessage { content, .. }))
             if matches!(
                 content.first(),
                 Some(AssistantContent::ToolCall(tool_call))
-                    if tool_call.id.provider().map(|provider| provider.call_id.as_str()) == Some("call_1")
+                    if tool_call.id.provider().map(|provider| provider.as_str()) == Some("call_1")
             )
     ));
 
@@ -823,7 +801,7 @@ fn validate_follow_up_tool_history(request: &CompletionRequest) {
             if matches!(
                 content.first(),
                 Some(UserContent::ToolResult(tool_result))
-                    if tool_result.call.provider().map(|provider| provider.call_id.as_str()) == Some("call_1")
+                    if tool_result.call.provider().map(|provider| provider.as_str()) == Some("call_1")
             )
     ));
 }
@@ -832,7 +810,7 @@ fn history_contains_tool_call(history: &[Message], tool_name: &str) -> bool {
     history.iter().any(|message| {
         matches!(
             message,
-            Message::Assistant { content, .. }
+            Message::Assistant(rig_core::message::AssistantMessage { content, .. })
                 if content.iter().any(|item| matches!(
                     item,
                     AssistantContent::ToolCall(tool_call)
@@ -849,7 +827,7 @@ fn history_contains_tool_call(history: &[Message], tool_name: &str) -> bool {
 fn assert_retry_transcript_ids_pair(assistant: &Message, results: &Message) {
     use std::collections::BTreeSet;
 
-    let Message::Assistant { content, .. } = assistant else {
+    let Message::Assistant(rig_core::message::AssistantMessage { content, .. }) = assistant else {
         panic!("expected the assistant tool-call turn, got {assistant:?}");
     };
     let call_ids: Vec<&rig_core::message::CallId> = content
@@ -1037,7 +1015,7 @@ async fn invalid_tool_call_context_uses_completed_tool_call_provider_id() {
         context
             .tool_call_id
             .as_ref()
-            .and_then(|id| id.provider().map(|provider| provider.call_id.as_str())),
+            .and_then(|id| id.provider().map(|provider| provider.as_str())),
         Some("provider_call_1")
     );
     assert!(!context.is_streaming);
@@ -1249,17 +1227,17 @@ async fn invalid_tool_call_hook_retries_mixed_non_streaming_turn_without_executi
     assert_eq!(retry_history.len(), 3);
     assert!(matches!(
         retry_history.get(1),
-        Some(Message::Assistant { content, .. })
+        Some(Message::Assistant(rig_core::message::AssistantMessage { content, .. }))
             if content.iter().any(|item| matches!(
                 item,
                 AssistantContent::ToolCall(tool_call)
-                    if tool_call.id.provider().map(|provider| provider.call_id.as_str()) == Some("call_1")
+                    if tool_call.id.provider().map(|provider| provider.as_str()) == Some("call_1")
                         && tool_call.function.name == "add"
             ))
                 && content.iter().any(|item| matches!(
                     item,
                     AssistantContent::ToolCall(tool_call)
-                        if tool_call.id.provider().map(|provider| provider.call_id.as_str()) == Some("call_2")
+                        if tool_call.id.provider().map(|provider| provider.as_str()) == Some("call_2")
                             && tool_call.function.name == "default_api"
                 ))
     ));
@@ -1270,9 +1248,9 @@ async fn invalid_tool_call_hook_retries_mixed_non_streaming_turn_without_executi
                 && content.iter().any(|item| matches!(
                     item,
                     UserContent::ToolResult(result)
-                        if result.call.provider().map(|provider| provider.call_id.as_str()) == Some("call_1")
+                        if result.call.provider().map(|provider| provider.as_str()) == Some("call_1")
                             && result.call.provider().as_ref().is_some_and(
-                                |provider| provider.call_id == "call_1"
+                                |provider| provider.as_str() == "call_1"
                             )
                             && result.content.iter().any(|content| matches!(
                                 content,
@@ -1283,9 +1261,9 @@ async fn invalid_tool_call_hook_retries_mixed_non_streaming_turn_without_executi
                 && content.iter().any(|item| matches!(
                     item,
                     UserContent::ToolResult(result)
-                        if result.call.provider().map(|provider| provider.call_id.as_str()) == Some("call_2")
+                        if result.call.provider().map(|provider| provider.as_str()) == Some("call_2")
                             && result.call.provider().as_ref().is_some_and(
-                                |provider| provider.call_id == "call_2"
+                                |provider| provider.as_str() == "call_2"
                             )
                             && result.content.iter().any(|content| matches!(
                                 content,
@@ -1349,9 +1327,9 @@ async fn invalid_tool_call_hook_skips_mixed_non_streaming_turn_without_executing
                 && content.iter().any(|item| matches!(
                     item,
                     UserContent::ToolResult(result)
-                        if result.call.provider().map(|provider| provider.call_id.as_str()) == Some("call_1")
+                        if result.call.provider().map(|provider| provider.as_str()) == Some("call_1")
                             && result.call.provider().as_ref().is_some_and(
-                                |provider| provider.call_id == "call_1"
+                                |provider| provider.as_str() == "call_1"
                             )
                             && result.content.iter().any(|content| matches!(
                                 content,
@@ -1362,9 +1340,9 @@ async fn invalid_tool_call_hook_skips_mixed_non_streaming_turn_without_executing
                 && content.iter().any(|item| matches!(
                     item,
                     UserContent::ToolResult(result)
-                        if result.call.provider().map(|provider| provider.call_id.as_str()) == Some("call_2")
+                        if result.call.provider().map(|provider| provider.as_str()) == Some("call_2")
                             && result.call.provider().as_ref().is_some_and(
-                                |provider| provider.call_id == "call_2"
+                                |provider| provider.as_str() == "call_2"
                             )
                             && result.content.iter().any(|content| matches!(
                                 content,
@@ -1480,7 +1458,7 @@ async fn skip_under_specific_tool_choice_returns_synthetic_feedback() {
                     matches!(
                         content,
                         UserContent::ToolResult(result)
-                            if result.call.provider().map(|provider| provider.call_id.as_str()) == Some("tool_call_1")
+                            if result.call.provider().map(|provider| provider.as_str()) == Some("tool_call_1")
                                 && result.content.iter().any(|content| {
                                     matches!(
                                         content,
@@ -1797,13 +1775,13 @@ async fn prompt_request_stops_cleanly_on_empty_terminal_turn() {
     ));
     assert!(history.iter().any(|message| matches!(
         message,
-        Message::Assistant { content, .. }
+        Message::Assistant(rig_core::message::AssistantMessage { content, .. })
             if matches!(
                 content.first(),
                 Some(AssistantContent::ToolCall(tool_call))
-                    if tool_call.id.provider().map(|provider| provider.call_id.as_str()) == Some("call_1")
+                    if tool_call.id.provider().map(|provider| provider.as_str()) == Some("call_1")
                         && tool_call.id.provider().as_ref().is_some_and(
-                            |provider| provider.call_id == "call_1"
+                            |provider| provider.as_str() == "call_1"
                         )
             )
     )));
@@ -1813,15 +1791,15 @@ async fn prompt_request_stops_cleanly_on_empty_terminal_turn() {
             if matches!(
                 content.first(),
                 Some(UserContent::ToolResult(tool_result))
-                    if tool_result.call.provider().map(|provider| provider.call_id.as_str()) == Some("call_1")
+                    if tool_result.call.provider().map(|provider| provider.as_str()) == Some("call_1")
                         && tool_result.call.provider().as_ref().is_some_and(
-                            |provider| provider.call_id == "call_1"
+                            |provider| provider.as_str() == "call_1"
                         )
             )
     )));
     assert!(!history.iter().any(|message| matches!(
         message,
-        Message::Assistant { content, .. }
+        Message::Assistant(rig_core::message::AssistantMessage { content, .. })
             if content.iter().any(|item| matches!(
                 item,
                 AssistantContent::Text(text) if text.text.is_empty()
@@ -1854,7 +1832,7 @@ async fn prompt_request_concatenates_text_blocks_without_inserted_newlines() {
 
 #[tokio::test]
 async fn prompt_request_preserves_metadata_only_text_turn_in_history() {
-    let metadata = rig_core::message::AdditionalParams::try_from_value(json!({
+    let metadata = json!({
         "citations": [{
             "type": "web_search_result_location",
             "cited_text": "Claude Shannon was born in 1916.",
@@ -1862,14 +1840,10 @@ async fn prompt_request_preserves_metadata_only_text_turn_in_history() {
             "title": null,
             "encrypted_index": "encrypted-reference"
         }]
-    }))
-    .expect("object params")
-    .expect("params carry data");
-    let model =
-        MockCompletionModel::from_turns([MockTurn::from_content(AssistantContent::Text(Text {
-            text: String::new(),
-            additional_params: Some(metadata.clone()),
-        }))]);
+    });
+    let model = MockCompletionModel::from_turns([MockTurn::from_content(
+        AssistantContent::Text(Text::new("")).with_native(metadata.clone()),
+    )]);
     let agent = AgentBuilder::new(model).build();
 
     let response = agent
@@ -1881,12 +1855,12 @@ async fn prompt_request_preserves_metadata_only_text_turn_in_history() {
     let history = response.messages;
     assert!(history.iter().any(|message| matches!(
         message,
-        Message::Assistant { content, .. }
+        Message::Assistant(rig_core::message::AssistantMessage { content, .. })
             if matches!(
                 content.first(),
                 Some(AssistantContent::Text(text))
                     if text.text.is_empty()
-                        && text.additional_params.as_ref() == Some(&metadata)
+                        && text.native.as_ref().map(|native| &native.item) == Some(&metadata)
             )
     )));
 }
@@ -2039,7 +2013,7 @@ async fn multi_step_tool_run_appends_committed_turn_exactly_once() {
     assert!(
         matches!(
             stored.last(),
-            Some(Message::Assistant { content, .. })
+            Some(Message::Assistant(rig_core::message::AssistantMessage { content, .. }))
                 if content
                     .iter()
                     .any(|item| matches!(item, AssistantContent::Text(t) if t.text == "sum is 5"))
@@ -2155,7 +2129,7 @@ async fn committed_transcript_roles_form_a_valid_sequence() {
     assert!(
         !stored
             .windows(2)
-            .any(|pair| matches!(pair, [Message::Assistant { .. }, Message::Assistant { .. }])),
+            .any(|pair| matches!(pair, [Message::Assistant(_), Message::Assistant(_)])),
         "no two assistant messages are committed back to back: {stored:?}"
     );
     // Each assistant turn carrying a tool call is followed by a user
@@ -2163,7 +2137,7 @@ async fn committed_transcript_roles_form_a_valid_sequence() {
     for (index, message) in stored.iter().enumerate() {
         let has_tool_call = matches!(
             message,
-            Message::Assistant { content, .. }
+            Message::Assistant(rig_core::message::AssistantMessage { content, .. })
                 if content.iter().any(|item| matches!(item, AssistantContent::ToolCall(_)))
         );
         if has_tool_call {
@@ -2327,7 +2301,6 @@ fn completion_call_without_identity_fields_deserializes() {
 fn completion_call_identity_round_trips() {
     let call = CompletionCall::new(0, crate::completion::Usage::default(), json!({}))
         .with_identity(ResponseIdentity {
-            message_id: Some("msg_1".into()),
             response_id: Some("resp_1".into()),
             provider_request_id: Some("req_1".into()),
         });

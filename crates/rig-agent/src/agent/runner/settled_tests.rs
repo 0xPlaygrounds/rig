@@ -231,7 +231,7 @@ async fn capped_reasoning_settlement_exposes_only_the_committed_prompt() {
             ]])
         } else {
             MockCompletionModel::from_turns([MockTurn::from_content(AssistantContent::Reasoning(
-                Reasoning::new("unfinished reasoning").sealed("test"),
+                Reasoning::new("unfinished reasoning"),
             ))
             .with_finish_reason(FinishReason::Length)])
         };

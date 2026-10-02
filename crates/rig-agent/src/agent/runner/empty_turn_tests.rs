@@ -66,7 +66,7 @@ fn cases() -> Vec<(Message, Vec<Message>, bool, &'static str)> {
                 "role": "user",
                 "content": [{
                     "type": "toolresult",
-                    "call": {"provider": {"call_id": "call_1"}},
+                    "call": {"provider": "call_1"},
                     "name": "lookup",
                     "content": [],
                 }],

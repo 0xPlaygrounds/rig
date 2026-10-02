@@ -181,10 +181,7 @@ async fn malformed_arguments_skip_feeds_the_parse_failure_back() {
         })
         .expect("skip must emit a synthetic tool result");
     assert_eq!(
-        skipped
-            .call
-            .provider()
-            .map(|provider| provider.call_id.as_str()),
+        skipped.call.provider().map(|provider| provider.as_str()),
         Some("tool_call_1")
     );
     assert!(skipped.content.iter().any(|content| matches!(
@@ -197,7 +194,7 @@ async fn malformed_arguments_skip_feeds_the_parse_failure_back() {
     assert!(requests[1].chat_history.iter().any(|message| {
         matches!(message, Message::User { content } if content.iter().any(|item| matches!(
             item,
-            UserContent::ToolResult(result) if result.call.provider().map(|provider| provider.call_id.as_str()) == Some("tool_call_1")
+            UserContent::ToolResult(result) if result.call.provider().map(|provider| provider.as_str()) == Some("tool_call_1")
         )))
     }));
 }

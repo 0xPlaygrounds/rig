@@ -693,7 +693,7 @@ pub(crate) struct StreamingTurnSource {
     /// The raw provider choice of the most recent turn; the final response
     /// surfaces it as-is, even when canonical reordering was recorded in history.
     last_final_choice: Vec<AssistantContent>,
-    last_message_id: Option<String>,
+    last_response_id: Option<String>,
     /// Resolved agent name, kept only for the empty-turn diagnostic warning.
     agent_name: String,
     /// Whether we created the agent span (vs. adopting a caller's ambient span);
@@ -722,7 +722,7 @@ impl StreamingTurnSource {
         Self {
             // Nothing has streamed yet, so the last final choice is nothing.
             last_final_choice: Vec::new(),
-            last_message_id: None,
+            last_response_id: None,
             agent_name,
             created_agent_span,
             record_telemetry_content,
@@ -935,10 +935,7 @@ impl TurnSource for StreamingTurnSource {
                         StreamedTurnEvent::InvalidToolCall(invalid) => {
                             // The rejected call's items are not forwarded.
                             held.clear();
-                            let partial = assembler.partial_turn(
-                                stream.message_id(),
-                                &stream.partial().choice,
-                            );
+                            let partial = assembler.partial_turn(&stream.partial());
                             // Gated on `has_hooks`: building the diagnostic context
                             // clones the chat history, so an empty stack skips it and
                             // fails fast.
@@ -1060,8 +1057,8 @@ impl TurnSource for StreamingTurnSource {
                 }
             }
 
-            let streamed_turn = assembler.finish(response.message_id.clone(), &response);
-            self.last_message_id.clone_from(&streamed_turn.message_id);
+            let streamed_turn = assembler.finish(&response);
+            self.last_response_id = response.response_id().map(str::to_owned);
             // The hooks and run history see the assembled turn: the
             // response's choice without ignored calls, with repaired names.
             // The final item keeps the provider's choice.
@@ -1154,7 +1151,7 @@ impl TurnSource for StreamingTurnSource {
                 if is_empty_assistant_turn(&self.last_final_choice) {
                     tracing::warn!(
                         agent_name = self.agent_name.as_str(),
-                        message_id = ?self.last_message_id,
+                        response_id = ?self.last_response_id,
                         "Streaming turn completed without assistant text; final response will be empty"
                     );
                 }
@@ -1225,12 +1222,12 @@ pub(crate) async fn settle_model_turn(
     let mut folded = rig_core::completion::CompletionResponse::new(
         response.choice.clone(),
         response.usage,
-        &response.provider,
+        response.origin.clone(),
         response.raw.clone(),
     )
     .with_optional_finish_reason(finish_reason.clone());
-    folded.message_id = identity.message_id.clone();
-    folded.response_id = identity.response_id.clone();
+    folded.native = response.native.clone();
+    folded.error = response.error.clone();
     folded.provider_request_id = identity.provider_request_id.clone();
     let outcome: Result<Outcome, ErrorReport> = Ok(Outcome::Completion(folded));
     let mut replaced: Option<Vec<AssistantContent>> = None;

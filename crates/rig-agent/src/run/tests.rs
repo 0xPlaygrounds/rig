@@ -144,12 +144,11 @@ fn from_response_matches_hand_assembly_field_for_field() {
         let mut response = CompletionResponse::new(
             vec![AssistantContent::text("hi"), tool_call("call_1", "add")],
             usage(11, 7),
-            "openai",
+            rig_core::message::Origin::new("test.api", "openai", ""),
             json!({"provider": "payload"}),
         )
         .with_finish_reason(FinishReason::ToolCalls);
-        response.message_id = Some("msg_1".to_string());
-        response.response_id = Some("chatcmpl_1".to_string());
+        response.origin.response_id = Some("chatcmpl_1".to_string());
         response.provider_request_id = Some("req_1".to_string());
         response
     };
@@ -159,17 +158,20 @@ fn from_response_matches_hand_assembly_field_for_field() {
     let turn = ModelTurn::from_response_parts(&resp, executable.clone(), allowed.clone());
 
     let expected = ModelTurn::new(
-        resp.message_id.clone(),
+        resp.head(),
         resp.choice.clone(),
         resp.usage,
         executable,
         allowed,
         resp.raw.clone(),
     )
-    .with_identity(resp.response_id.clone(), resp.provider_request_id.clone())
+    .with_identity(
+        resp.response_id().map(str::to_owned),
+        resp.provider_request_id.clone(),
+    )
     .with_finish_reason(resp.finish_reason());
 
-    assert_eq!(turn.message_id, expected.message_id);
+    assert_eq!(turn.head, expected.head);
     assert_eq!(turn.response_id, expected.response_id);
     assert_eq!(turn.provider_request_id, expected.provider_request_id);
     assert_eq!(turn.choice, expected.choice);
@@ -205,7 +207,7 @@ fn text_turn(text: &str) -> ModelTurn {
 
 fn text_turn_with_raw(text: &str, raw: serde_json::Value) -> ModelTurn {
     ModelTurn::new(
-        None,
+        rig_core::message::AssistantMessage::default(),
         vec![AssistantContent::text(text)],
         Usage::default(),
         tool_names(&["add"]),
@@ -245,7 +247,7 @@ fn tool_call_turn(id: &str, name: &str) -> ModelTurn {
 
 fn tool_call_turn_with_raw(id: &str, name: &str, raw: serde_json::Value) -> ModelTurn {
     ModelTurn::new(
-        None,
+        rig_core::message::AssistantMessage::default(),
         vec![tool_call(id, name)],
         Usage::default(),
         tool_names(&["add"]),
@@ -494,7 +496,7 @@ fn parallel_tool_calls_surface_in_emission_order() {
 
     expect_call_model(&mut run);
     let turn = ModelTurn::new(
-        None,
+        rig_core::message::AssistantMessage::default(),
         vec![tool_call("call_1", "add"), tool_call("call_2", "add")],
         Usage::default(),
         tool_names(&["add"]),
@@ -513,7 +515,7 @@ fn parallel_tool_calls_surface_in_emission_order() {
             .tool_call
             .id
             .provider()
-            .map(|provider| provider.call_id.as_str()),
+            .map(|provider| provider.as_str()),
         Some("call_1")
     );
     assert_eq!(
@@ -521,7 +523,7 @@ fn parallel_tool_calls_surface_in_emission_order() {
             .tool_call
             .id
             .provider()
-            .map(|provider| provider.call_id.as_str()),
+            .map(|provider| provider.as_str()),
         Some("call_2")
     );
 
@@ -746,7 +748,7 @@ fn invalid_tool_call_skip_suppresses_all_peer_executions() {
 
     expect_call_model(&mut run);
     let turn = ModelTurn::new(
-        None,
+        rig_core::message::AssistantMessage::default(),
         vec![tool_call("call_1", "unknown"), tool_call("call_2", "add")],
         Usage::default(),
         tool_names(&["add"]),
@@ -780,7 +782,7 @@ fn id_less_calls_keep_distinct_skip_results() {
 
     expect_call_model(&mut run);
     let turn = ModelTurn::new(
-        None,
+        rig_core::message::AssistantMessage::default(),
         vec![id_less_call("unknown"), id_less_call("add")],
         Usage::default(),
         tool_names(&["add"]),
@@ -840,7 +842,7 @@ fn skip_under_tool_choice_none_fails() {
     expect_call_model(&mut run);
     expect_needs_resolution(
         run.model_response(ModelTurn::new(
-            None,
+            rig_core::message::AssistantMessage::default(),
             vec![tool_call("call_1", "add")],
             Usage::default(),
             tool_names(&["add"]),
@@ -1029,10 +1031,7 @@ fn agent_run_deserializes_suspended_state() {
     expect_call_tools(&mut suspended);
     let fixture = serde_json::to_string(&suspended).expect("suspended run should serialize");
 
-    let bare_ids = fixture.replace(
-        r#""id":{"provider":{"call_id":"call_1"}}"#,
-        r#""id":"call_1""#,
-    );
+    let bare_ids = fixture.replace(r#""id":{"provider":"call_1"}"#, r#""id":"call_1""#);
     assert_ne!(bare_ids, fixture);
     assert!(
         serde_json::from_str::<AgentRun>(&bare_ids).is_err(),
@@ -1150,7 +1149,7 @@ fn pending_invalid_tool_call_survives_serde_round_trip() {
         context
             .tool_call_id
             .as_ref()
-            .and_then(|id| id.provider().map(|provider| provider.call_id.as_str())),
+            .and_then(|id| id.provider().map(|provider| provider.as_str())),
         Some("call_1")
     );
     assert_eq!(restored_context.tool_call_id, context.tool_call_id);
@@ -1160,7 +1159,7 @@ fn pending_invalid_tool_call_survives_serde_round_trip() {
 /// tool (the shape Tool output mode produces — see #1928).
 fn output_tool_turn(id: &str, name: &str) -> ModelTurn {
     ModelTurn::new(
-        None,
+        rig_core::message::AssistantMessage::default(),
         vec![tool_call(id, name)],
         Usage::default(),
         tool_names(&["add"]),
@@ -1171,7 +1170,7 @@ fn output_tool_turn(id: &str, name: &str) -> ModelTurn {
 
 fn output_tool_turn_with_args(id: &str, name: &str, arguments: serde_json::Value) -> ModelTurn {
     ModelTurn::new(
-        None,
+        rig_core::message::AssistantMessage::default(),
         vec![AssistantContent::ToolCall(ToolCall::from_wire(
             id,
             ToolFunction::new(
@@ -1192,7 +1191,7 @@ fn assert_no_orphan_tool_use(messages: &[Message]) {
     let mut pending = Vec::new();
     for message in messages {
         match message {
-            Message::Assistant { content, .. } => {
+            Message::Assistant(rig_core::message::AssistantMessage { content, .. }) => {
                 pending.extend(content.iter().filter_map(|item| match item {
                     AssistantContent::ToolCall(call) => Some(&call.id),
                     _ => None,
@@ -1239,7 +1238,7 @@ fn output_tool_call_finalizes_run_with_arguments() {
     assert_no_orphan_tool_use(&messages);
     assert!(matches!(
         messages.last(),
-        Some(Message::Assistant { content, .. })
+        Some(Message::Assistant(rig_core::message::AssistantMessage { content, .. }))
             if assistant_text_from_choice(content) == r#"{"x":1}"#
     ));
 }
@@ -1250,7 +1249,7 @@ fn output_tool_response_content_is_the_output_while_history_keeps_prose() {
 
     expect_call_model(&mut run);
     let turn = ModelTurn::new(
-        None,
+        rig_core::message::AssistantMessage::default(),
         vec![
             AssistantContent::text("Here is the summary:"),
             tool_call("call_1", "final_result"),
@@ -1280,7 +1279,7 @@ fn output_tool_response_content_is_the_output_while_history_keeps_prose() {
     );
     assert!(matches!(
         response.messages.last(),
-        Some(Message::Assistant { content, .. })
+        Some(Message::Assistant(rig_core::message::AssistantMessage { content, .. }))
             if assistant_text_from_choice(content) == r#"Here is the summary:{"x":1}"#
     ));
 }
@@ -1311,7 +1310,7 @@ fn scalar_output_tool_call_is_serialized_as_reparseable_json() {
     assert_no_orphan_tool_use(&messages);
     assert!(matches!(
         messages.last(),
-        Some(Message::Assistant { content, .. })
+        Some(Message::Assistant(rig_core::message::AssistantMessage { content, .. }))
             if assistant_text_from_choice(content) == r#""complete""#
     ));
 }
@@ -1326,7 +1325,7 @@ fn output_tool_call_wins_over_sibling_real_tool_calls() {
     // The model emits a real tool call *and* the output tool in one turn;
     // the output-tool intercept wins and the real call is never executed.
     let turn = ModelTurn::new(
-        None,
+        rig_core::message::AssistantMessage::default(),
         vec![
             tool_call("call_1", "add"),
             tool_call("call_2", "final_result"),
@@ -1351,7 +1350,7 @@ fn output_tool_call_wins_over_sibling_real_tool_calls() {
     assert_no_orphan_tool_use(&messages);
     assert!(
         messages.iter().all(|message| match message {
-            Message::Assistant { content, .. } => !content
+            Message::Assistant(rig_core::message::AssistantMessage { content, .. }) => !content
                 .iter()
                 .any(|item| matches!(item, AssistantContent::ToolCall(_))),
             _ => true,
@@ -1533,7 +1532,7 @@ fn durable_human_in_the_loop_approval_survives_serialize_resume() {
     let two_calls = vec![tool_call("c1", "add"), tool_call("c2", "add")];
     let outcome = run
         .model_response(ModelTurn::new(
-            None,
+            rig_core::message::AssistantMessage::default(),
             two_calls,
             Usage::default(),
             tool_names(&["add"]),
@@ -1556,7 +1555,7 @@ fn durable_human_in_the_loop_approval_survives_serialize_resume() {
             .tool_call
             .id
             .provider()
-            .map(|provider| provider.call_id.as_str()),
+            .map(|provider| provider.as_str()),
         Some("c1")
     );
     assert_eq!(
@@ -1564,7 +1563,7 @@ fn durable_human_in_the_loop_approval_survives_serialize_resume() {
             .tool_call
             .id
             .provider()
-            .map(|provider| provider.call_id.as_str()),
+            .map(|provider| provider.as_str()),
         Some("c2")
     );
 
@@ -1775,7 +1774,7 @@ fn from_spec_matches_the_builder_chain() {
 }
 
 fn assistant(content: Vec<AssistantContent>) -> Message {
-    Message::Assistant { id: None, content }
+    Message::Assistant(rig_core::message::AssistantMessage::new(content))
 }
 
 #[test]
@@ -1815,9 +1814,9 @@ fn a_truncated_reasoning_only_turn_commits_nothing() {
     let mut run = AgentRun::new("solve this");
     let _ = expect_call_model(&mut run);
     let turn = ModelTurn::new(
-        None,
+        rig_core::message::AssistantMessage::default(),
         vec![AssistantContent::Reasoning(
-            rig_core::message::Reasoning::new("thinking, never answering").sealed("test"),
+            rig_core::message::Reasoning::new("thinking, never answering"),
         )],
         Usage::default(),
         tool_names(&["add"]),
@@ -1837,7 +1836,7 @@ fn a_truncated_reasoning_only_turn_commits_nothing() {
     assert!(
         run.new_messages
             .iter()
-            .all(|message| !matches!(message, Message::Assistant { .. })),
+            .all(|message| !matches!(message, Message::Assistant(_))),
         "the reasoning-only turn is not history: {:?}",
         run.new_messages
     );
@@ -1847,8 +1846,14 @@ fn a_truncated_reasoning_only_turn_commits_nothing() {
 /// message, so nothing empty is appended to history.
 #[test]
 fn transcript_helpers_build_no_message_from_nothing() {
-    assert_eq!(transcript::assistant_message(None, Vec::new()), None);
-    assert_eq!(transcript::assistant_turn(None, Vec::new()), None);
+    assert_eq!(
+        transcript::assistant_message(rig_core::message::AssistantMessage::default(), Vec::new()),
+        None
+    );
+    assert_eq!(
+        transcript::assistant_turn(rig_core::message::AssistantMessage::default(), Vec::new()),
+        None
+    );
     assert_eq!(
         transcript::invalid_tool_retry_user_message(
             &[AssistantContent::text("no calls here")],
