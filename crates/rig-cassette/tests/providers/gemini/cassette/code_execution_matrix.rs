@@ -45,7 +45,7 @@
 //! | 19 | `streaming_code_execution_capped_by_max_tokens` | streaming | `stream` | parity twin of 18 |
 //! | 20 | `blocking_code_execution_on_gemini_3_flash` | blocking | `completion` | second model family |
 //! | 21 | `streaming_code_execution_on_gemini_3_flash` | streaming | `stream` | parity twin of 20 |
-//! | 22 | `blocking_code_execution_replayed_in_chat_history` | blocking | `Agent::chat` | a code-execution turn replayed as history |
+//! | 22 | `blocking_code_execution_replayed_in_chat_history` | blocking | `Agent::chat` | a code-execution turn replayed as history, code parts included |
 //! | 23 | `code_execution_only_turn_is_an_empty_response` | — | unit | see below |
 //! | 24 | `code_execution_parts_are_skipped_in_every_position` | — | unit | see below |
 //! | 25 | `unmodeled_part_kinds_still_fail_loudly` | — | unit | see below |
@@ -64,7 +64,7 @@
 //! `RIG_PROVIDER_TEST_MODE=record GEMINI_API_KEY=... cargo test -p rig --all-features --test gemini code_execution_matrix -- --test-threads=1`
 
 use futures::StreamExt;
-use rig::message::{AssistantContent, Message};
+use rig::message::AssistantContent;
 use rig::providers::gemini;
 use rig::providers::gemini::completion::gemini_api_types::GenerateContentResponse;
 use rig::streaming::Item;
@@ -915,26 +915,20 @@ async fn blocking_code_execution_replayed_in_chat_history() {
                     .additional_params(code_execution_params())
                     .build();
 
-            // Turn one produces the code-execution turn; turn two replays the
-            // normalized assistant message back to Gemini as history. The
-            // normalized message holds only the text — the code parts have no
-            // slot — so this cell pins that the trimmed history is still a legal
-            // request.
+            // Turn one produces the code-execution turn; turn two replays it
+            // to the same model, code parts included.
+            let mut history = Vec::new();
             let first = agent
-                .prompt("Use the code execution tool to compute 13 times 13. State the number.")
+                .chat(
+                    "Use the code execution tool to compute 13 times 13. State the number.",
+                    &mut history,
+                )
                 .await
                 .expect("first code-execution turn should convert");
             assert!(
                 states(&first.output(), "169"),
                 "first answer should carry 169, got {first:?}"
             );
-
-            let mut history = vec![
-                Message::user(
-                    "Use the code execution tool to compute 13 times 13. State the number.",
-                ),
-                Message::assistant(first.output()),
-            ];
             let second = agent
                 .chat("Now double that number and state the result.", &mut history)
                 .await
@@ -947,6 +941,14 @@ async fn blocking_code_execution_replayed_in_chat_history() {
     )
     .await;
 
+    let bodies = crate::cassettes::recorded_interaction_bodies("gemini", SCENARIO);
+    let replayed = &bodies.last().expect("a continuation").0;
+    for marker in CODE_PART_MARKERS {
+        assert!(
+            replayed.contains(marker),
+            "the continuation replays the turn's {marker} part"
+        );
+    }
     assert_recorded_response_contains(SCENARIO, CODE_PART_MARKERS);
 }
 
