@@ -321,7 +321,7 @@ fn a_response_is_the_assistant_turn() {
         Message::Assistant(crate::message::AssistantMessage {
             content: choice,
             origin: Some(crate::message::Origin::new("test.api", "test", "")),
-            stop: Some(crate::message::StopReason::Stop),
+            stop: Some(crate::message::StopReason::ToolUse),
             native: None,
         })
     );

@@ -363,17 +363,22 @@ impl Turn {
             },
             Block::Opaque { replay } => Body::Opaque { replay },
         };
+        self.insert(index, body, item);
+        Ok(())
+    }
+
+    fn insert(&mut self, index: usize, body: Body, item: serde_json::Value) {
         let part = self.next();
+        let started = false;
         self.open.insert(
             index,
             Draft {
                 part,
-                started: false,
+                started,
                 item,
                 body,
             },
         );
-        Ok(())
     }
 
     pub(crate) fn push_item(
@@ -886,20 +891,12 @@ impl<'id> Out<'id, Completion> {
         let mut shared = self.lock();
         let turn = &mut shared.fold;
         if !turn.open.contains_key(&index) {
-            let part = turn.next();
-            turn.open.insert(
-                index,
-                Draft {
-                    part,
-                    started: false,
-                    item: serde_json::Value::Null,
-                    body: Body::Call {
-                        id: None,
-                        name: String::new(),
-                        arguments: Arguments::default(),
-                    },
-                },
-            );
+            let body = Body::Call {
+                id: None,
+                name: String::new(),
+                arguments: Arguments::default(),
+            };
+            turn.insert(index, body, serde_json::Value::Null);
         }
         let Body::Call {
             id,
@@ -976,38 +973,6 @@ impl<'id> Out<'id, Completion> {
     /// The wire indices of the open items, in index order.
     pub fn open_items(&self) -> Vec<usize> {
         self.lock().fold.open.keys().copied().collect()
-    }
-
-    /// Whether the call at `index` received argument bytes that are not
-    /// blank, or announced arguments.
-    pub fn has_arguments(&self, index: usize) -> bool {
-        matches!(
-            self.lock().fold.open.get(&index),
-            Some(Draft { body: Body::Call { arguments, .. }, .. })
-                if arguments.substantive || arguments.announced.is_some()
-        )
-    }
-
-    /// The provider id the call at `index` has so far.
-    pub fn call_id(&self, index: usize) -> Option<CallId> {
-        match self.lock().fold.open.get(&index) {
-            Some(Draft {
-                body: Body::Call { id, .. },
-                ..
-            }) => id.clone(),
-            _ => None,
-        }
-    }
-
-    /// The tool name the call at `index` has so far.
-    pub fn call_name(&self, index: usize) -> String {
-        match self.lock().fold.open.get(&index) {
-            Some(Draft {
-                body: Body::Call { name, .. },
-                ..
-            }) => name.clone(),
-            _ => String::new(),
-        }
     }
 
     /// A whole block of an already assembled response, at the next

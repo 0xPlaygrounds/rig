@@ -89,7 +89,20 @@ pub trait ReplayTarget: std::fmt::Debug + WasmCompatSync {
 ///   message that was empty to begin with is kept, for the request
 ///   boundary to reject.
 pub fn adapt(history: &[Message], target: &dyn ReplayTarget) -> Vec<Message> {
-    let api = target.api();
+    adapt_for_model(history, target, None)
+}
+
+/// [`adapt`] for a request that names `model` in place of the wire's own.
+pub(crate) fn adapt_for_model(
+    history: &[Message],
+    target: &dyn ReplayTarget,
+    model: Option<&str>,
+) -> Vec<Message> {
+    let same = (
+        target.api(),
+        target.provider(),
+        model.unwrap_or(target.model()),
+    );
     let images = target.accepts_images();
     let mut renamed = HashMap::new();
     let shaped = history
@@ -100,7 +113,7 @@ pub fn adapt(history: &[Message], target: &dyn ReplayTarget) -> Vec<Message> {
                 content: user_content(content, &renamed, images),
             }),
             Message::Assistant(turn) => {
-                let shaped = assistant(turn, target, &api, &mut renamed);
+                let shaped = assistant(turn, target, &same, &mut renamed);
                 let emptied = shaped.content.is_empty() && !turn.content.is_empty();
                 (!emptied).then_some(Message::Assistant(shaped))
             }
@@ -109,57 +122,17 @@ pub fn adapt(history: &[Message], target: &dyn ReplayTarget) -> Vec<Message> {
     answer_calls(shaped)
 }
 
-/// [`adapt`] for a request that names `model` in place of the wire's own.
-pub(crate) fn adapt_for_model(
-    history: &[Message],
-    target: &dyn ReplayTarget,
-    model: Option<&str>,
-) -> Vec<Message> {
-    match model {
-        Some(model) if model != target.model() => adapt(history, &Overridden { target, model }),
-        _ => adapt(history, target),
-    }
-}
-
-/// A target whose request overrides the wire's model.
-#[derive(Debug)]
-struct Overridden<'a> {
-    target: &'a dyn ReplayTarget,
-    model: &'a str,
-}
-
-impl ReplayTarget for Overridden<'_> {
-    fn api(&self) -> Api {
-        self.target.api()
-    }
-
-    fn provider(&self) -> &str {
-        self.target.provider()
-    }
-
-    fn model(&self) -> &str {
-        self.model
-    }
-
-    fn accepts_images(&self) -> bool {
-        self.target.accepts_images()
-    }
-
-    fn normalize_tool_call_id(&self, id: &str, source: Option<&Origin>) -> String {
-        self.target.normalize_tool_call_id(id, source)
-    }
-}
-
+/// `turn` shaped for the target `(api, provider, model)`.
 fn assistant(
     turn: &AssistantMessage,
     target: &dyn ReplayTarget,
-    api: &Api,
+    (api, provider, model): &(Api, &str, &str),
     renamed: &mut HashMap<CallId, CallId>,
 ) -> AssistantMessage {
     let same = turn
         .origin
         .as_ref()
-        .is_some_and(|origin| origin.same_model(api, target.provider(), target.model()));
+        .is_some_and(|origin| origin.same_model(api, provider, model));
     let content =
         turn.content
             .iter()
