@@ -1003,7 +1003,7 @@ async fn the_driver_records_the_folded_responses_metadata() {
         futures::executor::block_on(bound.call(prompt()))
     })
     .expect("the reply decodes");
-    assert_eq!(response.model().as_deref(), Some("echo-1"));
+    assert_eq!(response.model(), Some("echo-1"));
     assert!(
         capture
             .values_of("gen_ai.response.model")

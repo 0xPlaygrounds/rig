@@ -315,7 +315,7 @@ fn a_response_is_the_assistant_turn() {
         AssistantContent::text("hi"),
         AssistantContent::ToolCall(call("c1", "a")),
     ];
-    let mut response = response(choice.clone());
+    let response = response(choice.clone());
     assert_eq!(
         response.message().expect("a non-empty choice"),
         Message::Assistant(crate::message::AssistantMessage {

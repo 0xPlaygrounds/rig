@@ -451,7 +451,7 @@ pub async fn run_cache_probe_streaming(
 
     let (first_usage, _, _) =
         stream_turn(&model, probe, vec![opening.clone()], "turn 1 (warm)").await;
-    let (second_usage, text, message_id) =
+    let (second_usage, text, _response_id) =
         stream_turn(&model, probe, vec![opening.clone()], "turn 2 (hit)").await;
 
     // A model can legitimately produce no *text* within the probe's small

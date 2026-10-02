@@ -45,15 +45,12 @@ impl Transport<MockScript> for Scripted {
             Ok(answer) => answer,
             Err(error) => return Opening::failed(error),
         };
-        let response = {
-            let mut response = CompletionResponse::new(
-                vec![answer],
-                usage(self.total_tokens),
-                rig_core::message::Origin::new("example.api", self.provider, ""),
-                serde_json::Value::Null,
-            );
-            response
-        };
+        let response = CompletionResponse::new(
+            vec![answer],
+            usage(self.total_tokens),
+            rig_core::message::Origin::new("example.api", self.provider, ""),
+            serde_json::Value::Null,
+        );
         Opening::ready(Opened::new(stream::iter([Ok(MockFrame::Response(
             Box::new(response),
         ))])))

@@ -10,9 +10,7 @@
 
 use std::collections::BTreeSet;
 
-use crate::message::{
-    AssistantContent, CallId, Message, ToolCall, ToolName, ToolResultContent, UserContent,
-};
+use crate::message::{AssistantContent, CallId, Message, ToolName, ToolResultContent, UserContent};
 use crate::tool::ToolOutput;
 
 /// Why a history is not a canonical transcript. See [`validate_canonical`].

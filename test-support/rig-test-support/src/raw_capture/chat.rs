@@ -64,15 +64,11 @@ pub fn assert_reproduces_body(
 ) {
     assert_eq!(response.provider(), provider, "{context}: provider");
     assert_matches_recorded_token(
-        response.response_id().as_deref(),
+        response.response_id(),
         body["id"].as_str(),
         &format!("{context}: response id"),
     );
-    assert_eq!(
-        response.model().as_deref(),
-        body["model"].as_str(),
-        "{context}: model"
-    );
+    assert_eq!(response.model(), body["model"].as_str(), "{context}: model");
     assert_eq!(
         response.finish_reason(),
         Some(recorded_chat_finish_reason(body)),
@@ -115,12 +111,12 @@ pub fn assert_native_matches_normalized<U: OpenAiCounters>(
     context: &str,
 ) {
     assert_eq!(
-        response.response_id().as_deref(),
+        response.response_id(),
         Some(native.id.as_str()),
         "{context}: native response id"
     );
     assert_eq!(
-        response.model().as_deref(),
+        response.model(),
         Some(native.model.as_str()),
         "{context}: native model"
     );

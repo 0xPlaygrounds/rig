@@ -1,6 +1,5 @@
 use super::*;
 use crate::message::{ToolCall, ToolFunction, ToolResult};
-use crate::tool::ToolOutput;
 
 fn call(id: &str) -> AssistantContent {
     AssistantContent::ToolCall(ToolCall {
@@ -108,8 +107,4 @@ fn a_result_answers_only_its_own_call() {
         validate_canonical(&mismatched),
         Err(TranscriptError::OrphanToolResult { .. })
     ));
-}
-
-fn user(content: Vec<UserContent>) -> Message {
-    Message::User { content }
 }

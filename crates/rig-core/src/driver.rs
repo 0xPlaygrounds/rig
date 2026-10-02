@@ -507,7 +507,7 @@ where
 /// Feed frames already in hand through `decoder` into `reply`, as [`read`]
 /// does: the reply ends at the provider's end, or the decoder decides at EOF.
 #[cfg(any(test, feature = "websocket", feature = "test-utils"))]
-fn feed<'id, Op, F, D>(
+pub(crate) fn feed<'id, Op, F, D>(
     decoder: &mut D,
     reply: &'id Mutex<Shared<Op>>,
     frames: impl IntoIterator<Item = F>,

@@ -30,7 +30,7 @@ fn a_fresh_native_item_is_current_and_an_edit_makes_it_stale() {
 fn fingerprints_survive_a_serde_round_trip() {
     // Key order and float digits must survive, or a stored block would
     // never match its item again after a history is saved and loaded.
-    let arguments = json!({"zeta": 1, "alpha": {"y": 0.1, "x": [3.141592653589793, 1e-7]}});
+    let arguments = json!({"zeta": 1, "alpha": {"y": 0.1, "x": [2.718_281_828_459_045, 1e-7]}});
     let block = call(arguments).with_native(json!({"type": "function_call", "id": "fc_1"}));
     let saved = serde_json::to_string(&block).expect("serialize");
     let loaded: AssistantContent = serde_json::from_str(&saved).expect("deserialize");
@@ -68,14 +68,14 @@ fn a_message_native_tracks_its_whole_content() {
 }
 
 #[test]
-fn an_assistant_message_serializes_flat_under_its_role() -> Result<(), serde_json::Error> {
+fn an_assistant_message_serializes_flat_under_its_role() {
     let turn = AssistantMessage {
         content: vec![AssistantContent::Text(Text::new("hi"))],
         origin: Some(Origin::new("anthropic.messages", "anthropic", "claude")),
         stop: Some(StopReason::Error("refused".into())),
         native: None,
     };
-    let value = serde_json::to_value(Message::Assistant(turn.clone()))?;
+    let value = serde_json::to_value(Message::Assistant(turn.clone())).expect("serialize");
     assert_eq!(
         value,
         json!({
@@ -86,10 +86,9 @@ fn an_assistant_message_serializes_flat_under_its_role() -> Result<(), serde_jso
         })
     );
     assert_eq!(
-        serde_json::from_value::<Message>(value)?,
+        serde_json::from_value::<Message>(value).expect("deserialize"),
         Message::Assistant(turn)
     );
-    Ok(())
 }
 
 #[test]

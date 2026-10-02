@@ -416,7 +416,7 @@ fn normalized_response_raw_round_trips_through_serde_mirror() {
     let decoded: CompletionResponse =
         serde_json::from_value(encoded.clone()).expect("deserialize response");
     assert_eq!(decoded.raw, payload);
-    assert_eq!(decoded.response_id().as_deref(), Some("chatcmpl-1"));
+    assert_eq!(decoded.response_id(), Some("chatcmpl-1"));
     assert_eq!(
         serde_json::to_value(&decoded).expect("re-serialize"),
         encoded

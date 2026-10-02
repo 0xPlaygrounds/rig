@@ -150,7 +150,7 @@ fn handle_stream_item(state: &mut StreamState, item: Item<StreamEvent>) {
 /// and, under `interaction` in its `raw`, Gemini's own document for the
 /// finished run.
 fn finish_research(state: &mut StreamState, response: rig::completion::CompletionResponse) {
-    if let Some(response_id) = response.response_id().as_deref() {
+    if let Some(response_id) = response.response_id() {
         state.interaction_id = Some(response_id.to_owned());
     }
     state.interaction = response
