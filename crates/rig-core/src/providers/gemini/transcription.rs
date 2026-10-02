@@ -51,7 +51,7 @@ fn transcription_body(
         .map_or_else(|| "audio/mpeg".to_string(), |mime| mime.to_string());
 
     let body = GenerateContentRequest {
-        contents: vec![Content {
+        contents: vec![serde_json::to_value(Content {
             parts: vec![Part {
                 thought: Some(false),
                 thought_signature: None,
@@ -62,7 +62,7 @@ fn transcription_body(
                 additional_params: None,
             }],
             role: Some(Role::User),
-        }],
+        })?],
         generation_config: Some(generation_config),
         safety_settings: None,
         tools: None,

@@ -12,27 +12,30 @@ use crate::message::{Message, ToolChoice, UserContent};
 const HANDLE: &str = "cachedContents/matrix";
 
 fn build(system: bool, tools: bool, tool_choice: bool) -> GenerateContentRequest {
-    super::create_request_body(CompletionRequest {
-        tool_choice: tool_choice.then_some(ToolChoice::Auto),
-        ..CompletionRequest::from(
-            system
-                .then(|| Message::system("you are terse"))
-                .into_iter()
-                .chain([Message::User {
-                    content: vec![UserContent::text("hi")],
-                }])
-                .collect::<Vec<_>>(),
-        )
-        .tools(if tools {
-            vec![ToolDefinition {
-                name: crate::message::ToolName::new("probe").expect("tool name"),
-                description: "probe".to_owned(),
-                parameters: serde_json::json!({"type": "object", "properties": {}}),
-            }]
-        } else {
-            vec![]
-        })
-    })
+    super::create_request_body(
+        CompletionRequest {
+            tool_choice: tool_choice.then_some(ToolChoice::Auto),
+            ..CompletionRequest::from(
+                system
+                    .then(|| Message::system("you are terse"))
+                    .into_iter()
+                    .chain([Message::User {
+                        content: vec![UserContent::text("hi")],
+                    }])
+                    .collect::<Vec<_>>(),
+            )
+            .tools(if tools {
+                vec![ToolDefinition {
+                    name: crate::message::ToolName::new("probe").expect("tool name"),
+                    description: "probe".to_owned(),
+                    parameters: serde_json::json!({"type": "object", "properties": {}}),
+                }]
+            } else {
+                vec![]
+            })
+        },
+        "gemini-2.5-flash",
+    )
     .expect("request should build")
 }
 

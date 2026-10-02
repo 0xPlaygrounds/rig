@@ -47,18 +47,13 @@ use crate::telemetry::GenAiOperation;
 use crate::wire::{Body, Descriptor, Encoded, Framing, Mode, Wire};
 use gemini_api_types::{
     Content, FinishReason, FunctionDeclaration, GenerateContentRequest, GenerationConfig, Part,
-    PartKind, Role, Tool,
+    Role, Tool, assistant_part, user_part,
 };
 use serde_json::{Map, Value};
 use std::convert::TryFrom;
 
 /// Provider name used in normalized responses, streams, and telemetry.
 pub const PROVIDER_NAME: &str = "gcp.gemini";
-
-/// The issuer of Gemini's reasoning, which is the only reasoning it replays.
-#[cfg(any())]
-pub(crate) const ISSUER: crate::message::Issuer =
-    crate::message::Issuer::from_static(PROVIDER_NAME);
 
 /// Completion wire for unary `generateContent` and SSE `streamGenerateContent`.
 /// Both modes use [`GenerateContentDecoder`](super::streaming::GenerateContentDecoder).
@@ -140,28 +135,26 @@ impl<T> crate::driver::Model<GenerateContent, T> {
 /// Remove thought signatures from every part before the newest user text
 /// content: the turns the model has finished. Only the signature keys go;
 /// every other field is unchanged.
-fn drop_finished_signatures(contents: &mut [Content]) {
+fn drop_finished_signatures(contents: &mut [Value]) {
+    fn parts(content: &Value) -> impl Iterator<Item = &Value> {
+        content
+            .get("parts")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+    }
     let current = contents.iter().rposition(|content| {
-        content.role == Some(Role::User)
-            && content
-                .parts
-                .iter()
-                .any(|part| matches!(part.part, PartKind::Text(_)))
-            && !content
-                .parts
-                .iter()
-                .any(|part| matches!(part.part, PartKind::FunctionResponse(_)))
+        content.get("role").and_then(Value::as_str) == Some("user")
+            && parts(content).any(|part| part.get("text").is_some())
+            && !parts(content).any(|part| part.get("functionResponse").is_some())
     });
     let Some(current) = current else {
         return;
     };
     for content in contents.iter_mut().take(current) {
-        for part in &mut content.parts {
-            part.thought_signature = None;
-            if let Some(Value::Object(extra)) = &mut part.additional_params {
-                extra.remove("thoughtSignature");
-                extra.remove("thought_signature");
-            }
+        let parts = content.get_mut("parts").and_then(Value::as_array_mut);
+        for part in parts.into_iter().flatten().filter_map(Value::as_object_mut) {
+            part.shift_remove("thoughtSignature");
         }
     }
 }
@@ -170,9 +163,7 @@ impl Wire for GenerateContent {
     type Op = Completion;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
-    #[cfg(any())]
-    type Decoder<'id> = super::streaming::GenerateContentDecoder<'id>;
-    type Decoder<'id> = crate::providers::internal::Unmigrated;
+    type Decoder<'id> = super::streaming::GenerateContentDecoder;
 
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(PROVIDER_NAME)
@@ -184,11 +175,10 @@ impl Wire for GenerateContent {
             .replay(self)
     }
 
-    #[cfg(any())]
     fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, EncodeError> {
         // The request may name a model of its own; the wire's is the default.
         let model = resolve_request_model(&self.model, &request);
-        let mut body = create_request_body(request)?;
+        let mut body = create_request_body(request, &model)?;
         if let Some(name) = self.cached_content.as_deref() {
             body.with_cached_content(name)?;
         }
@@ -218,17 +208,8 @@ impl Wire for GenerateContent {
             .with_projection(super::streaming::GenerateContentDecoder::project)
             .with_analysis_only(super::streaming::GenerateContentDecoder::is_analysis_only))
     }
-    fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, EncodeError> {
-        let _ = (request, mode);
-        Err(crate::providers::internal::Unmigrated::encode_error())
-    }
-
-    #[cfg(any())]
     fn decoder<'id>(&self) -> Self::Decoder<'id> {
-        super::streaming::GenerateContentDecoder::new()
-    }
-    fn decoder<'id>(&self) -> Self::Decoder<'id> {
-        crate::providers::internal::Unmigrated
+        super::streaming::GenerateContentDecoder::default()
     }
 }
 
@@ -244,11 +225,50 @@ impl crate::completion::ReplayTarget for GenerateContent {
     fn model(&self) -> &str {
         &self.model
     }
+
+    fn normalize_tool_call_id(&self, id: &str, _source: Option<&crate::message::Origin>) -> String {
+        normalize_tool_call_id(&self.model, id)
+    }
 }
 
-#[cfg(any())]
+/// Whether `model` takes function-call ids on its calls and their
+/// responses: Claude, gpt-oss, and Gemini 3 or later.
+pub fn requires_tool_call_id(model: &str) -> bool {
+    let model = model.to_ascii_lowercase();
+    let major = model.strip_prefix("gemini-").and_then(|rest| {
+        let rest = rest.strip_prefix("live-").unwrap_or(rest);
+        let end = rest
+            .find(|c: char| !c.is_ascii_digit())
+            .unwrap_or(rest.len());
+        rest.get(..end)?.parse::<u32>().ok()
+    });
+    model.starts_with("claude-") || model.starts_with("gpt-oss-") || major.is_some_and(|m| m >= 3)
+}
+
+/// `id` as `model` takes another model's call id: when the model takes ids
+/// at all, characters outside `[a-zA-Z0-9_-]` become `_` and it keeps at
+/// most 64 of them.
+pub fn normalize_tool_call_id(model: &str, id: &str) -> String {
+    if !requires_tool_call_id(model) {
+        return id.to_owned();
+    }
+    id.chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || matches!(c, '_' | '-') {
+                c
+            } else {
+                '_'
+            }
+        })
+        .take(64)
+        .collect()
+}
+
+/// The request body for `completion_request` sent to `model`, which decides
+/// whether calls carry ids.
 pub(crate) fn create_request_body(
     completion_request: CompletionRequest,
+    model: &str,
 ) -> Result<GenerateContentRequest, EncodeError> {
     let chat_history = completion_request.chat_history_with_documents();
 
@@ -378,10 +398,7 @@ pub(crate) fn create_request_body(
     }
 
     let mut request = GenerateContentRequest {
-        contents: full_history
-            .into_iter()
-            .map(|msg| msg.try_into().map_err(EncodeError::request))
-            .collect::<Result<Vec<_>, _>>()?,
+        contents: contents(full_history, model)?,
         generation_config,
         safety_settings: None,
         tools,
@@ -396,6 +413,41 @@ pub(crate) fn create_request_body(
     }
 
     Ok(request)
+}
+
+/// The Gemini contents for `history`. A user part is converted, and a
+/// system message becomes user text. An assistant block is sent as the
+/// provider item it was decoded from while that is current, and rebuilt
+/// from its canonical fields otherwise. Calls and their responses carry ids
+/// when `model` takes them. Shared with sibling Gemini transports (e.g.
+/// `rig-gemini-grpc`).
+pub fn contents(history: Vec<completion::Message>, model: &str) -> Result<Vec<Value>, EncodeError> {
+    let ids = requires_tool_call_id(model);
+    history
+        .into_iter()
+        .map(|message| {
+            let (role, parts) = match message {
+                completion::Message::System { content } => {
+                    (Role::User, vec![serde_json::to_value(Part::from(content))?])
+                }
+                completion::Message::User { content } => (
+                    Role::User,
+                    content
+                        .into_iter()
+                        .map(|part| Ok(serde_json::to_value(user_part(part, ids)?)?))
+                        .collect::<Result<_, EncodeError>>()?,
+                ),
+                completion::Message::Assistant(turn) => (
+                    Role::Model,
+                    turn.content
+                        .iter()
+                        .filter_map(|block| assistant_part(block, ids).transpose())
+                        .collect::<Result<_, _>>()?,
+                ),
+            };
+            Ok(serde_json::json!({ "parts": parts, "role": role }))
+        })
+        .collect()
 }
 
 /// Split system messages out of a chat history, keeping their contents in
@@ -587,19 +639,6 @@ pub(crate) fn function_call_finish_reason_error(
     }
 }
 
-/// The wire name of a part kind, for error messages.
-pub(crate) fn part_kind_name(part: &PartKind) -> &'static str {
-    match part {
-        PartKind::Text(_) => "text",
-        PartKind::InlineData(_) => "inlineData",
-        PartKind::FunctionCall(_) => "functionCall",
-        PartKind::FunctionResponse(_) => "functionResponse",
-        PartKind::FileData(_) => "fileData",
-        PartKind::ExecutableCode(_) => "executableCode",
-        PartKind::CodeExecutionResult(_) => "codeExecutionResult",
-    }
-}
-
 pub mod gemini_api_types {
     use crate::error::EncodeError;
     use std::{collections::HashMap, convert::Infallible, str::FromStr};
@@ -712,41 +751,6 @@ pub mod gemini_api_types {
         /// The producer of the content. Must be either 'user' or 'model'.
         /// Useful to set for multi-turn conversations, otherwise can be left blank or unset.
         pub role: Option<Role>,
-    }
-
-    #[cfg(any())]
-    impl TryFrom<message::Message> for Content {
-        type Error = message::MessageError;
-
-        fn try_from(msg: message::Message) -> Result<Self, Self::Error> {
-            Ok(match msg {
-                message::Message::System { content } => Content {
-                    parts: vec![content.into()],
-                    role: Some(Role::User),
-                },
-                message::Message::User { content } => Content {
-                    parts: content
-                        .into_iter()
-                        .map(std::convert::TryInto::try_into)
-                        .collect::<Result<Vec<_>, _>>()?,
-                    role: Some(Role::User),
-                },
-                message::Message::Assistant { content, .. } => Content {
-                    role: Some(Role::Model),
-                    parts: content
-                        .into_iter()
-                        // Reasoning another service issued is not replayed.
-                        .filter(|part| match part {
-                            message::AssistantContent::Reasoning(reasoning) => reasoning
-                                .open(&crate::providers::gemini::completion::ISSUER)
-                                .is_some(),
-                            _ => true,
-                        })
-                        .map(std::convert::TryInto::try_into)
-                        .collect::<Result<Vec<_>, _>>()?,
-                },
-            })
-        }
     }
 
     #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
@@ -909,199 +913,172 @@ pub mod gemini_api_types {
         }
     }
 
-    #[cfg(any())]
-    impl TryFrom<message::UserContent> for Part {
-        type Error = message::MessageError;
+    /// A user part as Gemini takes it. A tool result carries its call's id
+    /// when `ids` says the model takes ids.
+    pub(crate) fn user_part(
+        content: message::UserContent,
+        ids: bool,
+    ) -> Result<Part, message::MessageError> {
+        match content {
+            message::UserContent::Text(message::Text { text, .. }) => Ok(Part {
+                thought: Some(false),
+                thought_signature: None,
+                part: PartKind::Text(text),
+                additional_params: None,
+            }),
+            message::UserContent::ToolResult(message::ToolResult {
+                call,
+                name,
+                content,
+            }) => {
+                let function_name = name;
+                let mut response_values = Vec::new();
+                let mut parts: Vec<FunctionResponsePart> = Vec::new();
 
-        fn try_from(content: message::UserContent) -> Result<Self, Self::Error> {
-            match content {
-                message::UserContent::Text(message::Text { text, .. }) => Ok(Part {
-                    thought: Some(false),
-                    thought_signature: None,
-                    part: PartKind::Text(text),
-                    additional_params: None,
-                }),
-                message::UserContent::ToolResult(message::ToolResult {
-                    call,
-                    name,
-                    content,
-                }) => {
-                    let function_name = name;
-                    let mut response_values = Vec::new();
-                    let mut parts: Vec<FunctionResponsePart> = Vec::new();
+                for item in content.iter() {
+                    match item {
+                        message::ToolResultContent::Text(text) => {
+                            response_values.push(json!(&text.text));
+                        }
+                        message::ToolResultContent::Json { value } => {
+                            response_values.push(value.clone());
+                        }
+                        message::ToolResultContent::Image(image) => {
+                            let part = match &image.data {
+                                DocumentSourceKind::Base64(b64) => {
+                                    let mime_type = gemini_tool_result_image_mime_type(
+                                        image.media_type.as_ref(),
+                                    )?;
 
-                    for item in content.iter() {
-                        match item {
-                            message::ToolResultContent::Text(text) => {
-                                response_values.push(json!(&text.text));
-                            }
-                            message::ToolResultContent::Json { value } => {
-                                response_values.push(value.clone());
-                            }
-                            message::ToolResultContent::Image(image) => {
-                                let part = match &image.data {
-                                    DocumentSourceKind::Base64(b64) => {
-                                        let mime_type = gemini_tool_result_image_mime_type(
-                                            image.media_type.as_ref(),
-                                        )?;
-
-                                        // Gemini rejects synthetic `$ref` links for inline
-                                        // function-response media, so preserve ordered parts directly.
-                                        FunctionResponsePart {
-                                            inline_data: Some(FunctionResponseInlineData {
-                                                mime_type: mime_type.to_string(),
-                                                data: b64.clone(),
-                                                display_name: None,
-                                            }),
-                                            file_data: None,
-                                        }
+                                    // Gemini rejects synthetic `$ref` links for inline
+                                    // function-response media, so preserve ordered parts directly.
+                                    FunctionResponsePart {
+                                        inline_data: Some(FunctionResponseInlineData {
+                                            mime_type: mime_type.to_string(),
+                                            data: b64.clone(),
+                                            display_name: None,
+                                        }),
+                                        file_data: None,
                                     }
-                                    DocumentSourceKind::Url(_) => {
-                                        return Err(message::MessageError::ConversionError(
+                                }
+                                DocumentSourceKind::Url(_) => {
+                                    return Err(message::MessageError::ConversionError(
                                             "Gemini tool result images must use base64 inline data; URL-backed images are not supported"
                                                 .to_string(),
                                         ));
-                                    }
-                                    _ => {
-                                        return Err(message::MessageError::ConversionError(
-                                            "Unsupported image source kind for tool results"
-                                                .to_string(),
-                                        ));
-                                    }
-                                };
-                                parts.push(part);
-                            }
+                                }
+                                _ => {
+                                    return Err(message::MessageError::ConversionError(
+                                        "Unsupported image source kind for tool results"
+                                            .to_string(),
+                                    ));
+                                }
+                            };
+                            parts.push(part);
                         }
                     }
+                }
 
-                    let response_json = if response_values.is_empty() {
-                        None
+                let response_json = if response_values.is_empty() {
+                    None
+                } else {
+                    let result = if response_values.len() == 1 {
+                        response_values.remove(0)
                     } else {
-                        let result = if response_values.len() == 1 {
-                            response_values.remove(0)
-                        } else {
-                            serde_json::Value::Array(response_values)
-                        };
-                        Some(json!({ "result": result }))
+                        serde_json::Value::Array(response_values)
+                    };
+                    Some(json!({ "result": result }))
+                };
+
+                Ok(Part {
+                    thought: Some(false),
+                    thought_signature: None,
+                    part: PartKind::FunctionResponse(FunctionResponse {
+                        name: function_name.into(),
+                        id: ids.then(|| call.wire().into_owned()),
+                        response: response_json,
+                        parts: if parts.is_empty() { None } else { Some(parts) },
+                    }),
+                    additional_params: None,
+                })
+            }
+            message::UserContent::Image(image) => image_to_part(image),
+            message::UserContent::Document(message::Document {
+                data, media_type, ..
+            }) => {
+                let Some(media_type) = media_type else {
+                    return Err(MessageError::ConversionError(
+                        "A mime type is required for document inputs to Gemini".to_string(),
+                    ));
+                };
+
+                // For text-like documents (RAG context), convert inline content to plain text.
+                // URL-backed files should stay as file_data references so Gemini can fetch them.
+                if matches!(
+                    media_type,
+                    message::DocumentMediaType::TXT
+                        | message::DocumentMediaType::RTF
+                        | message::DocumentMediaType::HTML
+                        | message::DocumentMediaType::CSS
+                        | message::DocumentMediaType::MARKDOWN
+                        | message::DocumentMediaType::CSV
+                        | message::DocumentMediaType::XML
+                        | message::DocumentMediaType::Javascript
+                        | message::DocumentMediaType::Python
+                ) {
+                    use base64::Engine;
+                    let part = match data {
+                        DocumentSourceKind::String(text) => PartKind::Text(text),
+                        DocumentSourceKind::Base64(data) => {
+                            let text = String::from_utf8(
+                                base64::engine::general_purpose::STANDARD
+                                    .decode(&data)
+                                    .map_err(|e| {
+                                        MessageError::ConversionError(format!(
+                                            "Failed to decode base64: {e}"
+                                        ))
+                                    })?,
+                            )
+                            .map_err(|e| {
+                                MessageError::ConversionError(format!(
+                                    "Invalid UTF-8 in document: {e}"
+                                ))
+                            })?;
+                            PartKind::Text(text)
+                        }
+                        DocumentSourceKind::Url(file_uri) => PartKind::FileData(FileData {
+                            mime_type: Some(media_type.to_mime_type().to_string()),
+                            file_uri,
+                        }),
+                        DocumentSourceKind::Raw(_) => {
+                            return Err(MessageError::ConversionError(
+                                "Raw files not supported, encode as base64 first".to_string(),
+                            ));
+                        }
+                        DocumentSourceKind::FileId(_) => {
+                            return Err(MessageError::ConversionError(
+                                "Provider file IDs are not supported for Gemini documents"
+                                    .to_string(),
+                            ));
+                        }
+                        DocumentSourceKind::Unknown => {
+                            return Err(MessageError::ConversionError(
+                                "Document has no body".to_string(),
+                            ));
+                        }
                     };
 
                     Ok(Part {
                         thought: Some(false),
-                        thought_signature: None,
-                        part: PartKind::FunctionResponse(FunctionResponse {
-                            name: function_name.into(),
-                            id: call.provider().map(|provider| provider.call_id.clone()),
-                            response: response_json,
-                            parts: if parts.is_empty() { None } else { Some(parts) },
-                        }),
-                        additional_params: None,
+                        part,
+                        ..Default::default()
                     })
-                }
-                message::UserContent::Image(image) => image_to_part(image),
-                message::UserContent::Document(message::Document {
-                    data, media_type, ..
-                }) => {
-                    let Some(media_type) = media_type else {
-                        return Err(MessageError::ConversionError(
-                            "A mime type is required for document inputs to Gemini".to_string(),
-                        ));
-                    };
-
-                    // For text-like documents (RAG context), convert inline content to plain text.
-                    // URL-backed files should stay as file_data references so Gemini can fetch them.
-                    if matches!(
-                        media_type,
-                        message::DocumentMediaType::TXT
-                            | message::DocumentMediaType::RTF
-                            | message::DocumentMediaType::HTML
-                            | message::DocumentMediaType::CSS
-                            | message::DocumentMediaType::MARKDOWN
-                            | message::DocumentMediaType::CSV
-                            | message::DocumentMediaType::XML
-                            | message::DocumentMediaType::Javascript
-                            | message::DocumentMediaType::Python
-                    ) {
-                        use base64::Engine;
-                        let part = match data {
-                            DocumentSourceKind::String(text) => PartKind::Text(text),
-                            DocumentSourceKind::Base64(data) => {
-                                let text = String::from_utf8(
-                                    base64::engine::general_purpose::STANDARD
-                                        .decode(&data)
-                                        .map_err(|e| {
-                                            MessageError::ConversionError(format!(
-                                                "Failed to decode base64: {e}"
-                                            ))
-                                        })?,
-                                )
-                                .map_err(|e| {
-                                    MessageError::ConversionError(format!(
-                                        "Invalid UTF-8 in document: {e}"
-                                    ))
-                                })?;
-                                PartKind::Text(text)
-                            }
-                            DocumentSourceKind::Url(file_uri) => PartKind::FileData(FileData {
-                                mime_type: Some(media_type.to_mime_type().to_string()),
-                                file_uri,
-                            }),
-                            DocumentSourceKind::Raw(_) => {
-                                return Err(MessageError::ConversionError(
-                                    "Raw files not supported, encode as base64 first".to_string(),
-                                ));
-                            }
-                            DocumentSourceKind::FileId(_) => {
-                                return Err(MessageError::ConversionError(
-                                    "Provider file IDs are not supported for Gemini documents"
-                                        .to_string(),
-                                ));
-                            }
-                            DocumentSourceKind::Unknown => {
-                                return Err(MessageError::ConversionError(
-                                    "Document has no body".to_string(),
-                                ));
-                            }
-                        };
-
-                        Ok(Part {
-                            thought: Some(false),
-                            part,
-                            ..Default::default()
-                        })
-                    } else if !media_type.is_code() {
-                        let part = media_source_to_part_kind(
-                            "document",
-                            media_type.to_mime_type().to_string(),
-                            data,
-                            true,
-                        )?;
-
-                        Ok(Part {
-                            thought: Some(false),
-                            part,
-                            ..Default::default()
-                        })
-                    } else {
-                        Err(message::MessageError::ConversionError(format!(
-                            "Unsupported document media type {media_type:?}"
-                        )))
-                    }
-                }
-
-                message::UserContent::Audio(message::Audio {
-                    data, media_type, ..
-                }) => {
-                    let Some(media_type) = media_type else {
-                        return Err(MessageError::ConversionError(
-                            "A mime type is required for audio inputs to Gemini".to_string(),
-                        ));
-                    };
-
+                } else if !media_type.is_code() {
                     let part = media_source_to_part_kind(
-                        "audio",
+                        "document",
                         media_type.to_mime_type().to_string(),
                         data,
-                        false,
+                        true,
                     )?;
 
                     Ok(Part {
@@ -1109,105 +1086,145 @@ pub mod gemini_api_types {
                         part,
                         ..Default::default()
                     })
-                }
-                message::UserContent::Video(message::Video {
-                    data,
-                    media_type,
-                    additional_params,
-                    ..
-                }) => {
-                    let mime_type = media_type.map(|media_ty| media_ty.to_mime_type().to_string());
-
-                    let part = match data {
-                        // YouTube links are the one Gemini video source that
-                        // needs no MIME type: the service resolves the media
-                        // itself. Every other source must declare one.
-                        DocumentSourceKind::Url(file_uri)
-                            if file_uri.starts_with("https://www.youtube.com") =>
-                        {
-                            PartKind::FileData(FileData {
-                                mime_type,
-                                file_uri,
-                            })
-                        }
-                        data => {
-                            let mime_type = mime_type.ok_or_else(|| {
-                                MessageError::ConversionError(
-                                    "A mime type is required for non-Youtube video inputs to Gemini"
-                                        .to_string(),
-                                )
-                            })?;
-
-                            media_source_to_part_kind("video", mime_type, data, false)?
-                        }
-                    };
-
-                    Ok(Part {
-                        thought: Some(false),
-                        thought_signature: None,
-                        part,
-                        additional_params: additional_params.map(Into::into),
-                    })
+                } else {
+                    Err(message::MessageError::ConversionError(format!(
+                        "Unsupported document media type {media_type:?}"
+                    )))
                 }
             }
-        }
-    }
 
-    #[cfg(any())]
-    impl TryFrom<message::AssistantContent> for Part {
-        type Error = message::MessageError;
+            message::UserContent::Audio(message::Audio {
+                data, media_type, ..
+            }) => {
+                let Some(media_type) = media_type else {
+                    return Err(MessageError::ConversionError(
+                        "A mime type is required for audio inputs to Gemini".to_string(),
+                    ));
+                };
 
-        fn try_from(content: message::AssistantContent) -> Result<Self, Self::Error> {
-            match content {
-                message::AssistantContent::Text(text) => {
-                    // A signed answer part returns with its signature.
-                    let thought_signature =
-                        super::super::text_thought_signature(&text).map(str::to_owned);
-                    Ok(Part {
-                        thought_signature,
-                        ..text.text.into()
-                    })
-                }
-                message::AssistantContent::Image(image) => image_to_part(image),
-                message::AssistantContent::ToolCall(tool_call) => Ok(tool_call.into()),
-                message::AssistantContent::Reasoning(reasoning) => {
-                    let reasoning = reasoning
-                        .open(&crate::providers::gemini::completion::ISSUER)
-                        .ok_or_else(|| {
+                let part = media_source_to_part_kind(
+                    "audio",
+                    media_type.to_mime_type().to_string(),
+                    data,
+                    false,
+                )?;
+
+                Ok(Part {
+                    thought: Some(false),
+                    part,
+                    ..Default::default()
+                })
+            }
+            message::UserContent::Video(message::Video {
+                data,
+                media_type,
+                additional_params,
+                ..
+            }) => {
+                let mime_type = media_type.map(|media_ty| media_ty.to_mime_type().to_string());
+
+                let part = match data {
+                    // YouTube links are the one Gemini video source that
+                    // needs no MIME type: the service resolves the media
+                    // itself. Every other source must declare one.
+                    DocumentSourceKind::Url(file_uri)
+                        if file_uri.starts_with("https://www.youtube.com") =>
+                    {
+                        PartKind::FileData(FileData {
+                            mime_type,
+                            file_uri,
+                        })
+                    }
+                    data => {
+                        let mime_type = mime_type.ok_or_else(|| {
                             MessageError::ConversionError(
-                                "Gemini cannot replay reasoning another service issued".to_owned(),
+                                "A mime type is required for non-Youtube video inputs to Gemini"
+                                    .to_string(),
                             )
                         })?;
-                    Ok(Part {
-                        thought: Some(true),
-                        thought_signature: reasoning.first_signature().map(str::to_owned),
-                        part: PartKind::Text(reasoning.display_text()),
-                        additional_params: None,
-                    })
-                }
+
+                        media_source_to_part_kind("video", mime_type, data, false)?
+                    }
+                };
+
+                Ok(Part {
+                    thought: Some(false),
+                    thought_signature: None,
+                    part,
+                    additional_params,
+                })
             }
         }
     }
 
-    #[cfg(any())]
-    impl From<message::ToolCall> for Part {
-        fn from(tool_call: message::ToolCall) -> Self {
-            Self {
-                thought: Some(false),
-                thought_signature: tool_call.signature,
-                part: PartKind::FunctionCall(FunctionCall {
-                    name: tool_call.function.name.into(),
-                    args: tool_call.function.arguments,
-                    // Only a provider-issued id may travel back on the wire;
-                    // rig-issued ids stay internal.
-                    id: tool_call
-                        .id
-                        .provider()
-                        .map(|provider| provider.call_id.clone()),
-                }),
-                additional_params: None,
-            }
+    /// One assistant block as a Gemini part: the provider item it was
+    /// decoded from while that is current, else a part rebuilt from its
+    /// canonical fields, or `None` when it has nothing to send. A rebuilt
+    /// call carries its id when `ids` says the model takes ids.
+    pub fn assistant_part(
+        block: &message::AssistantContent,
+        ids: bool,
+    ) -> Result<Option<Value>, EncodeError> {
+        use message::AssistantContent;
+        if let Some(item) = block.native_item() {
+            return Ok(Some(input_form(item)));
         }
+        Ok(match block {
+            // A blank text part has nothing to send, and a canonical one
+            // carries no signature that would need it.
+            AssistantContent::Text(text) if text.text.trim().is_empty() => None,
+            AssistantContent::Text(text) => Some(json!({ "text": text.text })),
+            AssistantContent::Reasoning(reasoning)
+                if reasoning.redacted || reasoning.text.trim().is_empty() =>
+            {
+                None
+            }
+            AssistantContent::Reasoning(reasoning) => {
+                Some(json!({ "thought": true, "text": reasoning.text }))
+            }
+            AssistantContent::ToolCall(call) => {
+                let mut function_call = json!({
+                    "name": call.function.name,
+                    "args": call.function.arguments,
+                });
+                if ids && let Some(function_call) = function_call.as_object_mut() {
+                    function_call.insert("id".to_owned(), json!(call.id.wire()));
+                }
+                Some(json!({ "functionCall": function_call }))
+            }
+            AssistantContent::Image(image) => {
+                Some(serde_json::to_value(image_to_part(image.clone())?)?)
+            }
+            AssistantContent::Opaque(opaque) => Some(opaque.item.clone()),
+        })
+    }
+
+    /// `item` as Gemini takes it back. A `thoughtSignature` that is not
+    /// base64 is left out: Gemini rejects the whole request over one
+    /// ("Invalid value at 'contents[1].parts[0].thought_signature'
+    /// (TYPE_BYTES), Base64 decoding failed").
+    fn input_form(item: &Value) -> Value {
+        let mut item = item.clone();
+        if let Some(part) = item.as_object_mut()
+            && part
+                .get("thoughtSignature")
+                .and_then(Value::as_str)
+                .is_some_and(|signature| !is_base64(signature))
+        {
+            part.shift_remove("thoughtSignature");
+        }
+        item
+    }
+
+    /// Whether `text` is padded standard base64.
+    fn is_base64(text: &str) -> bool {
+        let body = text.trim_end_matches('=');
+        !body.is_empty()
+            && text.len() % 4 == 0
+            && text.len() - body.len() <= 2
+            && body
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'+' | b'/'))
     }
 
     /// Raw media bytes.
@@ -1233,20 +1250,6 @@ pub mod gemini_api_types {
         /// Provider-supplied identifier used to correlate the function response.
         #[serde(skip_serializing_if = "Option::is_none")]
         pub id: Option<String>,
-    }
-
-    #[cfg(any())]
-    impl From<message::ToolCall> for FunctionCall {
-        fn from(tool_call: message::ToolCall) -> Self {
-            Self {
-                name: tool_call.function.name.into(),
-                args: tool_call.function.arguments,
-                id: tool_call
-                    .id
-                    .provider()
-                    .map(|provider| provider.call_id.clone()),
-            }
-        }
     }
 
     /// Result of a model-requested function call, returned as context to the model.
@@ -2086,7 +2089,8 @@ pub mod gemini_api_types {
     #[derive(Debug, Serialize)]
     #[serde(rename_all = "camelCase")]
     pub struct GenerateContentRequest {
-        pub contents: Vec<Content>,
+        /// The conversation, one content per message.
+        pub contents: Vec<Value>,
         #[serde(skip_serializing_if = "Option::is_none")]
         pub tools: Option<Vec<Value>>,
         pub tool_config: Option<ToolConfig>,
@@ -2274,12 +2278,9 @@ impl gemini_api_types::GenerateContentRequest {
 }
 
 #[cfg(test)]
-#[cfg(any())]
 mod tests;
 
 #[cfg(test)]
-#[cfg(any())]
 mod cached_content_conflict_matrix;
 #[cfg(test)]
-#[cfg(any())]
 mod cached_content_request_tests;

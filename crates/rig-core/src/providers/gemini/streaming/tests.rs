@@ -1,5 +1,7 @@
 use super::*;
-use crate::providers::gemini::completion::gemini_api_types::TrafficType;
+use crate::providers::gemini::completion::gemini_api_types::{
+    GenerateContentResponse, Part, PartKind, TrafficType,
+};
 use serde_json::json;
 
 /// The request every stream test below sends. The decoder is what they
@@ -116,7 +118,12 @@ fn test_streaming_tool_protocol_finish_reason_returns_response_error() {
             .candidates
             .first()
             .expect("expected terminal candidate");
-        let err = tool_protocol_finish_reason_error(candidate)
+        let err = candidate
+            .finish_reason
+            .as_ref()
+            .and_then(|reason| {
+                function_call_finish_reason_error(reason, candidate.finish_message.as_deref())
+            })
             .expect("tool protocol finish reason should be an error");
 
         assert!(matches!(
@@ -703,10 +710,13 @@ mod terminal_emission {
             }
         }
         let signed = signed.expect("signature-only block must be emitted");
-        assert!(signed.value().content.iter().any(|content| matches!(
-            content,
-            crate::message::ReasoningContent::Text { signature: Some(sig), .. } if sig == "sig-only"
-        )));
+        assert!(signed.text.is_empty());
+        assert_eq!(
+            signed
+                .native
+                .map(|native| native.item["thoughtSignature"].clone()),
+            Some(serde_json::json!("sig-only"))
+        );
     }
 
     #[tokio::test]
@@ -768,7 +778,7 @@ mod terminal_emission {
         assert_eq!(texts, ["hi", "!"]);
         assert!(!saw_error);
         assert_eq!(
-            finished.expect("the reply ended").response_id.as_deref(),
+            finished.expect("the reply ended").response_id(),
             Some("last-response")
         );
     }

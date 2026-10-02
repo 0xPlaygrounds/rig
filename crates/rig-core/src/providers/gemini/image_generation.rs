@@ -55,7 +55,7 @@ fn generate_content_path(model: &str) -> String {
 
 fn create_request_body(generation_request: ImageGenerationRequest) -> Result<Value, EncodeError> {
     let request = GenerateContentRequest {
-        contents: vec![Content {
+        contents: vec![serde_json::to_value(Content {
             role: Some(Role::User),
             parts: vec![Part {
                 thought: None,
@@ -63,7 +63,7 @@ fn create_request_body(generation_request: ImageGenerationRequest) -> Result<Val
                 part: PartKind::Text(generation_request.prompt),
                 additional_params: None,
             }],
-        }],
+        })?],
         tools: None,
         tool_config: None,
         generation_config: Some(GenerationConfig {

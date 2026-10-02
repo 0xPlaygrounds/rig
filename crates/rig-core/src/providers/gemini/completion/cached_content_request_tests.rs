@@ -23,6 +23,7 @@ fn request_with(preamble: Option<&str>, tools: bool) -> GenerateContentRequest {
                 .collect::<Vec<_>>(),
         )
         .tools(tool_defs),
+        "gemini-2.5-flash",
     )
     .expect("request should build")
 }
@@ -193,6 +194,7 @@ fn build_with(
                 .collect::<Vec<_>>(),
         )
         .additional_params(additional),
+        "gemini-2.5-flash",
     )
 }
 
@@ -285,6 +287,7 @@ fn unrelated_additional_params_coexist_with_the_typed_field() {
             content: vec![UserContent::text("hi")],
         })
         .additional_params(serde_json::json!({"topK": 5})),
+        "gemini-2.5-flash",
     )
     .expect("request should build");
     request
@@ -366,6 +369,7 @@ fn setting_a_field_twice_is_refused_rather_than_resolved_by_serialization_order(
         .additional_params(serde_json::json!({
             "toolConfig": {"functionCallingConfig": {"mode": "ANY"}}
         })),
+        "gemini-2.5-flash",
     )
     .expect_err("a tool_choice and a smuggled toolConfig are two answers")
     .to_string();

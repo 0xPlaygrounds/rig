@@ -2,13 +2,40 @@ use crate::{
     message,
     providers::gemini::completion::gemini_api_types::{
         BlockReason, CitationMetadata, ContentCandidate, FinishReason, GenerateContentResponse,
-        LogprobsResult, ModalityTokenCount, PromptFeedback, Schema, TopCandidate, UsageMetadata,
-        flatten_schema, map_finish_reason, tool_parameters_to_schema,
+        LogprobsResult, ModalityTokenCount, PartKind, PromptFeedback, Schema, TopCandidate,
+        UsageMetadata, flatten_schema, map_finish_reason, tool_parameters_to_schema,
     },
 };
 
 use super::*;
 use serde_json::json;
+
+/// `message` as the content the REST wire sends Gemini 2.5 for it.
+fn to_content(message: impl Into<message::Message>) -> Result<Content, EncodeError> {
+    to_content_for("gemini-2.5-flash", message)
+}
+
+/// The contents of `request`, typed.
+fn typed(request: &GenerateContentRequest) -> Vec<Content> {
+    request
+        .contents
+        .iter()
+        .map(|content| serde_json::from_value(content.clone()).expect("a Gemini content"))
+        .collect()
+}
+
+/// `message` as the content the REST wire sends `model` for it.
+fn to_content_for(
+    model: &str,
+    message: impl Into<message::Message>,
+) -> Result<Content, EncodeError> {
+    let contents = contents(vec![message.into()], model)?;
+    let content = contents
+        .into_iter()
+        .next()
+        .ok_or_else(|| EncodeError::request("no content"))?;
+    Ok(serde_json::from_value(content)?)
+}
 
 #[test]
 fn test_usage_metadata_deserializes_without_total_token_count() {
@@ -361,7 +388,7 @@ fn test_deserialize_message_model() {
 #[test]
 fn test_message_conversion_user() {
     let msg = message::Message::user("Hello, world!");
-    let content: Content = msg.try_into().unwrap();
+    let content: Content = to_content(msg).unwrap();
     assert_eq!(content.role, Some(Role::User));
     assert_eq!(content.parts.len(), 1);
     if let Some(Part {
@@ -379,7 +406,7 @@ fn test_message_conversion_user() {
 fn test_message_conversion_model() {
     let msg = message::Message::assistant("Hello, user!");
 
-    let content: Content = msg.try_into().unwrap();
+    let content: Content = to_content(msg).unwrap();
     assert_eq!(content.role, Some(Role::Model));
     assert_eq!(content.parts.len(), 1);
     if let Some(Part {
@@ -405,13 +432,9 @@ async fn test_thought_signature_is_preserved_from_response_reasoning_part() {
         matches!(
             first,
             Some(message::AssistantContent::Reasoning(reasoning))
-                if matches!(
-                    reasoning.value().content.first(),
-                    Some(message::ReasoningContent::Text {
-                        text,
-                        signature: Some(signature)
-                    }) if text == "thinking text" && signature == "thought_sig_123"
-                )
+                if reasoning.text == "thinking text"
+                    && reasoning.native.as_ref().map(|native| &native.item["thoughtSignature"])
+                        == Some(&json!("thought_sig_123"))
         ),
         "{first:?}"
     );
@@ -663,10 +686,9 @@ async fn test_completion_response_carries_normalized_metadata() {
     )
     .await;
 
-    assert_eq!(converted.provider, PROVIDER_NAME);
-    assert_eq!(converted.model.as_deref(), Some("gemini-2.0-flash-001"));
-    assert_eq!(converted.response_id.as_deref(), Some("resp-meta"));
-    assert_eq!(converted.message_id, None);
+    assert_eq!(converted.provider(), PROVIDER_NAME);
+    assert_eq!(converted.model(), Some("gemini-2.0-flash-001"));
+    assert_eq!(converted.response_id(), Some("resp-meta"));
     assert_eq!(
         converted.finish_reason(),
         Some(crate::completion::FinishReason::Length)
@@ -687,26 +709,26 @@ async fn test_completion_response_upgrades_stop_to_tool_calls() {
         converted.finish_reason(),
         Some(crate::completion::FinishReason::ToolCalls)
     );
-    assert_eq!(converted.model, None);
+    assert_eq!(converted.model(), None);
 }
 
 #[test]
 fn test_reasoning_signature_is_emitted_in_gemini_part() {
-    let msg = message::Message::Assistant {
-        id: None,
-        content: vec![message::AssistantContent::Reasoning(
-            message::Reasoning::new_with_signature(
-                "structured thought",
-                Some("reuse_sig_456".to_string()),
-            )
-            .sealed("gcp.gemini"),
-        )],
-    };
+    let msg = message::Message::from(vec![
+        message::AssistantContent::reasoning("structured thought").with_native(json!({
+            "text": "structured thought",
+            "thought": true,
+            "thoughtSignature": "cmV1c2Vfc2lnXzQ1Ng==",
+        })),
+    ]);
 
-    let converted: Content = msg.try_into().expect("convert message");
+    let converted: Content = to_content(msg).expect("convert message");
     let first = converted.parts.first().expect("reasoning part");
     assert_eq!(first.thought, Some(true));
-    assert_eq!(first.thought_signature.as_deref(), Some("reuse_sig_456"));
+    assert_eq!(
+        first.thought_signature.as_deref(),
+        Some("cmV1c2Vfc2lnXzQ1Ng==")
+    );
     assert!(matches!(
         &first.part,
         PartKind::Text(text) if text == "structured thought"
@@ -723,12 +745,18 @@ fn test_message_conversion_tool_call() {
         },
     );
 
-    let msg = message::Message::Assistant {
-        id: None,
-        content: vec![message::AssistantContent::ToolCall(tool_call)],
-    };
+    let msg = message::Message::from(tool_call);
 
-    let content: Content = msg.try_into().unwrap();
+    // Gemini 3 takes call ids; Gemini 2.5 is sent none.
+    let content: Content = to_content_for("gemini-3-flash-preview", msg.clone()).unwrap();
+    let Some(Part {
+        part: PartKind::FunctionCall(function_call),
+        ..
+    }) = to_content(msg).unwrap().parts.into_iter().next()
+    else {
+        panic!("Expected function call part");
+    };
+    assert_eq!(function_call.id, None);
     assert_eq!(content.role, Some(Role::Model));
     assert_eq!(content.parts.len(), 1);
     if let Some(Part {
@@ -758,15 +786,8 @@ async fn test_response_function_call_preserves_correlation_id() {
         panic!("expected a tool call");
     };
     assert_eq!(
-        tool_call
-            .id
-            .provider()
-            .map(|provider| provider.call_id.as_str()),
+        tool_call.id.provider().map(message::ProviderCallId::as_str),
         Some("call-123")
-    );
-    assert_eq!(
-        tool_call.id.provider().expect("wire id").call_id,
-        "call-123"
     );
 }
 
@@ -977,9 +998,7 @@ fn test_txt_document_conversion_to_text_part() {
         Some(DocumentMediaType::TXT),
     );
 
-    let content: Content = message::Message::User { content: vec![doc] }
-        .try_into()
-        .unwrap();
+    let content: Content = to_content(message::Message::User { content: vec![doc] }).unwrap();
 
     if let Part {
         part: PartKind::Text(text),
@@ -1011,7 +1030,7 @@ fn test_tool_result_with_image_content() {
                 data: DocumentSourceKind::Base64("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==".to_string()),
                 media_type: Some(ImageMediaType::PNG),
                 detail: None,
-                additional_params: None,
+                native: None,
             })],
     };
 
@@ -1021,7 +1040,8 @@ fn test_tool_result_with_image_content() {
     };
 
     // Convert to Gemini Content
-    let content: Content = msg.try_into().expect("Should convert to Gemini Content");
+    let content: Content =
+        to_content_for("gemini-3-flash-preview", msg).expect("Should convert to Gemini Content");
     assert_eq!(content.role, Some(Role::User));
     assert_eq!(content.parts.len(), 1);
 
@@ -1076,7 +1096,7 @@ fn mixed_inline_images_and_text_keep_text_response_and_ordered_parts() {
         })],
     };
 
-    let content: Content = message.try_into().expect("tool result should convert");
+    let content: Content = to_content(message).expect("tool result should convert");
     let PartKind::FunctionResponse(response) = &content.parts[0].part else {
         panic!("expected a function response");
     };
@@ -1116,7 +1136,7 @@ fn mixed_inline_image_and_json_keep_structured_value_and_media_part() {
         })],
     };
 
-    let content: Content = message.try_into().expect("tool result should convert");
+    let content: Content = to_content(message).expect("tool result should convert");
     let PartKind::FunctionResponse(response) = &content.parts[0].part else {
         panic!("expected a function response");
     };
@@ -1148,15 +1168,15 @@ fn mixed_url_image_and_response_value_is_rejected() {
                     data: DocumentSourceKind::Url("https://example.com/image.png".to_string()),
                     media_type: Some(ImageMediaType::PNG),
                     detail: None,
-                    additional_params: None,
+                    native: None,
                 }),
                 ToolResultContent::text("after-image"),
             ],
         })],
     };
 
-    let error = Content::try_from(tool_result)
-        .expect_err("URL-backed tool result images should be rejected");
+    let error =
+        to_content(tool_result).expect_err("URL-backed tool result images should be rejected");
     assert!(
         error
             .to_string()
@@ -1187,8 +1207,8 @@ fn tool_result_rejects_unsupported_image_media_types() {
             })],
         };
 
-        let error = Content::try_from(message)
-            .expect_err("unsupported tool result image type should be rejected");
+        let error =
+            to_content(message).expect_err("unsupported tool result image type should be rejected");
         assert!(
             error
                 .to_string()
@@ -1217,7 +1237,7 @@ fn structured_json_refs_remain_literal_with_unreferenced_image_parts() {
         })],
     };
 
-    let content: Content = message.try_into().expect("tool result should convert");
+    let content: Content = to_content(message).expect("tool result should convert");
     let PartKind::FunctionResponse(response) = &content.parts[0].part else {
         panic!("expected a function response");
     };
@@ -1266,7 +1286,7 @@ fn tool_result_literal_text_and_structured_json_remain_distinct() {
                 content: vec![tool_content],
             })],
         };
-        let content: Content = message.try_into().expect("tool result should convert");
+        let content: Content = to_content(message).expect("tool result should convert");
 
         let PartKind::FunctionResponse(response) = &content.parts[0].part else {
             panic!("expected a function response");
@@ -1275,10 +1295,10 @@ fn tool_result_literal_text_and_structured_json_remain_distinct() {
     }
 }
 
-/// A consumer echoing a minted `ToolCall::id` through
-/// `tool_result()` must not put that handle on Gemini's wire: the
-/// paired functionCall omitted its id (the provider issued none), and
-/// an asymmetric functionCall/functionResponse id pair is rejected.
+/// A consumer echoing a minted `ToolCall::id` through `tool_result()` does
+/// not put that handle on the wire of a model that takes no ids: the paired
+/// functionCall omitted its id, and an asymmetric functionCall and
+/// functionResponse id pair is rejected.
 #[test]
 fn echoed_minted_handle_never_reaches_the_function_response_id() {
     use crate::message::{CallId, ToolCall, ToolFunction, ToolResultContent};
@@ -1299,14 +1319,15 @@ fn echoed_minted_handle_never_reaches_the_function_response_id() {
             content: vec![ToolResultContent::text("out")],
         })],
     };
-    let content: Content = message.try_into().expect("tool result should convert");
+    let content: Content = to_content(message).expect("tool result should convert");
     let PartKind::FunctionResponse(response) = &content.parts[0].part else {
         panic!("expected a function response");
     };
     assert_eq!(response.id, None);
 }
 
-/// A wire-derived result keeps its provider-issued id on replay.
+/// A wire-derived result keeps its provider-issued id on replay to a model
+/// that takes ids.
 #[test]
 fn wire_derived_tool_result_keeps_the_provider_id_on_the_wire() {
     use crate::message::ToolResultContent;
@@ -1318,7 +1339,8 @@ fn wire_derived_tool_result_keeps_the_provider_id_on_the_wire() {
             vec![ToolResultContent::text("out")],
         )],
     };
-    let content: Content = message.try_into().expect("tool result should convert");
+    let content: Content =
+        to_content_for("gemini-3-flash-preview", message).expect("tool result should convert");
     let PartKind::FunctionResponse(response) = &content.parts[0].part else {
         panic!("expected a function response");
     };
@@ -1335,9 +1357,7 @@ fn test_markdown_document_conversion_to_text_part() {
         Some(DocumentMediaType::MARKDOWN),
     );
 
-    let content: Content = message::Message::User { content: vec![doc] }
-        .try_into()
-        .unwrap();
+    let content: Content = to_content(message::Message::User { content: vec![doc] }).unwrap();
 
     if let Part {
         part: PartKind::Text(text),
@@ -1366,9 +1386,7 @@ fn test_markdown_url_document_conversion_to_file_data_part() {
         additional_params: None,
     });
 
-    let content: Content = message::Message::User { content: vec![doc] }
-        .try_into()
-        .unwrap();
+    let content: Content = to_content(message::Message::User { content: vec![doc] }).unwrap();
 
     if let Part {
         part: PartKind::FileData(file_data),
@@ -1399,13 +1417,12 @@ fn test_user_image_url_renders_as_file_data() {
         data: DocumentSourceKind::Url("https://example.com/red_square.png".to_string()),
         media_type: Some(ImageMediaType::PNG),
         detail: None,
-        additional_params: None,
+        native: None,
     });
 
-    let content: Content = message::Message::User {
+    let content: Content = to_content(message::Message::User {
         content: vec![image],
-    }
-    .try_into()
+    })
     .unwrap();
 
     match &content.parts[0] {
@@ -1433,7 +1450,7 @@ fn test_tool_result_with_url_image_is_rejected() {
             data: DocumentSourceKind::Url("https://example.com/image.png".to_string()),
             media_type: Some(ImageMediaType::PNG),
             detail: None,
-            additional_params: None,
+            native: None,
         })],
     };
 
@@ -1442,8 +1459,7 @@ fn test_tool_result_with_url_image_is_rejected() {
         content: vec![user_content],
     };
 
-    let error =
-        Content::try_from(msg).expect_err("URL-backed tool result images should be rejected");
+    let error = to_content(msg).expect_err("URL-backed tool result images should be rejected");
     assert!(
         error
             .to_string()
@@ -1482,25 +1498,22 @@ fn test_create_request_body_with_documents() {
         Message::user("What are my notes about?"),
     ]);
 
-    let request = create_request_body(completion_request).unwrap();
+    let request = create_request_body(completion_request, "gemini-2.5-flash").unwrap();
+    let contents = typed(&request);
 
     // Should have 2 contents: 1 for documents, 1 for user message
     assert_eq!(
-        request.contents.len(),
+        contents.len(),
         2,
         "Expected 2 contents (documents + user message)"
     );
 
     // First content should be documents with role User
-    assert_eq!(request.contents[0].role, Some(Role::User));
-    assert_eq!(
-        request.contents[0].parts.len(),
-        2,
-        "Expected 2 document parts"
-    );
+    assert_eq!(contents[0].role, Some(Role::User));
+    assert_eq!(contents[0].parts.len(), 2, "Expected 2 document parts");
 
     // Check that documents are text parts
-    for part in &request.contents[0].parts {
+    for part in &contents[0].parts {
         if let Part {
             part: PartKind::Text(text),
             ..
@@ -1516,11 +1529,11 @@ fn test_create_request_body_with_documents() {
     }
 
     // Second content should be the user message
-    assert_eq!(request.contents[1].role, Some(Role::User));
+    assert_eq!(contents[1].role, Some(Role::User));
     if let Part {
         part: PartKind::Text(text),
         ..
-    } = &request.contents[1].parts[0]
+    } = &contents[1].parts[0]
     {
         assert_eq!(text, "What are my notes about?");
     } else {
@@ -1536,16 +1549,17 @@ fn test_create_request_body_without_documents() {
     let completion_request =
         CompletionRequest::new("Hello").preamble("You are a helpful assistant");
 
-    let request = create_request_body(completion_request).unwrap();
+    let request = create_request_body(completion_request, "gemini-2.5-flash").unwrap();
+    let contents = typed(&request);
 
     // Should have only 1 content (the user message)
-    assert_eq!(request.contents.len(), 1, "Expected only user message");
-    assert_eq!(request.contents[0].role, Some(Role::User));
+    assert_eq!(contents.len(), 1, "Expected only user message");
+    assert_eq!(contents[0].role, Some(Role::User));
 
     if let Part {
         part: PartKind::Text(text),
         ..
-    } = &request.contents[0].parts[0]
+    } = &contents[0].parts[0]
     {
         assert_eq!(text, "Hello");
     } else {
@@ -1637,7 +1651,7 @@ const CEDAR_STREAM: &str = concat!(
 );
 
 /// `crates/rig-cassette/fixtures/cassettes/gemini/thought_text_matrix/blocking_keeps_a_trailing_thought_signature.yaml`
-const SIGNED_UNARY: &str = r#"{"candidates":[{"content":{"parts":[{"text":"289","thoughtSignature":"signature_REDACTED_1"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-3-flash-preview","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":2,"promptTokenCount":14,"promptTokensDetails":[{"modality":"TEXT","tokenCount":14}],"serviceTier":"standard","thoughtsTokenCount":43,"totalTokenCount":59}}"#;
+const SIGNED_UNARY: &str = r#"{"candidates":[{"content":{"parts":[{"text":"289","thoughtSignature":"c2lnbmF0dXJl"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-3-flash-preview","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":2,"promptTokenCount":14,"promptTokensDetails":[{"modality":"TEXT","tokenCount":14}],"serviceTier":"standard","thoughtsTokenCount":43,"totalTokenCount":59}}"#;
 
 /// `crates/rig-cassette/fixtures/cassettes/gemini/thought_text_matrix/streaming_twin_agrees_on_a_trailing_thought_signature.yaml`
 /// — the same turn, streamed across two events, the signature riding a
@@ -1645,7 +1659,7 @@ const SIGNED_UNARY: &str = r#"{"candidates":[{"content":{"parts":[{"text":"289",
 const SIGNED_STREAM: &str = concat!(
     r#"data: {"candidates":[{"content":{"parts":[{"text":"289"}],"role":"model"},"index":0}],"modelVersion":"gemini-3-flash-preview","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":3,"promptTokenCount":14,"promptTokensDetails":[{"modality":"TEXT","tokenCount":14}],"serviceTier":"standard","thoughtsTokenCount":43,"totalTokenCount":60}}"#,
     "\r\n\r\n",
-    r#"data: {"candidates":[{"content":{"parts":[{"text":"","thoughtSignature":"signature_REDACTED_1"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-3-flash-preview","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":3,"promptTokenCount":14,"promptTokensDetails":[{"modality":"TEXT","tokenCount":14}],"serviceTier":"standard","thoughtsTokenCount":43,"totalTokenCount":60}}"#,
+    r#"data: {"candidates":[{"content":{"parts":[{"text":"","thoughtSignature":"c2lnbmF0dXJl"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-3-flash-preview","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":3,"promptTokenCount":14,"promptTokensDetails":[{"modality":"TEXT","tokenCount":14}],"serviceTier":"standard","thoughtsTokenCount":43,"totalTokenCount":60}}"#,
     "\r\n\r\n",
 );
 
@@ -1670,7 +1684,7 @@ fn folded(
         response.choice.to_vec(),
         response.usage,
         response.finish_reason(),
-        response.model.clone(),
+        response.model().map(str::to_owned),
     )
 }
 
@@ -1715,8 +1729,11 @@ async fn a_unary_reply_and_a_streamed_reply_fold_to_the_same_answer() {
     let streamed = streamed("gemini-2.5-flash", CEDAR_STREAM).await;
     assert_eq!(folded(&buffered), folded(&streamed));
     assert_eq!(
-        buffered.choice.first(),
-        Some(&message::AssistantContent::text("cedar"))
+        buffered
+            .choice
+            .first()
+            .map(message::AssistantContent::canonical),
+        Some(message::AssistantContent::text("cedar"))
     );
     assert_eq!(
         buffered.finish_reason(),
@@ -1726,68 +1743,41 @@ async fn a_unary_reply_and_a_streamed_reply_fold_to_the_same_answer() {
     assert_eq!(buffered.usage.total_tokens, Some(24));
 }
 
-/// Gemini hangs `thoughtSignature` on an answer part, and it must return
-/// inside the part that carried it (Gemini's thought-signature rules: never
-/// merge a signed part with an unsigned one). The unary reply signs the one
-/// answer part; the streamed twin sends the text, then an empty signed part.
-/// Each keeps its signature on its own text, and neither moves it onto
-/// reasoning.
+/// Gemini hangs `thoughtSignature` on an answer part. The unary reply signs
+/// its one answer part; the streamed twin sends the text, then an empty
+/// signed part, which continues the same text block. Both decode to one
+/// text whose provider item is the signed part, and both replay it as is.
 #[tokio::test]
-async fn a_trailing_thought_signature_stays_on_the_part_that_carried_it() {
+async fn a_trailing_thought_signature_joins_the_text_it_follows() {
     let buffered = unary("gemini-3-flash-preview", SIGNED_UNARY).await;
     let streamed = streamed("gemini-3-flash-preview", SIGNED_STREAM).await;
-    let signed = |text: &str| {
-        message::AssistantContent::Text(message::Text {
-            text: text.to_owned(),
-            additional_params: super::super::text_signature_extras(
-                super::super::GEMINI_TEXT_EXTRAS_KEY,
-                "signature_REDACTED_1".to_owned(),
-            ),
-        })
+    assert_eq!(buffered.message(), streamed.message());
+    let signed = json!({ "text": "289", "thoughtSignature": "c2lnbmF0dXJl" });
+    let [message::AssistantContent::Text(text)] = buffered.choice.as_slice() else {
+        panic!("one answer text: {:?}", buffered.choice);
     };
-    assert_eq!(buffered.choice.to_vec(), vec![signed("289")]);
+    assert_eq!(text.text, "289");
     assert_eq!(
-        streamed.choice.to_vec(),
-        vec![message::AssistantContent::text("289"), signed("")]
+        text.native.as_ref().map(|native| &native.item),
+        Some(&signed)
     );
-    assert_eq!(buffered.finish_reason(), streamed.finish_reason());
 
-    // Both replay the signature on the text part that carried it.
-    for (response, parts) in [
-        (&buffered, vec![("289", true)]),
-        (&streamed, vec![("289", false), ("", true)]),
-    ] {
-        let content: Content = message::Message::Assistant {
-            id: None,
-            content: response.choice.clone(),
-        }
-        .try_into()
-        .expect("the turn replays");
-        let replayed: Vec<(&str, bool)> = content
-            .parts
-            .iter()
-            .map(|part| match &part.part {
-                PartKind::Text(text) => (
-                    text.as_str(),
-                    part.thought_signature.as_deref() == Some("signature_REDACTED_1"),
-                ),
-                other => panic!("an answer part: {other:?}"),
-            })
-            .collect();
-        assert_eq!(replayed, parts);
-        assert!(content.parts.iter().all(|part| part.thought != Some(true)));
-    }
+    let replayed = to_content(buffered.choice.clone()).expect("the turn replays");
+    assert_eq!(
+        serde_json::to_value(&replayed.parts).unwrap(),
+        json!([signed])
+    );
 }
 
 /// One part carrying both non-empty text and its `thoughtSignature`, in a
 /// single frame: both transports keep the signature on that text.
-/// Recorded in the effect corpus
+/// Shaped after the effect corpus
 /// (`crates/rig-cassette/fixtures/effects/gemini_tool_call_turns.effects.json`).
-const SIGNED_ONE_PART: &str = r#"{"candidates":[{"content":{"parts":[{"text":"done","thoughtSignature":"signature_REDACTED_1"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-3-flash-preview","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":1,"promptTokenCount":14,"promptTokensDetails":[{"modality":"TEXT","tokenCount":14}],"thoughtsTokenCount":12,"totalTokenCount":27}}"#;
+const SIGNED_ONE_PART: &str = r#"{"candidates":[{"content":{"parts":[{"text":"done","thoughtSignature":"c2lnbmF0dXJl"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-3-flash-preview","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":1,"promptTokenCount":14,"promptTokensDetails":[{"modality":"TEXT","tokenCount":14}],"thoughtsTokenCount":12,"totalTokenCount":27}}"#;
 
 /// The same document as one SSE event: the streamed twin of [`SIGNED_ONE_PART`].
 const SIGNED_ONE_PART_STREAM: &str = concat!(
-    r#"data: {"candidates":[{"content":{"parts":[{"text":"done","thoughtSignature":"signature_REDACTED_1"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-3-flash-preview","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":1,"promptTokenCount":14,"promptTokensDetails":[{"modality":"TEXT","tokenCount":14}],"thoughtsTokenCount":12,"totalTokenCount":27}}"#,
+    r#"data: {"candidates":[{"content":{"parts":[{"text":"done","thoughtSignature":"c2lnbmF0dXJl"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-3-flash-preview","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":1,"promptTokenCount":14,"promptTokensDetails":[{"modality":"TEXT","tokenCount":14}],"thoughtsTokenCount":12,"totalTokenCount":27}}"#,
     "\r\n\r\n",
 );
 
@@ -1796,15 +1786,12 @@ async fn a_signature_on_its_own_text_part_stays_on_that_text_on_both_transports(
     let buffered = unary("gemini-3-flash-preview", SIGNED_ONE_PART).await;
     let streamed = streamed("gemini-3-flash-preview", SIGNED_ONE_PART_STREAM).await;
 
-    let expected = vec![message::AssistantContent::Text(message::Text {
-        text: "done".to_owned(),
-        additional_params: super::super::text_signature_extras(
-            super::super::GEMINI_TEXT_EXTRAS_KEY,
-            "signature_REDACTED_1".to_owned(),
-        ),
-    })];
-    assert_eq!(buffered.choice.to_vec(), expected);
-    assert_eq!(streamed.choice.to_vec(), expected);
+    let expected = vec![
+        message::AssistantContent::text("done")
+            .with_native(json!({ "text": "done", "thoughtSignature": "c2lnbmF0dXJl" })),
+    ];
+    assert_eq!(buffered.choice, expected);
+    assert_eq!(streamed.choice, expected);
 }
 
 /// The one request an `Encoded` carries.
@@ -1859,155 +1846,95 @@ fn the_wire_keeps_its_span_names() {
     );
 }
 
-/// An `inlineData` part is model output the *stream* vocabulary cannot
-/// express (`BlockKind` has no image), and both modes now decode through
-/// that vocabulary. It must not vanish: the part rides a text block's
-/// metadata under `GEMINI_RAW_CONTENT_KEY`, so a consumer can still read
-/// the bytes Gemini sent.
+/// An `inlineData` image part is an image block holding the part, and it
+/// replays as the part Gemini sent.
 ///
 /// Shape taken from
 /// `crates/rig-cassette/fixtures/cassettes/gemini/image_generation/nano_banana_image_generation_smoke.yaml`,
 /// whose recorded `data` is a 1 MB PNG; the payload here is shortened
 /// because only its survival is under test.
 #[tokio::test]
-async fn an_inline_data_part_survives_as_a_raw_content_block() {
+async fn an_inline_data_part_decodes_to_an_image_holding_the_part() {
     const IMAGE_REPLY: &str = r#"{"candidates":[{"content":{"parts":[{"inlineData":{"data":"iVBORw0KGgoAAAANSUhEUg==","mimeType":"image/png"}}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash-image","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":1290,"promptTokenCount":15,"totalTokenCount":1305}}"#;
 
     let response = unary("gemini-2.5-flash-image", IMAGE_REPLY).await;
-    let raw = response
-        .choice
-        .iter()
-        .find_map(|item| match item {
-            message::AssistantContent::Text(text) => text
-                .additional_params
-                .as_ref()
-                .and_then(|params| params.get(crate::providers::gemini::GEMINI_RAW_CONTENT_KEY))
-                .cloned(),
-            _ => None,
-        })
-        .expect("the inline image part survived as raw content");
+    let part =
+        json!({ "inlineData": { "data": "iVBORw0KGgoAAAANSUhEUg==", "mimeType": "image/png" } });
+    let [message::AssistantContent::Image(image)] = response.choice.as_slice() else {
+        panic!("one image: {:?}", response.choice);
+    };
     assert_eq!(
-        raw.pointer("/inlineData/mimeType")
-            .and_then(serde_json::Value::as_str),
-        Some("image/png")
+        image.data,
+        message::DocumentSourceKind::Base64("iVBORw0KGgoAAAANSUhEUg==".to_owned())
     );
+    assert_eq!(image.media_type, Some(message::ImageMediaType::PNG));
     assert_eq!(
-        raw.pointer("/inlineData/data")
-            .and_then(serde_json::Value::as_str),
-        Some("iVBORw0KGgoAAAANSUhEUg==")
+        image.native.as_ref().map(|native| &native.item),
+        Some(&part)
+    );
+    let replayed = to_content(response.choice.clone()).expect("the turn replays");
+    assert_eq!(
+        serde_json::to_value(&replayed.parts).unwrap(),
+        json!([part])
     );
 }
 
-/// Parts within one document are distinct: two answer parts are two texts,
-/// and a signed empty part keeps its own text rather than merging.
+/// Consecutive answer parts in one document continue one text block, as a
+/// stream's do: the block holds the merged part, with the last signature.
 #[tokio::test]
-async fn answer_parts_in_one_document_stay_distinct() {
-    let body = r#"{"candidates":[{"content":{"parts":[{"text":"first"},{"text":"second"},{"text":"","thoughtSignature":"sig-9"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-3-flash-preview","responseId":"r","usageMetadata":{"candidatesTokenCount":1,"promptTokenCount":1,"totalTokenCount":2}}"#;
+async fn answer_parts_in_one_document_continue_one_text() {
+    let body = r#"{"candidates":[{"content":{"parts":[{"text":"first"},{"text":"second"},{"text":"","thoughtSignature":"c2lnLTk="}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-3-flash-preview","responseId":"r","usageMetadata":{"candidatesTokenCount":1,"promptTokenCount":1,"totalTokenCount":2}}"#;
     let response = unary("gemini-3-flash-preview", body).await;
-    let texts: Vec<(String, Option<String>)> = response
-        .choice
-        .iter()
-        .map(|part| match part {
-            message::AssistantContent::Text(text) => (
-                text.text.clone(),
-                super::super::text_thought_signature(text).map(str::to_owned),
-            ),
-            other => panic!("answer text only: {other:?}"),
-        })
-        .collect();
     assert_eq!(
-        texts,
-        [
-            ("first".to_owned(), None),
-            ("second".to_owned(), None),
-            (String::new(), Some("sig-9".to_owned())),
+        response.choice,
+        vec![
+            message::AssistantContent::text("firstsecond")
+                .with_native(json!({ "text": "firstsecond", "thoughtSignature": "c2lnLTk=" }))
         ]
     );
 }
 
-/// A Gemini answer-text signature is Gemini API state: another provider's
-/// wire encodes the text and never the signature.
+/// A Gemini answer-text signature reaches only the model that issued it:
+/// adapted for another Gemini model, the text replays without it.
 #[test]
-fn a_text_signature_reaches_no_other_wire() {
-    use crate::wire::{Body, Mode, Wire};
-
-    fn body<W>(wire: &W, request: CompletionRequest) -> String
-    where
-        W: Wire<Payload = crate::wire::Encoded>,
-        W::Op: crate::wire::Operation<Request = CompletionRequest>,
-    {
-        let encoded = wire
-            .encode(request, Mode::Unary)
-            .expect("the request encodes");
-        let request = &encoded.request;
-        let Body::Bytes(bytes) = request.body() else {
-            panic!("a completion body is bytes");
-        };
-        String::from_utf8(bytes.to_vec()).expect("a JSON body")
-    }
-
-    let signed = message::Text {
-        text: "the answer".to_owned(),
-        additional_params: super::super::text_signature_extras(
-            super::super::GEMINI_TEXT_EXTRAS_KEY,
-            "c2lnbmVkLWFuc3dlcg==".to_owned(),
-        ),
+fn a_text_signature_reaches_no_other_model() {
+    let signed = message::AssistantMessage {
+        origin: Some(message::Origin::new(
+            "gemini.generate_content",
+            PROVIDER_NAME,
+            "gemini-3-flash-preview",
+        )),
+        ..message::AssistantMessage::new(vec![
+            message::AssistantContent::text("the answer")
+                .with_native(json!({ "text": "the answer", "thoughtSignature": "c2lnbmVk" })),
+        ])
     };
-    let request = CompletionRequest::from(vec![
-        message::Message::user("q"),
-        message::Message::Assistant {
-            id: None,
-            content: vec![message::AssistantContent::Text(signed)],
-        },
-        message::Message::user("again"),
-    ])
-    .max_tokens(16);
-
-    let openai = crate::providers::openai::wire::OpenAIConfig::new("sk-test");
-    for (wire, encoded) in [
+    let history = vec![message::Message::user("q"), signed.into()];
+    for (model, part) in [
         (
-            "anthropic",
-            body(
-                &crate::providers::anthropic::AnthropicConfig::new("sk-test")
-                    .completion("claude-haiku-4-5"),
-                request.clone(),
-            ),
+            "gemini-3-flash-preview",
+            json!({ "text": "the answer", "thoughtSignature": "c2lnbmVk" }),
         ),
-        (
-            "openai chat",
-            body(&openai.chat("gpt-4.1-nano"), request.clone()),
-        ),
-        (
-            "openai responses",
-            body(&openai.responses("gpt-5-mini"), request.clone()),
-        ),
+        ("gemini-2.5-flash", json!({ "text": "the answer" })),
     ] {
-        assert!(encoded.contains("the answer"), "{wire}: {encoded}");
-        assert!(
-            !encoded.contains("c2lnbmVkLWFuc3dlcg") && !encoded.contains("thoughtSignature"),
-            "{wire} must not carry Gemini's signature: {encoded}"
-        );
+        let adapted = crate::completion::adapt(&history, &wire(model));
+        let contents = contents(adapted, model).expect("the history encodes");
+        assert_eq!(contents[1]["parts"], json!([part]), "{model}");
     }
 }
 
 /// A signed answer text survives serde, which is how a history persists, and
-/// still replays its signature on its own part.
+/// still replays its part as Gemini sent it.
 #[test]
 fn a_signed_answer_text_round_trips_through_serde() {
-    let message = message::Message::Assistant {
-        id: None,
-        content: vec![message::AssistantContent::Text(message::Text {
-            text: "the answer".to_owned(),
-            additional_params: super::super::text_signature_extras(
-                super::super::GEMINI_TEXT_EXTRAS_KEY,
-                "c2lnbmVk".to_owned(),
-            ),
-        })],
-    };
+    let message = message::Message::from(vec![
+        message::AssistantContent::text("the answer")
+            .with_native(json!({ "text": "the answer", "thoughtSignature": "c2lnbmVk" })),
+    ]);
     let json = serde_json::to_string(&message).expect("the message serializes");
     let loaded: message::Message = serde_json::from_str(&json).expect("the message loads");
     assert_eq!(loaded, message);
-    let content: Content = loaded.try_into().expect("the turn replays");
+    let content: Content = to_content(loaded).expect("the turn replays");
     let [part] = content.parts.as_slice() else {
         panic!("one answer part: {:?}", content.parts);
     };
@@ -2015,32 +1942,227 @@ fn a_signed_answer_text_round_trips_through_serde() {
     assert_ne!(part.thought, Some(true));
 }
 
-/// A history saved before answer-text signatures had a slot holds the
-/// signature on a signature-only reasoning block. It still loads and replays
-/// that signature on a thought part, as it did.
+/// An empty thought part that carries a signature is kept and replays its
+/// signature on a thought part.
 #[test]
-fn a_history_with_a_signature_only_reasoning_block_still_replays() {
-    let message = message::Message::Assistant {
-        id: None,
-        content: vec![
-            message::AssistantContent::text("289"),
-            message::AssistantContent::Reasoning(
-                message::Reasoning::new_with_signature("", Some("c2lnbmVk".to_owned()))
-                    .sealed("gcp.gemini"),
-            ),
-        ],
+fn an_empty_signed_thought_replays_its_signature() {
+    let part = json!({ "text": "", "thought": true, "thoughtSignature": "c2lnbmVk" });
+    let message = message::Message::from(vec![
+        message::AssistantContent::text("289"),
+        message::AssistantContent::reasoning("").with_native(part.clone()),
+    ]);
+    let content = to_content(message).expect("the turn replays");
+    assert_eq!(
+        serde_json::to_value(&content.parts).unwrap(),
+        json!([{ "text": "289" }, part])
+    );
+}
+
+/// A part rebuilt from canonical fields follows pi's rebuild: text alone, a
+/// thought flag on reasoning, a call id only for a model that takes ids,
+/// and nothing for blank text or redacted reasoning.
+#[test]
+fn canonical_blocks_rebuild_as_pi_rebuilds_them() {
+    let call = message::AssistantContent::tool_call(
+        "call-1",
+        message::ToolName::new("lookup").expect("tool name"),
+        json!({ "q": 1 }),
+    );
+    let message = message::Message::from(vec![
+        message::AssistantContent::text("  "),
+        message::AssistantContent::reasoning("why"),
+        message::AssistantContent::Reasoning(message::Reasoning {
+            redacted: true,
+            ..message::Reasoning::default()
+        }),
+        message::AssistantContent::text("answer"),
+        call,
+    ]);
+    for (model, function_call) in [
+        (
+            "gemini-2.5-flash",
+            json!({ "name": "lookup", "args": { "q": 1 } }),
+        ),
+        (
+            "gemini-3-flash-preview",
+            json!({ "name": "lookup", "args": { "q": 1 }, "id": "call-1" }),
+        ),
+    ] {
+        let contents = contents(vec![message.clone()], model).expect("the turn encodes");
+        assert_eq!(
+            contents[0]["parts"],
+            json!([
+                { "thought": true, "text": "why" },
+                { "text": "answer" },
+                { "functionCall": function_call },
+            ]),
+            "{model}"
+        );
+    }
+}
+
+/// A `thoughtSignature` that is not base64 is left out of the replayed part:
+/// Gemini rejects the whole request over one ("Invalid value at
+/// 'contents[1].parts[0].thought_signature' (TYPE_BYTES), Base64 decoding
+/// failed"). Every other field is sent as received.
+#[test]
+fn a_signature_that_is_not_base64_is_left_out() {
+    let message = message::Message::from(vec![
+        message::AssistantContent::text("a")
+            .with_native(json!({ "text": "a", "thoughtSignature": "not base64!", "extra": 1 })),
+        message::AssistantContent::text("b")
+            .with_native(json!({ "text": "b", "thoughtSignature": "c2ln" })),
+    ]);
+    let contents = contents(vec![message], "gemini-2.5-flash").expect("the turn encodes");
+    assert_eq!(
+        contents[0]["parts"],
+        json!([
+            { "text": "a", "extra": 1 },
+            { "text": "b", "thoughtSignature": "c2ln" },
+        ])
+    );
+}
+
+/// Call ids travel only to models that take them (pi's
+/// `requiresToolCallId`), and another model's id is normalized for them.
+#[test]
+fn call_ids_follow_the_models_that_take_them() {
+    for (model, takes) in [
+        ("gemini-2.5-flash", false),
+        ("gemini-2.0-flash", false),
+        ("gemini-3-flash-preview", true),
+        ("gemini-3.8-flash", true),
+        ("gemini-live-3-flash", true),
+        ("claude-sonnet-4-5", true),
+        ("gpt-oss-120b", true),
+        ("gemma-3-27b-it", false),
+    ] {
+        assert_eq!(requires_tool_call_id(model), takes, "{model}");
+    }
+    let foreign = format!("call.{}|x", "y".repeat(80));
+    let normalized = normalize_tool_call_id("gemini-3-flash-preview", &foreign);
+    assert_eq!(normalized.len(), 64);
+    assert!(normalized.starts_with("call_yyy"));
+    assert_eq!(
+        normalize_tool_call_id("gemini-2.5-flash", &foreign),
+        foreign
+    );
+}
+
+/// `ThoughtReplay::CurrentTurn` leaves the signatures out of the turns
+/// before the newest user text, and only the signatures.
+#[test]
+fn current_turn_replay_drops_only_finished_signatures() {
+    let signed = |text: &str| {
+        message::AssistantContent::text(text)
+            .with_native(json!({ "text": text, "thoughtSignature": "c2ln" }))
     };
-    let json = serde_json::to_string(&message).expect("the message serializes");
-    let loaded: message::Message = serde_json::from_str(&json).expect("the message loads");
-    let content: Content = loaded.try_into().expect("the turn replays");
-    let signed: Vec<(bool, &str)> = content
-        .parts
+    let mut body = create_request_body(
+        CompletionRequest::from(vec![
+            message::Message::user("one"),
+            message::Message::from(vec![signed("first")]),
+            message::Message::user("two"),
+            message::Message::from(vec![signed("second")]),
+        ]),
+        "gemini-2.5-flash",
+    )
+    .expect("the request encodes");
+    drop_finished_signatures(&mut body.contents);
+    assert_eq!(body.contents[1]["parts"], json!([{ "text": "first" }]));
+    assert_eq!(
+        body.contents[3]["parts"],
+        json!([{ "text": "second", "thoughtSignature": "c2ln" }])
+    );
+}
+
+/// Every part kind of the wire, an invented kind, and invented fields on
+/// known kinds survive decode and same-model replay, whole and streamed.
+#[test]
+#[deny(clippy::wildcard_enum_match_arm)]
+fn every_part_kind_survives_decode_and_replay() {
+    use crate::test_utils::history::{assert_every_variant, assert_restated_agrees, decode};
+    use crate::wire::WireFrame;
+
+    let parts = vec![
+        json!({ "thought": true, "text": "why", "thoughtSignature": "c2ln" }),
+        json!({ "text": "plain", "futureField": 1 }),
+        json!({
+            "functionCall": { "name": "lookup", "args": { "q": 1 }, "id": "c1", "futureField": true },
+            "thoughtSignature": "c2ln",
+        }),
+        json!({ "inlineData": { "mimeType": "image/png", "data": "iVBORw0KGgo=" } }),
+        json!({ "functionResponse": { "name": "lookup", "response": { "ok": true } } }),
+        json!({ "fileData": { "mimeType": "application/pdf", "fileUri": "gs://bucket/a.pdf" } }),
+        json!({ "executableCode": { "language": "PYTHON", "code": "print(1)" } }),
+        json!({ "codeExecutionResult": { "outcome": "OUTCOME_OK", "output": "1" } }),
+        json!({ "futureKind": { "x": 1 } }),
+    ];
+    let known: Vec<Part> = parts
         .iter()
-        .filter_map(|part| {
-            part.thought_signature
-                .as_deref()
-                .map(|signature| (part.thought == Some(true), signature))
-        })
+        .take(8)
+        .map(|part| serde_json::from_value(part.clone()).expect("a known part"))
         .collect();
-    assert_eq!(signed, [(true, "c2lnbmVk")]);
+    assert_every_variant(
+        &known,
+        |part| match part.part {
+            PartKind::Text(_) => 0,
+            PartKind::InlineData(_) => 1,
+            PartKind::FunctionCall(_) => 2,
+            PartKind::FunctionResponse(_) => 3,
+            PartKind::FileData(_) => 4,
+            PartKind::ExecutableCode(_) => 5,
+            PartKind::CodeExecutionResult(_) => 6,
+        },
+        7,
+    );
+
+    let end = json!({ "finishReason": "STOP", "index": 0 });
+    let document = |parts: &[serde_json::Value], end: Option<&serde_json::Value>| {
+        let mut candidate = json!({ "content": { "parts": parts, "role": "model" } });
+        if let (Some(candidate), Some(serde_json::Value::Object(end))) =
+            (candidate.as_object_mut(), end)
+        {
+            candidate.extend(end.clone());
+        }
+        WireFrame::Text(json!({ "candidates": [candidate], "responseId": "r" }).to_string())
+    };
+    let whole = vec![document(&parts, Some(&end))];
+    let mut streamed: Vec<WireFrame> = parts
+        .iter()
+        .map(|part| document(std::slice::from_ref(part), None))
+        .collect();
+    streamed.push(document(&[], Some(&end)));
+
+    let wire = wire("gemini-3-flash-preview");
+    assert_restated_agrees(&wire, whole.clone(), streamed.clone());
+    for (mode, frames) in [(Mode::Unary, whole), (Mode::Streaming, streamed)] {
+        let response = decode(&wire, mode, frames).expect("the reply decodes");
+        assert_eq!(response.choice.len(), parts.len(), "{mode:?}");
+        let history = crate::completion::adapt(&[response.message().expect("a turn")], &wire);
+        let replayed = contents(history, "gemini-3-flash-preview").expect("the turn replays");
+        assert_eq!(replayed[0]["parts"], json!(parts), "{mode:?}");
+    }
+}
+
+/// Grounding, URL context, safety ratings and citations stay with the turn
+/// as its message-level native: the candidate without its content.
+#[test]
+fn candidate_metadata_is_the_turns_native() {
+    use crate::wire::WireFrame;
+
+    let metadata = json!({
+        "finishReason": "STOP",
+        "index": 0,
+        "safetyRatings": [{ "category": "HARM_CATEGORY_HARASSMENT", "probability": "NEGLIGIBLE" }],
+        "citationMetadata": { "citationSources": [{ "uri": "https://example.com", "startIndex": 0, "endIndex": 4 }] },
+        "groundingMetadata": { "webSearchQueries": ["rig"], "groundingChunks": [{ "web": { "uri": "https://example.com" } }] },
+        "urlContextMetadata": { "urlMetadata": [{ "retrievedUrl": "https://example.com" }] },
+    });
+    let mut candidate = metadata.clone();
+    candidate["content"] = json!({ "parts": [{ "text": "rig" }], "role": "model" });
+    let frame = WireFrame::Text(json!({ "candidates": [candidate] }).to_string());
+    let response =
+        crate::test_utils::history::decode(&wire("gemini-2.5-flash"), Mode::Unary, [frame])
+            .expect("the reply decodes");
+    assert_eq!(response.native.map(|native| native.item), Some(metadata));
 }
