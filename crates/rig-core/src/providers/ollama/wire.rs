@@ -146,9 +146,7 @@ impl Wire for Chat {
     type Op = Completion;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
-    #[cfg(any())]
-    type Decoder<'id> = OllamaDecoder<'id>;
-    type Decoder<'id> = crate::providers::internal::Unmigrated;
+    type Decoder<'id> = super::OllamaDecoder;
 
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(PROVIDER_NAME)
@@ -156,7 +154,6 @@ impl Wire for Chat {
             .replay(self)
     }
 
-    #[cfg(any())]
     fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, EncodeError> {
         let mut body = OllamaCompletionRequest::try_from((self.model.as_str(), request))?;
         body.stream = mode == Mode::Streaming;
@@ -178,17 +175,8 @@ impl Wire for Chat {
             },
         ))
     }
-    fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, EncodeError> {
-        let _ = (request, mode);
-        Err(crate::providers::internal::Unmigrated::encode_error())
-    }
-
-    #[cfg(any())]
     fn decoder<'id>(&self) -> Self::Decoder<'id> {
-        OllamaDecoder::default()
-    }
-    fn decoder<'id>(&self) -> Self::Decoder<'id> {
-        crate::providers::internal::Unmigrated
+        super::OllamaDecoder::default()
     }
 }
 
@@ -331,5 +319,4 @@ impl<'id> Decoder<'id, ModelListing> for ModelsDecoder {
 }
 
 #[cfg(test)]
-#[cfg(any())]
 mod tests;

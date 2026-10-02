@@ -21,9 +21,6 @@ use serde::{Deserialize, Serialize};
 
 use super::completion::{CohereCompletionRequest, PROVIDER_NAME};
 
-/// The issuer of Cohere's reasoning, which is the only reasoning it replays.
-#[cfg(any())]
-pub(crate) const ISSUER: Issuer = Issuer::from_static(PROVIDER_NAME);
 use super::embeddings::{
     EmbeddingResponse as CohereEmbeddingResponse,
     ImageEmbeddingResponse as CohereImageEmbeddingResponse, image_data_url, validate_image,
@@ -124,9 +121,7 @@ impl Wire for Chat {
     type Op = Completion;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
-    #[cfg(any())]
-    type Decoder<'id> = ChatDecoder<'id>;
-    type Decoder<'id> = crate::providers::internal::Unmigrated;
+    type Decoder<'id> = super::streaming::ChatDecoder;
 
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(PROVIDER_NAME)
@@ -134,7 +129,6 @@ impl Wire for Chat {
             .replay(self)
     }
 
-    #[cfg(any())]
     fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, EncodeError> {
         let mut body = CohereCompletionRequest::try_from((self.model.as_str(), request))?;
         if mode == Mode::Streaming {
@@ -165,17 +159,8 @@ impl Wire for Chat {
             },
         ))
     }
-    fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, EncodeError> {
-        let _ = (request, mode);
-        Err(crate::providers::internal::Unmigrated::encode_error())
-    }
-
-    #[cfg(any())]
     fn decoder<'id>(&self) -> Self::Decoder<'id> {
-        ChatDecoder::default()
-    }
-    fn decoder<'id>(&self) -> Self::Decoder<'id> {
-        crate::providers::internal::Unmigrated
+        super::streaming::ChatDecoder::default()
     }
 }
 
@@ -381,5 +366,4 @@ impl<'id> Decoder<'id, ImageEmbedding> for ImageEmbeddingsDecoder {
 }
 
 #[cfg(test)]
-#[cfg(any())]
 mod tests;

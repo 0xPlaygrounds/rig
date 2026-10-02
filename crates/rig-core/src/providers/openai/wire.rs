@@ -29,7 +29,7 @@ mod route;
 
 pub use chat::Chat;
 pub use dialects::*;
-pub use dto::{ChatUsage, FinishReason};
+pub use dto::{ChatUsage, FinishReason, StreamingCompletionResponse};
 pub use modality::{
     Embeddings, EmbeddingsDecoder, ModelEntry, Models, ModelsDecoder, ModelsReply, Rerank,
     RerankDecoder, RerankReply, RerankResultEntry, RerankUsage, Transcriptions,
@@ -279,15 +279,15 @@ pub enum BodyRewrite {
     None,
     /// Groq: fold `additional_params.tools` (its compound-system native
     /// tools) into `compound_custom.enabled_tools` so they do not clobber
-    /// the function-tool array on serialization, and replay assistant turns
-    /// without `reasoning_content`, which Groq rejects.
+    /// the function-tool array on serialization.
     GroqCompoundTools,
     /// Hugging Face's router: qualify the model identifier for sub-providers
     /// that demand one (Fireworks).
     HuggingFaceRouter,
     /// DeepSeek: string-flattened content, `content: ""` on tool-call-only
-    /// assistant turns, `index` on echoed tool calls, and forced tool
-    /// choices suppressed unless thinking is explicitly disabled.
+    /// assistant turns, `reasoning_content: ""` on assistant turns without
+    /// reasoning, `index` on echoed tool calls, and forced tool choices
+    /// suppressed unless thinking is explicitly disabled.
     DeepSeek,
     /// Mira's gateway: plain `{role, content}` history, names stripped,
     /// content-part arrays flattened.
@@ -299,8 +299,8 @@ pub enum BodyRewrite {
     /// (its vision models need them).
     Hyperbolic,
     /// Mistral: `any` for a forced tool choice, the choice relaxed to `auto`
-    /// beside a structured response format, `prefix` on assistant turns and
-    /// `reasoning_content` removed.
+    /// beside a structured response format, its own content chunks, and
+    /// `content` on every assistant turn.
     Mistral,
     /// llama.cpp: refuse a specific-function tool choice, which
     /// `llama-server` silently treats as `auto`.
@@ -309,7 +309,7 @@ pub enum BodyRewrite {
     /// `required` to `auto` with a steering message.
     Moonshot,
     /// OpenRouter: ephemeral `cache_control` on the system prompt when
-    /// prompt caching is on, and `reasoning_content` respelled `reasoning`.
+    /// prompt caching is on, and image parts without a detail level.
     OpenRouter,
 }
 
@@ -556,9 +556,6 @@ pub struct Quirks {
     pub output_cap: OutputCap,
     /// Whether to consult upstream-native finish reasons when normalized ones are absent.
     pub native_finish_reason: bool,
-    /// Whether the dialect emits `reasoning_details` entries (OpenRouter's
-    /// encrypted reasoning blobs and replay signatures).
-    pub reasoning_details: bool,
     /// Whether `completion_tokens_details.reasoning_tokens` can be trusted as
     /// a part of `completion_tokens`, as OpenAI documents it. A dialect whose
     /// replies report more reasoning than completion leaves the count
@@ -628,7 +625,6 @@ impl Quirks {
             emits_complete_single_chunk_tool_calls: false,
             output_cap: OutputCap::Legacy,
             native_finish_reason: false,
-            reasoning_details: false,
             reliable_reasoning_count: true,
             accepts_bare_string_reply: false,
             accepts_file_ids: true,

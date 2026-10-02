@@ -1,10 +1,10 @@
-//! Chat Completions reply shapes for unary messages and streamed deltas.
-//! Unary messages are converted to delta events during classification.
+//! Chat Completions reply shapes for unary messages and streamed deltas,
+//! and the merge that assembles a streamed message from its deltas.
 
 use serde::{Deserialize, Serialize};
 
 use crate::json_utils;
-use crate::providers::openai::completion::{Message, Usage, joined_text_parts};
+use crate::providers::openai::completion::Usage;
 
 /// A streamed tool-call fragment's function half.
 #[derive(Default, Deserialize, Debug, Clone)]
@@ -78,43 +78,89 @@ impl StreamingToolCall {
     }
 }
 
-fn deserialize_delta_content<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    // Some compatible providers (e.g. Mistral's reasoning models) stream
-    // delta content as an array of content parts rather than a string.
-    let value = Option::<serde_json::Value>::deserialize(deserializer)?;
-    Ok(value.and_then(|value| match value {
-        serde_json::Value::String(text) => Some(text),
-        serde_json::Value::Array(parts) => {
-            let text = joined_text_parts(&parts);
-            (!text.is_empty()).then_some(text)
+/// The keys whose string fragments concatenate when a provider streams them:
+/// text and reasoning, a call's arguments, audio's transcript and data, a
+/// reasoning detail's text and summary. Every other string is an identifier,
+/// a tag or a signature a later fragment restates.
+const FRAGMENT_KEYS: [&str; 12] = [
+    "content",
+    "refusal",
+    "reasoning",
+    "reasoning_content",
+    "reasoning_text",
+    "thinking",
+    "tool_plan",
+    "transcript",
+    "data",
+    "arguments",
+    "text",
+    "summary",
+];
+
+/// Merge one streamed fragment of a provider object into what arrived so
+/// far: fragment strings ([`FRAGMENT_KEYS`]) append, arrays extend, objects
+/// merge key by key, and anything else replaces. A `null` or empty string
+/// never erases a value, and a literal `null` argument placeholder gives
+/// way to the first real fragment.
+pub(crate) fn merge_fields(
+    target: &mut serde_json::Map<String, serde_json::Value>,
+    delta: &serde_json::Map<String, serde_json::Value>,
+) {
+    use serde_json::Value;
+    for (key, value) in delta {
+        let fragment = FRAGMENT_KEYS.contains(&key.as_str());
+        match (target.get_mut(key), value) {
+            (Some(_), Value::Null) => {}
+            (Some(Value::String(existing)), Value::String(more)) if fragment => {
+                if existing.trim() == "null" && !more.trim().is_empty() {
+                    existing.clear();
+                }
+                existing.push_str(more);
+            }
+            (Some(Value::String(existing)), Value::String(more))
+                if more.is_empty() && !existing.is_empty() => {}
+            (Some(Value::Array(existing)), Value::Array(more)) => {
+                existing.extend(more.iter().cloned());
+            }
+            (Some(Value::Object(existing)), Value::Object(more)) => merge_fields(existing, more),
+            _ => {
+                target.insert(key.clone(), value.clone());
+            }
         }
-        _ => None,
-    }))
+    }
 }
 
-/// One streamed choice's delta.
-#[derive(Deserialize, Debug, Default, Clone)]
-pub(crate) struct StreamingDelta {
-    #[serde(default, deserialize_with = "deserialize_delta_content")]
-    pub(crate) content: Option<String>,
-    /// Refusal text used when content is absent or empty; see [`delta_text`].
-    #[serde(default)]
-    pub(crate) refusal: Option<String>,
-    #[serde(default)]
-    pub(crate) reasoning_content: Option<String>,
-    // Not part of the official OpenAI API; some compatible providers (e.g.
-    // Groq) send the same payload under `reasoning`. A separate field rather
-    // than a serde alias so a delta carrying BOTH keys is not a
-    // duplicate-field error that drops the whole chunk.
-    #[serde(default)]
-    pub(crate) reasoning: Option<String>,
-    #[serde(default, deserialize_with = "json_utils::null_or_default")]
-    pub(crate) tool_calls: Vec<StreamingToolCall>,
-    #[serde(default, deserialize_with = "json_utils::null_or_default")]
-    pub(crate) reasoning_details: Vec<serde_json::Value>,
+/// The text a message or delta carries: its `content` string, or the text
+/// and refusal parts of a content array, falling back to the sibling
+/// `refusal` when there is no content.
+pub(crate) fn delta_text(delta: &serde_json::Map<String, serde_json::Value>) -> Option<String> {
+    use serde_json::Value;
+    let content = match delta.get("content") {
+        Some(Value::String(text)) => text.clone(),
+        Some(Value::Array(parts)) => parts
+            .iter()
+            .filter(|part| {
+                matches!(
+                    part.get("type").and_then(Value::as_str),
+                    Some("text" | "refusal")
+                )
+            })
+            .filter_map(|part| {
+                part.get("text")
+                    .or_else(|| part.get("refusal"))
+                    .and_then(Value::as_str)
+            })
+            .collect(),
+        _ => String::new(),
+    };
+    if !content.is_empty() {
+        return Some(content);
+    }
+    delta
+        .get("refusal")
+        .and_then(Value::as_str)
+        .filter(|refusal| !refusal.is_empty())
+        .map(str::to_owned)
 }
 
 /// A chat-completions terminal reason, in the wire's own vocabulary.
@@ -145,19 +191,6 @@ impl FinishReason {
             Self::Length => "length",
             Self::Other(other) => other,
         }
-    }
-}
-
-/// Return nonempty content, falling back to nonempty refusal text.
-/// Preserve empty content when no nonempty refusal is available.
-pub(crate) fn delta_text(delta: &StreamingDelta) -> Option<String> {
-    match delta.content.as_deref() {
-        Some(content) if !content.is_empty() => delta.content.clone(),
-        content => delta
-            .refusal
-            .clone()
-            .filter(|refusal| !refusal.is_empty())
-            .or_else(|| content.map(str::to_owned)),
     }
 }
 
@@ -215,19 +248,19 @@ impl From<ChatUsage> for crate::completion::Usage {
 }
 
 /// One choice of a chat-completions frame, in either reply's shape.
-#[cfg(any())]
 #[derive(Deserialize, Debug)]
 pub struct ChatChoice {
-    /// The streamed shape's fragment. Defaulted because a choice on the wire
-    /// is not guaranteed to carry one: Azure prepends a
-    /// `prompt_filter_results` chunk (delta-less choice) to every stream when
-    /// content filtering is enabled.
+    /// The streamed shape's fragment, kept as the provider sent it. Defaulted
+    /// because a choice on the wire is not guaranteed to carry one: Azure
+    /// prepends a `prompt_filter_results` chunk (delta-less choice) to every
+    /// stream when content filtering is enabled.
+    #[serde(default, deserialize_with = "json_utils::null_or_default")]
+    pub(crate) delta: serde_json::Map<String, serde_json::Value>,
+    /// The unary shape's whole assistant message, as the provider sent it.
+    /// Absent on a streamed frame; present exactly when this frame is the
+    /// unary reply.
     #[serde(default)]
-    pub(crate) delta: StreamingDelta,
-    /// The unary shape's whole assistant message. Absent on a streamed
-    /// frame; present exactly when this frame is the unary reply.
-    #[serde(default)]
-    pub(crate) message: Option<Message>,
+    pub(crate) message: Option<serde_json::Map<String, serde_json::Value>>,
     pub(crate) finish_reason: Option<FinishReason>,
     /// Upstream provider spelling forwarded by gateways such as OpenRouter.
     /// Direct providers omit it.
@@ -238,18 +271,13 @@ pub struct ChatChoice {
     /// absent is read as candidate 0.
     #[serde(default)]
     pub(crate) index: Option<usize>,
-    /// Per-token probabilities. Kept as provider metadata: compatible
-    /// services extend the object independently, and the raw terminal record
-    /// must retain every chunk rather than pick a token schema here.
-    #[serde(
-        default,
-        deserialize_with = "crate::message::optional_additional_params"
-    )]
-    pub(crate) logprobs: Option<crate::message::AdditionalParams>,
+    /// Per-token probabilities, kept as the provider sent them: compatible
+    /// services extend the object independently.
+    #[serde(default)]
+    pub(crate) logprobs: Option<serde_json::Value>,
 }
 
 /// One frame of the chat-completions wire.
-#[cfg(any())]
 #[derive(Deserialize, Debug)]
 pub struct ChatFrame {
     pub(crate) id: Option<String>,
@@ -265,7 +293,6 @@ pub struct ChatFrame {
     pub(crate) additional_params: serde_json::Map<String, serde_json::Value>,
 }
 
-#[cfg(any())]
 impl ChatFrame {
     /// Whether this frame is the unary `chat.completion` body.
     ///
@@ -274,30 +301,24 @@ impl ChatFrame {
     /// are needed: `object` is the authoritative tag, and several gateways
     /// omit it entirely.
     pub(crate) fn is_whole(&self) -> bool {
-        match self.object() {
+        match self
+            .additional_params
+            .get("object")
+            .and_then(serde_json::Value::as_str)
+        {
             // Stream chunks may include whole messages, so an explicit tag wins.
             Some(object) => object == "chat.completion",
-            // No tag: several gateways omit it, and then a choice carrying a
-            // whole `message` rather than a `delta` is the unary body.
             None => self.choices.iter().any(|choice| choice.message.is_some()),
         }
     }
 
-    /// Borrow the `object` tag without removing it from terminal metadata.
-    pub(crate) fn object(&self) -> Option<&str> {
-        self.additional_params
-            .get("object")
-            .and_then(serde_json::Value::as_str)
-    }
-
-    /// The primary candidate.
+    /// The primary candidate, taken out of the frame.
     ///
     /// `n > 1` streams as interleaved chunks distinguished only by
     /// `choices[].index`. Taking each frame's *first* choice would
     /// concatenate every candidate into one garbled answer, while the unary
     /// reply is normalized from candidate 0 alone; selecting by index keeps
     /// the two agreeing.
-    #[cfg(any())]
     pub(crate) fn primary(&self) -> Option<&ChatChoice> {
         self.choices
             .iter()
@@ -305,7 +326,6 @@ impl ChatFrame {
     }
 
     /// The primary candidate, taken out of the frame.
-    #[cfg(any())]
     pub(crate) fn into_primary(self) -> Option<ChatChoice> {
         self.choices
             .into_iter()
@@ -313,26 +333,18 @@ impl ChatFrame {
     }
 }
 
-/// The provider's own terminal record for one chat-completions reply.
+/// The provider's own terminal record for one streamed chat-completions
+/// reply: the response's `raw`, so a caller reaches every provider field rig
+/// does not normalize.
 ///
-/// `U` is the accounting: [`ChatUsage`] on the wire path. This is what the
-/// decoder serializes onto the response's `raw`, so a caller reaches every
-/// provider field rig does not normalize.
-#[cfg(any())]
+/// `U` is the accounting: [`ChatUsage`] on the wire path.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct StreamingCompletionResponse<U = Usage> {
     /// Usage reported on the reply's terminal event; `None` when the reply
-    /// never carried one (a compatible service that ignores
-    /// `stream_options.include_usage`, or a `usage: null` terminal chunk).
+    /// never carried one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub usage: Option<U>,
     /// Why the model stopped generating, when the provider reported it.
-    ///
-    /// Normalized out of the OpenAI-compatible `finish_reason` vocabulary,
-    /// with unrecognized values preserved verbatim. The `Stop` -> `ToolCalls`
-    /// upgrade is deliberately *not* applied here: it belongs to
-    /// [`CompletionStream`](crate::streaming::CompletionStream), the only
-    /// place that sees which tool calls the reply actually emitted.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub finish_reason: Option<crate::completion::FinishReason>,
     /// Provider-assigned response identifier, when the reply emitted one.
@@ -342,40 +354,15 @@ pub struct StreamingCompletionResponse<U = Usage> {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
     /// Token log probabilities accumulated from all primary-choice chunks.
-    ///
-    /// This stays provider-native: normalized completions do not model log
-    /// probabilities, just as the unary path omits `Choice::logprobs` while
-    /// its raw response retains them.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub logprobs: Option<serde_json::Value>,
     /// Provider-specific top-level fields accumulated from the reply, such
     /// as OpenAI's `service_tier` and `system_fingerprint` or OpenRouter's
     /// routed `provider`.
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        deserialize_with = "crate::message::optional_additional_params"
-    )]
-    pub additional_params: Option<crate::message::AdditionalParams>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub additional_params: Option<serde_json::Map<String, serde_json::Value>>,
 }
 
-#[cfg(any())]
-impl<U> StreamingCompletionResponse<U> {
-    /// Create a terminal record carrying `usage`; the optional metadata
-    /// starts unset.
-    pub fn new(usage: Option<U>) -> Self {
-        Self {
-            usage,
-            finish_reason: None,
-            response_id: None,
-            model: None,
-            logprobs: None,
-            additional_params: None,
-        }
-    }
-}
-
-#[cfg(any())]
 impl<U> StreamingCompletionResponse<U>
 where
     U: Into<crate::completion::Usage>,

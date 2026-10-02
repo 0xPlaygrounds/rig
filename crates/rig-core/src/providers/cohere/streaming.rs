@@ -8,46 +8,90 @@
 //! ```
 
 use crate::error::ProviderError;
-use crate::operation::{CallFragment, Completion, Finish, IfMalformed};
+use crate::operation::{Block, CallFragment, Completion, Finish, IfMalformed};
 use crate::providers::cohere::completion::{
-    AssistantContent, CompletionResponse, FinishReason, Usage, map_finish_reason,
+    CompletionResponse, FinishReason, Usage, map_finish_reason,
 };
 use crate::providers::internal::wire;
+use crate::providers::openai::wire::dto::merge_fields;
 use crate::wire::{Flow, Out, WireFrame};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
-/// One streamed frame of Cohere's `/v2/chat`, named by its `type`.
+/// One streamed frame of Cohere's `/v2/chat`, named by its `type`. Content
+/// and tool calls are numbered by `index` within their own kind.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "kebab-case", tag = "type")]
 pub enum StreamingEvent {
+    /// The turn opens, with the message's empty fields.
     MessageStart {
         /// The message identifier, when the wire named one.
         #[serde(default)]
         id: Option<String>,
+        /// The message's opening fields.
+        #[serde(default)]
+        delta: Option<Delta>,
     },
-    /// A content block opens.
-    ContentStart,
-    /// One content fragment: text, or a reasoning model's thought text.
+    /// A content item opens.
+    ContentStart {
+        /// The item's position in the message's content.
+        #[serde(default)]
+        index: usize,
+        /// The item as it opens.
+        delta: Option<Delta>,
+    },
+    /// One fragment of a content item: text, or a reasoning model's thought
+    /// text.
     ContentDelta {
-        /// The fragment, absent on a frame that carries none.
-        delta: Option<Delta>,
-    },
-    /// A content block closes.
-    ContentEnd,
-    /// The model's plan for the tool calls that follow.
-    ToolPlan,
-    /// A tool call opens, naming the function it calls.
-    ToolCallStart {
-        /// The call's identity and name.
-        delta: Option<Delta>,
-    },
-    /// One argument fragment of the open tool call.
-    ToolCallDelta {
+        /// The item's position in the message's content.
+        #[serde(default)]
+        index: usize,
         /// The fragment.
         delta: Option<Delta>,
     },
-    /// The open tool call closes.
-    ToolCallEnd,
+    /// A content item closes.
+    ContentEnd {
+        /// The item's position in the message's content.
+        #[serde(default)]
+        index: usize,
+    },
+    /// One fragment of the model's plan for the tool calls that follow.
+    ToolPlanDelta {
+        /// The fragment.
+        delta: Option<Delta>,
+    },
+    /// A tool call opens, naming the function it calls.
+    ToolCallStart {
+        /// The call's position in the message's tool calls.
+        #[serde(default)]
+        index: usize,
+        /// The call's identity and name.
+        delta: Option<Delta>,
+    },
+    /// One argument fragment of an open tool call.
+    ToolCallDelta {
+        /// The call's position in the message's tool calls.
+        #[serde(default)]
+        index: usize,
+        /// The fragment.
+        delta: Option<Delta>,
+    },
+    /// A tool call closes.
+    ToolCallEnd {
+        /// The call's position in the message's tool calls.
+        #[serde(default)]
+        index: usize,
+    },
+    /// A citation of the text opens, whole.
+    CitationStart {
+        /// The citation's position in the message's citations.
+        #[serde(default)]
+        index: usize,
+        /// The citation.
+        delta: Option<Delta>,
+    },
+    /// A citation closes.
+    CitationEnd,
     /// The turn ends: the wire's genuine terminal.
     MessageEnd {
         /// Usage and finish reason, absent on a bare terminal.
@@ -59,60 +103,37 @@ pub enum StreamingEvent {
 /// whose `type` is in this set but fails the full parse has a data-level
 /// defect and is surfaced as an `Err` item; a `type` outside this set is an
 /// event this client doesn't know yet and is skipped.
-const KNOWN_EVENT_TYPES: [&str; 9] = [
+const KNOWN_EVENT_TYPES: [&str; 11] = [
     "message-start",
     "content-start",
     "content-delta",
     "content-end",
-    "tool-plan",
+    "tool-plan-delta",
     "tool-call-start",
     "tool-call-delta",
     "tool-call-end",
+    "citation-start",
+    "citation-end",
     "message-end",
 ];
 
-/// One content fragment of a `content-delta` frame.
-#[derive(Debug, Deserialize)]
-pub struct MessageContentDelta {
-    /// Assistant text.
-    pub text: Option<String>,
-    /// Cohere v2 reasoning models stream thought text as `content-delta`
-    /// frames whose content carries `thinking` instead of `text`.
-    pub thinking: Option<String>,
-}
-
-/// The function half of a tool-call frame.
-#[derive(Debug, Deserialize)]
-pub struct MessageToolFunctionDelta {
-    /// The tool's name, on the frame that opens the call.
-    pub name: Option<String>,
-    /// One fragment of the call's JSON arguments.
-    pub arguments: Option<String>,
-}
-
-/// The tool-call half of a message delta.
-#[derive(Debug, Deserialize)]
-pub struct MessageToolCallDelta {
-    /// The call's wire id, on the frame that opens it.
-    pub id: Option<String>,
-    /// The function the call names.
-    pub function: Option<MessageToolFunctionDelta>,
-}
-
-/// What one frame's message delta carried.
-#[derive(Debug, Deserialize)]
-pub struct MessageDelta {
-    /// A content fragment.
-    pub content: Option<MessageContentDelta>,
-    /// A tool-call fragment.
-    pub tool_calls: Option<MessageToolCallDelta>,
-}
-
-/// One frame's delta envelope.
-#[derive(Debug, Deserialize)]
+/// One frame's delta envelope: the fields of the message it adds to, as
+/// Cohere sent them.
+#[derive(Debug, Default, Deserialize)]
 pub struct Delta {
-    /// The message the delta applies to.
-    pub message: Option<MessageDelta>,
+    /// The message fields the delta carries.
+    #[serde(default)]
+    pub message: serde_json::Map<String, Value>,
+}
+
+impl Delta {
+    /// The object the delta carries under `key`.
+    fn take(self, key: &str) -> serde_json::Map<String, Value> {
+        match self.message.into_iter().find(|(name, _)| name == key) {
+            Some((_, Value::Object(fields))) => fields,
+            _ => serde_json::Map::new(),
+        }
+    }
 }
 
 /// The `message-end` payload: what the turn cost and why it stopped.
@@ -138,21 +159,6 @@ pub struct StreamingCompletionResponse {
     pub message_id: Option<String>,
 }
 
-/// The `/v2/chat` decoder: one state machine for the whole reply and its
-/// stream of events.
-#[cfg(any())]
-#[derive(Default)]
-pub struct ChatDecoder<'id> {
-    /// The wire index the open tool call's fragments are buffered under.
-    current_tool_call: Option<usize>,
-    /// Tool calls opened so far.
-    calls: usize,
-    message_id: Option<String>,
-    /// Reasoning closes when subsequent content changes block type.
-    thoughts: Thoughts<'id>,
-    text: Option<TextPart<'id>>,
-}
-
 /// Tagged streaming event or untagged unary reply from `/v2/chat`.
 #[derive(Debug, Deserialize)]
 #[serde(untagged)]
@@ -163,190 +169,332 @@ pub enum ChatEvent {
     Reply(CompletionResponse),
 }
 
-#[cfg(any())]
-impl<'id> ChatDecoder<'id> {
-    /// Reasoning then text, as one content fragment carries them.
-    #[cfg(any())]
-    fn content(
-        &mut self,
-        out: &mut Out<'id, Completion>,
-        thinking: Option<&str>,
-        text: Option<&str>,
-    ) {
-        if let Some(thinking) = thinking.filter(|thinking| !thinking.is_empty()) {
-            out.close_open_text(&mut self.text);
-            self.thoughts.fragment(out, thinking);
-        }
-        if let Some(text) = text.filter(|text| !text.is_empty()) {
-            self.thoughts.boundary();
-            out.extend_text(&mut self.text, text);
-        }
-    }
+/// The writer index of tool call `index`: content items keep their own.
+const CALL_INDEX: usize = 1 << 32;
 
+/// The `/v2/chat` decoder: one state machine for the stream of events and
+/// the whole reply, which is restated as the events of its message. Each
+/// content item and tool call is a block holding its item; the tool plan is
+/// reasoning holding its field; the assembled message is the turn's native.
+#[derive(Default)]
+pub struct ChatDecoder {
+    /// The message as assembled so far, without its content, tool calls and
+    /// citations.
+    message: serde_json::Map<String, Value>,
+    content: Vec<Value>,
+    tool_calls: Vec<Value>,
+    citations: Vec<Value>,
+    /// The writer index of the tool plan's reasoning.
+    plan: Option<usize>,
+    message_id: Option<String>,
+}
+
+#[deny(clippy::wildcard_enum_match_arm)]
+impl ChatDecoder {
     /// Interpret one streamed `/v2/chat` frame.
-    #[cfg(any())]
     fn interpret_stream(
         &mut self,
         event: StreamingEvent,
-        mut out: Out<'id, Completion>,
-    ) -> Result<Flow, ProviderError> {
+        out: &mut Out<'_, Completion>,
+    ) -> Result<(), ProviderError> {
         match event {
-            StreamingEvent::MessageStart { id: Some(id) } => {
-                self.message_id = Some(id);
+            StreamingEvent::MessageStart { id, delta } => {
+                self.message_id = id.or(self.message_id.take());
+                merge_fields(&mut self.message, &delta.unwrap_or_default().message);
             }
-
-            StreamingEvent::ContentDelta { delta: Some(delta) } => {
-                if let Some(content) = delta
-                    .message
-                    .as_ref()
-                    .and_then(|message| message.content.as_ref())
-                {
-                    self.content(
-                        &mut out,
-                        content.thinking.as_deref(),
-                        content.text.as_deref(),
-                    );
+            StreamingEvent::ContentStart { index, delta } => {
+                self.open_content(index, delta.unwrap_or_default().take("content"), out)?;
+            }
+            StreamingEvent::ContentDelta { index, delta } => {
+                let mut item = delta.unwrap_or_default().take("content");
+                if out.is_open(index) {
+                    self.content_fragment(index, item, out)?;
+                } else if self.content.get(index).is_none_or(Value::is_null) {
+                    // A delta of an item whose start never came opens it.
+                    let kind = if item.contains_key("thinking") {
+                        "thinking"
+                    } else {
+                        "text"
+                    };
+                    item.insert("type".to_owned(), kind.into());
+                    self.open_content(index, item, out)?;
                 }
             }
-
-            StreamingEvent::MessageEnd { delta } => {
-                // A bare message-end still completes the turn with unknown usage and reason.
-                let (usage, finish_reason) = match delta {
-                    Some(delta) => (delta.usage, delta.finish_reason),
-                    None => (None, None),
-                };
-                let message_id = self.message_id.take();
-                return self.end(usage, finish_reason, message_id, out, true);
+            StreamingEvent::ContentEnd { index } => {
+                if out.is_open(index) {
+                    let item = self.content.get(index).cloned().unwrap_or_default();
+                    out.edit(index, |slot| *slot = item)?;
+                    out.close(index, IfMalformed::Fail)?;
+                }
             }
-
-            StreamingEvent::ToolCallStart { delta: Some(delta) } => {
-                let Some(tool_calls) = delta
-                    .message
-                    .as_ref()
-                    .and_then(|message| message.tool_calls.as_ref())
-                else {
-                    return Ok(Flow::More);
-                };
-                let (Some(id), Some(function)) = (&tool_calls.id, &tool_calls.function) else {
-                    return Ok(Flow::More);
-                };
-                let (Some(name), Some(arguments)) = (&function.name, &function.arguments) else {
-                    return Ok(Flow::More);
-                };
-                // Tool content interleaving an open thinking part stops it.
-                self.thoughts.boundary();
-                out.close_open_text(&mut self.text);
-                let index = self.calls;
-                self.calls += 1;
-                self.current_tool_call = Some(index);
-                // `tool-call-start` may carry initial argument text; on the
-                // wire it is empty, but any payload is part of the call.
-                out.call_fragment(
+            StreamingEvent::ToolPlanDelta { delta } => {
+                let fragment = delta.unwrap_or_default().message;
+                if let Some(plan) = fragment.get("tool_plan").and_then(Value::as_str) {
+                    let index = match self.plan {
+                        Some(index) => index,
+                        None => {
+                            let index = out.fresh_index();
+                            out.open(index, Block::Reasoning { redacted: false }, Value::Null)?;
+                            self.plan = Some(index);
+                            index
+                        }
+                    };
+                    out.push(index, plan)?;
+                }
+                merge_fields(&mut self.message, &fragment);
+            }
+            StreamingEvent::ToolCallStart { index, delta } => {
+                put(
+                    &mut self.tool_calls,
                     index,
-                    CallFragment {
-                        id: Some(id.as_str()),
-                        name: Some(name.as_str()),
-                        arguments: Some(arguments.as_str()),
-                        ..CallFragment::default()
-                    },
-                )?;
+                    Value::Object(serde_json::Map::new()),
+                );
+                self.call_fragment(index, delta.unwrap_or_default().take("tool_calls"), out)?;
             }
-
-            StreamingEvent::ToolCallDelta { delta: Some(delta) } => {
-                let Some(arguments) = delta
-                    .message
-                    .as_ref()
-                    .and_then(|message| message.tool_calls.as_ref())
-                    .and_then(|tool_calls| tool_calls.function.as_ref())
-                    .and_then(|function| function.arguments.as_deref())
-                else {
-                    return Ok(Flow::More);
-                };
-                // A delta with no open call has nothing to extend; the wire
-                // never starts a call mid-delta.
-                if let Some(index) = self.current_tool_call {
-                    out.call_fragment(
-                        index,
-                        CallFragment {
-                            arguments: Some(arguments),
-                            ..CallFragment::default()
-                        },
-                    )?;
+            StreamingEvent::ToolCallDelta { index, delta } => {
+                if out.is_open(CALL_INDEX + index) {
+                    self.call_fragment(index, delta.unwrap_or_default().take("tool_calls"), out)?;
                 }
             }
-
-            StreamingEvent::ToolCallEnd => {
-                // This endpoint drops calls whose assembled arguments are unparseable.
-                if let Some(index) = self.current_tool_call.take() {
-                    out.close_pending(index, IfMalformed::Drop)?;
-                }
+            StreamingEvent::ToolCallEnd { index } => self.close_call(index, out)?,
+            StreamingEvent::CitationStart { index, delta } => {
+                put(
+                    &mut self.citations,
+                    index,
+                    Value::Object(delta.unwrap_or_default().take("citations")),
+                );
             }
-
-            _ => {}
+            StreamingEvent::CitationEnd => {}
+            StreamingEvent::MessageEnd { .. } => {}
         }
-        Ok(Flow::More)
+        Ok(())
     }
 
-    /// The unary reply, written as the stream it would have been: its
-    /// content parts, each tool call whole, then the end the `message-end`
-    /// event carries.
-    #[cfg(any())]
+    /// Open content item `index` as `item` states it: text, thinking, or an
+    /// item kind rig does not model, which replays as it came.
+    fn open_content(
+        &mut self,
+        index: usize,
+        item: serde_json::Map<String, Value>,
+        out: &mut Out<'_, Completion>,
+    ) -> Result<(), ProviderError> {
+        let block = match item.get("type").and_then(Value::as_str) {
+            Some("text") => Block::Text,
+            Some("thinking") => Block::Reasoning { redacted: false },
+            _ => Block::Opaque { replay: true },
+        };
+        out.open(index, block, Value::Null)?;
+        put(
+            &mut self.content,
+            index,
+            Value::Object(serde_json::Map::new()),
+        );
+        self.content_fragment(index, item, out)
+    }
+
+    /// A fragment of content item `index`: its text or thinking grows the
+    /// block, and every field the item. A text that is not a string is a
+    /// malformed item.
+    fn content_fragment(
+        &mut self,
+        index: usize,
+        fragment: serde_json::Map<String, Value>,
+        out: &mut Out<'_, Completion>,
+    ) -> Result<(), ProviderError> {
+        let opaque = self
+            .content
+            .get(index)
+            .and_then(|item| item.get("type"))
+            .or_else(|| fragment.get("type"))
+            .and_then(Value::as_str)
+            .is_none_or(|kind| !matches!(kind, "text" | "thinking"));
+        for key in ["text", "thinking"] {
+            match fragment.get(key) {
+                Some(Value::String(text)) if !opaque => out.push(index, text)?,
+                Some(Value::String(_)) | None => {}
+                Some(other) => {
+                    return Err(ProviderError::from(
+                        <serde_json::Error as serde::de::Error>::custom(format!(
+                            "Cohere content `{key}` is not a string: {other}"
+                        )),
+                    ));
+                }
+            }
+        }
+        if let Some(Value::Object(item)) = self.content.get_mut(index) {
+            merge_fields(item, &fragment);
+        }
+        Ok(())
+    }
+
+    /// A fragment of tool call `index`, buffered until the call ends. A call
+    /// Cohere sent without an id gets one rig issues.
+    fn call_fragment(
+        &mut self,
+        index: usize,
+        fragment: serde_json::Map<String, Value>,
+        out: &mut Out<'_, Completion>,
+    ) -> Result<(), ProviderError> {
+        let call = Value::Object(fragment);
+        let text = |pointer: &str| call.pointer(pointer).and_then(Value::as_str);
+        out.fragment(
+            CALL_INDEX + index,
+            CallFragment {
+                id: text("/id"),
+                name: text("/function/name"),
+                arguments: text("/function/arguments"),
+            },
+        )?;
+        if let (Some(Value::Object(existing)), Value::Object(fragment)) =
+            (self.tool_calls.get_mut(index), &call)
+        {
+            merge_fields(existing, fragment);
+        }
+        Ok(())
+    }
+
+    /// Close tool call `index`, holding its call. This endpoint drops a call
+    /// whose assembled arguments are unparseable, or that names no tool, and
+    /// the message then leaves it out too.
+    fn close_call(
+        &mut self,
+        index: usize,
+        out: &mut Out<'_, Completion>,
+    ) -> Result<(), ProviderError> {
+        if !out.is_open(CALL_INDEX + index) {
+            return Ok(());
+        }
+        let call = self.tool_calls.get(index).cloned().unwrap_or_default();
+        let complete = call
+            .pointer("/function/name")
+            .and_then(Value::as_str)
+            .is_some_and(|name| !name.is_empty())
+            && crate::json_utils::parse_tool_arguments(
+                call.pointer("/function/arguments")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default(),
+            )
+            .is_ok();
+        if !complete {
+            out.discard(CALL_INDEX + index);
+            if let Some(dropped) = self.tool_calls.get_mut(index) {
+                *dropped = Value::Null;
+            }
+            return Ok(());
+        }
+        out.edit(CALL_INDEX + index, |item| *item = call)?;
+        out.close(CALL_INDEX + index, IfMalformed::Fail)
+    }
+
+    /// The unary reply, restated as the events of its message, then the end
+    /// the `message-end` event carries.
     fn interpret_reply(
         &mut self,
         reply: CompletionResponse,
-        mut out: Out<'id, Completion>,
+        mut out: Out<'_, Completion>,
     ) -> Result<Flow, ProviderError> {
-        let response_id = Some(reply.id.clone()).filter(|id| !id.is_empty());
-        let finish_reason = Some(reply.finish_reason.clone());
-        let usage = reply.usage;
-        let (content, _citations, tool_calls) = reply.message()?;
-
-        for part in content {
-            match part {
-                AssistantContent::Text { text } => self.content(&mut out, None, Some(&text)),
-                AssistantContent::Thinking { thinking } => {
-                    self.content(&mut out, Some(&thinking), None);
-                }
-            }
+        let CompletionResponse {
+            id,
+            finish_reason,
+            message,
+            usage,
+        } = reply;
+        let Value::Object(mut message) = message else {
+            return Err(ProviderError::Response(
+                "completion response did not contain an assistant message".into(),
+            ));
+        };
+        let mut items = |key: &str| match message.get_mut(key) {
+            Some(Value::Array(items)) => std::mem::take(items),
+            _ => Vec::new(),
+        };
+        let (content, calls, citations) =
+            (items("content"), items("tool_calls"), items("citations"));
+        let plan = message.remove("tool_plan");
+        let delta = |key: &str, value: Value| {
+            let mut message = serde_json::Map::new();
+            message.insert(key.to_owned(), value);
+            Some(Delta { message })
+        };
+        let mut events = vec![StreamingEvent::MessageStart {
+            id: Some(id).filter(|id| !id.is_empty()),
+            delta: Some(Delta { message }),
+        }];
+        if let Some(plan) = plan {
+            events.push(StreamingEvent::ToolPlanDelta {
+                delta: delta("tool_plan", plan),
+            });
         }
-        self.thoughts.boundary();
-        out.close_open_text(&mut self.text);
-        for call in tool_calls {
-            let Some(function) = call.function else {
-                continue;
-            };
-            // An absent id is issued by rig, never taken from the tool name,
-            // which cannot tell repeated calls apart.
-            let index = self.calls;
-            self.calls += 1;
-            out.call_fragment(
+        for (index, item) in content.into_iter().enumerate() {
+            events.push(StreamingEvent::ContentStart {
                 index,
-                CallFragment {
-                    id: call.id.as_deref(),
-                    name: Some(function.name.as_str()),
-                    ..CallFragment::default()
-                },
-            )?;
-            out.announce_pending(index, function.arguments);
-            out.close_pending(index, IfMalformed::Fail)?;
+                delta: delta("content", item),
+            });
+            events.push(StreamingEvent::ContentEnd { index });
         }
-        self.end(usage, finish_reason, response_id, out, false)
+        for (index, call) in calls.into_iter().enumerate() {
+            events.push(StreamingEvent::ToolCallStart {
+                index,
+                delta: delta("tool_calls", call),
+            });
+            events.push(StreamingEvent::ToolCallEnd { index });
+        }
+        for (index, citation) in citations.into_iter().enumerate() {
+            events.push(StreamingEvent::CitationStart {
+                index,
+                delta: delta("citations", citation),
+            });
+        }
+        for event in events {
+            self.interpret_stream(event, &mut out)?;
+        }
+        self.end(usage, Some(finish_reason), out, false)
     }
 
-    /// The end both replies finish with: Cohere's usage, its finish reason,
-    /// and the message id it named. A stream's `raw` is this native record;
-    /// a whole reply's is the reply itself.
-    #[cfg(any())]
+    /// The end both replies finish with: the tool plan closes holding its
+    /// field, the assembled message becomes the turn's native, and Cohere's
+    /// usage, finish reason and message id end the reply. A stream's `raw`
+    /// is this native record; a whole reply's is the reply itself.
     fn end(
         &mut self,
         usage: Option<Usage>,
         finish_reason: Option<FinishReason>,
-        message_id: Option<String>,
-        mut out: Out<'id, Completion>,
+        mut out: Out<'_, Completion>,
         streamed: bool,
     ) -> Result<Flow, ProviderError> {
-        out.close_open_text(&mut self.text);
-        self.thoughts.close(&mut out, None);
+        if let Some(index) = self.plan.take() {
+            let mut plan = serde_json::Map::new();
+            if let Some(text) = self.message.get("tool_plan") {
+                plan.insert("tool_plan".to_owned(), text.clone());
+            }
+            out.edit(index, |item| *item = Value::Object(plan))?;
+            out.close(index, IfMalformed::Fail)?;
+        }
+        for index in 0..self.tool_calls.len() {
+            self.close_call(index, &mut out)?;
+        }
+        for (index, item) in self.content.iter().enumerate() {
+            if out.is_open(index) {
+                let item = item.clone();
+                out.edit(index, |slot| *slot = item)?;
+                out.close(index, IfMalformed::Fail)?;
+            }
+        }
+        let mut message = std::mem::take(&mut self.message);
+        let calls = std::mem::take(&mut self.tool_calls);
+        for (key, items) in [
+            ("content", std::mem::take(&mut self.content)),
+            (
+                "tool_calls",
+                calls.into_iter().filter(|call| !call.is_null()).collect(),
+            ),
+            ("citations", std::mem::take(&mut self.citations)),
+        ] {
+            if !items.is_empty() || message.contains_key(key) {
+                message.insert(key.to_owned(), Value::Array(items));
+            }
+        }
+        out.message_native(Value::Object(message));
         let recorded_usage = usage
             .as_ref()
             .map(crate::completion::Usage::from)
@@ -354,7 +502,7 @@ impl<'id> ChatDecoder<'id> {
         let native = StreamingCompletionResponse {
             usage,
             finish_reason,
-            message_id,
+            message_id: self.message_id.take(),
         };
         if streamed {
             out.raw(serde_json::to_value(&native)?);
@@ -370,8 +518,18 @@ impl<'id> ChatDecoder<'id> {
     }
 }
 
-#[cfg(any())]
-impl<'id> crate::wire::Decoder<'id, Completion> for ChatDecoder<'id> {
+/// Set the item at `index`, growing `items` to it.
+fn put(items: &mut Vec<Value>, index: usize, item: Value) {
+    if items.len() <= index {
+        items.resize(index + 1, Value::Null);
+    }
+    if let Some(slot) = items.get_mut(index) {
+        *slot = item;
+    }
+}
+
+#[deny(clippy::wildcard_enum_match_arm)]
+impl<'id> crate::wire::Decoder<'id, Completion> for ChatDecoder {
     type Event = ChatEvent;
 
     fn classify(&self, frame: WireFrame) -> crate::wire::WireEvent<ChatEvent> {
@@ -387,15 +545,26 @@ impl<'id> crate::wire::Decoder<'id, Completion> for ChatDecoder<'id> {
     fn decode(
         &mut self,
         event: ChatEvent,
-        out: Out<'id, Completion>,
+        mut out: Out<'id, Completion>,
     ) -> Result<Flow, ProviderError> {
         match event {
-            ChatEvent::Stream(event) => self.interpret_stream(event, out),
+            // A bare message-end still completes the turn with unknown usage
+            // and reason.
+            ChatEvent::Stream(StreamingEvent::MessageEnd { delta }) => {
+                let (usage, finish_reason) = match delta {
+                    Some(delta) => (delta.usage, delta.finish_reason),
+                    None => (None, None),
+                };
+                self.end(usage, finish_reason, out, true)
+            }
+            ChatEvent::Stream(event) => {
+                self.interpret_stream(event, &mut out)?;
+                Ok(Flow::More)
+            }
             ChatEvent::Reply(reply) => self.interpret_reply(reply, out),
         }
     }
 }
 
 #[cfg(test)]
-#[cfg(any())]
 mod tests;

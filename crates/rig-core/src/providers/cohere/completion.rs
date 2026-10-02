@@ -26,7 +26,8 @@ pub(crate) const PROVIDER_NAME: &str = "cohere";
 pub struct CompletionResponse {
     pub id: String,
     pub finish_reason: FinishReason,
-    message: Message,
+    /// The assistant message, as Cohere sent it.
+    pub message: serde_json::Value,
     #[serde(default)]
     pub usage: Option<Usage>,
 }
@@ -37,12 +38,12 @@ impl CompletionResponse {
     pub fn message(
         &self,
     ) -> Result<(Vec<AssistantContent>, Vec<Citation>, Vec<ToolCall>), ProviderError> {
-        let Message::Assistant {
+        let Ok(Message::Assistant {
             content,
             citations,
             tool_calls,
             ..
-        } = self.message.clone()
+        }) = Message::deserialize(&self.message)
         else {
             return Err(ProviderError::Response(
                 "completion response did not contain an assistant message".into(),
@@ -243,6 +244,11 @@ pub enum Message {
     System {
         content: String,
     },
+
+    /// An assistant message as the wire carries it: Cohere's own message,
+    /// or one rebuilt from a turn's blocks. Request-only.
+    #[serde(untagged, skip_deserializing)]
+    Native(serde_json::Value),
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -305,7 +311,6 @@ pub enum CitationType {
     Plan,
 }
 
-#[cfg(any())]
 impl TryFrom<message::Message> for Vec<Message> {
     type Error = message::MessageError;
 
@@ -348,56 +353,70 @@ impl TryFrom<message::Message> for Vec<Message> {
             message::Message::System { content } => {
                 vec![Message::System { content }]
             }
-            message::Message::Assistant { content, .. } => {
-                let mut text_content = vec![];
-                let mut tool_calls = vec![];
-
-                for content in content.into_iter() {
-                    match content {
-                        message::AssistantContent::Text(message::Text { text, .. }) => {
-                            text_content.push(AssistantContent::Text { text });
-                        }
-                        message::AssistantContent::ToolCall(message::ToolCall {
-                            id,
-                            function:
-                                message::ToolFunction {
-                                    name, arguments, ..
-                                },
-                            ..
-                        }) => {
-                            tool_calls.push(ToolCall {
-                                id: Some(id.wire().into_owned()),
-                                r#type: Some(ToolType::Function),
-                                function: Some(ToolCallFunction {
-                                    name: name.into(),
-                                    arguments: serde_json::to_value(arguments).unwrap_or_default(),
-                                }),
-                            });
-                        }
-                        message::AssistantContent::Reasoning(reasoning) => {
-                            // Reasoning another service issued is not replayed.
-                            if let Some(reasoning) = reasoning.open(&super::wire::ISSUER) {
-                                let thinking = reasoning.display_text();
-                                text_content.push(AssistantContent::Thinking { thinking });
-                            }
-                        }
-                        message::AssistantContent::Image(_) => {
-                            return Err(message::MessageError::ConversionError(
-                                "Cohere currently doesn't support images.".to_owned(),
-                            ));
-                        }
-                    }
-                }
-
-                vec![Message::Assistant {
-                    content: text_content,
-                    citations: vec![],
-                    tool_calls,
-                    tool_plan: None,
-                }]
-            }
+            message::Message::Assistant(turn) => vec![assistant_message(turn)?],
         })
     }
+}
+
+/// One assistant turn as Cohere takes it: Cohere's message while the turn
+/// still holds what it was decoded from, otherwise rebuilt with each
+/// unedited item as it came. Images are a conversion error.
+#[deny(clippy::wildcard_enum_match_arm)]
+fn assistant_message(turn: message::AssistantMessage) -> Result<Message, message::MessageError> {
+    if let Some(item) = turn.native_item() {
+        return Ok(Message::Native(item.clone()));
+    }
+    let mut content = Vec::new();
+    let mut tool_calls = Vec::new();
+    let mut tool_plan = serde_json::Value::Null;
+    for block in turn.content {
+        let native = block.native_item().cloned();
+        match (block, native) {
+            (message::AssistantContent::ToolCall(_), Some(call)) => tool_calls.push(call),
+            (message::AssistantContent::ToolCall(call), None) => {
+                tool_calls.push(serde_json::json!({
+                    "id": call.id.wire(),
+                    "type": "function",
+                    "function": {
+                        "name": call.function.name,
+                        "arguments": call.function.arguments.to_string(),
+                    },
+                }));
+            }
+            // The tool plan is the one item that is a field, not content.
+            (
+                message::AssistantContent::Reasoning(_),
+                Some(serde_json::Value::Object(mut fields)),
+            ) if fields.contains_key("tool_plan") => {
+                tool_plan = fields.remove("tool_plan").unwrap_or_default();
+            }
+            (
+                message::AssistantContent::Text(_)
+                | message::AssistantContent::Reasoning(_)
+                | message::AssistantContent::Opaque(_),
+                Some(item),
+            ) => content.push(item),
+            (message::AssistantContent::Opaque(opaque), None) => content.push(opaque.item),
+            (message::AssistantContent::Text(text), None) => {
+                content.push(serde_json::json!({"type": "text", "text": text.text}));
+            }
+            (message::AssistantContent::Reasoning(reasoning), None) => {
+                content.push(serde_json::json!({"type": "thinking", "thinking": reasoning.text}));
+            }
+            (message::AssistantContent::Image(_), _) => {
+                return Err(message::MessageError::ConversionError(
+                    "Cohere currently doesn't support images.".to_owned(),
+                ));
+            }
+        }
+    }
+    Ok(Message::Native(serde_json::json!({
+        "role": "assistant",
+        "content": content,
+        "citations": [],
+        "tool_calls": tool_calls,
+        "tool_plan": tool_plan,
+    })))
 }
 
 /// Cohere's `tool_choice` is a bare string; only `REQUIRED`/`NONE` are valid.
@@ -446,7 +465,6 @@ pub(super) struct CohereCompletionRequest {
     pub additional_params: Option<serde_json::Value>,
 }
 
-#[cfg(any())]
 impl TryFrom<(&str, CompletionRequest)> for CohereCompletionRequest {
     type Error = EncodeError;
 
@@ -470,8 +488,24 @@ impl TryFrom<(&str, CompletionRequest)> for CohereCompletionRequest {
                     .iter_mut()
                     .filter_map(|call| call.id.as_mut())
                     .collect(),
+                Message::Native(item) => item
+                    .get_mut("tool_calls")
+                    .and_then(serde_json::Value::as_array_mut)
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|call| {
+                        match call
+                            .as_object_mut()?
+                            .entry("id")
+                            .or_insert_with(|| "".into())
+                        {
+                            serde_json::Value::String(id) => Some(id),
+                            _ => None,
+                        }
+                    })
+                    .collect(),
                 Message::Tool { tool_call_id, .. } => vec![tool_call_id],
-                _ => Vec::new(),
+                Message::User { .. } | Message::System { .. } => Vec::new(),
             },
         )?;
 
@@ -509,5 +543,4 @@ impl TryFrom<(&str, CompletionRequest)> for CohereCompletionRequest {
 }
 
 #[cfg(test)]
-#[cfg(any())]
 mod tests;

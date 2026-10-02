@@ -214,6 +214,11 @@ pub enum Message {
         tool_call_id: String,
         content: ToolResultContentValue,
     },
+    /// An assistant message as the wire carries it: the provider's own
+    /// message, or one rebuilt from a turn's blocks. Request-only: a reply
+    /// is read as [`Self::Assistant`].
+    #[serde(untagged, skip_deserializing)]
+    Native(serde_json::Value),
 }
 
 /// An assistant message as compatible providers send it. The two reasoning
@@ -925,130 +930,129 @@ pub fn user_content_to_messages(
     Ok(messages)
 }
 
-/// Convert assistant content into at most one message, rejecting images.
-/// When `reasoning_details` is true, preserve structured reasoning parts and
-/// signatures; otherwise use display text. Return no message when text, calls,
-/// and structured details are all empty.
-#[cfg(any())]
-pub fn assistant_content_to_messages(
-    value: impl IntoIterator<Item = message::AssistantContent>,
-    reasoning_details: bool,
-    issuers: &[message::Issuer],
-) -> Result<Vec<Message>, message::MessageError> {
-    let mut text_content = Vec::new();
-    let mut tool_calls = Vec::new();
-    // Distinct reasoning blocks are joined with a newline (matching
-    // `display_text()`'s own inter-block separator) rather than glued
-    // together, so replayed multi-block reasoning keeps its boundaries.
-    let mut reasoning_parts: Vec<String> = Vec::new();
-    let mut details: Vec<ReasoningDetails> = Vec::new();
-
-    for content in value {
-        match content {
-            message::AssistantContent::Text(text) => text_content.push(text),
-            message::AssistantContent::ToolCall(tool_call) => tool_calls.push(tool_call),
-            // Reasoning another service issued is not replayed here.
-            message::AssistantContent::Reasoning(sealed) => {
-                let Some(reasoning) = sealed.open_for(issuers) else {
-                    continue;
-                };
-                if !reasoning_details || reasoning.content.is_empty() {
-                    let display = reasoning.display_text();
-                    if !display.is_empty() {
-                        reasoning_parts.push(display);
+/// One assistant turn as the message Chat Completions takes.
+///
+/// The provider's message goes back as it came while the turn still holds
+/// what it was decoded from. Otherwise the message is rebuilt the way pi
+/// rebuilds it: text joined into a `content` string, reasoning sent only
+/// under the fields that carried it (an unedited block's own fields,
+/// `reasoning_details` verbatim), and each call as it came or rebuilt from
+/// its canonical fields. A message with neither content nor tool calls is
+/// `None`, as pi skips it: providers reject an empty assistant message.
+/// Images are a conversion error.
+#[deny(clippy::wildcard_enum_match_arm)]
+pub fn assistant_message(
+    turn: message::AssistantMessage,
+) -> Result<Option<Message>, message::MessageError> {
+    use crate::providers::openai::wire::dto::merge_fields;
+    let wire = match turn.native_item() {
+        Some(serde_json::Value::Object(item)) => item.clone(),
+        _ => {
+            let mut wire = serde_json::Map::new();
+            wire.insert("role".to_owned(), "assistant".into());
+            let mut calls = Vec::new();
+            for block in turn.content {
+                let native = block
+                    .native_item()
+                    .and_then(serde_json::Value::as_object)
+                    .cloned();
+                match (block, native) {
+                    (message::AssistantContent::ToolCall(_), Some(call)) => {
+                        calls.push(serde_json::Value::Object(call));
                     }
-                    continue;
+                    (message::AssistantContent::ToolCall(call), None) => {
+                        calls.push(serde_json::to_value(ToolCall::from(call)).map_err(
+                            |error| message::MessageError::ConversionError(error.to_string()),
+                        )?);
+                    }
+                    (
+                        message::AssistantContent::Text(_)
+                        | message::AssistantContent::Reasoning(_)
+                        | message::AssistantContent::Opaque(_),
+                        Some(fields),
+                    ) => merge_fields(&mut wire, &fields),
+                    (message::AssistantContent::Opaque(message::Opaque { item, .. }), None) => {
+                        if let serde_json::Value::Object(fields) = item {
+                            merge_fields(&mut wire, &fields);
+                        }
+                    }
+                    (message::AssistantContent::Text(text), None) => {
+                        // pi leaves out blank text.
+                        if !text.text.trim().is_empty() {
+                            let content = serde_json::Map::from_iter([(
+                                "content".to_owned(),
+                                text.text.into(),
+                            )]);
+                            merge_fields(&mut wire, &content);
+                        }
+                    }
+                    // Reasoning with no field of its own has nowhere to go.
+                    (message::AssistantContent::Reasoning(_), None) => {}
+                    (message::AssistantContent::Image(_), _) => {
+                        return Err(message::MessageError::ConversionError(
+                            "OpenAI assistant messages do not support image content in chat \
+                             completions"
+                                .into(),
+                        ));
+                    }
                 }
-                // Structured replay preserves signatures and encrypted payloads.
-                // A block the stream aggregated without a wire id carries the
-                // accumulator's shared "" identity; it replays as a null id,
-                // the shape the provider's own unary body uses.
-                let id = reasoning.id.clone().filter(|id| !id.is_empty());
-                // `index` numbers the entries across the whole message, the
-                // way the provider numbers the array it sent.
-                let base = details.len();
-                let entries = reasoning.content.iter().enumerate().map(|(offset, part)| {
-                    let id = id.clone();
-                    let index = Some(base + offset);
-                    match part {
-                        message::ReasoningContent::Text { text, signature } => {
-                            ReasoningDetails::Text {
-                                id,
-                                format: None,
-                                index,
-                                text: Some(text.clone()),
-                                signature: signature.clone(),
-                            }
-                        }
-                        message::ReasoningContent::Summary(summary) => ReasoningDetails::Summary {
-                            id,
-                            format: None,
-                            index,
-                            summary: summary.clone(),
-                        },
-                        message::ReasoningContent::Encrypted(data)
-                        | message::ReasoningContent::Redacted { data } => {
-                            ReasoningDetails::Encrypted {
-                                id,
-                                format: None,
-                                index,
-                                data: data.clone(),
-                            }
-                        }
-                    }
-                });
-                details.extend(entries);
             }
-            message::AssistantContent::Image(_) => {
-                return Err(message::MessageError::ConversionError(
-                    "OpenAI assistant messages do not support image content in chat completions"
-                        .into(),
-                ));
+            if !calls.is_empty() {
+                wire.insert("tool_calls".to_owned(), serde_json::Value::Array(calls));
             }
+            wire
         }
-    }
-
-    // A details-only assistant message is not an empty turn: it is exactly
-    // the signed-reasoning echo the dialect requires before the tool call it
-    // precedes, and dropping it loses the signature.
-    if text_content.is_empty() && tool_calls.is_empty() && details.is_empty() {
-        return Ok(vec![]);
-    }
-
-    Ok(vec![Message::Assistant {
-        content: text_content
-            .into_iter()
-            .map(|content| content.text.into())
-            .collect::<Vec<_>>(),
-        reasoning: if reasoning_parts.is_empty() {
-            None
-        } else {
-            Some(reasoning_parts.join("\n"))
-        },
-        refusal: None,
-        name: None,
-        tool_calls: tool_calls
-            .into_iter()
-            .map(std::convert::Into::into)
-            .collect::<Vec<_>>(),
-        reasoning_details: details,
-    }])
+    };
+    let has_content = wire.contains_key("audio")
+        || match wire.get("content") {
+            Some(serde_json::Value::String(text)) => !text.is_empty(),
+            Some(serde_json::Value::Array(parts)) => !parts.is_empty(),
+            _ => false,
+        };
+    let has_calls = wire
+        .get("tool_calls")
+        .and_then(serde_json::Value::as_array)
+        .is_some_and(|calls| !calls.is_empty());
+    Ok((has_content || has_calls).then(|| Message::Native(serde_json::Value::Object(wire))))
 }
 
-#[cfg(any())]
+/// The id slots of the tool calls a converted message carries, in order. A
+/// call that came without an id gets an empty one, for the request's id
+/// spelling to fill.
+pub(crate) fn call_id_slots(message: &mut Message) -> Vec<&mut String> {
+    match message {
+        Message::ToolResult { tool_call_id, .. } => vec![tool_call_id],
+        Message::Native(item) => item
+            .get_mut("tool_calls")
+            .and_then(serde_json::Value::as_array_mut)
+            .into_iter()
+            .flatten()
+            .filter_map(|call| {
+                let id = call
+                    .as_object_mut()?
+                    .entry("id")
+                    .or_insert_with(|| serde_json::Value::String(String::new()));
+                match id {
+                    serde_json::Value::String(id) => Some(id),
+                    _ => None,
+                }
+            })
+            .collect(),
+        Message::Assistant { tool_calls, .. } => {
+            tool_calls.iter_mut().map(|call| &mut call.id).collect()
+        }
+        Message::System { .. } | Message::User { .. } => Vec::new(),
+    }
+}
+
 impl TryFrom<message::Message> for Vec<Message> {
     type Error = message::MessageError;
 
-    /// The dialect-agnostic conversion. It names no issuer, so no reasoning
-    /// opens and none is replayed; the wire's own conversion
-    /// ([`OpenAIRequestParams`]) passes the dialect's issuers and answer.
     fn try_from(message: message::Message) -> Result<Self, Self::Error> {
         match message {
             message::Message::System { content } => Ok(vec![Message::system(&content)]),
             message::Message::User { content } => user_content_to_messages(content),
-            message::Message::Assistant { content, .. } => {
-                assistant_content_to_messages(content, false, &[])
-            }
+            message::Message::Assistant(turn) => Ok(assistant_message(turn)?.into_iter().collect()),
         }
     }
 }
@@ -1148,6 +1152,7 @@ pub struct ChatCompletionResponse<U, C = Choice> {
 
 /// Return a nonempty top-level refusal only when every content part is empty.
 /// Applies to whole messages; streaming fallback is evaluated per delta.
+#[cfg(test)]
 pub(crate) fn assistant_refusal_fallback<'a>(
     content: &[AssistantContent],
     refusal: Option<&'a str>,
@@ -1465,20 +1470,7 @@ pub(crate) fn flatten_text_content_parts(
     *content = serde_json::Value::String(flattened);
 }
 
-/// Joins the `text` fields of `type == "text"` content parts, in order.
-pub(crate) fn joined_text_parts(parts: &[serde_json::Value]) -> String {
-    parts
-        .iter()
-        .filter_map(|part| {
-            (part.get("type").and_then(serde_json::Value::as_str) == Some("text"))
-                .then(|| part.get("text").and_then(serde_json::Value::as_str))
-                .flatten()
-        })
-        .collect::<Vec<_>>()
-        .join("")
-}
-
-/// Remove tool messages, assistant tool calls and reasoning, and empty assistant turns.
+/// Remove tool messages, assistant tool calls, and empty assistant turns.
 /// Optionally strip names and flatten content using the supplied separator and
 /// text-only guard. With `merge_same_role`, join adjacent user or assistant text
 /// messages of the same role with newlines.
@@ -1497,7 +1489,6 @@ pub(crate) fn sanitize_plain_text_history(
         };
         if object.get("role").and_then(serde_json::Value::as_str) == Some("assistant") {
             object.remove("tool_calls");
-            object.remove("reasoning_content");
         }
         if strip_names {
             object.remove("name");
@@ -1551,7 +1542,6 @@ pub(crate) fn sanitize_plain_text_history(
     *messages = merged;
 }
 
-#[cfg(any())]
 pub struct OpenAIRequestParams {
     pub model: String,
     pub request: CoreCompletionRequest,
@@ -1571,21 +1561,8 @@ pub struct OpenAIRequestParams {
     /// Serializes `tools`/`tool_choice` when true; drops them with a warning
     /// when false (providers without tool-calling support).
     pub supports_tools: bool,
-    /// Whether the dialect accepts structured reasoning replay on assistant
-    /// messages; see
-    /// [`Quirks::reasoning_details`](crate::providers::openai::wire::Quirks::reasoning_details).
-    ///
-    /// When set, a reasoning block replays as a `reasoning_details` entry
-    /// carrying its signature, encrypted blob or summary; when clear it
-    /// replays as the plain `reasoning_content` string, because a dialect
-    /// that never sent the array does not accept it either.
-    pub reasoning_details: bool,
-    /// The issuers whose reasoning the request replays; reasoning no issuer
-    /// here opens is left out.
-    pub issuers: Vec<message::Issuer>,
 }
 
-#[cfg(any())]
 impl TryFrom<OpenAIRequestParams> for CompletionRequest {
     type Error = EncodeError;
 
@@ -1599,8 +1576,6 @@ impl TryFrom<OpenAIRequestParams> for CompletionRequest {
             supports_response_format,
             response_format_with_tools,
             supports_tools,
-            reasoning_details,
-            issuers,
         } = params;
         let chat_history = req.chat_history_with_documents();
 
@@ -1620,19 +1595,8 @@ impl TryFrom<OpenAIRequestParams> for CompletionRequest {
         // tool call and result in source order.
         let mut full_history = crate::providers::internal::wire_ids::WireIds::convert(
             chat_history,
-            |message| match message {
-                message::Message::Assistant { content, .. } => {
-                    assistant_content_to_messages(content, reasoning_details, &issuers)
-                }
-                message => message.try_into(),
-            },
-            |message| match message {
-                Message::Assistant { tool_calls, .. } => {
-                    tool_calls.iter_mut().map(|call| &mut call.id).collect()
-                }
-                Message::ToolResult { tool_call_id, .. } => vec![tool_call_id],
-                _ => Vec::new(),
-            },
+            Vec::<Message>::try_from,
+            call_id_slots,
         )?;
 
         if full_history.is_empty() {
@@ -1796,9 +1760,7 @@ where
 }
 
 #[cfg(test)]
-#[cfg(any())]
 mod tests;
 
 #[cfg(test)]
-#[cfg(any())]
 mod image_tool_result_gate_tests;

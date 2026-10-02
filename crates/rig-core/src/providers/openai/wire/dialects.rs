@@ -323,10 +323,8 @@ pub const OPENROUTER: Dialect = Dialect {
     quirks: Quirks {
         stream_include_usage: false,
         verify_path: "/key",
-        // A gateway forwards its upstream's own finish reason and its own
-        // reasoning blobs.
+        // A gateway forwards its upstream's own finish reason.
         native_finish_reason: true,
-        reasoning_details: true,
         response_format_with_tools: true,
         accepts_file_ids: false,
         rewrite: BodyRewrite::OpenRouter,

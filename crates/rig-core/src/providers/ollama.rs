@@ -21,7 +21,7 @@ use crate::error::ProviderError;
 use crate::message::DocumentSourceKind;
 use crate::message::{CallId, ToolName};
 use crate::model::ModelInfo;
-use crate::operation::{Completion, Finish};
+use crate::operation::{Block, Completion, Finish, IfMalformed};
 use crate::providers::internal;
 use crate::wire::{Flow, Out};
 use crate::{
@@ -42,10 +42,6 @@ const OLLAMA_API_BASE_URL: &str = "http://localhost:11434";
 /// Stable descriptor name recorded on normalized responses, streams, and
 /// telemetry spans for this provider.
 const PROVIDER_NAME: &str = "ollama";
-
-/// The issuer of Ollama's reasoning, which is the only reasoning it replays.
-#[cfg(any())]
-const ISSUER: crate::message::Issuer = crate::message::Issuer::from_static(PROVIDER_NAME);
 
 /// The `all-minilm` embedding model.
 pub const ALL_MINILM: &str = "all-minilm";
@@ -124,7 +120,8 @@ pub const PHI4: &str = "phi4";
 pub struct CompletionResponse {
     pub model: String,
     pub created_at: String,
-    pub message: Message,
+    /// The record's assistant message, as Ollama sent it.
+    pub message: serde_json::Map<String, Value>,
     pub done: bool,
     #[serde(default)]
     pub done_reason: Option<String>,
@@ -167,32 +164,6 @@ fn ollama_usage(prompt_eval_count: Option<u64>, eval_count: Option<u64>) -> Usag
     }
 }
 
-/// Split a leading, terminated reasoning block from content. When allowed,
-/// recognize the Qwen prefilled-start boundary; preserve ordinary marker mentions.
-fn split_legacy_thinking(content: &str, permits_omitted_start: bool) -> (Option<&str>, &str) {
-    let trimmed = content.trim_start();
-    let split = if let Some(reasoning_start) = trimmed.strip_prefix("<think>") {
-        reasoning_start.split_once("</think>")
-    } else if permits_omitted_start {
-        // Qwen's prefilled opening marker produces this exact blank-line
-        // boundary. Requiring the full boundary avoids hiding ordinary visible
-        // text that merely demonstrates a closing XML-like tag on its own line.
-        trimmed.split_once("\n</think>\n\n")
-    } else {
-        None
-    };
-    let Some((reasoning, visible)) = split else {
-        return (None, content);
-    };
-
-    let reasoning = reasoning.trim();
-    if reasoning.is_empty() {
-        return (None, visible.trim_start());
-    }
-
-    (Some(reasoning), visible.trim_start())
-}
-
 #[derive(Debug, Serialize, Deserialize)]
 pub(super) struct OllamaCompletionRequest {
     model: String,
@@ -209,7 +180,6 @@ pub(super) struct OllamaCompletionRequest {
     options: serde_json::Value,
 }
 
-#[cfg(any())]
 impl TryFrom<(&str, CompletionRequest)> for OllamaCompletionRequest {
     type Error = EncodeError;
 
@@ -349,81 +319,118 @@ fn finish_of(response: StreamingCompletionResponse) -> Finish {
     }
 }
 
-/// Decode `/api/chat` records, one whole reply or a stream of lines. Only a
-/// `done: true` record ends the reply; EOF alone does not.
-#[cfg(any())]
+/// The writer index of a reply's `n`th tool call.
+const CALL_INDEX: usize = 1 << 32;
+
+/// Decode `/api/chat` records, one whole reply or a stream of lines. Each
+/// record's message is a delta of the turn's: its thinking and content grow
+/// one reasoning and one text block, each tool call arrives whole, and the
+/// assembled message is the turn's native. Only a `done: true` record ends
+/// the reply; EOF alone does not.
 #[derive(Default)]
-pub struct OllamaDecoder<'id> {
-    /// Reasoning closes when content of another kind interleaves.
-    thoughts: Thoughts<'id>,
-    text: Option<TextPart<'id>>,
+pub struct OllamaDecoder {
+    /// The message as assembled so far, without its tool calls.
+    message: serde_json::Map<String, Value>,
+    tool_calls: Vec<Value>,
+    reasoning: Option<usize>,
+    text: Option<usize>,
 }
 
-#[cfg(any())]
-impl<'id> OllamaDecoder<'id> {
+impl OllamaDecoder {
     /// Write a record's content and calls, and end the reply when it is
     /// `done`.
-    #[cfg(any())]
     fn interpret_record(
         &mut self,
         response: CompletionResponse,
-        mut out: Out<'id, Completion>,
+        mut out: Out<'_, Completion>,
     ) -> Result<Flow, ProviderError> {
-        let done = response.done;
-        let model = response.model;
-        if let Message::Assistant {
-            content,
-            thinking,
-            tool_calls,
-            ..
-        } = response.message
-        {
-            // Split embedded reasoning only in terminal content without explicit
-            // thinking; partial deltas may lack the closing marker.
-            let (reasoning, text) = match thinking.as_deref() {
-                None | Some("") if done => {
-                    let permits_omitted_think_start = model.to_ascii_lowercase().contains("qwen3");
-                    let (legacy, visible) =
-                        split_legacy_thinking(&content, permits_omitted_think_start);
-                    (legacy.map(str::to_owned), visible.to_owned())
-                }
-                _ => (thinking, content),
+        let mut message = response.message;
+        for (key, slot, block) in [
+            (
+                "thinking",
+                &mut self.reasoning,
+                Block::Reasoning { redacted: false },
+            ),
+            ("content", &mut self.text, Block::Text),
+        ] {
+            let Some(fragment) = message.get(key).and_then(Value::as_str) else {
+                continue;
             };
-            if let Some(reasoning) = reasoning.filter(|reasoning| !reasoning.is_empty()) {
-                out.close_open_text(&mut self.text);
-                self.thoughts.fragment(&mut out, &reasoning);
+            if fragment.is_empty() {
+                continue;
             }
-            if !text.is_empty() || !tool_calls.is_empty() {
-                self.thoughts.boundary();
-            }
-            if !text.is_empty() {
-                out.extend_text(&mut self.text, &text);
-            }
-            // An id-less call gets an id rig issues, never the tool name:
-            // only the daemon's ids are provider-issued.
-            for tool_call in tool_calls {
-                out.close_open_text(&mut self.text);
-                let Ok(name) = ToolName::new(tool_call.function.name) else {
+            let index = match *slot {
+                Some(index) => index,
+                None => {
+                    let index = out.fresh_index();
+                    out.open(index, block, Value::Null)?;
+                    *slot = Some(index);
+                    index
+                }
+            };
+            out.push(index, fragment)?;
+        }
+        if let Some(Value::Array(calls)) = message.remove("tool_calls") {
+            for call in calls {
+                let name = call
+                    .pointer("/function/name")
+                    .and_then(Value::as_str)
+                    .and_then(|name| ToolName::new(name).ok());
+                let Some(name) = name else {
                     continue;
                 };
-                out.tool_call(crate::message::ToolCall {
-                    id: CallId::from_wire(tool_call.id.unwrap_or_default()),
-                    function: crate::message::ToolFunction {
-                        name,
-                        arguments: tool_call.function.arguments,
-                    },
-                    signature: None,
-                    additional_params: None,
-                })?;
+                // An id-less call gets an id rig issues, never the tool name:
+                // only the daemon's ids are provider-issued.
+                let id =
+                    CallId::from_wire(call.get("id").and_then(Value::as_str).unwrap_or_default());
+                let arguments = call
+                    .pointer("/function/arguments")
+                    .cloned()
+                    .unwrap_or_else(|| json!({}))
+                    .to_string();
+                out.whole(
+                    CALL_INDEX + self.tool_calls.len(),
+                    Block::Call { id, name },
+                    call.clone(),
+                    &arguments,
+                )?;
+                self.tool_calls.push(call);
             }
         }
+        crate::providers::openai::wire::dto::merge_fields(&mut self.message, &message);
 
         // Nonterminal counters do not establish successful turn completion.
-        if !done {
+        if !response.done {
             return Ok(Flow::More);
         }
+        let mut message = std::mem::take(&mut self.message);
+        for (index, key) in [
+            (self.reasoning.take(), "thinking"),
+            (self.text.take(), "content"),
+        ] {
+            let Some(index) = index else {
+                continue;
+            };
+            let fields: serde_json::Map<_, _> = message
+                .iter()
+                .filter(|(name, _)| match key {
+                    "thinking" => name.as_str() == "thinking",
+                    _ => !matches!(name.as_str(), "thinking" | "role"),
+                })
+                .map(|(name, value)| (name.clone(), value.clone()))
+                .collect();
+            out.edit(index, |item| *item = Value::Object(fields))?;
+            out.close(index, IfMalformed::Fail)?;
+        }
+        if !self.tool_calls.is_empty() {
+            message.insert(
+                "tool_calls".to_owned(),
+                Value::Array(std::mem::take(&mut self.tool_calls)),
+            );
+        }
+        out.message_native(Value::Object(message));
         let native = StreamingCompletionResponse {
-            model,
+            model: response.model,
             total_duration: response.total_duration,
             load_duration: response.load_duration,
             prompt_eval_count: response.prompt_eval_count,
@@ -432,8 +439,6 @@ impl<'id> OllamaDecoder<'id> {
             eval_duration: response.eval_duration,
             done_reason: response.done_reason,
         };
-        out.close_open_text(&mut self.text);
-        self.thoughts.close(&mut out, None);
         out.raw(serde_json::to_value(&native)?);
         Ok(out.end(finish_of(native)))
     }
@@ -451,8 +456,7 @@ impl<'id> OllamaDecoder<'id> {
 }
 
 /// EOF without a `done: true` record is truncation.
-#[cfg(any())]
-impl<'id> crate::wire::Decoder<'id, Completion> for OllamaDecoder<'id> {
+impl<'id> crate::wire::Decoder<'id, Completion> for OllamaDecoder {
     type Event = CompletionResponse;
 
     fn classify(
@@ -582,6 +586,10 @@ pub enum Message {
         )]
         call_id: Option<String>,
     },
+    /// An assistant message as the wire carries it: the daemon's own
+    /// message, or one rebuilt from a turn's blocks. Request-only.
+    #[serde(untagged, skip_deserializing)]
+    Native(Value),
 }
 
 /// Combine text and supported image/document content into one user message.
@@ -642,7 +650,6 @@ fn user_message_from_content(
 
 /// Convert system, user, and assistant messages. User tool results become
 /// separate name-keyed messages; unsupported media returns a conversion error.
-#[cfg(any())]
 impl TryFrom<crate::message::Message> for Vec<Message> {
     type Error = crate::message::MessageError;
     fn try_from(internal_msg: crate::message::Message) -> Result<Self, Self::Error> {
@@ -689,7 +696,7 @@ impl TryFrom<crate::message::Message> for Vec<Message> {
                             messages.push(Message::ToolResult {
                                 name: function_name.into(),
                                 content,
-                                call_id: call.provider().map(|provider| provider.call_id.clone()),
+                                call_id: call.provider().map(|id| id.as_str().to_owned()),
                             });
                         }
                         content => pending_user_content.push(content),
@@ -702,50 +709,64 @@ impl TryFrom<crate::message::Message> for Vec<Message> {
 
                 Ok(messages)
             }
-            InternalMessage::Assistant { content, .. } => {
-                let mut thinking: Option<String> = None;
-                let mut text_content = Vec::new();
-                let mut tool_calls = Vec::new();
+            InternalMessage::Assistant(turn) => Ok(vec![assistant_message(turn)?]),
+        }
+    }
+}
 
-                for content in content.into_iter() {
-                    match content {
-                        crate::message::AssistantContent::Text(text) => {
-                            text_content.push(text.text);
-                        }
-                        crate::message::AssistantContent::ToolCall(tool_call) => {
-                            tool_calls.push(tool_call);
-                        }
-                        crate::message::AssistantContent::Reasoning(reasoning) => {
-                            // Reasoning another service issued is not replayed.
-                            let Some(reasoning) = reasoning.open(&ISSUER) else {
-                                continue;
-                            };
-                            let display = reasoning.display_text();
-                            if !display.is_empty() {
-                                thinking = Some(display);
-                            }
-                        }
-                        crate::message::AssistantContent::Image(_) => {
-                            return Err(crate::message::MessageError::ConversionError(
-                                "Ollama currently doesn't support images.".into(),
-                            ));
-                        }
-                    }
+/// One assistant turn as Ollama takes it: the daemon's message while the
+/// turn still holds what it was decoded from, otherwise rebuilt from its
+/// text, its reasoning as `thinking`, and each call as it came or from its
+/// canonical fields. Images are a conversion error.
+#[deny(clippy::wildcard_enum_match_arm)]
+fn assistant_message(
+    turn: crate::message::AssistantMessage,
+) -> Result<Message, crate::message::MessageError> {
+    if let Some(item) = turn.native_item() {
+        return Ok(Message::Native(item.clone()));
+    }
+    let mut text = Vec::new();
+    let mut thinking = None;
+    let mut tool_calls = Vec::new();
+    for block in turn.content {
+        let native = block.native_item().cloned();
+        match block {
+            crate::message::AssistantContent::Text(content) => text.push(content.text),
+            crate::message::AssistantContent::ToolCall(call) => tool_calls.push(match native {
+                Some(item) => item,
+                // A rig-issued id stays off the wire: the daemon pairs a
+                // result with its call by tool name.
+                None => match call.id.provider() {
+                    Some(id) => json!({
+                        "id": id.as_str(),
+                        "type": "function",
+                        "function": {"name": call.function.name, "arguments": call.function.arguments},
+                    }),
+                    None => json!({
+                        "type": "function",
+                        "function": {"name": call.function.name, "arguments": call.function.arguments},
+                    }),
+                },
+            }),
+            crate::message::AssistantContent::Reasoning(reasoning) => {
+                if !reasoning.text.is_empty() {
+                    thinking = Some(reasoning.text);
                 }
-
-                Ok(vec![Message::Assistant {
-                    content: text_content.join(" "),
-                    thinking,
-                    images: None,
-                    name: None,
-                    tool_calls: tool_calls
-                        .into_iter()
-                        .map(std::convert::Into::into)
-                        .collect::<Vec<_>>(),
-                }])
+            }
+            crate::message::AssistantContent::Opaque(_) => {}
+            crate::message::AssistantContent::Image(_) => {
+                return Err(crate::message::MessageError::ConversionError(
+                    "Ollama currently doesn't support images.".into(),
+                ));
             }
         }
     }
+    let mut message =
+        json!({"role": "assistant", "content": text.join(" "), "tool_calls": tool_calls});
+    if let (Some(thinking), Some(fields)) = (thinking, message.as_object_mut()) {
+        fields.insert("thinking".to_owned(), thinking.into());
+    }
+    Ok(Message::Native(message))
 }
 
 impl Message {
@@ -759,23 +780,5 @@ impl Message {
     }
 }
 
-#[cfg(any())]
-impl From<crate::message::ToolCall> for ToolCall {
-    fn from(tool_call: crate::message::ToolCall) -> Self {
-        Self {
-            id: tool_call
-                .id
-                .provider()
-                .map(|provider| provider.call_id.clone()),
-            r#type: ToolType::Function,
-            function: Function {
-                name: tool_call.function.name.into(),
-                arguments: tool_call.function.arguments,
-            },
-        }
-    }
-}
-
 #[cfg(test)]
-#[cfg(any())]
 mod tests;
