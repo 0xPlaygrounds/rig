@@ -512,7 +512,7 @@ impl ResponsesDecoder {
                     IfMalformed::Fail => Err(ProviderError::Response(format!(
                         "Responses tool call without a name: {item}"
                     ))),
-                    _ => Ok(()),
+                    IfMalformed::EmptyObject | IfMalformed::Drop | IfMalformed::KeepOpen => Ok(()),
                 };
             };
             let block = Block::Call {

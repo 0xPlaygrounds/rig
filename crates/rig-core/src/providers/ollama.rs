@@ -385,35 +385,41 @@ impl OllamaDecoder {
             return Ok(());
         }
         let calls = self.tool_calls.len();
-        let at = usize::from(!reasoning);
-        let key = if reasoning { "thinking" } else { "content" };
-        let (slot, block) = if reasoning {
-            (&mut self.reasoning, Block::Reasoning { redacted: false })
+        let [reasoning_at, text_at] = &mut self.opened_at;
+        let [reasoning_part, text_part] = &mut self.segments;
+        let (key, slot, opened_at, segment, block) = if reasoning {
+            (
+                "thinking",
+                &mut self.reasoning,
+                reasoning_at,
+                reasoning_part,
+                Block::Reasoning { redacted: false },
+            )
         } else {
-            (&mut self.text, Block::Text)
+            ("content", &mut self.text, text_at, text_part, Block::Text)
         };
         if let Some(index) = *slot
-            && self.opened_at[at] < calls
+            && *opened_at < calls
         {
             // A call ends the block: what follows it is the next block, and
             // each holds its own part of the field.
-            let segment = self.segments[at].take().unwrap_or_else(|| {
+            let part = segment.take().unwrap_or_else(|| {
                 self.message
                     .get(key)
                     .and_then(Value::as_str)
                     .unwrap_or_default()
                     .to_owned()
             });
-            out.edit(index, |item| *item = json!({ key: segment }))?;
+            out.edit(index, |item| *item = json!({ key: part }))?;
             out.close(index, IfMalformed::Fail)?;
             *slot = None;
-            self.segments[at] = Some(String::new());
+            *segment = Some(String::new());
         }
         if slot.is_none() {
-            self.opened_at[at] = calls;
+            *opened_at = calls;
         }
         let index = open_once(slot, block, out)?;
-        if let Some(segment) = &mut self.segments[at] {
+        if let Some(segment) = segment {
             segment.push_str(fragment);
         }
         out.push(index, fragment)
@@ -540,13 +546,11 @@ impl OllamaDecoder {
             }
             message.insert("content".to_owned(), visible.into());
         }
-        for (at, (index, key)) in [
-            (self.reasoning.take(), "thinking"),
-            (self.text.take(), "content"),
-        ]
-        .into_iter()
-        .enumerate()
-        {
+        let [reasoning_part, text_part] = std::mem::take(&mut self.segments);
+        for (index, key, part) in [
+            (self.reasoning.take(), "thinking", reasoning_part),
+            (self.text.take(), "content", text_part),
+        ] {
             let Some(index) = index else {
                 continue;
             };
@@ -558,8 +562,8 @@ impl OllamaDecoder {
                 })
                 .map(|(name, value)| (name.clone(), value.clone()))
                 .collect();
-            if let Some(segment) = self.segments[at].take() {
-                fields.insert(key.to_owned(), segment.into());
+            if let Some(part) = part {
+                fields.insert(key.to_owned(), part.into());
             }
             out.edit(index, |item| *item = Value::Object(fields))?;
             out.close(index, IfMalformed::Fail)?;

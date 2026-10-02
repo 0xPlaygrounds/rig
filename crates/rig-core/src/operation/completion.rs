@@ -481,7 +481,9 @@ impl Turn {
                         IfMalformed::Fail => Err(ProviderError::Response(
                             "the provider closed a tool call without a name".to_owned(),
                         )),
-                        _ => Ok(()),
+                        IfMalformed::EmptyObject | IfMalformed::Drop | IfMalformed::KeepOpen => {
+                            Ok(())
+                        }
                     };
                 };
                 let parsed = match (arguments.parse(), if_malformed) {

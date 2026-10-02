@@ -554,7 +554,7 @@ impl TryFrom<aws_bedrock::ContentBlock> for ContentBlock {
             Aws::GuardContent(value) => ContentBlock::GuardContent(value.try_into()?),
             Aws::Image(value) => ContentBlock::Image(value.try_into()?),
             Aws::ReasoningContent(value) => ContentBlock::ReasoningContent(value.try_into()?),
-            Aws::Text(value) => ContentBlock::Text(value.try_into()?),
+            Aws::Text(value) => ContentBlock::Text(value),
             Aws::ToolResult(value) => ContentBlock::ToolResult(value.try_into()?),
             Aws::ToolUse(value) => ContentBlock::ToolUse(value.try_into()?),
             Aws::Video(value) => ContentBlock::Video(value.try_into()?),
