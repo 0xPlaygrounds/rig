@@ -220,13 +220,12 @@ fn reasoning_values(value: &Value, opaque: &mut Vec<String>, all: &mut Vec<Strin
     }
 }
 
-/// Each exchange's request, as sent, and the opaque and all reasoning values
-/// its reply delivered.
+/// Each exchange's request, as sent, and the opaque reasoning values its
+/// reply delivered.
 struct Exchange {
     request: Value,
     sent: String,
     opaque: Vec<String>,
-    all: Vec<String>,
 }
 
 fn exchanges(scenario: &str) -> Vec<Exchange> {
@@ -242,7 +241,6 @@ fn exchanges(scenario: &str) -> Vec<Exchange> {
                 request,
                 sent,
                 opaque,
-                all,
             }
         })
         .collect()

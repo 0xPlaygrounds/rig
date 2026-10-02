@@ -91,14 +91,8 @@ async fn raw_reads_back_as_openrouter_type() {
     // hatch — whose identity is the identity the decoder reported.
     let typed = openrouter::CompletionResponse::deserialize(raw)
         .expect("raw is OpenRouter's own CompletionResponse");
-    assert_eq!(
-        Some(typed.openai.id.as_str()),
-        response.response_id().as_deref()
-    );
-    assert_eq!(
-        Some(typed.openai.model.as_str()),
-        response.model().as_deref()
-    );
+    assert_eq!(Some(typed.openai.id.as_str()), response.response_id());
+    assert_eq!(Some(typed.openai.model.as_str()), response.model());
     assert_eq!(
         typed.openai.choices.len(),
         1,

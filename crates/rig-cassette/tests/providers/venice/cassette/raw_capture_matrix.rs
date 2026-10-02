@@ -76,10 +76,7 @@ async fn raw_round_trips_venice_type() {
     let raw = &response.raw;
     let typed = venice::CompletionResponse::deserialize(raw)
         .expect("raw is Venice's own CompletionResponse");
-    assert_eq!(
-        Some(typed.openai.id.as_str()),
-        response.response_id().as_deref()
-    );
+    assert_eq!(Some(typed.openai.id.as_str()), response.response_id());
 
     // `raw` is the document Venice sent, not a re-serialization of `typed`:
     // these fields have no home on any Rust type here, and reach the caller

@@ -114,8 +114,8 @@ async fn raw_is_the_reply_document() {
         .expect("raw must deserialize into openai::CompletionResponse");
     // The typed view agrees with the normalized one on what the model said,
     // so raw is a superset, not a divergent copy.
-    assert_eq!(Some(typed.model.as_str()), response.model().as_deref());
-    assert_eq!(Some(typed.id.as_str()), response.response_id().as_deref());
+    assert_eq!(Some(typed.model.as_str()), response.model());
+    assert_eq!(Some(typed.id.as_str()), response.response_id());
     assert_eq!(response.provider(), NORMALIZED_PROVIDER);
     assert!(!response.choice.is_empty());
 
@@ -204,8 +204,8 @@ async fn normalized_fields_equal_raw_renormalized() {
     let typed = openai::CompletionResponse::deserialize(&response.raw)
         .expect("raw must deserialize into openai::CompletionResponse");
     assert_eq!(response.provider(), NORMALIZED_PROVIDER);
-    assert_eq!(Some(typed.model.as_str()), response.model().as_deref());
-    assert_eq!(Some(typed.id.as_str()), response.response_id().as_deref());
+    assert_eq!(Some(typed.model.as_str()), response.model());
+    assert_eq!(Some(typed.id.as_str()), response.response_id());
     let choice = typed
         .choices
         .first()
@@ -230,7 +230,7 @@ async fn normalized_fields_equal_raw_renormalized() {
     assert_recorded_envelope(&body, scenario);
     // And the same fields against the recorded bytes, so a recording that
     // stopped carrying them fails loudly instead of covering nothing.
-    assert_eq!(response.model().as_deref(), body["model"].as_str(), "model");
+    assert_eq!(response.model(), body["model"].as_str(), "model");
     assert_eq!(
         response.usage.input_tokens,
         body["usage"]["prompt_tokens"].as_u64(),

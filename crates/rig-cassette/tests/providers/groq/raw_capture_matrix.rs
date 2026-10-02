@@ -103,10 +103,10 @@ async fn raw_is_the_verbatim_response_body() {
         .expect("raw is the shared OpenAI chat-completions reply Groq sends");
     assert_matches_recorded_token(
         Some(typed.id.as_str()),
-        response.response_id().as_deref(),
+        response.response_id(),
         "typed response id",
     );
-    assert_eq!(Some(typed.model.as_str()), response.model().as_deref());
+    assert_eq!(Some(typed.model.as_str()), response.model());
     // `x_groq` is Groq's own envelope and no shared type models it — which is
     // exactly why `raw` being the document rather than the parse is the
     // difference between a caller reaching it and losing it.

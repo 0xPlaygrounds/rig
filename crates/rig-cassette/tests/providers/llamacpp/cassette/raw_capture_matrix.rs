@@ -157,10 +157,7 @@ async fn raw_reads_back_as_the_provider_type() {
     // which is the typed escape hatch `raw`'s documentation points at.
     let typed = llamacpp::CompletionResponse::deserialize(&response.raw)
         .expect("raw must deserialize into llamacpp::CompletionResponse");
-    assert_eq!(
-        Some(typed.openai.model.as_str()),
-        response.model().as_deref()
-    );
+    assert_eq!(Some(typed.openai.model.as_str()), response.model());
     assert_eq!(response.provider(), LLAMACPP_PROVIDER);
     assert!(!response.choice.is_empty());
     llamacpp::CompletionResponse::deserialize(&body)
@@ -244,7 +241,7 @@ async fn normalized_fields_match_the_typed_raw() {
     // Both sides of this one come from the live document, so the id compares
     // exactly in either mode — the format contract's token-aware form is the
     // weaker claim, and there is nothing here for a scrubber to displace.
-    assert_eq!(response.response_id().as_deref(), Some(native.id.as_str()));
+    assert_eq!(response.response_id(), Some(native.id.as_str()));
     // llama.cpp reports no request-id response header, so the driver has
     // nothing to attach — a documented outcome rather than a gap.
     assert_no_request_id(response.provider_request_id.as_deref(), "llama.cpp");

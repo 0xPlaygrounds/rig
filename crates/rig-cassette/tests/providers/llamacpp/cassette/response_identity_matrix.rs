@@ -281,11 +281,8 @@ async fn the_typed_route_reproduces_the_normalized_one() {
             // llama.cpp's own type reproduces the normalized fields.
             let typed = llamacpp::CompletionResponse::deserialize(&second.raw)
                 .expect("raw is llama.cpp's own response type");
-            assert_eq!(
-                second.response_id().as_deref(),
-                Some(typed.openai.id.as_str())
-            );
-            assert_eq!(second.model().as_deref(), Some(typed.openai.model.as_str()));
+            assert_eq!(second.response_id(), Some(typed.openai.id.as_str()));
+            assert_eq!(second.model(), Some(typed.openai.model.as_str()));
             assert_eq!(
                 second.usage.input_tokens,
                 typed
