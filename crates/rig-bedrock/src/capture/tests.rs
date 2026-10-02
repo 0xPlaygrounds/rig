@@ -1,0 +1,59 @@
+use super::*;
+use aws_smithy_types::event_stream::{Header, HeaderValue};
+use serde_json::json;
+
+fn message(kind: &str, event: &str, payload: &[u8]) -> Vec<u8> {
+    let message = Message::new(payload.to_vec())
+        .add_header(Header::new(
+            ":message-type",
+            HeaderValue::String(kind.to_owned().into()),
+        ))
+        .add_header(Header::new(
+            ":event-type",
+            HeaderValue::String(event.to_owned().into()),
+        ));
+    let mut bytes = Vec::new();
+    aws_smithy_eventstream::frame::write_message_to(&message, &mut bytes).expect("writes");
+    bytes
+}
+
+/// Events come out whole however the body is chunked, and an exception is
+/// not an event.
+#[test]
+fn events_read_whole_messages_across_chunks() {
+    let mut body = message("event", "messageStop", br#"{"stopReason":"end_turn"}"#);
+    body.extend(message(
+        "exception",
+        "throttlingException",
+        br#"{"message":"slow"}"#,
+    ));
+    body.extend(message(
+        "event",
+        "metadata",
+        br#"{"metrics":{"latencyMs":5}}"#,
+    ));
+    let mut events = Events::default();
+    let mut read = Vec::new();
+    for chunk in body.chunks(7) {
+        read.extend(events.read(chunk));
+    }
+    assert_eq!(
+        read,
+        [
+            json!({ "messageStop": { "stopReason": "end_turn" } }),
+            json!({ "metadata": { "metrics": { "latencyMs": 5 } } }),
+        ]
+    );
+}
+
+/// The capture hands out what was read since its last take, once.
+#[test]
+fn a_capture_takes_what_it_read() {
+    let capture = Capture::default();
+    lock(&capture.0).extend_from_slice(br#"{"stopReason":"end_turn"}"#);
+    assert_eq!(
+        capture.document(),
+        Some(json!({ "stopReason": "end_turn" }))
+    );
+    assert!(capture.take().is_empty());
+}

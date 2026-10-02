@@ -1,5 +1,3 @@
-use std::fmt;
-
 use aws_sdk_bedrockruntime::config::http::HttpResponse;
 use aws_sdk_bedrockruntime::error::{ProvideErrorMetadata, SdkError};
 use aws_sdk_bedrockruntime::operation::RequestId;
@@ -105,30 +103,6 @@ fn reply(
         .with_provider_status(status)
         .with_provider_code(code)
         .with_transient(transient)
-}
-
-#[derive(Debug)]
-pub struct TypeConversionError(String);
-
-impl TypeConversionError {
-    pub fn new(input: &str) -> Self {
-        Self(input.to_string())
-    }
-}
-
-impl fmt::Display for TypeConversionError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let message = self.0.clone();
-        write!(f, "{message}")
-    }
-}
-
-impl std::error::Error for TypeConversionError {}
-
-impl From<std::convert::Infallible> for TypeConversionError {
-    fn from(value: std::convert::Infallible) -> Self {
-        match value {}
-    }
 }
 
 #[cfg(test)]

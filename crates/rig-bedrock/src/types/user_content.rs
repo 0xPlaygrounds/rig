@@ -27,9 +27,14 @@ pub(crate) fn to_aws(
                     EMPTY_TEXT.to_owned(),
                 ));
             }
+            // Converse reads a result with no status as a success.
+            let status = tool_result
+                .is_error
+                .then_some(aws_bedrock::ToolResultStatus::Error);
             let builder = aws_bedrock::ToolResultBlock::builder()
                 .tool_use_id(tool_result.call.wire().into_owned())
                 .set_content(Some(content))
+                .set_status(status)
                 .build()
                 .map_err(|e| ProviderError::Provider(e.to_string()))?;
             Ok(vec![aws_bedrock::ContentBlock::ToolResult(builder)])

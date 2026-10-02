@@ -10,16 +10,18 @@
 //! ```
 
 use crate::{
+    capture::{Capture, Events},
     client::BedrockRuntime,
     streaming::StreamState,
     types::{
         assistant_content::PROVIDER_NAME,
         completion_request::AwsCompletionRequest,
-        converse_output::InternalConverseOutput,
         errors::{sdk_error, stream_error},
     },
 };
 
+use aws_sdk_bedrockruntime::operation::RequestId;
+use aws_sdk_bedrockruntime::operation::converse::ConverseOutput;
 use aws_sdk_bedrockruntime::types as aws_bedrock;
 use rig_core::completion::CompletionRequest;
 use rig_core::driver::{Exchange, Opened, Opening, Transport};
@@ -120,11 +122,53 @@ pub const WRITER_PALMYRA_X4: &str = "us.writer.palmyra-x4-v1:0";
 /// `us.writer.palmyra-x5-v1:0` (cross-region profile)
 pub const WRITER_PALMYRA_X5: &str = "us.writer.palmyra-x5-v1:0";
 
+/// The model family behind a Converse model id. It decides what history a
+/// model reads back: Claude reads reasoning signatures, rejects unsigned
+/// reasoning, and reads images.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Family {
+    /// Anthropic Claude.
+    Claude,
+    /// Any other model.
+    Other,
+}
+
+impl Family {
+    /// The family of the provider a Bedrock model id names. A base model id
+    /// or a system inference profile is `[geography.]provider.model`, also
+    /// the last part of a foundation-model or inference-profile ARN. An
+    /// application inference profile or provisioned model ARN names no
+    /// provider, so it is [`Family::Other`] unless the caller states its
+    /// family with [`Converse::with_family`].
+    ///
+    /// ```
+    /// use rig_bedrock::completion::{ANTHROPIC_CLAUDE_SONNET_4_5, Family};
+    ///
+    /// assert_eq!(Family::of(ANTHROPIC_CLAUDE_SONNET_4_5), Family::Claude);
+    /// assert_eq!(
+    ///     Family::of("arn:aws:bedrock:us-east-1:123456789012:application-inference-profile/a1b2c3"),
+    ///     Family::Other
+    /// );
+    /// ```
+    pub fn of(model: &str) -> Self {
+        let id = model.rsplit('/').next().unwrap_or(model);
+        match id.rsplit('.').nth(1) {
+            Some("anthropic") => Self::Claude,
+            _ => Self::Other,
+        }
+    }
+}
+
 /// The Converse endpoint for one model: `Converse` for a unary call,
 /// `ConverseStream` for a streamed one.
 #[derive(Clone, Debug)]
 pub struct Converse {
     pub model: String,
+    /// The family of `model` when the caller states it, which an
+    /// application inference profile ARN needs: its id names no provider.
+    /// Set through [`Converse::with_family`]; otherwise [`Family::of`]
+    /// the model id decides.
+    pub family: Option<Family>,
     /// When enabled, cache checkpoints are inserted into Converse API requests
     /// to take advantage of [Bedrock prompt caching](https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-caching.html).
     /// Marks system content and, when history contains no reasoning, the final
@@ -139,8 +183,33 @@ impl Converse {
     pub fn new(model: impl Into<String>) -> Self {
         Self {
             model: model.into(),
+            family: None,
             prompt_caching: false,
             guardrail: None,
+        }
+    }
+
+    /// State the family of this wire's model, for a model id that names no
+    /// provider, such as an application inference profile ARN.
+    ///
+    /// ```
+    /// use rig_bedrock::completion::{Converse, Family};
+    ///
+    /// let profile = "arn:aws:bedrock:us-east-1:123456789012:application-inference-profile/a1b2c3";
+    /// let wire = Converse::new(profile).with_family(Family::Claude);
+    /// assert_eq!(wire.family(profile), Family::Claude);
+    /// ```
+    pub fn with_family(mut self, family: Family) -> Self {
+        self.family = Some(family);
+        self
+    }
+
+    /// The family of `model`: the stated one for this wire's own model,
+    /// otherwise [`Family::of`] its id.
+    pub fn family(&self, model: &str) -> Family {
+        match self.family {
+            Some(family) if model == self.model => family,
+            _ => Family::of(model),
         }
     }
 
@@ -188,14 +257,19 @@ pub struct ConverseRequest {
 }
 
 /// One unit of a Converse reply.
+#[derive(Clone, Debug)]
 pub enum ConverseFrame {
     /// The reply opened, with the AWS request id from the SDK's response
     /// metadata.
     Opened { request_id: Option<String> },
-    /// The whole unary reply.
-    Whole(Box<InternalConverseOutput>),
+    /// The whole unary reply. Its JSON body is the response's `raw`.
+    Whole(Box<ConverseOutput>),
     /// One streamed event.
     Event(aws_bedrock::ConverseStreamOutput),
+    /// The JSON Bedrock sent for the event that follows, as
+    /// `{"<event type>": <payload>}`. The message-level events make up a
+    /// stream's `raw`.
+    Raw(serde_json::Value),
 }
 
 impl Wire for Converse {
@@ -217,7 +291,7 @@ impl Wire for Converse {
     ) -> Result<ConverseRequest, EncodeError> {
         let model = self.request_model(request.model.as_deref()).to_owned();
         Ok(ConverseRequest {
-            request: AwsCompletionRequest::new(request, &model, self.prompt_caching),
+            request: AwsCompletionRequest::new(request, self.family(&model), self.prompt_caching),
             model,
             guardrail: self.guardrail.clone(),
         })
@@ -251,11 +325,13 @@ impl rig_core::completion::ReplayTarget for Converse {
     }
 
     /// Converse reads images in user turns and tool results, never in
-    /// assistant turns, on every model but the text-only families.
+    /// assistant turns. Claude reads them; so does every other model but
+    /// the text-only families.
     fn accepts(&self, model: &str) -> rig_core::completion::Accepts {
-        let images = !TEXT_ONLY
-            .split_whitespace()
-            .any(|family| model.contains(family));
+        let images = self.family(model) == Family::Claude
+            || !TEXT_ONLY
+                .split_whitespace()
+                .any(|family| model.contains(family));
         rig_core::completion::Accepts {
             user_images: images,
             assistant_images: false,
@@ -307,6 +383,7 @@ impl Transport<Converse> for BedrockRuntime {
             Err(error) => return Opening::failed(error),
         };
         let runtime = self.clone();
+        let capture = Capture::default();
         Opening::new(async move {
             let client = runtime.inner().await;
             match mode {
@@ -321,26 +398,26 @@ impl Transport<Converse> for BedrockRuntime {
                         .set_messages(Some(messages))
                         .set_output_config(output_config)
                         .set_guardrail_config(guardrail)
+                        .customize()
+                        .interceptor(capture.clone())
                         .send()
-                        .await
-                        .map_err(sdk_error)
-                        .and_then(|response| {
-                            InternalConverseOutput::try_from(response).map_err(|error| {
-                                ProviderError::Provider(format!("Type conversion error: {error}"))
-                            })
-                        });
+                        .await;
                     Ok(match sent {
                         Ok(output) => {
                             let request_id = output.request_id().map(str::to_owned);
-                            Opened::new(futures::stream::iter([
+                            let opened = Opened::new(futures::stream::iter([
                                 Ok(ConverseFrame::Opened {
                                     request_id: request_id.clone(),
                                 }),
                                 Ok(ConverseFrame::Whole(Box::new(output))),
                             ]))
-                            .with_request_id(request_id)
+                            .with_request_id(request_id);
+                            match capture.document() {
+                                Some(document) => opened.with_document(document),
+                                None => opened,
+                            }
                         }
-                        Err(error) => Opened::failed(error),
+                        Err(error) => Opened::failed(sdk_error(error)),
                     })
                 }
                 Mode::Streaming => {
@@ -353,6 +430,8 @@ impl Transport<Converse> for BedrockRuntime {
                         .set_system(system_prompt)
                         .set_messages(Some(messages))
                         .set_output_config(output_config)
+                        .customize()
+                        .interceptor(capture.clone())
                         .send()
                         .await;
                     let response = match sent {
@@ -363,18 +442,26 @@ impl Transport<Converse> for BedrockRuntime {
                     };
                     // Events do not carry the request id the terminal record
                     // reports: it is the operation's metadata.
-                    let request_id =
-                        aws_sdk_bedrockruntime::operation::RequestId::request_id(&response)
-                            .map(str::to_owned);
+                    let request_id = response.request_id().map(str::to_owned);
                     let opened = ConverseFrame::Opened {
                         request_id: request_id.clone(),
                     };
                     let frames = async_stream::stream! {
                         yield Ok(opened);
                         let mut stream = response.stream;
+                        let mut events = Events::default();
+                        let mut read = std::collections::VecDeque::new();
                         loop {
                             match stream.recv().await {
-                                Ok(Some(output)) => yield Ok(ConverseFrame::Event(output)),
+                                Ok(Some(output)) => {
+                                    // Each event the SDK yields is the next
+                                    // event message of the body it read.
+                                    read.extend(events.read(&capture.take()));
+                                    if let Some(raw) = read.pop_front() {
+                                        yield Ok(ConverseFrame::Raw(raw));
+                                    }
+                                    yield Ok(ConverseFrame::Event(output));
+                                }
                                 Ok(None) => break,
                                 Err(error) => {
                                     yield Err(stream_error(error.into_service_error()));

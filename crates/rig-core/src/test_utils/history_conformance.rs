@@ -19,6 +19,9 @@
 //! }
 //! ```
 
+// The rows are test assertions: a failed one panics with what it found.
+#![allow(clippy::expect_used, clippy::indexing_slicing, clippy::panic)]
+
 use std::sync::Mutex;
 
 use serde_json::Value;

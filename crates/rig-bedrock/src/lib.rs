@@ -23,6 +23,7 @@
 //! # let _ = model;
 //! ```
 
+mod capture;
 pub mod client;
 pub mod completion;
 pub mod embedding;

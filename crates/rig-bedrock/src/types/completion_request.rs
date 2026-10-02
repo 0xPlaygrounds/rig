@@ -1,3 +1,4 @@
+use crate::completion::Family;
 use crate::types::{json, message};
 use aws_sdk_bedrockruntime::types as aws_bedrock;
 use aws_sdk_bedrockruntime::types::{
@@ -11,8 +12,8 @@ use rig_core::message::{DocumentMediaType, UserContent};
 pub struct AwsCompletionRequest {
     pub inner: rig_core::completion::CompletionRequest,
     pub prompt_caching: bool,
-    /// Whether the model reads reasoning signatures.
-    pub signatures: bool,
+    /// The family of the model the request addresses.
+    pub family: Family,
 }
 
 fn cache_point_block() -> Result<CachePointBlock, ProviderError> {
@@ -23,16 +24,16 @@ fn cache_point_block() -> Result<CachePointBlock, ProviderError> {
 }
 
 impl AwsCompletionRequest {
-    /// A Converse request over `inner` for `model`.
+    /// A Converse request over `inner` for a model of `family`.
     pub fn new(
         inner: rig_core::completion::CompletionRequest,
-        model: &str,
+        family: Family,
         prompt_caching: bool,
     ) -> Self {
         Self {
             inner,
             prompt_caching,
-            signatures: crate::types::assistant_content::reads_signatures(model),
+            family,
         }
     }
 
@@ -155,10 +156,13 @@ impl AwsCompletionRequest {
         ))
     }
 
+    /// The system blocks: the system messages that lead the history. A
+    /// later one stays where the history puts it, as user text, so adding
+    /// one never changes the cached prefix before it.
     pub fn system_prompt(&self) -> Result<Option<Vec<SystemContentBlock>>, ProviderError> {
         let mut system_blocks = Vec::new();
 
-        for message in self.inner.chat_history.iter() {
+        for message in self.inner.chat_history.iter().take(self.leading_system()) {
             if let Message::System { content } = message
                 && !content.is_empty()
             {
@@ -176,9 +180,20 @@ impl AwsCompletionRequest {
         }
     }
 
+    /// How many system messages lead the history.
+    fn leading_system(&self) -> usize {
+        self.inner
+            .chat_history
+            .iter()
+            .take_while(|message| matches!(message, Message::System { .. }))
+            .count()
+    }
+
     /// Consumes the request: this is the one accessor that needs the chat
-    /// history by value, so call it after the borrowing accessors.
+    /// history by value, so call it after the borrowing accessors. Adjacent
+    /// user messages merge, since Converse alternates roles.
     pub fn messages(self) -> Result<Vec<aws_bedrock::Message>, ProviderError> {
+        let leading = self.leading_system();
         let mut full_history: Vec<Message> = Vec::new();
 
         if !self.inner.documents.is_empty() {
@@ -206,32 +221,40 @@ impl AwsCompletionRequest {
             _ => false,
         });
 
-        full_history.extend(
-            self.inner
-                .chat_history
-                .into_iter()
-                .filter(|message| !matches!(message, Message::System { .. })),
-        );
+        full_history.extend(self.inner.chat_history.into_iter().skip(leading));
 
-        let tool_ids = rig_core::providers::internal::wire_ids::WireIds::new(&full_history);
-        let mut messages = Vec::new();
+        let tool_ids = rig_core::providers::internal::wire_ids::WireIds::with_reserved(
+            &full_history,
+            hosted_ids(&full_history),
+        );
+        let mut messages: Vec<aws_bedrock::Message> = Vec::new();
         for (position, message) in full_history.into_iter().enumerate() {
-            let Some(mut message) = message::to_aws(message, self.signatures)? else {
+            let Some(mut message) = message::to_aws(message, self.family)? else {
                 continue;
             };
+            let user = message.role == aws_bedrock::ConversationRole::User;
             tool_ids
                 .apply(
                     position,
                     message.content.iter_mut().filter_map(|part| match part {
-                        aws_bedrock::ContentBlock::ToolUse(call) => Some(&mut call.tool_use_id),
-                        aws_bedrock::ContentBlock::ToolResult(result) => {
+                        aws_bedrock::ContentBlock::ToolUse(call)
+                            if !user && call.r#type.is_none() =>
+                        {
+                            Some(&mut call.tool_use_id)
+                        }
+                        aws_bedrock::ContentBlock::ToolResult(result) if user => {
                             Some(&mut result.tool_use_id)
                         }
                         _ => None,
                     }),
                 )
                 .map_err(ProviderError::request)?;
-            messages.push(message);
+            match messages.last_mut() {
+                Some(last) if user && last.role == aws_bedrock::ConversationRole::User => {
+                    last.content.append(&mut message.content);
+                }
+                _ => messages.push(message),
+            }
         }
 
         crate::types::document::disambiguate_document_names(&mut messages);
@@ -253,6 +276,26 @@ impl AwsCompletionRequest {
 
         Ok(messages)
     }
+}
+
+/// The ids a hosted tool's use and result hold, which no call id rig
+/// issues may take.
+fn hosted_ids(history: &[Message]) -> Vec<String> {
+    history
+        .iter()
+        .filter_map(|message| match message {
+            Message::Assistant(turn) => Some(&turn.content),
+            Message::User { .. } | Message::System { .. } => None,
+        })
+        .flatten()
+        .filter_map(|content| match content {
+            rig_core::completion::AssistantContent::Opaque(opaque) => {
+                let item = opaque.item.as_object()?.values().next()?;
+                item.get("toolUseId")?.as_str().map(str::to_owned)
+            }
+            _ => None,
+        })
+        .collect()
 }
 
 #[cfg(test)]

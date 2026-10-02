@@ -21,7 +21,7 @@ fn minimal_request() -> CompletionRequest {
 }
 
 fn aws_request(request: CompletionRequest, prompt_caching: bool) -> AwsCompletionRequest {
-    AwsCompletionRequest::new(request, "amazon.nova-lite-v1:0", prompt_caching)
+    AwsCompletionRequest::new(request, Family::Other, prompt_caching)
 }
 
 /// Synthetic transcript checks wire correlation without a live Bedrock call.
@@ -410,7 +410,7 @@ fn test_messages_skip_cache_point_when_history_contains_reasoning() {
     // reasoning turn, even if the literal trailing block is a tool result.
     // Verify the message-level checkpoint is suppressed in that case.
     let reasoning = rig_core::message::AssistantContent::reasoning("thinking")
-        .with_native(serde_json::json!({ "signature": "sig" }));
+        .with_native(crate::types::block::reasoning_json("thinking", Some("sig")));
     let request = CompletionRequest {
         chat_history: vec![
             Message::User {
@@ -607,4 +607,106 @@ fn document_names_are_deterministic_and_unique_within_a_request() {
     assert_eq!(unique.len(), 3, "{first:?}");
     assert!(first.iter().all(|name| name.starts_with("document-")));
     assert_eq!(first[2], format!("{}-2", first[1]));
+}
+
+/// A failed, refused or synthetic result goes back with `status: error`;
+/// any other has no status, which Converse reads as a success.
+#[test]
+fn failed_results_replay_as_errors() {
+    use rig_core::message::{CallId, ToolResult, ToolResultContent};
+    let result = |id: &str, is_error| {
+        UserContent::ToolResult(ToolResult {
+            call: CallId::from_wire(id),
+            name: rig_core::message::ToolName::new("t").expect("a tool name"),
+            content: vec![ToolResultContent::text("out")],
+            is_error,
+        })
+    };
+    let mut request = minimal_request();
+    request.chat_history = vec![Message::User {
+        content: vec![result("failed", true), result("fine", false)],
+    }];
+    let messages = aws_request(request, false).messages().expect("messages");
+    let statuses: Vec<_> = messages[0]
+        .content
+        .iter()
+        .map(|block| match block {
+            aws_bedrock::ContentBlock::ToolResult(result) => result.status.clone(),
+            other => panic!("{other:?}"),
+        })
+        .collect();
+    assert_eq!(statuses, [Some(aws_bedrock::ToolResultStatus::Error), None]);
+}
+
+/// Only the leading system messages are system blocks. A later one stays
+/// where the history put it, as user text joined to its neighbouring user
+/// content, so the cached prefix before it never changes.
+#[test]
+fn a_later_system_message_stays_in_place() {
+    let mut request = minimal_request();
+    request.chat_history = vec![
+        Message::system("lead"),
+        Message::user("q"),
+        Message::assistant("a"),
+        Message::system("steer"),
+        Message::user("next"),
+    ];
+    let request = aws_request(request, false);
+    assert_eq!(
+        request.system_prompt().expect("system"),
+        Some(vec![aws_bedrock::SystemContentBlock::Text(
+            "lead".to_owned()
+        )])
+    );
+    let messages = request.messages().expect("messages");
+    let text = |text: &str| aws_bedrock::ContentBlock::Text(text.to_owned());
+    assert_eq!(messages.len(), 3);
+    assert_eq!(messages[0].content, [text("q")]);
+    assert_eq!(messages[1].content, [text("a")]);
+    assert_eq!(messages[2].role, aws_bedrock::ConversationRole::User);
+    assert_eq!(messages[2].content, [text("steer"), text("next")]);
+}
+
+/// A hosted tool's id is reserved: an id rig issued never takes it, and
+/// the hosted use and result keep theirs.
+#[test]
+fn hosted_tool_ids_are_reserved() {
+    use rig_core::message::{AssistantContent, CallId, Opaque, ToolCall, ToolFunction};
+    let name = rig_core::message::ToolName::new("lookup").expect("a tool name");
+    let issued = ToolCall::new(
+        CallId::from_wire(""),
+        ToolFunction::new(name.clone(), serde_json::json!({})),
+    );
+    let hosted = |item| AssistantContent::Opaque(Opaque { item, replay: true });
+    let mut request = minimal_request();
+    request.chat_history = vec![
+        Message::user("q"),
+        Message::from(vec![
+            hosted(serde_json::json!({ "toolUse": {
+                "toolUseId": "tool-0", "name": "nova_grounding", "input": {}, "type": "server_tool_use",
+            } })),
+            hosted(serde_json::json!({ "toolResult": {
+                "toolUseId": "tool-0", "content": [{ "text": "found" }],
+            } })),
+            AssistantContent::ToolCall(issued.clone()),
+        ]),
+        Message::User {
+            content: vec![UserContent::tool_result(
+                issued.id.clone(),
+                name,
+                vec![rig_core::message::ToolResultContent::text("done")],
+            )],
+        },
+    ];
+    let messages = aws_request(request, false).messages().expect("messages");
+    let ids: Vec<_> = messages
+        .iter()
+        .flat_map(|message| &message.content)
+        .filter_map(|block| match block {
+            aws_bedrock::ContentBlock::ToolUse(call) => Some(call.tool_use_id.clone()),
+            aws_bedrock::ContentBlock::ToolResult(result) => Some(result.tool_use_id.clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(ids, ["tool-0", "tool-0", "tool-1", "tool-1"]);
 }

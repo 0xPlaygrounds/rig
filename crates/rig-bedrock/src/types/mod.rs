@@ -1,5 +1,6 @@
-//! Bedrock response types and request conversions.
-//! Raw completion and image-generation methods return these provider-native types.
+//! Bedrock request conversions, Converse stop-reason mapping, and the
+//! image-generation wire types. A Converse response's `raw` is the JSON
+//! Bedrock sent, so it has no mirror type here.
 //!
 //! ```
 //! use rig_bedrock::types::text_to_image::TextToImageResponse;
@@ -10,7 +11,8 @@
 //! ```
 
 pub mod assistant_content;
-pub mod converse_output;
+
+pub(crate) mod block;
 
 pub(crate) mod completion_request;
 pub(crate) mod document;

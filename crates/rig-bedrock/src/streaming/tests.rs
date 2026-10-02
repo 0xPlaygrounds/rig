@@ -1,15 +1,11 @@
 use super::*;
 use crate::completion::{Converse, ConverseRequest};
 use crate::types::assistant_content::normalize_usage;
-use crate::types::converse_output::{
-    CachePointBlock, CachePointType, Citation, CitationsContentBlock, ConverseOutput,
-    DocumentBlock, DocumentFormat, DocumentSource, GuardrailConverseContentBlock,
-    GuardrailConverseTextBlock, Message, ReasoningTextBlock, ToolUseBlock, VideoBlock, VideoFormat,
-};
+use aws_smithy_types::Blob;
 use futures::StreamExt;
 use rig_core::completion::{CompletionResponse, FinishReason};
 use rig_core::driver::{Exchange, Model, Opened, Opening, Transport};
-use rig_core::message::{Opaque, StopReason as Stop};
+use rig_core::message::{AssistantContent, Opaque, StopReason as Stop};
 use rig_core::streaming::{Item, StreamEvent};
 use rig_core::test_utils::history::{assert_every_variant, assert_restated_agrees, decode};
 use rig_core::wire::Mode;
@@ -52,26 +48,18 @@ async fn driven(
     (seen, stream.finish().await)
 }
 
-/// The response `model`'s decoder folds streamed `events` into.
-fn streamed_as(
-    model: &str,
+fn streamed(
     events: Vec<aws_bedrock::ConverseStreamOutput>,
 ) -> Result<CompletionResponse, ProviderError> {
     let opened = ConverseFrame::Opened { request_id: None };
     let frames = std::iter::once(opened).chain(events.into_iter().map(ConverseFrame::Event));
-    decode(&Converse::new(model), Mode::Streaming, frames)
-}
-
-fn streamed(
-    events: Vec<aws_bedrock::ConverseStreamOutput>,
-) -> Result<CompletionResponse, ProviderError> {
-    streamed_as(NOVA, events)
+    decode(&Converse::new(NOVA), Mode::Streaming, frames)
 }
 
 /// The response the decoder folds the whole reply `output` into.
 pub(crate) fn unary_as(
     model: &str,
-    output: InternalConverseOutput,
+    output: ConverseOutput,
 ) -> Result<CompletionResponse, ProviderError> {
     let frames = [
         ConverseFrame::Opened { request_id: None },
@@ -80,31 +68,31 @@ pub(crate) fn unary_as(
     decode(&Converse::new(model), Mode::Unary, frames)
 }
 
+fn usage(input: i32, output: i32) -> aws_bedrock::TokenUsage {
+    aws_bedrock::TokenUsage::builder()
+        .input_tokens(input)
+        .output_tokens(output)
+        .total_tokens(input + output)
+        .build()
+        .expect("usage builds")
+}
+
 /// A whole assistant reply holding `content`.
 pub(crate) fn reply_of(
-    content: Vec<ContentBlock>,
-    stop_reason: StopReason,
-) -> InternalConverseOutput {
-    InternalConverseOutput {
-        output: Some(ConverseOutput::Message(Message {
-            role: ConversationRole::Assistant,
-            content,
-        })),
-        stop_reason,
-        usage: Some(TokenUsage {
-            input_tokens: 3,
-            output_tokens: 1,
-            total_tokens: 4,
-            cache_read_input_tokens: None,
-            cache_write_input_tokens: None,
-        }),
-        metrics: None,
-        additional_model_response_fields: None,
-        request_id: None,
-        trace: None,
-        performance_config: None,
-        service_tier: None,
-    }
+    content: Vec<aws_bedrock::ContentBlock>,
+    stop_reason: &str,
+) -> ConverseOutput {
+    let message = aws_bedrock::Message::builder()
+        .role(aws_bedrock::ConversationRole::Assistant)
+        .set_content(Some(content))
+        .build()
+        .expect("message builds");
+    ConverseOutput::builder()
+        .output(aws_bedrock::ConverseOutput::Message(message))
+        .stop_reason(aws_bedrock::StopReason::from(stop_reason))
+        .usage(usage(3, 1))
+        .build()
+        .expect("output builds")
 }
 
 fn delta(index: i32, delta: aws_bedrock::ContentBlockDelta) -> aws_bedrock::ConverseStreamOutput {
@@ -158,19 +146,23 @@ fn signature(index: i32, signature: &str) -> aws_bedrock::ConverseStreamOutput {
 fn redacted(index: i32, bytes: &[u8]) -> aws_bedrock::ConverseStreamOutput {
     thought(
         index,
-        aws_bedrock::ReasoningContentBlockDelta::RedactedContent(aws_smithy_types::Blob::new(
-            bytes.to_vec(),
-        )),
+        aws_bedrock::ReasoningContentBlockDelta::RedactedContent(Blob::new(bytes.to_vec())),
     )
 }
 
-fn tool_start(index: i32, id: &str, name: &str) -> aws_bedrock::ConverseStreamOutput {
+fn tool_start(
+    index: i32,
+    id: &str,
+    name: &str,
+    kind: Option<aws_bedrock::ToolUseType>,
+) -> aws_bedrock::ConverseStreamOutput {
     start(
         index,
         aws_bedrock::ContentBlockStart::ToolUse(
             aws_bedrock::ToolUseBlockStart::builder()
                 .tool_use_id(id)
                 .name(name)
+                .set_type(kind)
                 .build()
                 .expect("tool start builds"),
         ),
@@ -210,14 +202,7 @@ fn message_stop(reason: &str) -> aws_bedrock::ConverseStreamOutput {
 fn metadata(input: i32, output: i32) -> aws_bedrock::ConverseStreamOutput {
     aws_bedrock::ConverseStreamOutput::Metadata(
         aws_bedrock::ConverseStreamMetadataEvent::builder()
-            .usage(
-                aws_bedrock::TokenUsage::builder()
-                    .input_tokens(input)
-                    .output_tokens(output)
-                    .total_tokens(input + output)
-                    .build()
-                    .expect("usage builds"),
-            )
+            .usage(usage(input, output))
             .build(),
     )
 }
@@ -230,265 +215,317 @@ fn ended(
     events
 }
 
-/// `output` as the stream of events Converse sends for it. Documents,
-/// videos, cache points and guard content only ever arrive whole.
-pub(crate) fn restated(output: &InternalConverseOutput) -> Vec<aws_bedrock::ConverseStreamOutput> {
-    use aws_bedrock::ContentBlockDelta as Delta;
+/// The events Converse streams for the whole block `block` at `index`.
+#[allow(clippy::wildcard_enum_match_arm)]
+fn restated_block(
+    index: i32,
+    block: &aws_bedrock::ContentBlock,
+) -> Vec<aws_bedrock::ConverseStreamOutput> {
+    use aws_bedrock::{ContentBlock as Content, ContentBlockDelta as Delta};
     let mut events = Vec::new();
-    let content = match &output.output {
-        Some(ConverseOutput::Message(message)) => message.content.as_slice(),
-        _ => &[],
-    };
-    for (index, block) in content.iter().enumerate() {
-        let index = i32::try_from(index).expect("small reply");
-        match block {
-            ContentBlock::Text(body) => events.push(text(index, body)),
-            ContentBlock::CitationsContent(cited) => {
-                for content in cited.content.iter().flatten() {
-                    if let CitationGeneratedContent::Text(body) = content {
-                        events.push(text(index, body));
-                    }
-                }
-                for citation in cited.citations.iter().flatten() {
-                    let citation = aws_bedrock::CitationsDelta::builder()
-                        .set_title(citation.title.clone())
-                        .build();
-                    events.push(delta(index, Delta::Citation(citation)));
+    match block {
+        Content::Text(body) => events.push(text(index, body)),
+        Content::CitationsContent(cited) => {
+            for content in cited.content.iter().flatten() {
+                if let aws_bedrock::CitationGeneratedContent::Text(body) = content {
+                    events.push(text(index, body));
                 }
             }
-            ContentBlock::ToolUse(call) => {
-                events.push(tool_start(index, &call.tool_use_id, &call.name));
-                events.push(tool_input(index, &call.input.to_string()));
+            for citation in cited.citations.iter().flatten() {
+                let citation = aws_bedrock::CitationsDelta::builder()
+                    .set_title(citation.title.clone())
+                    .set_location(citation.location.clone())
+                    .build();
+                events.push(delta(index, Delta::Citation(citation)));
             }
-            ContentBlock::ReasoningContent(ReasoningContentBlock::ReasoningText(reasoning)) => {
-                events.push(thinking(index, &reasoning.text));
-                if let Some(sig) = &reasoning.signature {
-                    let (head, tail) = sig.split_at(sig.len() / 2);
-                    events.extend([signature(index, head), signature(index, tail)]);
-                }
-            }
-            ContentBlock::ReasoningContent(ReasoningContentBlock::RedactedContent(blob)) => {
-                let (head, tail) = blob.inner.split_at(blob.inner.len() / 2);
-                events.extend([redacted(index, head), redacted(index, tail)]);
-            }
-            ContentBlock::Image(image) => {
-                let format = match image.format {
-                    ImageFormat::Gif => "gif",
-                    ImageFormat::Jpeg => "jpeg",
-                    ImageFormat::Png => "png",
-                    ImageFormat::Webp => "webp",
-                    ImageFormat::Unknown(_) => "tiff",
-                };
-                events.push(start(
-                    index,
-                    aws_bedrock::ContentBlockStart::Image(
-                        aws_bedrock::ImageBlockStart::builder()
-                            .format(aws_bedrock::ImageFormat::from(format))
-                            .build()
-                            .expect("image start builds"),
-                    ),
-                ));
-                if let Some(ImageSource::Bytes(blob)) = &image.source {
-                    let source = aws_bedrock::ImageSource::Bytes(aws_smithy_types::Blob::new(
-                        blob.inner.clone(),
-                    ));
-                    events.push(delta(
-                        index,
-                        Delta::Image(
-                            aws_bedrock::ImageBlockDelta::builder()
-                                .source(source)
-                                .build(),
-                        ),
-                    ));
-                }
-            }
-            ContentBlock::ToolResult(result) => {
-                events.push(start(
-                    index,
-                    aws_bedrock::ContentBlockStart::ToolResult(
-                        aws_bedrock::ToolResultBlockStart::builder()
-                            .tool_use_id(&result.tool_use_id)
-                            .build()
-                            .expect("tool result start builds"),
-                    ),
-                ));
-                let parts = result
-                    .content
-                    .iter()
-                    .filter_map(|part| match part {
-                        ToolResultContentBlock::Text(body) => {
-                            Some(aws_bedrock::ToolResultBlockDelta::Text(body.clone()))
-                        }
-                        ToolResultContentBlock::Json(value) => {
-                            Some(aws_bedrock::ToolResultBlockDelta::Json(json::to_document(
-                                value.clone(),
-                            )))
-                        }
-                        _ => None,
-                    })
-                    .collect();
-                events.push(delta(index, Delta::ToolResult(parts)));
-            }
-            ContentBlock::ReasoningContent(ReasoningContentBlock::Unknown)
-            | ContentBlock::Unknown => continue,
-            ContentBlock::CachePoint(_)
-            | ContentBlock::Document(_)
-            | ContentBlock::GuardContent(_)
-            | ContentBlock::Video(_)
-            | ContentBlock::Audio
-            | ContentBlock::SearchResult => panic!("{block:?} never streams"),
         }
-        events.push(stop(index));
+        Content::ToolUse(call) => {
+            events.push(tool_start(
+                index,
+                &call.tool_use_id,
+                &call.name,
+                call.r#type.clone(),
+            ));
+            let input = json::to_value(call.input.clone()).to_string();
+            events.push(tool_input(index, &input));
+        }
+        Content::ReasoningContent(aws_bedrock::ReasoningContentBlock::ReasoningText(reasoning)) => {
+            events.push(thinking(index, &reasoning.text));
+            if let Some(sig) = &reasoning.signature {
+                let (head, tail) = sig.split_at(sig.len() / 2);
+                events.extend([signature(index, head), signature(index, tail)]);
+            }
+        }
+        Content::ReasoningContent(aws_bedrock::ReasoningContentBlock::RedactedContent(blob)) => {
+            let (head, tail) = blob.as_ref().split_at(blob.as_ref().len() / 2);
+            events.extend([redacted(index, head), redacted(index, tail)]);
+        }
+        Content::Image(image) => {
+            events.push(start(
+                index,
+                aws_bedrock::ContentBlockStart::Image(
+                    aws_bedrock::ImageBlockStart::builder()
+                        .format(image.format.clone())
+                        .build()
+                        .expect("image start builds"),
+                ),
+            ));
+            events.push(delta(
+                index,
+                Delta::Image(
+                    aws_bedrock::ImageBlockDelta::builder()
+                        .set_source(image.source.clone())
+                        .build(),
+                ),
+            ));
+        }
+        Content::ToolResult(result) => {
+            events.push(start(
+                index,
+                aws_bedrock::ContentBlockStart::ToolResult(
+                    aws_bedrock::ToolResultBlockStart::builder()
+                        .tool_use_id(&result.tool_use_id)
+                        .set_status(result.status.clone())
+                        .set_type(result.r#type.clone())
+                        .build()
+                        .expect("tool result start builds"),
+                ),
+            ));
+            let parts = result
+                .content
+                .iter()
+                .map(|part| match part {
+                    aws_bedrock::ToolResultContentBlock::Text(body) => {
+                        aws_bedrock::ToolResultBlockDelta::Text(body.clone())
+                    }
+                    aws_bedrock::ToolResultContentBlock::Json(value) => {
+                        aws_bedrock::ToolResultBlockDelta::Json(value.clone())
+                    }
+                    other => panic!("no stream carries {other:?}"),
+                })
+                .collect();
+            events.push(delta(index, Delta::ToolResult(parts)));
+        }
+        other => panic!("{other:?} never streams"),
     }
-    events.push(message_stop(output.stop_reason.as_str()));
-    let usage = output.usage.as_ref().map(|usage| {
-        aws_bedrock::TokenUsage::builder()
-            .input_tokens(usage.input_tokens)
-            .output_tokens(usage.output_tokens)
-            .total_tokens(usage.total_tokens)
-            .set_cache_read_input_tokens(usage.cache_read_input_tokens)
-            .set_cache_write_input_tokens(usage.cache_write_input_tokens)
-            .build()
-            .expect("usage builds")
-    });
-    events.push(aws_bedrock::ConverseStreamOutput::Metadata(
-        aws_bedrock::ConverseStreamMetadataEvent::builder()
-            .set_usage(usage)
-            .build(),
-    ));
+    events.push(stop(index));
     events
 }
 
-/// Assert `output` decoded whole and restated as a stream fold into the
+/// `content` as the stream of events Converse sends for it.
+pub(crate) fn restated(
+    content: &[aws_bedrock::ContentBlock],
+    stop_reason: &str,
+) -> Vec<aws_bedrock::ConverseStreamOutput> {
+    let mut events: Vec<_> = content
+        .iter()
+        .enumerate()
+        .flat_map(|(index, block)| restated_block(i32::try_from(index).expect("small"), block))
+        .collect();
+    events.extend([message_stop(stop_reason), metadata(3, 1)]);
+    events
+}
+
+/// Assert `content` decoded whole and restated as a stream fold into the
 /// same turn for `model`.
-pub(crate) fn assert_agrees(model: &str, output: &InternalConverseOutput) {
+pub(crate) fn assert_agrees(model: &str, content: &[aws_bedrock::ContentBlock], stop_reason: &str) {
     let opened = || ConverseFrame::Opened { request_id: None };
-    let stream =
-        std::iter::once(opened()).chain(restated(output).into_iter().map(ConverseFrame::Event));
+    let stream = std::iter::once(opened()).chain(
+        restated(content, stop_reason)
+            .into_iter()
+            .map(ConverseFrame::Event),
+    );
     assert_restated_agrees(
         &Converse::new(model),
-        [opened(), ConverseFrame::Whole(Box::new(output.clone()))],
+        [
+            opened(),
+            ConverseFrame::Whole(Box::new(reply_of(content.to_vec(), stop_reason))),
+        ],
         stream,
     );
 }
 
-fn reasoning_text(text: &str, signature: Option<&str>) -> ContentBlock {
-    ContentBlock::ReasoningContent(ReasoningContentBlock::ReasoningText(ReasoningTextBlock {
-        text: text.to_owned(),
-        signature: signature.map(str::to_owned),
-    }))
+pub(crate) fn reasoning_text(text: &str, signature: Option<&str>) -> aws_bedrock::ContentBlock {
+    aws_bedrock::ContentBlock::ReasoningContent(aws_bedrock::ReasoningContentBlock::ReasoningText(
+        aws_bedrock::ReasoningTextBlock::builder()
+            .text(text)
+            .set_signature(signature.map(str::to_owned))
+            .build()
+            .expect("reasoning builds"),
+    ))
 }
 
-fn tool_use(id: &str, name: &str, input: serde_json::Value) -> ContentBlock {
-    ContentBlock::ToolUse(ToolUseBlock {
-        tool_use_id: id.to_owned(),
-        name: name.to_owned(),
-        input,
-    })
+pub(crate) fn tool_use(
+    id: &str,
+    name: &str,
+    input: serde_json::Value,
+    kind: Option<aws_bedrock::ToolUseType>,
+) -> aws_bedrock::ContentBlock {
+    aws_bedrock::ContentBlock::ToolUse(
+        aws_bedrock::ToolUseBlock::builder()
+            .tool_use_id(id)
+            .name(name)
+            .input(json::to_document(input))
+            .set_type(kind)
+            .build()
+            .expect("tool use builds"),
+    )
 }
 
 const REDACTED: &[u8] = b"\x00opaque-ciphertext\xff\x01";
 
-fn redacted_block() -> ContentBlock {
-    ContentBlock::ReasoningContent(ReasoningContentBlock::RedactedContent(
-        crate::types::converse_output::Blob {
-            inner: REDACTED.to_vec(),
-        },
-    ))
-}
-
-fn image_block() -> ContentBlock {
-    ContentBlock::Image(ImageBlock {
-        format: ImageFormat::Png,
-        source: Some(ImageSource::Bytes(crate::types::converse_output::Blob {
-            inner: b"png-bytes".to_vec(),
-        })),
-    })
-}
-
-fn tool_result_block() -> ContentBlock {
-    ContentBlock::ToolResult(ToolResultBlock {
-        tool_use_id: "server_1".to_owned(),
-        content: vec![
-            ToolResultContentBlock::Text("found".to_owned()),
-            ToolResultContentBlock::Json(json!({ "hits": 2 })),
-        ],
-        status: None,
-    })
-}
-
-fn cited_block() -> ContentBlock {
-    ContentBlock::CitationsContent(CitationsContentBlock {
-        content: Some(vec![
-            CitationGeneratedContent::Text("The token ".to_owned()),
-            CitationGeneratedContent::Text("is violet.".to_owned()),
-        ]),
-        citations: Some(vec![Citation {
-            title: Some("note".to_owned()),
-            source_content: None,
-            location: None,
-        }]),
-    })
-}
-
-/// A Claude reply with every streamable item kind, signed and redacted
-/// reasoning included.
-fn rich_reply() -> InternalConverseOutput {
-    reply_of(
-        vec![
-            reasoning_text("let me think", Some("sig-abc-123")),
-            redacted_block(),
-            cited_block(),
-            ContentBlock::Text("Calling.".to_owned()),
-            image_block(),
-            tool_result_block(),
-            tool_use("call_a", "get_weather", json!({ "location": "Paris" })),
-            tool_use("call_b", "ping", json!({})),
-        ],
-        StopReason::ToolUse,
+fn redacted_block() -> aws_bedrock::ContentBlock {
+    aws_bedrock::ContentBlock::ReasoningContent(
+        aws_bedrock::ReasoningContentBlock::RedactedContent(Blob::new(REDACTED.to_vec())),
     )
 }
 
-/// Only reasoning keeps a provider item: its signature, or its redacted
-/// bytes as base64. Everything else is canonical.
+fn image_block() -> aws_bedrock::ContentBlock {
+    aws_bedrock::ContentBlock::Image(
+        aws_bedrock::ImageBlock::builder()
+            .format(aws_bedrock::ImageFormat::Png)
+            .source(aws_bedrock::ImageSource::Bytes(Blob::new(
+                b"png-bytes".to_vec(),
+            )))
+            .build()
+            .expect("image builds"),
+    )
+}
+
+fn hosted_result() -> aws_bedrock::ContentBlock {
+    aws_bedrock::ContentBlock::ToolResult(
+        aws_bedrock::ToolResultBlock::builder()
+            .tool_use_id("srv_1")
+            .content(aws_bedrock::ToolResultContentBlock::Text(
+                "found".to_owned(),
+            ))
+            .content(aws_bedrock::ToolResultContentBlock::Json(
+                json::to_document(json!({ "hits": 2 })),
+            ))
+            .status(aws_bedrock::ToolResultStatus::Success)
+            .build()
+            .expect("tool result builds"),
+    )
+}
+
+fn cited_block() -> aws_bedrock::ContentBlock {
+    aws_bedrock::ContentBlock::CitationsContent(
+        aws_bedrock::CitationsContentBlock::builder()
+            .content(aws_bedrock::CitationGeneratedContent::Text(
+                "The token is violet.".to_owned(),
+            ))
+            .citations(
+                aws_bedrock::Citation::builder()
+                    .title("note")
+                    .location(aws_bedrock::CitationLocation::DocumentChar(
+                        aws_bedrock::DocumentCharLocation::builder()
+                            .document_index(0)
+                            .start(0)
+                            .end(20)
+                            .build(),
+                    ))
+                    .build(),
+            )
+            .build(),
+    )
+}
+
+fn server() -> Option<aws_bedrock::ToolUseType> {
+    Some(aws_bedrock::ToolUseType::ServerToolUse)
+}
+
+/// Every block kind Converse replies with, signed and redacted reasoning
+/// and a hosted tool included.
+fn rich() -> Vec<aws_bedrock::ContentBlock> {
+    vec![
+        reasoning_text("let me think", Some("sig-abc-123")),
+        redacted_block(),
+        cited_block(),
+        aws_bedrock::ContentBlock::Text("Calling.".to_owned()),
+        image_block(),
+        tool_use(
+            "srv_1",
+            "nova_grounding",
+            json!({ "q": "violet" }),
+            server(),
+        ),
+        hosted_result(),
+        tool_use(
+            "call_a",
+            "get_weather",
+            json!({ "location": "Paris" }),
+            None,
+        ),
+        tool_use("call_b", "ping", json!({}), None),
+    ]
+}
+
+/// Reasoning, cited text and a hosted tool's use and result keep their
+/// Converse JSON; text, images and client calls keep none.
 #[test]
-fn only_reasoning_keeps_a_provider_item() {
+fn kept_blocks_hold_their_converse_json() {
     let claude = crate::completion::ANTHROPIC_CLAUDE_SONNET_4_6;
-    let response = unary_as(claude, rich_reply()).expect("decodes");
-    let natives: Vec<_> = response
+    let response = unary_as(claude, reply_of(rich(), "tool_use")).expect("decodes");
+    let items: Vec<_> = response
         .choice
         .iter()
-        .map(|block| block.native_item().cloned())
+        .map(|block| match block {
+            AssistantContent::Opaque(opaque) => Some((opaque.item.clone(), opaque.replay)),
+            block => block.native_item().cloned().map(|item| (item, true)),
+        })
         .collect();
     assert_eq!(
-        natives,
+        items,
         [
-            Some(json!({ "signature": "sig-abc-123" })),
-            Some(json!({ "redacted": BASE64_STANDARD.encode(REDACTED) })),
+            Some((
+                json!({ "reasoningContent": { "reasoningText": {
+                    "text": "let me think", "signature": "sig-abc-123",
+                } } }),
+                true
+            )),
+            Some((
+                json!({ "reasoningContent": {
+                    "redactedContent": BASE64_STANDARD.encode(REDACTED),
+                } }),
+                true
+            )),
+            Some((
+                json!({ "citationsContent": {
+                    "content": [{ "text": "The token is violet." }],
+                    "citations": [{
+                        "title": "note",
+                        "location": { "documentChar": { "documentIndex": 0, "start": 0, "end": 20 } },
+                    }],
+                } }),
+                true
+            )),
             None,
             None,
-            None,
-            None,
+            Some((
+                json!({ "toolUse": {
+                    "toolUseId": "srv_1", "name": "nova_grounding",
+                    "input": { "q": "violet" }, "type": "server_tool_use",
+                } }),
+                true
+            )),
+            Some((
+                json!({ "toolResult": {
+                    "toolUseId": "srv_1",
+                    "content": [{ "text": "found" }, { "json": { "hits": 2 } }],
+                    "status": "success",
+                } }),
+                true
+            )),
             None,
             None,
         ]
     );
-    let AssistantContent::Reasoning(redacted) = &response.choice[1] else {
-        panic!("{:?}", response.choice[1]);
-    };
-    assert!(redacted.redacted && redacted.text.is_empty());
     assert_eq!(
         response.choice[2],
         AssistantContent::text("The token is violet.")
+            .with_native(items[2].clone().expect("cited").0)
     );
     assert!(matches!(&response.choice[4], AssistantContent::Image(_)));
-    assert_eq!(
-        response.choice[5],
-        AssistantContent::Opaque(Opaque {
-            item: json!({ "type": "tool_result" }),
-            replay: false,
-        })
-    );
     assert_eq!(response.finish_reason(), Some(FinishReason::ToolCalls));
 }
 
@@ -497,158 +534,110 @@ fn only_reasoning_keeps_a_provider_item() {
 fn whole_and_streamed_replies_agree() {
     assert_agrees(
         crate::completion::ANTHROPIC_CLAUDE_SONNET_4_6,
-        &rich_reply(),
+        &rich(),
+        "tool_use",
     );
     assert_agrees(
         NOVA,
-        &reply_of(
-            vec![
-                ContentBlock::Text("<thinking>sum</thinking>".to_owned()),
-                tool_use("tooluse_1", "add", json!({ "x": 2, "y": 5 })),
-            ],
-            StopReason::ToolUse,
-        ),
-    );
-    assert_agrees(
-        NOVA,
-        &reply_of(
-            vec![
-                reasoning_text("", Some("only-signature")),
-                ContentBlock::Text("4".into()),
-            ],
-            StopReason::MaxTokens,
-        ),
-    );
-}
-
-/// Every Converse content block decodes without failing the reply; the
-/// ones a stream can carry agree whole and streamed. Unknown has no payload
-/// and is dropped.
-#[test]
-#[deny(clippy::wildcard_enum_match_arm)]
-fn every_content_block_decodes() {
-    let samples = vec![
-        ContentBlock::CachePoint(CachePointBlock {
-            kind: CachePointType::Default,
-        }),
-        cited_block(),
-        ContentBlock::Document(DocumentBlock {
-            format: DocumentFormat::Txt,
-            name: "doc".to_owned(),
-            source: Some(DocumentSource::Text("body".to_owned())),
-            context: None,
-            citations: None,
-        }),
-        ContentBlock::GuardContent(GuardrailConverseContentBlock::Text(
-            GuardrailConverseTextBlock {
-                text: "guarded".to_owned(),
-                qualifiers: None,
-            },
-        )),
-        image_block(),
-        reasoning_text("thinking", Some("sig")),
-        ContentBlock::Text("hello".to_owned()),
-        tool_result_block(),
-        tool_use("call_1", "lookup", json!({ "q": 1 })),
-        ContentBlock::Video(VideoBlock {
-            format: VideoFormat::Mp4,
-            source: None,
-        }),
-        ContentBlock::Audio,
-        ContentBlock::SearchResult,
-        ContentBlock::Unknown,
-    ];
-    let variant_index = |block: &ContentBlock| match block {
-        ContentBlock::CachePoint(_) => 0,
-        ContentBlock::CitationsContent(_) => 1,
-        ContentBlock::Document(_) => 2,
-        ContentBlock::GuardContent(_) => 3,
-        ContentBlock::Image(_) => 4,
-        ContentBlock::ReasoningContent(_) => 5,
-        ContentBlock::Text(_) => 6,
-        ContentBlock::ToolResult(_) => 7,
-        ContentBlock::ToolUse(_) => 8,
-        ContentBlock::Video(_) => 9,
-        ContentBlock::Audio => 10,
-        ContentBlock::SearchResult => 11,
-        ContentBlock::Unknown => 12,
-    };
-    assert_every_variant(&samples, variant_index, 13);
-    for block in samples {
-        let whole_only = matches!(
-            block,
-            ContentBlock::CachePoint(_)
-                | ContentBlock::Document(_)
-                | ContentBlock::GuardContent(_)
-                | ContentBlock::Video(_)
-                | ContentBlock::Audio
-                | ContentBlock::SearchResult
-        );
-        let unknown = block == ContentBlock::Unknown;
-        let output = reply_of(vec![block], StopReason::EndTurn);
-        let response = unary_as(NOVA, output.clone()).expect("every block decodes");
-        if unknown {
-            assert!(response.choice.is_empty());
-        } else if whole_only {
-            assert!(
-                matches!(
-                    &response.choice[..],
-                    [AssistantContent::Opaque(Opaque { replay: false, .. })]
-                ),
-                "{:?}",
-                response.choice
-            );
-        } else {
-            assert_agrees(NOVA, &output);
-        }
-    }
-    let reasoning = [
-        reasoning_text("x", None),
-        redacted_block(),
-        ContentBlock::ReasoningContent(ReasoningContentBlock::Unknown),
-    ];
-    let reasoning_index = |block: &ContentBlock| match block {
-        ContentBlock::ReasoningContent(ReasoningContentBlock::ReasoningText(_)) => 0,
-        ContentBlock::ReasoningContent(ReasoningContentBlock::RedactedContent(_)) => 1,
-        ContentBlock::ReasoningContent(ReasoningContentBlock::Unknown) => 2,
-        ContentBlock::CachePoint(_)
-        | ContentBlock::CitationsContent(_)
-        | ContentBlock::Document(_)
-        | ContentBlock::GuardContent(_)
-        | ContentBlock::Image(_)
-        | ContentBlock::Text(_)
-        | ContentBlock::ToolResult(_)
-        | ContentBlock::ToolUse(_)
-        | ContentBlock::Video(_)
-        | ContentBlock::Audio
-        | ContentBlock::SearchResult
-        | ContentBlock::Unknown => 3,
-    };
-    assert_every_variant(&reasoning, reasoning_index, 3);
-    for block in reasoning {
-        let output = reply_of(vec![block], StopReason::EndTurn);
-        assert_agrees(NOVA, &output);
-    }
-}
-
-/// An item and a field this SDK version does not model are gone before the
-/// decoder sees them: a field the mirror does not name is ignored, and the
-/// SDK's `Unknown` carries nothing to keep, so the reply still decodes.
-#[test]
-fn an_invented_item_and_field_do_not_fail_the_reply() {
-    let mut raw = serde_json::to_value(reply_of(
-        vec![
-            ContentBlock::Unknown,
-            tool_use("call_1", "lookup", json!({})),
+        &[
+            aws_bedrock::ContentBlock::Text("<thinking>sum</thinking>".to_owned()),
+            tool_use("tooluse_1", "add", json!({ "x": 2, "y": 5 }), None),
         ],
-        StopReason::ToolUse,
-    ))
-    .expect("serializes");
-    raw["output"]["Message"]["content"][1]["ToolUse"]["invented_field"] = json!(true);
-    let output: InternalConverseOutput = serde_json::from_value(raw).expect("deserializes");
-    let response = unary_as(NOVA, output).expect("decodes");
-    assert_eq!(response.tool_calls().count(), 1);
-    assert_eq!(response.choice.len(), 1);
+        "tool_use",
+    );
+    assert_agrees(
+        NOVA,
+        &[
+            reasoning_text("", Some("only-signature")),
+            aws_bedrock::ContentBlock::Text("4".into()),
+        ],
+        "max_tokens",
+    );
+}
+
+/// A hosted tool's use and result are opaque items that replay to the same
+/// model, whole or streamed; the agent never sees a call it should run.
+#[test]
+fn a_hosted_tool_use_is_not_a_client_call() {
+    let content = [
+        tool_use(
+            "srv_1",
+            "nova_grounding",
+            json!({ "q": "violet" }),
+            server(),
+        ),
+        hosted_result(),
+        aws_bedrock::ContentBlock::Text("Violet.".to_owned()),
+    ];
+    let whole = unary_as(NOVA, reply_of(content.to_vec(), "end_turn")).expect("decodes");
+    let stream = streamed(restated(&content, "end_turn")).expect("decodes");
+    for response in [whole, stream] {
+        assert_eq!(response.tool_calls().count(), 0, "{:?}", response.choice);
+        assert!(
+            matches!(
+                &response.choice[..],
+                [
+                    AssistantContent::Opaque(Opaque { replay: true, .. }),
+                    AssistantContent::Opaque(Opaque { replay: true, .. }),
+                    AssistantContent::Text(_),
+                ]
+            ),
+            "{:?}",
+            response.choice
+        );
+        assert_eq!(response.stop(), Stop::Stop);
+    }
+}
+
+/// A stream's citations stay on their text block's item, as a whole reply
+/// states them.
+#[test]
+fn streamed_citations_are_kept() {
+    assert_agrees(NOVA, &[cited_block()], "end_turn");
+    let response = streamed(ended(vec![
+        text(0, "The token "),
+        delta(
+            0,
+            aws_bedrock::ContentBlockDelta::Citation(
+                aws_bedrock::CitationsDelta::builder().title("note").build(),
+            ),
+        ),
+        text(0, "is violet."),
+        stop(0),
+    ]))
+    .expect("decodes");
+    assert_eq!(
+        response.choice[0].native_item(),
+        Some(&json!({ "citationsContent": {
+            "content": [{ "text": "The token is violet." }],
+            "citations": [{ "title": "note" }],
+        } }))
+    );
+}
+
+/// A block is complete only at its stop: one the stream never stopped
+/// keeps no provider item, and a hosted call stops replaying.
+#[test]
+fn a_block_keeps_its_item_only_at_its_stop() {
+    let response = streamed(vec![
+        thinking(0, "partial"),
+        signature(0, "sig"),
+        tool_start(1, "srv_1", "nova_grounding", server()),
+        tool_input(1, "{}"),
+        message_stop("end_turn"),
+        metadata(3, 1),
+    ])
+    .expect("decodes");
+    assert_eq!(response.choice[0], AssistantContent::reasoning("partial"));
+    assert!(response.choice[0].native_item().is_none());
+    assert!(
+        matches!(
+            &response.choice[1],
+            AssistantContent::Opaque(Opaque { replay: false, .. })
+        ),
+        "{:?}",
+        response.choice[1]
+    );
 }
 
 /// Signature fragments concatenate into the reasoning's item.
@@ -664,8 +653,9 @@ fn signed_thinking_keeps_its_signature() {
     .expect("decodes");
     assert_eq!(
         response.choice,
-        [AssistantContent::reasoning("I am thinking")
-            .with_native(json!({ "signature": "sig-abc" }))]
+        [AssistantContent::reasoning("I am thinking").with_native(
+            json!({ "reasoningContent": { "reasoningText": { "text": "I am thinking", "signature": "sig-abc" } } })
+        )]
     );
 }
 
@@ -676,7 +666,9 @@ fn signature_only_thinking_is_kept() {
     let response = streamed(ended(vec![signature(0, "sig-only"), stop(0)])).expect("decodes");
     assert_eq!(
         response.choice,
-        [AssistantContent::reasoning("").with_native(json!({ "signature": "sig-only" }))]
+        [AssistantContent::reasoning("").with_native(
+            json!({ "reasoningContent": { "reasoningText": { "text": "", "signature": "sig-only" } } })
+        )]
     );
 }
 
@@ -705,36 +697,21 @@ fn redacted_reasoning_encodes_its_bytes_once() {
     assert!(reasoning.redacted);
     assert_eq!(
         response.choice[0].native_item(),
-        Some(&json!({ "redacted": BASE64_STANDARD.encode(REDACTED) }))
+        Some(
+            &json!({ "reasoningContent": { "redactedContent": BASE64_STANDARD.encode(REDACTED) } })
+        )
     );
     assert_eq!(response.choice[1], AssistantContent::text("done"));
-}
-
-/// Citations are not kept; their text is.
-#[test]
-fn cited_text_streams_as_text() {
-    let citation = aws_bedrock::CitationsDelta::builder().title("note").build();
-    let response = streamed(ended(vec![
-        text(0, "The token "),
-        delta(0, aws_bedrock::ContentBlockDelta::Citation(citation)),
-        text(0, "is violet."),
-        stop(0),
-    ]))
-    .expect("decodes");
-    assert_eq!(
-        response.choice,
-        [AssistantContent::text("The token is violet.")]
-    );
 }
 
 #[test]
 fn parallel_tool_calls_end_in_a_tool_use_finish() {
     let response = streamed(vec![
-        tool_start(0, "call_a", "get_weather"),
+        tool_start(0, "call_a", "get_weather", None),
         tool_input(0, "{\"location\":"),
         tool_input(0, "\"Paris\"}"),
         stop(0),
-        tool_start(1, "call_b", "ping"),
+        tool_start(1, "call_b", "ping", None),
         stop(1),
         message_stop("tool_use"),
         metadata(3, 1),
@@ -758,7 +735,7 @@ fn parallel_tool_calls_end_in_a_tool_use_finish() {
 #[tokio::test]
 async fn a_call_ends_at_its_block_stop() {
     let (events, outcome) = driven(vec![
-        tool_start(0, "call_a", "get_weather"),
+        tool_start(0, "call_a", "get_weather", None),
         tool_input(0, "{}"),
         stop(0),
     ])
@@ -780,9 +757,9 @@ async fn a_call_ends_at_its_block_stop() {
 #[test]
 fn calls_missing_a_block_stop_end_with_the_reply() {
     let response = streamed(vec![
-        tool_start(0, "call_a", "get_weather"),
+        tool_start(0, "call_a", "get_weather", None),
         tool_input(0, "{\"location\":\"Paris\"}"),
-        tool_start(1, "call_b", "get_time"),
+        tool_start(1, "call_b", "get_time", None),
         tool_input(1, "{\"zone\":\"UTC\"}"),
         message_stop("tool_use"),
         metadata(3, 1),
@@ -799,7 +776,7 @@ fn calls_missing_a_block_stop_end_with_the_reply() {
 #[test]
 fn a_call_cut_off_mid_input_keeps_what_it_states() {
     let response = streamed(vec![
-        tool_start(0, "call_a", "get_weather"),
+        tool_start(0, "call_a", "get_weather", None),
         tool_input(0, "{\"location\":\"Par"),
         message_stop("max_tokens"),
         metadata(3, 1),
@@ -817,7 +794,7 @@ fn a_call_cut_off_mid_input_keeps_what_it_states() {
 #[test]
 fn malformed_tool_json_is_kept_with_its_text() {
     let response = streamed(ended(vec![
-        tool_start(0, "call_a", "get_weather"),
+        tool_start(0, "call_a", "get_weather", None),
         tool_input(0, "{\"location\": not-json"),
         stop(0),
     ]))
@@ -829,15 +806,26 @@ fn malformed_tool_json_is_kept_with_its_text() {
     );
 }
 
+/// A call that names no tool is dropped, not a failed reply.
+#[test]
+fn a_nameless_call_is_dropped() {
+    let response = streamed(ended(vec![
+        tool_start(0, "call_a", "", None),
+        tool_input(0, "{}"),
+        stop(0),
+        text(1, "done"),
+        stop(1),
+    ]))
+    .expect("a nameless call does not fail the reply");
+    assert_eq!(response.choice, [AssistantContent::text("done")]);
+}
+
 /// Images and tool results arrive in pieces and become one block at their
 /// stop; a delta for a block that never started is an error.
 #[test]
 fn image_and_tool_result_deltas_assemble_at_their_stop() {
-    let output = reply_of(
-        vec![image_block(), tool_result_block()],
-        StopReason::EndTurn,
-    );
-    let response = streamed(restated(&output)).expect("decodes");
+    let response =
+        streamed(restated(&[image_block(), hosted_result()], "end_turn")).expect("decodes");
     assert_eq!(
         response.choice[0],
         AssistantContent::image_base64(
@@ -846,9 +834,12 @@ fn image_and_tool_result_deltas_assemble_at_their_stop() {
             None
         )
     );
-    assert!(matches!(&response.choice[1], AssistantContent::Opaque(_)));
+    assert!(matches!(
+        &response.choice[1],
+        AssistantContent::Opaque(Opaque { replay: true, .. })
+    ));
 
-    let source = aws_bedrock::ImageSource::Bytes(aws_smithy_types::Blob::new(b"x".to_vec()));
+    let source = aws_bedrock::ImageSource::Bytes(Blob::new(b"x".to_vec()));
     let orphan = delta(
         0,
         aws_bedrock::ContentBlockDelta::Image(
@@ -860,47 +851,77 @@ fn image_and_tool_result_deltas_assemble_at_their_stop() {
     assert!(streamed(ended(vec![orphan])).is_err());
 }
 
-/// pi's stop mapping: an exceeded context window is a length stop, and a
-/// malformed output or a reason this crate does not know fails the turn.
+/// Every `stopReason` Converse documents maps explicitly, and only an end
+/// of turn, a stop sequence, a tool use and a length stop are successes.
 #[test]
-fn newer_stop_reasons_map_and_fail_the_turn_when_malformed() {
-    let stopped = |reason: &str| {
-        let response = streamed(vec![
+#[allow(clippy::wildcard_enum_match_arm)]
+fn every_stop_reason_maps() {
+    use aws_bedrock::StopReason as Reason;
+    let cases = [
+        (Reason::EndTurn, FinishReason::Stop, Stop::Stop),
+        (Reason::StopSequence, FinishReason::Stop, Stop::Stop),
+        (Reason::ToolUse, FinishReason::ToolCalls, Stop::ToolUse),
+        (Reason::MaxTokens, FinishReason::Length, Stop::Length),
+        (
+            Reason::ModelContextWindowExceeded,
+            FinishReason::Length,
+            Stop::Length,
+        ),
+        (
+            Reason::GuardrailIntervened,
+            FinishReason::ContentFilter,
+            Stop::Error("Provider finish_reason: content_filter".to_owned()),
+        ),
+        (
+            Reason::ContentFiltered,
+            FinishReason::ContentFilter,
+            Stop::Error("Provider finish_reason: content_filter".to_owned()),
+        ),
+        (
+            Reason::MalformedModelOutput,
+            FinishReason::Other("malformed_model_output".to_owned()),
+            Stop::Error("Provider stopped with: malformed_model_output".to_owned()),
+        ),
+        (
+            Reason::MalformedToolUse,
+            FinishReason::Other("malformed_tool_use".to_owned()),
+            Stop::Error("Provider stopped with: malformed_tool_use".to_owned()),
+        ),
+        (
+            Reason::from("x_rig_invented"),
+            FinishReason::Other("x_rig_invented".to_owned()),
+            Stop::Error("Provider stopped with: x_rig_invented".to_owned()),
+        ),
+    ];
+    let index = |reason: &Reason| match reason {
+        Reason::ContentFiltered => 0,
+        Reason::EndTurn => 1,
+        Reason::GuardrailIntervened => 2,
+        Reason::MalformedModelOutput => 3,
+        Reason::MalformedToolUse => 4,
+        Reason::MaxTokens => 5,
+        Reason::ModelContextWindowExceeded => 6,
+        Reason::StopSequence => 7,
+        Reason::ToolUse => 8,
+        _ => 9,
+    };
+    let reasons: Vec<Reason> = cases.iter().map(|(reason, ..)| reason.clone()).collect();
+    assert_every_variant(&reasons, index, 10);
+    for (reason, finish, stopped) in cases {
+        let content = vec![aws_bedrock::ContentBlock::Text("x".into())];
+        let whole = unary_as(NOVA, reply_of(content, reason.as_str())).expect("decodes");
+        let stream = streamed(vec![
             text(0, "x"),
             stop(0),
-            message_stop(reason),
+            message_stop(reason.as_str()),
             metadata(1, 1),
         ])
         .expect("decodes");
-        (response.finish_reason(), response.stop())
-    };
-    assert_eq!(
-        stopped("model_context_window_exceeded"),
-        (Some(FinishReason::Length), Stop::Length)
-    );
-    assert_eq!(
-        stopped("malformed_tool_use"),
-        (
-            Some(FinishReason::Other("malformed_tool_use".to_owned())),
-            Stop::Error("Provider stopped with: malformed_tool_use".to_owned())
-        )
-    );
-    assert_eq!(
-        stopped("pause_turn").1,
-        Stop::Error("Provider stopped with: pause_turn".to_owned())
-    );
-    let whole = unary_as(
-        NOVA,
-        reply_of(
-            vec![ContentBlock::Text("x".into())],
-            StopReason::MalformedModelOutput,
-        ),
-    )
-    .expect("decodes");
-    assert_eq!(
-        whole.stop(),
-        Stop::Error("Provider stopped with: malformed_model_output".to_owned())
-    );
+        for response in [whole, stream] {
+            assert_eq!(response.finish_reason(), Some(finish.clone()), "{reason:?}");
+            assert_eq!(response.stop(), stopped, "{reason:?}");
+        }
+    }
 }
 
 /// An empty text block is no content, whole or streamed.
@@ -908,7 +929,10 @@ fn newer_stop_reasons_map_and_fail_the_turn_when_malformed() {
 fn an_empty_text_block_is_no_content() {
     let whole = unary_as(
         NOVA,
-        reply_of(vec![ContentBlock::Text(String::new())], StopReason::EndTurn),
+        reply_of(
+            vec![aws_bedrock::ContentBlock::Text(String::new())],
+            "end_turn",
+        ),
     )
     .expect("decodes");
     assert!(whole.choice.is_empty());
@@ -916,27 +940,54 @@ fn an_empty_text_block_is_no_content() {
     assert!(stream.choice.is_empty());
 }
 
-/// A stream's `raw` is Bedrock's own terminal record, and its usage counts
-/// cache reads and writes in input as Bedrock's `totalTokens` does.
+/// A stream's `raw` is the JSON Bedrock sent for its message-level events:
+/// the stop with its model-specific fields, and the metadata with usage,
+/// metrics, trace, performance configuration and service tier.
 #[test]
-fn a_streams_raw_round_trips_into_the_terminal_type() {
-    let response = streamed(ended(vec![text(0, "hi"), stop(0)])).expect("decodes");
-    let typed: BedrockStreamingResponse =
-        serde_json::from_value(response.raw.clone()).expect("raw deserializes");
+fn a_streams_raw_is_bedrocks_json() {
+    let message_stop_json = json!({ "messageStop": {
+        "stopReason": "end_turn",
+        "additionalModelResponseFields": { "stop_sequence": null },
+    } });
+    let metadata_json = json!({ "metadata": {
+        "usage": { "inputTokens": 3, "outputTokens": 1, "totalTokens": 4 },
+        "metrics": { "latencyMs": 120 },
+        "trace": { "promptRouter": { "invokedModelId": "amazon.nova-lite-v1:0" } },
+        "performanceConfig": { "latency": "optimized" },
+        "serviceTier": { "type": "priority" },
+    } });
+    let frames = [
+        ConverseFrame::Opened { request_id: None },
+        ConverseFrame::Event(text(0, "hi")),
+        ConverseFrame::Event(stop(0)),
+        ConverseFrame::Raw(message_stop_json.clone()),
+        ConverseFrame::Event(message_stop("end_turn")),
+        ConverseFrame::Raw(metadata_json.clone()),
+        ConverseFrame::Event(metadata(3, 1)),
+    ];
+    let response = decode(&Converse::new(NOVA), Mode::Streaming, frames).expect("decodes");
     assert_eq!(
-        serde_json::to_value(&typed).expect("serializes"),
-        response.raw
+        response.raw,
+        json!({
+            "messageStop": message_stop_json["messageStop"],
+            "metadata": metadata_json["metadata"],
+        })
     );
-    assert_eq!(typed.stop_reason, Some(StopReason::EndTurn));
     assert_eq!(response.usage.total_tokens, Some(4));
+}
 
-    let usage = TokenUsage {
-        input_tokens: 200,
-        output_tokens: 75,
-        total_tokens: 325,
-        cache_read_input_tokens: Some(40),
-        cache_write_input_tokens: Some(10),
-    };
+/// Rig's input counts Bedrock's cache reads and writes, as `totalTokens`
+/// does.
+#[test]
+fn usage_counts_cache_reads_and_writes_in_input() {
+    let usage = aws_bedrock::TokenUsage::builder()
+        .input_tokens(200)
+        .output_tokens(75)
+        .total_tokens(325)
+        .cache_read_input_tokens(40)
+        .cache_write_input_tokens(10)
+        .build()
+        .expect("usage builds");
     assert_eq!(
         normalize_usage(&usage),
         rig_core::completion::Usage {
