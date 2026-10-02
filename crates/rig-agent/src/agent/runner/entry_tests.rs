@@ -202,10 +202,11 @@ async fn resume_streams_a_run_without_a_prompt() {
     );
 }
 
-/// A resumed run carries its history: even with memory and a conversation
-/// configured, nothing is loaded and nothing is appended — on either medium.
+/// A resumed run carries its history, so nothing is loaded, but with memory
+/// and a conversation configured the messages it adds are appended once, on
+/// either medium (#2244).
 #[tokio::test]
-async fn resume_neither_loads_nor_saves_memory() {
+async fn resume_appends_its_messages_without_loading() {
     let memory = CountingMemory::default();
     let agent = AgentBuilder::new(unary_model())
         .memory(memory.clone())
@@ -219,8 +220,12 @@ async fn resume_neither_loads_nor_saves_memory() {
         .expect("the resumed run completes");
 
     assert_eq!(response.output(), "collected");
-    assert_eq!(memory.load_count(), 0);
-    assert_eq!(memory.append_count(), 0);
+    assert_eq!(memory.load_count(), 0, "the run carries its history");
+    assert_eq!(
+        memory.append_count(),
+        1,
+        "the run's messages are appended once"
+    );
 
     let agent = AgentBuilder::new(streaming_model())
         .memory(memory.clone())
@@ -234,8 +239,12 @@ async fn resume_neither_loads_nor_saves_memory() {
         }
     }
     assert_eq!(final_output.as_deref(), Some("streamed"));
-    assert_eq!(memory.load_count(), 0);
-    assert_eq!(memory.append_count(), 0);
+    assert_eq!(memory.load_count(), 0, "the run carries its history");
+    assert_eq!(
+        memory.append_count(),
+        2,
+        "the streamed run appends once too"
+    );
 }
 
 /// The number of hook events is the same whichever medium drives the run:
