@@ -200,14 +200,6 @@ pub struct Cell {
     pub source: Source,
 }
 
-/// Whether the source's reasoning issuer is the target model's own: direct
-/// Anthropic reasoning continued on Claude through OpenRouter.
-pub fn shares_issuer(cell: Cell) -> bool {
-    cell.source == Source::Anthropic
-        && cell.provider == "openrouter"
-        && cell.model.starts_with("anthropic/")
-}
-
 /// What the continuation produced.
 #[derive(Clone, Debug)]
 pub struct Observation {
@@ -322,32 +314,20 @@ pub fn assert_recorded(cell: Cell, scenario: &str) -> Forwarded {
         .collect();
     forwarded.sort();
     forwarded.dedup();
-    // Reasoning state is only meaningful to its issuer: none of it may reach
-    // another issuer's model. Tool-call ids are correlation, not state, and a
-    // message's `phase` labels the message for every Responses dialect. Claude
-    // through OpenRouter shares the Anthropic issuer (its thinking signatures
-    // verified valid between OpenRouter and the Claude API both ways), so
-    // there the signature must arrive.
-    let shared = shares_issuer(cell);
+    // Reasoning state is only meaningful to the model that produced it: none
+    // of it may reach another model. Tool-call ids are correlation, not
+    // state, and a message's `phase` labels the message for every Responses
+    // dialect.
     let leaked: Vec<&str> = forwarded
         .iter()
         .copied()
-        .filter(|kind| {
-            *kind != "tool_call_id" && *kind != "phase" && !(shared && *kind == "signature")
-        })
+        .filter(|kind| *kind != "tool_call_id" && *kind != "phase")
         .collect();
     assert!(
         leaked.is_empty(),
         "[{provider} from {}] foreign reasoning state reached the target request: {leaked:?}",
         cell.source.provider()
     );
-    if shared {
-        assert!(
-            forwarded.contains(&"signature"),
-            "[{provider} from {}] the shared issuer's signature reaches the target",
-            cell.source.provider()
-        );
-    }
     let report = Forwarded {
         delivered,
         forwarded,

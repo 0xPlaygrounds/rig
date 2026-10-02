@@ -39,7 +39,8 @@ async fn nonstreaming_reasoning_content_tool_roundtrip() {
                 .preamble(reasoning::TOOL_SYSTEM_PROMPT)
                 .tool(WeatherTool::new(call_count.clone()))
                 .additional_params(json!({
-                    "reasoning": { "effort": "medium" }
+                    "reasoning": { "effort": "medium" },
+                    "store": false
                 }))
                 .default_max_turns(2)
                 .build();

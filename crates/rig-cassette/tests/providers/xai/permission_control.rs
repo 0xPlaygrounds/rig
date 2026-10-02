@@ -186,6 +186,7 @@ async fn permission_control_prompt_example() -> Result<()> {
                 .tool(ReadFileTail {
                     path: cleanup.path().to_path_buf(),
                 })
+                .additional_params(serde_json::json!({ "store": false }))
                 .build();
 
             let call_count = Arc::new(AtomicUsize::new(0));
@@ -229,6 +230,7 @@ async fn permission_control_streaming_example() -> Result<()> {
                 .tool(ReadFileTail {
                     path: cleanup.path().to_path_buf(),
                 })
+                .additional_params(serde_json::json!({ "store": false }))
                 .build();
 
             let call_count = Arc::new(AtomicUsize::new(0));
