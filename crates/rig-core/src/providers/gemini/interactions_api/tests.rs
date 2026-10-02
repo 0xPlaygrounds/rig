@@ -739,59 +739,6 @@ fn test_interaction_status_helpers() {
 }
 
 #[test]
-fn test_interaction_status_maps_every_wire_variant() {
-    use crate::completion::FinishReason as Normalized;
-
-    for (status, expected) in [
-        (InteractionStatus::Completed, Normalized::Stop),
-        (InteractionStatus::RequiresAction, Normalized::ToolCalls),
-        (InteractionStatus::BudgetExceeded, Normalized::Length),
-        // Statuses rig does not model survive in the provider's own
-        // spelling rather than being guessed at.
-        (
-            InteractionStatus::InProgress,
-            Normalized::Other("in_progress".to_string()),
-        ),
-        (
-            InteractionStatus::Incomplete,
-            Normalized::Other("incomplete".to_string()),
-        ),
-        (
-            InteractionStatus::Failed,
-            Normalized::Other("failed".to_string()),
-        ),
-        (
-            InteractionStatus::Cancelled,
-            Normalized::Other("cancelled".to_string()),
-        ),
-    ] {
-        assert_eq!(
-            map_interaction_status(&status),
-            expected,
-            "status {status:?}"
-        );
-    }
-}
-
-#[test]
-fn test_interaction_status_wire_spelling_matches_serde() {
-    // `as_wire_str` is hand-written; keep it honest against the serde
-    // representation the same enum deserializes from.
-    for status in [
-        InteractionStatus::InProgress,
-        InteractionStatus::RequiresAction,
-        InteractionStatus::Incomplete,
-        InteractionStatus::BudgetExceeded,
-        InteractionStatus::Completed,
-        InteractionStatus::Failed,
-        InteractionStatus::Cancelled,
-    ] {
-        let serialized = serde_json::to_value(&status).expect("status should serialize");
-        assert_eq!(serialized, json!(status.as_wire_str()));
-    }
-}
-
-#[test]
 fn test_unknown_interaction_status_round_trips_verbatim() {
     // A status this crate does not know must land in `Unknown` with the
     // provider's spelling intact — and serialize back to the same string —
@@ -799,14 +746,9 @@ fn test_unknown_interaction_status_round_trips_verbatim() {
     let status: InteractionStatus =
         serde_json::from_value(json!("status_future")).expect("unknown status should deserialize");
     assert!(matches!(&status, InteractionStatus::Unknown(s) if s == "status_future"));
-    assert_eq!(status.as_wire_str(), "status_future");
     assert_eq!(
         serde_json::to_value(&status).expect("status should serialize"),
         json!("status_future")
-    );
-    assert_eq!(
-        map_interaction_status(&status),
-        crate::completion::FinishReason::Other("status_future".to_string())
     );
 }
 
@@ -893,31 +835,6 @@ fn test_budget_exceeded_status_deserializes() {
 
     assert!(matches!(status, InteractionStatus::BudgetExceeded));
     assert!(status.is_terminal());
-}
-
-#[test]
-fn test_budget_exceeded_status_update_deserializes() {
-    let event: InteractionSseEvent = serde_json::from_value(json!({
-        "event_type": "interaction.status_update",
-        "interaction_id": "interaction-123",
-        "status": "budget_exceeded",
-        "event_id": "event-456"
-    }))
-    .expect("budget_exceeded status update should deserialize");
-
-    match event {
-        InteractionSseEvent::InteractionStatusUpdate {
-            interaction_id,
-            status,
-            event_id,
-        } => {
-            assert_eq!(interaction_id, "interaction-123");
-            assert!(matches!(status, InteractionStatus::BudgetExceeded));
-            assert!(status.is_terminal());
-            assert_eq!(event_id.as_deref(), Some("event-456"));
-        }
-        other => panic!("expected status update event, got {other:?}"),
-    }
 }
 
 #[test]

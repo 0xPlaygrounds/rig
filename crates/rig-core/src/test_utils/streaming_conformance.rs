@@ -2373,8 +2373,8 @@ pub mod fixtures {
                     "event_type": "future.event",
                     "index": 0,
                 }))),
-                // A known tag (`step.delta`) with a schema-defective payload
-                // must classify `Corrupt`, never `Unknown`.
+                // A known tag (`step.delta`) whose delta, the content of its
+                // block, is not an object fails the reply, never skipped.
                 defective_known_frame: Some(sse_raw(
                     r#"{"event_type":"step.delta","index":0,"delta":42}"#,
                 )),

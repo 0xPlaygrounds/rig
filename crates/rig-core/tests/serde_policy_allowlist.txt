@@ -77,7 +77,3 @@ rig-bedrock/src/image.rs | serde_json::from_str::<TextToImageResponse>(&body) | 
 # Each decoder keeps a classified frame as JSON so the provider's item survives
 # verbatim, then reads one field of it through its typed form.
 providers/openai/wire/chat.rs | let incoming = serde_json::from_value::<StreamingToolCall>(call.clone()) | Typed view of one tool-call fragment of a classified chunk; the fragment itself is merged into the call's provider item as sent.
-providers/gemini/interactions_api/streaming.rs | serde_json::from_value(Value::Object(delta.clone()))?; | Typed view of a classified `step.delta`; the delta is merged into the step's provider item as sent.
-providers/gemini/interactions_api/streaming.rs | match serde_json::from_value(item.clone()) { | Typed view of a classified step; a step of an unknown type stays an opaque provider item.
-providers/gemini/interactions_api/streaming.rs | if serde_json::from_value::<Step>(tag).is_ok() { | Asks whether a classified step's `type` names a known step, so a known step that fails to parse is an error and an unknown one stays opaque.
-providers/gemini/interactions_api/streaming.rs | let image: ImageContent = serde_json::from_value(image.clone()).ok()?; | Typed view of a classified model output that is a single image, which becomes an image block holding the step.

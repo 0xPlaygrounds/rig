@@ -5,8 +5,8 @@
 //!
 //! Raw capture is always on: the Interactions decoder builds its terminal
 //! record from the `interaction.completed` event — the API's own
-//! [`StreamingCompletionResponse`], carrying the finished interaction, its
-//! usage and the model version — and serializes it onto the terminal
+//! [`StreamingCompletionResponse`], carrying the finished interaction
+//! verbatim, its usage and the model version — and puts it on the terminal
 //! [`rig::completion::CompletionResponse::raw`] its `finish` returns.
 //! There is no opt-in and nothing about it reaches the wire; `raw` is
 //! `Value::Null` only on a terminal constructed without a provider stream
@@ -22,7 +22,7 @@
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `raw_roundtrips_streaming_completion_response` | typed access | `StreamingCompletionResponse::deserialize(&raw)` re-serializes equal and agrees with the normalized terminal | recorded |
+//! | 1 | `raw_roundtrips_streaming_completion_response` | typed access | `raw` holds the completed interaction verbatim, and `StreamingCompletionResponse::deserialize(&raw)` agrees with the normalized terminal | recorded |
 //! | 2 | `raw_exposes_terminal_only_fields` | un-normalized terminal fields | `interaction.status` spelled `"completed"`, `interaction.object`, `usage.total_tokens` == completed event, absent from the normalized terminal | recorded |
 //!
 //! Every cell is recorded: `GEMINI_API_KEY` was available and the seam under
@@ -137,11 +137,6 @@ async fn raw_roundtrips_streaming_completion_response() {
 
             let typed = StreamingCompletionResponse::deserialize(raw)
                 .expect("raw must deserialize into the Interactions streaming terminal type");
-            assert_eq!(
-                serde_json::to_value(&typed).expect("typed raw re-serializes"),
-                *raw,
-                "StreamingCompletionResponse must round-trip through its own Serialize/Deserialize"
-            );
 
             // The typed value agrees with the normalized terminal next to it.
             assert_eq!(typed.model_version.as_deref(), terminal.model());
@@ -167,6 +162,11 @@ async fn raw_roundtrips_streaming_completion_response() {
         .take()
         .expect("the test body observed a raw payload");
     let completed = recorded_completed_event(SCENARIO);
+    assert_eq!(
+        raw.get("interaction"),
+        completed.get("interaction"),
+        "{SCENARIO}: the captured terminal holds the completed interaction verbatim"
+    );
     assert_eq!(
         raw.pointer("/usage/total_tokens"),
         completed.pointer("/interaction/usage/total_tokens"),

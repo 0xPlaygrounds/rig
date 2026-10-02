@@ -15,7 +15,7 @@ use crate::message::{self, MimeType};
 use crate::telemetry::GenAiOperation;
 use crate::wire::{Descriptor, Mode};
 use base64::{Engine, prelude::BASE64_STANDARD};
-use serde_json::{Map, Value};
+use serde_json::{Map, Value, json};
 use url::form_urlencoded;
 
 /// Streaming helpers for the Interactions API.
@@ -120,9 +120,18 @@ impl crate::completion::ReplayTarget for Interactions {
         &self.model
     }
 
-    /// Interactions read images in every role.
-    fn accepts(&self, _model: &str) -> crate::completion::Accepts {
-        crate::completion::Accepts::ALL
+    fn accepts(&self, model: &str) -> crate::completion::Accepts {
+        accepts(model)
+    }
+
+    /// A request naming `previous_interaction_id` continues an interaction
+    /// the API stored, which holds the calls its first results answer.
+    fn continues_stored(&self, request: &CompletionRequest) -> bool {
+        request
+            .additional_params
+            .as_ref()
+            .and_then(|params| params.get("previous_interaction_id"))
+            .is_some_and(|id| !id.is_null())
     }
 
     fn normalize_tool_call_id(
@@ -132,6 +141,18 @@ impl crate::completion::ReplayTarget for Interactions {
         _: Option<&crate::message::Origin>,
     ) -> String {
         normalize_tool_call_id(id)
+    }
+}
+
+/// What `model` reads on this API. Every model reads images in user and
+/// model turns and calls tools. A function result carries images on
+/// Gemini 3 and later (Google's "multimodal function responses"); a model
+/// that is not Gemini is assumed to, as pi assumes.
+fn accepts(model: &str) -> crate::completion::Accepts {
+    crate::completion::Accepts {
+        tool_result_images: !model.to_ascii_lowercase().starts_with("gemini")
+            || super::completion::gemini_3_or_later(model),
+        ..crate::completion::Accepts::ALL
     }
 }
 
@@ -194,6 +215,8 @@ impl crate::wire::Wire for InteractionResume {
     type Decoder<'id> = streaming::InteractionsDecoder;
 
     /// The interaction names its own model; this wire addresses no model id.
+    /// The decoder reports the model the interaction names, which the turn's
+    /// origin takes.
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(PROVIDER_NAME)
             .telemetry(|mode| match mode {
@@ -254,9 +277,8 @@ impl crate::completion::ReplayTarget for InteractionResume {
         ""
     }
 
-    /// Interactions read images in every role.
-    fn accepts(&self, _model: &str) -> crate::completion::Accepts {
-        crate::completion::Accepts::ALL
+    fn accepts(&self, model: &str) -> crate::completion::Accepts {
+        accepts(model)
     }
 
     fn normalize_tool_call_id(
@@ -375,9 +397,7 @@ fn message_steps(message: crate::completion::Message) -> Result<Vec<Value>, Enco
             })],
         }],
         crate::completion::Message::User { content } => user_steps(content)?,
-        crate::completion::Message::Assistant(turn) => {
-            return turn.content.iter().map(assistant_step).collect();
-        }
+        crate::completion::Message::Assistant(turn) => return assistant_steps(&turn.content),
     };
     steps
         .iter()
@@ -408,6 +428,82 @@ fn user_steps(content: Vec<message::UserContent>) -> Result<Vec<Step>, message::
         steps.push(Step::UserInput { content: run });
     }
     Ok(steps)
+}
+
+/// A turn's blocks as steps. The blocks of one model output step all hold
+/// that step, and it is sent once while every one of them is current. When
+/// one was edited or dropped, each block is rebuilt from its own fields and
+/// each opaque item goes back as a step of its own.
+fn assistant_steps(content: &[message::AssistantContent]) -> Result<Vec<Value>, EncodeError> {
+    let mut steps = Vec::new();
+    let mut rest = content;
+    while let Some((block, tail)) = rest.split_first() {
+        let Some(step) = held(block).filter(|step| items_in(step) > 1) else {
+            steps.push(assistant_step(block)?);
+            rest = tail;
+            continue;
+        };
+        let run = rest
+            .iter()
+            .take(items_in(step))
+            .take_while(|member| held(member) == Some(step))
+            .count();
+        let (members, tail) = rest.split_at(run);
+        let current = members.iter().all(|member| {
+            matches!(member, message::AssistantContent::Opaque(_)) || member.native_item().is_some()
+        });
+        if run == items_in(step) && current {
+            steps.push(step.clone());
+        } else {
+            let mut others = step
+                .get("content")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .filter(|item| {
+                    !matches!(
+                        item.get("type").and_then(Value::as_str),
+                        Some("text" | "image")
+                    )
+                });
+            for member in members {
+                match member {
+                    message::AssistantContent::Opaque(_) => {
+                        if let Some(item) = others.next() {
+                            steps.push(json!({"type": "model_output", "content": [item]}));
+                        }
+                    }
+                    member => steps.push(assistant_step(&member.canonical())?),
+                }
+            }
+        }
+        rest = tail;
+    }
+    Ok(steps)
+}
+
+/// The step a block holds for replay, current or not.
+fn held(block: &message::AssistantContent) -> Option<&Value> {
+    let native = match block {
+        message::AssistantContent::Text(text) => text.native.as_ref(),
+        message::AssistantContent::Reasoning(reasoning) => reasoning.native.as_ref(),
+        message::AssistantContent::ToolCall(call) => call.native.as_ref(),
+        message::AssistantContent::Image(image) => image.native.as_ref(),
+        message::AssistantContent::Opaque(opaque) => return Some(&opaque.item),
+    };
+    native.map(|native| &native.item)
+}
+
+/// How many content items a model output step holds; none for any other
+/// step.
+fn items_in(step: &Value) -> usize {
+    match step.get("type").and_then(Value::as_str) {
+        Some("model_output") => step
+            .get("content")
+            .and_then(Value::as_array)
+            .map_or(0, Vec::len),
+        _ => 0,
+    }
 }
 
 /// An assistant block as its step: the provider's step while the block is
@@ -538,7 +634,7 @@ pub mod interactions_api_types {
     use crate::message::{self, MimeType};
     use base64::{Engine, prelude::BASE64_STANDARD};
     use serde::{Deserialize, Serialize};
-    use serde_json::{Map, Value};
+    use serde_json::Value;
 
     /// Optional parameters for creating an interaction.
     #[derive(Debug, Deserialize, Serialize, Default, Clone)]
@@ -981,8 +1077,12 @@ pub mod interactions_api_types {
     #[serde(rename_all = "snake_case")]
     pub enum InteractionStatus {
         InProgress,
+        /// Waiting for capacity before it starts.
+        Queued,
         RequiresAction,
+        /// Ended with its token or execution budget spent.
         Incomplete,
+        /// The deprecated spelling of [`Self::Incomplete`].
         BudgetExceeded,
         Completed,
         Failed,
@@ -993,43 +1093,14 @@ pub mod interactions_api_types {
     }
 
     impl InteractionStatus {
-        /// Return false only for [`Self::InProgress`].
+        /// Return false only for [`Self::InProgress`] and [`Self::Queued`].
         /// Stop polling on unknown statuses and handle them explicitly.
         /// [`Self::RequiresAction`] needs caller-supplied tool results, not further polling.
         pub fn is_terminal(&self) -> bool {
-            !matches!(self, InteractionStatus::InProgress)
-        }
-
-        /// The exact spelling the Interactions API uses for this status on the
-        /// wire.
-        ///
-        /// Spelled out rather than derived from `Debug` (which would yield
-        /// `BudgetExceeded`, not `budget_exceeded`) so the string that reaches
-        /// [`crate::completion::FinishReason::Other`] is the provider's own.
-        pub fn as_wire_str(&self) -> &str {
-            match self {
-                Self::InProgress => "in_progress",
-                Self::RequiresAction => "requires_action",
-                Self::Incomplete => "incomplete",
-                Self::BudgetExceeded => "budget_exceeded",
-                Self::Completed => "completed",
-                Self::Failed => "failed",
-                Self::Cancelled => "cancelled",
-                Self::Unknown(status) => status,
-            }
-        }
-    }
-
-    /// Normalize completed, requires-action, and budget-exceeded statuses.
-    /// Preserve every other status verbatim as `Other`.
-    pub(crate) fn map_interaction_status(
-        status: &InteractionStatus,
-    ) -> crate::completion::FinishReason {
-        match status {
-            InteractionStatus::Completed => crate::completion::FinishReason::Stop,
-            InteractionStatus::RequiresAction => crate::completion::FinishReason::ToolCalls,
-            InteractionStatus::BudgetExceeded => crate::completion::FinishReason::Length,
-            other => crate::completion::FinishReason::Other(other.as_wire_str().to_owned()),
+            !matches!(
+                self,
+                InteractionStatus::InProgress | InteractionStatus::Queued
+            )
         }
     }
 
@@ -1052,6 +1123,22 @@ pub mod interactions_api_types {
         /// Prompt tokens attributed to built-in tool use.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub total_tool_use_tokens: Option<u64>,
+    }
+
+    impl InteractionUsage {
+        /// The counts `usage` reports. A count that is absent or not a
+        /// non-negative integer is unknown, so usage never fails a reply.
+        pub fn read(usage: &Value) -> Self {
+            let count = |key: &str| usage.get(key).and_then(Value::as_u64);
+            Self {
+                total_input_tokens: count("total_input_tokens"),
+                total_output_tokens: count("total_output_tokens"),
+                total_tokens: count("total_tokens"),
+                total_cached_tokens: count("total_cached_tokens"),
+                total_thought_tokens: count("total_thought_tokens"),
+                total_tool_use_tokens: count("total_tool_use_tokens"),
+            }
+        }
     }
 
     /// Rig's input is `total_input_tokens` plus the tool-use tokens, its
@@ -1593,43 +1680,34 @@ pub mod interactions_api_types {
                     let call_id = tool_result.call.wire().into_owned();
                     let name = tool_result.name;
 
-                    let mut contents = tool_result.content.into_iter().collect::<Vec<_>>();
-                    let result = if contents.len() == 1 {
-                        let content = contents.pop().ok_or_else(|| {
-                            message::MessageError::ConversionError(
-                                "Tool result content must not be empty".to_string(),
-                            )
-                        })?;
-
-                        match content {
-                            message::ToolResultContent::Text(text) => Value::String(text.text),
-                            // A scalar or array JSON result is wrapped as the
-                            // generate wire wraps it (`{"result": value}`): sent
-                            // as a text block it is a multimodal response, which
-                            // the models refuse.
-                            message::ToolResultContent::Json { value } => match value {
-                                value @ (Value::String(_) | Value::Object(_)) => value,
-                                value @ (Value::Null
-                                | Value::Bool(_)
-                                | Value::Number(_)
-                                | Value::Array(_)) => serde_json::json!({ "result": value }),
-                            },
-                            rich_content => {
-                                Value::Array(vec![rich_function_result_block(rich_content)?])
-                            }
+                    let contents: Vec<_> = tool_result.content.into_iter().collect();
+                    let result = match <[message::ToolResultContent; 1]>::try_from(contents) {
+                        Ok([message::ToolResultContent::Text(text)]) => Value::String(text.text),
+                        // A scalar or array JSON result is wrapped as the
+                        // generate wire wraps it (`{"result": value}`): sent
+                        // as a text block it is a multimodal response, which
+                        // the models refuse.
+                        Ok([message::ToolResultContent::Json { value }]) => match value {
+                            value @ (Value::String(_) | Value::Object(_)) => value,
+                            value @ (Value::Null
+                            | Value::Bool(_)
+                            | Value::Number(_)
+                            | Value::Array(_)) => serde_json::json!({ "result": value }),
+                        },
+                        Ok([rich_content]) => {
+                            Value::Array(vec![rich_function_result_block(rich_content)?])
                         }
-                    } else {
-                        Value::Array(
+                        Err(contents) => Value::Array(
                             contents
                                 .into_iter()
                                 .map(rich_function_result_block)
                                 .collect::<Result<Vec<_>, _>>()?,
-                        )
+                        ),
                     };
 
                     Ok(Self::FunctionResult(FunctionResultContent {
                         name: Some(name.into()),
-                        is_error: None,
+                        is_error: tool_result.is_error.then_some(true),
                         result: Some(result),
                         call_id: Some(call_id),
                     }))
@@ -1949,68 +2027,6 @@ pub mod interactions_api_types {
         High,
         UltraHigh,
     }
-
-    /// Server-sent event payloads for streaming interactions.
-    #[derive(Clone, Debug, Deserialize, Serialize)]
-    #[serde(tag = "event_type")]
-    pub enum InteractionSseEvent {
-        #[serde(rename = "interaction.created")]
-        InteractionCreated {
-            interaction: Interaction,
-            #[serde(skip_serializing_if = "Option::is_none")]
-            event_id: Option<String>,
-        },
-        #[serde(rename = "interaction.completed")]
-        InteractionCompleted {
-            interaction: Interaction,
-            #[serde(skip_serializing_if = "Option::is_none")]
-            event_id: Option<String>,
-        },
-        #[serde(rename = "interaction.status_update")]
-        InteractionStatusUpdate {
-            /// Absent for an interaction that is not stored (`store: false`).
-            #[serde(default)]
-            interaction_id: String,
-            status: InteractionStatus,
-            #[serde(skip_serializing_if = "Option::is_none")]
-            event_id: Option<String>,
-        },
-        #[serde(rename = "step.start")]
-        StepStart {
-            index: u32,
-            /// The step as it starts, verbatim.
-            step: Map<String, Value>,
-            #[serde(skip_serializing_if = "Option::is_none")]
-            event_id: Option<String>,
-        },
-        #[serde(rename = "step.delta")]
-        StepDelta {
-            index: u32,
-            /// A fragment of the step, verbatim, tagged by its `type`.
-            delta: Map<String, Value>,
-            #[serde(skip_serializing_if = "Option::is_none")]
-            event_id: Option<String>,
-        },
-        #[serde(rename = "step.stop")]
-        StepStop {
-            index: u32,
-            #[serde(skip_serializing_if = "Option::is_none")]
-            event_id: Option<String>,
-        },
-        #[serde(rename = "error")]
-        Error {
-            error: ErrorEvent,
-            #[serde(skip_serializing_if = "Option::is_none")]
-            event_id: Option<String>,
-        },
-    }
-
-    /// Error payload for streaming events.
-    #[derive(Clone, Debug, Deserialize, Serialize)]
-    pub struct ErrorEvent {
-        pub code: String,
-        pub message: String,
-    }
 }
 
 #[cfg(test)]
@@ -2018,3 +2034,6 @@ mod tests;
 
 #[cfg(test)]
 mod interaction_usage_tests;
+
+#[cfg(test)]
+mod history_tests;

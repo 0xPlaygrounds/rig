@@ -5,12 +5,6 @@ use crate::test_utils::history::{assert_every_variant, assert_restated_agrees, d
 use crate::wire::Mode;
 use serde_json::json;
 
-use super::super::interactions_api_types::{
-    CodeExecutionCallContent, CodeExecutionResultContent, FileSearchResultContent,
-    FunctionResultContent, GoogleSearchCallContent, GoogleSearchResultContent,
-    McpServerToolCallContent, McpServerToolResultContent, TextContent, ThoughtContent,
-    UrlContextCallContent, UrlContextResultContent,
-};
 use super::super::{Interactions, create_request_body};
 
 fn wire() -> Interactions {
@@ -202,7 +196,8 @@ fn announced_arguments_finalize_a_call_with_no_fragments() {
     assert_eq!(replayed(&response), [call]);
 }
 
-/// `interaction.completed` finalizes a step whose `step.stop` never came.
+/// A call whose `step.stop` never came is kept, with the arguments it
+/// streamed, when the interaction completes.
 #[test]
 fn a_missing_step_stop_does_not_lose_the_call() {
     let response = streamed(vec![
@@ -405,115 +400,61 @@ fn an_invented_step_and_field_survive_both_modes_and_replay() {
     }
 }
 
-/// A step type rig knows that does not decode is an error, not an opaque
-/// step.
+/// A call whose name is not a string has no name: it is dropped, and the
+/// reply still decodes.
 #[test]
-fn a_malformed_known_step_is_an_error() {
-    let outcome = decode(
+fn a_call_without_a_string_name_is_dropped() {
+    let response = decode(
         &wire(),
         Mode::Unary,
-        [whole(vec![json!({"type": "function_call", "name": 5})])],
+        [whole(vec![
+            json!({"type": "function_call", "name": 5}),
+            json!({"type": "model_output", "content": [{"type": "text", "text": "hi"}]}),
+        ])],
+    )
+    .expect("the resource decodes");
+    assert!(
+        matches!(response.choice.as_slice(), [AssistantContent::Text(text)] if text.text == "hi"),
+        "{:?}",
+        response.choice
     );
-    assert!(outcome.is_err(), "{outcome:?}");
 }
 
-/// Every step variant decodes, whole and streamed alike: calls and output
-/// to their canonical blocks, input steps to opaque steps that are never
-/// sent back, hosted-tool steps to opaque steps that are.
+/// Every step kind decodes, whole and streamed alike: thoughts, calls and
+/// output to their canonical blocks, input steps to opaque steps that are
+/// never sent back, and hosted-tool steps and invented ones to opaque
+/// steps that are.
 #[test]
-fn every_step_variant_decodes() {
+fn every_step_kind_decodes() {
     #[deny(clippy::wildcard_enum_match_arm)]
-    fn variant_index(step: &Step) -> usize {
-        match step {
-            Step::UserInput { .. } => 0,
-            Step::ModelOutput { .. } => 1,
-            Step::Thought(_) => 2,
-            Step::FunctionCall(_) => 3,
-            Step::FunctionResult(_) => 4,
-            Step::CodeExecutionCall(_) => 5,
-            Step::CodeExecutionResult(_) => 6,
-            Step::UrlContextCall(_) => 7,
-            Step::UrlContextResult(_) => 8,
-            Step::GoogleSearchCall(_) => 9,
-            Step::GoogleSearchResult(_) => 10,
-            Step::McpServerToolCall(_) => 11,
-            Step::McpServerToolResult(_) => 12,
-            Step::FileSearchResult(_) => 13,
+    fn variant_index(kind: StepKind) -> usize {
+        match kind {
+            StepKind::Thought => 0,
+            StepKind::Output => 1,
+            StepKind::Call => 2,
+            StepKind::Input => 3,
+            StepKind::Other => 4,
         }
     }
-    let text = |text: &str| TextContent {
-        text: text.to_owned(),
-        annotations: None,
-    };
-    let samples = vec![
-        Step::UserInput {
-            content: vec![Content::Text(text("hi"))],
-        },
-        Step::ModelOutput {
-            content: vec![Content::Text(text("hello"))],
-        },
-        Step::Thought(ThoughtContent {
-            signature: Some("sig".to_owned()),
-            summary: None,
-        }),
-        Step::FunctionCall(FunctionCallContent {
-            name: Some("add".to_owned()),
-            arguments: Some(json!({"x": 1})),
-            id: Some("call_1".to_owned()),
-        }),
-        Step::FunctionResult(FunctionResultContent {
-            name: Some("add".to_owned()),
-            is_error: None,
-            result: Some(json!(1)),
-            call_id: Some("call_1".to_owned()),
-        }),
-        Step::CodeExecutionCall(CodeExecutionCallContent {
-            arguments: None,
-            id: Some("c".to_owned()),
-        }),
-        Step::CodeExecutionResult(CodeExecutionResultContent {
-            result: Some("2".to_owned()),
-            is_error: None,
-            signature: None,
-            call_id: Some("c".to_owned()),
-        }),
-        Step::UrlContextCall(UrlContextCallContent {
-            arguments: None,
-            id: Some("u".to_owned()),
-        }),
-        Step::UrlContextResult(UrlContextResultContent {
-            signature: None,
-            result: None,
-            is_error: None,
-            call_id: Some("u".to_owned()),
-        }),
-        Step::GoogleSearchCall(GoogleSearchCallContent {
-            arguments: None,
-            id: Some("g".to_owned()),
-        }),
-        Step::GoogleSearchResult(GoogleSearchResultContent {
-            signature: None,
-            result: None,
-            is_error: None,
-            call_id: Some("g".to_owned()),
-        }),
-        Step::McpServerToolCall(McpServerToolCallContent {
-            name: Some("lookup".to_owned()),
-            server_name: Some("s".to_owned()),
-            arguments: None,
-            id: Some("m".to_owned()),
-        }),
-        Step::McpServerToolResult(McpServerToolResultContent {
-            name: Some("lookup".to_owned()),
-            server_name: Some("s".to_owned()),
-            result: None,
-            call_id: Some("m".to_owned()),
-        }),
-        Step::FileSearchResult(FileSearchResultContent { result: None }),
+    let samples = [
+        json!({"type": "thought", "signature": "sig"}),
+        json!({"type": "model_output", "content": [{"type": "text", "text": "hello"}]}),
+        json!({"type": "function_call", "id": "call_1", "name": "add", "arguments": {"x": 1}}),
+        json!({"type": "user_input", "content": [{"type": "text", "text": "hi"}]}),
+        json!({"type": "function_result", "call_id": "call_1", "name": "add", "result": 1}),
+        json!({"type": "code_execution_call", "id": "c"}),
+        json!({"type": "code_execution_result", "call_id": "c", "result": "2"}),
+        json!({"type": "url_context_call", "id": "u"}),
+        json!({"type": "url_context_result", "call_id": "u"}),
+        json!({"type": "google_search_call", "id": "g"}),
+        json!({"type": "google_search_result", "call_id": "g"}),
+        json!({"type": "mcp_server_tool_call", "id": "m", "name": "lookup"}),
+        json!({"type": "mcp_server_tool_result", "call_id": "m", "name": "lookup"}),
+        json!({"type": "file_search_result"}),
+        json!({"type": "x_rig_invented", "id": "x"}),
     ];
-    assert_every_variant(&samples, variant_index, 14);
-    for sample in &samples {
-        let step = serde_json::to_value(sample).expect("the sample serializes");
+    assert_every_variant(&samples, |step| variant_index(step_kind(step)), 5);
+    for step in &samples {
         assert_restated_agrees(
             &wire(),
             [whole(vec![step.clone()])],
@@ -522,16 +463,60 @@ fn every_step_variant_decodes() {
         let response =
             decode(&wire(), Mode::Unary, [whole(vec![step.clone()])]).expect("the sample decodes");
         let block = response.choice.first().cloned();
-        let expected = match variant_index(sample) {
-            0 | 4 => matches!(&block, Some(AssistantContent::Opaque(opaque)) if !opaque.replay),
-            1 => matches!(&block, Some(AssistantContent::Text(text)) if text.text == "hello"),
-            2 => matches!(&block, Some(AssistantContent::Reasoning(_))),
-            3 => matches!(&block, Some(AssistantContent::ToolCall(_))),
-            _ => {
-                matches!(&block, Some(AssistantContent::Opaque(opaque)) if opaque.replay && opaque.item == step)
+        let expected = match step_kind(step) {
+            StepKind::Thought => matches!(&block, Some(AssistantContent::Reasoning(_))),
+            StepKind::Output => {
+                matches!(&block, Some(AssistantContent::Text(text)) if text.text == "hello")
+            }
+            StepKind::Call => matches!(&block, Some(AssistantContent::ToolCall(_))),
+            StepKind::Input => {
+                matches!(&block, Some(AssistantContent::Opaque(opaque)) if !opaque.replay)
+            }
+            StepKind::Other => {
+                matches!(&block, Some(AssistantContent::Opaque(opaque)) if opaque.replay && opaque.item == *step)
             }
         };
         assert!(expected, "{step} decoded to {block:?}");
+    }
+}
+
+/// Every model output content kind decodes to its block: text to text, an
+/// image with a source to an image, and audio, video, documents, a
+/// sourceless image and invented items to opaque blocks that replay.
+#[test]
+fn every_content_kind_decodes() {
+    #[deny(clippy::wildcard_enum_match_arm)]
+    fn variant_index(kind: ContentKind) -> usize {
+        match kind {
+            ContentKind::Text => 0,
+            ContentKind::Image => 1,
+            ContentKind::Other => 2,
+        }
+    }
+    let samples = [
+        json!({"type": "text", "text": "hello"}),
+        json!({"type": "image", "uri": "https://example.com/a.png", "mime_type": "image/png"}),
+        json!({"type": "image", "mime_type": "image/png"}),
+        json!({"type": "audio", "data": "YQ==", "mime_type": "audio/wav"}),
+        json!({"type": "video", "uri": "https://example.com/a.mp4"}),
+        json!({"type": "document", "data": "YQ==", "mime_type": "application/pdf"}),
+        json!({"type": "x_rig_invented"}),
+    ];
+    assert_every_variant(&samples, |item| variant_index(content_kind(item)), 3);
+    for item in &samples {
+        let step = json!({"type": "model_output", "content": [item]});
+        let response =
+            decode(&wire(), Mode::Unary, [whole(vec![step.clone()])]).expect("the sample decodes");
+        let block = response.choice.first();
+        let expected = match (content_kind(item), item.get("uri").or(item.get("data"))) {
+            (ContentKind::Text, _) => matches!(block, Some(AssistantContent::Text(_))),
+            (ContentKind::Image, Some(_)) => matches!(block, Some(AssistantContent::Image(_))),
+            (ContentKind::Image, None) | (ContentKind::Other, _) => {
+                matches!(block, Some(AssistantContent::Opaque(opaque)) if opaque.replay && opaque.item == step)
+            }
+        };
+        assert!(expected, "{item} decoded to {block:?}");
+        assert_eq!(replayed(&response), [step]);
     }
 }
 
@@ -546,18 +531,25 @@ fn a_status_update_without_an_interaction_id_is_a_status_update() {
     );
     assert!(matches!(
         event,
-        WireEvent::Known(InteractionsEvent::Sse(
-            InteractionSseEvent::InteractionStatusUpdate { .. }
-        ))
+        WireEvent::Known(InteractionsEvent::Sse(event))
+            if event.event_type == "interaction.status_update"
     ));
 }
 
-/// A tagged frame that fails its typed decode is corrupt: its `status` key
-/// must never let it pass for a whole interaction.
+/// A tagged frame is an event, never a whole interaction, even with a
+/// `status` key; a step event without its index fails the reply.
 #[test]
-fn a_tagged_frame_that_fails_its_decode_is_corrupt_not_a_whole_interaction() {
+fn a_tagged_frame_never_passes_for_a_whole_interaction() {
     let event = classify_interactions_frame(r#"{"event_type":"step.stop","status":"completed"}"#);
-    assert!(matches!(event, WireEvent::Corrupt(_)));
+    assert!(matches!(event, WireEvent::Known(InteractionsEvent::Sse(_))));
+    let outcome = decode(
+        &wire(),
+        Mode::Streaming,
+        [frame(
+            json!({"event_type": "step.stop", "status": "completed"}),
+        )],
+    );
+    assert!(outcome.is_err(), "{outcome:?}");
 }
 
 /// The unary reply, an untagged interaction resource, decodes whole.

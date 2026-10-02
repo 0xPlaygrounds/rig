@@ -274,7 +274,7 @@ fn gemini_major(model: &str) -> Option<u32> {
 
 /// Whether `model` is Gemini 3 or later, which validates the thought
 /// signatures of function calls.
-fn gemini_3_or_later(model: &str) -> bool {
+pub(super) fn gemini_3_or_later(model: &str) -> bool {
     gemini_major(model).is_some_and(|major| major >= 3)
 }
 
