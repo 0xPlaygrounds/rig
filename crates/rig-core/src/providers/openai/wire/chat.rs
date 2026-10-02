@@ -828,29 +828,49 @@ impl crate::completion::ReplayTarget for Chat {
         &self.model
     }
 
-    /// pi's rule for this wire: an id keeps the characters Chat Completions
-    /// accepts and at most 40 of them, a longer one ending in a hash of the
-    /// whole id. Mistral takes exactly nine alphanumerics.
-    fn normalize_tool_call_id(&self, id: &str, _: Option<&crate::message::Origin>) -> String {
+    /// pi's rule for this wire. A `call|item` id joins its sanitized halves
+    /// with `_`, ending a result over 40 characters in a hash of the whole
+    /// id; OpenAI's own ids are cut to 40; any other id is kept. Mistral
+    /// takes exactly nine alphanumerics.
+    fn normalize_tool_call_id(
+        &self,
+        id: &str,
+        _model: &str,
+        _: Option<&crate::message::Origin>,
+    ) -> String {
         if self.provider.dialect.quirks.rewrite == BodyRewrite::Mistral {
             return mistral_call_id(id);
         }
-        let sanitized: String = id
-            .chars()
-            .map(|c| {
-                if c.is_ascii_alphanumeric() || c == '_' || c == '-' {
-                    c
-                } else {
-                    '_'
-                }
-            })
-            .collect();
-        if sanitized.len() <= 40 {
-            return sanitized;
+        let sanitized = |part: &str| -> String {
+            part.chars()
+                .map(|c| {
+                    if c.is_ascii_alphanumeric() || c == '_' || c == '-' {
+                        c
+                    } else {
+                        '_'
+                    }
+                })
+                .collect()
+        };
+        if let Some((call, item)) = id.split_once('|') {
+            let call = sanitized(call);
+            let item = sanitized(item);
+            let combined = if item.is_empty() {
+                call.clone()
+            } else {
+                format!("{call}_{item}")
+            };
+            if combined.len() <= 40 {
+                return combined;
+            }
+            let hash: String = short_hash(id).chars().take(8).collect();
+            let prefix: String = call.chars().take((40 - hash.len() - 1).max(1)).collect();
+            return format!("{prefix}_{hash}");
         }
-        let hash: String = short_hash(id).chars().take(8).collect();
-        let prefix: String = sanitized.chars().take(40 - hash.len() - 1).collect();
-        format!("{prefix}_{hash}")
+        if self.provider.dialect.name == super::dialects::OPENAI.name {
+            return id.chars().take(40).collect();
+        }
+        id.to_owned()
     }
 }
 

@@ -1365,33 +1365,65 @@ fn streamed_annotations_and_audio_survive() {
     assert_eq!(message.item["annotations"], item["annotations"]);
 }
 
-/// pi's id rule for this wire: ids keep the characters Chat Completions
-/// takes, a longer one is cut to 40 with a hash of the whole id, and
-/// Mistral gets nine alphanumerics. The hashes are pi's `shortHash`.
+/// pi's id rule for this wire (`openai-completions.js`, `normalizeToolCallId`)
+/// and Mistral's nine alphanumerics. The hashes are pi's `shortHash`.
 #[test]
 fn foreign_call_ids_are_normalized_the_way_pi_does() {
     use crate::completion::ReplayTarget;
 
     let openai = wire();
     assert_eq!(
-        openai.normalize_tool_call_id("call_abc123", None),
+        openai.normalize_tool_call_id("call_abc123", openai.model(), None),
         "call_abc123"
     );
+    // OpenAI's own ids are cut to 40; nothing else about them changes.
     assert_eq!(
-        openai.normalize_tool_call_id("toolu_01ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghij", None),
-        "toolu_01ABCDEFGHIJKLMNOPQRSTUVW_1atididd"
+        openai.normalize_tool_call_id(
+            "toolu_01ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghij",
+            openai.model(),
+            None
+        ),
+        "toolu_01ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef"
     );
-    assert_eq!(openai.normalize_tool_call_id("a.b:c", None), "a_b_c");
+    assert_eq!(
+        openai.normalize_tool_call_id("a.b:c", openai.model(), None),
+        "a.b:c"
+    );
+    // A Responses `call|item` id joins its sanitized halves, hashed past 40.
+    assert_eq!(
+        openai.normalize_tool_call_id("call_1|fc+ab/c", openai.model(), None),
+        "call_1_fc_ab_c"
+    );
+    assert_eq!(
+        openai.normalize_tool_call_id(
+            "call_abcdefghijklmnopqrstuvwxyz0123|fc_0123456789abcdefghijklmnopqrstuvwxyz",
+            openai.model(),
+            None
+        ),
+        "call_abcdefghijklmnopqrstuvwxyz_7gi8bx11"
+    );
+    // Any other dialect keeps the id.
+    let deepseek = OpenAIConfig::new("k")
+        .with_dialect(&super::super::DEEPSEEK)
+        .chat("m");
+    assert_eq!(
+        deepseek.normalize_tool_call_id(
+            "toolu_01ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghij",
+            deepseek.model(),
+            None
+        ),
+        "toolu_01ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghij"
+    );
 
     let mistral = OpenAIConfig::new("k")
         .with_dialect(&super::super::MISTRAL)
         .chat("m");
     assert_eq!(
-        mistral.normalize_tool_call_id("abc123XYZ", None),
+        mistral.normalize_tool_call_id("abc123XYZ", mistral.model(), None),
         "abc123XYZ"
     );
     assert_eq!(
-        mistral.normalize_tool_call_id("call_abc123", None),
+        mistral.normalize_tool_call_id("call_abc123", mistral.model(), None),
         "9k918q7jl"
     );
 }

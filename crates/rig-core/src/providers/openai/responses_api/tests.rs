@@ -2388,7 +2388,11 @@ fn foreign_call_ids_are_normalized_as_pi_normalizes_them() {
         ("call.with spaces..", "call_with_spaces".to_owned()),
         (long.as_str(), long[..64].to_owned()),
     ] {
-        assert_eq!(wire.normalize_tool_call_id(id, None), expected, "{id}");
+        assert_eq!(
+            wire.normalize_tool_call_id(id, wire.model(), None),
+            expected,
+            "{id}"
+        );
     }
 }
 

@@ -28,7 +28,7 @@ impl ReplayTarget for Target {
         self.accepts_images && model != "text-only"
     }
 
-    fn normalize_tool_call_id(&self, id: &str, _source: Option<&Origin>) -> String {
+    fn normalize_tool_call_id(&self, id: &str, _model: &str, _source: Option<&Origin>) -> String {
         id.replace('|', "_")
     }
 }

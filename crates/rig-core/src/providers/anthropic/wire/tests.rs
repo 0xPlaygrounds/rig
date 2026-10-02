@@ -192,13 +192,16 @@ fn a_foreign_call_id_is_normalized_to_anthropic_spelling() {
 
     let wire = wire();
     assert_eq!(
-        wire.normalize_tool_call_id("call_1|fc_2.x", None),
+        wire.normalize_tool_call_id("call_1|fc_2.x", wire.model(), None),
         "call_1_fc_2_x"
     );
     let long = "a".repeat(80);
-    assert_eq!(wire.normalize_tool_call_id(&long, None).len(), 64);
     assert_eq!(
-        wire.normalize_tool_call_id("toolu_01-Ab", None),
+        wire.normalize_tool_call_id(&long, wire.model(), None).len(),
+        64
+    );
+    assert_eq!(
+        wire.normalize_tool_call_id("toolu_01-Ab", wire.model(), None),
         "toolu_01-Ab"
     );
 }

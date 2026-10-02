@@ -1106,7 +1106,7 @@ fn a_foreign_call_id_is_normalized_with_its_result() {
     use crate::completion::ReplayTarget;
     let wire = interactions_wire();
     let long = format!("call|{}", "x".repeat(80));
-    let normalized = wire.normalize_tool_call_id(&long, None);
+    let normalized = wire.normalize_tool_call_id(&long, wire.model(), None);
     assert_eq!(normalized.len(), 64);
     assert!(normalized.starts_with("call_xxx"));
 

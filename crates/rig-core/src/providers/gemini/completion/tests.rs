@@ -2199,3 +2199,23 @@ fn a_rig_issued_call_id_is_spelled_as_a_request_local_alias() {
         json!("tool-0")
     );
 }
+
+/// The model a request addresses decides whether a foreign call id is
+/// normalized, not the wire's own model.
+#[test]
+fn a_request_model_override_decides_call_id_normalization() {
+    use crate::completion::ReplayTarget;
+
+    let wire = GenerateContent::new(
+        crate::providers::gemini::GeminiConfig::new("k"),
+        "gemini-2.5-flash",
+    );
+    assert_eq!(
+        wire.normalize_tool_call_id("a.b", "gemini-2.5-flash", None),
+        "a.b"
+    );
+    assert_eq!(
+        wire.normalize_tool_call_id("a.b", "gemini-3-pro-preview", None),
+        "a_b"
+    );
+}

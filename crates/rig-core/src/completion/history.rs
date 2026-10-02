@@ -63,11 +63,11 @@ pub trait ReplayTarget: std::fmt::Debug + WasmCompatSync {
         true
     }
 
-    /// The id `id` takes when a call another model made is sent to this
-    /// wire. `source` is the call's origin, `None` for a hand-built turn.
-    /// Results answering the call are rewritten to match.
-    fn normalize_tool_call_id(&self, id: &str, source: Option<&Origin>) -> String {
-        let _ = source;
+    /// The id `id` takes when a call another model made is sent to `model`
+    /// on this wire. `source` is the call's origin, `None` for a hand-built
+    /// turn. Results answering the call are rewritten to match.
+    fn normalize_tool_call_id(&self, id: &str, model: &str, source: Option<&Origin>) -> String {
+        let _ = (model, source);
         id.to_owned()
     }
 }
@@ -150,7 +150,7 @@ fn assistant(
                         }
                         AssistantContent::Opaque(_) => return None,
                         AssistantContent::ToolCall(call) => AssistantContent::ToolCall(
-                            renamed_call(call, target, turn.origin.as_ref(), renamed),
+                            renamed_call(call, target, model, turn.origin.as_ref(), renamed),
                         ),
                         block => block,
                     };
@@ -181,11 +181,12 @@ fn kept(block: &AssistantContent) -> bool {
 fn renamed_call(
     mut call: ToolCall,
     target: &dyn ReplayTarget,
+    model: &str,
     origin: Option<&Origin>,
     renamed: &mut HashMap<CallId, CallId>,
 ) -> ToolCall {
     let wire = call.id.wire();
-    let normalized = target.normalize_tool_call_id(&wire, origin);
+    let normalized = target.normalize_tool_call_id(&wire, model, origin);
     if normalized != wire {
         let id = CallId::from_wire(normalized);
         renamed.insert(call.id.clone(), id.clone());

@@ -261,7 +261,12 @@ impl crate::completion::ReplayTarget for Responses {
 
     /// pi's `normalizeIdPart`: characters outside `[a-zA-Z0-9_-]` become
     /// `_`, the id is cut to 64 characters and loses its trailing `_`.
-    fn normalize_tool_call_id(&self, id: &str, _source: Option<&crate::message::Origin>) -> String {
+    fn normalize_tool_call_id(
+        &self,
+        id: &str,
+        _model: &str,
+        _source: Option<&crate::message::Origin>,
+    ) -> String {
         let sanitized: String = id
             .chars()
             .map(|c| {

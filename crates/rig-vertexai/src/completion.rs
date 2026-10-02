@@ -107,9 +107,10 @@ impl rig_core::completion::ReplayTarget for GenerateContent {
     fn normalize_tool_call_id(
         &self,
         id: &str,
+        model: &str,
         _source: Option<&rig_core::message::Origin>,
     ) -> String {
-        rig_core::providers::gemini::completion::normalize_tool_call_id(&self.model, id)
+        rig_core::providers::gemini::completion::normalize_tool_call_id(model, id)
     }
 }
 

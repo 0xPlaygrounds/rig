@@ -558,7 +558,12 @@ impl crate::completion::ReplayTarget for Messages {
 
     /// Anthropic takes call ids of `[a-zA-Z0-9_-]`, at most 64 long (pi's
     /// rule).
-    fn normalize_tool_call_id(&self, id: &str, _source: Option<&crate::message::Origin>) -> String {
+    fn normalize_tool_call_id(
+        &self,
+        id: &str,
+        _model: &str,
+        _source: Option<&crate::message::Origin>,
+    ) -> String {
         id.chars()
             .map(|c| {
                 if c.is_ascii_alphanumeric() || c == '-' {

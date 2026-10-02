@@ -260,6 +260,7 @@ impl rig_core::completion::ReplayTarget for Converse {
     fn normalize_tool_call_id(
         &self,
         id: &str,
+        _model: &str,
         _source: Option<&rig_core::message::Origin>,
     ) -> String {
         id.chars()

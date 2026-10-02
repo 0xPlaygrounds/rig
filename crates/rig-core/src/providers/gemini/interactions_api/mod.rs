@@ -120,7 +120,12 @@ impl crate::completion::ReplayTarget for Interactions {
         &self.model
     }
 
-    fn normalize_tool_call_id(&self, id: &str, _: Option<&crate::message::Origin>) -> String {
+    fn normalize_tool_call_id(
+        &self,
+        id: &str,
+        _model: &str,
+        _: Option<&crate::message::Origin>,
+    ) -> String {
         normalize_tool_call_id(id)
     }
 }
@@ -244,7 +249,12 @@ impl crate::completion::ReplayTarget for InteractionResume {
         ""
     }
 
-    fn normalize_tool_call_id(&self, id: &str, _: Option<&crate::message::Origin>) -> String {
+    fn normalize_tool_call_id(
+        &self,
+        id: &str,
+        _model: &str,
+        _: Option<&crate::message::Origin>,
+    ) -> String {
         normalize_tool_call_id(id)
     }
 }

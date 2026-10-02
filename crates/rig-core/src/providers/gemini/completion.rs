@@ -226,8 +226,13 @@ impl crate::completion::ReplayTarget for GenerateContent {
         &self.model
     }
 
-    fn normalize_tool_call_id(&self, id: &str, _source: Option<&crate::message::Origin>) -> String {
-        normalize_tool_call_id(&self.model, id)
+    fn normalize_tool_call_id(
+        &self,
+        id: &str,
+        model: &str,
+        _source: Option<&crate::message::Origin>,
+    ) -> String {
+        normalize_tool_call_id(model, id)
     }
 }
 
