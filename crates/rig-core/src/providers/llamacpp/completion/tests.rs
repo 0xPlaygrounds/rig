@@ -71,7 +71,11 @@ fn a_response_without_timings_still_decodes() {
             .openai
             .choices
             .first()
-            .and_then(|choice| openai::completion::assistant_message_text_response(&choice.message))
+            .and_then(
+                |choice| openai::completion::tests::assistant_message_text_response(
+                    &choice.message
+                )
+            )
             .as_deref(),
         Some("ok")
     );

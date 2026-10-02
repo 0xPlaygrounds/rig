@@ -70,7 +70,11 @@ fn completion_response_preserves_venice_blocks() {
             .openai
             .choices
             .first()
-            .and_then(|choice| openai::completion::assistant_message_text_response(&choice.message))
+            .and_then(
+                |choice| openai::completion::tests::assistant_message_text_response(
+                    &choice.message
+                )
+            )
             .as_deref(),
         Some("hi"),
         "the OpenAI half decodes beside Venice's own blocks"

@@ -1150,59 +1150,6 @@ pub struct ChatCompletionResponse<U, C = Choice> {
     pub usage: Option<U>,
 }
 
-/// Return a nonempty top-level refusal only when every content part is empty.
-/// Applies to whole messages; streaming fallback is evaluated per delta.
-#[cfg(test)]
-pub(crate) fn assistant_refusal_fallback<'a>(
-    content: &[AssistantContent],
-    refusal: Option<&'a str>,
-) -> Option<&'a str> {
-    let has_text = content.iter().any(|part| {
-        !match part {
-            AssistantContent::Text { text } => text,
-            AssistantContent::Refusal { refusal } => refusal,
-        }
-        .is_empty()
-    });
-
-    refusal.filter(|refusal| !has_text && !refusal.is_empty())
-}
-
-/// The whole-message text view: every non-empty part in arrival order, with
-/// the sibling `refusal` appended only when [`assistant_refusal_fallback`]
-/// says it is the turn's text.
-///
-/// No wire path reads text this way — the driver records off the folded
-/// response — so this survives for the OpenAI-compatible providers' unary
-/// decode tests, which read a decoded message's text through it.
-#[cfg(test)]
-pub(crate) fn assistant_message_text_response(message: &Message) -> Option<String> {
-    let Message::Assistant {
-        content, refusal, ..
-    } = message
-    else {
-        return None;
-    };
-
-    let mut segments = content
-        .iter()
-        .filter_map(|content| match content {
-            AssistantContent::Text { text, .. } => (!text.is_empty()).then(|| text.clone()),
-            AssistantContent::Refusal { refusal } => (!refusal.is_empty()).then(|| refusal.clone()),
-        })
-        .collect::<Vec<_>>();
-
-    if let Some(refusal) = assistant_refusal_fallback(content, refusal.as_deref()) {
-        segments.push(refusal.to_owned());
-    }
-
-    if segments.is_empty() {
-        None
-    } else {
-        Some(segments.join("\n"))
-    }
-}
-
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Choice {
     // Null-or-missing tolerated on deserialization: Copilot's chat route
@@ -1760,7 +1707,7 @@ where
 }
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;
 
 #[cfg(test)]
 mod image_tool_result_gate_tests;

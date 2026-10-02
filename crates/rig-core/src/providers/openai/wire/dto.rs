@@ -311,26 +311,6 @@ impl ChatFrame {
             None => self.choices.iter().any(|choice| choice.message.is_some()),
         }
     }
-
-    /// The primary candidate, taken out of the frame.
-    ///
-    /// `n > 1` streams as interleaved chunks distinguished only by
-    /// `choices[].index`. Taking each frame's *first* choice would
-    /// concatenate every candidate into one garbled answer, while the unary
-    /// reply is normalized from candidate 0 alone; selecting by index keeps
-    /// the two agreeing.
-    pub(crate) fn primary(&self) -> Option<&ChatChoice> {
-        self.choices
-            .iter()
-            .find(|choice| choice.index.is_none_or(|index| index == 0))
-    }
-
-    /// The primary candidate, taken out of the frame.
-    pub(crate) fn into_primary(self) -> Option<ChatChoice> {
-        self.choices
-            .into_iter()
-            .find(|choice| choice.index.is_none_or(|index| index == 0))
-    }
 }
 
 /// The provider's own terminal record for one streamed chat-completions

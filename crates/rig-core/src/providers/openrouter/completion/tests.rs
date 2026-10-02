@@ -110,7 +110,7 @@ fn completion_response_decodes_a_gemini_model_role() {
     let choice = response.openai.choices.first().expect("one choice");
     assert_eq!(choice.native_finish_reason.as_deref(), Some("STOP"));
     assert_eq!(
-        crate::providers::openai::completion::assistant_message_text_response(
+        crate::providers::openai::completion::tests::assistant_message_text_response(
             &choice.openai.message
         )
         .as_deref(),
@@ -171,8 +171,10 @@ fn truncated_tool_arguments_do_not_destroy_the_response() {
         other => panic!("expected an assistant message, got {other:?}"),
     }
     assert_eq!(
-        crate::providers::openai::completion::assistant_message_text_response(&choice.message)
-            .as_deref(),
+        crate::providers::openai::completion::tests::assistant_message_text_response(
+            &choice.message
+        )
+        .as_deref(),
         Some("Acknowledged."),
         "the turn's text survives"
     );

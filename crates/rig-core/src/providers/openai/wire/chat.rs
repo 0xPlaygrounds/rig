@@ -14,8 +14,7 @@ use crate::error::ProviderError;
 use crate::observe::ObservedError;
 use crate::operation::{Block, CallFragment, Completion, IfMalformed};
 use crate::providers::internal::openai_chat_completions_compatible::{
-    drop_tool_calls_cut_by_budget, map_native_finish_reason, map_openai_finish_reason,
-    provider_error_envelope,
+    map_native_finish_reason, map_openai_finish_reason, provider_error_envelope,
 };
 use crate::providers::internal::wire::classify_chat_completions_frame;
 use crate::providers::openai::completion::{
@@ -793,7 +792,7 @@ impl Wire for Chat {
     }
 
     fn decoder<'id>(&self) -> Self::Decoder<'id> {
-        ChatDecoder::new(self.provider.dialect.name, self.provider.dialect.quirks)
+        ChatDecoder::new(self.provider.dialect.quirks)
     }
 }
 
@@ -911,8 +910,6 @@ const REASONING_DETAILS: &str = "reasoning_details";
 /// becomes the turn's native; its reasoning, its text and each tool call
 /// are the turn's blocks, each holding its own fields of the message.
 pub struct ChatDecoder {
-    /// Descriptor name the reply is attributed to.
-    provider: &'static str,
     quirks: super::Quirks,
     /// The assistant message as assembled so far, without its tool calls.
     message: serde_json::Map<String, serde_json::Value>,
@@ -942,9 +939,8 @@ pub struct ChatDecoder {
 }
 
 impl ChatDecoder {
-    fn new(provider: &'static str, quirks: super::Quirks) -> Self {
+    fn new(quirks: super::Quirks) -> Self {
         Self {
-            provider,
             quirks,
             message: serde_json::Map::new(),
             calls: Vec::new(),
@@ -1002,14 +998,11 @@ impl ChatDecoder {
         self.response_model = model.or(self.response_model.take());
         self.final_usage = usage.or(self.final_usage.take());
         merge_fields(&mut self.additional_params, &additional_params);
-        let choice = ChatFrame {
-            id: None,
-            model: None,
-            choices,
-            usage: None,
-            additional_params: serde_json::Map::new(),
-        }
-        .into_primary()?;
+        // `n > 1` streams interleave candidates told apart only by
+        // `choices[].index`; candidate 0 is the turn, as in a whole reply.
+        let choice = choices
+            .into_iter()
+            .find(|choice| choice.index.is_none_or(|index| index == 0))?;
         if let Some(reason) = self.finish_reason(&choice) {
             self.final_finish_reason = Some(reason);
             self.saw_terminal = true;
@@ -1198,63 +1191,6 @@ impl ChatDecoder {
             self.close_calls(out)?;
         }
         Ok(())
-    }
-
-    /// Whether a length-truncated unary choice contains tool calls needing raw inspection.
-    /// Empty argument strings normalize to `{}`, so typed arguments alone cannot
-    /// distinguish truncation before the first token from a zero-argument call.
-    fn is_budget_cut_tool_turn(&self, frame: &ChatFrame) -> bool {
-        let Some(choice) = frame.primary() else {
-            return false;
-        };
-        matches!(self.finish_reason(choice), Some(FinishReason::Length))
-            && choice
-                .message
-                .as_ref()
-                .and_then(|message| message.get("tool_calls"))
-                .and_then(serde_json::Value::as_array)
-                .is_some_and(|calls| !calls.is_empty())
-    }
-
-    /// Whether a raw choice blames the output-token budget, under the same
-    /// precedence [`Self::finish_reason`] applies to a decoded one.
-    fn reports_output_length(&self, choice: &serde_json::Value) -> bool {
-        let reason = |key: &str| {
-            choice
-                .get(key)
-                .and_then(serde_json::Value::as_str)
-                .filter(|reason| !reason.is_empty())
-        };
-        if let Some(normalized) = reason("finish_reason") {
-            return matches!(map_openai_finish_reason(normalized), FinishReason::Length);
-        }
-        self.quirks.native_finish_reason
-            && reason("native_finish_reason").is_some_and(|native| {
-                matches!(map_native_finish_reason(native), FinishReason::Length)
-            })
-    }
-
-    /// Decode a unary body after dropping incomplete calls from length-truncated choices.
-    /// Preserve valid arguments and require the shared compound-defect check before
-    /// dropping calls. Return `None` if nothing is dropped or decoding still fails.
-    fn body_without_calls_cut_by_the_budget(&self, data: &str) -> Option<ChatFrame> {
-        let mut body = serde_json::from_str::<serde_json::Value>(data).ok()?;
-        let mut dropped = 0;
-        for choice in body.get_mut("choices").and_then(as_array_mut)? {
-            if self.reports_output_length(choice) {
-                dropped += drop_tool_calls_cut_by_budget::<unary::Choice>(choice);
-            }
-        }
-        if dropped == 0 {
-            return None;
-        }
-        let frame = serde_json::from_value::<ChatFrame>(body).ok()?;
-        tracing::debug!(
-            provider = self.provider,
-            dropped,
-            "dropping unary tool calls whose arguments the output-token budget cut short"
-        );
-        Some(frame)
     }
 
     /// The `chat.completion` body, restated as the one chunk whose delta is
@@ -1463,17 +1399,7 @@ impl<'id> Decoder<'id, Completion> for ChatDecoder {
         {
             return WireEvent::Known(ChatEvent::BareText(text));
         }
-        let classified = classify_chat_completions_frame::<ChatFrame>(&data);
-        // Inspect raw arguments for length cuts, including empty strings normalized to {}.
-        let may_be_budget_cut = match &classified {
-            WireEvent::Corrupt(_) => true,
-            WireEvent::Known(frame) => self.is_budget_cut_tool_turn(frame),
-            WireEvent::Unknown { .. } => false,
-        };
-        if may_be_budget_cut && let Some(frame) = self.body_without_calls_cut_by_the_budget(&data) {
-            return WireEvent::Known(ChatEvent::Whole(frame));
-        }
-        classified.map(|frame| {
+        classify_chat_completions_frame::<ChatFrame>(&data).map(|frame| {
             if frame.is_whole() {
                 ChatEvent::Whole(frame)
             } else {

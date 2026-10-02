@@ -115,7 +115,7 @@ fn reports_output_length(choice: &serde_json::Value) -> bool {
 /// Drop incomplete argument strings from a choice and return the number removed.
 /// The caller must establish an output-length finish. Returns zero unchanged if
 /// repairing the arguments to `{}` does not make the choice deserialize as `T`.
-pub(crate) fn drop_tool_calls_cut_by_budget<T>(choice: &mut serde_json::Value) -> usize
+fn drop_tool_calls_cut_by_budget<T>(choice: &mut serde_json::Value) -> usize
 where
     T: serde::de::DeserializeOwned,
 {
