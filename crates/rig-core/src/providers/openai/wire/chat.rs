@@ -1039,6 +1039,13 @@ impl ChatDecoder {
         mut delta: serde_json::Map<String, serde_json::Value>,
         out: &mut Out<'_, Completion>,
     ) -> Result<(), ProviderError> {
+        if let Some(content) = delta.get("content")
+            && !(content.is_string() || content.is_array() || content.is_null())
+        {
+            return Err(ProviderError::Response(format!(
+                "malformed message content: {content}"
+            )));
+        }
         let reasoning = REASONING_TEXT_KEYS.iter().find_map(|key| {
             delta
                 .get(*key)
@@ -1178,13 +1185,28 @@ impl ChatDecoder {
                 .and_then(serde_json::Value::as_str)
                 .is_some_and(|name| !name.is_empty());
             // A cut before the first argument token leaves no call at all.
-            if !named
-                || (cut_short
-                    && (arguments.trim().is_empty()
-                        || crate::json_utils::parse_tool_arguments(arguments).is_err()))
+            if cut_short
+                && (!named
+                    || arguments.trim().is_empty()
+                    || crate::json_utils::parse_tool_arguments(arguments).is_err())
             {
                 tracing::debug!("dropping a streamed tool call cut off before it completed");
                 self.drop_call(index, out);
+                continue;
+            }
+            if !named {
+                // A call of a kind rig does not model (a `custom` tool call)
+                // is kept as it came; a function call without a name fails.
+                let call = self.open_call(index).cloned().unwrap_or_default();
+                let kind = call.get("type").and_then(serde_json::Value::as_str);
+                if kind.is_none_or(|kind| kind == "function") {
+                    return Err(ProviderError::Response(format!(
+                        "tool call without a name: {call}"
+                    )));
+                }
+                self.drop_call(index, out);
+                let at = out.fresh_index();
+                out.whole(at, Block::Opaque { replay: true }, call, "")?;
                 continue;
             }
             self.close_call(index, IfMalformed::Fail, out)?;

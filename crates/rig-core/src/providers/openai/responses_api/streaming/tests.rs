@@ -2256,8 +2256,8 @@ fn items_sharing_an_id_stay_distinct_blocks() {
 #[test]
 fn a_failed_or_cancelled_reply_ends_in_an_error() {
     for status in [ResponseStatus::Failed, ResponseStatus::Cancelled] {
-        let mut body = serde_json::to_value(sample_response(status))
-            .expect("the sample response serializes");
+        let mut body =
+            serde_json::to_value(sample_response(status)).expect("the sample response serializes");
         body["output"] = json!([message("msg_1", "partial")]);
         let decoded = crate::test_utils::decode_reply(
             &wire(),

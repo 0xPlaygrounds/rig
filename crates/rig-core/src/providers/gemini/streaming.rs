@@ -28,7 +28,7 @@ pub(crate) mod shared_parts {
 
     /// Write a whole function call, `item` its provider item. An id-less
     /// call gets an id rig issues, never a fabricated provider id, even
-    /// when it shares a tool name; a nameless one is dropped.
+    /// when it shares a tool name; a nameless one is malformed.
     pub(crate) fn function_call(
         out: &mut Out<'_, Completion>,
         name: String,
@@ -37,7 +37,9 @@ pub(crate) mod shared_parts {
         item: Value,
     ) -> Result<(), ProviderError> {
         let Ok(name) = ToolName::new(name) else {
-            return Ok(());
+            return Err(ProviderError::Response(format!(
+                "Gemini function call without a name: {item}"
+            )));
         };
         let id = CallId::from_wire(wire_id.unwrap_or_default());
         let index = out.fresh_index();

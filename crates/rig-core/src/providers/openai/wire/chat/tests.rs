@@ -1430,3 +1430,39 @@ fn groq_replays_its_streamed_message_without_the_channel() {
         serde_json::json!({"role": "assistant", "reasoning": "plan", "content": "done"})
     );
 }
+
+/// A streamed function call that never gets a name fails the reply, a call
+/// of a kind rig does not model is kept as it came, and content that is not
+/// text fails too.
+#[test]
+fn malformed_and_unknown_calls_are_never_dropped_silently() {
+    use crate::wire::Mode;
+
+    let wire = wire();
+    let nameless = vec![delta_chunk(
+        serde_json::json!({"tool_calls": [{"index": 0, "id": "call_1", "type": "function",
+                "function": {"arguments": "{}"}}]}),
+        Some("tool_calls"),
+    )];
+    assert!(crate::test_utils::history::decode(&wire, Mode::Streaming, nameless).is_err());
+
+    let custom = vec![delta_chunk(
+        serde_json::json!({"tool_calls": [{"index": 0, "id": "call_1", "type": "custom",
+                "custom": {"name": "grep", "input": "x"}}]}),
+        Some("tool_calls"),
+    )];
+    let response = crate::test_utils::history::decode(&wire, Mode::Streaming, custom)
+        .expect("an unknown call kind decodes");
+    assert!(
+        matches!(response.choice.as_slice(), [AssistantContent::Opaque(opaque)]
+            if opaque.item["custom"]["name"] == "grep"),
+        "{:?}",
+        response.choice
+    );
+
+    let numeric = vec![delta_chunk(
+        serde_json::json!({"content": 42}),
+        Some("stop"),
+    )];
+    assert!(crate::test_utils::history::decode(&wire, Mode::Streaming, numeric).is_err());
+}

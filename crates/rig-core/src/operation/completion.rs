@@ -476,7 +476,13 @@ impl Turn {
                 arguments,
             } => {
                 let Ok(name) = ToolName::new(name) else {
-                    return Ok(());
+                    // A call that names no tool is malformed.
+                    return match if_malformed {
+                        IfMalformed::Fail => Err(ProviderError::Response(
+                            "the provider closed a tool call without a name".to_owned(),
+                        )),
+                        _ => Ok(()),
+                    };
                 };
                 let parsed = match (arguments.parse(), if_malformed) {
                     (Ok(parsed), _) => parsed,

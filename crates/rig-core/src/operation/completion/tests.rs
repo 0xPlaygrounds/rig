@@ -330,3 +330,19 @@ fn starts_follow_item_order_and_a_dropped_item_leaves_a_gap() {
         vec![AssistantContent::text("second")]
     );
 }
+
+#[test]
+fn a_call_closed_without_a_name_fails_the_reply() {
+    let decoded = write(|out| {
+        out.fragment(
+            0,
+            CallFragment {
+                id: Some("call_1"),
+                arguments: Some("{}"),
+                ..CallFragment::default()
+            },
+        )?;
+        out.close(0, IfMalformed::Fail)
+    });
+    assert!(matches!(decoded.outcome, Err(ProviderError::Response(_))));
+}

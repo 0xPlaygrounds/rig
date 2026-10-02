@@ -507,7 +507,12 @@ impl ResponsesDecoder {
         if let Some((call_id, name, arguments, if_malformed)) = call {
             // A call with no name is not a call anything can answer.
             let Ok(name) = ToolName::new(name.as_str()) else {
-                return Ok(());
+                return match if_malformed {
+                    IfMalformed::Fail => Err(ProviderError::Response(format!(
+                        "Responses tool call without a name: {item}"
+                    ))),
+                    _ => Ok(()),
+                };
             };
             let block = Block::Call {
                 id: CallId::from_wire(call_id.as_str()),

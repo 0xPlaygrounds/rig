@@ -477,7 +477,9 @@ impl OllamaDecoder {
                     .and_then(Value::as_str)
                     .and_then(|name| ToolName::new(name).ok());
                 let Some(name) = name else {
-                    continue;
+                    return Err(ProviderError::Response(format!(
+                        "Ollama tool call without a name: {call}"
+                    )));
                 };
                 // An id-less call gets an id rig issues, never the tool name:
                 // only the daemon's ids are provider-issued.
