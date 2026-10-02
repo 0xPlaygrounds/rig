@@ -294,10 +294,9 @@ fn decode_outcome_matrix_is_total_and_no_shape_is_silent() {
     }
 }
 
-/// A call's start and arguments are held until its end validates it; the
-/// end then releases the call.
+/// Fragments are provisional; only the end releases a validated call.
 #[test]
-fn a_call_is_held_until_its_end_validates_it() {
+fn a_call_streams_fragments_before_its_end_validates_it() {
     let add = tool_call("tc1", "add");
     let mut asm = assembler();
     let events: Vec<_> = items([call(0, &add)])
@@ -306,11 +305,11 @@ fn a_call_is_held_until_its_end_validates_it() {
         .collect();
     assert!(matches!(
         events[0].as_slice(),
-        [StreamedTurnEvent::HoldToolCall]
+        [StreamedTurnEvent::EmitToolCallFragment]
     ));
     assert!(matches!(
         events[1].as_slice(),
-        [StreamedTurnEvent::HoldToolCall]
+        [StreamedTurnEvent::EmitToolCallFragment]
     ));
     assert!(matches!(
         events[2].as_slice(),

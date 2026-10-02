@@ -191,11 +191,9 @@ pub enum StreamedResolution {
 pub enum StreamedTurnEvent {
     /// Forward the ingested item to the consumer as-is.
     EmitIngested,
-    /// Hold the ingested item back: it belongs to a tool call that is not
-    /// validated until its end.
-    HoldToolCall,
-    /// Forward the held items of the call that just ended, then its end
-    /// carrying `call` (the call as validated, with a repaired name).
+    /// Forward a provisional tool-call start or argument fragment.
+    EmitToolCallFragment,
+    /// Forward the call's end carrying `call`, validated with any repaired name.
     EmitToolCall {
         /// The validated call.
         call: ToolCall,
@@ -345,7 +343,7 @@ impl StreamedTurnAssembler {
                 kind: PartKind::ToolCall,
                 ..
             }
-            | StreamEvent::Arguments { .. } => Ok(vec![StreamedTurnEvent::HoldToolCall]),
+            | StreamEvent::Arguments { .. } => Ok(vec![StreamedTurnEvent::EmitToolCallFragment]),
             StreamEvent::End {
                 content: AssistantContent::ToolCall(tool_call),
                 ..
@@ -370,7 +368,7 @@ impl StreamedTurnAssembler {
                     call: tool_call.clone(),
                 }])
             }
-            StreamEvent::Start { .. } | StreamEvent::End { .. } => {
+            StreamEvent::Discard { .. } | StreamEvent::Start { .. } | StreamEvent::End { .. } => {
                 Ok(vec![StreamedTurnEvent::EmitIngested])
             }
         }

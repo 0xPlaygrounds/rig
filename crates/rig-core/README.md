@@ -20,6 +20,7 @@ More information about this crate can be found in the [crate documentation](http
 - Built-in providers selectable as data: `providers::registry` names a vendor and a protocol family (`deepseek/openai:deepseek-chat`) or carries a whole typed configuration, and both round-trip through serde without a credential. Model references discard embedded credentials and reject empty identifiers; a configuration's `id()` returns a catalog selection only when its dialect name is registered. Providers outside this catalog can use a `Model` and `ModelAdapter` directly.
 - 10+ vector store integrations, all under one singular unified interface
 - Full support for LLM completion and embedding workflows
+- Incremental tool-call argument streaming through `StreamEvent::Arguments`; fragments are provisional, and the call's `End` carries validated arguments
 - Support for transcription, audio generation and image generation model capabilities
 - Integrate LLMs in your app with minimal boilerplate
 - Full WASM compatibility (core library only)

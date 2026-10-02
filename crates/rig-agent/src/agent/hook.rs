@@ -499,7 +499,18 @@ pub struct ReasoningDelta<'a> {
     pub aggregated: &'a str,
 }
 
-/// Streaming tool-call delta.
+/// Provisional argument fragment from a streaming tool call.
+/// Correlate by part within a model turn; identity and validated arguments
+/// arrive with the call's end. Fragments can belong to a rejected call.
+#[derive(Clone, Copy)]
+pub struct ToolCallArgumentsDelta<'a> {
+    /// The call's part, stable across its fragments and end.
+    pub part: Part,
+    /// Newly received argument JSON, which may be incomplete.
+    pub delta: &'a str,
+}
+
+/// Completed argument JSON for a validated streaming tool call.
 #[derive(Clone, Copy)]
 pub struct ToolCallDelta<'a> {
     /// The call's part.
@@ -593,6 +604,8 @@ pub enum StepEventKind {
     ReasoningDelta,
     /// `on_tool_call_delta`.
     ToolCallDelta,
+    /// `on_tool_call_arguments_delta`.
+    ToolCallArgumentsDelta,
     /// `on_dispatch`/`on_outcome` for a completion effect.
     CompletionDispatch,
     /// `on_dispatch`/`on_outcome` for a tool-call effect.
@@ -1067,7 +1080,20 @@ pub trait AgentHook: WasmCompatSend + WasmCompatSync {
         async { ObservationAction::Continue }
     }
 
-    /// Observes an argument delta for a streaming tool call.
+    /// Observes provisional tool-call argument JSON as it arrives.
+    ///
+    /// A stop cancels the provider stream before forwarding this fragment.
+    /// The default action continues the run.
+    fn on_tool_call_arguments_delta(
+        &self,
+        _ctx: &HookContext,
+        _event: ToolCallArgumentsDelta<'_>,
+    ) -> impl Future<Output = ObservationAction> + WasmCompatSend {
+        async { ObservationAction::Continue }
+    }
+
+    /// Observes a validated streaming call's complete argument JSON.
+    /// Use [`Self::on_tool_call_arguments_delta`] for provisional fragments.
     ///
     /// The default action continues the run.
     fn on_tool_call_delta(
@@ -1151,6 +1177,12 @@ macro_rules! for_each_boxed_hook_event {
             reasoning_delta,
             on_reasoning_delta,
             ReasoningDelta,
+            ObservationAction
+        );
+        $m!(
+            tool_call_arguments_delta,
+            on_tool_call_arguments_delta,
+            ToolCallArgumentsDelta,
             ObservationAction
         );
         $m!(
@@ -1475,6 +1507,7 @@ impl AgentHook for HookStack {
         on_text_delta, text_delta, TextDelta, ObservationAction;
         on_reasoning_delta, reasoning_delta, ReasoningDelta, ObservationAction;
         on_tool_call_delta, tool_call_delta, ToolCallDelta, ObservationAction;
+        on_tool_call_arguments_delta, tool_call_arguments_delta, ToolCallArgumentsDelta, ObservationAction;
     }
     async fn on_invalid_tool_call(
         &self,

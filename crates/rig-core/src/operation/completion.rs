@@ -139,6 +139,7 @@ enum Draft {
         text: String,
     },
     Call {
+        part: Option<Part>,
         id: CallId,
         name: ToolName,
         arguments: Arguments,
@@ -296,8 +297,8 @@ pub struct ReasoningPart<'id> {
     brand: Brand<'id>,
 }
 
-/// An open tool call of one reply. It has its id and its name, and becomes
-/// visible when it closes.
+/// An open tool call of one reply with its id and name. It streams provisional
+/// argument fragments and completes when it closes.
 ///
 /// ```compile_fail,E0382
 /// use rig_core::operation::{CallPart, Completion};
@@ -309,7 +310,7 @@ pub struct ReasoningPart<'id> {
 ///     out.push_arguments(&part, "{}");
 /// }
 /// ```
-#[must_use = "an open call that is not closed never becomes visible"]
+#[must_use = "an open call that is not closed never becomes a completed call"]
 #[derive(Debug)]
 pub struct CallPart<'id> {
     slot: usize,
@@ -345,7 +346,7 @@ impl Turn {
         self.drafts.len() - 1
     }
 
-    /// The next position in the choice.
+    /// The next part position within the reply.
     fn next(&mut self) -> Part {
         let part = Part::new(self.next_part);
         self.next_part += 1;
@@ -502,6 +503,7 @@ impl Turn {
             return Err(ProviderError::DuplicateCallId(id));
         }
         Ok(self.draft(Draft::Call {
+            part: None,
             id,
             name,
             arguments: Arguments::default(),
@@ -510,16 +512,44 @@ impl Turn {
         }))
     }
 
-    fn push_arguments(&mut self, slot: usize, fragment: &str) {
+    fn push_arguments(&mut self, items: &mut Items, slot: usize, fragment: &str) {
+        if fragment.is_empty() {
+            return;
+        }
+        let started = match self.drafts.get(slot) {
+            Some(Draft::Call { part, .. }) => *part,
+            _ => return,
+        };
+        let part = started.unwrap_or_else(|| self.start(items, PartKind::ToolCall));
         if let Some(Draft::Call {
-            name, arguments, ..
+            part: open_part,
+            name,
+            arguments,
+            ..
         }) = self.drafts.get_mut(slot)
         {
+            *open_part = Some(part);
             arguments.push(fragment, name.as_str());
+        }
+        emit(
+            items,
+            StreamEvent::Arguments {
+                part,
+                json: fragment.to_owned(),
+            },
+        );
+    }
+
+    fn discard_call(&mut self, items: &mut Items, slot: usize) {
+        if let Some(draft) = self.drafts.get_mut(slot)
+            && let Draft::Call { part, .. } = std::mem::replace(draft, Draft::Closed)
+            && let Some(part) = part
+        {
+            emit(items, StreamEvent::Discard { part });
         }
     }
 
-    /// Close the call in `slot`: it becomes visible with its arguments, or
+    /// Close the call in `slot` with its parsed arguments, or
     /// `if_malformed` decides.
     fn close_call(
         &mut self,
@@ -536,9 +566,7 @@ impl Turn {
             (Err(_), IfMalformed::KeepOpen) => return Ok(()),
             (Err(_), IfMalformed::EmptyObject) => serde_json::Value::Object(Default::default()),
             (Err(_), IfMalformed::Drop) => {
-                if let Some(draft) = self.drafts.get_mut(slot) {
-                    *draft = Draft::Closed;
-                }
+                self.discard_call(items, slot);
                 return Ok(());
             }
             (Err(error), IfMalformed::Fail) => {
@@ -563,6 +591,7 @@ impl Turn {
             }
         };
         let Some(Draft::Call {
+            part,
             id,
             name,
             arguments,
@@ -575,13 +604,19 @@ impl Turn {
         else {
             return Ok(());
         };
-        let json = if arguments.text.is_empty() {
-            parsed.to_string()
-        } else {
-            arguments.text
+        let part = match part {
+            Some(part) => part,
+            None => {
+                let part = self.start(items, PartKind::ToolCall);
+                let json = if arguments.text.is_empty() {
+                    parsed.to_string()
+                } else {
+                    arguments.text
+                };
+                emit(items, StreamEvent::Arguments { part, json });
+                part
+            }
         };
-        let part = self.start(items, PartKind::ToolCall);
-        emit(items, StreamEvent::Arguments { part, json });
         emit(
             items,
             StreamEvent::End {
@@ -603,7 +638,12 @@ impl Turn {
     /// The buffered call at `index`, opened when its id and name are both
     /// known. A wire that sends no id gets one rig issues when the call
     /// closes (`issue`).
-    fn open_pending(&mut self, index: usize, issue: bool) -> Result<Option<usize>, ProviderError> {
+    fn open_pending(
+        &mut self,
+        items: &mut Items,
+        index: usize,
+        issue: bool,
+    ) -> Result<Option<usize>, ProviderError> {
         let Some(pending) = self.pending.get(&index) else {
             return Ok(None);
         };
@@ -642,6 +682,26 @@ impl Turn {
             *open = arguments;
             *open_signature = signature;
             *open_params = additional_params;
+        }
+        let buffered = match self.drafts.get(slot) {
+            Some(Draft::Call { arguments, .. }) => arguments.text.clone(),
+            _ => String::new(),
+        };
+        if !buffered.is_empty() {
+            let part = self.start(items, PartKind::ToolCall);
+            if let Some(Draft::Call {
+                part: open_part, ..
+            }) = self.drafts.get_mut(slot)
+            {
+                *open_part = Some(part);
+            }
+            emit(
+                items,
+                StreamEvent::Arguments {
+                    part,
+                    json: buffered,
+                },
+            );
         }
         Ok(Some(slot))
     }
@@ -795,6 +855,12 @@ impl Fold<Completion> for Turn {
                     .entry(part.index())
                     .or_default()
                     .push_str(text);
+            }
+            StreamEvent::Discard { part } => {
+                self.open_text.remove(&part.index());
+                if let Some(slot) = self.choice.get_mut(part.index()) {
+                    *slot = None;
+                }
             }
             StreamEvent::Reasoning { .. } | StreamEvent::Arguments { .. } => {}
         }
@@ -961,7 +1027,9 @@ impl<'id> Out<'id, Completion> {
 
     /// Append a fragment of an open call's argument JSON.
     pub fn push_arguments(&mut self, part: &CallPart<'id>, json: &str) {
-        self.lock().fold.push_arguments(part.slot, json);
+        let mut shared = self.lock();
+        let Shared { fold, items, .. } = &mut *shared;
+        fold.push_arguments(items, part.slot, json);
     }
 
     /// Attach a provider signature and metadata to an open call.
@@ -986,7 +1054,7 @@ impl<'id> Out<'id, Completion> {
         }
     }
 
-    /// Close a call: it becomes visible. Arguments that do not parse are
+    /// Close a call with its validated arguments. Arguments that do not parse are
     /// [`ProviderError::MalformedToolInput`].
     pub fn close_call(&mut self, part: CallPart<'id>) -> Result<(), ProviderError> {
         let mut shared = self.lock();
@@ -994,11 +1062,11 @@ impl<'id> Out<'id, Completion> {
         fold.close_call(items, part.slot, IfMalformed::Fail)
     }
 
-    /// Drop an open call: it never becomes visible.
+    /// Drop an open call and discard any provisional fragments.
     pub fn abandon_call(&mut self, part: CallPart<'id>) {
-        if let Some(draft) = self.lock().fold.drafts.get_mut(part.slot) {
-            *draft = Draft::Closed;
-        }
+        let mut shared = self.lock();
+        let Shared { fold, items, .. } = &mut *shared;
+        fold.discard_call(items, part.slot);
     }
 
     /// A whole tool call the provider sent in one piece.
@@ -1081,7 +1149,9 @@ impl<'id> Out<'id, Completion> {
         fragment: CallFragment<'_>,
     ) -> Result<(), ProviderError> {
         let mut shared = self.lock();
-        let turn = &mut shared.fold;
+        let Shared {
+            fold: turn, items, ..
+        } = &mut *shared;
         let pending = turn.pending.entry(index).or_default();
         if let Some(id) = fragment.id.filter(|id| !id.is_empty()) {
             pending.id = Some(id.to_owned());
@@ -1095,14 +1165,14 @@ impl<'id> Out<'id, Completion> {
         let open = pending.open;
         if let Some(arguments) = fragment.arguments.filter(|arguments| !arguments.is_empty()) {
             match open {
-                Some(slot) => turn.push_arguments(slot, arguments),
+                Some(slot) => turn.push_arguments(items, slot, arguments),
                 None => {
                     let name = pending.name.clone();
                     pending.arguments.push(arguments, &name);
                 }
             }
         }
-        turn.open_pending(index, false)?;
+        turn.open_pending(items, index, false)?;
         Ok(())
     }
 
@@ -1255,7 +1325,7 @@ impl<'id> Out<'id, Completion> {
         arguments.substantive || arguments.announced.is_some()
     }
 
-    /// Close the buffered call at `index`: it becomes visible, under the
+    /// Close the buffered call at `index`: it completes, under the
     /// provider's id or, for a wire that sent none, one rig issues. A call
     /// with no name is dropped; `if_malformed` decides for one whose
     /// arguments do not parse.
@@ -1266,7 +1336,7 @@ impl<'id> Out<'id, Completion> {
     ) -> Result<(), ProviderError> {
         let mut shared = self.lock();
         let Shared { fold, items, .. } = &mut *shared;
-        let Some(slot) = fold.open_pending(index, true)? else {
+        let Some(slot) = fold.open_pending(items, index, true)? else {
             fold.pending.remove(&index);
             return Ok(());
         };
@@ -1278,15 +1348,14 @@ impl<'id> Out<'id, Completion> {
         result
     }
 
-    /// Drop the buffered call at `index`: it never becomes visible.
+    /// Drop the buffered call at `index`: it never becomes a completed call.
     pub fn drop_pending(&mut self, index: usize) {
         let mut shared = self.lock();
-        let turn = &mut shared.fold;
-        if let Some(pending) = turn.pending.remove(&index)
+        let Shared { fold, items, .. } = &mut *shared;
+        if let Some(pending) = fold.pending.remove(&index)
             && let Some(slot) = pending.open
-            && let Some(draft) = turn.drafts.get_mut(slot)
         {
-            *draft = Draft::Closed;
+            fold.discard_call(items, slot);
         }
     }
 }

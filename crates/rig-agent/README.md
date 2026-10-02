@@ -189,7 +189,15 @@ stops, and model-turn retries short-circuit later hooks, so observers that must
 see an event belong before steering hooks. Dispatch interest is a gate: internal
 families require opting in through `observes`. Replaced tool output reaches both
 the model and result-content telemetry; handler recording retains the original
-answer. Streaming deltas are provisional, and `ModelTurnRetried` tells consumers
+answer. Tool-call starts and argument fragments stream before the call validates.
+`AgentHook::on_tool_call_arguments_delta` observes these fragments by `Part`;
+`on_tool_call_delta` observes complete validated JSON with the call ID and tool
+name. Argument fragments may be incomplete or superseded; the call end carries
+the authoritative arguments. Dropped or ignored calls emit
+`StreamEvent::Discard`. Failed or abandoned turns
+can leave unfinished parts; no tool executes from a fragment.
+
+Streaming deltas are provisional, and `ModelTurnRetried` tells consumers
 to discard a rejected turn.
 
 Keep hook-private state in the hook, keyed by run ID when shared across runs.

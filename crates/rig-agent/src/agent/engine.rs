@@ -30,7 +30,7 @@ use super::{
         HookContext, HookStack, InvalidToolCallAction, ModelSelection, ModelSelectionAction,
         ModelTurnAction, ModelTurnFinished, ObservationAction, OutcomeAction, OutcomeEvent,
         ReasoningDelta, RequestPatch, RunSettled, RunStart, RunStartAction, SettledOutcome,
-        StepEventKind, TextDelta, ToolCallDelta,
+        StepEventKind, TextDelta, ToolCallArgumentsDelta, ToolCallDelta,
     },
     run::{
         AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome, PendingToolCall,
@@ -707,6 +707,7 @@ pub(crate) struct StreamingTurnSource {
     observes_text_delta: bool,
     observes_reasoning_delta: bool,
     observes_tool_call_delta: bool,
+    observes_tool_call_arguments_delta: bool,
     /// Whether any hook is present. Gates building the history-cloning
     /// invalid-tool diagnostic context.
     has_hooks: bool,
@@ -729,6 +730,8 @@ impl StreamingTurnSource {
             observes_text_delta: hooks.observes(StepEventKind::TextDelta),
             observes_reasoning_delta: hooks.observes(StepEventKind::ReasoningDelta),
             observes_tool_call_delta: hooks.observes(StepEventKind::ToolCallDelta),
+            observes_tool_call_arguments_delta: hooks
+                .observes(StepEventKind::ToolCallArgumentsDelta),
             has_hooks: !hooks.is_empty(),
         }
     }
@@ -795,9 +798,6 @@ impl TurnSource for StreamingTurnSource {
             // A turn whose invalid tool call was repaired is a recovered turn:
             // neither the response hook nor `ModelTurnFinished` fires for it.
             let mut turn_recovered = false;
-            // A tool call's start and arguments, held until its end validates
-            // the call.
-            let mut held: Vec<StreamEvent> = Vec::new();
 
             'turn: while let Some(item) = stream.next().await {
                 // A stream error ends the reply. Unparsable tool-call input
@@ -884,46 +884,48 @@ impl TurnSource for StreamingTurnSource {
                                 yield Ok(MultiTurnStreamItem::stream_item(item));
                             }
                         }
-                        StreamedTurnEvent::HoldToolCall => {
-                            if let Some(Item::Event(event)) = item_slot.take() {
-                                held.push(event);
+                        StreamedTurnEvent::EmitToolCallFragment => {
+                            if self.observes_tool_call_arguments_delta
+                                && let Some(Item::Event(StreamEvent::Arguments { part, json })) = item_slot.as_ref()
+                                && let Some(reason) = observe_action(
+                                    runner.config.hooks.on_tool_call_arguments_delta(
+                                        hook_ctx,
+                                        ToolCallArgumentsDelta { part: *part, delta: json },
+                                    ).await,
+                                )
+                            {
+                                drop(stream);
+                                yield Err(run.cancel_error(reason));
+                                return;
+                            }
+                            if let Some(item) = item_slot.take() {
+                                yield Ok(MultiTurnStreamItem::stream_item(item));
                             }
                         }
                         StreamedTurnEvent::EmitToolCall { call } => {
-                            // The call's end is the ingested item; a repaired
-                            // call's end carries the repaired name.
                             let end = match item_slot.take() {
                                 Some(Item::Event(StreamEvent::End { part, .. })) => Some(part),
                                 _ => None,
                             };
-                            for event in std::mem::take(&mut held) {
-                                if self.observes_tool_call_delta
-                                    && let StreamEvent::Arguments { part, json } = &event
-                                    && let Some(reason) = observe_action(
-                                        runner
-                                            .config.hooks
-                                            .on_tool_call_delta(
-                                                hook_ctx,
-                                                ToolCallDelta {
-                                                    part: *part,
-                                                    call_id: &call.id,
-                                                    tool_name: call.function.name.as_str(),
-                                                    delta: json,
-                                                },
-                                            )
-                                            .await,
-                                    )
-                                {
-                                    // The stop is the run's: the dispatch in flight is
-                                    // cancelled here, before the error surfaces, so the
-                                    // record is the same cancel on every transport.
-                                    drop(stream);
-                                    yield Err(run.cancel_error(reason));
-                                    return;
-                                }
-                                yield Ok(MultiTurnStreamItem::stream_item(Item::Event(event)));
-                            }
                             if let Some(part) = end {
+                                if self.observes_tool_call_delta {
+                                    let json = json_utils::serialize_json_value(&call.function.arguments);
+                                    if let Some(reason) = observe_action(
+                                        runner.config.hooks.on_tool_call_delta(
+                                            hook_ctx,
+                                            ToolCallDelta {
+                                                part,
+                                                call_id: &call.id,
+                                                tool_name: call.function.name.as_str(),
+                                                delta: &json,
+                                            },
+                                        ).await,
+                                    ) {
+                                        drop(stream);
+                                        yield Err(run.cancel_error(reason));
+                                        return;
+                                    }
+                                }
                                 yield Ok(MultiTurnStreamItem::stream_item(Item::Event(
                                     StreamEvent::End {
                                         part,
@@ -933,8 +935,8 @@ impl TurnSource for StreamingTurnSource {
                             }
                         }
                         StreamedTurnEvent::InvalidToolCall(invalid) => {
-                            // The rejected call's items are not forwarded.
-                            held.clear();
+                            // Provisional fragments may already be visible; the rejected
+                            // call's end and execution remain withheld.
                             let partial = assembler.partial_turn(
                                 stream.message_id(),
                                 &stream.partial().choice,
@@ -982,7 +984,9 @@ impl TurnSource for StreamingTurnSource {
                             match resolution {
                                 StreamedResolution::Ignored => {
                                     assembler.resolve_pending_invalid(&resolution);
-                                    item_slot = None;
+                                    if let Some(Item::Event(StreamEvent::End { part, .. })) = item_slot.take() {
+                                        yield Ok(MultiTurnStreamItem::stream_item(Item::Event(StreamEvent::Discard { part })));
+                                    }
                                 }
                                 StreamedResolution::Repaired { .. } => {
                                     // The repaired call flows through the same event

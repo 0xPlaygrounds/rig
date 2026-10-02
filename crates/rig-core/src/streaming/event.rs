@@ -1,9 +1,9 @@
 //! The events of a completion stream. A completion decoder never builds one:
 //! it writes through the reply's part handles
 //! ([`Out`](crate::wire::Out)), and the writer emits each part's start, its
-//! fragments and its end, in that order. A [`Part`] is a part's position in
-//! the response's `choice`; only this crate constructs one, so code outside
-//! the writer cannot build an event out of order. A recorded stream reads
+//! fragments and its end or discard, in that order. A [`Part`] identifies a
+//! part within the reply; only this crate constructs one, so code outside the
+//! writer cannot build an event out of order. A recorded stream reads
 //! back through [`Transcript::parse`], the one place a sequence is checked.
 //!
 //! ```
@@ -28,7 +28,8 @@ use crate::message::AssistantContent;
 
 use super::UnknownPayload;
 
-/// A part's position in the response's `choice`. Only this crate constructs
+/// A part's start position within a reply. After a discard, its index may differ
+/// from the index in the completed response's `choice`. Only this crate constructs
 /// one:
 ///
 /// ```compile_fail,E0423
@@ -43,7 +44,7 @@ impl Part {
         Self(index)
     }
 
-    /// The part's position in the response's `choice`.
+    /// The part's start position within the reply.
     pub const fn index(self) -> usize {
         self.0 as usize
     }
@@ -89,12 +90,18 @@ pub enum StreamEvent {
         /// The fragment.
         text: String,
     },
-    /// A tool call's arguments, as the provider sent them.
+    /// A provisional tool-call argument fragment, as the provider sent it.
+    /// The call's end carries the authoritative parsed arguments.
     Arguments {
         /// The part.
         part: Part,
-        /// The raw JSON arguments.
+        /// Raw argument JSON, which may be incomplete.
         json: String,
+    },
+    /// A provisional tool-call part was abandoned without assistant content.
+    Discard {
+        /// The discarded part.
+        part: Part,
     },
     /// A part ended with the content it finalized.
     End {
@@ -113,6 +120,7 @@ impl StreamEvent {
             | Self::Text { part, .. }
             | Self::Reasoning { part, .. }
             | Self::Arguments { part, .. }
+            | Self::Discard { part }
             | Self::End { part, .. } => *part,
         }
     }
@@ -124,6 +132,7 @@ impl StreamEvent {
             Self::Text { .. } => "Text",
             Self::Reasoning { .. } => "Reasoning",
             Self::Arguments { .. } => "Arguments",
+            Self::Discard { .. } => "Discard",
             Self::End { .. } => "End",
         }
     }
@@ -205,6 +214,9 @@ enum RawEvent {
         part: u32,
         json: String,
     },
+    Discard {
+        part: u32,
+    },
     End {
         part: u32,
         content: AssistantContent,
@@ -249,6 +261,9 @@ impl Transcript {
                         json,
                     })
                 }
+                Item::Event(RawEvent::Discard { part }) => {
+                    Item::Event(StreamEvent::Discard { part: Part(part) })
+                }
                 Item::Event(RawEvent::End { part, content }) => Item::Event(StreamEvent::End {
                     part: Part(part),
                     content,
@@ -270,6 +285,15 @@ impl Transcript {
                         return Err(SequenceError::UnknownPart(position));
                     }
                     self.parts.push((*kind, false));
+                    None
+                }
+                StreamEvent::Discard { .. } => {
+                    match self.parts.get_mut(index) {
+                        None => return Err(SequenceError::UnknownPart(position)),
+                        Some((_, true)) => return Err(SequenceError::EndedTwice(position)),
+                        Some((PartKind::ToolCall, ended)) => *ended = true,
+                        Some(_) => return Err(SequenceError::WrongKind(position)),
+                    }
                     None
                 }
                 StreamEvent::Text { .. } => Some(PartKind::Text),

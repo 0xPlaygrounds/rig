@@ -662,8 +662,14 @@ fn test_handle_input_json_delta_event() {
         tool_use(0, "tool_123", "lookup"),
         input_json(0, "{\"arg\":\"value"),
     ]);
-    // A call streams nothing until it closes.
-    assert!(decoded.events().is_empty(), "{:?}", decoded.events());
+    assert!(
+        matches!(decoded.events().as_slice(), [
+        StreamEvent::Start { part, kind: PartKind::ToolCall },
+        StreamEvent::Arguments { part: arguments_part, json },
+    ] if part == arguments_part && json == "{\"arg\":\"value"),
+        "{:?}",
+        decoded.events()
+    );
 }
 
 #[test]
@@ -684,10 +690,18 @@ fn test_tool_call_accumulation_with_multiple_deltas() {
         call.function.arguments,
         json!({"location": "Paris", "temp": "20C"})
     );
-    assert!(decoded.events().into_iter().any(|event| matches!(
-        event,
-        StreamEvent::Arguments { json, .. } if json == "{\"location\":\"Paris\",\"temp\":\"20C\"}"
-    )));
+    let fragments: Vec<_> = decoded
+        .events()
+        .into_iter()
+        .filter_map(|event| match event {
+            StreamEvent::Arguments { json, .. } => Some(json),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        fragments,
+        ["{\"location\":", "\"Paris\",", "\"temp\":\"20C\"}"]
+    );
 }
 
 #[test]

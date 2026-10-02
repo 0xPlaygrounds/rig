@@ -68,6 +68,7 @@ More information about this crate can be found in the [official](https://rig.rs/
 - 20+ model providers, all under one singular unified interface
 - 10+ vector store integrations, all under one singular unified interface
 - Full support for LLM completion and embedding workflows
+- Incremental tool-call argument streams and provisional argument hooks, with validation before tool execution
 - Support for transcription, audio generation and image generation model capabilities
 - Integrate LLMs in your app with minimal boilerplate
 - Browser-WASM (`wasm32-unknown-unknown`) support for the portable core and

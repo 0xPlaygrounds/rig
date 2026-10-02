@@ -37,8 +37,10 @@ pub type StreamingResult = WasmBoxedStream<'static, Result<MultiTurnStreamItem, 
 /// call, a lifecycle marker, or the run's final response.
 pub enum MultiTurnStreamItem {
     /// A provider stream item containing model-emitted content: part
-    /// starts and ends, text and reasoning fragments, the call parts of a
-    /// validated tool call, and unmodeled passthrough payloads. The model's
+    /// starts and ends, text, reasoning and provisional tool-argument fragments,
+    /// and unmodeled passthrough payloads. Only validated calls emit a call end.
+    /// Dropped or ignored calls emit a discard; discard unfinished call parts
+    /// when a turn fails or is abandoned. The model's
     /// completed calls are also reported as [`ToolCall`](Self::ToolCall)
     /// when the turn commits.
     StreamAssistantItem(Item<StreamEvent>),

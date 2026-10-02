@@ -72,7 +72,8 @@ async fn run_streamed_turn(
                         collected_text.push_str(text);
                     }
                 }
-                StreamedTurnEvent::HoldToolCall | StreamedTurnEvent::EmitToolCall { .. } => {}
+                StreamedTurnEvent::EmitToolCallFragment
+                | StreamedTurnEvent::EmitToolCall { .. } => {}
                 StreamedTurnEvent::InvalidToolCall(invalid) => {
                     let partial =
                         assembler.partial_turn(stream.message_id(), &stream.partial().choice);

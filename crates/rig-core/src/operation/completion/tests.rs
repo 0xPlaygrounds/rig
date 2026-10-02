@@ -486,3 +486,133 @@ async fn openrouter_reasoning_records_its_upstream_family() {
         assert_eq!(issuers(&streamed.choice), [expected], "streamed {model}");
     }
 }
+
+#[test]
+fn interleaved_call_arguments_emit_before_close_without_replaying_fragments() {
+    use super::{CallFragment, Completion, IfMalformed, Turn};
+    use crate::streaming::{Item, PartKind, StreamEvent};
+    use crate::wire::{Out, Shared};
+    let shared = std::sync::Mutex::new(Shared::<Completion>::new(Turn::new("test")));
+    let mut out = Out::new(&shared);
+    out.call_fragment(
+        0,
+        CallFragment {
+            id: Some("a"),
+            name: Some("add"),
+            arguments: Some(r#"{"x":1,"#),
+            ..Default::default()
+        },
+    )
+    .expect("first call");
+    out.call_fragment(
+        1,
+        CallFragment {
+            id: Some("b"),
+            name: Some("add"),
+            arguments: Some(r#"{"x":2,"#),
+            ..Default::default()
+        },
+    )
+    .expect("second call");
+    out.call_fragment(
+        0,
+        CallFragment {
+            arguments: Some(r#""y":3}"#),
+            ..Default::default()
+        },
+    )
+    .expect("first fragment");
+    let early: Vec<_> = shared
+        .lock()
+        .expect("writer")
+        .items
+        .drain(..)
+        .collect::<Result<_, _>>()
+        .expect("events");
+    assert_eq!(early.len(), 5);
+    assert!(
+        matches!(&early[0], Item::Event(StreamEvent::Start { part, kind: PartKind::ToolCall }) if part.index() == 0)
+    );
+    assert!(
+        matches!(&early[2], Item::Event(StreamEvent::Start { part, kind: PartKind::ToolCall }) if part.index() == 1)
+    );
+    assert!(
+        matches!(&early[4], Item::Event(StreamEvent::Arguments { part, json }) if part.index() == 0 && json == r#""y":3}"#)
+    );
+    out.close_pending(0, IfMalformed::Fail)
+        .expect("close first");
+    out.call_fragment(
+        1,
+        CallFragment {
+            arguments: Some(r#""y":4}"#),
+            ..Default::default()
+        },
+    )
+    .expect("second fragment");
+    out.close_pending(1, IfMalformed::Fail)
+        .expect("close second");
+    let late: Vec<_> = shared
+        .lock()
+        .expect("writer")
+        .items
+        .drain(..)
+        .collect::<Result<_, _>>()
+        .expect("events");
+    assert_eq!(late.len(), 3);
+    assert!(
+        matches!(&late[0], Item::Event(StreamEvent::End { part, content: AssistantContent::ToolCall(call) })
+        if part.index() == 0 && call.function.arguments == serde_json::json!({"x":1,"y":3}))
+    );
+    assert!(
+        matches!(&late[1], Item::Event(StreamEvent::Arguments { part, json }) if part.index() == 1 && json == r#""y":4}"#)
+    );
+    assert!(
+        matches!(&late[2], Item::Event(StreamEvent::End { part, content: AssistantContent::ToolCall(call) })
+        if part.index() == 1 && call.function.arguments == serde_json::json!({"x":2,"y":4}))
+    );
+}
+
+#[test]
+fn dropped_provisional_calls_close_the_transcript_without_assistant_content() {
+    use super::{CallFragment, Completion, IfMalformed, Turn};
+    use crate::streaming::{Item, StreamEvent, Transcript};
+    use crate::wire::{Out, Shared};
+    for drop_explicitly in [false, true] {
+        let shared = std::sync::Mutex::new(Shared::<Completion>::new(Turn::new("test")));
+        let mut out = Out::new(&shared);
+        out.call_fragment(
+            0,
+            CallFragment {
+                id: Some("incomplete"),
+                name: Some("add"),
+                arguments: Some(r#"{"x":1,"#),
+                ..Default::default()
+            },
+        )
+        .expect("provisional call");
+        if drop_explicitly {
+            out.drop_pending(0);
+        } else {
+            out.close_pending(0, IfMalformed::Drop)
+                .expect("drop malformed");
+        }
+        let events: Vec<_> = shared
+            .lock()
+            .expect("writer")
+            .items
+            .drain(..)
+            .collect::<Result<_, _>>()
+            .expect("events");
+        assert_eq!(events.len(), 3);
+        assert!(
+            matches!(&events[2], Item::Event(StreamEvent::Discard { part }) if part.index() == 0)
+        );
+        let transcript = Transcript::parse(serde_json::to_value(&events).expect("serialize"))
+            .expect("complete transcript");
+        let mut replayed = Turn::new("test");
+        for event in transcript.events() {
+            crate::wire::Fold::<Completion>::absorb(&mut replayed, event).expect("fold");
+        }
+        assert!(replayed.snapshot().is_empty());
+    }
+}

@@ -3543,7 +3543,7 @@ async fn tool_choice_none_rejects_streaming_tool_call() {
 }
 
 #[tokio::test]
-async fn tool_choice_none_rejects_streaming_tool_call_name_delta_before_hook_or_emit() {
+async fn tool_choice_none_rejects_completed_call_after_provisional_fragments() {
     let model = MockCompletionModel::from_stream_turns([
         vec![
             MockStreamEvent::tool_call_name_delta("tool_1", "add"),
@@ -3584,7 +3584,7 @@ async fn tool_choice_none_rejects_streaming_tool_call_name_delta_before_hook_or_
         }
     }
 
-    assert!(!saw_delta);
+    assert!(saw_delta, "provisional arguments precede validation");
     let error = error.expect("ToolChoice::None should reject returned tool-call deltas");
     match error {
         PromptError::UnknownToolCall {
@@ -3604,7 +3604,7 @@ async fn tool_choice_none_rejects_streaming_tool_call_name_delta_before_hook_or_
 }
 
 #[tokio::test]
-async fn unknown_tool_call_name_delta_fails_before_streaming_delta_hook_or_emit() {
+async fn unknown_tool_call_fails_after_fragments_before_validated_hook() {
     let model = MockCompletionModel::from_stream_turns([
         vec![
             MockStreamEvent::tool_call_name_delta("tool_1", "default_api"),
@@ -3642,7 +3642,7 @@ async fn unknown_tool_call_name_delta_fails_before_streaming_delta_hook_or_emit(
         }
     }
 
-    assert!(!saw_delta);
+    assert!(saw_delta, "provisional arguments precede validation");
     let error = error.expect("unknown tool-call name delta should fail");
     match error {
         PromptError::UnknownToolCall {
@@ -3662,7 +3662,7 @@ async fn unknown_tool_call_name_delta_fails_before_streaming_delta_hook_or_emit(
 }
 
 #[tokio::test]
-async fn tool_call_args_delta_before_unknown_name_fails_before_hook_or_emit() {
+async fn tool_call_args_before_unknown_name_fail_before_validated_hook() {
     let model = MockCompletionModel::from_stream_turns([
         vec![
             MockStreamEvent::tool_call_arguments_delta("tool_1", "{\"x\":1}"),
@@ -3700,8 +3700,8 @@ async fn tool_call_args_delta_before_unknown_name_fails_before_hook_or_emit() {
         }
     }
 
-    assert!(!saw_delta);
-    let error = error.expect("unknown tool-call name should reject buffered args");
+    assert!(saw_delta, "provisional arguments precede validation");
+    let error = error.expect("unknown tool-call name should reject completed call");
     match error {
         PromptError::UnknownToolCall {
             tool_name,
@@ -3760,14 +3760,16 @@ async fn tool_call_fragments_before_the_name_emit_one_call_when_it_closes() {
         }
     }
 
-    // The buffered fragments close as one call, visible once: its whole
-    // arguments, then its end.
+    // Fragments buffered before the name replay on opening; later fragments stream.
     let [call] = ended.as_slice() else {
         panic!("one call: {ended:?}");
     };
     assert_eq!(call.function.name, "add");
     assert_eq!(call.function.arguments, serde_json::json!({"x": 1, "y": 2}));
-    assert_eq!(arguments, vec!["{\"x\":1,\"y\":2}".to_string()]);
+    assert_eq!(
+        arguments,
+        vec!["{\"x\":1,".to_string(), "\"y\":2}".to_string()]
+    );
     assert_eq!(
         hook.observed(),
         vec![(
@@ -3819,7 +3821,7 @@ async fn tool_call_args_without_a_name_never_become_a_call() {
 }
 
 #[tokio::test]
-async fn tool_choice_none_buffers_args_then_rejects_name_without_emit() {
+async fn tool_choice_none_rejects_late_name_after_provisional_fragments() {
     let model = MockCompletionModel::from_stream_turns([
         vec![
             MockStreamEvent::tool_call_arguments_delta("tool_1", "{\"x\":1}"),
@@ -3860,8 +3862,8 @@ async fn tool_choice_none_buffers_args_then_rejects_name_without_emit() {
         }
     }
 
-    assert!(!saw_delta);
-    let error = error.expect("ToolChoice::None should reject buffered tool-call deltas");
+    assert!(saw_delta, "provisional arguments precede validation");
+    let error = error.expect("ToolChoice::None should reject completed tool call");
     match error {
         PromptError::UnknownToolCall {
             tool_name,
@@ -4100,8 +4102,11 @@ async fn stream_prompt_emits_tool_call_deltas_without_hook() {
         }
     }
 
-    // The call's fragments are buffered; its arguments stream once, whole.
-    assert_eq!(arguments, vec!["{\"x\":1,\"y\":2}".to_string()]);
+    // Argument fragments retain their provider boundaries.
+    assert_eq!(
+        arguments,
+        vec!["{\"x\":1,".to_string(), "\"y\":2}".to_string()]
+    );
 }
 
 #[tokio::test]
@@ -4153,11 +4158,14 @@ async fn stream_prompt_emits_tool_call_deltas_after_hook_continue() {
             "{\"x\":1,\"y\":2}".to_string()
         )]
     );
-    assert_eq!(arguments, vec!["{\"x\":1,\"y\":2}".to_string()]);
+    assert_eq!(
+        arguments,
+        vec!["{\"x\":1,".to_string(), "\"y\":2}".to_string()]
+    );
 }
 
 #[tokio::test]
-async fn stream_prompt_tool_call_deltas_hook_termination_prevents_delta_emit() {
+async fn stream_prompt_validated_tool_call_hook_termination_prevents_end_emit() {
     let model = MockCompletionModel::from_stream_turns([[
         MockStreamEvent::tool_call_name_delta("tool_1", "add"),
         MockStreamEvent::tool_call_arguments_delta("tool_1", "{\"x\":1}"),
@@ -4171,6 +4179,7 @@ async fn stream_prompt_tool_call_deltas_hook_termination_prevents_delta_emit() {
         .add_hook(hook.clone())
         .stream();
     let mut saw_delta = false;
+    let mut saw_end = false;
     let mut saw_final_response = false;
     let mut error_message = None;
 
@@ -4181,6 +4190,10 @@ async fn stream_prompt_tool_call_deltas_hook_termination_prevents_delta_emit() {
             }))) => {
                 saw_delta = true;
             }
+            Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::End {
+                content: AssistantContent::ToolCall(_),
+                ..
+            }))) => saw_end = true,
             Ok(MultiTurnStreamItem::FinalResponse(_)) => {
                 saw_final_response = true;
             }
@@ -4198,7 +4211,8 @@ async fn stream_prompt_tool_call_deltas_hook_termination_prevents_delta_emit() {
 
     assert_eq!(first.1, "add");
     assert_eq!(first.2, "{\"x\":1}");
-    assert!(!saw_delta);
+    assert!(saw_delta);
+    assert!(!saw_end);
     assert!(!saw_final_response);
     assert!(
         error_message.as_deref().is_some_and(
@@ -5880,4 +5894,258 @@ async fn an_abandoned_streamed_turn_keeps_reasoning_its_provider_accepts() {
             .is_some()),
         "the issuing provider accepts it: {reasoning:?}"
     );
+}
+
+#[derive(Clone)]
+struct PendingToolArgumentsTransport {
+    dropped: Arc<AtomicBool>,
+}
+
+struct ToolArgumentsStreamGuard(Arc<AtomicBool>);
+
+impl Drop for ToolArgumentsStreamGuard {
+    fn drop(&mut self) {
+        self.0.store(true, Ordering::SeqCst);
+    }
+}
+
+impl rig_core::driver::Transport<rig_core::test_utils::MockScript>
+    for PendingToolArgumentsTransport
+{
+    fn send(
+        &self,
+        _request: CompletionRequest,
+        _exchange: rig_core::driver::Exchange,
+    ) -> rig_core::driver::Opening<rig_core::test_utils::MockFrame> {
+        let guard = ToolArgumentsStreamGuard(self.dropped.clone());
+        let frames = async_stream::stream! {
+            let _guard = guard;
+            for event in [
+                MockStreamEvent::tool_call_name_delta("live_call", "add"),
+                MockStreamEvent::tool_call_arguments_delta("live_call", r#"{"x":1,"#),
+            ] {
+                yield Ok(rig_core::test_utils::MockFrame::Event(event));
+            }
+            futures::future::pending::<()>().await;
+        };
+        rig_core::driver::Opening::ready(rig_core::driver::Opened::new(frames))
+    }
+}
+
+#[derive(Clone, Default)]
+struct ProvisionalArgumentsHook {
+    fragments: Arc<Mutex<Vec<(usize, String)>>>,
+    stop: bool,
+}
+
+impl AgentHook for ProvisionalArgumentsHook {
+    fn observes(&self, kind: StepEventKind) -> bool {
+        kind == StepEventKind::ToolCallArgumentsDelta
+    }
+
+    async fn on_tool_call_arguments_delta(
+        &self,
+        _ctx: &HookContext,
+        event: crate::agent::ToolCallArgumentsDelta<'_>,
+    ) -> ObservationAction {
+        self.fragments
+            .lock()
+            .expect("fragments")
+            .push((event.part.index(), event.delta.into()));
+        if self.stop {
+            ObservationAction::stop("stop incomplete arguments")
+        } else {
+            ObservationAction::continue_run()
+        }
+    }
+}
+
+#[tokio::test]
+async fn tool_arguments_stream_before_provider_completes_with_and_without_hooks() {
+    for with_hook in [false, true] {
+        let dropped = Arc::new(AtomicBool::new(false));
+        let calls = Arc::new(AtomicU32::new(0));
+        let model = rig_core::driver::Model::new(
+            rig_core::test_utils::MockScript::new("live arguments"),
+            PendingToolArgumentsTransport {
+                dropped: dropped.clone(),
+            },
+        );
+        let agent = AgentBuilder::new(model)
+            .tool(CountingAddTool {
+                calls: calls.clone(),
+            })
+            .build();
+        let hook = ProvisionalArgumentsHook::default();
+        let runner = agent.prompt("add");
+        let runner = if with_hook {
+            runner.add_hook(hook.clone())
+        } else {
+            runner
+        };
+        let mut stream = runner.stream();
+        let start = tokio::time::timeout(Duration::from_secs(2), stream.try_next())
+            .await
+            .expect("start must precede provider completion")
+            .expect("start")
+            .expect("item");
+        let MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Start {
+            part,
+            kind,
+        })) = start
+        else {
+            panic!("expected a tool-call start, got {start:?}");
+        };
+        assert_eq!(kind, rig_core::streaming::PartKind::ToolCall);
+        let fragment = tokio::time::timeout(Duration::from_secs(2), stream.try_next())
+            .await
+            .expect("fragment must precede provider completion")
+            .expect("fragment")
+            .expect("item");
+        assert!(matches!(fragment,
+            MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Arguments { part: fragment_part, json }))
+                if fragment_part == part && json == r#"{"x":1,"#));
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
+        assert_eq!(
+            *hook.fragments.lock().expect("fragments"),
+            if with_hook {
+                vec![(part.index(), r#"{"x":1,"#.into())]
+            } else {
+                vec![]
+            }
+        );
+        drop(stream);
+        assert!(dropped.load(Ordering::SeqCst));
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
+    }
+}
+
+#[tokio::test]
+async fn provisional_tool_argument_hook_stops_before_emit_and_cancels_provider() {
+    let dropped = Arc::new(AtomicBool::new(false));
+    let calls = Arc::new(AtomicU32::new(0));
+    let model = rig_core::driver::Model::new(
+        rig_core::test_utils::MockScript::new("live arguments"),
+        PendingToolArgumentsTransport {
+            dropped: dropped.clone(),
+        },
+    );
+    let agent = AgentBuilder::new(model)
+        .tool(CountingAddTool {
+            calls: calls.clone(),
+        })
+        .build();
+    let hook = ProvisionalArgumentsHook {
+        stop: true,
+        ..Default::default()
+    };
+    let later_hook = ProvisionalArgumentsHook::default();
+    let mut stream = agent
+        .prompt("add")
+        .add_hook(hook.clone())
+        .add_hook(later_hook.clone())
+        .stream();
+    stream.try_next().await.expect("start").expect("item");
+    let error = tokio::time::timeout(Duration::from_secs(2), stream.try_next())
+        .await
+        .expect("stop must not wait for completed arguments")
+        .expect_err("hook stops");
+    assert!(
+        matches!(error, PromptError::Cancelled { reason, .. } if reason == "stop incomplete arguments")
+    );
+    assert_eq!(hook.fragments.lock().expect("fragments").len(), 1);
+    assert!(later_hook.fragments.lock().expect("fragments").is_empty());
+    assert!(stream.next().await.is_none());
+    assert!(dropped.load(Ordering::SeqCst));
+    assert_eq!(calls.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn ignored_unknown_streaming_call_discards_provisional_part_without_execution() {
+    let model = MockCompletionModel::from_stream_turns([[
+        MockStreamEvent::tool_call_name_delta("unknown", "missing"),
+        MockStreamEvent::tool_call_arguments_delta("unknown", r#"{"x":1,"#),
+        MockStreamEvent::tool_call_arguments_delta("unknown", r#""y":2}"#),
+        MockStreamEvent::text("done"),
+        MockStreamEvent::final_response(Usage::default()),
+    ]]);
+    let calls = Arc::new(AtomicU32::new(0));
+    let agent = AgentBuilder::new(model)
+        .tool(CountingAddTool {
+            calls: calls.clone(),
+        })
+        .build();
+    let hook = ProvisionalArgumentsHook::default();
+    let validated = RecordingToolCallDeltaHook::default();
+    let mut stream = agent
+        .prompt("go")
+        .unhandled_invalid_tool_call(crate::run::UnhandledInvalidToolCall::Ignore)
+        .add_hook(hook.clone())
+        .add_hook(validated.clone())
+        .stream();
+    let mut items = Vec::new();
+    let mut response = None;
+    while let Some(item) = stream.try_next().await.expect("successful ignored call") {
+        match item {
+            MultiTurnStreamItem::StreamAssistantItem(item) => items.push(item),
+            MultiTurnStreamItem::FinalResponse(final_response) => response = Some(final_response),
+            MultiTurnStreamItem::ToolCall { .. }
+            | MultiTurnStreamItem::ToolExecutionCommitted { .. } => {
+                panic!("unknown call cannot execute")
+            }
+            _ => {}
+        }
+    }
+    assert_eq!(hook.fragments.lock().expect("fragments").len(), 2);
+    assert!(validated.observed().is_empty());
+    assert!(
+        items
+            .iter()
+            .any(|item| matches!(item, Item::Event(StreamEvent::Discard { .. })))
+    );
+    rig_core::streaming::Transcript::parse(serde_json::to_value(items).expect("serialize"))
+        .expect("successful agent stream is complete");
+    assert_eq!(response.expect("response").output(), "done");
+    assert_eq!(calls.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn malformed_and_interrupted_tool_fragments_never_execute() {
+    for malformed in [false, true] {
+        let mut events = vec![
+            MockStreamEvent::tool_call_name_delta("incomplete", "add"),
+            MockStreamEvent::tool_call_arguments_delta("incomplete", r#"{"x":1,"#),
+        ];
+        if malformed {
+            events.push(MockStreamEvent::ToolCallEnd {
+                id: "incomplete".into(),
+            });
+        }
+        let model = MockCompletionModel::from_stream_turns([events]);
+        let calls = Arc::new(AtomicU32::new(0));
+        let agent = AgentBuilder::new(model)
+            .tool(CountingAddTool {
+                calls: calls.clone(),
+            })
+            .build();
+        let hook = ProvisionalArgumentsHook::default();
+        let mut stream = agent.prompt("go").add_hook(hook.clone()).stream();
+        let mut saw_error = false;
+        while let Some(item) = stream.next().await {
+            match item {
+                Err(_) => {
+                    saw_error = true;
+                    break;
+                }
+                Ok(
+                    MultiTurnStreamItem::ToolCall { .. }
+                    | MultiTurnStreamItem::ToolExecutionCommitted { .. },
+                ) => panic!("invalid fragments cannot execute"),
+                _ => {}
+            }
+        }
+        assert!(saw_error);
+        assert_eq!(hook.fragments.lock().expect("fragments").len(), 1);
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
+    }
 }
