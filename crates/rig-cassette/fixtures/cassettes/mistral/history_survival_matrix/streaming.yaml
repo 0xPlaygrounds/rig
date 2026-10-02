@@ -1,0 +1,202 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":2048,"messages":[{"content":"You are a records assistant. Use the tools for every lookup and verification and never guess a code. When a tool reports a transient failure, call it again once. Answer briefly.","role":"system"},{"content":"Look up the alpha record and the beta record, verify each returned code, and report both codes with their verification status.","role":"user"}],"model":"mistral-small-latest","stream":true,"tools":[{"function":{"description":"Look up a record by name and return its code.","name":"lookup_record","parameters":{"properties":{"record":{"description":"alpha or beta","type":"string"}},"required":["record"],"type":"object"}},"type":"function"},{"function":{"description":"Verify a code returned by lookup_record. May fail transiently; retry once.","name":"verify_code","parameters":{"properties":{"code":{"description":"the code to verify","type":"string"}},"required":["code"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  - name: mistral-correlation-id
+    value: 01a0fea0-bb52-7d08-a9c0-f694ecf0e101
+  body: |+
+    data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":null,"index":0}],"created":0,"id":"9b40220410974d709af517fff7ea4212","model":"mistral-small-latest","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"tool_calls":[{"function":{"arguments":"{\"record\": \"alpha\"}","name":"lookup_record"},"id":"120PdF0G9","index":0,"type":"function"},{"function":{"arguments":"{\"record\": \"beta\"}","name":"lookup_record"},"id":"NBzWTU9pp","index":1,"type":"function"}]},"finish_reason":"tool_calls","index":0}],"created":0,"id":"9b40220410974d709af517fff7ea4212","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopq","usage":{"completion_tokens":21,"prompt_tokens":224,"prompt_tokens_details":{"cached_tokens":0},"service_tier":"standard","total_tokens":245}}
+
+    data: [DONE]
+
+---
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":2048,"messages":[{"content":"You are a records assistant. Use the tools for every lookup and verification and never guess a code. When a tool reports a transient failure, call it again once. Answer briefly.","role":"system"},{"content":"Look up the alpha record and the beta record, verify each returned code, and report both codes with their verification status.","role":"user"},{"content":"","role":"assistant","tool_calls":[{"function":{"arguments":"{\"record\":\"alpha\"}","name":"lookup_record"},"id":"120PdF0G9","type":"function"},{"function":{"arguments":"{\"record\":\"beta\"}","name":"lookup_record"},"id":"NBzWTU9pp","type":"function"}]},{"content":"record alpha: code alpha-code-7431","role":"tool","tool_call_id":"120PdF0G9"},{"content":"record beta: code beta-code-2286","role":"tool","tool_call_id":"NBzWTU9pp"}],"model":"mistral-small-latest","stream":true,"tools":[{"function":{"description":"Look up a record by name and return its code.","name":"lookup_record","parameters":{"properties":{"record":{"description":"alpha or beta","type":"string"}},"required":["record"],"type":"object"}},"type":"function"},{"function":{"description":"Verify a code returned by lookup_record. May fail transiently; retry once.","name":"verify_code","parameters":{"properties":{"code":{"description":"the code to verify","type":"string"}},"required":["code"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  - name: mistral-correlation-id
+    value: 01a0fea0-bd26-7cb6-9a2d-4ba6e32c096e
+  body: |+
+    data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":null,"index":0}],"created":0,"id":"dfd02f28107a461bb0e95462d3ea0d5f","model":"mistral-small-latest","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"tool_calls":[{"function":{"arguments":"{\"code\": \"alpha-code-7431\"}","name":"verify_code"},"id":"OgFKC228R","index":0,"type":"function"},{"function":{"arguments":"{\"code\": \"beta-code-2286\"}","name":"verify_code"},"id":"chxgNpm0k","index":1,"type":"function"}]},"finish_reason":"tool_calls","index":0}],"created":0,"id":"dfd02f28107a461bb0e95462d3ea0d5f","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvwxy","usage":{"completion_tokens":33,"prompt_tokens":271,"prompt_tokens_details":{"cached_tokens":208},"service_tier":"standard","total_tokens":304}}
+
+    data: [DONE]
+
+---
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":2048,"messages":[{"content":"You are a records assistant. Use the tools for every lookup and verification and never guess a code. When a tool reports a transient failure, call it again once. Answer briefly.","role":"system"},{"content":"Look up the alpha record and the beta record, verify each returned code, and report both codes with their verification status.","role":"user"},{"content":"","role":"assistant","tool_calls":[{"function":{"arguments":"{\"record\":\"alpha\"}","name":"lookup_record"},"id":"120PdF0G9","type":"function"},{"function":{"arguments":"{\"record\":\"beta\"}","name":"lookup_record"},"id":"NBzWTU9pp","type":"function"}]},{"content":"record alpha: code alpha-code-7431","role":"tool","tool_call_id":"120PdF0G9"},{"content":"record beta: code beta-code-2286","role":"tool","tool_call_id":"NBzWTU9pp"},{"content":"","role":"assistant","tool_calls":[{"function":{"arguments":"{\"code\":\"alpha-code-7431\"}","name":"verify_code"},"id":"OgFKC228R","type":"function"},{"function":{"arguments":"{\"code\":\"beta-code-2286\"}","name":"verify_code"},"id":"chxgNpm0k","type":"function"}]},{"content":"verified alpha-code-7431","role":"tool","tool_call_id":"OgFKC228R"},{"content":"the tool failed","role":"tool","tool_call_id":"chxgNpm0k"}],"model":"mistral-small-latest","stream":true,"tools":[{"function":{"description":"Look up a record by name and return its code.","name":"lookup_record","parameters":{"properties":{"record":{"description":"alpha or beta","type":"string"}},"required":["record"],"type":"object"}},"type":"function"},{"function":{"description":"Verify a code returned by lookup_record. May fail transiently; retry once.","name":"verify_code","parameters":{"properties":{"code":{"description":"the code to verify","type":"string"}},"required":["code"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  - name: mistral-correlation-id
+    value: 01a0fea0-bf4f-7e0c-9f03-1c51724bb7d8
+  body: |+
+    data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":null,"index":0}],"created":0,"id":"794542c77c83476f8cce46eccb1852c3","model":"mistral-small-latest","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"tool_calls":[{"function":{"arguments":"{\"code\": \"beta-code-2286\"}","name":"verify_code"},"id":"mBz5i9onH","index":0,"type":"function"}]},"finish_reason":"tool_calls","index":0}],"created":0,"id":"794542c77c83476f8cce46eccb1852c3","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvwxyz0123456","usage":{"completion_tokens":17,"prompt_tokens":319,"prompt_tokens_details":{"cached_tokens":240},"service_tier":"standard","total_tokens":336}}
+
+    data: [DONE]
+
+---
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":2048,"messages":[{"content":"You are a records assistant. Use the tools for every lookup and verification and never guess a code. When a tool reports a transient failure, call it again once. Answer briefly.","role":"system"},{"content":"Look up the alpha record and the beta record, verify each returned code, and report both codes with their verification status.","role":"user"},{"content":"","role":"assistant","tool_calls":[{"function":{"arguments":"{\"record\":\"alpha\"}","name":"lookup_record"},"id":"120PdF0G9","type":"function"},{"function":{"arguments":"{\"record\":\"beta\"}","name":"lookup_record"},"id":"NBzWTU9pp","type":"function"}]},{"content":"record alpha: code alpha-code-7431","role":"tool","tool_call_id":"120PdF0G9"},{"content":"record beta: code beta-code-2286","role":"tool","tool_call_id":"NBzWTU9pp"},{"content":"","role":"assistant","tool_calls":[{"function":{"arguments":"{\"code\":\"alpha-code-7431\"}","name":"verify_code"},"id":"OgFKC228R","type":"function"},{"function":{"arguments":"{\"code\":\"beta-code-2286\"}","name":"verify_code"},"id":"chxgNpm0k","type":"function"}]},{"content":"verified alpha-code-7431","role":"tool","tool_call_id":"OgFKC228R"},{"content":"the tool failed","role":"tool","tool_call_id":"chxgNpm0k"},{"content":"","role":"assistant","tool_calls":[{"function":{"arguments":"{\"code\":\"beta-code-2286\"}","name":"verify_code"},"id":"mBz5i9onH","type":"function"}]},{"content":"verified beta-code-2286","role":"tool","tool_call_id":"mBz5i9onH"}],"model":"mistral-small-latest","stream":true,"tools":[{"function":{"description":"Look up a record by name and return its code.","name":"lookup_record","parameters":{"properties":{"record":{"description":"alpha or beta","type":"string"}},"required":["record"],"type":"object"}},"type":"function"},{"function":{"description":"Verify a code returned by lookup_record. May fail transiently; retry once.","name":"verify_code","parameters":{"properties":{"code":{"description":"the code to verify","type":"string"}},"required":["code"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  - name: mistral-correlation-id
+    value: 01a0fea0-c199-7b27-9c90-f9b8692908dd
+  body: |+
+    data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":null,"index":0}],"created":0,"id":"aaaac3c6944b4b7c8205d3f5a6ac3931","model":"mistral-small-latest","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"content":"alpha"},"finish_reason":null,"index":0}],"created":0,"id":"aaaac3c6944b4b7c8205d3f5a6ac3931","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvwxy"}
+
+    data: {"choices":[{"delta":{"content":"-code-74"},"finish_reason":null,"index":0}],"created":0,"id":"aaaac3c6944b4b7c8205d3f5a6ac3931","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijk"}
+
+    data: {"choices":[{"delta":{"content":"31: verified"},"finish_reason":null,"index":0}],"created":0,"id":"aaaac3c6944b4b7c8205d3f5a6ac3931","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcd"}
+
+    data: {"choices":[{"delta":{"content":"\nbeta-code-"},"finish_reason":null,"index":0}],"created":0,"id":"aaaac3c6944b4b7c8205d3f5a6ac3931","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvwxyz"}
+
+    data: {"choices":[{"delta":{"content":"2286"},"finish_reason":null,"index":0}],"created":0,"id":"aaaac3c6944b4b7c8205d3f5a6ac3931","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvwxyz012345678"}
+
+    data: {"choices":[{"delta":{"content":": verified"},"finish_reason":"stop","index":0}],"created":0,"id":"aaaac3c6944b4b7c8205d3f5a6ac3931","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefg","usage":{"completion_tokens":20,"prompt_tokens":346,"prompt_tokens_details":{"cached_tokens":288},"service_tier":"standard","total_tokens":366}}
+
+    data: [DONE]
+
+---
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":2048,"messages":[{"content":"You are a records assistant. Use the tools for every lookup and verification and never guess a code. When a tool reports a transient failure, call it again once. Answer briefly.","role":"system"},{"content":"Look up the alpha record and the beta record, verify each returned code, and report both codes with their verification status.","role":"user"},{"content":"","role":"assistant","tool_calls":[{"function":{"arguments":"{\"record\":\"alpha\"}","name":"lookup_record"},"id":"120PdF0G9","type":"function"},{"function":{"arguments":"{\"record\":\"beta\"}","name":"lookup_record"},"id":"NBzWTU9pp","type":"function"}]},{"content":"record alpha: code alpha-code-7431","role":"tool","tool_call_id":"120PdF0G9"},{"content":"record beta: code beta-code-2286","role":"tool","tool_call_id":"NBzWTU9pp"},{"content":"","role":"assistant","tool_calls":[{"function":{"arguments":"{\"code\":\"alpha-code-7431\"}","name":"verify_code"},"id":"OgFKC228R","type":"function"},{"function":{"arguments":"{\"code\":\"beta-code-2286\"}","name":"verify_code"},"id":"chxgNpm0k","type":"function"}]},{"content":"verified alpha-code-7431","role":"tool","tool_call_id":"OgFKC228R"},{"content":"the tool failed","role":"tool","tool_call_id":"chxgNpm0k"},{"content":"","role":"assistant","tool_calls":[{"function":{"arguments":"{\"code\":\"beta-code-2286\"}","name":"verify_code"},"id":"mBz5i9onH","type":"function"}]},{"content":"verified beta-code-2286","role":"tool","tool_call_id":"mBz5i9onH"},{"content":"alpha-code-7431: verified\nbeta-code-2286: verified","role":"assistant"},{"content":"Verify the alpha code once more and confirm whether it is unchanged.","role":"user"}],"model":"mistral-small-latest","stream":true,"tools":[{"function":{"description":"Look up a record by name and return its code.","name":"lookup_record","parameters":{"properties":{"record":{"description":"alpha or beta","type":"string"}},"required":["record"],"type":"object"}},"type":"function"},{"function":{"description":"Verify a code returned by lookup_record. May fail transiently; retry once.","name":"verify_code","parameters":{"properties":{"code":{"description":"the code to verify","type":"string"}},"required":["code"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  - name: mistral-correlation-id
+    value: 01a0fea0-c3bb-7608-ab4b-d519628514d6
+  body: |+
+    data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":null,"index":0}],"created":0,"id":"686e1af671c5423882402ce7a16580b7","model":"mistral-small-latest","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"tool_calls":[{"function":{"arguments":"{\"code\": \"alpha-code-7431\"}","name":"verify_code"},"id":"XnBlkMiZw","index":0,"type":"function"}]},"finish_reason":"tool_calls","index":0}],"created":0,"id":"686e1af671c5423882402ce7a16580b7","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvwxyz0","usage":{"completion_tokens":17,"prompt_tokens":381,"prompt_tokens_details":{"cached_tokens":320},"service_tier":"standard","total_tokens":398}}
+
+    data: [DONE]
+
+---
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":2048,"messages":[{"content":"You are a records assistant. Use the tools for every lookup and verification and never guess a code. When a tool reports a transient failure, call it again once. Answer briefly.","role":"system"},{"content":"Look up the alpha record and the beta record, verify each returned code, and report both codes with their verification status.","role":"user"},{"content":"","role":"assistant","tool_calls":[{"function":{"arguments":"{\"record\":\"alpha\"}","name":"lookup_record"},"id":"120PdF0G9","type":"function"},{"function":{"arguments":"{\"record\":\"beta\"}","name":"lookup_record"},"id":"NBzWTU9pp","type":"function"}]},{"content":"record alpha: code alpha-code-7431","role":"tool","tool_call_id":"120PdF0G9"},{"content":"record beta: code beta-code-2286","role":"tool","tool_call_id":"NBzWTU9pp"},{"content":"","role":"assistant","tool_calls":[{"function":{"arguments":"{\"code\":\"alpha-code-7431\"}","name":"verify_code"},"id":"OgFKC228R","type":"function"},{"function":{"arguments":"{\"code\":\"beta-code-2286\"}","name":"verify_code"},"id":"chxgNpm0k","type":"function"}]},{"content":"verified alpha-code-7431","role":"tool","tool_call_id":"OgFKC228R"},{"content":"the tool failed","role":"tool","tool_call_id":"chxgNpm0k"},{"content":"","role":"assistant","tool_calls":[{"function":{"arguments":"{\"code\":\"beta-code-2286\"}","name":"verify_code"},"id":"mBz5i9onH","type":"function"}]},{"content":"verified beta-code-2286","role":"tool","tool_call_id":"mBz5i9onH"},{"content":"alpha-code-7431: verified\nbeta-code-2286: verified","role":"assistant"},{"content":"Verify the alpha code once more and confirm whether it is unchanged.","role":"user"},{"content":"","role":"assistant","tool_calls":[{"function":{"arguments":"{\"code\":\"alpha-code-7431\"}","name":"verify_code"},"id":"XnBlkMiZw","type":"function"}]},{"content":"verified alpha-code-7431","role":"tool","tool_call_id":"XnBlkMiZw"}],"model":"mistral-small-latest","stream":true,"tools":[{"function":{"description":"Look up a record by name and return its code.","name":"lookup_record","parameters":{"properties":{"record":{"description":"alpha or beta","type":"string"}},"required":["record"],"type":"object"}},"type":"function"},{"function":{"description":"Verify a code returned by lookup_record. May fail transiently; retry once.","name":"verify_code","parameters":{"properties":{"code":{"description":"the code to verify","type":"string"}},"required":["code"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  - name: mistral-correlation-id
+    value: 01a0fea0-c565-7832-9a98-4587c4424a63
+  body: |+
+    data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":null,"index":0}],"created":0,"id":"4d66d4461c2f426a9f8a29d6e18376b8","model":"mistral-small-latest","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"content":"alpha"},"finish_reason":null,"index":0}],"created":0,"id":"4d66d4461c2f426a9f8a29d6e18376b8","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefgh"}
+
+    data: {"choices":[{"delta":{"content":"-code-74"},"finish_reason":null,"index":0}],"created":0,"id":"4d66d4461c2f426a9f8a29d6e18376b8","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvwxyz0123456"}
+
+    data: {"choices":[{"delta":{"content":"31: verified"},"finish_reason":null,"index":0}],"created":0,"id":"4d66d4461c2f426a9f8a29d6e18376b8","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvwxy"}
+
+    data: {"choices":[{"delta":{"content":" ("},"finish_reason":null,"index":0}],"created":0,"id":"4d66d4461c2f426a9f8a29d6e18376b8","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopq"}
+
+    data: {"choices":[{"delta":{"content":"unchanged)"},"finish_reason":"stop","index":0}],"created":0,"id":"4d66d4461c2f426a9f8a29d6e18376b8","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvwxyz01","usage":{"completion_tokens":14,"prompt_tokens":408,"prompt_tokens_details":{"cached_tokens":352},"service_tier":"standard","total_tokens":422}}
+
+    data: [DONE]
+
+---
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":2048,"messages":[{"content":"You are a records assistant. Use the tools for every lookup and verification and never guess a code. When a tool reports a transient failure, call it again once. Answer briefly.","role":"system"},{"content":"Look up the alpha record and the beta record, verify each returned code, and report both codes with their verification status.","role":"user"},{"content":"","role":"assistant","tool_calls":[{"function":{"arguments":"{\"record\":\"alpha\"}","name":"lookup_record"},"id":"120PdF0G9","type":"function"},{"function":{"arguments":"{\"record\":\"beta\"}","name":"lookup_record"},"id":"NBzWTU9pp","type":"function"}]},{"content":"record alpha: code alpha-code-7431","role":"tool","tool_call_id":"120PdF0G9"},{"content":"record beta: code beta-code-2286","role":"tool","tool_call_id":"NBzWTU9pp"},{"content":"","role":"assistant","tool_calls":[{"function":{"arguments":"{\"code\":\"alpha-code-7431\"}","name":"verify_code"},"id":"OgFKC228R","type":"function"},{"function":{"arguments":"{\"code\":\"beta-code-2286\"}","name":"verify_code"},"id":"chxgNpm0k","type":"function"}]},{"content":"verified alpha-code-7431","role":"tool","tool_call_id":"OgFKC228R"},{"content":"the tool failed","role":"tool","tool_call_id":"chxgNpm0k"},{"content":"","role":"assistant","tool_calls":[{"function":{"arguments":"{\"code\":\"beta-code-2286\"}","name":"verify_code"},"id":"mBz5i9onH","type":"function"}]},{"content":"verified beta-code-2286","role":"tool","tool_call_id":"mBz5i9onH"},{"content":"alpha-code-7431: verified\nbeta-code-2286: verified","role":"assistant"},{"content":"Verify the alpha code once more and confirm whether it is unchanged.","role":"user"},{"content":"","role":"assistant","tool_calls":[{"function":{"arguments":"{\"code\":\"alpha-code-7431\"}","name":"verify_code"},"id":"XnBlkMiZw","type":"function"}]},{"content":"verified alpha-code-7431","role":"tool","tool_call_id":"XnBlkMiZw"},{"content":"alpha-code-7431: verified (unchanged)","role":"assistant"},{"content":"Repeat both codes exactly as reported earlier, separated by a comma, and nothing else.","role":"user"}],"model":"mistral-small-latest","stream":true,"tools":[{"function":{"description":"Look up a record by name and return its code.","name":"lookup_record","parameters":{"properties":{"record":{"description":"alpha or beta","type":"string"}},"required":["record"],"type":"object"}},"type":"function"},{"function":{"description":"Verify a code returned by lookup_record. May fail transiently; retry once.","name":"verify_code","parameters":{"properties":{"code":{"description":"the code to verify","type":"string"}},"required":["code"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  - name: mistral-correlation-id
+    value: 01a0fea0-c768-79c0-a1ac-a1441f9212cb
+  body: |+
+    data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":null,"index":0}],"created":0,"id":"6600439edc08446bb8189ef58a9e1988","model":"mistral-small-latest","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"content":"alpha"},"finish_reason":null,"index":0}],"created":0,"id":"6600439edc08446bb8189ef58a9e1988","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvwxyz01234567"}
+
+    data: {"choices":[{"delta":{"content":"-code-74"},"finish_reason":null,"index":0}],"created":0,"id":"6600439edc08446bb8189ef58a9e1988","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijkl"}
+
+    data: {"choices":[{"delta":{"content":"31,"},"finish_reason":null,"index":0}],"created":0,"id":"6600439edc08446bb8189ef58a9e1988","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstu"}
+
+    data: {"choices":[{"delta":{"content":"beta"},"finish_reason":null,"index":0}],"created":0,"id":"6600439edc08446bb8189ef58a9e1988","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijkl"}
+
+    data: {"choices":[{"delta":{"content":"-code-22"},"finish_reason":null,"index":0}],"created":0,"id":"6600439edc08446bb8189ef58a9e1988","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvwxyz01234567"}
+
+    data: {"choices":[{"delta":{"content":"86"},"finish_reason":"stop","index":0}],"created":0,"id":"6600439edc08446bb8189ef58a9e1988","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefgh","usage":{"completion_tokens":16,"prompt_tokens":441,"prompt_tokens_details":{"cached_tokens":384},"service_tier":"standard","total_tokens":457}}
+
+    data: [DONE]
+
