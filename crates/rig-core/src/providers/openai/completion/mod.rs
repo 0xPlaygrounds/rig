@@ -186,10 +186,7 @@ pub enum Message {
     // with `role: "model"`; accept it on deserialization.
     #[serde(alias = "model", deserialize_with = "deserialize_assistant")]
     Assistant {
-        #[serde(
-            skip_serializing_if = "Vec::is_empty",
-            serialize_with = "serialize_assistant_content_vec"
-        )]
+        #[serde(skip_serializing_if = "Vec::is_empty")]
         content: Vec<AssistantContent>,
         // OpenAI-compatible providers expose hidden reasoning on this non-standard
         // field, and some require it to be echoed back on assistant tool-call turns.
@@ -203,11 +200,6 @@ pub enum Message {
         name: Option<String>,
         #[serde(skip_serializing_if = "Vec::is_empty")]
         tool_calls: Vec<ToolCall>,
-        /// Structured reasoning blocks used by OpenAI-compatible providers
-        /// such as OpenRouter. Empty (and omitted from the wire) for
-        /// providers that do not emit or accept them.
-        #[serde(skip_serializing_if = "Vec::is_empty")]
-        reasoning_details: Vec<ReasoningDetails>,
     },
     #[serde(rename = "tool")]
     ToolResult {
@@ -238,8 +230,6 @@ struct AssistantMessageWire {
     name: Option<String>,
     #[serde(default, deserialize_with = "json_utils::null_or_default")]
     tool_calls: Vec<ToolCall>,
-    #[serde(default)]
-    reasoning_details: Vec<ReasoningDetails>,
 }
 
 /// The fields of [`Message::Assistant`], in declaration order.
@@ -249,7 +239,6 @@ type AssistantFields = (
     Option<String>,
     Option<String>,
     Vec<ToolCall>,
-    Vec<ReasoningDetails>,
 );
 
 /// Decode [`Message::Assistant`], preferring `reasoning_content` over
@@ -265,7 +254,6 @@ where
         wire.refusal,
         wire.name,
         wire.tool_calls,
-        wire.reasoning_details,
     ))
 }
 
@@ -282,38 +270,6 @@ fn history_contains_tool_result(messages: &[Message]) -> bool {
     messages
         .iter()
         .any(|message| matches!(message, Message::ToolResult { .. }))
-}
-
-/// Structured reasoning blocks attached to assistant messages by
-/// OpenAI-compatible providers such as OpenRouter (`reasoning_details`).
-///
-/// The `Option` fields are intentionally serialized even when `None`
-/// (`"format":null,"id":null`) to match the provider wire format.
-#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
-#[serde(tag = "type", rename_all = "snake_case")]
-pub enum ReasoningDetails {
-    #[serde(rename = "reasoning.summary")]
-    Summary {
-        id: Option<String>,
-        format: Option<String>,
-        index: Option<usize>,
-        summary: String,
-    },
-    #[serde(rename = "reasoning.encrypted")]
-    Encrypted {
-        id: Option<String>,
-        format: Option<String>,
-        index: Option<usize>,
-        data: String,
-    },
-    #[serde(rename = "reasoning.text")]
-    Text {
-        id: Option<String>,
-        format: Option<String>,
-        index: Option<usize>,
-        text: Option<String>,
-        signature: Option<String>,
-    },
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
@@ -1689,20 +1645,6 @@ impl TryFrom<OpenAIRequestParams> for CompletionRequest {
         };
 
         Ok(res)
-    }
-}
-
-fn serialize_assistant_content_vec<S>(
-    value: &[AssistantContent],
-    serializer: S,
-) -> Result<S::Ok, S::Error>
-where
-    S: Serializer,
-{
-    if value.is_empty() {
-        serializer.serialize_str("")
-    } else {
-        value.serialize(serializer)
     }
 }
 

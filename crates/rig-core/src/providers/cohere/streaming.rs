@@ -13,7 +13,7 @@ use crate::providers::cohere::completion::{
     CompletionResponse, FinishReason, Usage, map_finish_reason,
 };
 use crate::providers::internal::wire;
-use crate::providers::openai::wire::dto::merge_fields;
+use crate::providers::openai::wire::dto::{merge_fields, open_once};
 use crate::wire::{Flow, Out, WireFrame};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -230,15 +230,8 @@ impl ChatDecoder {
             StreamingEvent::ToolPlanDelta { delta } => {
                 let fragment = delta.unwrap_or_default().message;
                 if let Some(plan) = fragment.get("tool_plan").and_then(Value::as_str) {
-                    let index = match self.plan {
-                        Some(index) => index,
-                        None => {
-                            let index = out.fresh_index();
-                            out.open(index, Block::Reasoning { redacted: false }, Value::Null)?;
-                            self.plan = Some(index);
-                            index
-                        }
-                    };
+                    let index =
+                        open_once(&mut self.plan, Block::Reasoning { redacted: false }, out)?;
                     out.push(index, plan)?;
                 }
                 merge_fields(&mut self.message, &fragment);

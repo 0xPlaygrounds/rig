@@ -130,6 +130,21 @@ pub(crate) fn merge_fields(
     }
 }
 
+/// Open the block `slot` names, once: its writer index.
+pub(crate) fn open_once(
+    slot: &mut Option<usize>,
+    block: crate::operation::Block,
+    out: &mut crate::wire::Out<'_, crate::operation::Completion>,
+) -> Result<usize, crate::error::ProviderError> {
+    if let Some(index) = *slot {
+        return Ok(index);
+    }
+    let index = out.fresh_index();
+    out.open(index, block, serde_json::Value::Null)?;
+    *slot = Some(index);
+    Ok(index)
+}
+
 /// The text a message or delta carries: its `content` string, or the text
 /// and refusal parts of a content array, falling back to the sibling
 /// `refusal` when there is no content.

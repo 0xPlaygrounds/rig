@@ -23,6 +23,7 @@ use crate::message::{CallId, ToolName};
 use crate::model::ModelInfo;
 use crate::operation::{Block, Completion, Finish, IfMalformed};
 use crate::providers::internal;
+use crate::providers::openai::wire::dto::open_once;
 use crate::wire::{Flow, Out};
 use crate::{
     completion::{self, CompletionRequest},
@@ -162,6 +163,25 @@ fn ollama_usage(prompt_eval_count: Option<u64>, eval_count: Option<u64>) -> Usag
             .map(|(input, output)| input + output),
         ..Default::default()
     }
+}
+
+/// The reasoning and the visible text of content that opens with a
+/// terminated reasoning block, both trimmed, or `None` when it does not.
+/// When allowed, the Qwen prefilled-start boundary counts; ordinary mentions
+/// of the markers do not.
+fn split_legacy_thinking(content: &str, permits_omitted_start: bool) -> Option<(&str, &str)> {
+    let trimmed = content.trim_start();
+    let (reasoning, visible) = if let Some(reasoning_start) = trimmed.strip_prefix("<think>") {
+        reasoning_start.split_once("</think>")?
+    } else if permits_omitted_start {
+        // Qwen's prefilled opening marker produces this exact blank-line
+        // boundary. Requiring the full boundary avoids hiding ordinary visible
+        // text that merely demonstrates a closing XML-like tag on its own line.
+        trimmed.split_once("\n</think>\n\n")?
+    } else {
+        return None;
+    };
+    Some((reasoning.trim(), visible.trim_start()))
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -327,6 +347,11 @@ const CALL_INDEX: usize = 1 << 32;
 /// one reasoning and one text block, each tool call arrives whole, and the
 /// assembled message is the turn's native. Only a `done: true` record ends
 /// the reply; EOF alone does not.
+///
+/// A model that writes its reasoning into `content` (`<think>…</think>`, or
+/// Qwen3 after its template prefilled the opening tag) is split the same way
+/// in both modes: its content is held until the reasoning closes, or until
+/// the reply ends for a Qwen3 model that never closes one.
 #[derive(Default)]
 pub struct OllamaDecoder {
     /// The message as assembled so far, without its tool calls.
@@ -334,9 +359,67 @@ pub struct OllamaDecoder {
     tool_calls: Vec<Value>,
     reasoning: Option<usize>,
     text: Option<usize>,
+    /// Content held while it may still open with inline reasoning.
+    held: String,
+    /// Whether the content's shape is known: explicit thinking arrived, or
+    /// the inline reasoning closed, or the content cannot open with any.
+    settled: bool,
 }
 
 impl OllamaDecoder {
+    /// Append `fragment` to the reasoning or text block, opening it first.
+    fn push(
+        &mut self,
+        reasoning: bool,
+        fragment: &str,
+        out: &mut Out<'_, Completion>,
+    ) -> Result<(), ProviderError> {
+        if fragment.is_empty() {
+            return Ok(());
+        }
+        let index = if reasoning {
+            open_once(
+                &mut self.reasoning,
+                Block::Reasoning { redacted: false },
+                out,
+            )?
+        } else {
+            open_once(&mut self.text, Block::Text, out)?
+        };
+        out.push(index, fragment)
+    }
+
+    /// Content, held while it may open with inline reasoning and released
+    /// once its shape is known, or when the reply ends.
+    fn content(
+        &mut self,
+        fragment: &str,
+        permits_omitted_start: bool,
+        done: bool,
+        out: &mut Out<'_, Completion>,
+    ) -> Result<(), ProviderError> {
+        if self.settled {
+            return self.push(false, fragment, out);
+        }
+        self.held.push_str(fragment);
+        let held = std::mem::take(&mut self.held);
+        if let Some((reasoning, visible)) = split_legacy_thinking(&held, permits_omitted_start) {
+            self.settled = true;
+            self.push(true, reasoning, out)?;
+            return self.push(false, visible, out);
+        }
+        let opening = held.trim_start();
+        let may_open = permits_omitted_start
+            || opening.starts_with("<think>")
+            || "<think>".starts_with(opening);
+        if done || !may_open {
+            self.settled = true;
+            return self.push(false, &held, out);
+        }
+        self.held = held;
+        Ok(())
+    }
+
     /// Write a record's content and calls, and end the reply when it is
     /// `done`.
     fn interpret_record(
@@ -345,31 +428,28 @@ impl OllamaDecoder {
         mut out: Out<'_, Completion>,
     ) -> Result<Flow, ProviderError> {
         let mut message = response.message;
-        for (key, slot, block) in [
-            (
-                "thinking",
-                &mut self.reasoning,
-                Block::Reasoning { redacted: false },
-            ),
-            ("content", &mut self.text, Block::Text),
-        ] {
-            let Some(fragment) = message.get(key).and_then(Value::as_str) else {
-                continue;
-            };
-            if fragment.is_empty() {
-                continue;
-            }
-            let index = match *slot {
-                Some(index) => index,
-                None => {
-                    let index = out.fresh_index();
-                    out.open(index, block, Value::Null)?;
-                    *slot = Some(index);
-                    index
-                }
-            };
-            out.push(index, fragment)?;
+        if let Some(thinking) = message.get("thinking").and_then(Value::as_str)
+            && !thinking.is_empty()
+        {
+            self.settled = true;
+            self.push(true, thinking, &mut out)?;
         }
+        let fragment = message
+            .get("content")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        let permits_omitted_start = response.model.to_ascii_lowercase().contains("qwen3");
+        // A call ends the content before it: whatever is held is released.
+        let calls_follow = message
+            .get("tool_calls")
+            .and_then(Value::as_array)
+            .is_some_and(|calls| !calls.is_empty());
+        self.content(
+            fragment,
+            permits_omitted_start,
+            response.done || calls_follow,
+            &mut out,
+        )?;
         if let Some(Value::Array(calls)) = message.remove("tool_calls") {
             for call in calls {
                 let name = call

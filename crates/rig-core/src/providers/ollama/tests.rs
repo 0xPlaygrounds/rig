@@ -28,6 +28,66 @@ fn classify_ndjson_line_is_known_or_corrupt() {
     ));
 }
 
+#[test]
+fn splits_legacy_reasoning_with_or_without_opening_marker() {
+    assert_eq!(
+        split_legacy_thinking("<think>private reasoning</think>\n\nvisible answer", false),
+        Some(("private reasoning", "visible answer"))
+    );
+    assert_eq!(
+        split_legacy_thinking("private reasoning\n</think>\n\nvisible answer", true),
+        Some(("private reasoning", "visible answer"))
+    );
+}
+
+#[test]
+fn leaves_unterminated_or_inline_reasoning_markers_visible() {
+    for (content, permits) in [
+        ("<think>unterminated", true),
+        ("The literal marker is <think>.", true),
+        ("  visible indentation", true),
+        ("The closing token </think> is XML-like.", true),
+        ("Example:\n</think>\nis a closing tag.", true),
+        ("private reasoning\n</think>\n\nvisible answer", false),
+    ] {
+        assert_eq!(split_legacy_thinking(content, permits), None, "{content:?}");
+    }
+}
+
+/// Inline reasoning is split the same way whether the reply arrives whole
+/// or streamed: the streamed content is held until the reasoning closes.
+#[test]
+fn inline_reasoning_splits_alike_in_both_modes() {
+    use crate::wire::WireFrame;
+
+    let record = |content: &str, done: bool| {
+        WireFrame::Text(
+            json!({"model": "qwen3:4b", "created_at": "1970-01-01T00:00:00Z", "message": {"role": "assistant", "content": content}, "done": done, "done_reason": "stop"})
+                .to_string(),
+        )
+    };
+    let wire = Chat {
+        provider: OllamaConfig::new(),
+        model: "qwen3:4b".to_owned(),
+    };
+    let whole = [record("weighing it\n</think>\n\nbanana", true)];
+    let streamed = [
+        record("weighing", false),
+        record(" it\n</th", false),
+        record("ink>\n\nbana", false),
+        record("na", false),
+        record("", true),
+    ];
+    crate::test_utils::history::assert_restated_agrees(&wire, whole.clone(), streamed);
+    let response = crate::test_utils::history::decode(&wire, crate::wire::Mode::Unary, whole)
+        .expect("decodes");
+    assert!(matches!(
+        response.choice.as_slice(),
+        [completion::AssistantContent::Reasoning(reasoning), completion::AssistantContent::Text(text)]
+            if reasoning.text == "weighing it" && text.text == "banana"
+    ));
+}
+
 /// A record's message, typed.
 fn typed(response: &CompletionResponse) -> Message {
     serde_json::from_value(serde_json::Value::Object(response.message.clone()))

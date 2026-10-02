@@ -555,7 +555,6 @@ fn assistant_message_text_joins_every_non_empty_part() {
         refusal: None,
         name: None,
         tool_calls: vec![],
-        reasoning_details: vec![],
     };
 
     assert_eq!(
@@ -1816,7 +1815,6 @@ fn assistant_reasoning_keys_decode_independently() {
             content,
             reasoning,
             tool_calls,
-            reasoning_details,
             ..
         }) = decoded
         else {
@@ -1824,7 +1822,6 @@ fn assistant_reasoning_keys_decode_independently() {
         };
         assert_eq!(reasoning.as_deref(), expected, "{keys}");
         assert!(content.is_empty(), "{keys}");
-        assert!(reasoning_details.is_empty(), "{keys}");
         assert_eq!(
             tool_calls,
             vec![ToolCall {

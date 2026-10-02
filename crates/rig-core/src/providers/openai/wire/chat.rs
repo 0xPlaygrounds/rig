@@ -27,7 +27,7 @@ use crate::wire::{
 
 use super::dto::{
     ChatChoice, ChatFrame, ChatUsage, StreamingCompletionResponse, StreamingToolCall, delta_text,
-    merge_fields,
+    merge_fields, open_once,
 };
 use super::{BodyRewrite, OpenAIConfig, OutputCap};
 
@@ -1068,7 +1068,6 @@ impl ChatDecoder {
                 self.call(call, out)?;
             }
         }
-        delta.remove("tool_calls");
         merge_fields(&mut self.message, &delta);
         Ok(())
     }
@@ -1328,21 +1327,6 @@ impl ChatDecoder {
         }
         self.end(out, true)
     }
-}
-
-/// Open the block `slot` names, once: its writer index.
-fn open_once(
-    slot: &mut Option<usize>,
-    block: Block,
-    out: &mut Out<'_, Completion>,
-) -> Result<usize, ProviderError> {
-    if let Some(index) = *slot {
-        return Ok(index);
-    }
-    let index = out.fresh_index();
-    out.open(index, block, serde_json::Value::Null)?;
-    *slot = Some(index);
-    Ok(index)
 }
 
 /// Append streamed reasoning details to the message's, by pi's merge: a

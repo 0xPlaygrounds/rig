@@ -270,13 +270,8 @@ fn test_message_assistant_without_reasoning_details() {
 
     let message: Message = serde_json::from_value(json).unwrap();
     match message {
-        Message::Assistant {
-            content,
-            reasoning_details,
-            ..
-        } => {
+        Message::Assistant { content, .. } => {
             assert_eq!(content.len(), 1);
-            assert!(reasoning_details.is_empty());
         }
         _ => panic!("Expected Assistant message"),
     }

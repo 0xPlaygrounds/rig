@@ -132,10 +132,11 @@ fn the_mode_is_the_only_difference_between_the_two_requests() {
     assert_eq!(streamed.framing, Framing::Ndjson);
 }
 
-/// A streamed fragment that merely opens a `<think>` marker is not a whole
-/// content: splitting it would strip text the turn never finished writing.
+/// A stream whose content opens a `<think>` block is held until the block
+/// closes, then split as a whole reply of the same content is: the reasoning
+/// one block, the answer another.
 #[tokio::test]
-async fn a_streamed_fragment_is_never_split_as_legacy_reasoning() {
+async fn a_streamed_inline_reasoning_block_splits_once_it_closes() {
     let stream = concat!(
         r#"{"model":"deepseek-r1","created_at":"1970-01-01T00:00:00Z","message":{"role":"assistant","content":"<think>weighing"},"done":false}"#,
         "\n",
@@ -157,9 +158,14 @@ async fn a_streamed_fragment_is_never_split_as_legacy_reasoning() {
         .await
         .expect("the stream produced a terminal record");
 
-    assert_eq!(
-        text_of(&streamed.choice),
-        "<think>weighing it up</think>the answer"
+    assert_eq!(text_of(&streamed.choice), "the answer");
+    assert!(
+        streamed.choice.iter().any(|block| matches!(
+            block,
+            AssistantContent::Reasoning(reasoning) if reasoning.text == "weighing it up"
+        )),
+        "{:?}",
+        streamed.choice
     );
 }
 
