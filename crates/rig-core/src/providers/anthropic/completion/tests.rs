@@ -2536,13 +2536,22 @@ fn current_provider_items_replay_verbatim() {
     );
 }
 
-/// pi's rules for blocks with no current item: thinking without a
-/// signature goes as text, redacted thinking (whose payload lived in its
-/// item) is dropped, and an edited block is rebuilt from its fields.
+/// A current provider item is sent before any per-kind rule: thinking a
+/// dialect (Kimi) sent unsigned goes back to it as the thinking it was,
+/// not as text (#1315).
+#[test]
+fn a_current_unsigned_thinking_item_replays_verbatim() {
+    let item = json!({"type": "thinking", "thinking": "thought", "signature": ""});
+    let unsigned = message::AssistantContent::reasoning("thought").with_native(item.clone());
+    assert_eq!(assistant_wire(vec![unsigned]), [Content::Native(item)]);
+}
+
+/// pi's rules for blocks with no current item: thinking goes as text,
+/// redacted thinking (whose payload lived in its item) is dropped, and an
+/// edited block is rebuilt from its fields.
 #[test]
 fn blocks_without_a_current_item_rebuild_as_pi_does() {
-    let unsigned = message::AssistantContent::reasoning("thought")
-        .with_native(json!({"type": "thinking", "thinking": "thought", "signature": ""}));
+    let unsigned = message::AssistantContent::reasoning("thought");
     let redacted = message::AssistantContent::Reasoning(message::Reasoning {
         redacted: true,
         ..message::Reasoning::default()
@@ -2678,44 +2687,6 @@ fn empty_stop_sequence_response_naming_its_sequence_is_a_completed_turn() {
 
     assert!(parsed.choice.is_empty());
     assert_eq!(parsed.finish_reason(), Some(completion::FinishReason::Stop));
-}
-
-#[test]
-fn stop_reason_maps_onto_the_normalized_vocabulary() {
-    assert_eq!(
-        map_finish_reason("end_turn"),
-        completion::FinishReason::Stop
-    );
-    assert_eq!(
-        map_finish_reason("stop_sequence"),
-        completion::FinishReason::Stop
-    );
-    assert_eq!(
-        map_finish_reason("max_tokens"),
-        completion::FinishReason::Length
-    );
-    assert_eq!(
-        map_finish_reason("tool_use"),
-        completion::FinishReason::ToolCalls
-    );
-    assert_eq!(
-        map_finish_reason("refusal"),
-        completion::FinishReason::ContentFilter
-    );
-}
-
-#[test]
-fn unknown_stop_reason_is_preserved_verbatim() {
-    // Anthropic's own spelling survives, so a reason this crate does not yet
-    // model never reads as a natural stop.
-    assert_eq!(
-        map_finish_reason("pause_turn"),
-        completion::FinishReason::Other("pause_turn".to_owned())
-    );
-    assert_eq!(
-        map_finish_reason("model_context_window_exceeded"),
-        completion::FinishReason::Other("model_context_window_exceeded".to_owned())
-    );
 }
 
 #[test]
@@ -2916,10 +2887,11 @@ fn text_deserializes_unknown_citation_without_failing() {
     ));
 }
 
-/// A text block with a malformed known citation is a malformed item: the
-/// reply fails rather than drop the citation silently.
+/// A text block with a malformed known citation keeps it on its item, and
+/// reading the citations reports it: the reply never fails for a field no
+/// block is built from.
 #[test]
-fn a_malformed_known_citation_fails_the_reply() {
+fn a_malformed_known_citation_is_kept_on_its_item() {
     let value = json!({
         "id": "msg_bad", "model": CLAUDE_SONNET_4_6, "role": "assistant",
         "stop_reason": "end_turn", "stop_sequence": null,
@@ -2927,7 +2899,11 @@ fn a_malformed_known_citation_fails_the_reply() {
         "content": [{"type": "text", "text": "bad",
             "citations": [{"type": "char_location", "cited_text": "bad"}]}]
     });
-    assert!(fold_reply(&value).is_err());
+    let response = fold_reply(&value).expect("the reply folds");
+    let [message::AssistantContent::Text(text)] = response.choice.as_slice() else {
+        panic!("one text block: {:?}", response.choice);
+    };
+    assert!(anthropic_citations(text).is_err());
 }
 
 /// Server tools and their results, MCP blocks and whatever Anthropic adds
@@ -3355,14 +3331,121 @@ fn consecutive_tool_results_merge_into_one_user_message() {
     assert_eq!(messages[2]["content"][1]["tool_use_id"], "toolu_2");
 }
 
-/// A `tool_use` whose `input` is not an object is a malformed item.
+/// A `tool_use` whose `input` is not an object keeps its call, with the
+/// arguments normalized, and no provider item: the item could not be sent
+/// back as it is.
 #[test]
-fn a_malformed_tool_use_fails_the_reply() {
+fn a_tool_use_whose_input_is_not_an_object_keeps_its_call() {
     let value = json!({
         "id": "msg_bad", "model": CLAUDE_SONNET_4_6, "role": "assistant",
         "stop_reason": "tool_use", "stop_sequence": null,
         "usage": {"input_tokens": 1, "output_tokens": 1},
-        "content": [{"type": "tool_use", "id": "toolu_1", "name": "lookup", "input": "{}"}]
+        "content": [{"type": "tool_use", "id": "toolu_1", "name": "lookup", "input": [1]}]
     });
-    assert!(fold_reply(&value).is_err());
+    let response = fold_reply(&value).expect("the reply folds");
+    let [message::AssistantContent::ToolCall(call)] = response.choice.as_slice() else {
+        panic!("one call: {:?}", response.choice);
+    };
+    assert_eq!(call.function.arguments_value(), json!({}));
+    assert_eq!(call.function.invalid_arguments.as_deref(), Some("[1]"));
+    assert!(response.choice[0].native_item().is_none());
+}
+
+/// A failed tool result is sent with `is_error`; a successful one leaves
+/// the field to its default.
+#[test]
+fn a_failed_tool_result_is_sent_as_an_error() {
+    let name = message::ToolName::new("lookup").expect("tool name");
+    let results = [false, true].map(|is_error| {
+        message::UserContent::ToolResult(message::ToolResult {
+            call: message::CallId::from_wire("toolu_1"),
+            name: name.clone(),
+            content: vec![message::ToolResultContent::text("boom")],
+            is_error,
+        })
+    });
+    let converted = convert(message::Message::User {
+        content: results.to_vec(),
+    })
+    .expect("the results convert")
+    .expect("a message");
+    let value = serde_json::to_value(&converted).expect("the message serializes");
+    assert!(value["content"][0].get("is_error").is_none());
+    assert_eq!(value["content"][1]["is_error"], json!(true));
+}
+
+/// A hand-built assistant image, which `adapt` leaves on a same-model
+/// turn, is sent as its placeholder: assistant turns take no images.
+#[test]
+fn an_assistant_image_is_sent_as_its_placeholder() {
+    let image = message::AssistantContent::Image(message::Image {
+        data: message::DocumentSourceKind::base64("aGk="),
+        media_type: Some(message::ImageMediaType::PNG),
+        ..message::Image::default()
+    });
+    assert_eq!(
+        assistant_wire(vec![image]),
+        [Content::from(
+            crate::completion::history::ASSISTANT_IMAGE_OMITTED.to_owned()
+        )]
+    );
+}
+
+/// The container the last same-model turn ran in is the next request's,
+/// unless the request names its own; another model's turn names none.
+#[test]
+fn the_last_turn_container_is_replayed_unless_the_request_names_one() {
+    use crate::wire::{Operation, Wire};
+
+    let wire = AnthropicConfig::new("test-key").completion(CLAUDE_SONNET_4_6);
+    let turn = |model: &str, container: &str| {
+        message::Message::Assistant(
+            message::AssistantMessage {
+                content: vec![message::AssistantContent::text("ran it")],
+                origin: Some(message::Origin::new(
+                    "anthropic.messages",
+                    "anthropic",
+                    model,
+                )),
+                stop: Some(message::StopReason::Stop),
+                native: None,
+            }
+            .with_native(
+                json!({"container": {"id": container, "expires_at": "2026-10-02T00:00:00Z"}}),
+            ),
+        )
+    };
+    let body = |history: Vec<message::Message>, params: Option<serde_json::Value>| {
+        let mut request = completion_request_with_history(history, None);
+        request.additional_params = params;
+        let request = crate::operation::Completion::prepare(request, &wire.describe())
+            .expect("the request prepares");
+        json_body(
+            &wire
+                .encode(request, crate::wire::Mode::Unary)
+                .expect("the request encodes")
+                .request,
+        )
+    };
+    let history = vec![
+        message::Message::user("run it"),
+        turn(CLAUDE_SONNET_4_6, "container_old"),
+        message::Message::user("again"),
+        turn(CLAUDE_SONNET_4_6, "container_new"),
+        message::Message::user("next"),
+    ];
+    assert_eq!(
+        body(history.clone(), None)["container"],
+        json!("container_new")
+    );
+    assert_eq!(
+        body(history, Some(json!({"container": "container_mine"})))["container"],
+        json!("container_mine")
+    );
+    let foreign = vec![
+        message::Message::user("run it"),
+        turn(CLAUDE_OPUS_4_8, "container_other"),
+        message::Message::user("next"),
+    ];
+    assert!(body(foreign, None).get("container").is_none());
 }

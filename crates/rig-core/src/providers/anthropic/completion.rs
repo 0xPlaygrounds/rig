@@ -73,10 +73,9 @@ pub struct CompletionResponse {
     pub usage: Usage,
 }
 
-/// A response content block or delta as the provider sent it, checked to
-/// carry the fields its known kind requires: a defective one fails to
-/// deserialize, and a kind rig has never seen passes as it is.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+/// A response content block as the provider sent it, a typed view of a
+/// reply's `raw`. The decoder never reads it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct ContentItem(pub serde_json::Map<String, serde_json::Value>);
 
@@ -92,71 +91,6 @@ impl ContentItem {
             .get(key)
             .and_then(serde_json::Value::as_str)
             .unwrap_or_default()
-    }
-}
-
-impl<'de> Deserialize<'de> for ContentItem {
-    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        use serde::de::Error;
-        let item = Self(serde_json::Map::deserialize(deserializer)?);
-        let kind = item.0.get("type").and_then(serde_json::Value::as_str);
-        let required: &[&str] = match kind {
-            None => {
-                return Err(D::Error::custom(
-                    "an Anthropic content item needs a string `type`",
-                ));
-            }
-            Some("text" | "text_delta") => &["text"],
-            Some("thinking" | "thinking_delta") => &["thinking"],
-            Some("redacted_thinking") => &["data"],
-            Some("tool_use") => &["id", "name"],
-            Some("signature_delta") => &["signature"],
-            Some("input_json_delta") => &["partial_json"],
-            Some(_) => &[],
-        };
-        if let Some(key) = required
-            .iter()
-            .find(|key| !item.0.get(**key).is_some_and(serde_json::Value::is_string))
-        {
-            return Err(D::Error::custom(format!(
-                "Anthropic `{}` needs a string `{key}`",
-                item.kind()
-            )));
-        }
-        if item.kind() == "tool_use" && item.0.get("input").is_some_and(|input| !input.is_object())
-        {
-            return Err(D::Error::custom(
-                "Anthropic `tool_use` needs an object `input`",
-            ));
-        }
-        match (item.kind(), item.0.get("citations"), item.0.get("citation")) {
-            ("text", Some(citations), _) if !citations.is_null() => {
-                Vec::<Citation>::deserialize(citations).map_err(D::Error::custom)?;
-            }
-            ("citations_delta", _, citation) => {
-                let citation = citation.ok_or_else(|| {
-                    D::Error::custom("Anthropic `citations_delta` needs a `citation`")
-                })?;
-                Citation::deserialize(citation).map_err(D::Error::custom)?;
-            }
-            _ => {}
-        }
-        Ok(item)
-    }
-}
-
-/// Normalize a Messages `stop_reason`, preserving unrecognized values verbatim.
-pub(crate) fn map_finish_reason(stop_reason: &str) -> completion::FinishReason {
-    match stop_reason {
-        // `stop_sequence` is a natural termination too: the model completed its
-        // turn by emitting one of the caller's stop sequences.
-        "end_turn" | "stop_sequence" => completion::FinishReason::Stop,
-        "max_tokens" => completion::FinishReason::Length,
-        "tool_use" => completion::FinishReason::ToolCalls,
-        // Anthropic's classifier-driven refusal; the closest normalized reason
-        // is content filtering.
-        "refusal" => completion::FinishReason::ContentFilter,
-        other => completion::FinishReason::Other(other.to_owned()),
     }
 }
 
@@ -199,62 +133,6 @@ pub struct CacheCreation {
     /// Tokens written to the 1-hour cache on this turn.
     #[serde(default)]
     pub ephemeral_1h_input_tokens: u64,
-}
-
-impl std::fmt::Display for Usage {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "Uncached input tokens: {}\nCache read input tokens: {}\nCache creation input tokens: {}\nOutput tokens: {}",
-            self.input_tokens,
-            self.cache_read_input_tokens
-                .map_or_else(|| "n/a".to_string(), |token| token.to_string()),
-            self.cache_creation_input_tokens
-                .map_or_else(|| "n/a".to_string(), |token| token.to_string()),
-            self.output_tokens
-        )
-    }
-}
-
-/// Rig's input is Anthropic's `input_tokens` plus its cache reads and writes,
-/// its output `output_tokens` (thinking included), and its total their sum;
-/// without an uncached input count, input and the total stay absent.
-pub(super) fn anthropic_usage_totals(
-    input_tokens: Option<u64>,
-    output_tokens: u64,
-    cache_read: Option<u64>,
-    cache_creation: Option<u64>,
-    output_tokens_details: Option<OutputTokensDetails>,
-) -> crate::completion::Usage {
-    let input_tokens = input_tokens
-        .map(|uncached| uncached + cache_read.unwrap_or(0) + cache_creation.unwrap_or(0));
-    crate::completion::Usage {
-        input_tokens,
-        output_tokens: Some(output_tokens),
-        cached_input_tokens: cache_read,
-        cache_creation_input_tokens: cache_creation,
-        reasoning_tokens: output_tokens_details.map(|details| details.thinking_tokens),
-        total_tokens: input_tokens.map(|input| input + output_tokens),
-        tool_use_prompt_tokens: None,
-    }
-}
-
-impl From<&Usage> for crate::completion::Usage {
-    fn from(value: &Usage) -> crate::completion::Usage {
-        anthropic_usage_totals(
-            Some(value.input_tokens),
-            value.output_tokens,
-            value.cache_read_input_tokens,
-            value.cache_creation_input_tokens,
-            value.output_tokens_details,
-        )
-    }
-}
-
-impl From<Usage> for crate::completion::Usage {
-    fn from(value: Usage) -> crate::completion::Usage {
-        (&value).into()
-    }
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -777,49 +655,36 @@ impl TryFrom<message::ImageMediaType> for ImageFormat {
 /// canonical fields as pi rebuilds it. `None` for a block with nothing
 /// Anthropic takes.
 #[deny(clippy::wildcard_enum_match_arm)]
-fn assistant_content(
-    block: message::AssistantContent,
-    id: Option<&str>,
-) -> Result<Option<Content>, MessageError> {
+fn assistant_content(block: message::AssistantContent, id: Option<&str>) -> Option<Content> {
     use message::AssistantContent as Block;
     // Anthropic rejects a blank text block, whatever produced it.
     if let Block::Text(text) = &block
         && text.text.trim().is_empty()
     {
-        return Ok(None);
-    }
-    // Thinking without a signature is rejected as thinking; pi sends it as
-    // text.
-    if let Block::Reasoning(reasoning) = &block
-        && !reasoning.redacted
-        && block
-            .native_item()
-            .and_then(|item| item.get("signature"))
-            .and_then(serde_json::Value::as_str)
-            .is_none_or(|signature| signature.trim().is_empty())
-    {
-        let text = &reasoning.text;
-        return Ok((!text.trim().is_empty()).then(|| Content::from(text.clone())));
+        return None;
     }
     if let Some(item) = block.native_item() {
-        return Ok(Some(Content::Native(item.clone())));
+        return Some(Content::Native(item.clone()));
     }
-    Ok(match block {
+    match block {
         Block::Text(text) => Some(Content::from(text.text)),
-        // A redacted block's payload lives only in its provider item.
-        Block::Reasoning(_) => None,
+        // Thinking without a signature is rejected as thinking; pi sends it
+        // as text. A redacted block's payload lives only in its provider
+        // item.
+        Block::Reasoning(reasoning) => (!reasoning.redacted && !reasoning.text.trim().is_empty())
+            .then(|| Content::from(reasoning.text)),
         Block::ToolCall(call) => Some(Content::ToolUse {
             id: id.map_or_else(|| call.id.wire().into_owned(), str::to_owned),
             name: call.function.name.into(),
             input: serde_json::Value::Object(call.function.arguments),
         }),
         Block::Opaque(opaque) => Some(Content::Native(opaque.item)),
-        Block::Image(_) => {
-            return Err(MessageError::ConversionError(
-                "Anthropic currently doesn't support images.".to_string(),
-            ));
-        }
-    })
+        // Assistant turns take no images; `adapt` downgrades another
+        // model's, so only a hand-built one reaches here.
+        Block::Image(_) => Some(Content::from(
+            crate::completion::history::ASSISTANT_IMAGE_OMITTED.to_owned(),
+        )),
+    }
 }
 
 impl Message {
@@ -845,10 +710,8 @@ impl Message {
                 turn.content
                     .into_iter()
                     .enumerate()
-                    .filter_map(|(slot, block)| {
-                        assistant_content(block, ids.get(at, slot)).transpose()
-                    })
-                    .collect::<Result<_, _>>()?,
+                    .filter_map(|(slot, block)| assistant_content(block, ids.get(at, slot)))
+                    .collect(),
             ),
         };
         Ok((!content.is_empty()).then_some(Self { role, content }))
@@ -889,58 +752,18 @@ fn user_content(
                     message::ToolResultContent::Json { value } => Ok(ToolResultContent::Text {
                         text: value.to_string(),
                     }),
-                    message::ToolResultContent::Image(image) => {
-                        let DocumentSourceKind::Base64(data) = image.data else {
-                            return Err(MessageError::ConversionError(
-                                "Only base64 strings can be used with the Anthropic API"
-                                    .to_string(),
-                            ));
-                        };
-                        let media_type = image.media_type.ok_or(MessageError::ConversionError(
-                            "Image media type is required".to_owned(),
-                        ))?;
-                        Ok(ToolResultContent::Image {
-                            source: ImageSource::Base64 {
-                                data,
-                                media_type: media_type.try_into()?,
-                            },
-                        })
-                    }
+                    message::ToolResultContent::Image(image) => Ok(ToolResultContent::Image {
+                        source: image_source(image)?,
+                    }),
                 })
                 .collect::<Result<Vec<_>, _>>()?,
-            is_error: None,
+            is_error: tool_result.is_error.then_some(true),
             cache_control: None,
         },
-        message::UserContent::Image(message::Image {
-            data, media_type, ..
-        }) => {
-            let source = match data {
-                DocumentSourceKind::Base64(data) => {
-                    let media_type = media_type.ok_or(MessageError::ConversionError(
-                        "Image media type is required for Claude API".to_string(),
-                    ))?;
-                    ImageSource::Base64 {
-                        data,
-                        media_type: ImageFormat::try_from(media_type)?,
-                    }
-                }
-                DocumentSourceKind::Url(url) => ImageSource::Url { url },
-                DocumentSourceKind::Unknown => {
-                    return Err(MessageError::ConversionError(
-                        "Image content has no body".into(),
-                    ));
-                }
-                doc => {
-                    return Err(MessageError::ConversionError(format!(
-                        "Unsupported document type: {doc:?}"
-                    )));
-                }
-            };
-            Content::Image {
-                source,
-                cache_control: None,
-            }
-        }
+        message::UserContent::Image(image) => Content::Image {
+            source: image_source(image)?,
+            cache_control: None,
+        },
         message::UserContent::Document(message::Document {
             data,
             media_type,
@@ -967,6 +790,29 @@ fn user_content(
             ));
         }
     }))
+}
+
+/// An image's source on the wire, in a user turn or a tool result: base64
+/// data with its media type, or a URL.
+fn image_source(image: message::Image) -> Result<ImageSource, MessageError> {
+    match image.data {
+        DocumentSourceKind::Base64(data) => {
+            let media_type = image.media_type.ok_or(MessageError::ConversionError(
+                "Image media type is required for Claude API".to_string(),
+            ))?;
+            Ok(ImageSource::Base64 {
+                data,
+                media_type: ImageFormat::try_from(media_type)?,
+            })
+        }
+        DocumentSourceKind::Url(url) => Ok(ImageSource::Url { url }),
+        DocumentSourceKind::Unknown => Err(MessageError::ConversionError(
+            "Image content has no body".into(),
+        )),
+        doc => Err(MessageError::ConversionError(format!(
+            "Unsupported document type: {doc:?}"
+        ))),
+    }
 }
 
 /// A document's source on the wire: a file id, a PDF or a plain text body.
@@ -1596,6 +1442,10 @@ pub(super) struct AnthropicCompletionRequest {
     tools: Vec<serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     output_config: Option<OutputConfig>,
+    /// The code-execution container to run in: the one the last same-model
+    /// turn ran in, unless `additional_params` names one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    container: Option<String>,
     #[serde(flatten, skip_serializing_if = "Option::is_none")]
     additional_params: Option<serde_json::Value>,
     /// Top-level cache_control for Anthropic's automatic caching mode. When set, the API
@@ -2049,6 +1899,21 @@ fn assistant_ends_in_server_tool_block(message: &message::Message) -> bool {
     )
 }
 
+/// The id of the container the last turn holding one ran in. Anthropic
+/// requires it on a request that answers a programmatic tool call, and it
+/// keeps a code-execution session's state. After `adapt`, only a turn of
+/// the same model still holds its message item.
+fn replayed_container(history: &[message::Message]) -> Option<String> {
+    history.iter().rev().find_map(|message| match message {
+        message::Message::Assistant(turn) => turn
+            .native_item()?
+            .pointer("/container/id")?
+            .as_str()
+            .map(str::to_owned),
+        message::Message::User { .. } | message::Message::System { .. } => None,
+    })
+}
+
 /// Parameters for building an AnthropicCompletionRequest
 pub struct AnthropicRequestParams<'a> {
     pub model: &'a str,
@@ -2116,6 +1981,11 @@ impl AnthropicCompletionRequest {
             &mut additional_params_payload,
         )?;
         let mut tools = build_tool_definitions(req.tools, &mut additional_params_payload, strict)?;
+        let container = additional_params_payload
+            .get("container")
+            .is_none()
+            .then(|| replayed_container(&chat_history))
+            .flatten();
 
         let mut system = history_system;
 
@@ -2149,6 +2019,7 @@ impl AnthropicCompletionRequest {
             tool_choice: req.tool_choice.map(ToolChoice::try_from).transpose()?,
             tools,
             output_config,
+            container,
             cache_control: top_level_cache_control,
             additional_params: if additional_params_payload.is_null() {
                 None

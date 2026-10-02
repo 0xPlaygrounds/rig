@@ -59,15 +59,15 @@
 //! | 25 | `streaming_thinking_disabled_control` | streamed twin of #12 | `0` | recorded |
 //! | 26 | `normalized_stream_budget_thinking` | adjacent: normalized stream usage | `> 0` | recorded |
 //! | 27 | `agent_blocking_thinking` | adjacent: `Agent` request builder | `> 0` | recorded |
-//! | 28 | `unit_absent_details_reports_zero` | serde: no `output_tokens_details` | `0` | unit |
-//! | 29 | `unit_unknown_detail_bucket_is_ignored` | serde: forward compatibility | `> 0` | unit |
+//! | 28 | `unit_absent_details_reports_none` | decoder: no `output_tokens_details` | none | unit |
+//! | 29 | `unit_unknown_detail_bucket_is_ignored` | decoder: forward compatibility | `> 0` | unit |
 //! | 30 | `unit_thinking_tokens_stay_out_of_the_total` | totals arithmetic | n/a | unit |
-//! | 31 | `unit_streaming_and_blocking_share_the_mapping` | shared helper parity | n/a | unit |
+//! | 31 | `unit_streaming_and_blocking_share_the_mapping` | one usage reader for both modes | n/a | unit |
 //!
 //! Cells 28–31 are unit tests because no live turn can vary what they assert:
-//! whether serde tolerates an absent or unknown bucket, and whether the
-//! breakdown is excluded from `total_tokens`, are properties of the types and
-//! the shared totals helper, not of any provider response.
+//! whether the decoder tolerates an absent or unknown bucket, and whether the
+//! breakdown is excluded from `total_tokens`, are properties of its one usage
+//! reader, not of any provider response.
 //!
 //! Two constraints the live API imposed, discovered while recording:
 //!
@@ -995,57 +995,82 @@ async fn agent_blocking_thinking() {
 
 // ----------------------------------------------------------------- unit ---
 
-/// Serde: a turn that reports no breakdown yields no counter, not a parse failure.
-#[test]
-fn unit_absent_details_reports_none() {
-    let usage: anthropic::completion::Usage = serde_json::from_value(json!({
-        "input_tokens": 10,
-        "output_tokens": 20,
-        "cache_read_input_tokens": null,
-        "cache_creation_input_tokens": null
-    }))
-    .expect("usage without a breakdown should parse");
-
-    assert!(usage.output_tokens_details.is_none());
-    assert_eq!(Usage::from(&usage).reasoning_tokens, None);
+/// `usage` as the Messages decoder reads it, off a whole reply or off a
+/// stream whose terminal `message_delta` carries it.
+fn decoded_usage(usage: serde_json::Value, streamed: bool) -> Usage {
+    use rig::wire::{Mode, WireFrame};
+    let wire = anthropic::Anthropic::new("test-key")
+        .completion(anthropic::completion::CLAUDE_SONNET_4_6)
+        .wire;
+    let message = |usage: serde_json::Value, stop_reason: serde_json::Value| {
+        json!({"type": "message", "id": "msg_1", "role": "assistant",
+            "model": anthropic::completion::CLAUDE_SONNET_4_6,
+            "content": [{"type": "text", "text": "done"}],
+            "stop_reason": stop_reason, "usage": usage})
+    };
+    let (mode, frames) = if streamed {
+        let start = json!({"type": "message_start",
+            "message": message(json!({"input_tokens": 1, "output_tokens": 1}), json!(null))});
+        let delta = json!({"type": "message_delta", "delta": {"stop_reason": "end_turn"},
+            "usage": usage});
+        (Mode::Streaming, vec![start, delta])
+    } else {
+        (Mode::Unary, vec![message(usage, json!("end_turn"))])
+    };
+    rig_core::test_utils::history_conformance::decode(
+        &wire,
+        &CompletionRequest::new("hello"),
+        mode,
+        frames
+            .into_iter()
+            .map(|frame| WireFrame::Text(frame.to_string())),
+    )
+    .expect("the reply decodes")
+    .usage
 }
 
-/// Serde: a bucket Anthropic adds later must not break the known one.
+/// A turn that reports no breakdown yields no counter, not a failure.
+#[test]
+fn unit_absent_details_reports_none() {
+    let usage = decoded_usage(
+        json!({
+            "input_tokens": 10,
+            "output_tokens": 20,
+            "cache_read_input_tokens": null,
+            "cache_creation_input_tokens": null
+        }),
+        false,
+    );
+    assert_eq!(usage.reasoning_tokens, None);
+}
+
+/// A bucket Anthropic adds later must not break the known one.
 #[test]
 fn unit_unknown_detail_bucket_is_ignored() {
-    let usage: anthropic::completion::Usage = serde_json::from_value(json!({
-        "input_tokens": 10,
-        "output_tokens": 20,
-        "cache_read_input_tokens": null,
-        "cache_creation_input_tokens": null,
-        "output_tokens_details": { "thinking_tokens": 7, "future_bucket_tokens": 3 }
-    }))
-    .expect("an unknown detail bucket should be ignored");
-
-    assert_eq!(Usage::from(&usage).reasoning_tokens, Some(7));
+    let usage = decoded_usage(
+        json!({
+            "input_tokens": 10,
+            "output_tokens": 20,
+            "output_tokens_details": { "thinking_tokens": 7, "future_bucket_tokens": 3 }
+        }),
+        false,
+    );
+    assert_eq!(usage.reasoning_tokens, Some(7));
 }
 
 /// The breakdown is inside `output_tokens`, so the total must not grow.
 #[test]
 fn unit_thinking_tokens_stay_out_of_the_total() {
-    let with_thinking: anthropic::completion::Usage = serde_json::from_value(json!({
-        "input_tokens": 10,
-        "output_tokens": 20,
-        "cache_read_input_tokens": 3,
-        "cache_creation_input_tokens": 4,
-        "output_tokens_details": { "thinking_tokens": 15 }
-    }))
-    .expect("usage should parse");
-    let without: anthropic::completion::Usage = serde_json::from_value(json!({
+    let counts = json!({
         "input_tokens": 10,
         "output_tokens": 20,
         "cache_read_input_tokens": 3,
         "cache_creation_input_tokens": 4
-    }))
-    .expect("usage should parse");
-
-    let with_thinking = Usage::from(&with_thinking);
-    let without = Usage::from(&without);
+    });
+    let mut thinking = counts.clone();
+    thinking["output_tokens_details"] = json!({ "thinking_tokens": 15 });
+    let with_thinking = decoded_usage(thinking, false);
+    let without = decoded_usage(counts, false);
 
     assert_eq!(with_thinking.reasoning_tokens, Some(15));
     assert_eq!(without.reasoning_tokens, None);
@@ -1056,29 +1081,20 @@ fn unit_thinking_tokens_stay_out_of_the_total() {
     assert_eq!(with_thinking.total_tokens, Some(10 + 3 + 4 + 20));
 }
 
-/// Blocking and streaming go through the same totals helper, so the same
-/// counters must normalize identically — including the breakdown that arrives
-/// on the streaming path's terminal `message_delta` rather than its
+/// Blocking and streaming read usage through the same reader, so the same
+/// counters must normalize identically, including the breakdown that
+/// arrives on the streaming path's terminal `message_delta` rather than its
 /// `message_start`.
 #[test]
 fn unit_streaming_and_blocking_share_the_mapping() {
-    let blocking: anthropic::completion::Usage = serde_json::from_value(json!({
+    let counts = json!({
         "input_tokens": 100,
         "output_tokens": 200,
         "cache_read_input_tokens": 5,
         "cache_creation_input_tokens": 6,
         "output_tokens_details": { "thinking_tokens": 42 }
-    }))
-    .expect("usage should parse");
-    let streamed: anthropic::streaming::PartialUsage = serde_json::from_value(json!({
-        "input_tokens": 100,
-        "output_tokens": 200,
-        "cache_read_input_tokens": 5,
-        "cache_creation_input_tokens": 6,
-        "output_tokens_details": { "thinking_tokens": 42 }
-    }))
-    .expect("partial usage should parse");
-
-    assert_eq!(Usage::from(&blocking), Usage::from(&streamed));
-    assert_eq!(Usage::from(&streamed).reasoning_tokens, Some(42));
+    });
+    let streamed = decoded_usage(counts.clone(), true);
+    assert_eq!(decoded_usage(counts, false), streamed);
+    assert_eq!(streamed.reasoning_tokens, Some(42));
 }

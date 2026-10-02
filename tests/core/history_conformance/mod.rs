@@ -5,7 +5,13 @@
 //! `HISTORY_WIRE` constant each expanded suite emits, so disabling a suite
 //! is a compile error rather than a shrinking test count.
 
+pub mod anthropic;
+pub mod anthropic_moonshot;
 pub mod mock;
 
 /// The wires whose suites compiled into this binary.
-pub const SUITE_WIRES: &[&str] = &[mock::HISTORY_WIRE];
+pub const SUITE_WIRES: &[&str] = &[
+    mock::HISTORY_WIRE,
+    anthropic::HISTORY_WIRE,
+    anthropic_moonshot::HISTORY_WIRE,
+];

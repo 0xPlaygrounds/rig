@@ -551,15 +551,40 @@ impl crate::completion::ReplayTarget for Messages {
         &self.model
     }
 
-    /// Messages reads images in user turns and tool results, never in
-    /// assistant turns. MiniMax's M2 models read no images (pi's model data).
+    /// Messages takes images in user turns and tool results, never in
+    /// assistant turns, on models that read images: every Claude model, and
+    /// each dialect's vision models by its documented naming (pi's model
+    /// data agrees). A model a dialect does not name reads images.
     fn accepts(&self, model: &str) -> crate::completion::Accepts {
-        if self.provider.dialect.name == MINIMAX.name && model.starts_with("MiniMax-M2") {
-            return crate::completion::Accepts::TEXT;
-        }
+        let images = match self.provider.dialect.name {
+            // GLM vision models put `v` right after the version: `glm-4.5v`,
+            // `glm-4.6v-flash`, `glm-5v-turbo`.
+            name if name == ZAI.name => model.strip_prefix("glm-").is_some_and(|rest| {
+                rest.trim_start_matches(|c: char| c.is_ascii_digit() || c == '.')
+                    .starts_with('v')
+            }),
+            // Kimi K2 before K2.5 and the `moonshot-v1` text models read
+            // no images; Kimi K2.5 and later, and `*-vision-*`, do.
+            name if name == MOONSHOT.name => {
+                !(model == "kimi-k2"
+                    || model.starts_with("kimi-k2-")
+                    || (model.starts_with("moonshot-v1") && !model.contains("vision")))
+            }
+            // MiniMax M2 models are text only; M3 reads images.
+            name if name == MINIMAX.name => !model.starts_with("MiniMax-M2"),
+            // MiMo V2 Flash and Pro and V2.5 Pro are text only; V2 Omni,
+            // V2.5 and later read images.
+            name if name == XIAOMIMIMO.name => {
+                !((model.starts_with("mimo-v2-") && !model.contains("omni"))
+                    || model.starts_with("mimo-v2.5-pro"))
+            }
+            _ => true,
+        };
         crate::completion::Accepts {
+            user_images: images,
             assistant_images: false,
-            ..crate::completion::Accepts::ALL
+            tool_result_images: images,
+            tools: true,
         }
     }
 

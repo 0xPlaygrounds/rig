@@ -206,24 +206,41 @@ fn a_foreign_call_id_is_normalized_to_anthropic_spelling() {
     );
 }
 
-/// pi's model data: MiniMax's M2 models read no images, every other model
-/// of the family does.
+/// Each dialect reads images on its documented vision models only, in user
+/// turns and tool results; no Messages model reads assistant images.
 #[test]
-fn only_minimax_m2_models_refuse_images() {
+fn each_dialect_reads_images_on_its_vision_models() {
     use crate::completion::ReplayTarget;
 
-    assert!(wire().accepts(wire().model()).user_images);
-    let minimax = AnthropicConfig::with_key(&MINIMAX, "sk-test");
-    assert!(
-        !minimax
-            .completion("MiniMax-M3")
-            .accepts("MiniMax-M2.7")
-            .user_images
-    );
-    assert!(
-        minimax
-            .completion("MiniMax-M2.7")
-            .accepts("MiniMax-M3")
-            .user_images
-    );
+    for (dialect, model, images) in [
+        (&ANTHROPIC, "claude-sonnet-4-6", true),
+        (&ZAI, "glm-4.6", false),
+        (&ZAI, "glm-4.5-air", false),
+        (&ZAI, "glm-4.5v", true),
+        (&ZAI, "glm-4.6v-flash", true),
+        (&ZAI, "glm-5v-turbo", true),
+        (&MOONSHOT, "kimi-k2-thinking", false),
+        (&MOONSHOT, "kimi-k2-0905-preview", false),
+        (&MOONSHOT, "moonshot-v1-8k", false),
+        (&MOONSHOT, "moonshot-v1-8k-vision-preview", true),
+        (&MOONSHOT, "kimi-k2.6", true),
+        (&MOONSHOT, "kimi-k3", true),
+        (&MINIMAX, "MiniMax-M2.7", false),
+        (&MINIMAX, "MiniMax-M3", true),
+        (&XIAOMIMIMO, "mimo-v2-flash", false),
+        (&XIAOMIMIMO, "mimo-v2-pro", false),
+        (&XIAOMIMIMO, "mimo-v2.5-pro", false),
+        (&XIAOMIMIMO, "mimo-v2-omni", true),
+        (&XIAOMIMIMO, "mimo-v2.5", true),
+        (&XIAOMIMIMO, "mimo-v2.6-flash", true),
+    ] {
+        // The model the request addresses decides, not the wire's own.
+        let accepts = AnthropicConfig::with_key(dialect, "sk-test")
+            .completion("another-model")
+            .accepts(model);
+        assert_eq!(accepts.user_images, images, "{model}");
+        assert_eq!(accepts.tool_result_images, images, "{model}");
+        assert!(!accepts.assistant_images, "{model}");
+        assert!(accepts.tools, "{model}");
+    }
 }

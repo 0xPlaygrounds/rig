@@ -20,12 +20,12 @@ fn adapter() -> MessagesDecoder {
 }
 
 /// Decode `events` through one decoder as one reply, then EOF.
-fn decode(events: impl IntoIterator<Item = StreamingEvent>) -> Decoded<Completion> {
+fn decode(events: impl IntoIterator<Item = MessagesEvent>) -> Decoded<Completion> {
     decode_events!(MessagesDecoder::new(), "anthropic", events)
 }
 
 /// The event one wire frame classifies to.
-fn classified(frame: &str) -> StreamingEvent {
+fn classified(frame: &str) -> MessagesEvent {
     let crate::wire::WireEvent::Known(event) = adapter().classify(WireFrame::Text(frame.into()))
     else {
         panic!("{frame} must classify Known");
@@ -82,19 +82,16 @@ fn item(content: &AssistantContent) -> Option<&Value> {
 }
 
 /// The message delta that ends a reply with `stop_reason`.
-fn message_delta(stop_reason: &str, usage: PartialUsage) -> StreamingEvent {
-    StreamingEvent::MessageDelta {
-        delta: MessageDelta {
-            stop_reason: Some(stop_reason.to_string()),
-            stop_sequence: None,
-            stop_details: None,
-            container: None,
-        },
-        usage,
-    }
+fn message_delta(stop_reason: &str, usage: PartialUsage) -> MessagesEvent {
+    classified(
+        &json!({"type": "message_delta",
+            "delta": {"stop_reason": stop_reason, "stop_sequence": null},
+            "usage": usage})
+        .to_string(),
+    )
 }
 
-fn tool_use(index: usize, id: &str, name: &str) -> StreamingEvent {
+fn tool_use(index: usize, id: &str, name: &str) -> MessagesEvent {
     classified(
         &json!({"type": "content_block_start", "index": index,
             "content_block": {"type": "tool_use", "id": id, "name": name, "input": {}}})
@@ -102,7 +99,7 @@ fn tool_use(index: usize, id: &str, name: &str) -> StreamingEvent {
     )
 }
 
-fn input_json(index: usize, partial_json: &str) -> StreamingEvent {
+fn input_json(index: usize, partial_json: &str) -> MessagesEvent {
     classified(
         &json!({"type": "content_block_delta", "index": index,
             "delta": {"type": "input_json_delta", "partial_json": partial_json}})
@@ -110,8 +107,8 @@ fn input_json(index: usize, partial_json: &str) -> StreamingEvent {
     )
 }
 
-fn stop(index: usize) -> StreamingEvent {
-    StreamingEvent::ContentBlockStop { index }
+fn stop(index: usize) -> MessagesEvent {
+    classified(&json!({"type": "content_block_stop", "index": index}).to_string())
 }
 
 /// The streaming request body the [`Messages`](super::super::wire::Messages)
@@ -560,24 +557,54 @@ fn a_call_assembles_its_input_into_its_item() {
     assert_eq!(response.stop(), StopReason::ToolUse);
 }
 
+/// A `tool_use` cut by `max_tokens` (#2359): the turn keeps its text and
+/// the call, whose arguments are what the cut input states, and stops with
+/// `Length`. The call's item holds input that is not JSON, so it has no
+/// native and replays from its canonical fields; its text sibling keeps its
+/// own.
 #[test]
-fn malformed_streamed_call_input_keeps_what_it_states() {
+fn a_call_cut_by_max_tokens_keeps_the_turn() {
     let frames = reply(
-        vec![block(
-            0,
-            json!({"type": "tool_use", "id": "toolu_1", "name": "lookup", "input": {}}),
-            &[json!({"type": "input_json_delta", "partial_json": "{\"x\": \"ab"})],
-        )],
+        vec![
+            block(
+                0,
+                json!({"type": "text", "text": ""}),
+                &[json!({"type": "text_delta", "text": "Looking."})],
+            ),
+            block(
+                1,
+                json!({"type": "tool_use", "id": "toolu_1", "name": "lookup", "input": {}}),
+                &[json!({"type": "input_json_delta", "partial_json": "{\"x\": \"ab"})],
+            ),
+        ],
         "max_tokens",
     );
     let response = streamed(&frames).expect("a cut-off call does not fail the reply");
+    assert_eq!(response.text(), "Looking.");
+    assert!(response.choice[0].native_item().is_some());
     let call = response.tool_calls().next().expect("the call is kept");
     assert_eq!(call.function.arguments_value(), json!({"x": "ab"}));
     assert_eq!(
         call.function.invalid_arguments.as_deref(),
         Some("{\"x\": \"ab")
     );
+    assert!(response.choice[1].native_item().is_none());
     assert_eq!(response.stop(), StopReason::Length);
+}
+
+/// A stream that never states its stop reason is truncated, whatever else
+/// it ended with: a `message_delta` without one, or `message_stop` alone.
+#[test]
+fn a_stream_without_its_stop_reason_never_ends_successfully() {
+    let mut frames = reply(
+        vec![block(0, json!({"type": "text", "text": "partial"}), &[])],
+        "end_turn",
+    );
+    if let Some(delta) = frames.last_mut() {
+        delta["delta"]["stop_reason"] = Value::Null;
+    }
+    frames.push(json!({"type": "message_stop"}));
+    assert!(matches!(streamed(&frames), Err(ProviderError::Truncated)));
 }
 
 #[test]
@@ -625,15 +652,27 @@ fn citation_deltas_land_on_the_text_item() {
     }
 }
 
+/// A citation of a known kind with a defective payload never fails the
+/// reply: it lands on the item, and reading the citations reports it.
 #[test]
-fn a_known_citation_with_a_defective_payload_is_corrupt() {
-    let frame = WireFrame::Text(
-        r#"{"type":"content_block_delta","index":0,"delta":{"type":"citations_delta","citation":{"type":"char_location","cited_text":1}}}"#.into(),
+fn a_defective_citation_lands_on_its_item() {
+    let frames = reply(
+        vec![block(
+            0,
+            json!({"type": "text", "text": ""}),
+            &[
+                json!({"type": "citations_delta",
+                    "citation": {"type": "char_location", "cited_text": 1}}),
+                json!({"type": "text_delta", "text": "cited"}),
+            ],
+        )],
+        "end_turn",
     );
-    assert!(matches!(
-        adapter().classify(frame),
-        crate::wire::WireEvent::Corrupt(_)
-    ));
+    let response = streamed(&frames).expect("the reply folds");
+    let [AssistantContent::Text(text)] = response.choice.as_slice() else {
+        panic!("one text block: {:?}", response.choice);
+    };
+    assert!(anthropic_citations(text).is_err());
 }
 
 /// Server tools and their results are provider items with no canonical
@@ -803,15 +842,33 @@ fn the_reply_container_is_the_message_item() {
     assert_eq!(turn.native_item(), Some(&json!({ "container": container })));
 }
 
+/// A `tool_use` without an id is a call rig issues an id for, and one
+/// without a name is dropped, since nothing can answer it. Neither fails
+/// the reply.
 #[test]
-fn a_tool_use_without_its_id_is_corrupt() {
-    let frame = WireFrame::Text(
-        r#"{"type":"content_block_start","index":0,"content_block":{"type":"tool_use","name":"add","input":{}}}"#.into(),
+fn a_tool_use_without_its_id_or_name_never_fails_the_reply() {
+    let frames = reply(
+        vec![
+            block(
+                0,
+                json!({"type": "tool_use", "name": "add", "input": {}}),
+                &[],
+            ),
+            block(
+                1,
+                json!({"type": "tool_use", "id": "toolu_2", "input": {}}),
+                &[],
+            ),
+        ],
+        "tool_use",
     );
-    assert!(matches!(
-        adapter().classify(frame),
-        crate::wire::WireEvent::Corrupt(_)
-    ));
+    let response = streamed(&frames).expect("the reply folds");
+    let calls: Vec<_> = response.tool_calls().collect();
+    let [call] = calls.as_slice() else {
+        panic!("only the named call is kept: {:?}", response.choice);
+    };
+    assert_eq!(call.function.name.as_str(), "add");
+    assert!(call.id.provider().is_none());
 }
 
 /// Classification is the only policy site. An unmodeled *top-level* event
@@ -833,7 +890,7 @@ fn classify_dispatches_on_the_known_event_list() {
     let frame = WireFrame::Text(r#"{"type":"ping"}"#.into());
     assert!(matches!(
         adapter.classify(frame),
-        crate::wire::WireEvent::Known(StreamingEvent::Ping)
+        crate::wire::WireEvent::Known(event) if event.kind() == "ping"
     ));
 
     let frame = WireFrame::Text("{not json".into());
@@ -926,35 +983,25 @@ fn terminal_cache_usage_zero_overrides_message_start() {
 
 /// A `content_block_delta` whose `delta` omits `type` is malformed, not
 /// novel: silently skipping it would turn a compat gateway's untagged
-/// text delta into a successful *empty* completion. It classifies
-/// `Corrupt`, surfacing in-band while the stream keeps consuming
-/// (#2258 B5).
+/// text delta into a successful *empty* completion, so it fails the reply
+/// (#2258 B5). So does a known delta whose text is not text, since the
+/// block is built from it.
 #[test]
-fn delta_missing_its_type_is_corrupt_not_skipped() {
-    let adapter = adapter();
-    let frame = WireFrame::Text(
-        r#"{"type":"content_block_delta","index":0,"delta":{"text":"hello"}}"#.into(),
-    );
-    assert!(matches!(
-        adapter.classify(frame),
-        crate::wire::WireEvent::Corrupt(_)
-    ));
-}
-
-/// Policy preserved: a *known* nested delta tag with a defective payload
-/// is a data-level defect, not an unmodeled delta — the frame classifies
-/// `Corrupt` instead of degrading to an `Unknown` no-op.
-#[test]
-fn known_nested_delta_tag_with_defective_payload_is_corrupt() {
-    let adapter = adapter();
-    let frame = WireFrame::Text(
-        r#"{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":42}}"#
-            .into(),
-    );
-    assert!(matches!(
-        adapter.classify(frame),
-        crate::wire::WireEvent::Corrupt(_)
-    ));
+fn a_delta_without_its_type_or_text_fails_the_reply() {
+    for delta in [
+        json!({"text": "hello"}),
+        json!({"type": "text_delta", "text": 42}),
+    ] {
+        let frames = reply(
+            vec![block(
+                0,
+                json!({"type": "text", "text": ""}),
+                &[delta.clone()],
+            )],
+            "end_turn",
+        );
+        assert!(streamed(&frames).is_err(), "{delta}");
+    }
 }
 
 /// Anthropic's top-level `{"type":"error"}` envelope (e.g.
@@ -1039,15 +1086,63 @@ fn terminal_record_upgrades_end_turn_to_tool_calls_after_a_streamed_tool_call() 
     );
 }
 
+/// A stop reason Anthropic does not document survives verbatim, and fails
+/// the turn.
 #[test]
 fn unknown_stop_reason_survives_onto_the_terminal_record() {
-    let decoded = decode([message_delta("pause_turn", PartialUsage::default())]);
+    let decoded = decode([message_delta("x_rig_reason", PartialUsage::default())]);
+    let response = decoded.outcome.expect("the reply ended");
     assert_eq!(
-        decoded.outcome.expect("the reply ended").finish_reason(),
+        response.finish_reason(),
         Some(crate::completion::FinishReason::Other(
-            "pause_turn".to_owned()
+            "x_rig_reason".to_owned()
         ))
     );
+    assert!(response.stop().is_failure());
+}
+
+/// Every `stop_reason` Anthropic documents, and the gateway `sensitive`
+/// stop pi handles, ends the turn as listed.
+#[test]
+fn every_documented_stop_reason_ends_the_turn_as_documented() {
+    for (reason, finish, failed) in [
+        ("end_turn", crate::completion::FinishReason::Stop, false),
+        (
+            "stop_sequence",
+            crate::completion::FinishReason::Stop,
+            false,
+        ),
+        ("pause_turn", crate::completion::FinishReason::Stop, false),
+        ("max_tokens", crate::completion::FinishReason::Length, false),
+        (
+            "model_context_window_exceeded",
+            crate::completion::FinishReason::Length,
+            false,
+        ),
+        (
+            "tool_use",
+            crate::completion::FinishReason::ToolCalls,
+            false,
+        ),
+        (
+            "refusal",
+            crate::completion::FinishReason::ContentFilter,
+            true,
+        ),
+        (
+            "sensitive",
+            crate::completion::FinishReason::Other("sensitive".to_owned()),
+            true,
+        ),
+    ] {
+        let response = streamed(&reply(
+            vec![block(0, json!({"type": "text", "text": "done"}), &[])],
+            reason,
+        ))
+        .expect("the reply folds");
+        assert_eq!(response.finish_reason(), Some(finish), "{reason}");
+        assert_eq!(response.stop().is_failure(), failed, "{reason}");
+    }
 }
 
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
@@ -1338,7 +1433,6 @@ mod terminal_emission {
         // The capture maps to the same end the reply finished with.
         assert_eq!(typed.message_id.as_deref(), response.response_id());
         assert_eq!(typed.model.as_deref(), response.model());
-        assert_eq!(crate::completion::Usage::from(&typed.usage), response.usage);
         assert_eq!(
             response.finish_reason(),
             Some(crate::completion::FinishReason::Stop)
@@ -1510,12 +1604,11 @@ mod projection {
         );
     }
 }
-/// One sample per Messages event, through an exhaustive, wildcard-free
-/// index: a new event fails to compile until it is numbered, and fails
-/// here until it has a sample.
+/// One sample per known Messages event: a new event fails here until it
+/// has a sample.
 #[test]
 fn every_messages_event_has_a_sample() {
-    let samples: Vec<StreamingEvent> = [
+    let samples: Vec<MessagesEvent> = [
         r#"{"type":"message_start","message":null}"#,
         r#"{"type":"message","id":"msg_1","role":"assistant","model":"m","content":[],"stop_reason":"end_turn","stop_sequence":null,"usage":{"input_tokens":1,"output_tokens":1}}"#,
         r#"{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}"#,
@@ -1529,18 +1622,13 @@ fn every_messages_event_has_a_sample() {
     .into_iter()
     .map(classified)
     .collect();
-    let index = |event: &StreamingEvent| match event {
-        StreamingEvent::MessageStart { .. } => 0,
-        StreamingEvent::Message { .. } => 1,
-        StreamingEvent::ContentBlockStart { .. } => 2,
-        StreamingEvent::ContentBlockDelta { .. } => 3,
-        StreamingEvent::ContentBlockStop { .. } => 4,
-        StreamingEvent::MessageDelta { .. } => 5,
-        StreamingEvent::MessageStop => 6,
-        StreamingEvent::Ping => 7,
-        StreamingEvent::Error { .. } => 8,
+    let index = |event: &MessagesEvent| {
+        KNOWN_EVENT_TYPES
+            .iter()
+            .position(|kind| *kind == event.kind())
+            .unwrap_or(usize::MAX)
     };
-    crate::test_utils::history::assert_every_variant(&samples, index, 9);
+    crate::test_utils::history::assert_every_variant(&samples, index, KNOWN_EVENT_TYPES.len());
 }
 
 /// An item type rig has never seen, and a field it has never seen on a
