@@ -96,7 +96,7 @@ pub(crate) fn content_from_message(
             let parts = turn
                 .content
                 .iter()
-                .filter_map(|block| assistant_part(block, false).transpose())
+                .filter_map(|block| assistant_part(block, None).transpose())
                 .map(|part| serde_json::from_value(part?).map_err(ProviderError::request))
                 .collect::<Result<Vec<vertexai::model::Part>, ProviderError>>()?;
             Ok(vertexai::model::Content::new()

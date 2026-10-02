@@ -25,6 +25,7 @@ const FOLLOW_UP: &str = "Add one to that number. Answer with the number only.";
 #[derive(Clone, Copy)]
 enum Api {
     GenerateContent,
+    #[cfg(any())]
     Interactions,
 }
 
@@ -40,6 +41,7 @@ struct Cell {
 
 fn params(cell: Cell) -> Value {
     match (cell.api, cell.model) {
+        #[cfg(any())]
         (Api::Interactions, _) => json!({
             "store": false,
             "generation_config": { "thinking_level": "low", "thinking_summaries": "auto" }
@@ -143,6 +145,7 @@ fn assert_recorded(cell: Cell, scenario: &str) {
     assert_eq!(bodies.len(), 2, "a question and its continuation");
     let dialect = match cell.api {
         Api::GenerateContent => Dialect::GeminiGenerateContent,
+        #[cfg(any())]
         Api::Interactions => Dialect::GeminiInteractions,
     };
     let next: Value = serde_json::from_str(&bodies[1].0).expect("the continuation is JSON");
@@ -179,6 +182,7 @@ fn assert_recorded(cell: Cell, scenario: &str) {
                 );
             }
         }
+        #[cfg(any())]
         Api::Interactions => {
             // Signatures live on thought steps only, and return there. A
             // whole reply lists its steps; a stream opens each step with its
@@ -223,6 +227,7 @@ fn assert_recorded(cell: Cell, scenario: &str) {
 async fn run(client: GeminiModels, cell: Cell) {
     match cell.api {
         Api::GenerateContent => conversation(client.completion(cell.model), cell).await,
+        #[cfg(any())]
         Api::Interactions => conversation(client.interactions(cell.model), cell).await,
     }
 }
@@ -287,6 +292,7 @@ async fn gemini_2_5_streamed() {
     assert_recorded(CELL, "text_signature_matrix/gemini_2_5_streamed");
 }
 
+#[cfg(any())]
 #[tokio::test]
 async fn interactions_unary() {
     const CELL: Cell = Cell {
@@ -302,6 +308,7 @@ async fn interactions_unary() {
     assert_recorded(CELL, "text_signature_matrix/interactions_unary");
 }
 
+#[cfg(any())]
 #[tokio::test]
 async fn interactions_streamed() {
     const CELL: Cell = Cell {

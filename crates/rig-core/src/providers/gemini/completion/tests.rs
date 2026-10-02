@@ -2166,3 +2166,32 @@ fn candidate_metadata_is_the_turns_native() {
             .expect("the reply decodes");
     assert_eq!(response.native.map(|native| native.item), Some(metadata));
 }
+
+/// A call rig issued the id for is spelled `tool-<n>` for a model that
+/// takes ids, on the call and its response alike, so a history always
+/// encodes to the same bytes.
+#[test]
+fn a_rig_issued_call_id_is_spelled_as_a_request_local_alias() {
+    let call = message::ToolCall::from_wire(
+        "",
+        message::ToolFunction::new(
+            message::ToolName::new("lookup").expect("tool name"),
+            json!({}),
+        ),
+    );
+    let history = vec![
+        message::Message::from(call.clone()),
+        message::Message::tool_results(vec![
+            call.result(vec![message::ToolResultContent::text("out")]),
+        ]),
+    ];
+    let contents = contents(history, "gemini-3-flash-preview").expect("the history encodes");
+    assert_eq!(
+        contents[0]["parts"][0]["functionCall"]["id"],
+        json!("tool-0")
+    );
+    assert_eq!(
+        contents[1]["parts"][0]["functionResponse"]["id"],
+        json!("tool-0")
+    );
+}

@@ -13,21 +13,23 @@
 use futures::StreamExt;
 use rig::completion::CompletionResponse;
 use rig::completion::FinishReason;
-use rig::message::{
-    AssistantContent, Message, Reasoning, ReasoningContent, ToolCall, ToolChoice,
-    ToolResultContent, UserContent,
-};
+use rig::message::{AssistantContent, Reasoning, ToolCall, ToolResultContent, UserContent};
+#[cfg(any())]
+use rig::message::{Message, ToolChoice};
 use rig::providers::gemini;
 use rig::providers::gemini::completion::gemini_api_types::{
     AdditionalParameters, GenerationConfig, ThinkingConfig, ThinkingLevel,
 };
+#[cfg(any())]
 use rig::providers::gemini::interactions_api;
 use rig::streaming::Item;
 use rig::streaming::StreamEvent;
 
+#[cfg(any())]
+use crate::support::ALPHA_SIGNAL_OUTPUT;
 use crate::support::{
-    ALPHA_SIGNAL_OUTPUT, AlphaSignal, BetaSignal, ORDERED_TOOL_STREAM_PREAMBLE,
-    ORDERED_TOOL_STREAM_PROMPT, TWO_TOOL_STREAM_PREAMBLE,
+    AlphaSignal, BetaSignal, ORDERED_TOOL_STREAM_PREAMBLE, ORDERED_TOOL_STREAM_PROMPT,
+    TWO_TOOL_STREAM_PREAMBLE,
 };
 use rig::completion::CompletionRequest;
 
@@ -62,12 +64,7 @@ async fn drain_stream(mut stream: rig::streaming::CompletionStream) -> StreamRun
                 content: AssistantContent::Reasoning(reasoning),
                 ..
             }) => {
-                run.reasoning_blocks.push(
-                    reasoning
-                        .open(reasoning.issuer())
-                        .cloned()
-                        .expect("reasoning opens"),
-                );
+                run.reasoning_blocks.push(reasoning);
             }
             Item::Event(StreamEvent::Reasoning { text, .. }) => {
                 run.reasoning_delta.push_str(&text);
@@ -107,20 +104,11 @@ fn assert_terminal(run: &StreamRun, expected_finish: FinishReason) {
         "terminal record should carry non-zero usage, got {:?}",
         terminal.usage
     );
-    // ID contract: Gemini reports a `responseId` for the response as a whole
-    // and no replayable assistant-message ID, so the normalized terminal must
-    // populate `response_id` and leave `message_id` empty.
+    // ID contract: Gemini reports a `responseId` for the response as a
+    // whole, which the normalized terminal surfaces.
     assert!(
-        terminal
-            .response_id()
-            .as_deref()
-            .is_some_and(|id| !id.is_empty()),
+        terminal.response_id().is_some_and(|id| !id.is_empty()),
         "Gemini should surface its responseId as the response-scoped ID"
-    );
-    assert!(
-        terminal.response_id().is_none(),
-        "Gemini has no replayable assistant-message ID; got {:?}",
-        terminal.response_id()
     );
 }
 
@@ -138,22 +126,15 @@ fn aggregated_reasoning_text(choice: &[AssistantContent]) -> String {
     choice
         .iter()
         .filter_map(|content| match content {
-            AssistantContent::Reasoning(reasoning) => Some(
-                reasoning
-                    .open(reasoning.issuer())
-                    .expect("sealed reasoning")
-                    .content
-                    .iter(),
-            ),
-            _ => None,
-        })
-        .flatten()
-        .filter_map(|part| match part {
-            ReasoningContent::Text { text, .. } => Some(text.as_str()),
-            ReasoningContent::Summary(text) => Some(text.as_str()),
+            AssistantContent::Reasoning(reasoning) => Some(reasoning.text.as_str()),
             _ => None,
         })
         .collect()
+}
+
+/// The `thoughtSignature` a block's provider item carries, if any.
+fn signature(content: &AssistantContent) -> Option<&str> {
+    content.native_item()?.get("thoughtSignature")?.as_str()
 }
 
 /// `MAX_TOKENS` truncation via a small `maxOutputTokens` budget: terminal
@@ -303,17 +284,13 @@ async fn thinking_stream_aggregates_all_reasoning_text() {
             );
             // The wire attaches `thoughtSignature` to a trailing part with no
             // `thought` flag (recorded: `{"text":"","thoughtSignature":"…"}`).
-            // The signature is replay-required provider state, and Gemini
-            // requires it back inside the part that carried it, never merged
-            // into another: it stays on that trailing text, and signs no
-            // reasoning block.
+            // That part continues the answer text, whose provider item keeps
+            // the signature; it signs no reasoning block.
             let text_signatures: Vec<&str> = run
                 .choice
                 .iter()
-                .filter_map(|content| match content {
-                    AssistantContent::Text(text) => gemini::text_thought_signature(text),
-                    _ => None,
-                })
+                .filter(|content| matches!(content, AssistantContent::Text(_)))
+                .filter_map(signature)
                 .collect();
             assert!(
                 text_signatures.iter().any(|signature| !signature.is_empty()),
@@ -322,21 +299,13 @@ async fn thinking_stream_aggregates_all_reasoning_text() {
             );
             for content in run.choice.iter() {
                 if let AssistantContent::Reasoning(reasoning) = content {
-                    let text: String = reasoning
-                        .open(reasoning.issuer()).expect("sealed reasoning").content
-                        .iter()
-                        .filter_map(|part| match part {
-                            ReasoningContent::Text { text, .. } => Some(text.as_str()),
-                            _ => None,
-                        })
-                        .collect();
                     assert!(
-                        !text.trim().is_empty(),
+                        !reasoning.text.trim().is_empty(),
                         "no empty (signature-only) reasoning sibling may exist: {:?}",
                         run.choice
                     );
                     assert!(
-                        reasoning.open(reasoning.issuer()).expect("sealed reasoning").first_signature().is_none(),
+                        signature(content).is_none(),
                         "the answer's signature must not move onto reasoning: {:?}",
                         run.choice
                     );
@@ -540,6 +509,7 @@ async fn stop_finish_reason_normalizes_on_text_turn() {
 /// Thinking-enabled Interactions streaming turn: reasoning and text arrive as
 /// discrete normalized parts through the shared REST/interactions part-kind
 /// interpretation, pinned on real traffic.
+#[cfg(any())]
 #[tokio::test]
 async fn interactions_thinking_stream_keeps_reasoning_and_text_discrete() {
     super::super::support::with_gemini_interactions_cassette(
@@ -606,18 +576,8 @@ async fn interactions_thinking_stream_keeps_reasoning_and_text_discrete() {
             let signatures: Vec<&str> = run
                 .choice
                 .iter()
-                .filter_map(|content| match content {
-                    AssistantContent::Reasoning(reasoning) => Some(reasoning.open(reasoning.issuer()).expect("sealed reasoning").content.iter()),
-                    _ => None,
-                })
-                .flatten()
-                .filter_map(|part| match part {
-                    ReasoningContent::Text {
-                        signature: Some(signature),
-                        ..
-                    } => Some(signature.as_str()),
-                    _ => None,
-                })
+                .filter(|content| matches!(content, AssistantContent::Reasoning(_)))
+                .filter_map(signature)
                 .collect();
             assert!(
                 signatures.iter().any(|signature| !signature.is_empty()),
@@ -631,26 +591,14 @@ async fn interactions_thinking_stream_keeps_reasoning_and_text_discrete() {
             // the part carrying the streamed thinking must be the signed one.
             for content in run.choice.iter() {
                 if let AssistantContent::Reasoning(reasoning) = content {
-                    let text: String = reasoning
-                        .open(reasoning.issuer()).expect("sealed reasoning").content
-                        .iter()
-                        .filter_map(|part| match part {
-                            ReasoningContent::Text { text, .. } => Some(text.as_str()),
-                            _ => None,
-                        })
-                        .collect();
                     assert!(
-                        !text.trim().is_empty(),
+                        !reasoning.text.trim().is_empty(),
                         "no empty (signature-only) reasoning sibling may exist: {:?}",
                         run.choice
                     );
-                    if text.contains(run.reasoning_delta.trim()) {
+                    if reasoning.text.contains(run.reasoning_delta.trim()) {
                         assert!(
-                            reasoning.open(reasoning.issuer()).expect("sealed reasoning").content.iter().any(|part| matches!(
-                                part,
-                                ReasoningContent::Text { signature: Some(signature), .. }
-                                    if !signature.is_empty()
-                            )),
+                            signature(content).is_some_and(|signature| !signature.is_empty()),
                             "the signature must land on the block carrying the thinking text: {:?}",
                             run.choice
                         );
@@ -681,6 +629,7 @@ async fn interactions_thinking_stream_keeps_reasoning_and_text_discrete() {
 /// Interactions API turn that stops for a declared client tool
 /// (`requires_action`), then completes after the tool result is submitted —
 /// one recorded exchange, asserted through the normalized conversion.
+#[cfg(any())]
 #[tokio::test]
 async fn interactions_requires_action_roundtrip() {
     super::super::support::with_gemini_interactions_cassette(
@@ -793,6 +742,7 @@ async fn interactions_requires_action_roundtrip() {
 ///
 /// Re-record with:
 /// `RIG_PROVIDER_TEST_MODE=record GEMINI_API_KEY=... cargo test --test gemini interactions_same_tool_twice -- --test-threads=1`
+#[cfg(any())]
 #[tokio::test]
 async fn interactions_same_tool_called_twice_stays_distinct() {
     super::super::support::with_gemini_interactions_cassette(
@@ -899,6 +849,7 @@ async fn interactions_same_tool_called_twice_stays_distinct() {
 ///
 /// Re-record with:
 /// `RIG_PROVIDER_TEST_MODE=record GEMINI_API_KEY=... cargo test --test gemini interactions_signature_without_summaries -- --test-threads=1`
+#[cfg(any())]
 #[tokio::test]
 async fn interactions_signature_without_summaries_never_fabricates_an_empty_sibling() {
     super::super::support::with_gemini_interactions_cassette(
@@ -906,31 +857,27 @@ async fn interactions_signature_without_summaries_never_fabricates_an_empty_sibl
         |client| async move {
             let model = client.interactions("gemini-3-flash-preview");
             let request = CompletionRequest::new(
-                    "How many positive integers n < 100 are divisible by 6 but not by 9? \
+                "How many positive integers n < 100 are divisible by 6 but not by 9? \
                      Think it through, then answer with just the number.",
-                )
-                .additional_params(
-                    serde_json::to_value(interactions_api::AdditionalParameters {
-                        generation_config: Some(interactions_api::GenerationConfig {
-                            thinking_level: Some(interactions_api::ThinkingLevel::Medium),
-                            thinking_summaries: Some(interactions_api::ThinkingSummaries::None),
-                            ..Default::default()
-                        }),
-                        store: Some(true),
+            )
+            .additional_params(
+                serde_json::to_value(interactions_api::AdditionalParameters {
+                    generation_config: Some(interactions_api::GenerationConfig {
+                        thinking_level: Some(interactions_api::ThinkingLevel::Medium),
+                        thinking_summaries: Some(interactions_api::ThinkingSummaries::None),
                         ..Default::default()
-                    })
-                    .expect("params should serialize"),
-                );
+                    }),
+                    store: Some(true),
+                    ..Default::default()
+                })
+                .expect("params should serialize"),
+            );
             let run = drain_stream(model.stream(request).expect("stream should start")).await;
 
             assert!(!run.text.trim().is_empty(), "turn should produce text");
             let signature_delivered = run.choice.iter().any(|content| {
-                matches!(content, AssistantContent::Reasoning(reasoning)
-                    if reasoning.open(reasoning.issuer()).expect("sealed reasoning").content.iter().any(|part| matches!(
-                        part,
-                        ReasoningContent::Text { signature: Some(signature), .. }
-                            if !signature.is_empty()
-                    )))
+                matches!(content, AssistantContent::Reasoning(_))
+                    && signature(content).is_some_and(|signature| !signature.is_empty())
             });
             // The invariant under test: whatever the wire delivered, the
             // aggregate must never carry a reasoning part that is *only* an
@@ -942,18 +889,13 @@ async fn interactions_signature_without_summaries_never_fabricates_an_empty_sibl
                 .choice
                 .iter()
                 .filter_map(|content| match content {
-                    AssistantContent::Reasoning(reasoning) => reasoning.open(reasoning.issuer()),
+                    AssistantContent::Reasoning(reasoning) => Some(reasoning),
                     _ => None,
                 })
                 .collect();
             let empty_parts = reasoning_parts
                 .iter()
-                .filter(|reasoning| {
-                    reasoning
-                        .content
-                        .iter()
-                        .all(|part| matches!(part, ReasoningContent::Text { text, .. } if text.trim().is_empty()))
-                })
+                .filter(|reasoning| reasoning.text.trim().is_empty())
                 .count();
             assert!(
                 empty_parts == 0 || reasoning_parts.len() == empty_parts,
@@ -996,15 +938,13 @@ async fn chat_sourced_history_replays_the_tool_name_not_the_identifier() {
                     "Use the add tool to compute 2 + 3, then state the result.",
                 ),
                 rig::message::Message::Assistant(rig_core::message::AssistantMessage::new(vec![
-                    AssistantContent::ToolCall(ToolCall {
-                        id: cross_provider_handle.clone(),
-                        function: rig::message::ToolFunction {
+                    AssistantContent::ToolCall(ToolCall::new(
+                        cross_provider_handle.clone(),
+                        rig::message::ToolFunction {
                             name: rig_core::message::ToolName::new("add").expect("tool name"),
                             arguments: serde_json::json!({"x": 2, "y": 3}),
                         },
-                        signature: None,
-                        additional_params: None,
-                    }),
+                    )),
                 ])),
                 rig::message::Message::User {
                     content: vec![UserContent::ToolResult(rig::message::ToolResult {

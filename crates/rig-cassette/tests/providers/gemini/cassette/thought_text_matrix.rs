@@ -1025,10 +1025,8 @@ const SIGNATURE_PROMPT: &str = "What is 17 squared? Answer with the number only.
 fn text_signatures(choice: &[AssistantContent]) -> Vec<&str> {
     choice
         .iter()
-        .filter_map(|content| match content {
-            AssistantContent::Text(text) => gemini::text_thought_signature(text),
-            _ => None,
-        })
+        .filter(|content| matches!(content, AssistantContent::Text(_)))
+        .filter_map(|content| content.native_item()?.get("thoughtSignature")?.as_str())
         .collect()
 }
 
@@ -1114,7 +1112,7 @@ async fn streaming_twin_agrees_on_a_trailing_thought_signature() {
 
 mod unit {
     use rig::completion::CompletionResponse;
-    use rig::message::{AssistantContent, ReasoningContent};
+    use rig::message::AssistantContent;
     use rig::providers::gemini::GeminiConfig;
     use rig::providers::gemini::completion::gemini_api_types::GenerateContentResponse;
     use rig::test_utils::RecordingHttpClient;
@@ -1349,22 +1347,16 @@ mod unit {
         )
         .await;
         assert_eq!(response.choice.len(), 2, "{:?}", response.choice);
-        assert!(
-            matches!(
-                response.choice.first(),
-                Some(AssistantContent::Reasoning(reasoning))
-                    if matches!(reasoning.open(reasoning.issuer()).expect("sealed reasoning").content.first(),
-                        Some(ReasoningContent::Text { text, signature: None }) if text == "the chain")
-            ),
-            "the chain-of-thought block stays unsigned, got {:?}",
-            response.choice
+        assert_eq!(
+            response.choice,
+            vec![
+                AssistantContent::reasoning("the chain")
+                    .with_native(json!({ "text": "the chain", "thought": true })),
+                AssistantContent::text("answer")
+                    .with_native(json!({ "text": "answer", "thoughtSignature": "sig-trailing" })),
+            ],
+            "the chain-of-thought block stays unsigned"
         );
-        assert!(matches!(
-            response.choice.get(1),
-            Some(AssistantContent::Text(text))
-                if text.text == "answer"
-                    && rig::providers::gemini::text_thought_signature(text) == Some("sig-trailing")
-        ));
     }
 
     /// Not a recording: one part carrying both the answer and its signature
@@ -1377,12 +1369,12 @@ mod unit {
         )
         .await;
         assert_eq!(response.choice.len(), 1, "{:?}", response.choice);
-        assert!(matches!(
-            response.choice.first(),
-            Some(AssistantContent::Text(text))
-                if text.text == "17 squared is 289."
-                    && rig::providers::gemini::text_thought_signature(text) == Some("sig-trailing")
-        ));
+        assert_eq!(
+            response.choice,
+            vec![AssistantContent::text("17 squared is 289.").with_native(
+                json!({ "text": "17 squared is 289.", "thoughtSignature": "sig-trailing" })
+            )]
+        );
     }
 
     /// Not a recording: the counterpart ordering. A `thought: true` part signs
@@ -1398,13 +1390,12 @@ mod unit {
         )
         .await;
         assert_eq!(response.choice.len(), 2, "one reasoning block, one text");
-        assert!(matches!(
+        assert_eq!(
             response.choice.first(),
-            Some(AssistantContent::Reasoning(reasoning))
-                if matches!(reasoning.open(reasoning.issuer()).expect("sealed reasoning").content.first(),
-                    Some(ReasoningContent::Text { text, signature })
-                        if text == "thinking" && signature.as_deref() == Some("sig-own"))
-        ));
+            Some(&AssistantContent::reasoning("thinking").with_native(
+                json!({ "text": "thinking", "thought": true, "thoughtSignature": "sig-own" })
+            ))
+        );
     }
 
     /// Not a recording: the negative case. No signature, no reasoning block —

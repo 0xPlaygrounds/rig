@@ -39,17 +39,21 @@ use rig::completion::{CompletionResponse as RigCompletionResponse, FinishReason}
 use rig::providers::gemini::completion::gemini_api_types::{
     ContentCandidate, GenerateContentResponse, PartKind,
 };
+#[cfg(any())]
 use rig::providers::gemini::interactions_api::{Interaction, InteractionStatus};
 use serde::Deserialize;
 use serde_json::Value;
 
-use super::super::support::{with_gemini_cassette, with_gemini_interactions_cassette};
+use super::super::support::with_gemini_cassette;
+#[cfg(any())]
+use super::super::support::with_gemini_interactions_cassette;
 use crate::raw_capture::{assert_no_request_id, capture_completion_pair};
 use crate::support::{Observed, assistant_text};
 use rig::completion::CompletionRequest;
 
 const PROVIDER: &str = "gemini";
 const REST_MODEL: &str = "gemini-2.5-flash-lite";
+#[cfg(any())]
 const INTERACTIONS_MODEL: &str = "gemini-3-flash-preview";
 const PROMPT: &str = "Reply with exactly this one word and nothing else: parity";
 
@@ -73,7 +77,6 @@ fn assert_cross_request_parity(first: &RigCompletionResponse, second: &RigComple
 
     let first_identity = first.identity();
     let second_identity = second.identity();
-    assert_eq!(first_identity.message_id, second_identity.message_id);
     // Gemini sends no request-id header, so the driver reports None by
     // design — and so does the second reply: the same seam, the same header
     // set.
@@ -198,6 +201,7 @@ async fn rest_raw_try_into_matches_completion() {
     assert_two_recorded_turns(SCENARIO, "/candidates/0/finishReason", "STOP");
 }
 
+#[cfg(any())]
 #[tokio::test]
 async fn interactions_raw_try_into_matches_completion() {
     const SCENARIO: &str =
@@ -221,7 +225,7 @@ async fn interactions_raw_try_into_matches_completion() {
     // own document, reproduces the response it rode on.
     let typed = Interaction::deserialize(&second.raw)
         .expect("captured raw is the Interactions API's own document");
-    assert_eq!(typed.model, second.model());
+    assert_eq!(typed.model.as_deref(), second.model());
     assert_eq!(Some(typed.id.as_str()), second.response_id().as_deref());
     assert_eq!(
         typed

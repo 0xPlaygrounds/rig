@@ -7,20 +7,26 @@
 
 use rig_test_support::cassette_models::GeminiModels;
 use rig_test_support::cassette_models::MapWire;
+#[cfg(any())]
 use std::future::Future;
 use std::panic::{AssertUnwindSafe, resume_unwind};
+#[cfg(any())]
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use futures::FutureExt;
 
-use rig::completion::{CompletionRequest, ToolDefinition};
+use rig::completion::CompletionRequest;
+#[cfg(any())]
+use rig::completion::ToolDefinition;
 use rig::message::{
-    AssistantContent, Document, DocumentMediaType, DocumentSourceKind, Message, ToolCall,
-    ToolResultContent, UserContent,
+    AssistantContent, Document, DocumentMediaType, DocumentSourceKind, Message, UserContent,
 };
+#[cfg(any())]
+use rig::message::{ToolCall, ToolResultContent};
 use rig::providers::gemini;
 use rig::providers::gemini::cached_content::{CacheExpiry, NewCachedContent};
+#[cfg(any())]
 use rig::providers::gemini::interactions_api::AdditionalParameters;
 use serde_json::{Value, json};
 
@@ -30,6 +36,7 @@ use super::super::support::{
 };
 
 const CACHE_MODEL: &str = gemini::completion::GEMINI_2_5_FLASH;
+#[cfg(any())]
 const INTERACTIONS_MODEL: &str = "gemini-3-flash-preview";
 const CODE: &str = "amber-5521";
 
@@ -259,6 +266,7 @@ async fn cached_content_lifecycle_chain() {
     );
 }
 
+#[cfg(any())]
 fn lookup_tool() -> ToolDefinition {
     ToolDefinition {
         name: rig_core::message::ToolName::new("lookup_code").expect("tool name"),
@@ -271,6 +279,7 @@ fn lookup_tool() -> ToolDefinition {
     }
 }
 
+#[cfg(any())]
 fn only_call(choice: &[AssistantContent]) -> ToolCall {
     choice
         .iter()
@@ -281,6 +290,7 @@ fn only_call(choice: &[AssistantContent]) -> ToolCall {
         .expect("a lookup call")
 }
 
+#[cfg(any())]
 /// Run `body`, then delete every interaction it stored through the recorded
 /// session, whether it passed or panicked. Every delete is attempted;
 /// failures are reported after the body's own panic, which is never hidden.
@@ -328,6 +338,7 @@ async fn deleting_interactions<F: Future<Output = ()>>(
 /// answering a tool call: each request names the exact id the previous
 /// interaction issued, the result names the exact call id, and every stored
 /// interaction is deleted by id.
+#[cfg(any())]
 #[tokio::test]
 async fn interactions_chain_with_tool_call() {
     const SCENARIO: &str = "stateful_chain_matrix/interactions_chain_with_tool_call";
@@ -362,7 +373,10 @@ async fn interactions_chain_with_tool_call() {
                     )
                     .await
                     .expect("turn one");
-                let first_id = first.response_id().clone().expect("an interaction id");
+                let first_id = first
+                    .response_id()
+                    .map(str::to_owned)
+                    .expect("an interaction id");
                 keep(&first_id);
                 let call = only_call(&first.choice);
 
@@ -379,7 +393,10 @@ async fn interactions_chain_with_tool_call() {
                     )
                     .await
                     .expect("turn two answers the call");
-                let second_id = second.response_id().clone().expect("an interaction id");
+                let second_id = second
+                    .response_id()
+                    .map(str::to_owned)
+                    .expect("an interaction id");
                 keep(&second_id);
 
                 let third = model

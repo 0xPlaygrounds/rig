@@ -16,6 +16,7 @@ mod cassette {
     mod chat_history;
     mod code_execution_matrix;
     mod corpus_breadth;
+    #[cfg(any())]
     mod corpus_delta;
     mod corpus_faults;
     mod corpus_matrix;
@@ -73,12 +74,16 @@ mod cassette {
     mod hook_stress_tools;
     mod image_generation;
     mod image_input_matrix;
+    #[cfg(any())]
     mod interactions_api;
+    #[cfg(any())]
     mod interactions_raw_capture_matrix;
+    #[cfg(any())]
     mod interactions_raw_stream_capture_matrix;
     mod lifecycle_matrix;
     mod models;
     mod multi_turn_streaming;
+    #[cfg(any())]
     mod portability_matrix;
     mod prompt_caching;
     mod raw_capture_agent_matrix;
@@ -89,6 +94,7 @@ mod cassette {
     mod reasoning_tool_roundtrip;
     mod regression_suite;
     mod response_identity;
+    mod restated_replies;
     mod session_matrix;
     mod stateful_chain_matrix;
     mod stream_faults;

@@ -419,13 +419,17 @@ pub(crate) fn create_request_body(
 /// system message becomes user text. An assistant block is sent as the
 /// provider item it was decoded from while that is current, and rebuilt
 /// from its canonical fields otherwise. Calls and their responses carry ids
-/// when `model` takes them. Shared with sibling Gemini transports (e.g.
-/// `rig-gemini-grpc`).
+/// when `model` takes them, an id rig issued spelled as a request-local
+/// alias so the same history always encodes the same bytes. Shared with
+/// sibling Gemini transports (e.g. `rig-gemini-grpc`).
 pub fn contents(history: Vec<completion::Message>, model: &str) -> Result<Vec<Value>, EncodeError> {
-    let ids = requires_tool_call_id(model);
+    let ids = requires_tool_call_id(model)
+        .then(|| crate::providers::internal::wire_ids::WireIds::new(&history));
+    let id = |message: usize, content: usize| ids.as_ref()?.get(message, content);
     history
         .into_iter()
-        .map(|message| {
+        .enumerate()
+        .map(|(at, message)| {
             let (role, parts) = match message {
                 completion::Message::System { content } => {
                     (Role::User, vec![serde_json::to_value(Part::from(content))?])
@@ -434,14 +438,20 @@ pub fn contents(history: Vec<completion::Message>, model: &str) -> Result<Vec<Va
                     Role::User,
                     content
                         .into_iter()
-                        .map(|part| Ok(serde_json::to_value(user_part(part, ids)?)?))
+                        .enumerate()
+                        .map(|(index, part)| {
+                            Ok(serde_json::to_value(user_part(part, id(at, index))?)?)
+                        })
                         .collect::<Result<_, EncodeError>>()?,
                 ),
                 completion::Message::Assistant(turn) => (
                     Role::Model,
                     turn.content
                         .iter()
-                        .filter_map(|block| assistant_part(block, ids).transpose())
+                        .enumerate()
+                        .filter_map(|(index, block)| {
+                            assistant_part(block, id(at, index)).transpose()
+                        })
                         .collect::<Result<_, _>>()?,
                 ),
             };
@@ -913,11 +923,11 @@ pub mod gemini_api_types {
         }
     }
 
-    /// A user part as Gemini takes it. A tool result carries its call's id
-    /// when `ids` says the model takes ids.
+    /// A user part as Gemini takes it. A tool result carries `id`, its
+    /// call's wire spelling, when the model takes ids.
     pub(crate) fn user_part(
         content: message::UserContent,
-        ids: bool,
+        id: Option<&str>,
     ) -> Result<Part, message::MessageError> {
         match content {
             message::UserContent::Text(message::Text { text, .. }) => Ok(Part {
@@ -926,11 +936,7 @@ pub mod gemini_api_types {
                 part: PartKind::Text(text),
                 additional_params: None,
             }),
-            message::UserContent::ToolResult(message::ToolResult {
-                call,
-                name,
-                content,
-            }) => {
+            message::UserContent::ToolResult(message::ToolResult { name, content, .. }) => {
                 let function_name = name;
                 let mut response_values = Vec::new();
                 let mut parts: Vec<FunctionResponsePart> = Vec::new();
@@ -995,7 +1001,7 @@ pub mod gemini_api_types {
                     thought_signature: None,
                     part: PartKind::FunctionResponse(FunctionResponse {
                         name: function_name.into(),
-                        id: ids.then(|| call.wire().into_owned()),
+                        id: id.map(str::to_owned),
                         response: response_json,
                         parts: if parts.is_empty() { None } else { Some(parts) },
                     }),
@@ -1160,10 +1166,10 @@ pub mod gemini_api_types {
     /// One assistant block as a Gemini part: the provider item it was
     /// decoded from while that is current, else a part rebuilt from its
     /// canonical fields, or `None` when it has nothing to send. A rebuilt
-    /// call carries its id when `ids` says the model takes ids.
+    /// call carries `id`, its wire spelling, when the model takes ids.
     pub fn assistant_part(
         block: &message::AssistantContent,
-        ids: bool,
+        id: Option<&str>,
     ) -> Result<Option<Value>, EncodeError> {
         use message::AssistantContent;
         if let Some(item) = block.native_item() {
@@ -1187,8 +1193,8 @@ pub mod gemini_api_types {
                     "name": call.function.name,
                     "args": call.function.arguments,
                 });
-                if ids && let Some(function_call) = function_call.as_object_mut() {
-                    function_call.insert("id".to_owned(), json!(call.id.wire()));
+                if let (Some(id), Some(function_call)) = (id, function_call.as_object_mut()) {
+                    function_call.insert("id".to_owned(), json!(id));
                 }
                 Some(json!({ "functionCall": function_call }))
             }

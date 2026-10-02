@@ -227,7 +227,7 @@ pub(crate) async fn call_model(
         .await
         .expect("gemini completion should succeed");
     ModelTurn::new(
-        response.response_id().clone(),
+        response.head(),
         response.choice.clone(),
         response.usage,
         executable.clone(),
