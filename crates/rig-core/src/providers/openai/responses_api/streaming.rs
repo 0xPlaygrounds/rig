@@ -200,14 +200,21 @@ pub struct ResponsesDecoder {
     /// The output indices and item ids the stream stated.
     seen: HashSet<usize>,
     seen_ids: HashSet<String>,
-    /// Which field last extended each open item's text, and which of its
-    /// parts: a new part of reasoning starts a new paragraph, and a second
-    /// field restating the same reasoning is not appended.
-    texts: HashMap<usize, (TextField, u64)>,
+    /// The text deltas wrote to each open item.
+    texts: HashMap<usize, Streamed>,
     /// Reasoning items done without their ciphertext, by index and id. Azure
     /// states `encrypted_content` only in the terminal response, so these
     /// close there.
     awaiting_ciphertext: Vec<(usize, String)>,
+}
+
+/// What deltas wrote to one item: the field and part that last extended
+/// it, since a new part of reasoning starts a new paragraph and a second
+/// field restating the same reasoning is not appended, and the text so far.
+struct Streamed {
+    field: TextField,
+    part: u64,
+    text: String,
 }
 
 /// The field a text delta arrived in.
@@ -409,6 +416,18 @@ impl ResponsesDecoder {
         if delta.is_empty() {
             return Ok(());
         }
+        // Text after reasoning at one index, or reasoning after text, is a
+        // stream whose indices were repaired to zero moving to its next item.
+        let message = field == TextField::Message;
+        if self
+            .texts
+            .get(&index)
+            .is_some_and(|streamed| (streamed.field == TextField::Message) != message)
+        {
+            self.vacate(index, out)?;
+            self.texts.remove(&index);
+            self.seen.remove(&index);
+        }
         // A gateway that streams an item without announcing it gets one
         // opened at its first delta; a delta for an item that already
         // closed is left to the item, which states its text.
@@ -416,25 +435,32 @@ impl ResponsesDecoder {
             if !self.seen.insert(index) {
                 return Ok(());
             }
-            let block = match field {
-                TextField::Message => Block::Text,
-                TextField::Summary | TextField::Reasoning => Block::Reasoning { redacted: false },
+            let block = if message {
+                Block::Text
+            } else {
+                Block::Reasoning { redacted: false }
             };
             out.open(index, block, serde_json::Value::Null)?;
         }
-        match self.texts.get(&index) {
-            Some((seen, _)) if *seen != field => return Ok(()),
-            Some((_, last)) if *last != part && field != TextField::Message => {
-                out.push(index, "\n\n")?;
-            }
-            _ => {}
+        let streamed = self.texts.entry(index).or_insert(Streamed {
+            field,
+            part,
+            text: String::new(),
+        });
+        if streamed.field != field {
+            return Ok(());
         }
-        self.texts.insert(index, (field, part));
+        if streamed.part != part && !message && !streamed.text.is_empty() {
+            streamed.text.push_str("\n\n");
+            out.push(index, "\n\n")?;
+        }
+        streamed.part = part;
+        streamed.text.push_str(delta);
         out.push(index, delta)
     }
 
-    /// The item at `index` is done: `item` is its block's native. Text no
-    /// delta delivered is pushed from it; a call is written whole.
+    /// The item at `index` is done: `item` is its block's native, and the
+    /// text it states completes the block's. A call is written whole.
     #[deny(clippy::wildcard_enum_match_arm)]
     fn done(
         &mut self,
@@ -483,11 +509,20 @@ impl ResponsesDecoder {
             out.push(index, &arguments)?;
             return out.close(index, if_malformed);
         }
-        if !out.is_open(index) {
+        // An item done without being added opens here; so does one at an
+        // index whose previous item still waits for its ciphertext.
+        if !out.is_open(index) || self.awaiting_ciphertext.iter().any(|(at, _)| *at == index) {
             self.added(index, item.clone(), out)?;
         }
-        if !self.texts.contains_key(&index) {
-            out.push(index, &text_of(&output))?;
+        // The item states the whole text: what the deltas left out of it
+        // is pushed, and text that diverged from it stays as it streamed.
+        let text = text_of(&output);
+        let streamed = self.texts.remove(&index).map(|streamed| streamed.text);
+        if let Some(rest) = streamed
+            .as_deref()
+            .map_or(Some(text.as_str()), |streamed| text.strip_prefix(streamed))
+        {
+            out.push(index, rest)?;
         }
         let awaits = matches!(output, Output::Reasoning { .. }) && !has_ciphertext(&item);
         let id = item_id(&item).map(str::to_owned);

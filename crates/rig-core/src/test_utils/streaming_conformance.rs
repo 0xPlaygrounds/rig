@@ -2152,9 +2152,22 @@ pub mod fixtures {
                     "output_index": 0,
                     "content_index": 0,
                     "sequence_number": 1,
-                    "delta": "thinking",
+                    "delta": "full ",
                 })),
-                tool_call_done(),
+                // The call is the reply's next output item.
+                sse(&json!({
+                    "type": "response.output_item.done",
+                    "output_index": 1,
+                    "sequence_number": 2,
+                    "item": {
+                        "type": "function_call",
+                        "id": "fc_1",
+                        "arguments": "{\"city\":\"Tokyo\"}",
+                        "call_id": "call_1",
+                        "name": "get_weather",
+                        "status": "completed",
+                    },
+                })),
                 reasoning_done_item(
                     "rs_2",
                     &json!([]),

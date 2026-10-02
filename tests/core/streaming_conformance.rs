@@ -439,15 +439,11 @@ mod grammar_guards {
         );
     }
 
-    /// Sibling-reasoning supersede on the wire (the corpus counterpart of the
-    /// parts.rs `deltas_then_sibling_full_blocks_keep_each_part_once` unit
-    /// test): a summary delta followed by its item's multi-part done block —
-    /// the first part supersedes the delta accumulation (no duplicate), the
-    /// remaining sibling parts append once each, in wire order.
-    #[cfg(any())]
+    /// A summary delta followed by its item's multi-part done block is one
+    /// reasoning block: the done item states the whole text, so the parts
+    /// the deltas never carried complete it, once each, as paragraphs.
     #[tokio::test]
     async fn sibling_reasoning_supersede_on_the_responses_wire() {
-        use rig_core::message::ReasoningContent;
         use serde_json::json;
 
         let driver = openai_responses::driver();
@@ -499,17 +495,11 @@ mod grammar_guards {
         let reasoning_texts: Vec<String> = drained
             .choice_reasoning()
             .iter()
-            .flat_map(|reasoning| reasoning.content.iter())
-            .map(|content| match content {
-                ReasoningContent::Summary(text) => text.clone(),
-                ReasoningContent::Text { text, .. } => text.clone(),
-                ReasoningContent::Encrypted(data) => data.clone(),
-                ReasoningContent::Redacted { data } => data.clone(),
-            })
+            .map(|reasoning| reasoning.text.clone())
             .collect();
         assert_eq!(
             reasoning_texts,
-            ["s1", "s2", "enc"],
+            ["s1\n\ns2"],
             "the first sibling supersedes the delta build; the rest append once each"
         );
     }
@@ -544,15 +534,12 @@ async fn terminal_body_content_merges_per_kind() {
 }
 
 // Pins #2258 F3 on the real buffered pipeline: an envelope-less reasoning
-// delta (ChatGPT replay; repair injects `output_index: 0`, minting the
-// `output-0` identity) followed by the item's envelope-full
-// `output_item.done` must aggregate the restated summary exactly once — the
-// done item's blocks adopt the minted per-slot identity instead of their
-// `rs_*` id, superseding the delta build rather than appending beside it.
-#[cfg(any())]
+// delta (ChatGPT replay; repair injects `output_index: 0`) followed by the
+// item's envelope-full `output_item.done` is one reasoning block whose text
+// holds the restated summary exactly once.
 #[tokio::test]
 async fn envelope_less_reasoning_deltas_are_superseded_without_duplication() {
-    use rig_core::message::{AssistantContent, ReasoningContent};
+    use rig_core::message::AssistantContent;
 
     let driver = openai_responses::buffered_driver();
     let (body, summary) = openai_responses::envelope_less_reasoning_supersede_sse_body();
@@ -565,28 +552,12 @@ async fn envelope_less_reasoning_deltas_are_superseded_without_duplication() {
             _ => None,
         })
         .collect();
+    let [reasoning] = reasoning.as_slice() else {
+        panic!("deltas and their done block must collapse to one reasoning item: {reasoning:?}");
+    };
     assert_eq!(
-        reasoning.len(),
+        reasoning.text.matches(summary).count(),
         1,
-        "deltas and their done block must collapse to one reasoning item: {reasoning:?}"
-    );
-    let occurrences = reasoning
-        .iter()
-        .flat_map(|item| {
-            item.open(item.issuer())
-                .expect("reasoning opens")
-                .content
-                .iter()
-        })
-        .filter(|content| match content {
-            ReasoningContent::Summary(text) | ReasoningContent::Text { text, .. } => {
-                text.contains(summary)
-            }
-            _ => false,
-        })
-        .count();
-    assert_eq!(
-        occurrences, 1,
         "the restated summary must supersede its deltas, not duplicate them"
     );
 }

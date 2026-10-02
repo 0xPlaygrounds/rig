@@ -1,4 +1,3 @@
-#![cfg(any())]
 //! The OpenAI Responses websocket session, driven over a scripted in-memory
 //! connection.
 //!
@@ -216,7 +215,12 @@ async fn completed_turn_without_deltas_falls_back_to_terminal_body() {
         normalized.choice.first(),
         Some(AssistantContent::Text(text)) if text.text == "hello there"
     ));
-    assert_eq!(normalized.message_id.as_deref(), Some("msg_terminal_1"));
+    assert_eq!(
+        normalized.choice[0]
+            .native_item()
+            .and_then(|item| item["id"].as_str()),
+        Some("msg_terminal_1")
+    );
 }
 
 #[tokio::test]
@@ -248,7 +252,12 @@ async fn incomplete_turn_without_deltas_normalizes_terminal_body_output() {
         Some(AssistantContent::Text(text)) if text.text == "partial from body"
     ));
     assert_eq!(normalized.finish_reason(), Some(FinishReason::Length));
-    assert_eq!(normalized.message_id.as_deref(), Some("msg_body_only_1"));
+    assert_eq!(
+        normalized.choice[0]
+            .native_item()
+            .and_then(|item| item["id"].as_str()),
+        Some("msg_body_only_1")
+    );
 }
 
 #[tokio::test]
@@ -771,12 +780,7 @@ async fn reasoning_text_delta_arrives_over_websocket() {
     assert!(
         normalized.choice.iter().any(|content| matches!(
             content,
-            AssistantContent::Reasoning(reasoning)
-                if reasoning.open(reasoning.issuer()).is_some_and(|reasoning| reasoning.content.iter().any(|block| matches!(
-                    block,
-                    rig_core::message::ReasoningContent::Text { text, .. }
-                        if text.contains("thinking hard")
-                )))
+            AssistantContent::Reasoning(reasoning) if reasoning.text.contains("thinking hard")
         )),
         "reasoning delta should survive over websocket, got {:?}",
         normalized.choice
@@ -850,4 +854,53 @@ async fn an_empty_turn_is_rejected_before_anything_is_sent() {
         .await
         .expect("the session still sends");
     assert_eq!(script.sent().len(), 1);
+}
+
+/// The session shapes its history for the model the way the driver does: a
+/// turn another model produced replays from its canonical fields, and a turn
+/// that failed is not sent at all.
+#[tokio::test]
+async fn the_session_shapes_history_for_its_model() {
+    use rig_core::message::{AssistantMessage, Message, Origin, Reasoning, StopReason, Text};
+    let foreign = Message::Assistant(AssistantMessage {
+        content: vec![
+            AssistantContent::Reasoning(Reasoning::new("Thinking."))
+                .with_native(json!({"type": "thinking", "signature": "sig"})),
+            AssistantContent::Text(Text::new("Answer.")),
+        ],
+        origin: Some(Origin::new("anthropic.messages", "anthropic", "claude")),
+        stop: Some(StopReason::Stop),
+        native: None,
+    });
+    let failed = Message::Assistant(AssistantMessage {
+        content: vec![AssistantContent::Text(Text::new("cut short"))],
+        origin: Some(Origin::new("openai.responses", "openai", "gpt-5.4")),
+        stop: Some(StopReason::Error("boom".to_owned())),
+        native: None,
+    });
+    let request = CompletionRequest::new("next").messages([
+        Message::user("first"),
+        foreign,
+        Message::user("again"),
+        failed,
+    ]);
+
+    let client = test_client();
+    let script = Script::turns(Vec::<Vec<String>>::new());
+    let mut session = session(&client, &script);
+    session.send(request).await.expect("the turn is sent");
+
+    let sent: serde_json::Value =
+        serde_json::from_str(&script.sent()[0]).expect("the payload is JSON");
+    let assistant: Vec<&serde_json::Value> = sent["input"]
+        .as_array()
+        .expect("input is an array")
+        .iter()
+        .filter(|item| item["role"] == "assistant")
+        .collect();
+    let texts: Vec<&str> = assistant
+        .iter()
+        .filter_map(|item| item["content"][0]["text"].as_str())
+        .collect();
+    assert_eq!(texts, ["Thinking.", "Answer."], "{sent}");
 }
