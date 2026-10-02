@@ -32,9 +32,7 @@
 //! per-interaction bookkeeping and the header premise.
 
 use rig::completion::CompletionRequest;
-use rig::providers::openai::responses_api;
 use rig::providers::xai;
-use serde::Deserialize;
 
 use super::support::with_xai_cassette_result;
 use crate::cassettes::{recorded_json_turns, recorded_response_header};
@@ -63,9 +61,7 @@ fn recorded_request_id(scenario: &str, index: usize) -> String {
 /// The provider-native fields the reply document carries, beside the
 /// normalized fields the decoder produced from them.
 fn assert_maps_provider_fields(response: &rig::completion::CompletionResponse, context: &str) {
-    let reply = responses_api::CompletionResponse::deserialize(&response.raw)
-        .expect("`raw` is the serialized Responses CompletionResponse");
-    responses::assert_native_matches_normalized(response, &reply, context);
+    responses::assert_native_matches_normalized(response, &response.raw, context);
     assert!(
         response.provider_request_id.is_some(),
         "{context}: the transport id rides on the normalized view"
@@ -146,8 +142,10 @@ async fn raw_completion_carries_request_id_on_the_type() {
     );
 
     let mirrored = &response.raw;
-    responses_api::CompletionResponse::deserialize(mirrored)
-        .expect("`raw` is the serialized Responses CompletionResponse");
+    assert!(
+        mirrored.is_object(),
+        "`raw` is the Responses response object"
+    );
     // The captured document is the reply body and never invents a field for a
     // header, which is exactly why the normalized response keeps the id
     // beside `raw` rather than inside it.

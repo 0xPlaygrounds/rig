@@ -2,9 +2,7 @@
 //! Responses-shaped API; blocking and streaming turns carry it identically.
 
 use futures::StreamExt;
-use rig::providers::openai::responses_api;
 use rig::providers::xai;
-use serde::Deserialize;
 
 use super::support::with_xai_cassette;
 use rig::completion::CompletionRequest;
@@ -120,10 +118,8 @@ async fn raw_and_normalized_views_agree_on_identity() {
                 .expect("completion should succeed");
             assert_request_id(response.provider_request_id.as_deref(), "normalized view");
 
-            let raw_view = responses_api::CompletionResponse::deserialize(&response.raw)
-                .expect("`raw` is the serialized Responses CompletionResponse");
             assert_eq!(
-                Some(raw_view.id.as_str()),
+                response.raw["id"].as_str(),
                 response.response_id(),
                 "raw and normalized views describe the same interaction"
             );

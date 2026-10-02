@@ -438,33 +438,30 @@ async fn chat_plain_raw_completion_lacks_request_id() {
 /// [`assert_chat_views_agree`] for the Responses route, whose body names its
 /// usage counters differently and whose own `provider_request_id` field is
 /// never part of the document the wire sends.
-fn assert_responses_views_agree(
-    scenario: &str,
-    reply: &openai::responses_api::CompletionResponse,
-    response: &CompletionResponse,
-) {
+fn assert_responses_views_agree(scenario: &str, reply: &Value, response: &CompletionResponse) {
     assert_eq!(
         response.response_id(),
-        Some(reply.id.as_str()),
+        reply["id"].as_str(),
         "{scenario}: the response id is the provider's `id`"
     );
     assert_eq!(
         response.model(),
-        Some(reply.model.as_str()),
+        reply["model"].as_str(),
         "{scenario}: model"
     );
-    let usage = reply
-        .usage
-        .as_ref()
-        .unwrap_or_else(|| panic!("{scenario}: the recorded Responses body reports usage"));
+    let usage = &reply["usage"];
+    assert!(
+        usage.is_object(),
+        "{scenario}: the recorded Responses body reports usage"
+    );
     assert_eq!(
         response.usage.input_tokens,
-        Some(usage.input_tokens),
+        usage["input_tokens"].as_u64(),
         "{scenario}: input tokens"
     );
     assert_eq!(
         response.usage.output_tokens,
-        Some(usage.output_tokens),
+        usage["output_tokens"].as_u64(),
         "{scenario}: output tokens"
     );
     assert!(
@@ -501,11 +498,9 @@ fn assert_responses_parity(
             "{scenario}: interaction {index} tool-call premise"
         );
     }
-    // The first reply, read both ways: the provider's own type out of `raw`,
+    // The first reply, read both ways: the provider's own document in `raw`,
     // then rig's normalized view of the same reply.
-    let reply = openai::responses_api::CompletionResponse::deserialize(&typed.raw)
-        .unwrap_or_else(|err| panic!("{scenario}: raw must be the Responses wire type: {err}"));
-    assert_responses_views_agree(scenario, &reply, &typed);
+    assert_responses_views_agree(scenario, &typed.raw, &typed);
     assert_side_matches_fixture(
         scenario,
         "raw view",

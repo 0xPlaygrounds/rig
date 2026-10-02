@@ -50,14 +50,14 @@ const FIVE_TURN_PROMPTS: [(&str, &str); 5] = [
 struct StoredResponseTurn {
     user: Message,
     assistant: Message,
-    raw_response: openai::responses_api::CompletionResponse,
+    raw_response: Value,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 struct StoredStreamingTurn {
     user: Message,
     assistant: Message,
-    final_response: openai::responses_api::CompletionResponse,
+    final_response: Value,
 }
 
 /// Issue one GPT-5.6 completion and return both views of the single recorded
@@ -67,10 +67,7 @@ struct StoredStreamingTurn {
 async fn prompt_with_reasoning(
     model: &Model<OpenAiWire>,
     reasoning: serde_json::Value,
-) -> (
-    CompletionResponse,
-    openai::responses_api::CompletionResponse,
-) {
+) -> (CompletionResponse, Value) {
     let request =
         CompletionRequest::new(PROMPT).additional_params(json!({ "reasoning": reasoning }));
 
@@ -78,8 +75,7 @@ async fn prompt_with_reasoning(
         .call(request)
         .await
         .expect("completion with GPT-5.6 reasoning controls should succeed");
-    let raw_response = openai::responses_api::CompletionResponse::deserialize(&response.raw)
-        .expect("`raw` is the serialized responses_api::CompletionResponse");
+    let raw_response = response.raw.clone();
 
     (response, raw_response)
 }
@@ -92,22 +88,15 @@ fn model_constants() {
     assert_eq!(openai::GPT_5_6_LUNA, "gpt-5.6-luna");
 }
 
-fn assert_reasoning_metadata(
-    raw_response: &openai::responses_api::CompletionResponse,
-    expected: Value,
-) {
+fn assert_reasoning_metadata(raw_response: &Value, expected: Value) {
     let expected = expected
         .as_object()
         .expect("expected reasoning metadata should be an object");
     assert_eq!(
-        raw_response.reasoning_context.as_deref(),
+        raw_response["reasoning"]["context"].as_str(),
         expected.get("context").and_then(Value::as_str)
     );
-    assert_eq!(raw_response.reasoning_metadata.as_ref(), Some(expected));
-    assert_eq!(
-        serde_json::to_value(raw_response).expect("raw response should serialize")["reasoning"],
-        Value::Object(expected.clone())
-    );
+    assert_eq!(raw_response["reasoning"].as_object(), Some(expected));
 }
 
 fn assert_has_text(response: &CompletionResponse) {
@@ -231,11 +220,7 @@ async fn five_turn_reasoning_metadata_roundtrip() {
                     model.call(request).await.unwrap_or_else(|error| {
                         panic!("turn {} should succeed: {error}", turn_index + 1)
                     });
-                let raw_response =
-                    openai::responses_api::CompletionResponse::deserialize(&response.raw)
-                        .unwrap_or_else(|error| {
-                            panic!("turn {} raw should deserialize: {error}", turn_index + 1)
-                        });
+                let raw_response = response.raw.clone();
 
                 assert_has_text(&response);
                 assert_reasoning_metadata(&raw_response, expected_metadata.clone());
@@ -256,9 +241,8 @@ async fn five_turn_reasoning_metadata_roundtrip() {
 
                 let raw_json =
                     serde_json::to_value(&raw_response).expect("raw response should serialize");
-                let roundtripped: openai::responses_api::CompletionResponse =
-                    serde_json::from_value(raw_json.clone())
-                        .expect("raw response should deserialize after serialization");
+                let roundtripped: Value = serde_json::from_value(raw_json.clone())
+                    .expect("raw response should deserialize after serialization");
                 assert_eq!(
                     serde_json::to_value(&roundtripped)
                         .expect("roundtripped raw response should serialize"),
@@ -288,14 +272,14 @@ async fn five_turn_reasoning_metadata_roundtrip() {
                 assert_eq!(stored_turns.len(), turn_index + 1);
                 for (prior_turn, stored) in stored_turns.iter().enumerate() {
                     assert_eq!(
-                        stored.raw_response.reasoning_metadata.as_ref(),
+                        stored.raw_response["reasoning"].as_object(),
                         expected_metadata.as_object(),
                         "reasoning metadata from turn {} changed by turn {}",
                         prior_turn + 1,
                         turn_index + 1
                     );
                     assert_eq!(
-                        stored.raw_response.reasoning_context.as_deref(),
+                        stored.raw_response["reasoning"]["context"].as_str(),
                         Some("all_turns")
                     );
                 }
@@ -367,22 +351,19 @@ async fn five_turn_streaming_reasoning_metadata_roundtrip() {
                 );
                 // The provider-native record rides on `raw`; the reasoning
                 // metadata lives there, not on the normalized response.
-                let final_response: openai::responses_api::CompletionResponse =
-                    serde_json::from_value(final_record.raw.clone())
-                        .expect("the terminal's raw is the Responses record");
+                let final_response = final_record.raw.clone();
                 assert_eq!(
-                    final_response.reasoning_context.as_deref(),
+                    final_response["reasoning"]["context"].as_str(),
                     Some("all_turns")
                 );
                 assert_eq!(
-                    final_response.reasoning_metadata.as_ref(),
+                    final_response["reasoning"].as_object(),
                     expected_metadata.as_object()
                 );
                 let final_json = serde_json::to_value(&final_response)
                     .expect("final streaming response should serialize");
-                let roundtripped: openai::responses_api::CompletionResponse =
-                    serde_json::from_value(final_json.clone())
-                        .expect("final streaming response should deserialize after serialization");
+                let roundtripped: Value = serde_json::from_value(final_json.clone())
+                    .expect("final streaming response should deserialize after serialization");
                 assert_eq!(
                     serde_json::to_value(&roundtripped)
                         .expect("roundtripped streaming response should serialize"),
@@ -415,14 +396,14 @@ async fn five_turn_streaming_reasoning_metadata_roundtrip() {
                 assert_eq!(stored_turns.len(), turn_index + 1);
                 for (prior_turn, stored) in stored_turns.iter().enumerate() {
                     assert_eq!(
-                        stored.final_response.reasoning_metadata.as_ref(),
+                        stored.final_response["reasoning"].as_object(),
                         expected_metadata.as_object(),
                         "streaming reasoning metadata from turn {} changed by turn {}",
                         prior_turn + 1,
                         turn_index + 1
                     );
                     assert_eq!(
-                        stored.final_response.reasoning_context.as_deref(),
+                        stored.final_response["reasoning"]["context"].as_str(),
                         Some("all_turns")
                     );
                 }
@@ -464,11 +445,10 @@ async fn streaming_reasoning_metadata() {
                 .finish()
                 .await
                 .expect("GPT-5.6 reasoning stream should yield a final response");
-            let response: openai::responses_api::CompletionResponse =
-                serde_json::from_value(record.raw.clone())
-                    .expect("the terminal's raw is the Responses record");
-            assert_eq!(response.reasoning_context.as_deref(), Some("current_turn"));
-            assert_eq!(response.reasoning_metadata.as_ref(), expected.as_object());
+            assert_eq!(
+                record.raw["reasoning"]["context"].as_str(),
+                Some("current_turn")
+            );
             assert_eq!(record.raw["reasoning"], expected);
         },
     )

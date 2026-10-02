@@ -1,7 +1,10 @@
 //! OpenAI streaming tools coverage, including the migrated example path.
 use rig::message::{AssistantContent, Message, ToolResultContent, UserContent};
 use rig::providers::openai;
-use rig::providers::openai::responses_api::streaming::StreamingCompletionChunk;
+use rig::providers::openai::responses_api::streaming::{
+    ResponsesEvent, classify_responses_payload,
+};
+use rig::wire::WireEvent;
 
 use serde::Deserialize;
 
@@ -58,7 +61,17 @@ fn streaming_tools_smoke_cassette_sse_events_parse() {
                 function_call_delta_count += 1;
             }
 
-            if let Err(error) = serde_json::from_str::<StreamingCompletionChunk>(data) {
+            let failure = match classify_responses_payload(data) {
+                WireEvent::Known(ResponsesEvent::Frame { .. }) => None,
+                WireEvent::Known(ResponsesEvent::Whole(_)) => Some("a whole body".to_owned()),
+                WireEvent::Known(ResponsesEvent::Failure(_)) => Some("an error event".to_owned()),
+                WireEvent::Known(ResponsesEvent::Sentinel) => Some("a sentinel".to_owned()),
+                WireEvent::Unknown { event_type, .. } => {
+                    Some(format!("an unknown event `{event_type}`"))
+                }
+                WireEvent::Corrupt(error) => Some(error.to_string()),
+            };
+            if let Some(error) = failure {
                 failures.push(format!(
                     "interaction {interaction_index}, body line {line_index}: {error}\n{data}"
                 ));
@@ -76,7 +89,7 @@ fn streaming_tools_smoke_cassette_sse_events_parse() {
     );
     assert!(
         failures.is_empty(),
-        "all cassette SSE data events should parse as StreamingCompletionChunk; failures:\n{}",
+        "all cassette SSE data events should classify as known Responses events; failures:\n{}",
         failures.join("\n\n")
     );
 }

@@ -178,9 +178,6 @@ async fn provider_error_response_carries_request_id() {
 /// never part of the provider's body.
 #[tokio::test]
 async fn raw_and_normalized_views_agree_on_identity() {
-    use rig::providers::openai::responses_api::CompletionResponse as ResponsesReply;
-    use serde::Deserialize;
-
     with_openai_cassette(
         "response_identity_edge/raw_and_normalized_views_agree_on_identity",
         |client| async move {
@@ -192,10 +189,8 @@ async fn raw_and_normalized_views_agree_on_identity() {
                 .expect("completion should succeed");
             assert_transport_request_id(response.provider_request_id.as_deref(), "normalized view");
 
-            let reply = ResponsesReply::deserialize(&response.raw)
-                .expect("`raw` is the serialized responses_api::CompletionResponse");
             assert_eq!(
-                Some(reply.id.as_str()),
+                response.raw["id"].as_str(),
                 response.response_id(),
                 "raw and normalized views describe the same interaction"
             );

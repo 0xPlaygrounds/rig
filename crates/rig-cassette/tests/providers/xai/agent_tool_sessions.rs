@@ -11,8 +11,6 @@ use anyhow::Result;
 use base64::{Engine, prelude::BASE64_STANDARD};
 use rig::completion::Message;
 use rig::message::{AssistantContent, ImageMediaType, ToolChoice, UserContent};
-use rig::providers::openai::responses_api;
-use rig::providers::openai::responses_api::Output;
 use rig::providers::xai;
 use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
@@ -401,17 +399,17 @@ pub(super) fn assert_history_records_sequential_tool_roundtrips(
 
 /// Assert the provider-native metadata xAI reports on its own wire response.
 ///
-/// The response id (`resp_...`), typed status, and full usage envelope are read
+/// The response id (`resp_...`), status, and full usage envelope are read
 /// from the provider reply captured in
 /// [`rig::completion::CompletionResponse::raw`], which is the same reply the
 /// normalized response was built from, so a cassette still records exactly
 /// one interaction.
-fn assert_raw_response_metadata(raw: &responses_api::CompletionResponse) {
-    assert_nonempty_response(&raw.id);
-    assert_nonempty_response(&raw.model);
-    assert_eq!(raw.status, responses_api::ResponseStatus::Completed);
+fn assert_raw_response_metadata(raw: &serde_json::Value) {
+    assert_nonempty_response(raw["id"].as_str().unwrap_or_default());
+    assert_nonempty_response(raw["model"].as_str().unwrap_or_default());
+    assert_eq!(raw["status"], "completed");
     assert!(
-        raw.usage.is_some(),
+        raw["usage"].is_object(),
         "raw xAI response should preserve usage metadata"
     );
 }
@@ -606,9 +604,8 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
                 .additional_params(json!({ "store": false }));
 
             let response = model.call(request).await?;
-            let raw = responses_api::CompletionResponse::deserialize(&response.raw)
-                .expect("`raw` is the serialized Responses CompletionResponse");
-            assert_raw_response_metadata(&raw);
+            let raw = &response.raw;
+            assert_raw_response_metadata(raw);
             let text = assistant_text_response(&response.choice)
                 .ok_or_else(|| anyhow::anyhow!("response should include assistant text"))?;
 
@@ -711,21 +708,17 @@ async fn reasoning_effort_preserves_reasoning_content_and_usage() -> Result<()> 
                 }));
 
             let response = model.call(request).await?;
-            let raw = responses_api::CompletionResponse::deserialize(&response.raw)
-                .expect("`raw` is the serialized Responses CompletionResponse");
+            let raw = &response.raw;
 
             anyhow::ensure!(
-                raw.output
-                    .iter()
-                    .any(|output| matches!(output, Output::Reasoning { .. })),
+                raw["output"]
+                    .as_array()
+                    .is_some_and(|items| items.iter().any(|item| item["type"] == "reasoning")),
                 "raw xAI output should preserve provider reasoning item"
             );
-            let raw_reasoning_tokens = raw
-                .usage
-                .as_ref()
-                .and_then(|usage| usage.output_tokens_details.as_ref())
-                .map(|details| details.reasoning_tokens);
-            assert_raw_response_metadata(&raw);
+            let raw_reasoning_tokens =
+                raw["usage"]["output_tokens_details"]["reasoning_tokens"].as_u64();
+            assert_raw_response_metadata(raw);
 
             anyhow::ensure!(
                 response
@@ -801,9 +794,8 @@ async fn nested_json_schema_response_format_roundtrip() -> Result<()> {
                 }));
 
             let response = model.call(request).await?;
-            let raw = responses_api::CompletionResponse::deserialize(&response.raw)
-                .expect("`raw` is the serialized Responses CompletionResponse");
-            assert_raw_response_metadata(&raw);
+            let raw = &response.raw;
+            assert_raw_response_metadata(raw);
             let text = assistant_text_response(&response.choice)
                 .ok_or_else(|| anyhow::anyhow!("schema response should contain text"))?;
             let plan: serde_json::Value = serde_json::from_str(&text)?;

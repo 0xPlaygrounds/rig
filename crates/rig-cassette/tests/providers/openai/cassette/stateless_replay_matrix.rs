@@ -28,7 +28,7 @@
 //!
 //! **How these cells fail on `origin/main`.** Cell 1 misses the mock on
 //! turn 2 (rig sent no `phase`, so the recorded body differs) and its
-//! post-replay assertion fails; cell 2 decodes the item only as `Output::Unknown` and the input side
+//! post-replay assertion fails; cell 2 decodes the item only as an unknown output item and the input side
 //! rejects it with `unknown variant \`compaction\``. Cells 3 to 5 miss the
 //! mock on their follow-up: streamed text carried no `phase`, and cell 4's
 //! two messages were merged into one item.
@@ -48,11 +48,8 @@ use futures::StreamExt;
 use rig::completion::ToolDefinition;
 use rig::message::{AssistantContent, Message, Text, ToolResultContent, UserContent};
 use rig::providers::openai;
-use rig::providers::openai::responses_api::{
-    CompletionResponse as ProviderResponse, InputItem, Output,
-};
+use rig::providers::openai::responses_api::InputItem;
 use rig_test_support::cassette_models::OpenAiModels;
-use serde::Deserialize;
 use serde_json::Value;
 
 use super::super::support::with_openai_cassette;
@@ -94,15 +91,19 @@ fn assistant_items(request: &Value) -> Vec<&Value> {
 }
 
 /// The Responses API's own reply, read back out of
-/// [`rig::completion::CompletionResponse::raw`] — the same value the
+/// [`rig::completion::CompletionResponse::raw`], the same document the
 /// normalized response beside it was derived from.
-fn provider_reply(response: &rig::completion::CompletionResponse) -> ProviderResponse {
-    ProviderResponse::deserialize(&response.raw)
-        .expect("`raw` is the serialized responses_api::CompletionResponse")
+fn provider_reply(response: &rig::completion::CompletionResponse) -> Value {
+    response.raw.clone()
+}
+
+/// The `output` items of a Responses reply.
+fn output_items(reply: &Value) -> &[Value] {
+    reply["output"].as_array().map_or(&[], Vec::as_slice)
 }
 
 /// Two blocking turns, threading turn 1's normalized response back as history.
-async fn two_turn_conversation(client: OpenAiModels) -> (ProviderResponse, ProviderResponse) {
+async fn two_turn_conversation(client: OpenAiModels) -> (Value, Value) {
     let model = client.completion(openai::GPT_5_6_SOL);
     let request = |history: Vec<Message>| {
         CompletionRequest::from(history).additional_params(serde_json::json!({ "store": false }))
@@ -128,13 +129,10 @@ async fn phase_round_trips_on_follow_up() {
         "stateless_replay_matrix/phase_round_trips_on_follow_up",
         |client| async move {
             let (first, _second) = two_turn_conversation(client.openai).await;
-            let phases: Vec<&str> = first
-                .output
+            let phases: Vec<&str> = output_items(&first)
                 .iter()
-                .filter_map(|item| match item {
-                    Output::Message(message) => message.phase.as_deref(),
-                    _ => None,
-                })
+                .filter(|item| item["type"] == "message")
+                .filter_map(|message| message["phase"].as_str())
                 .collect();
             assert_eq!(phases, [PHASE], "turn 1 must decode the wire's phase");
         },
@@ -179,13 +177,10 @@ async fn compaction_item_decodes_on_the_response() {
                 .await
                 .expect("a response carrying a compaction item must decode");
             let first = provider_reply(&response);
-            let compaction = first
-                .output
+            let compaction = output_items(&first)
                 .iter()
-                .find_map(|item| match item {
-                    Output::Unknown(item) if item["type"] == "compaction" => Some(item.clone()),
-                    _ => None,
-                })
+                .find(|item| item["type"] == "compaction")
+                .cloned()
                 .expect("turn 1's output must keep the compaction item");
             assert_eq!(compaction.get("id"), Some(&Value::from("cmp_REDACTED_1")));
 

@@ -22,7 +22,6 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::{Map, Value};
 
 use std::convert::Infallible;
-use std::ops::Add;
 use std::str::FromStr;
 
 pub mod streaming;
@@ -155,62 +154,6 @@ impl InputItem {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
-#[serde(tag = "type", rename_all = "snake_case")]
-pub enum ReasoningSummary {
-    SummaryText {
-        text: String,
-    },
-    /// A summary part of a kind rig does not model, kept as it came.
-    #[serde(untagged)]
-    Unknown(Value),
-}
-
-impl ReasoningSummary {
-    /// The part's text; a part rig does not model has none.
-    pub fn text(&self) -> &str {
-        match self {
-            ReasoningSummary::SummaryText { text } => text,
-            ReasoningSummary::Unknown(_) => "",
-        }
-    }
-}
-
-fn reasoning_text_content_json(content: &[String]) -> Value {
-    Value::Array(
-        content
-            .iter()
-            .map(|text| {
-                serde_json::json!({
-                    "type": "reasoning_text",
-                    "text": text,
-                })
-            })
-            .collect(),
-    )
-}
-
-fn deserialize_reasoning_text_content<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let value = Value::deserialize(deserializer)?;
-    Ok(match value {
-        Value::Array(items) => items
-            .into_iter()
-            .filter_map(|item| match item {
-                Value::Object(mut item) => item
-                    .shift_remove("text")
-                    .and_then(|text| text.as_str().map(ToOwned::to_owned)),
-                Value::String(text) => Some(text),
-                _ => None,
-            })
-            .collect(),
-        Value::String(text) => vec![text],
-        _ => Vec::new(),
-    })
-}
-
 /// A tool result.
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 pub struct ToolResult {
@@ -334,11 +277,15 @@ type CustomCalls = std::collections::HashSet<String>;
 
 /// The request message at `position` of the history as input items.
 ///
-/// An assistant block whose provider item is current is sent as that item;
-/// any other block is rebuilt from its canonical fields, as pi rebuilds a
-/// turn another model produced: text becomes a completed output message
-/// under a synthetic id, a call becomes a `function_call` without an item
-/// id, and reasoning, which only its provider item can carry, is not sent.
+/// Only a turn the target model produced still holds provider items (the
+/// adapter clears the rest), and it is sent as pi sends it. Reasoning goes
+/// as its item whatever its text, which is display only. A block whose item
+/// is current goes verbatim. An edited text or call is rebuilt from its
+/// canonical fields but keeps its item's `id` (and `phase`), so the
+/// reasoning before it stays paired. A block with no item is rebuilt as pi
+/// rebuilds another model's turn: text as a completed output message under
+/// a synthetic id, a call as a `function_call` with no item id, and
+/// reasoning, which only its item can carry, not at all.
 fn input_items(
     message: crate::completion::Message,
     position: usize,
@@ -351,10 +298,13 @@ fn input_items(
                 name: None,
             })])
         }
-        crate::completion::Message::User { content } => content
-            .into_iter()
-            .map(|content| user_input_item(content, custom))
-            .collect(),
+        crate::completion::Message::User { content } => {
+            let mut parts = Vec::with_capacity(content.len());
+            for content in content {
+                parts.extend(user_input_item(content, custom)?);
+            }
+            Ok(parts)
+        }
         crate::completion::Message::Assistant(turn) => {
             let mut items = Vec::new();
             let mut texts = 0usize;
@@ -374,34 +324,69 @@ fn input_items(
                         if text.text.is_empty() {
                             continue;
                         }
-                        let id = match texts {
-                            0 => format!("msg_rig_{position}"),
-                            n => format!("msg_rig_{position}_{n}"),
+                        let native = text.native.as_ref().map(|native| &native.item);
+                        let id = match native.and_then(|item| item_id(item, "")) {
+                            Some(id) => id,
+                            None => synthetic_id(position, &mut texts),
                         };
-                        texts += 1;
-                        items.push(InputItem::Item(serde_json::json!({
-                            "type": "message",
-                            "role": "assistant",
-                            "content": [{"type": "output_text", "text": text.text, "annotations": []}],
-                            "status": "completed",
-                            "id": id,
-                        })));
+                        let phase = native.and_then(|item| item.get("phase")).cloned();
+                        items.push(rebuilt_message(&text.text, id, phase));
                     }
                     crate::message::AssistantContent::ToolCall(call) => {
-                        items.push(InputItem::Item(serde_json::json!({
-                            "type": "function_call",
-                            "call_id": call.id.wire(),
-                            "name": call.function.name.as_str(),
-                            "arguments": call.function.arguments_value().to_string(),
-                        })));
+                        let native = call.native.as_ref().map(|native| &native.item);
+                        let custom_call = native
+                            .and_then(|item| item.get("type"))
+                            .and_then(Value::as_str)
+                            == Some("custom_tool_call");
+                        let call_id = call.id.wire().into_owned();
+                        let mut item = if custom_call {
+                            custom.insert(call_id.clone());
+                            let input = match call.function.arguments.get("input") {
+                                Some(Value::String(input)) => input.clone(),
+                                _ => call.function.arguments_value().to_string(),
+                            };
+                            serde_json::json!({
+                                "type": "custom_tool_call",
+                                "call_id": call_id,
+                                "name": call.function.name.as_str(),
+                                "input": input,
+                            })
+                        } else {
+                            serde_json::json!({
+                                "type": "function_call",
+                                "call_id": call_id,
+                                "name": call.function.name.as_str(),
+                                "arguments": call.function.arguments_value().to_string(),
+                            })
+                        };
+                        let prefix = if custom_call { "ctc_" } else { "fc_" };
+                        if let (Some(id), Some(fields)) = (
+                            native.and_then(|item| item_id(item, prefix)),
+                            item.as_object_mut(),
+                        ) {
+                            fields.insert("id".to_owned(), Value::String(id));
+                        }
+                        items.push(InputItem::Item(item));
                     }
-                    crate::message::AssistantContent::Reasoning(_) => {}
+                    // The same model's reasoning goes as its item even when
+                    // its text was edited; without one there is nothing to
+                    // send.
+                    crate::message::AssistantContent::Reasoning(reasoning) => {
+                        if let Some(native) = reasoning.native {
+                            items.push(InputItem::Item(native.item));
+                        }
+                    }
                     crate::message::AssistantContent::Opaque(opaque) => {
                         items.push(InputItem::Item(opaque.item));
                     }
+                    // Responses takes no image in an assistant turn; the
+                    // adapter downgrades another model's, and this one names
+                    // what was there.
                     crate::message::AssistantContent::Image(_) => {
-                        return Err(EncodeError::request(
-                            "Assistant image content is not supported in OpenAI Responses API",
+                        items.push(rebuilt_message(
+                            crate::completion::history::ASSISTANT_IMAGE_OMITTED,
+                            synthetic_id(position, &mut texts),
+                            None,
                         ));
                     }
                 }
@@ -411,15 +396,56 @@ fn input_items(
     }
 }
 
+/// The id of the next rebuilt message of the turn at `position`, as pi
+/// numbers them.
+fn synthetic_id(position: usize, texts: &mut usize) -> String {
+    let id = match *texts {
+        0 => format!("msg_rig_{position}"),
+        n => format!("msg_rig_{position}_{n}"),
+    };
+    *texts += 1;
+    id
+}
+
+/// A completed assistant output message holding `text`.
+fn rebuilt_message(text: &str, id: String, phase: Option<Value>) -> InputItem {
+    let mut item = serde_json::json!({
+        "type": "message",
+        "role": "assistant",
+        "content": [{"type": "output_text", "text": text, "annotations": []}],
+        "status": "completed",
+        "id": id,
+    });
+    if let (Some(phase @ Value::String(_)), Some(fields)) = (phase, item.as_object_mut()) {
+        fields.insert("phase".to_owned(), phase);
+    }
+    InputItem::Item(item)
+}
+
+/// The `id` of a stored item, when it has the `prefix` its replayed type
+/// requires and fits the API's 64 characters.
+fn item_id(item: &Value, prefix: &str) -> Option<String> {
+    item.get("id")
+        .and_then(Value::as_str)
+        .filter(|id| !id.is_empty() && id.starts_with(prefix) && id.len() <= 64)
+        .map(str::to_owned)
+}
+
 /// One user content part as an input item.
 fn user_input_item(
     content: crate::message::UserContent,
     custom: &CustomCalls,
-) -> Result<InputItem, EncodeError> {
-    Ok(match content {
+) -> Result<Option<InputItem>, EncodeError> {
+    Ok(Some(match content {
+        // Blank text says nothing, and some backends reject it.
+        crate::message::UserContent::Text(Text { text, .. }) if text.trim().is_empty() => {
+            return Ok(None);
+        }
         crate::message::UserContent::Text(Text { text, .. }) => {
             InputItem::user_content(UserContent::InputText { text })
         }
+        // A function output has no error field: a failed result says so in
+        // its text, and `is_error` is not sent.
         crate::message::UserContent::ToolResult(tool_result) => {
             let call_id = tool_result.call.wire().into_owned();
             let output = responses_tool_result_output(tool_result.content)?;
@@ -509,7 +535,7 @@ fn user_input_item(
                 "Unsupported message: {message:?}"
             )));
         }
-    })
+    }))
 }
 
 /// A function or hosted tool available to a Responses request.
@@ -534,7 +560,7 @@ pub struct ResponsesToolDefinition {
     #[serde(default, deserialize_with = "json_utils::null_or_default")]
     pub strict: bool,
     /// Tool description.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "json_utils::null_or_default")]
     pub description: String,
     /// Additional provider-specific configuration for hosted tools.
     #[serde(flatten, default)]
@@ -749,232 +775,6 @@ impl TryFrom<message::ToolChoice> for ToolChoice {
     }
 }
 
-/// Response token counts and optional cached-input and reasoning breakdowns.
-#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
-pub struct ResponsesUsage {
-    /// Input tokens
-    pub input_tokens: u64,
-    /// In-depth detail on input tokens (cached tokens)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub input_tokens_details: Option<InputTokensDetails>,
-    /// Output tokens
-    pub output_tokens: u64,
-    /// In-depth detail on output tokens (reasoning tokens)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub output_tokens_details: Option<OutputTokensDetails>,
-    /// Total tokens used (for a given prompt)
-    pub total_tokens: u64,
-}
-
-impl From<&ResponsesUsage> for crate::completion::Usage {
-    fn from(usage: &ResponsesUsage) -> Self {
-        crate::completion::Usage {
-            input_tokens: Some(usage.input_tokens),
-            output_tokens: Some(usage.output_tokens),
-            total_tokens: Some(usage.total_tokens),
-            cached_input_tokens: usage
-                .input_tokens_details
-                .as_ref()
-                .map(|details| details.cached_tokens),
-            cache_creation_input_tokens: usage
-                .input_tokens_details
-                .as_ref()
-                .and_then(|details| details.cache_write_tokens),
-            reasoning_tokens: usage
-                .output_tokens_details
-                .as_ref()
-                .map(|details| details.reasoning_tokens),
-            ..Default::default()
-        }
-    }
-}
-
-impl From<ResponsesUsage> for crate::completion::Usage {
-    fn from(usage: ResponsesUsage) -> Self {
-        Self::from(&usage)
-    }
-}
-
-/// Adds present breakdowns, preserving a lone value or joint absence.
-fn add_optional_details<T: Add<Output = T>>(lhs: Option<T>, rhs: Option<T>) -> Option<T> {
-    match (lhs, rhs) {
-        (Some(lhs), Some(rhs)) => Some(lhs + rhs),
-        (lhs, rhs) => lhs.or(rhs),
-    }
-}
-
-impl Add for ResponsesUsage {
-    type Output = Self;
-
-    fn add(self, rhs: Self) -> Self::Output {
-        Self {
-            input_tokens: self.input_tokens + rhs.input_tokens,
-            input_tokens_details: add_optional_details(
-                self.input_tokens_details,
-                rhs.input_tokens_details,
-            ),
-            output_tokens: self.output_tokens + rhs.output_tokens,
-            output_tokens_details: add_optional_details(
-                self.output_tokens_details,
-                rhs.output_tokens_details,
-            ),
-            total_tokens: self.total_tokens + rhs.total_tokens,
-        }
-    }
-}
-
-/// In-depth details on input tokens.
-#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
-pub struct InputTokensDetails {
-    /// Cached tokens from OpenAI
-    pub cached_tokens: u64,
-    /// Input tokens written to the prompt cache, part of `input_tokens`.
-    /// Absent when the model does not report cache writes.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub cache_write_tokens: Option<u64>,
-}
-
-impl Add for InputTokensDetails {
-    type Output = Self;
-    fn add(self, rhs: Self) -> Self::Output {
-        Self {
-            cached_tokens: self.cached_tokens + rhs.cached_tokens,
-            cache_write_tokens: add_optional_details(
-                self.cache_write_tokens,
-                rhs.cache_write_tokens,
-            ),
-        }
-    }
-}
-
-/// In-depth details on output tokens.
-#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
-pub struct OutputTokensDetails {
-    /// Reasoning tokens
-    pub reasoning_tokens: u64,
-}
-
-impl Add for OutputTokensDetails {
-    type Output = Self;
-    fn add(self, rhs: Self) -> Self::Output {
-        Self {
-            reasoning_tokens: self.reasoning_tokens + rhs.reasoning_tokens,
-        }
-    }
-}
-
-/// Provider-reported reason for an incomplete response.
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
-pub struct IncompleteDetailsReason {
-    /// The reason for an incomplete [`CompletionResponse`].
-    pub reason: String,
-}
-
-/// A response error from OpenAI's Response API.
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
-pub struct ResponseError {
-    /// Error code
-    pub code: String,
-    /// Error message
-    pub message: String,
-}
-
-/// A response object as an enum (ensures type validation)
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ResponseObject {
-    Response,
-}
-
-/// The response status as an enum (ensures type validation)
-#[derive(Clone, Debug, PartialEq)]
-pub enum ResponseStatus {
-    InProgress,
-    Completed,
-    Failed,
-    Cancelled,
-    Queued,
-    Incomplete,
-    /// A provider-specific status added after this client was released.
-    Other(String),
-}
-
-/// The wire spelling of a [`ResponseStatus`].
-///
-/// Statuses outside the normalized finish-reason vocabulary are carried through
-/// as [`completion::FinishReason::Other`], so they must keep OpenAI's own
-/// spelling rather than a Rust `Debug` name.
-fn response_status_wire_name(status: &ResponseStatus) -> &str {
-    match status {
-        ResponseStatus::InProgress => "in_progress",
-        ResponseStatus::Completed => "completed",
-        ResponseStatus::Failed => "failed",
-        ResponseStatus::Cancelled => "cancelled",
-        ResponseStatus::Queued => "queued",
-        ResponseStatus::Incomplete => "incomplete",
-        ResponseStatus::Other(status) => status,
-    }
-}
-
-impl Serialize for ResponseStatus {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        serializer.serialize_str(response_status_wire_name(self))
-    }
-}
-
-impl<'de> Deserialize<'de> for ResponseStatus {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        Ok(match String::deserialize(deserializer)?.as_str() {
-            "in_progress" => Self::InProgress,
-            "completed" => Self::Completed,
-            "failed" => Self::Failed,
-            "cancelled" => Self::Cancelled,
-            "queued" => Self::Queued,
-            "incomplete" => Self::Incomplete,
-            other => Self::Other(other.to_owned()),
-        })
-    }
-}
-
-/// Maps status and incomplete details to a finish reason, preserving unknown
-/// terminal values. In-flight statuses and empty unknown statuses return `None`.
-/// Completed responses map to `Stop`; response assembly upgrades tool-call turns.
-pub(crate) fn map_finish_reason(
-    status: &ResponseStatus,
-    incomplete_details: Option<&IncompleteDetailsReason>,
-) -> Option<completion::FinishReason> {
-    match status {
-        ResponseStatus::Completed => Some(completion::FinishReason::Stop),
-        ResponseStatus::Incomplete => Some(
-            match incomplete_details
-                .map(|details| details.reason.as_str())
-                .filter(|reason| !reason.is_empty())
-            {
-                Some("max_output_tokens") => completion::FinishReason::Length,
-                Some("content_filter") => completion::FinishReason::ContentFilter,
-                Some(other) => completion::FinishReason::Other(other.to_owned()),
-                // Incomplete without a stated reason: the status itself is all
-                // the provider told us.
-                None => {
-                    completion::FinishReason::Other(response_status_wire_name(status).to_owned())
-                }
-            },
-        ),
-        ResponseStatus::Other(status) if status.is_empty() => None,
-        ResponseStatus::Failed | ResponseStatus::Cancelled | ResponseStatus::Other(_) => Some(
-            completion::FinishReason::Other(response_status_wire_name(status).to_owned()),
-        ),
-        // The turn has not terminated, so there is genuinely no reason yet.
-        ResponseStatus::InProgress | ResponseStatus::Queued => None,
-    }
-}
-
 /// Controls where Rig system instructions are placed in an OpenAI Responses request.
 ///
 /// Serialized because it is a field of the [`wire::Responses`] wire, which is
@@ -1173,190 +973,6 @@ impl TryFrom<ResponsesRequestParams> for CompletionRequest {
     }
 }
 
-/// The standard response format from OpenAI's Responses API.
-#[derive(Clone, Debug)]
-pub struct CompletionResponse {
-    /// The ID of a completion response.
-    pub id: String,
-    /// The type of the object.
-    pub object: ResponseObject,
-    /// The time at which a given response has been created, in seconds from the UNIX epoch (01/01/1970 00:00:00).
-    pub created_at: u64,
-    /// The status of the response.
-    pub status: ResponseStatus,
-    /// Response error (optional)
-    pub error: Option<ResponseError>,
-    /// Incomplete response details (optional)
-    pub incomplete_details: Option<IncompleteDetailsReason>,
-    /// System prompt/preamble
-    pub instructions: Option<String>,
-    /// The maximum number of tokens the model should output
-    pub max_output_tokens: Option<u64>,
-    /// The model name
-    pub model: String,
-    /// Provider-specific top-level reasoning content returned by some
-    /// OpenAI-compatible Responses implementations.
-    pub provider_reasoning: Option<String>,
-    /// The complete object-shaped top-level reasoning metadata returned by the provider.
-    ///
-    /// Unknown fields, unknown values, and null-valued members inside the object
-    /// are preserved value-equivalently. A top-level null, missing field, or
-    /// unsupported non-object shape is normalized to no reasoning metadata.
-    /// When serializing manually constructed responses, [`Self::provider_reasoning`]
-    /// takes precedence over this field, and this field takes precedence over
-    /// [`Self::reasoning_context`].
-    pub reasoning_metadata: Option<Map<String, Value>>,
-    /// The effective reasoning context returned by OpenAI.
-    ///
-    /// This is populated as a convenience projection of
-    /// [`Self::reasoning_metadata`]. String-shaped reasoning returned by compatible
-    /// providers remains available through [`Self::provider_reasoning`].
-    pub reasoning_context: Option<String>,
-    /// Token usage
-    pub usage: Option<ResponsesUsage>,
-    /// The model output (messages, etc will go here)
-    pub output: Vec<Output>,
-    /// Tools
-    pub tools: Vec<ResponsesToolDefinition>,
-    /// Additional parameters
-    pub additional_parameters: AdditionalParameters,
-}
-
-#[derive(Serialize)]
-#[serde(untagged)]
-enum CompletionResponseReasoningRef<'a> {
-    Text(&'a str),
-    Metadata(&'a Map<String, Value>),
-    Context { context: &'a str },
-}
-
-#[derive(Serialize)]
-struct CompletionResponseWireRef<'a> {
-    id: &'a str,
-    object: &'a ResponseObject,
-    created_at: u64,
-    status: &'a ResponseStatus,
-    error: &'a Option<ResponseError>,
-    incomplete_details: &'a Option<IncompleteDetailsReason>,
-    instructions: &'a Option<String>,
-    max_output_tokens: &'a Option<u64>,
-    model: &'a str,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    reasoning: Option<CompletionResponseReasoningRef<'a>>,
-    usage: &'a Option<ResponsesUsage>,
-    output: &'a Vec<Output>,
-    tools: &'a Vec<ResponsesToolDefinition>,
-    #[serde(flatten)]
-    additional_parameters: &'a AdditionalParameters,
-}
-
-/// Response body with untyped echoed metadata. Metadata is decoded separately
-/// so an incompatible optional field does not reject the response.
-#[derive(Deserialize)]
-struct CompletionResponseWire {
-    id: String,
-    object: ResponseObject,
-    created_at: u64,
-    status: ResponseStatus,
-    error: Option<ResponseError>,
-    incomplete_details: Option<IncompleteDetailsReason>,
-    instructions: Option<String>,
-    max_output_tokens: Option<u64>,
-    model: String,
-    #[serde(default)]
-    reasoning: Option<Value>,
-    usage: Option<ResponsesUsage>,
-    #[serde(default)]
-    output: Vec<Output>,
-    #[serde(default)]
-    tools: Vec<ResponsesToolDefinition>,
-    #[serde(flatten)]
-    metadata: Map<String, Value>,
-}
-
-impl Serialize for CompletionResponse {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        // Omit request reasoning configuration to avoid duplicate response keys.
-        let mut additional_parameters = self.additional_parameters.clone();
-        additional_parameters.reasoning = None;
-
-        let reasoning = self
-            .provider_reasoning
-            .as_deref()
-            .map(CompletionResponseReasoningRef::Text)
-            .or_else(|| {
-                self.reasoning_metadata
-                    .as_ref()
-                    .map(CompletionResponseReasoningRef::Metadata)
-            })
-            .or_else(|| {
-                self.reasoning_context
-                    .as_deref()
-                    .map(|context| CompletionResponseReasoningRef::Context { context })
-            });
-
-        CompletionResponseWireRef {
-            id: &self.id,
-            object: &self.object,
-            created_at: self.created_at,
-            status: &self.status,
-            error: &self.error,
-            incomplete_details: &self.incomplete_details,
-            instructions: &self.instructions,
-            max_output_tokens: &self.max_output_tokens,
-            model: &self.model,
-            reasoning,
-            usage: &self.usage,
-            output: &self.output,
-            tools: &self.tools,
-            additional_parameters: &additional_parameters,
-        }
-        .serialize(serializer)
-    }
-}
-
-impl<'de> Deserialize<'de> for CompletionResponse {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let response = CompletionResponseWire::deserialize(deserializer)?;
-        let (provider_reasoning, reasoning_metadata) = match response.reasoning {
-            Some(Value::String(reasoning)) => (Some(reasoning), None),
-            Some(Value::Object(metadata)) => (None, Some(metadata)),
-            // Unsupported reasoning shapes must not reject the response.
-            _ => (None, None),
-        };
-        let reasoning_context = reasoning_metadata
-            .as_ref()
-            .and_then(|reasoning| reasoning.get("context"))
-            .and_then(Value::as_str)
-            .map(ToOwned::to_owned);
-
-        Ok(Self {
-            id: response.id,
-            object: response.object,
-            created_at: response.created_at,
-            status: response.status,
-            error: response.error,
-            incomplete_details: response.incomplete_details,
-            instructions: response.instructions,
-            max_output_tokens: response.max_output_tokens,
-            model: response.model,
-            provider_reasoning,
-            reasoning_metadata,
-            reasoning_context,
-            usage: response.usage,
-            output: response.output,
-            tools: response.tools,
-            additional_parameters: AdditionalParameters::from_response_metadata(response.metadata),
-        })
-    }
-}
-
 /// Additional parameters for the completion request type for OpenAI's Response API: <https://platform.openai.com/docs/api-reference/responses/create>
 /// Intended to be derived from [`crate::completion::request::CompletionRequest`].
 #[derive(Clone, Debug, Deserialize, Serialize, Default)]
@@ -1422,30 +1038,6 @@ where
 }
 
 impl AdditionalParameters {
-    /// Project echoed response metadata into the request-shaped parameters.
-    ///
-    /// Each key is decoded on its own; a key whose value does not fit its
-    /// field is dropped rather than failing the response. A non-numeric
-    /// `top_p` from a compatible endpoint therefore reads back as `None`.
-    fn from_response_metadata(metadata: Map<String, Value>) -> Self {
-        let mut accepted = Map::with_capacity(metadata.len());
-        for (key, value) in metadata {
-            let probe = Value::Object(Map::from_iter([(key.clone(), value.clone())]));
-            if serde_json::from_value::<Self>(probe).is_ok() {
-                accepted.insert(key, value);
-            } else {
-                tracing::debug!(
-                    target: "rig::providers::openai",
-                    field = %key,
-                    "ignoring response metadata field that does not match its expected type"
-                );
-            }
-        }
-        // Every remaining key was individually accepted, so this cannot fail;
-        // `unwrap_or_default` keeps the projection total without a panic path.
-        serde_json::from_value(Value::Object(accepted)).unwrap_or_default()
-    }
-
     pub fn to_json(self) -> serde_json::Value {
         serde_json::to_value(self).unwrap_or_else(|_| serde_json::Value::Object(Map::new()))
     }
@@ -1693,229 +1285,6 @@ pub enum Include {
     CodeInterpreterCallOutputs,
 }
 
-/// A Responses output item. Unrecognized types, including hosted tools and
-/// compaction, decode to [`Output::Unknown`] with their JSON value preserved.
-/// Malformed known types fail deserialization.
-#[derive(Clone, Debug, PartialEq)]
-pub enum Output {
-    Message(OutputMessage),
-    FunctionCall(OutputFunctionCall),
-    CustomToolCall(OutputCustomToolCall),
-    Reasoning {
-        id: String,
-        summary: Vec<ReasoningSummary>,
-        content: Vec<String>,
-        encrypted_content: Option<String>,
-        /// The upstream's signature over the reasoning text, when a gateway
-        /// relays one (OpenRouter for Claude).
-        signature: Option<String>,
-        status: Option<ToolStatus>,
-    },
-    /// Catch-all for output item types this version does not model. Holds the
-    /// raw item object exactly as it appeared in the provider's `output[]`
-    /// array, so hosted-tool payloads survive the typed decode.
-    Unknown(Value),
-}
-
-/// Deserialization fields for [`Output::Reasoning`].
-#[derive(Deserialize)]
-struct ReasoningFields {
-    id: String,
-    #[serde(default)]
-    summary: Vec<ReasoningSummary>,
-    #[serde(default, deserialize_with = "deserialize_reasoning_text_content")]
-    content: Vec<String>,
-    #[serde(default)]
-    encrypted_content: Option<String>,
-    #[serde(default)]
-    signature: Option<String>,
-    #[serde(default)]
-    status: Option<ToolStatus>,
-}
-
-impl From<ReasoningFields> for Output {
-    fn from(fields: ReasoningFields) -> Self {
-        Output::Reasoning {
-            id: fields.id,
-            summary: fields.summary,
-            content: fields.content,
-            encrypted_content: fields.encrypted_content,
-            signature: fields.signature,
-            status: fields.status,
-        }
-    }
-}
-
-/// Serializes an object payload with a `type` tag. Non-object payloads fail.
-/// Object key order is not preserved.
-fn tagged_output_object<T>(tag: &str, payload: &T) -> Result<Value, serde_json::Error>
-where
-    T: Serialize,
-{
-    let mut value = serde_json::to_value(payload)?;
-    let map = value.as_object_mut().ok_or_else(|| {
-        <serde_json::Error as serde::ser::Error>::custom(
-            "output payload must serialize to a JSON object",
-        )
-    })?;
-    map.insert("type".to_string(), Value::String(tag.to_string()));
-    Ok(value)
-}
-
-impl Serialize for Output {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        let value = match self {
-            Output::Message(message) => tagged_output_object("message", message),
-            Output::FunctionCall(call) => tagged_output_object("function_call", call),
-            Output::CustomToolCall(call) => tagged_output_object("custom_tool_call", call),
-            Output::Reasoning {
-                id,
-                summary,
-                content,
-                encrypted_content,
-                signature,
-                status,
-            } => {
-                let mut value = serde_json::json!({
-                    "type": "reasoning",
-                    "id": id,
-                    "summary": summary,
-                    "encrypted_content": encrypted_content,
-                    "status": status,
-                });
-                let map = value.as_object_mut().ok_or_else(|| {
-                    serde::ser::Error::custom("reasoning output must serialize to an object")
-                })?;
-                if !content.is_empty() {
-                    map.insert("content".to_string(), reasoning_text_content_json(content));
-                }
-                if let Some(signature) = signature {
-                    map.insert("signature".to_string(), Value::String(signature.clone()));
-                }
-                Ok(value)
-            }
-            Output::Unknown(value) => return value.serialize(serializer),
-        };
-        value
-            .map_err(serde::ser::Error::custom)?
-            .serialize(serializer)
-    }
-}
-
-impl<'de> Deserialize<'de> for Output {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        // Preserve unmodeled items, including absent or non-string tags.
-        // Malformed bodies with known tags must still fail.
-        let value = Value::deserialize(deserializer)?;
-        let Some(tag) = value.get("type").and_then(Value::as_str) else {
-            return Ok(Output::Unknown(value));
-        };
-        match tag {
-            "message" => serde_json::from_value(value)
-                .map(Output::Message)
-                .map_err(serde::de::Error::custom),
-            "function_call" => serde_json::from_value(value)
-                .map(Output::FunctionCall)
-                .map_err(serde::de::Error::custom),
-            "custom_tool_call" => serde_json::from_value(value)
-                .map(Output::CustomToolCall)
-                .map_err(serde::de::Error::custom),
-            "reasoning" => serde_json::from_value::<ReasoningFields>(value)
-                .map(Output::from)
-                .map_err(serde::de::Error::custom),
-            _ => Ok(Output::Unknown(value)),
-        }
-    }
-}
-
-/// An OpenAI Responses API tool call. A call ID will be returned that must be used when creating a tool result to send back to OpenAI as a message input, otherwise an error will be received.
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
-pub struct OutputFunctionCall {
-    /// Provider-assigned `fc_...` item ID. The Responses API rejects
-    /// `function_call` input IDs that are not native `fc` item IDs, so IDs
-    /// minted outside the Responses API (by Rig's agent loop or another
-    /// provider) are omitted on serialization and the call is paired with its
-    /// output by `call_id` alone.
-    #[serde(default, skip_serializing_if = "is_not_function_call_item_id")]
-    pub id: String,
-    pub arguments: FunctionCallArguments,
-    pub call_id: String,
-    pub name: String,
-    pub status: ToolStatus,
-}
-
-/// A call to a custom tool, whose input is free-form text rather than JSON
-/// arguments. Rig's canonical call carries it as `{"input": <text>}`.
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
-pub struct OutputCustomToolCall {
-    /// Provider-assigned `ctc_...` item ID.
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub id: String,
-    pub call_id: String,
-    pub name: String,
-    #[serde(default)]
-    pub input: String,
-}
-
-/// Raw Responses function-call arguments, parsed as JSON at consumption time.
-/// Truncated arguments remain valid wire data; parsing them can fail without
-/// discarding the enclosing response or its terminal status.
-#[derive(Clone, Debug, PartialEq)]
-pub struct FunctionCallArguments(String);
-
-impl FunctionCallArguments {
-    /// Parse the raw wire string into JSON arguments. An empty string is a
-    /// parameterless invocation (`{}`); anything else must parse as JSON.
-    pub fn parse(&self) -> serde_json::Result<serde_json::Value> {
-        json_utils::parse_tool_arguments(&self.0)
-    }
-
-    /// The raw wire string, exactly as the provider sent it.
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-impl From<serde_json::Value> for FunctionCallArguments {
-    /// Encode already-parsed arguments (Rig's canonical tool-call form) in
-    /// the wire's stringified-JSON spelling.
-    fn from(value: serde_json::Value) -> Self {
-        Self(value.to_string())
-    }
-}
-
-impl Serialize for FunctionCallArguments {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        serializer.serialize_str(&self.0)
-    }
-}
-
-impl<'de> Deserialize<'de> for FunctionCallArguments {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        // The wire spells arguments as a string; a non-string payload is
-        // still a schema defect of the known `function_call` shape.
-        String::deserialize(deserializer).map(Self)
-    }
-}
-
-/// See [`OutputFunctionCall::id`]: only provider-native `fc` item IDs may be
-/// sent back to the Responses API.
-fn is_not_function_call_item_id(id: &str) -> bool {
-    !id.starts_with("fc_")
-}
-
 /// The status of a given tool.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
@@ -1926,29 +1295,6 @@ pub enum ToolStatus {
     /// A status rig does not model, kept as it came.
     #[serde(untagged)]
     Other(String),
-}
-
-/// An output message from OpenAI's Responses API.
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
-pub struct OutputMessage {
-    /// The message ID. Must be included when sending the message back to OpenAI
-    pub id: String,
-    /// The role (currently only Assistant is available as this struct is only created when receiving an LLM message as a response)
-    pub role: OutputRole,
-    /// The status of the response
-    pub status: ResponseStatus,
-    /// The actual message content
-    pub content: Vec<AssistantContent>,
-    /// Generation phase, such as `"final_answer"`, preserved for follow-up requests.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub phase: Option<String>,
-}
-
-/// The role of an output message.
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
-#[serde(rename_all = "snake_case")]
-pub enum OutputRole {
-    Assistant,
 }
 
 /// A system or user message of a Responses request.
@@ -1975,41 +1321,6 @@ impl Message {
         Message::System {
             content: vec![content.to_owned().into()],
             name: None,
-        }
-    }
-}
-
-/// Text assistant content.
-/// Note that the text type in comparison to the Completions API is actually `output_text` rather than `text`.
-#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
-#[serde(tag = "type", rename_all = "snake_case")]
-pub enum AssistantContent {
-    OutputText(OutputText),
-    Refusal {
-        refusal: String,
-    },
-    /// A content part of a kind rig does not model, kept as it came.
-    #[serde(untagged)]
-    Unknown(Value),
-}
-
-/// Responses `output_text` block with unmodeled sibling fields preserved as JSON.
-#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
-pub struct OutputText {
-    pub text: String,
-    /// OpenAI's sibling keys, preserved verbatim for value-equal replay.
-    /// The `Map` form (not `Option<Value>`) makes absence and the empty map
-    /// one value, so a decoded bare block equals a request-assembled one.
-    #[serde(flatten, default, skip_serializing_if = "Map::is_empty")]
-    pub extras: Map<String, Value>,
-}
-
-impl OutputText {
-    /// A bare text block, as request assembly emits (no wire extras).
-    pub fn new(text: impl Into<String>) -> Self {
-        Self {
-            text: text.into(),
-            extras: Map::new(),
         }
     }
 }

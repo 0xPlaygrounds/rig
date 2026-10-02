@@ -376,16 +376,12 @@ async fn a_chatgpt_reply_captures_the_terminal_response_object_as_raw() {
     ] {
         let response = folded_unary(chatgpt(), body).await;
 
-        let typed: crate::providers::openai::responses_api::CompletionResponse =
-            serde_json::from_value(response.raw.clone())
-                .expect("raw must deserialize back into the wire type");
         assert_eq!(
-            serde_json::to_value(&typed).expect("re-serialize"),
-            response.raw,
-            "{case}: the capture must be exactly what the wire type serializes to"
+            response.raw["object"], "response",
+            "{case}: the capture is the terminal response object"
         );
         assert_eq!(response.raw["service_tier"], "default", "{case}");
-        assert_eq!(typed.id, "resp_chatgpt_raw", "{case}");
+        assert_eq!(response.raw["id"], "resp_chatgpt_raw", "{case}");
 
         assert_eq!(response.choice.len(), 1, "{case}: one message");
         assert_eq!(response.text(), "hi", "{case}: the deltas are the content");

@@ -20,7 +20,7 @@
 //! The chat route is the primary surface (each turn's payload is an
 //! `openai::CompletionResponse` whose `id` is a `chatcmpl-` id); the
 //! Responses route repeats the hook and multi-turn cells (payload
-//! `openai::responses_api::CompletionResponse`, `resp_` ids). Per-attempt
+//! the Responses response object, `resp_` ids). Per-attempt
 //! identity is proven the way `response_identity.rs` proves it: each
 //! recorded interaction's response id, in wire order, is the id the matching
 //! `raw` carries — replay-exact, presence-checked while recording because

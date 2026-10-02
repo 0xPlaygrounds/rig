@@ -14,7 +14,7 @@
 //!
 //! Copilot relays two request shapes, so `raw` has two shapes — the shared
 //! [`openai::CompletionResponse`] on the chat-completions route, the
-//! [`responses_api::CompletionResponse`] on the Responses route — and the
+//! Responses response object on the Responses route, and the
 //! route is decided by the model id alone
 //! ([`wire::routes_through_responses`](rig::providers::copilot::wire::routes_through_responses)).
 //! `raw` carries no routing tag: the body is the provider's, and the tag was
@@ -30,7 +30,7 @@
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
 //! | 1 | `chat_raw_with_request_id_reproduces_completion` | chat route | `raw` reads back as [`openai::CompletionResponse`], re-normalizes to the same identity/finish_reason/model/usage, and `provider_request_id` is the recorded `x-request-id` | unrecorded (no COPILOT credentials in this environment) |
-//! | 2 | `responses_raw_completion_carries_request_id` | responses route | the same, with `raw` reading back as [`responses_api::CompletionResponse`] | unrecorded (no COPILOT credentials in this environment) |
+//! | 2 | `responses_raw_completion_carries_request_id` | responses route | the same, with `raw` the Responses route's own reply object | unrecorded (no COPILOT credentials in this environment) |
 //!
 //! Every cell is unrecorded: none of `GITHUB_COPILOT_API_KEY`,
 //! `COPILOT_API_KEY`, `COPILOT_GITHUB_ACCESS_TOKEN`/`GITHUB_TOKEN` nor a Copilot
@@ -46,7 +46,6 @@
 use rig::completion::FinishReason;
 use rig::providers::copilot;
 use rig::providers::openai;
-use rig::providers::openai::responses_api;
 use rig::providers::openai::wire::OpenAiWire;
 use serde::Deserialize;
 use serde_json::Value;
@@ -166,16 +165,11 @@ async fn responses_raw_completion_carries_request_id() {
     .expect("responses_raw_completion_carries_request_id should replay from its cassette");
 
     let response = captured.take();
-    let typed = responses_api::CompletionResponse::deserialize(&response.raw)
-        .expect("`raw` is the Responses route's own reply body");
-    responses::assert_native_matches_normalized(
-        &response,
-        &typed,
-        "the Responses route's own body",
-    );
+    let typed = &response.raw;
+    responses::assert_native_matches_normalized(&response, typed, "the Responses route's own body");
     assert_eq!(response.provider(), COPILOT_PROVIDER);
     assert_eq!(
-        Some(typed.id.as_str()),
+        typed["id"].as_str(),
         response.identity().response_id.as_deref()
     );
 

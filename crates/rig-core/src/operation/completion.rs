@@ -101,10 +101,12 @@ impl Operation for Completion {
             .take()
             .filter(|model| !model.is_empty())
             .or_else(|| Some(target.model().to_owned()).filter(|model| !model.is_empty()));
+        let stored = target.continues_stored(&request);
         request.chat_history = crate::completion::history::adapt_for_model(
             &request.chat_history,
             target,
             request.model.as_deref(),
+            stored,
         );
         request.validate_message_content()?;
         Ok(request)

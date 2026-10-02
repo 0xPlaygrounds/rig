@@ -7,32 +7,19 @@ use std::collections::HashMap;
 /// The choice a body's `output[]` folds to, through the ONE interpreter: the
 /// decoder's unary variant synthesizes the stream's events and the shared
 /// fold turns them into the response — the two steps a unary reply takes.
-pub(super) fn folded_choice(output: Vec<Output>) -> Vec<completion::AssistantContent> {
-    let response = CompletionResponse {
-        id: "resp_1".to_string(),
-        object: ResponseObject::Response,
-        created_at: 0,
-        status: ResponseStatus::Completed,
-        error: None,
-        incomplete_details: None,
-        instructions: None,
-        max_output_tokens: None,
-        model: "gpt-5-mini".to_string(),
-        provider_reasoning: None,
-        reasoning_metadata: None,
-        reasoning_context: None,
-        usage: None,
-        output,
-        tools: Vec::new(),
-        additional_parameters: AdditionalParameters::default(),
-    };
+pub(super) fn folded_choice(output: Vec<Value>) -> Vec<completion::AssistantContent> {
+    let response = json!({
+        "id": "resp_1",
+        "object": "response",
+        "status": "completed",
+        "model": "gpt-5-mini",
+        "output": output,
+    });
     fold_body(response).expect("the body folds").choice
 }
 
 /// A whole Responses body decoded as the OpenAI wire's unary reply.
-fn fold_body(
-    response: CompletionResponse,
-) -> Result<completion::CompletionResponse, ProviderError> {
+fn fold_body(response: Value) -> Result<completion::CompletionResponse, ProviderError> {
     let body = serde_json::to_string(&response)?;
     crate::test_utils::decode_reply(
         &openai_wire("gpt-5-mini"),
@@ -712,166 +699,6 @@ fn responses_explicit_strict_tool_stays_strict_on_a_default_wire() {
     );
 }
 
-fn response_with_service_tier(service_tier: &str) -> Value {
-    json!({
-        "id": "resp_123",
-        "object": "response",
-        "created_at": 0,
-        "status": "completed",
-        "model": "gpt-5.4",
-        "output": [],
-        "service_tier": service_tier,
-    })
-}
-
-#[test]
-fn completion_response_deserializes_standard_service_tier() {
-    let response: CompletionResponse =
-        serde_json::from_value(response_with_service_tier("standard"))
-            .expect("response should deserialize");
-
-    assert!(matches!(
-        response.additional_parameters.service_tier,
-        Some(OpenAIServiceTier::Standard)
-    ));
-}
-
-#[test]
-fn completion_response_deserializes_priority_service_tier() {
-    let response: CompletionResponse =
-        serde_json::from_value(response_with_service_tier("priority"))
-            .expect("response should deserialize");
-
-    assert!(matches!(
-        response.additional_parameters.service_tier,
-        Some(OpenAIServiceTier::Priority)
-    ));
-}
-
-#[test]
-fn completion_response_preserves_unknown_service_tier() {
-    let response: CompletionResponse =
-        serde_json::from_value(response_with_service_tier("provider_experimental"))
-            .expect("response should deserialize");
-
-    let Some(OpenAIServiceTier::Other(service_tier)) = response.additional_parameters.service_tier
-    else {
-        panic!("expected provider-specific service tier");
-    };
-
-    assert_eq!(service_tier, "provider_experimental");
-}
-
-/// A response whose echoed `top_p` is object-shaped, as MiniMax-style
-/// Responses endpoints emit it, carrying a valid tool call (rig#2483).
-fn response_with_object_top_p() -> Value {
-    json!({
-        "id": "resp_123",
-        "object": "response",
-        "created_at": 0,
-        "status": "completed",
-        "model": "MiniMax-M2",
-        "top_p": { "value": 0.95 },
-        "service_tier": "default",
-        "output": [{
-            "type": "function_call",
-            "id": "fc_1",
-            "call_id": "call_1",
-            "name": "get_weather",
-            "arguments": "{\"location\":\"Paris\"}",
-            "status": "completed"
-        }],
-        "usage": {
-            "input_tokens": 10,
-            "output_tokens": 5,
-            "total_tokens": 15
-        }
-    })
-}
-
-/// One optional metadata field disagreeing with its Rust type must never
-/// discard the response: the tool call and usage survive, `top_p` reads
-/// back as `None`, and sibling metadata still decodes (rig#2483).
-#[test]
-fn completion_response_tolerates_object_shaped_top_p() {
-    let response: CompletionResponse = serde_json::from_value(response_with_object_top_p())
-        .expect("an object-shaped top_p must not fail the response");
-
-    assert_eq!(response.additional_parameters.top_p, None);
-    assert!(matches!(
-        response.additional_parameters.service_tier,
-        Some(OpenAIServiceTier::Default)
-    ));
-    assert!(
-        matches!(response.output.first(), Some(Output::FunctionCall(call)) if call.name == "get_weather"),
-        "the tool call must survive metadata decode failures: {:?}",
-        response.output
-    );
-    assert_eq!(response.usage.map(|usage| usage.total_tokens), Some(15));
-}
-
-/// Numeric `top_p` still decodes — including under
-/// `serde_json/arbitrary_precision`, where a `#[serde(flatten)]` into `f64`
-/// used to reject it because buffered numbers arrive as an internal map
-/// (rig#2493). Run this module with and without that feature.
-#[test]
-fn completion_response_decodes_numeric_top_p() {
-    let mut body = response_with_object_top_p();
-    body["top_p"] = json!(0.95);
-    let response: CompletionResponse =
-        serde_json::from_str(&body.to_string()).expect("numeric top_p must decode");
-
-    assert_eq!(response.additional_parameters.top_p, Some(0.95));
-    assert!(matches!(
-        response.output.first(),
-        Some(Output::FunctionCall(_))
-    ));
-}
-
-/// The metadata projection is per key: a bad `top_p` does not take
-/// `service_tier` or `store` down with it, and vice versa.
-#[test]
-fn completion_response_drops_only_the_mistyped_metadata_key() {
-    let mut body = response_with_object_top_p();
-    body["store"] = json!("not-a-bool");
-    body["top_p"] = json!(0.5);
-    body["prompt_cache_key"] = json!("cache-1");
-    let response: CompletionResponse =
-        serde_json::from_value(body).expect("a mistyped store must not fail the response");
-
-    assert_eq!(response.additional_parameters.store, None);
-    assert_eq!(response.additional_parameters.top_p, Some(0.5));
-    assert_eq!(
-        response.additional_parameters.prompt_cache_key.as_deref(),
-        Some("cache-1")
-    );
-}
-
-/// The serializer still emits the echoed metadata it decoded, so a well-formed
-/// OpenAI body round-trips on every field the wire serializer writes.
-#[test]
-fn completion_response_round_trips_echoed_metadata() {
-    let mut body = response_with_object_top_p();
-    body["top_p"] = json!(1.0);
-    body["store"] = json!(true);
-    body["metadata"] = json!({ "k": "v" });
-    let response: CompletionResponse =
-        serde_json::from_value(body.clone()).expect("response should deserialize");
-    let serialized = serde_json::to_value(&response).expect("response should serialize");
-
-    for key in [
-        "top_p",
-        "store",
-        "metadata",
-        "service_tier",
-        "usage",
-        "output",
-        "model",
-    ] {
-        assert_eq!(serialized[key], body[key], "field {key} must round-trip");
-    }
-}
-
 #[test]
 fn responses_request_keeps_documents_after_lifted_system_messages() {
     let request = crate::completion::CompletionRequest::new("Prompt")
@@ -987,55 +814,8 @@ fn service_tier_serializes_expected_strings() {
 }
 
 #[test]
-fn responses_usage_token_usage_preserves_reasoning_tokens() {
-    let usage = ResponsesUsage {
-        input_tokens: 100,
-        input_tokens_details: Some(InputTokensDetails {
-            cached_tokens: 25,
-            cache_write_tokens: None,
-        }),
-        output_tokens: 50,
-        output_tokens_details: Some(OutputTokensDetails {
-            reasoning_tokens: 15,
-        }),
-        total_tokens: 150,
-    };
-
-    let token_usage = crate::completion::Usage::from(&usage);
-
-    assert_eq!(token_usage.input_tokens, Some(100));
-    assert_eq!(token_usage.cached_input_tokens, Some(25));
-    assert_eq!(token_usage.output_tokens, Some(50));
-    assert_eq!(token_usage.reasoning_tokens, Some(15));
-    assert_eq!(token_usage.total_tokens, Some(150));
-}
-
-#[test]
-fn responses_usage_deserializes_without_output_token_details() {
-    let usage: ResponsesUsage = serde_json::from_value(json!({
-        "input_tokens": 100,
-        "input_tokens_details": {
-            "cached_tokens": 25
-        },
-        "output_tokens": 50,
-        "total_tokens": 150
-    }))
-    .expect("usage should deserialize when output token details are omitted");
-
-    assert!(usage.output_tokens_details.is_none());
-
-    let token_usage = crate::completion::Usage::from(&usage);
-
-    assert_eq!(token_usage.input_tokens, Some(100));
-    assert_eq!(token_usage.cached_input_tokens, Some(25));
-    assert_eq!(token_usage.output_tokens, Some(50));
-    assert_eq!(token_usage.reasoning_tokens, None);
-    assert_eq!(token_usage.total_tokens, Some(150));
-}
-
-#[test]
 fn completion_response_accepts_top_level_reasoning_string() {
-    let response: CompletionResponse = serde_json::from_value(json!({
+    let response = json!({
         "id": "resp_123",
         "object": "response",
         "created_at": 0,
@@ -1059,19 +839,7 @@ fn completion_response_accepts_top_level_reasoning_string() {
             }]
         }],
         "tools": []
-    }))
-    .expect("mistral.rs-style reasoning string should deserialize");
-
-    assert_eq!(
-        response.provider_reasoning.as_deref(),
-        Some("thinking through the answer")
-    );
-    assert_eq!(response.reasoning_metadata, None);
-    assert_eq!(response.reasoning_context, None);
-    assert_eq!(
-        serde_json::to_value(&response).expect("response should serialize")["reasoning"],
-        json!("thinking through the answer")
-    );
+    });
 
     let completion: completion::CompletionResponse =
         fold_body(response).expect("response should convert");
@@ -1084,35 +852,8 @@ fn completion_response_accepts_top_level_reasoning_string() {
 }
 
 #[test]
-fn completion_response_accepts_null_metadata() {
-    let response: CompletionResponse = serde_json::from_value(json!({
-        "id": "resp_123",
-        "object": "response",
-        "created_at": 0,
-        "status": "completed",
-        "model": "openai-compatible-model",
-        "metadata": null,
-        "output": [{
-            "type": "message",
-            "id": "msg_123",
-            "status": "completed",
-            "role": "assistant",
-            "content": [{
-                "type": "output_text",
-                "annotations": [],
-                "text": "done"
-            }]
-        }],
-        "tools": []
-    }))
-    .expect("response with null metadata should deserialize");
-
-    assert!(response.additional_parameters.metadata.is_empty());
-}
-
-#[test]
 fn completion_response_accepts_reasoning_only_response() {
-    let response: CompletionResponse = serde_json::from_value(json!({
+    let response = json!({
         "id": "resp_123",
         "object": "response",
         "created_at": 0,
@@ -1126,8 +867,7 @@ fn completion_response_accepts_reasoning_only_response() {
         },
         "output": [],
         "tools": []
-    }))
-    .expect("reasoning-only response should deserialize");
+    });
 
     let completion: completion::CompletionResponse =
         fold_body(response).expect("reasoning-only response should convert");
@@ -1147,7 +887,7 @@ fn truncated_incomplete_response_surfaces_length_not_an_error() {
     // rig-induced-empty. On `status: incomplete` the finish reason is the
     // diagnostic the caller needs — the emptiness guard must not eat it,
     // which is exactly how the streaming path already behaves.
-    let response: CompletionResponse = serde_json::from_value(json!({
+    let response = json!({
         "id": "resp_123",
         "object": "response",
         "created_at": 0,
@@ -1156,8 +896,7 @@ fn truncated_incomplete_response_surfaces_length_not_an_error() {
         "model": "gpt-test",
         "output": [],
         "tools": []
-    }))
-    .expect("incomplete response shape should deserialize");
+    });
 
     let completion =
         fold_body(response).expect("truncated incomplete response must not be an error");
@@ -1169,92 +908,9 @@ fn truncated_incomplete_response_surfaces_length_not_an_error() {
     );
 }
 
-fn incomplete_because(reason: &str) -> IncompleteDetailsReason {
-    IncompleteDetailsReason {
-        reason: reason.to_string(),
-    }
-}
-
-#[test]
-fn finish_reason_maps_every_documented_terminal_state() {
-    assert_eq!(
-        map_finish_reason(&ResponseStatus::Completed, None),
-        Some(completion::FinishReason::Stop)
-    );
-    assert_eq!(
-        map_finish_reason(
-            &ResponseStatus::Incomplete,
-            Some(&incomplete_because("max_output_tokens"))
-        ),
-        Some(completion::FinishReason::Length)
-    );
-    assert_eq!(
-        map_finish_reason(
-            &ResponseStatus::Incomplete,
-            Some(&incomplete_because("content_filter"))
-        ),
-        Some(completion::FinishReason::ContentFilter)
-    );
-    // `incomplete_details` on a completed turn is not a termination reason.
-    assert_eq!(
-        map_finish_reason(
-            &ResponseStatus::Completed,
-            Some(&incomplete_because("noise"))
-        ),
-        Some(completion::FinishReason::Stop)
-    );
-    // In-flight statuses are not terminations at all.
-    assert_eq!(map_finish_reason(&ResponseStatus::InProgress, None), None);
-    assert_eq!(map_finish_reason(&ResponseStatus::Queued, None), None);
-}
-
-#[test]
-fn finish_reason_preserves_unknown_values_verbatim() {
-    // A reason OpenAI adds later must survive in OpenAI's own spelling
-    // rather than being smoothed into a natural stop.
-    assert_eq!(
-        map_finish_reason(
-            &ResponseStatus::Incomplete,
-            Some(&incomplete_because("MAX_TOOL_CALLS"))
-        ),
-        Some(completion::FinishReason::Other(
-            "MAX_TOOL_CALLS".to_string()
-        ))
-    );
-    // So must a terminal status with no normalized counterpart, and an
-    // `incomplete` that states no reason.
-    assert_eq!(
-        map_finish_reason(&ResponseStatus::Failed, None),
-        Some(completion::FinishReason::Other("failed".to_string()))
-    );
-    assert_eq!(
-        map_finish_reason(&ResponseStatus::Cancelled, None),
-        Some(completion::FinishReason::Other("cancelled".to_string()))
-    );
-    let status: ResponseStatus = serde_json::from_str(r#""throttled""#)
-        .expect("an unknown provider status should deserialize");
-    assert_eq!(status, ResponseStatus::Other("throttled".to_string()));
-    assert_eq!(
-        map_finish_reason(&status, None),
-        Some(completion::FinishReason::Other("throttled".to_string()))
-    );
-    assert_eq!(
-        serde_json::to_string(&status).expect("unknown status should serialize"),
-        r#""throttled""#
-    );
-    assert_eq!(
-        map_finish_reason(&ResponseStatus::Incomplete, None),
-        Some(completion::FinishReason::Other("incomplete".to_string()))
-    );
-    assert_eq!(
-        map_finish_reason(&ResponseStatus::Incomplete, Some(&incomplete_because(""))),
-        Some(completion::FinishReason::Other("incomplete".to_string()))
-    );
-}
-
 #[test]
 fn completion_response_completed_with_tool_call_reports_tool_calls() {
-    let response: CompletionResponse = serde_json::from_value(json!({
+    let response = json!({
         "id": "resp_123",
         "object": "response",
         "created_at": 0,
@@ -1269,8 +925,7 @@ fn completion_response_completed_with_tool_call_reports_tool_calls() {
             "status": "completed"
         }],
         "tools": []
-    }))
-    .expect("response should deserialize");
+    });
 
     let completion: completion::CompletionResponse =
         fold_body(response).expect("response should convert");
@@ -1285,7 +940,7 @@ fn completion_response_completed_with_tool_call_reports_tool_calls() {
 
 #[test]
 fn completion_response_incomplete_reports_the_truncation_reason() {
-    let response: CompletionResponse = serde_json::from_value(json!({
+    let response = json!({
         "id": "resp_123",
         "object": "response",
         "created_at": 0,
@@ -1300,8 +955,7 @@ fn completion_response_incomplete_reports_the_truncation_reason() {
             "content": [{ "type": "output_text", "annotations": [], "text": "half an ans" }]
         }],
         "tools": []
-    }))
-    .expect("response should deserialize");
+    });
 
     let completion: completion::CompletionResponse =
         fold_body(response).expect("response should convert");
@@ -1314,7 +968,7 @@ fn completion_response_incomplete_reports_the_truncation_reason() {
 
 #[test]
 fn completion_response_preserves_context_without_treating_config_as_text() {
-    let response: CompletionResponse = serde_json::from_value(json!({
+    let response = json!({
         "id": "resp_123",
         "object": "response",
         "created_at": 0,
@@ -1338,133 +992,13 @@ fn completion_response_preserves_context_without_treating_config_as_text() {
             }]
         }],
         "tools": []
-    }))
-    .expect("object-shaped reasoning should be tolerated");
-
-    assert!(response.provider_reasoning.is_none());
-    assert_eq!(response.reasoning_context.as_deref(), Some("all_turns"));
-    assert_eq!(
-        response.reasoning_metadata.as_ref(),
-        json!({
-            "context": "all_turns",
-            "effort": "high",
-            "mode": "standard",
-            "summary": null
-        })
-        .as_object()
-    );
-    assert_eq!(
-        serde_json::to_value(&response).expect("response should serialize")["reasoning"],
-        json!({
-            "context": "all_turns",
-            "effort": "high",
-            "mode": "standard",
-            "summary": null
-        })
-    );
+    });
 
     let completion: completion::CompletionResponse =
         fold_body(response).expect("response should convert");
     let items = completion.choice.iter().collect::<Vec<_>>();
     assert_eq!(items.len(), 1);
     assert!(matches!(items[0], completion::AssistantContent::Text(_)));
-}
-
-#[test]
-fn completion_response_preserves_unknown_reasoning_metadata_and_nulls() {
-    let metadata = json!({
-        "context": "future_context",
-        "effort": "ultra",
-        "summary": null,
-        "future_control": { "depth": 3 }
-    });
-    let response: CompletionResponse = serde_json::from_value(json!({
-        "id": "resp_123",
-        "object": "response",
-        "created_at": 0,
-        "status": "completed",
-        "model": "gpt-future",
-        "reasoning": metadata,
-        "output": [],
-        "tools": []
-    }))
-    .expect("unknown reasoning metadata should deserialize");
-
-    assert_eq!(
-        response.reasoning_context.as_deref(),
-        Some("future_context")
-    );
-    assert_eq!(response.reasoning_metadata.as_ref(), metadata.as_object());
-    assert_eq!(
-        serde_json::to_value(&response).expect("response should serialize")["reasoning"],
-        metadata
-    );
-}
-
-#[test]
-fn completion_response_ignores_unsupported_reasoning_shapes() {
-    for reasoning in [Value::Null, json!(["unexpected"]), json!(42), json!(true)] {
-        let response: CompletionResponse = serde_json::from_value(json!({
-            "id": "resp_123",
-            "object": "response",
-            "created_at": 0,
-            "status": "completed",
-            "model": "openai-compatible-model",
-            "reasoning": reasoning,
-            "output": [],
-            "tools": []
-        }))
-        .expect("unsupported reasoning shapes should remain non-fatal");
-
-        assert_eq!(response.provider_reasoning, None);
-        assert_eq!(response.reasoning_metadata, None);
-        assert_eq!(response.reasoning_context, None);
-        let serialized = serde_json::to_value(&response).expect("response should serialize");
-        assert!(
-            !serialized
-                .as_object()
-                .expect("response should serialize as an object")
-                .contains_key("reasoning")
-        );
-    }
-}
-
-#[test]
-fn completion_response_reasoning_serialization_precedence_is_stable() {
-    let mut response: CompletionResponse = serde_json::from_value(json!({
-        "id": "resp_123",
-        "object": "response",
-        "created_at": 0,
-        "status": "completed",
-        "model": "gpt-5.6",
-        "reasoning": { "context": "all_turns", "effort": "max" },
-        "output": [],
-        "tools": []
-    }))
-    .expect("reasoning metadata should deserialize");
-
-    response.reasoning_context = Some("current_turn".to_owned());
-    response.additional_parameters.reasoning =
-        Some(Reasoning::new().with_effort(ReasoningEffort::Low));
-    let serialized = serde_json::to_string(&response).expect("response should serialize");
-    assert_eq!(serialized.matches("\"reasoning\":").count(), 1);
-    assert_eq!(
-        serde_json::to_value(&response).expect("response should serialize")["reasoning"],
-        json!({ "context": "all_turns", "effort": "max" })
-    );
-
-    let metadata = response.reasoning_metadata.take();
-    assert_eq!(
-        serde_json::to_value(&response).expect("response should serialize")["reasoning"],
-        json!({ "context": "current_turn" })
-    );
-
-    response.reasoning_metadata = metadata;
-    response.provider_reasoning = Some("compatible-provider text".to_owned());
-    assert_eq!(
-        serde_json::to_value(&response).expect("response should serialize")["reasoning"],
-        json!("compatible-provider text")
-    );
 }
 
 fn request_with_reasoning_params(reasoning: Value) -> CompletionRequest {
@@ -1540,7 +1074,7 @@ fn reasoning_omits_unset_optional_fields() {
 
 #[test]
 fn completion_response_does_not_duplicate_structured_reasoning() {
-    let response: CompletionResponse = serde_json::from_value(json!({
+    let response = json!({
         "id": "resp_123",
         "object": "response",
         "created_at": 0,
@@ -1566,8 +1100,7 @@ fn completion_response_does_not_duplicate_structured_reasoning() {
             }]
         }],
         "tools": []
-    }))
-    .expect("response should deserialize");
+    });
 
     let completion: completion::CompletionResponse =
         fold_body(response).expect("response should convert");
@@ -1578,38 +1111,6 @@ fn completion_response_does_not_duplicate_structured_reasoning() {
         .count();
 
     assert_eq!(reasoning_count, 1);
-}
-
-#[test]
-fn responses_usage_add_preserves_rhs_details_when_lhs_details_are_absent() {
-    let lhs = ResponsesUsage {
-        input_tokens: 10,
-        input_tokens_details: None,
-        output_tokens: 20,
-        output_tokens_details: None,
-        total_tokens: 30,
-    };
-    let rhs = ResponsesUsage {
-        input_tokens: 3,
-        input_tokens_details: Some(InputTokensDetails {
-            cached_tokens: 2,
-            cache_write_tokens: None,
-        }),
-        output_tokens: 5,
-        output_tokens_details: Some(OutputTokensDetails {
-            reasoning_tokens: 4,
-        }),
-        total_tokens: 8,
-    };
-
-    let usage = lhs + rhs;
-    let token_usage = crate::completion::Usage::from(&usage);
-
-    assert_eq!(token_usage.input_tokens, Some(13));
-    assert_eq!(token_usage.cached_input_tokens, Some(2));
-    assert_eq!(token_usage.output_tokens, Some(25));
-    assert_eq!(token_usage.reasoning_tokens, Some(4));
-    assert_eq!(token_usage.total_tokens, Some(38));
 }
 
 #[test]
@@ -1666,54 +1167,6 @@ async fn responses_completion_http_non_success_preserves_status_and_body() {
 }
 
 #[test]
-fn output_unknown_preserves_hosted_tool_payload() {
-    let item = json!({
-        "type": "web_search_call",
-        "id": "ws_001",
-        "status": "completed",
-        "action": { "type": "search", "queries": ["rig framework"] },
-    });
-
-    let output: Output =
-        serde_json::from_value(item.clone()).expect("unknown output should deserialize");
-
-    let Output::Unknown(value) = output else {
-        panic!("expected Output::Unknown for an unmodeled item type");
-    };
-    assert_eq!(value, item);
-}
-
-#[test]
-fn output_unknown_round_trips_value_equal() {
-    let item = json!({
-        "type": "file_search_call",
-        "id": "fs_007",
-        "status": "in_progress",
-        "queries": ["lifecycle"],
-    });
-
-    let output: Output =
-        serde_json::from_value(item.clone()).expect("unknown output should deserialize");
-    let serialized = serde_json::to_value(&output).expect("unknown output should serialize");
-
-    assert_eq!(serialized, item);
-}
-
-#[test]
-fn output_known_variant_with_bad_body_errors() {
-    // A recognized `type` tag with a malformed body must still error rather
-    // than silently degrading to `Output::Unknown`.
-    let malformed = json!({
-        "type": "function_call",
-        "id": "call_1",
-        // missing `arguments`, `call_id`, `name`
-    });
-
-    let result: Result<Output, _> = serde_json::from_value(malformed);
-    assert!(result.is_err());
-}
-
-#[test]
 fn completion_response_with_unknown_output_keeps_usage() {
     // Guards the original reason the catch-all exists: an unknown item must
     // not break decoding of the whole response or drop token usage.
@@ -1746,146 +1199,14 @@ fn completion_response_with_unknown_output_keeps_usage() {
         },
     });
 
-    let response: CompletionResponse =
-        serde_json::from_value(response).expect("response should deserialize");
-
-    assert!(matches!(response.output.first(), Some(Output::Unknown(_))));
-    let usage = response.usage.expect("usage should be present");
-    assert_eq!(usage.total_tokens, 150);
-}
-
-#[test]
-fn output_known_variant_round_trips_value_equal() {
-    // The hand-written Serialize must reproduce the modeled wire shape, so a
-    // decoded known item re-serializes value-equal to what it came from
-    // (guards the `function_call` arm, including its stringified `arguments`).
-    // The item ID uses the provider-native `fc_` prefix; other IDs are
-    // intentionally dropped on serialization (see `OutputFunctionCall::id`).
-    let item = json!({
-        "type": "function_call",
-        "id": "fc_1",
-        "arguments": "{}",
-        "call_id": "c1",
-        "name": "search",
-        "status": "completed",
-    });
-
-    let output: Output =
-        serde_json::from_value(item.clone()).expect("known output should deserialize");
-    assert!(matches!(output, Output::FunctionCall(_)));
-
-    let serialized = serde_json::to_value(&output).expect("known output should serialize");
-    assert_eq!(serialized, item);
-}
-
-#[test]
-fn output_reasoning_round_trips_value_equal() {
-    // Highest-value parity guard: the `Reasoning` struct variant threads its
-    // fields by hand in *both* directions. Populated `encrypted_content` /
-    // `status` (the `#[serde(default)]` optionals) must survive
-    // serialize -> deserialize unchanged — catching a dropped field or a
-    // forgotten `reasoning` dispatch arm (which would degrade to `Unknown`).
-    let original = Output::Reasoning {
-        id: "reasoning_1".to_string(),
-        summary: vec![ReasoningSummary::SummaryText {
-            text: "weighing options".to_string(),
-        }],
-        content: vec!["private reasoning".to_string()],
-        encrypted_content: Some("ENCRYPTED".to_string()),
-        signature: None,
-        status: Some(ToolStatus::Completed),
-    };
-
-    let value = serde_json::to_value(&original).expect("reasoning should serialize");
-    let round_tripped: Output =
-        serde_json::from_value(value).expect("reasoning should deserialize");
-
-    assert_eq!(round_tripped, original);
-}
-
-#[test]
-fn output_reasoning_none_optionals_serialize_as_explicit_null() {
-    // Wire-anchored complement to the round-trip test: with `None`
-    // optionals, the keys must still be emitted as explicit `null` (the
-    // derived behavior this hand-written serde replaced has no
-    // `skip_serializing_if`). Guards against a future refactor silently
-    // dropping the keys and changing the wire shape.
-    let value = serde_json::to_value(Output::Reasoning {
-        id: "reasoning_1".to_string(),
-        summary: vec![],
-        content: vec![],
-        encrypted_content: None,
-        signature: None,
-        status: None,
-    })
-    .expect("reasoning should serialize");
-
-    assert_eq!(value["type"], "reasoning");
-    assert_eq!(value["encrypted_content"], Value::Null);
-    assert_eq!(value["status"], Value::Null);
-    assert!(value.get("encrypted_content").is_some());
-    assert!(value.get("status").is_some());
-}
-
-#[test]
-fn output_message_round_trips_value_equal() {
-    // Wire-anchored serialize check for the `message` arm (only
-    // `function_call` was anchored): a decoded message item re-serializes
-    // value-equal to the input, tag included.
-    let item = json!({
-        "type": "message",
-        "id": "msg_1",
-        "role": "assistant",
-        "status": "completed",
-        "content": [ { "type": "output_text", "text": "hello", "annotations": [] } ],
-    });
-
-    let output: Output =
-        serde_json::from_value(item.clone()).expect("message item should deserialize");
-    assert!(matches!(output, Output::Message(_)));
-
-    let serialized = serde_json::to_value(&output).expect("message should serialize");
-    assert_eq!(serialized, item);
-}
-
-#[test]
-fn each_known_tag_decodes_to_its_modeled_variant() {
-    // Guards every modeled dispatch arm: a well-formed item for each known
-    // `type` must decode to its specific variant, never to `Unknown`. Adding
-    // an `Output` variant without a matching deserialize arm fails here
-    // instead of silently routing real items to `Unknown`.
-    let message: Output = serde_json::from_value(json!({
-        "type": "message", "id": "msg_1", "role": "assistant", "status": "completed",
-        "content": [ { "type": "output_text", "text": "hi", "annotations": [] } ],
-    }))
-    .expect("message item should decode");
-    assert!(matches!(message, Output::Message(_)));
-
-    let function_call: Output = serde_json::from_value(json!({
-        "type": "function_call", "id": "call_1", "arguments": "{}",
-        "call_id": "c1", "name": "f", "status": "completed",
-    }))
-    .expect("function_call item should decode");
-    assert!(matches!(function_call, Output::FunctionCall(_)));
-
-    let reasoning: Output =
-        serde_json::from_value(json!({ "type": "reasoning", "id": "r1", "summary": [] }))
-            .expect("reasoning item should decode");
-    assert!(matches!(reasoning, Output::Reasoning { .. }));
-}
-
-#[test]
-fn output_without_usable_type_tag_decodes_to_unknown() {
-    // An absent or non-string `type` is itself unmodeled, so it is captured
-    // verbatim as `Unknown` rather than erroring.
-    for item in [
-        json!({ "id": "x", "note": "no type field" }),
-        json!({ "type": 7, "id": "x" }),
-    ] {
-        let output: Output =
-            serde_json::from_value(item.clone()).expect("should decode to Unknown");
-        assert_eq!(output, Output::Unknown(item));
-    }
+    let completion = fold_body(response).expect("an unknown item decodes");
+    assert!(matches!(
+        completion.choice.first(),
+        Some(completion::AssistantContent::Opaque(_))
+    ));
+    assert_eq!(completion.usage.total_tokens, Some(150));
+    assert_eq!(completion.usage.cached_input_tokens, Some(25));
+    assert_eq!(completion.usage.reasoning_tokens, Some(15));
 }
 
 // Regression tests for issue #1429: `file_url` and `filename` are mutually
@@ -2047,16 +1368,13 @@ mod raw_capture {
             "tools": []
         }"#;
 
-    /// The load-bearing capture property: `raw` is the Responses
-    /// `CompletionResponse` as rig parsed it — it deserializes back into
-    /// that type and re-serializes to the identical value — and folding
-    /// that capture again (with the header id reattached, since the
-    /// capture is body only) reproduces every normalized field. Also
-    /// reads `service_tier` off the capture, and pins that the transport id
-    /// is not part of the capture while the normalized response beside it
-    /// carries the header.
+    /// The load-bearing capture property: `raw` is the provider's body
+    /// exactly as it arrived, and folding that capture again (with the
+    /// header id reattached, since the capture is body only) reproduces
+    /// every normalized field. The transport id is not part of the capture,
+    /// while the normalized response beside it carries the header.
     #[tokio::test]
-    async fn completion_captures_raw_that_round_trips_into_the_wire_type() {
+    async fn completion_captures_the_provider_body_as_raw() {
         let mut headers = http::HeaderMap::new();
         headers.insert("x-request-id", http::HeaderValue::from_static(REQUEST_ID));
         let model = crate::driver::Model::new(
@@ -2070,21 +1388,12 @@ mod raw_capture {
             .expect("completion");
 
         let raw = &response.raw;
-        let typed: CompletionResponse =
-            serde_json::from_value(raw.clone()).expect("raw must deserialize");
-        assert_eq!(
-            serde_json::to_value(&typed).expect("re-serialize"),
-            *raw,
-            "the capture must be exactly what the wire type serializes to"
-        );
-        assert!(matches!(
-            typed.additional_parameters.service_tier,
-            Some(OpenAIServiceTier::Default)
-        ));
+        let body: Value = serde_json::from_str(BODY).expect("the body is JSON");
+        assert_eq!(*raw, body, "the capture is the provider's body");
         assert_eq!(raw["service_tier"], "default");
         assert!(raw.get("provider_request_id").is_none());
 
-        let mut refolded = fold_body(typed).expect("re-fold the capture");
+        let mut refolded = fold_body(raw.clone()).expect("re-fold the capture");
         refolded.provider_request_id = Some(REQUEST_ID.to_string());
         assert_eq!(response.identity(), refolded.identity());
         assert_eq!(response.finish_reason(), refolded.finish_reason());
@@ -2101,9 +1410,14 @@ mod raw_capture {
 /// its item id.
 #[test]
 fn a_tool_result_named_by_the_call_id_pairs_with_the_call_s_call_id() {
-    let response: CompletionResponse =
-        serde_json::from_value(response_with_object_top_p()).expect("response should deserialize");
-    let choice = folded_choice(response.output);
+    let choice = folded_choice(vec![json!({
+        "type": "function_call",
+        "id": "fc_1",
+        "call_id": "call_1",
+        "name": "get_weather",
+        "arguments": "{\"location\":\"Paris\"}",
+        "status": "completed"
+    })]);
     let Some(completion::AssistantContent::ToolCall(call)) = choice.first() else {
         panic!("the body's one output is a call: {choice:?}");
     };
@@ -2315,11 +1629,11 @@ fn another_models_turn_is_rebuilt_from_its_fields() {
     );
 }
 
-/// A block edited after decoding no longer matches its item: text and
-/// calls are rebuilt, and reasoning, which only its item can carry, is not
-/// sent.
+/// A block edited after decoding no longer holds its item: text and calls
+/// are rebuilt from their fields under their item's id, and reasoning,
+/// whose text is display only, still goes as its item (pi's rule).
 #[test]
-fn an_edited_block_is_rebuilt_and_edited_reasoning_is_not_sent() {
+fn an_edited_block_is_rebuilt_under_its_item_id_and_reasoning_still_goes() {
     let mut blocks = decoded_blocks();
     for block in &mut blocks {
         match block {
@@ -2335,7 +1649,7 @@ fn an_edited_block_is_rebuilt_and_edited_reasoning_is_not_sent() {
         }
     }
     let input = input_of("gpt-5.4", history_with(turn_from("gpt-5.4", blocks)));
-    let kinds: Vec<(&str, Option<&str>)> = input[1..4]
+    let kinds: Vec<(&str, Option<&str>)> = input[1..5]
         .iter()
         .map(|item| {
             (
@@ -2347,12 +1661,16 @@ fn an_edited_block_is_rebuilt_and_edited_reasoning_is_not_sent() {
     assert_eq!(
         kinds,
         [
-            ("message", Some("msg_rig_1")),
-            ("function_call", None),
+            ("reasoning", Some("rs_1")),
+            ("message", Some("msg_1")),
+            ("function_call", Some("fc_1")),
             ("function_call_output", None),
         ]
     );
-    assert_eq!(input[2]["arguments"], "{\"q\":\"edited\"}");
+    assert_eq!(input[1], reasoning_item());
+    assert_eq!(input[2]["content"][0]["text"], "Looking.!");
+    assert_eq!(input[2]["phase"], "commentary");
+    assert_eq!(input[3]["arguments"], "{\"q\":\"edited\"}");
 }
 
 #[test]
@@ -2421,4 +1739,80 @@ fn a_stateless_request_asks_for_the_reasoning_ciphertext() {
         Some(json!(["reasoning.encrypted_content"]))
     );
     assert_eq!(include(None), None);
+}
+
+/// #305: no dialect sends a blank system message, blank instructions or a
+/// blank input text, which xAI answers with "An empty message was
+/// provided".
+#[test]
+fn no_dialect_sends_blank_system_or_input_text() {
+    use crate::wire::{Operation, Wire};
+    for dialect in [
+        &crate::providers::openai::wire::OPENAI,
+        &crate::providers::xai::DIALECT,
+        &crate::providers::copilot::wire::DIALECT,
+        &crate::providers::chatgpt::DIALECT,
+    ] {
+        let wire = wire::Responses::new(
+            crate::providers::openai::OpenAIConfig::with_key(dialect, "key"),
+            "gpt-5.4",
+        );
+        let mut request = crate::completion::CompletionRequest::new("hi");
+        request.chat_history = vec![
+            completion::Message::system(""),
+            completion::Message::system("  "),
+            completion::Message::User {
+                content: vec![
+                    message::UserContent::text(""),
+                    message::UserContent::text("hi"),
+                ],
+            },
+        ];
+        let request = crate::operation::Completion::prepare(request, &wire.describe())
+            .expect("the request prepares");
+        let body = serde_json::to_value(wire.responses_request(request, false).expect("encodes"))
+            .expect("serializes");
+        let text = body.to_string();
+        assert!(
+            !text.contains(r#""text":"""#) && !text.contains(r#""text":"  ""#),
+            "{}: {body}",
+            dialect.name
+        );
+        assert!(
+            body.get("instructions")
+                .and_then(serde_json::Value::as_str)
+                .is_none_or(|instructions| !instructions.trim().is_empty()),
+            "{}: {body}",
+            dialect.name
+        );
+    }
+}
+
+/// A request continuing a stored response sends the results of that
+/// response's calls alone: the adapter keeps them, since the provider holds
+/// the calls they answer.
+#[test]
+fn a_stored_continuation_keeps_the_results_of_the_stored_calls() {
+    use crate::wire::{Operation, Wire};
+    let wire = openai_wire("gpt-5.4");
+    let result = completion::Message::tool_result(
+        message::CallId::from_wire("call_1"),
+        message::ToolName::new("lookup").expect("tool name"),
+        "sunny",
+    );
+    let mut request = crate::completion::CompletionRequest::from(vec![result]);
+    request.additional_params = Some(json!({"previous_response_id": "resp_1", "store": true}));
+    let prepared = crate::operation::Completion::prepare(request.clone(), &wire.describe())
+        .expect("the continuation prepares");
+    let body = serde_json::to_value(wire.responses_request(prepared, false).expect("encodes"))
+        .expect("serializes");
+    assert_eq!(body["input"][0]["type"], "function_call_output");
+    assert_eq!(body["input"][0]["call_id"], "call_1");
+    assert_eq!(body["previous_response_id"], "resp_1");
+
+    // Without a stored response, the same result answers nothing.
+    request.additional_params = None;
+    let error = crate::operation::Completion::prepare(request, &wire.describe())
+        .and_then(|prepared| wire.responses_request(prepared, false).map_err(Into::into));
+    assert!(error.is_err(), "{error:?}");
 }

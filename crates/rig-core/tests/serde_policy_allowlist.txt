@@ -10,14 +10,10 @@
 
 
 # --- openai Responses SSE: classifier-adjacent helpers ---------------------
-providers/openai/responses_api/streaming.rs | let mut value = serde_json::from_str::<serde_json::Value>(data).ok()?; | repair_envelope_less_frame: buffered-body envelope repair feeding the ONE classifier (classify_with_repair); documented F8 policy note at the fn doc.
-providers/openai/responses_api/streaming.rs | let kind = serde_json::from_str::<serde_json::Value>(&data) | Reads the `type` tag only to word the buffered-path Corrupt error message; the classification itself came from classify_with_repair.
-providers/openai/responses_api/streaming.rs | let output = serde_json::from_str::<serde_json::Value>(&raw) | Reads the already-classified terminal frame's `response.output` items verbatim, so each finished item becomes its block's provider item exactly as the provider sent it.
 # Single-file providers: unary/non-stream parses sharing a file with streaming code.
 
 # --- #[serde(untagged)] unions that are not frame triage --------------------
 providers/ollama.rs | #[serde(untagged)] | The `Think` request-option value (`true`/`false` or a named level) is an untagged union on the REQUEST body; nothing about inbound frame policy is decided here.
-providers/openai/responses_api/streaming.rs | #[serde(untagged)] | Two sites, neither a triage fallback: `StreamingCompletionChunk` is the envelope union (response chunk vs item delta) decoded AFTER `classify_responses_frame` recognized the frame; `ContentPartChunkPart::Unknown` is untagged on the SERIALIZE side only — its Deserialize is the hand-written tag dispatch documented beside it, so a known tag with a defective payload still errors.
 
 # --- openai chat wire (providers/openai/wire/chat.rs) ----------------------
 # `chat.rs` IS OpenAI's classify layer, so guard 1 lets it name the triage
@@ -60,8 +56,6 @@ providers/openai/wire/modality.rs | let reply = match serde_json::from_slice::<S
 providers/openai/responses_api/websocket.rs | serde_json::from_str::<EventType>(payload) | Reads only the `type` tag to decide whether the frame is one of the two websocket-only envelopes; every other frame is handed to classify_responses_frame untouched, so this dispatches rather than triages.
 providers/openai/responses_api/websocket.rs | "error" => serde_json::from_str(payload) | Decodes the websocket-only `error` envelope, which has no SSE counterpart and therefore no classifier; a decode failure is returned as a ProviderError, never skipped.
 providers/openai/responses_api/websocket.rs | "response.done" => serde_json::from_str(payload) | Decodes the websocket-only `response.done` envelope, which has no SSE counterpart and therefore no classifier; a decode failure is returned as a ProviderError, never skipped.
-providers/openai/responses_api/websocket.rs | serde_json::from_value(status) | Reads the `status` field of an already-decoded `response.done` payload to update the session's previous_response_id bookkeeping; it decides no frame's fate.
-providers/openai/responses_api/websocket.rs | serde_json::from_value(self.response.clone()) | Converts an already-decoded `response.done` payload into the typed terminal response; `None` falls back to the session's explicit no-terminal-body error rather than skipping anything.
 
 # --- the driver: capturing a reply body is not decoding a frame -----------
 # `CompletionResponse::raw` is the provider's own reply, which is what every
@@ -71,7 +65,6 @@ providers/openai/responses_api/websocket.rs | serde_json::from_value(self.respon
 # reply's frames are decoded by the wire's decoder either way.
 
 # --- the wire model: classification that is the classify layer's own work --
-providers/openai/responses_api/streaming.rs | serde_json::from_str::<serde_json::Value>(data) | `is_error_event` pre-empts classification for the one payload outside the modeled event set that must never be skipped: the Responses protocol's in-band `error`. `classify_or` only falls through on `Corrupt`, and an unmodeled `type` classifies as `Unknown`, so without this peek the provider's own failure was warn-skipped and EOF became the diagnostic.
 providers/cohere/streaming.rs | #[serde(untagged)] | The reply shape itself, not a frame decision: Cohere's streamed frames name themselves in `type` while its unary body carries no discriminator, so the whole-reply form is the untagged fallback of one enum that both paths decode through the same `ChatDecoder`.
 providers/gemini/model_listing.rs | let page: ListModelsResponse = serde_json::from_slice(body).map_err(|error| { | The catalog page's typed decode on the listing operation, whose reply is one JSON document and has no frames to triage; every failure is returned as `parse_error_with_context` with the provider, path and body preview, never skipped.
 providers/gemini/transcription.rs | let mut generation_config = serde_json::from_value::<GenerationConfig>(additional_params)?; | Reads the caller's own `additional_params` on the REQUEST side, before anything is sent; it decodes no reply and cannot triage a frame.

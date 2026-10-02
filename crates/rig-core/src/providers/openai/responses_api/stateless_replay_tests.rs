@@ -63,20 +63,6 @@ fn message_item(id: &str, phase: &str, text: &str) -> serde_json::Value {
     })
 }
 
-#[test]
-fn compaction_output_item_decodes_without_loss() {
-    let wire = json!({
-        "type": "compaction",
-        "id": "cmp_123",
-        "encrypted_content": "opaque-bytes",
-        "status": "completed",
-        "future_field": {"nested": [1, 2, 3]}
-    });
-    let output: Output = serde_json::from_value(wire.clone()).expect("compaction decodes");
-    assert_eq!(output, Output::Unknown(wire.clone()));
-    assert_eq!(serde_json::to_value(&output).expect("it serializes"), wire);
-}
-
 /// The exact window `/responses/compact` returns — regular items around an
 /// opaque compaction item — reaches history and goes back as it came.
 #[test]
@@ -94,26 +80,6 @@ fn a_compacted_window_replays_every_item_verbatim() {
     let answer = replayed.pop().expect("the unanswered call gets a result");
     assert_eq!(answer["type"], "function_call_output");
     assert_eq!(json!(replayed), window);
-}
-
-#[test]
-fn output_message_phase_decodes_and_is_absent_by_default() {
-    let with: OutputMessage = serde_json::from_value(json!({
-        "id": "msg_1", "role": "assistant", "status": "completed",
-        "content": [], "phase": "final_answer"
-    }))
-    .expect("decodes");
-    assert_eq!(with.phase.as_deref(), Some("final_answer"));
-    let without: OutputMessage = serde_json::from_value(json!({
-        "id": "msg_1", "role": "assistant", "status": "completed", "content": []
-    }))
-    .expect("decodes");
-    assert_eq!(without.phase, None);
-    let back = serde_json::to_value(&without).expect("serializes");
-    assert!(
-        back.get("phase").is_none(),
-        "absent phase must not serialize as null"
-    );
 }
 
 /// A reply with a commentary message, a call and a final answer replays as

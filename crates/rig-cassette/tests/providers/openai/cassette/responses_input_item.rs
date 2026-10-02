@@ -2,8 +2,7 @@ use rig::completion::Message as CompletionMessage;
 use rig::error::ProviderError;
 use rig::message::AssistantContent;
 use rig::providers::openai::responses_api::{
-    CompletionRequest as OpenAIResponsesRequest, Include, InputItem, Output, ReasoningSummary,
-    ResponsesRequestParams,
+    CompletionRequest as OpenAIResponsesRequest, Include, InputItem, ResponsesRequestParams,
 };
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
@@ -60,9 +59,38 @@ fn openai_responses_request_auto_adds_reasoning_encrypted_include() {
     );
 }
 
+/// The reasoning block a whole Responses body holding `item` decodes to.
+fn decoded_reasoning(item: serde_json::Value) -> rig::message::Reasoning {
+    let wire = rig::providers::openai::responses_api::wire::Responses::new(
+        rig::providers::openai::OpenAIConfig::new("unused"),
+        "gpt-5",
+    );
+    let body = serde_json::json!({
+        "id": "resp_1",
+        "object": "response",
+        "status": "completed",
+        "model": "gpt-5",
+        "output": [item],
+    });
+    let response = rig::test_utils::history::decode(
+        &wire,
+        rig::wire::Mode::Unary,
+        [rig::wire::WireFrame::Text(body.to_string())],
+    )
+    .expect("the body decodes");
+    response
+        .choice
+        .into_iter()
+        .find_map(|block| match block {
+            AssistantContent::Reasoning(reasoning) => Some(reasoning),
+            _ => None,
+        })
+        .expect("the reasoning item decodes to a reasoning block")
+}
+
 #[test]
 fn openai_responses_reasoning_output_preserves_encrypted_content() {
-    let output: Output = serde_json::from_value(serde_json::json!({
+    let item = serde_json::json!({
         "type": "reasoning",
         "id": "rs_out_1",
         "summary": [
@@ -70,32 +98,17 @@ fn openai_responses_reasoning_output_preserves_encrypted_content() {
         ],
         "encrypted_content": "cipher_blob",
         "status": "completed"
-    }))
-    .expect("deserialize reasoning output");
-
-    let Output::Reasoning {
-        id,
-        summary,
-        encrypted_content,
-        ..
-    } = &output
-    else {
-        panic!("expected a reasoning output item");
-    };
-    assert_eq!(id, "rs_out_1");
-    assert_eq!(encrypted_content.as_deref(), Some("cipher_blob"));
-    assert_eq!(
-        summary
-            .iter()
-            .map(ReasoningSummary::text)
-            .collect::<Vec<_>>(),
-        ["summary text"]
-    );
+    });
+    let reasoning = decoded_reasoning(item.clone());
+    assert_eq!(reasoning.text, "summary text");
+    let native = reasoning.native.expect("the item is the block's native");
+    assert_eq!(native.item, item);
+    assert_eq!(native.item["encrypted_content"], "cipher_blob");
 }
 
 #[test]
 fn openai_responses_reasoning_output_preserves_reasoning_text_content() {
-    let output: Output = serde_json::from_value(serde_json::json!({
+    let reasoning = decoded_reasoning(serde_json::json!({
         "type": "reasoning",
         "id": "rs_text_1",
         "summary": [],
@@ -103,46 +116,27 @@ fn openai_responses_reasoning_output_preserves_reasoning_text_content() {
             { "type": "reasoning_text", "text": "visible reasoning" }
         ],
         "status": "completed"
-    }))
-    .expect("deserialize reasoning output");
-
-    let Output::Reasoning {
-        id,
-        summary,
-        content,
-        ..
-    } = &output
-    else {
-        panic!("expected a reasoning output item");
-    };
-    assert_eq!(id, "rs_text_1");
-    assert!(summary.is_empty());
-    assert_eq!(content, &["visible reasoning".to_string()]);
+    }));
+    assert_eq!(reasoning.text, "visible reasoning");
+    assert_eq!(
+        reasoning.native.expect("the item is kept").item["id"],
+        "rs_text_1"
+    );
 }
 
 #[test]
 fn openai_responses_reasoning_output_without_summary_is_not_dropped() {
-    let output: Output = serde_json::from_value(serde_json::json!({
+    let reasoning = decoded_reasoning(serde_json::json!({
         "type": "reasoning",
         "id": "rs_empty",
         "summary": []
-    }))
-    .expect("deserialize reasoning output");
-
-    let Output::Reasoning {
-        id,
-        summary,
-        content,
-        encrypted_content,
-        ..
-    } = &output
-    else {
-        panic!("a contentless reasoning item must still decode as one");
-    };
-    assert_eq!(id, "rs_empty");
-    assert!(summary.is_empty());
-    assert!(content.is_empty());
-    assert_eq!(encrypted_content.as_deref(), None);
+    }));
+    assert!(reasoning.text.is_empty());
+    let native = reasoning
+        .native
+        .expect("a contentless reasoning item must still decode as one");
+    assert_eq!(native.item["id"], "rs_empty");
+    assert!(native.item.get("encrypted_content").is_none());
 }
 
 #[test]

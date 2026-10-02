@@ -57,7 +57,9 @@ where
     W: Wire<Op = Completion, Payload = Encoded, Frame = WireFrame>,
 {
     let model = Model::new(wire.clone(), Recorded(body.to_owned()));
-    futures::executor::block_on(model.call(""))
+    // The prompt is never sent, but it must not be blank: an encoder drops
+    // blank text and refuses a request left with no input.
+    futures::executor::block_on(model.call("restate"))
 }
 
 /// The wire whose recording supplies the ported turn.

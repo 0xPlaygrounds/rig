@@ -46,8 +46,6 @@
 use rig::completion::{CompletionResponse as RigCompletionResponse, FinishReason, ToolDefinition};
 use rig::message::AssistantContent;
 use rig::providers::chatgpt;
-use rig::providers::openai::responses_api;
-use serde::Deserialize;
 use serde_json::{Value, json};
 
 use super::super::support::with_chatgpt_cassette;
@@ -84,11 +82,13 @@ fn tool_request() -> rig::completion::CompletionRequest {
 }
 
 /// The `msg_…` id of the envelope's output message, when it issued one.
-fn wire_message_id(envelope: &responses_api::CompletionResponse) -> Option<String> {
-    envelope.output.iter().find_map(|item| match item {
-        responses_api::Output::Message(message) => Some(message.id.clone()),
-        _ => None,
-    })
+fn wire_message_id(envelope: &Value) -> Option<String> {
+    envelope["output"]
+        .as_array()?
+        .iter()
+        .find(|item| item["type"] == "message")
+        .and_then(|message| message["id"].as_str())
+        .map(str::to_owned)
 }
 
 /// The recorded terminal `response.completed` frame's `response` for each
@@ -161,16 +161,16 @@ async fn raw_normalize_reproduces_completion() {
     .await;
 
     let response = captured.take();
-    let envelope = responses_api::CompletionResponse::deserialize(&response.raw)
-        .expect("`raw` is the serialized responses_api::CompletionResponse");
+    let envelope = &response.raw;
     assert!(
-        !envelope.output.is_empty(),
+        envelope["output"]
+            .as_array()
+            .is_some_and(|items| !items.is_empty()),
         "premise: the terminal envelope carried items"
     );
     assert_eq!(response.finish_reason(), Some(FinishReason::Stop));
     assert_eq!(
-        envelope.status,
-        responses_api::ResponseStatus::Completed,
+        envelope["status"], "completed",
         "the envelope's own verdict is what the finish reason folded from"
     );
     assert!(
@@ -231,13 +231,11 @@ async fn raw_normalize_reproduces_completion_with_tool_call() {
         "the get_weather call must be on the choice"
     );
 
-    let envelope = responses_api::CompletionResponse::deserialize(&response.raw)
-        .expect("`raw` is the serialized responses_api::CompletionResponse");
+    let envelope = &response.raw;
     assert!(
-        envelope.output.iter().any(|item| matches!(
-            item,
-            responses_api::Output::FunctionCall(call) if call.name == "get_weather"
-        )),
+        envelope["output"].as_array().is_some_and(|items| items
+            .iter()
+            .any(|item| item["type"] == "function_call" && item["name"] == "get_weather")),
         "the captured envelope must carry the provider's own function_call item"
     );
 
@@ -254,14 +252,11 @@ async fn raw_normalize_reproduces_completion_with_tool_call() {
     // the shared "status ⇒ Stop, and the choice is the message's text" claims
     // do not hold. What does hold is stated field by field, with the shared
     // token comparator owning the replay/record split on the ids.
-    let from_wire = responses_api::CompletionResponse::deserialize(&terminals[0])
-        .expect("recorded terminal envelope must be a Responses response");
+    let from_wire = &terminals[0];
     assert_eq!(response.provider(), CHATGPT_PROVIDER, "provider");
-    assert_eq!(response.model(), Some(from_wire.model.as_str()), "model");
-    let usage = from_wire
-        .usage
-        .as_ref()
-        .expect("the terminal envelope must report usage");
+    assert_eq!(response.model(), from_wire["model"].as_str(), "model");
+    let usage = &from_wire["usage"];
+    assert!(usage.is_object(), "the terminal envelope must report usage");
     assert_eq!(
         (
             response.usage.input_tokens,
@@ -269,19 +264,19 @@ async fn raw_normalize_reproduces_completion_with_tool_call() {
             response.usage.total_tokens
         ),
         (
-            Some(usage.input_tokens),
-            Some(usage.output_tokens),
-            Some(usage.total_tokens)
+            usage["input_tokens"].as_u64(),
+            usage["output_tokens"].as_u64(),
+            usage["total_tokens"].as_u64()
         ),
         "usage"
     );
     assert_no_request_id(response.provider_request_id.as_deref(), CHATGPT_PROVIDER);
     assert_matches_recorded_token(
         response.response_id(),
-        Some(from_wire.id.as_str()),
+        from_wire["id"].as_str(),
         "response id",
     );
-    let wire_message = wire_message_id(&from_wire);
+    let wire_message = wire_message_id(from_wire);
     assert_matches_recorded_token(
         response.response_id(),
         wire_message.as_deref(),
@@ -320,15 +315,14 @@ async fn empty_output_fallback_still_carries_raw() {
         "the content must fold from the events the terminal event lacks"
     );
     // …and raw is still the terminal envelope, whose output is empty.
-    let typed = responses_api::CompletionResponse::deserialize(&response.raw)
-        .expect("raw must deserialize into responses_api::CompletionResponse");
-    assert!(
-        typed.output.is_empty(),
+    let typed = &response.raw;
+    assert_eq!(
+        typed["output"],
+        json!([]),
         "premise: this cell exists for the empty-output terminal event"
     );
     assert_eq!(
-        typed.status,
-        responses_api::ResponseStatus::Completed,
+        typed["status"], "completed",
         "the contentless terminal event still reported completion"
     );
 

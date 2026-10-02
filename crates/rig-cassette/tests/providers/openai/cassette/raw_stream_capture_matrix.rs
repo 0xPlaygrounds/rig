@@ -21,9 +21,8 @@
 //! (whose `additional_params` accumulates the unmodeled top-level chunk
 //! fields — `service_tier`, `system_fingerprint` — and whose `ChatUsage`
 //! keeps the dialect's extra usage counters), and the Responses API's
-//! `openai::responses_api::CompletionResponse` (whose
-//! `status` and `message_id` come from the terminal `response.completed`
-//! event alone).
+//! response object, verbatim (whose `status` and message id come from the
+//! terminal `response.completed` event alone).
 //!
 //! Cells 5–6 are the streamed twins of the reasoning and tool-call cells in
 //! `raw_capture_matrix`: a Responses reasoning stream, whose terminal
@@ -279,27 +278,27 @@ async fn responses_stream_raw_round_trips_typed() {
 
     // `raw` is there to read at all: it is the terminal record, serialized.
     captured_raw(SCENARIO, &terminal);
-    // It reads back as the Responses response type and agrees with the
+    // It is the Responses response object and agrees with the
     // normalized response on identity, model and the accounting it
     // normalized: two views of one document.
     let typed = responses::assert_terminal_round_trips(&terminal);
     assert_matches_recorded_token(
-        Some(typed.id.as_str()),
+        typed["id"].as_str(),
         completed["id"].as_str(),
         &format!("{SCENARIO}: terminal response id"),
     );
     assert_eq!(
-        Some(typed.model.as_str()),
+        typed["model"].as_str(),
         completed["model"].as_str(),
         "{SCENARIO}: terminal model"
     );
     assert_eq!(
-        typed.usage.as_ref().map(|usage| usage.input_tokens),
+        typed["usage"]["input_tokens"].as_u64(),
         completed["usage"]["input_tokens"].as_u64(),
         "{SCENARIO}: terminal input tokens"
     );
     assert_eq!(
-        typed.usage.as_ref().map(|usage| usage.output_tokens),
+        typed["usage"]["output_tokens"].as_u64(),
         completed["usage"]["output_tokens"].as_u64(),
         "{SCENARIO}: terminal output tokens"
     );
@@ -421,26 +420,22 @@ async fn responses_reasoning_stream_raw_round_trips_typed() {
     let raw = captured_raw(SCENARIO, &terminal);
     let typed = responses::assert_terminal_round_trips(&terminal);
     assert_matches_recorded_token(
-        Some(typed.id.as_str()),
+        typed["id"].as_str(),
         completed["id"].as_str(),
         &format!("{SCENARIO}: terminal response id"),
     );
     assert_eq!(
-        Some(typed.model.as_str()),
+        typed["model"].as_str(),
         completed["model"].as_str(),
         "{SCENARIO}: terminal model"
     );
     assert_eq!(
-        typed.usage.as_ref().map(|usage| usage.output_tokens),
+        typed["usage"]["output_tokens"].as_u64(),
         completed["usage"]["output_tokens"].as_u64(),
         "{SCENARIO}: terminal output tokens"
     );
     assert_eq!(
-        typed
-            .usage
-            .as_ref()
-            .and_then(|usage| usage.output_tokens_details.as_ref())
-            .map(|details| details.reasoning_tokens),
+        typed["usage"]["output_tokens_details"]["reasoning_tokens"].as_u64(),
         completed["usage"]["output_tokens_details"]["reasoning_tokens"].as_u64(),
         "{SCENARIO}: terminal reasoning tokens"
     );
@@ -451,9 +446,9 @@ async fn responses_reasoning_stream_raw_round_trips_typed() {
         "{SCENARIO}: `reasoning` off the captured response equals the completed event's"
     );
     assert_eq!(
-        typed.reasoning_metadata.as_ref(),
+        typed["reasoning"].as_object(),
         Some(recorded_reasoning),
-        "{SCENARIO}: the typed response reads it back"
+        "{SCENARIO}: the returned document reads it back"
     );
     assert_normalized_lacks(
         &normalized_without_raw(terminal.clone()),

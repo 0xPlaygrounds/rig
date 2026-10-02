@@ -49,7 +49,6 @@
 //! and review `crates/rig-cassette/fixtures/cassettes/copilot/raw_stream_capture_matrix/`.
 
 use rig::providers::copilot;
-use rig::providers::openai::responses_api;
 use rig::providers::openai::wire::OpenAiWire;
 use rig::providers::openai::wire::{ChatUsage, StreamingCompletionResponse};
 use serde::Deserialize;
@@ -303,7 +302,5 @@ async fn responses_stream_raw_exposes_terminal_status() {
     );
     assert_eq!(raw["status"], recorded_terminal["status"]);
     assert_eq!(raw["usage"], recorded_terminal["usage"]);
-    let typed: responses_api::CompletionResponse =
-        serde_json::from_value(raw.clone()).expect("raw must deserialize");
-    assert_eq!(typed.status, responses_api::ResponseStatus::Completed);
+    assert_eq!(raw["status"], "completed");
 }

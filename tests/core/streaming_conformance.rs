@@ -158,7 +158,7 @@ pub mod xai_suite {
     rig_core::streaming_conformance_suite! {
         provider: "xai",
         fixture: xai::fixture(),
-        manifest: [partial_tool_args, zero_usage_terminal, malformed_frame, unknown_event_frame, defective_known_frame, refusal],
+        manifest: [partial_tool_args, zero_usage_terminal, malformed_frame, unknown_event_frame, refusal],
     }
 }
 
@@ -168,7 +168,7 @@ pub mod copilot_responses_suite {
     rig_core::streaming_conformance_suite! {
         provider: "copilot",
         fixture: copilot::responses_fixture(),
-        manifest: [partial_tool_args, zero_usage_terminal, malformed_frame, unknown_event_frame, defective_known_frame, refusal],
+        manifest: [partial_tool_args, zero_usage_terminal, malformed_frame, unknown_event_frame, refusal],
     }
 }
 
@@ -178,7 +178,7 @@ pub mod chatgpt_suite {
     rig_core::streaming_conformance_suite! {
         provider: "chatgpt",
         fixture: chatgpt::fixture(),
-        manifest: [partial_tool_args, zero_usage_terminal, malformed_frame, unknown_event_frame, defective_known_frame, refusal],
+        manifest: [partial_tool_args, zero_usage_terminal, malformed_frame, unknown_event_frame, refusal],
     }
 }
 

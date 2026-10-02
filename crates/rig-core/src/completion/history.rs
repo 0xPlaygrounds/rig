@@ -112,6 +112,15 @@ pub trait ReplayTarget: std::fmt::Debug + WasmCompatSync {
         let _ = (model, source);
         id.to_owned()
     }
+
+    /// Whether `request` continues a conversation the provider stores, such
+    /// as one naming a previous interaction. Results before the history's
+    /// first turn then answer calls the provider holds, so [`adapt`] keeps
+    /// them.
+    fn continues_stored(&self, request: &crate::completion::CompletionRequest) -> bool {
+        let _ = request;
+        false
+    }
 }
 
 /// `history` shaped for `target`.
@@ -139,14 +148,16 @@ pub trait ReplayTarget: std::fmt::Debug + WasmCompatSync {
 ///   is a user message left empty. A message that was empty to begin with is
 ///   kept, for the request boundary to reject.
 pub fn adapt(history: &[Message], target: &dyn ReplayTarget) -> Vec<Message> {
-    adapt_for_model(history, target, None)
+    adapt_for_model(history, target, None, false)
 }
 
-/// [`adapt`] for a request that names `model` in place of the wire's own.
+/// [`adapt`] for a request that names `model` in place of the wire's own,
+/// and that continues a conversation the provider stores when `stored`.
 pub(crate) fn adapt_for_model(
     history: &[Message],
     target: &dyn ReplayTarget,
     model: Option<&str>,
+    stored: bool,
 ) -> Vec<Message> {
     let model = model.unwrap_or(target.model());
     let same = (target.api(), target.provider(), model);
@@ -170,7 +181,7 @@ pub(crate) fn adapt_for_model(
             }
         }
     }
-    merge_users(answer_calls(shaped))
+    merge_users(answer_calls(shaped, stored))
 }
 
 /// Call ids renamed for the target: each source id's new id, and the ids
@@ -403,7 +414,10 @@ fn merge_users(history: Vec<Message>) -> Vec<Message> {
 /// A skipped turn's results go with it, and the user messages it separated
 /// become one, since a wire that requires alternating roles would otherwise
 /// reject the history.
-fn answer_calls(history: Vec<Option<Message>>) -> Vec<Message> {
+fn answer_calls(history: Vec<Option<Message>>, stored: bool) -> Vec<Message> {
+    // Results before the first turn of a stored conversation answer calls
+    // the provider holds.
+    let mut stored = stored;
     let mut shaped = Vec::with_capacity(history.len());
     let mut waiting: Vec<ToolCall> = Vec::new();
     let mut held = Vec::new();
@@ -411,12 +425,14 @@ fn answer_calls(history: Vec<Option<Message>>) -> Vec<Message> {
     for message in adjacent_users_merged(history) {
         let Some(message) = message else {
             close(&mut shaped, &mut waiting, &mut held, Vec::new(), false);
+            stored = false;
             gap = true;
             continue;
         };
         match message {
             Message::Assistant(turn) => {
                 close(&mut shaped, &mut waiting, &mut held, Vec::new(), false);
+                stored = false;
                 if turn.stop.as_ref().is_some_and(|stop| stop.is_failure()) {
                     gap = true;
                     continue;
@@ -436,7 +452,7 @@ fn answer_calls(history: Vec<Option<Message>>) -> Vec<Message> {
                 let mut answered = HashSet::new();
                 content.retain(|part| match part {
                     UserContent::ToolResult(result) => {
-                        waiting.iter().any(|call| call.id == result.call)
+                        (stored || waiting.iter().any(|call| call.id == result.call))
                             && answered.insert(result.call.clone())
                     }
                     UserContent::Text(_)

@@ -382,7 +382,7 @@ fn a_turn_left_empty_is_dropped() {
 fn a_request_model_override_is_the_model_compared() {
     let text = AssistantContent::text("a").with_native(json!({"id": "msg_1"}));
     let history = vec![turn(Some(other()), vec![text])];
-    let adapted = adapt_for_model(&history, &TARGET, Some("model-b"));
+    let adapted = adapt_for_model(&history, &TARGET, Some("model-b"), false);
     assert!(assistant(&adapted[0]).content[0].native_item().is_some());
 }
 
@@ -409,7 +409,7 @@ fn a_request_model_override_decides_image_input() {
     }];
     assert_eq!(adapt(&history, &TARGET), history);
     assert_eq!(
-        adapt_for_model(&history, &TARGET, Some("text-only")),
+        adapt_for_model(&history, &TARGET, Some("text-only"), false),
         vec![Message::User {
             content: vec![UserContent::text(USER_IMAGE_OMITTED)],
         }]
@@ -517,6 +517,33 @@ fn a_result_no_call_asked_for_is_dropped() {
         adapt(&history, &TARGET),
         vec![
             Message::user("next"),
+            turn(Some(same()), vec![call("c1")]),
+            Message::User {
+                content: vec![result("c1", "one")],
+            },
+        ]
+    );
+}
+
+/// A conversation the provider stores holds the calls its first results
+/// answer, so they are kept; a result after a turn still answers that turn.
+#[test]
+fn results_before_the_first_turn_of_a_stored_conversation_are_kept() {
+    let history = vec![
+        Message::User {
+            content: vec![result("held", "kept")],
+        },
+        turn(Some(same()), vec![call("c1")]),
+        Message::User {
+            content: vec![result("gone", "stale"), result("c1", "one")],
+        },
+    ];
+    assert_eq!(
+        adapt_for_model(&history, &TARGET, None, true),
+        vec![
+            Message::User {
+                content: vec![result("held", "kept")],
+            },
             turn(Some(same()), vec![call("c1")]),
             Message::User {
                 content: vec![result("c1", "one")],

@@ -234,15 +234,7 @@ impl Wire for Responses {
     }
 
     fn decoder<'id>(&self) -> Self::Decoder<'id> {
-        let decoder = ResponsesDecoder::new();
-        // The codex gateway's replayed frames may omit their envelope
-        // bookkeeping; elsewhere an envelope-less frame is a defect worth
-        // surfacing rather than salvaging.
-        if self.provider.dialect.quirks.responses.contract == ResponsesContract::Codex {
-            decoder.with_envelope_repair()
-        } else {
-            decoder
-        }
+        ResponsesDecoder::new()
     }
 }
 
@@ -259,13 +251,28 @@ impl crate::completion::ReplayTarget for Responses {
         &self.model
     }
 
-    /// Responses reads images in user input and tool outputs, never in
-    /// assistant messages.
-    fn accepts(&self, _model: &str) -> crate::completion::Accepts {
+    /// Responses reads images in user input and in function outputs, never
+    /// in assistant messages, and only on a model with vision input. Every
+    /// documented model calls tools except `o1-mini` and `o1-preview`.
+    fn accepts(&self, model: &str) -> crate::completion::Accepts {
+        let images = reads_images(self.provider.dialect.quirks.responses.contract, model);
+        let model = model.to_ascii_lowercase();
         crate::completion::Accepts {
+            user_images: images,
             assistant_images: false,
-            ..crate::completion::Accepts::ALL
+            tool_result_images: images,
+            tools: !(model.starts_with("o1-mini") || model.starts_with("o1-preview")),
         }
+    }
+
+    /// A request naming `previous_response_id` continues a response the
+    /// provider stores, which holds the calls its first results answer.
+    fn continues_stored(&self, request: &completion::CompletionRequest) -> bool {
+        request
+            .additional_params
+            .as_ref()
+            .and_then(|params| params.get("previous_response_id"))
+            .is_some_and(|id| !id.is_null())
     }
 
     /// pi's `normalizeIdPart`: characters outside `[a-zA-Z0-9_-]` become
@@ -291,15 +298,43 @@ impl crate::completion::ReplayTarget for Responses {
     }
 }
 
+/// Whether `model` reads images, by its vendor's documented text-only
+/// models. An unknown model reads them.
+fn reads_images(contract: ResponsesContract, model: &str) -> bool {
+    let model = model.to_ascii_lowercase();
+    let model = model.rsplit('/').next().unwrap_or_default();
+    let text_only = match contract {
+        ResponsesContract::Xai => {
+            (model.starts_with("grok-2") && !model.contains("vision"))
+                || model.starts_with("grok-3")
+                || model.starts_with("grok-code")
+        }
+        ResponsesContract::OpenAi | ResponsesContract::Codex => {
+            matches!(model, "gpt-4" | "gpt-4-0613" | "gpt-4-0314")
+                || model.starts_with("gpt-4-32k")
+                || model.starts_with("gpt-3.5")
+                || model.starts_with("o1-mini")
+                || model.starts_with("o1-preview")
+                || model.starts_with("o3-mini")
+                || model.starts_with("gpt-5.3-codex-spark")
+        }
+    };
+    !text_only
+}
+
 #[derive(Default, Deserialize)]
 struct TokenDetails {
     #[serde(default, deserialize_with = "crate::observe::lenient_count")]
     cached_tokens: Option<u64>,
     #[serde(default, deserialize_with = "crate::observe::lenient_count")]
+    cache_write_tokens: Option<u64>,
+    #[serde(default, deserialize_with = "crate::observe::lenient_count")]
     reasoning_tokens: Option<u64>,
 }
 
-#[derive(Deserialize)]
+/// A Responses `usage` object, read leniently: a counter that is absent or
+/// not a count is unreported.
+#[derive(Default, Deserialize)]
 struct Usage {
     #[serde(default, deserialize_with = "crate::observe::lenient_count")]
     input_tokens: Option<u64>,
@@ -307,10 +342,36 @@ struct Usage {
     output_tokens: Option<u64>,
     #[serde(default, deserialize_with = "crate::observe::lenient_count")]
     total_tokens: Option<u64>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "lenient_details")]
     input_tokens_details: Option<TokenDetails>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "lenient_details")]
     output_tokens_details: Option<TokenDetails>,
+}
+
+/// A details object, or none when it is not one.
+fn lenient_details<'de, D>(deserializer: D) -> Result<Option<TokenDetails>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = serde_json::Value::deserialize(deserializer)?;
+    Ok(serde_json::from_value(value).ok())
+}
+
+/// The usage a Responses `usage` value reports; anything but an object
+/// reports none.
+pub(crate) fn usage_of(usage: &serde_json::Value) -> completion::Usage {
+    let usage = Usage::deserialize(usage).unwrap_or_default();
+    let input = usage.input_tokens_details.unwrap_or_default();
+    let output = usage.output_tokens_details.unwrap_or_default();
+    completion::Usage {
+        input_tokens: usage.input_tokens,
+        output_tokens: usage.output_tokens,
+        total_tokens: usage.total_tokens,
+        cached_input_tokens: input.cached_tokens,
+        cache_creation_input_tokens: input.cache_write_tokens,
+        reasoning_tokens: output.reasoning_tokens,
+        ..completion::Usage::default()
+    }
 }
 
 #[derive(Deserialize)]
@@ -328,7 +389,7 @@ struct ResponseObject {
     model: Option<String>,
     status: Option<String>,
     incomplete_details: Option<IncompleteDetails>,
-    usage: Option<Usage>,
+    usage: Option<serde_json::Value>,
     error: Option<ObservedError>,
 }
 
@@ -372,14 +433,15 @@ pub(crate) fn project_payload(payload: &[u8], sink: &mut ObservationSink<'_>) {
         return;
     }
     let object = payload.response.unwrap_or(payload.unwrapped);
-    if let Some(usage) = object.usage {
+    if let Some(usage) = object.usage.filter(serde_json::Value::is_object) {
+        let usage = usage_of(&usage);
         sink.emit(AdapterEvent::Usage {
             usage: AdapterUsage {
                 input_tokens: usage.input_tokens,
                 output_tokens: usage.output_tokens,
                 total_tokens: usage.total_tokens,
-                cached_input_tokens: usage.input_tokens_details.and_then(|d| d.cached_tokens),
-                reasoning_tokens: usage.output_tokens_details.and_then(|d| d.reasoning_tokens),
+                cached_input_tokens: usage.cached_input_tokens,
+                reasoning_tokens: usage.reasoning_tokens,
                 tool_input_tokens: None,
             },
         });

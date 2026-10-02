@@ -3,7 +3,6 @@
 use anyhow::Result;
 use rig::message::AssistantContent;
 use rig::providers::openai;
-use rig::providers::openai::responses_api::streaming::{ItemChunkKind, ResponseChunkKind};
 use rig::providers::openai::responses_api::websocket::ResponsesWebSocketEvent;
 use rig_test_support::cassette_models::OpenAiModels;
 
@@ -41,17 +40,14 @@ async fn websocket_session_roundtrip() -> Result<()> {
     loop {
         match session.next_event().await? {
             ResponsesWebSocketEvent::Item(item) => {
-                if let ItemChunkKind::OutputTextDelta(delta) = item.data {
-                    streamed_text.push_str(&delta.delta);
+                if item["type"] == "response.output_text.delta"
+                    && let Some(delta) = item["delta"].as_str()
+                {
+                    streamed_text.push_str(delta);
                 }
             }
-            ResponsesWebSocketEvent::Response(chunk) => {
-                if matches!(
-                    chunk.kind,
-                    ResponseChunkKind::ResponseCompleted
-                        | ResponseChunkKind::ResponseFailed
-                        | ResponseChunkKind::ResponseIncomplete
-                ) {
+            event @ ResponsesWebSocketEvent::Response { .. } => {
+                if event.is_terminal() {
                     break;
                 }
             }

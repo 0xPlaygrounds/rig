@@ -7,11 +7,19 @@
 
 pub mod anthropic;
 pub mod anthropic_moonshot;
+pub mod chatgpt;
+pub mod copilot;
 pub mod mock;
+pub mod openai_responses;
+pub mod xai;
 
 /// The wires whose suites compiled into this binary.
 pub const SUITE_WIRES: &[&str] = &[
     mock::HISTORY_WIRE,
     anthropic::HISTORY_WIRE,
     anthropic_moonshot::HISTORY_WIRE,
+    chatgpt::HISTORY_WIRE,
+    copilot::HISTORY_WIRE,
+    openai_responses::HISTORY_WIRE,
+    xai::HISTORY_WIRE,
 ];

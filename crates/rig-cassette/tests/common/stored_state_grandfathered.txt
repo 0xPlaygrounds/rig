@@ -38,7 +38,6 @@ openai/long_loop_matrix_responses/big_result.yaml
 openai/long_loop_matrix_responses/long_streamed.yaml
 openai/long_loop_matrix_responses/long_unary.yaml
 openai/long_loop_matrix_responses/max_turns_midway.yaml
-openai/long_loop_matrix_responses/output_cap_midway.yaml
 openai/long_loop_matrix_responses/parallel_calls.yaml
 openai/long_loop_matrix_responses/tool_error_midway.yaml
 openai/max_completion_tokens_matrix/responses_surface_keeps_max_output_tokens.yaml

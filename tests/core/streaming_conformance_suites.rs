@@ -48,7 +48,7 @@ pub mod openai_responses_suite {
     streaming_conformance_suite! {
         provider: "openai_responses",
         fixture: openai_responses::fixture(),
-        manifest: [partial_tool_args, zero_usage_terminal, malformed_frame, unknown_event_frame, defective_known_frame, refusal],
+        manifest: [partial_tool_args, zero_usage_terminal, malformed_frame, unknown_event_frame, refusal],
     }
 }
 

@@ -443,6 +443,7 @@ pub fn h02_cross_model_canonical<F: HistoryFixture>(fixture: &F) {
             &history,
             replay,
             Some(fixture.other_model()),
+            false,
         );
         let mut calls = Vec::new();
         for message in &adapted {

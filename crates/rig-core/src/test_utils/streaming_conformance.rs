@@ -1991,16 +1991,9 @@ pub mod fixtures {
                     "sequence_number": 4,
                     "item_id": "ws_1",
                 }))),
-                // The P2 probe shape from `rig-2257-code-review-findings-34ee8ba5.md`:
-                // a known part tag (`output_text`) with a schema-defective payload.
-                defective_known_frame: Some(sse(&json!({
-                    "type": "response.content_part.added",
-                    "item_id": "msg_1",
-                    "output_index": 0,
-                    "content_index": 0,
-                    "sequence_number": 5,
-                    "part": {"type": "output_text", "text": 42},
-                }))),
+                // The decoder reads only the fields it builds blocks from, and
+                // reads those leniently, so no known event fails a reply (#2668).
+                defective_known_frame: None,
                 delta_less_prelude_frame: None,
                 refusal: Some(RefusalFixture {
                     frames: vec![sse(&json!({
