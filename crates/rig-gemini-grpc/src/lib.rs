@@ -40,6 +40,10 @@ pub use proto::{
 
 impl From<&proto::GenerateContentResponse> for rig_core::completion::Usage {
     fn from(response: &proto::GenerateContentResponse) -> Self {
-        completion::map_usage(response.usage_metadata.as_ref())
+        response
+            .usage_metadata
+            .as_ref()
+            .map(|usage| (&completion::rest_usage(usage)).into())
+            .unwrap_or_default()
     }
 }

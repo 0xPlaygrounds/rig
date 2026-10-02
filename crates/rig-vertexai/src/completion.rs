@@ -64,9 +64,7 @@ impl Wire for GenerateContent {
     type Op = Completion;
     type Payload = VertexRequest;
     type Frame = vertexai::model::GenerateContentResponse;
-    #[cfg(any())]
     type Decoder<'id> = VertexDecoder;
-    type Decoder<'id> = rig_core::providers::internal::Unmigrated;
 
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(PROVIDER_NAME)
@@ -74,7 +72,6 @@ impl Wire for GenerateContent {
             .replay(self)
     }
 
-    #[cfg(any())]
     fn encode(
         &self,
         request: CompletionRequest,
@@ -89,21 +86,8 @@ impl Wire for GenerateContent {
             request: VertexCompletionRequest(request),
         })
     }
-    fn encode(
-        &self,
-        request: CompletionRequest,
-        _mode: Mode,
-    ) -> Result<VertexRequest, EncodeError> {
-        let _ = (request, _mode);
-        Err(rig_core::providers::internal::Unmigrated::encode_error())
-    }
-
-    #[cfg(any())]
     fn decoder<'id>(&self) -> Self::Decoder<'id> {
-        VertexDecoder
-    }
-    fn decoder<'id>(&self) -> Self::Decoder<'id> {
-        rig_core::providers::internal::Unmigrated
+        VertexDecoder::default()
     }
 }
 
@@ -118,6 +102,14 @@ impl rig_core::completion::ReplayTarget for GenerateContent {
 
     fn model(&self) -> &str {
         &self.model
+    }
+
+    fn normalize_tool_call_id(
+        &self,
+        id: &str,
+        _source: Option<&rig_core::message::Origin>,
+    ) -> String {
+        rig_core::providers::gemini::completion::normalize_tool_call_id(&self.model, id)
     }
 }
 

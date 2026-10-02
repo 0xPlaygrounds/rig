@@ -20,19 +20,18 @@ pub const GEMINI_2_0_FLASH: &str = "gemini-2.0-flash";
 
 use base64::Engine as _;
 use futures::StreamExt;
-use rig_core::completion::{self, CompletionRequest};
+use rig_core::completion::CompletionRequest;
 use rig_core::driver::{Exchange, Opened, Opening, Transport};
 use rig_core::error::EncodeError;
 use rig_core::error::ProviderError;
 use rig_core::message;
 use rig_core::operation::Completion;
 use rig_core::providers::gemini::completion::gemini_api_types::{
-    Blob, Content, FileData, Part, PartKind, Role, Schema as GeminiSchema,
-    map_google_finish_reason, tool_parameters_to_schema,
+    Blob, Content, FileData, Part, PartKind, Role, Schema as GeminiSchema, UsageMetadata,
+    tool_parameters_to_schema,
 };
-use rig_core::providers::gemini::completion::split_system_messages_from_history;
+use rig_core::providers::gemini::completion::{contents, split_system_messages_from_history};
 use rig_core::wire::{Descriptor, Mode, Wire};
-use std::convert::TryFrom;
 
 use super::GeminiGrpc;
 use super::proto::{self, GenerateContentRequest, GenerateContentResponse};
@@ -56,9 +55,7 @@ impl Wire for GenerateContent {
     type Op = Completion;
     type Payload = GenerateContentRequest;
     type Frame = GenerateContentResponse;
-    #[cfg(any())]
-    type Decoder<'id> = GrpcAdapter<'id>;
-    type Decoder<'id> = rig_core::providers::internal::Unmigrated;
+    type Decoder<'id> = crate::streaming::GrpcAdapter;
 
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(PROVIDER_NAME)
@@ -66,31 +63,17 @@ impl Wire for GenerateContent {
             .replay(self)
     }
 
-    /// The Gemini service issues this wire's reasoning, over gRPC or REST,
-    /// so that is the reasoning a request may replay.
-    #[cfg(any())]
     fn encode(
         &self,
         request: CompletionRequest,
         _mode: Mode,
     ) -> Result<GenerateContentRequest, EncodeError> {
-        create_grpc_request(&self.model, request)
-    }
-    fn encode(
-        &self,
-        request: CompletionRequest,
-        _mode: Mode,
-    ) -> Result<GenerateContentRequest, EncodeError> {
-        let _ = (request, _mode);
-        Err(rig_core::providers::internal::Unmigrated::encode_error())
+        let model = request.model.clone().unwrap_or_else(|| self.model.clone());
+        create_grpc_request(&model, request)
     }
 
-    #[cfg(any())]
     fn decoder<'id>(&self) -> Self::Decoder<'id> {
-        GrpcAdapter::default()
-    }
-    fn decoder<'id>(&self) -> Self::Decoder<'id> {
-        rig_core::providers::internal::Unmigrated
+        crate::streaming::GrpcAdapter::default()
     }
 }
 
@@ -105,6 +88,10 @@ impl rig_core::completion::ReplayTarget for GenerateContent {
 
     fn model(&self) -> &str {
         &self.model
+    }
+
+    fn normalize_tool_call_id(&self, id: &str, _source: Option<&message::Origin>) -> String {
+        rig_core::providers::gemini::completion::normalize_tool_call_id(&self.model, id)
     }
 }
 
@@ -147,55 +134,6 @@ impl Transport<GenerateContent> for GeminiGrpc {
 
 /// Stable descriptor name reported on normalized responses from this provider.
 pub const PROVIDER_NAME: &str = "gemini-grpc";
-
-/// The issuer this transport's reasoning records: the Gemini API service,
-/// which also serves the REST transport, so thought signatures move between
-/// the two.
-pub const REASONING_ISSUER: &str = rig_core::providers::gemini::completion::PROVIDER_NAME;
-
-/// [`REASONING_ISSUER`], the only issuer whose reasoning this wire replays.
-#[cfg(any())]
-const ISSUER: message::Issuer = message::Issuer::from_static(REASONING_ISSUER);
-
-/// Map Gemini's protobuf `finishReason` onto rig's normalized vocabulary.
-///
-/// The wire value is a prost enum discriminant; `as_str_name` recovers the
-/// SCREAMING_SNAKE proto spelling the shared Google table keys on, and a
-/// discriminant this proto does not model keeps its numeric identity so a
-/// reason Google adds later surfaces rather than reading as a natural stop.
-pub fn map_finish_reason(reason: i32) -> Option<completion::FinishReason> {
-    use proto::candidate::FinishReason as Wire;
-
-    let Ok(reason) = Wire::try_from(reason) else {
-        return Some(completion::FinishReason::Other(format!(
-            "FINISH_REASON_{reason}"
-        )));
-    };
-
-    map_google_finish_reason(reason.as_str_name())
-}
-
-/// Returns a response error for malformed calls, unexpected calls, or exceeded
-/// tool-call limits, including the supplied finish message. Other discriminants
-/// return `None`.
-pub fn tool_protocol_finish_reason_error(
-    reason: i32,
-    finish_message: Option<&str>,
-) -> Option<ProviderError> {
-    use proto::candidate::FinishReason as Wire;
-
-    let reason = Wire::try_from(reason).ok()?;
-    match reason {
-        Wire::MalformedFunctionCall | Wire::UnexpectedToolCall | Wire::TooManyToolCalls => {
-            let message = finish_message.unwrap_or("no finish message provided");
-            Some(ProviderError::Response(format!(
-                "Gemini stopped with finish_reason={}: {message}",
-                reason.as_str_name()
-            )))
-        }
-        _ => None,
-    }
-}
 
 /// Build a non-thought `proto::Part` around the given data payload.
 pub(crate) fn data_part(data: proto::part::Data) -> proto::Part {
@@ -246,7 +184,6 @@ pub(crate) fn transient_grpc_code(code: tonic::Code) -> bool {
     )
 }
 
-#[cfg(any())]
 pub(crate) fn create_grpc_request(
     model: &str,
     completion_request: CompletionRequest,
@@ -265,13 +202,10 @@ pub(crate) fn create_grpc_request(
     } = completion_request;
 
     let (history_system, chat_history) = split_system_messages_from_history(chat_history);
-    let contents = chat_history
+    let chat_history = chat_history.into_iter().map(encode_raw_images).collect();
+    let contents = contents(chat_history, model)?
         .into_iter()
-        .map(|message| {
-            let content =
-                Content::try_from(encode_raw_images(message)).map_err(EncodeError::request)?;
-            grpc_content(content)
-        })
+        .map(|content| grpc_content(serde_json::from_value(content)?))
         .collect::<Result<Vec<_>, _>>()?;
 
     let mut system_parts = Vec::new();
@@ -366,9 +300,13 @@ fn grpc_content(content: Content) -> Result<proto::Content, EncodeError> {
 }
 
 /// Transcodes one Gemini part. Rejects what the gRPC proto cannot carry:
-/// media inside a function response, part metadata, and code execution.
+/// media inside a function response and part metadata.
 fn grpc_part(part: Part) -> Result<proto::Part, EncodeError> {
-    if part.additional_params.is_some() {
+    if part
+        .additional_params
+        .as_ref()
+        .is_some_and(|extra| extra.as_object().is_none_or(|extra| !extra.is_empty()))
+    {
         return Err(EncodeError::request(
             "Gemini gRPC does not support part metadata",
         ));
@@ -405,10 +343,17 @@ fn grpc_part(part: Part) -> Result<proto::Part, EncodeError> {
                 id: response.id.unwrap_or_default(),
             })
         }
-        PartKind::ExecutableCode(_) | PartKind::CodeExecutionResult(_) => {
-            return Err(EncodeError::request(
-                "Gemini gRPC does not support code execution parts",
-            ));
+        PartKind::ExecutableCode(code) => {
+            proto::part::Data::ExecutableCode(proto::ExecutableCode {
+                language: wire_name(&code.language)?,
+                code: code.code,
+            })
+        }
+        PartKind::CodeExecutionResult(result) => {
+            proto::part::Data::CodeExecutionResult(proto::CodeExecutionResult {
+                outcome: wire_name(&result.outcome)?,
+                output: result.output.unwrap_or_default(),
+            })
         }
     };
     Ok(proto::Part {
@@ -417,6 +362,17 @@ fn grpc_part(part: Part) -> Result<proto::Part, EncodeError> {
         thought_signature: decode_optional_base64(part.thought_signature)?,
         part_metadata: None,
     })
+}
+
+/// A REST enum value's wire spelling, which the trimmed proto carries as a
+/// string.
+fn wire_name(value: &impl serde::Serialize) -> Result<String, EncodeError> {
+    match serde_json::to_value(value)? {
+        serde_json::Value::String(name) => Ok(name),
+        other => Err(EncodeError::request(format!(
+            "expected a Gemini enum spelling, got {other}"
+        ))),
+    }
 }
 
 fn decode_base64_bytes(input: &str) -> Result<Vec<u8>, EncodeError> {
@@ -454,30 +410,19 @@ fn decode_optional_base64(sig: Option<String>) -> Result<Vec<u8>, EncodeError> {
     decode_base64_bytes(&sig)
 }
 
-/// Map Gemini's `UsageMetadata` onto rig's normalized `Usage`.
-///
-/// Rig's input is the prompt plus the tool-use prompt, its output the
-/// candidates plus the thoughts, and its total their sum, which is Gemini's
-/// `total_token_count`. Proto3 cannot tell an unsent count from zero, so the
-/// tool-use and reasoning counts are always reported; Gemini reports no
-/// cache-write count, which stays `None`.
-pub(crate) fn map_usage(usage: Option<&proto::UsageMetadata>) -> completion::Usage {
-    usage
-        .map(|usage| {
-            let count = |count: i32| count as u64;
-            let input = count(usage.prompt_token_count) + count(usage.tool_use_prompt_token_count);
-            let output = count(usage.candidates_token_count) + count(usage.thoughts_token_count);
-            completion::Usage {
-                input_tokens: Some(input),
-                output_tokens: Some(output),
-                total_tokens: Some(input + output),
-                cached_input_tokens: Some(count(usage.cached_content_token_count)),
-                cache_creation_input_tokens: None,
-                tool_use_prompt_tokens: Some(count(usage.tool_use_prompt_token_count)),
-                reasoning_tokens: Some(count(usage.thoughts_token_count)),
-            }
-        })
-        .unwrap_or_default()
+/// Gemini's protobuf `UsageMetadata` as the REST usage it transcodes to.
+/// Proto3 cannot tell an unsent count from zero, so every optional count
+/// is reported.
+pub(crate) fn rest_usage(usage: &proto::UsageMetadata) -> UsageMetadata {
+    UsageMetadata {
+        prompt_token_count: usage.prompt_token_count,
+        cached_content_token_count: Some(usage.cached_content_token_count),
+        candidates_token_count: Some(usage.candidates_token_count),
+        total_token_count: usage.total_token_count,
+        thoughts_token_count: Some(usage.thoughts_token_count),
+        tool_use_prompt_token_count: Some(usage.tool_use_prompt_token_count),
+        ..UsageMetadata::default()
+    }
 }
 
 pub(crate) fn encode_optional_base64(bytes: &[u8]) -> Option<String> {
@@ -601,5 +546,4 @@ fn json_type_to_proto_type(t: &str) -> proto::Type {
 
 #[cfg(test)]
 #[allow(clippy::expect_used, clippy::unwrap_used)]
-#[cfg(any())]
 pub(crate) mod tests;

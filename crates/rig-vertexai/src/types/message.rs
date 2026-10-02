@@ -3,14 +3,14 @@ use base64::engine::general_purpose::STANDARD as BASE64;
 use google_cloud_aiplatform_v1 as vertexai;
 use rig_core::error::ProviderError;
 use rig_core::message::{
-    AssistantContent, DocumentSourceKind, Image, ImageMediaType, Message, MimeType, Text,
-    ToolResultContent, UserContent,
+    DocumentSourceKind, Image, ImageMediaType, Message, MimeType, Text, ToolResultContent,
+    UserContent,
 };
+use rig_core::providers::gemini::completion::gemini_api_types::assistant_part;
 use std::collections::HashSet;
 
 /// The Vertex AI `Content` for a non-system `message`. System messages
 /// travel in `system_instruction` and are rejected here.
-#[cfg(any())]
 pub(crate) fn content_from_message(
     message: Message,
 ) -> Result<vertexai::model::Content, ProviderError> {
@@ -91,98 +91,14 @@ pub(crate) fn content_from_message(
                 .set_role("user")
                 .set_parts(parts))
         }
-        Message::Assistant { content, .. } => {
-            let parts: Result<Vec<vertexai::model::Part>, _> = content
-                .into_iter()
-                // Reasoning another service issued is not replayed.
-                .filter(|part| match part {
-                    AssistantContent::Reasoning(reasoning) => reasoning
-                        .open(&crate::types::completion_response::ISSUER)
-                        .is_some(),
-                    _ => true,
-                })
-                .map(|assistant_content| match assistant_content {
-                    AssistantContent::Text(text) => {
-                        let signature = rig_core::providers::gemini::text_signature_at(
-                            &text,
-                            crate::types::completion_response::VERTEX_TEXT_EXTRAS_KEY,
-                        )
-                        .map(str::to_owned);
-                        let mut part = vertexai::model::Part::new().set_text(text.text);
-                        // A signed answer part returns with its signature.
-                        if let Some(signature) = signature {
-                            match BASE64.decode(signature.as_bytes()) {
-                                Ok(bytes) => part = part.set_thought_signature(bytes),
-                                Err(err) => tracing::warn!(
-                                    %err,
-                                    "Failed to base64-decode text thought_signature; \
-                                     dropping it for this turn"
-                                ),
-                            }
-                        }
-                        Ok(part)
-                    }
-                    AssistantContent::Image(image) => vertex_assistant_image_part(image),
-                    AssistantContent::ToolCall(tool_call) => {
-                        let serde_json::Value::Object(struct_val) = tool_call.function.arguments
-                        else {
-                            return Err(ProviderError::Provider(
-                                "Expected JSON object for Struct conversion".to_string(),
-                            ));
-                        };
-
-                        let function_call = vertexai::model::FunctionCall::new()
-                            .set_name(tool_call.function.name.to_string())
-                            .set_args(struct_val);
-
-                        let mut part =
-                            vertexai::model::Part::new().set_function_call(function_call);
-
-                        // Restore signature bytes for replay; malformed base64
-                        // is omitted with a warning rather than rejecting the turn.
-                        if let Some(signature) = &tool_call.signature {
-                            match BASE64.decode(signature.as_bytes()) {
-                                Ok(bytes) => part = part.set_thought_signature(bytes),
-                                Err(err) => tracing::warn!(
-                                    %err,
-                                    tool = %tool_call.function.name,
-                                    "Failed to base64-decode tool call thought_signature; \
-                                     dropping it for this turn"
-                                ),
-                            }
-                        }
-
-                        Ok(part)
-                    }
-                    AssistantContent::Reasoning(reasoning) => {
-                        let reasoning = reasoning
-                            .open(&crate::types::completion_response::ISSUER)
-                            .ok_or_else(|| {
-                                ProviderError::request(
-                                    "Vertex cannot replay reasoning another service issued",
-                                )
-                            })?;
-                        let mut part = vertexai::model::Part::new()
-                            .set_text(reasoning.display_text())
-                            .set_thought(true);
-
-                        if let Some(signature) = reasoning.first_signature() {
-                            match BASE64.decode(signature.as_bytes()) {
-                                Ok(bytes) => part = part.set_thought_signature(bytes),
-                                Err(err) => tracing::warn!(
-                                    %err,
-                                    "Failed to base64-decode reasoning thought_signature; \
-                                     dropping it for this turn"
-                                ),
-                            }
-                        }
-
-                        Ok(part)
-                    }
-                })
-                .collect();
-
-            let parts = parts?;
+        Message::Assistant(turn) => {
+            // Vertex function calls and responses carry no id.
+            let parts = turn
+                .content
+                .iter()
+                .filter_map(|block| assistant_part(block, false).transpose())
+                .map(|part| serde_json::from_value(part?).map_err(ProviderError::request))
+                .collect::<Result<Vec<vertexai::model::Part>, ProviderError>>()?;
             Ok(vertexai::model::Content::new()
                 .set_role("model")
                 .set_parts(parts))
@@ -257,41 +173,5 @@ fn vertex_tool_result_image_part(
     )
 }
 
-fn vertex_assistant_image_part(image: Image) -> Result<vertexai::model::Part, ProviderError> {
-    let media_type = image.media_type.ok_or_else(|| {
-        ProviderError::request("Media type for assistant image is required for Vertex AI")
-    })?;
-
-    match media_type {
-        ImageMediaType::JPEG
-        | ImageMediaType::PNG
-        | ImageMediaType::WEBP
-        | ImageMediaType::HEIC
-        | ImageMediaType::HEIF => {}
-        unsupported => {
-            return Err(ProviderError::request(format!(
-                "Unsupported Vertex AI assistant image media type {unsupported:?}"
-            )));
-        }
-    }
-
-    let DocumentSourceKind::Base64(data) = image.data else {
-        return Err(ProviderError::request(
-            "Vertex AI assistant images must use base64 data",
-        ));
-    };
-
-    let data = BASE64.decode(data.as_bytes()).map_err(|err| {
-        ProviderError::request(format!("Invalid base64 assistant image data: {err}"))
-    })?;
-
-    Ok(vertexai::model::Part::new().set_inline_data(
-        vertexai::model::Blob::new()
-            .set_mime_type(media_type.to_mime_type())
-            .set_data(data),
-    ))
-}
-
 #[cfg(test)]
-#[cfg(any())]
 mod tests;

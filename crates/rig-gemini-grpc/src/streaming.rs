@@ -9,50 +9,26 @@
 //! ```
 
 use base64::Engine as _;
-use serde_json::{Map, Value};
+use serde_json::{Map, Value, json};
 
 use rig_core::driver::warn_unmodeled;
 use rig_core::error::ProviderError;
-use rig_core::message::{self, CallId, MimeType, ToolCall, ToolFunction, ToolName};
-use rig_core::operation::{Completion, Finish};
-use rig_core::wire::{Flow, Out, WireEvent};
+use rig_core::operation::Completion;
+use rig_core::providers::gemini::streaming::{GenerateContentChunk, GenerateContentDecoder};
+use rig_core::wire::{Decoder, Flow, Out, WireEvent};
 
-use super::completion::{encode_optional_base64 as encode_signature, prost_struct_to_json};
+use super::completion::{encode_optional_base64, prost_struct_to_json, rest_usage};
 use super::proto;
 
 /// The Gemini gRPC wire's decoder over `GenerateContentResponse`s: a unary
-/// reply is one of them, a stream sends several. Like the REST wire, the
-/// reply ends at EOF once a finish reason arrived, since a hosted-tool round
-/// can report one before more content.
-#[cfg(any())]
-pub struct GrpcAdapter<'id> {
-    /// Thought boundaries inferred from content transitions and signatures.
-    thoughts: Thoughts<'id>,
-    /// The answer text part text chunks extend.
-    text: Option<TextPart<'id>>,
-    /// The latest response carrying a finish reason: the reply's end and
-    /// its raw record.
-    last: Option<proto::GenerateContentResponse>,
-    /// At least one part mapped to assistant content.
-    delivered: bool,
-}
+/// reply is one of them, a stream sends several. Each is restated as the
+/// REST chunk it transcodes to and read by the REST wire's decoder, so a
+/// block's provider item is its part in REST JSON, which the encoder
+/// transcodes back.
+#[derive(Debug, Default)]
+pub struct GrpcAdapter(GenerateContentDecoder);
 
-#[cfg(any())]
-impl Default for GrpcAdapter<'_> {
-    fn default() -> Self {
-        Self {
-            thoughts: Thoughts::new(),
-            text: None,
-            last: None,
-            delivered: false,
-        }
-    }
-}
-
-#[cfg(any())]
-impl<'id> rig_core::wire::Decoder<'id, Completion, proto::GenerateContentResponse>
-    for GrpcAdapter<'id>
-{
+impl<'id> Decoder<'id, Completion, proto::GenerateContentResponse> for GrpcAdapter {
     type Event = proto::GenerateContentResponse;
 
     fn classify(&self, frame: proto::GenerateContentResponse) -> WireEvent<Self::Event> {
@@ -61,171 +37,126 @@ impl<'id> rig_core::wire::Decoder<'id, Completion, proto::GenerateContentRespons
         WireEvent::Known(frame)
     }
 
-    #[cfg(any())]
     fn decode(
         &mut self,
-        resp: proto::GenerateContentResponse,
-        mut out: Out<'id, Completion>,
+        response: proto::GenerateContentResponse,
+        out: Out<'id, Completion>,
     ) -> Result<Flow, ProviderError> {
-        out.issued_by(super::completion::REASONING_ISSUER);
-        let Some(candidate) = resp.candidates.first() else {
-            return Ok(Flow::More);
-        };
-        // Protocol failures must not be followed by a successful end.
-        if let Some(err) = super::completion::tool_protocol_finish_reason_error(
-            candidate.finish_reason,
-            candidate.finish_message.as_deref(),
-        ) {
-            return Err(err);
-        }
-        if let Some(content) = candidate.content.as_ref() {
-            // Parts within one response are distinct parts; text chunks
-            // across stream responses continue one part.
-            let mut previous_text = false;
-            for part in &content.parts {
-                let text = !part.thought && matches!(part.data, Some(proto::part::Data::Text(_)));
-                if text && previous_text {
-                    out.close_open_text(&mut self.text);
-                }
-                previous_text = text;
-                self.interpret_part(part, &mut out)?;
-            }
-        }
-        // Enum default is 0 = FINISH_REASON_UNSPECIFIED. The last one wins.
-        if candidate.finish_reason != 0 {
-            self.last = Some(resp);
-        }
-        Ok(Flow::More)
-    }
-
-    /// Without a provider finish reason the reply did not end; an empty
-    /// reply needs a truncating finish reason to explain it.
-    #[cfg(any())]
-    fn eof(&mut self, mut out: Out<'id, Completion>) -> Result<Flow, ProviderError> {
-        let Some(last) = self.last.take() else {
-            return Err(ProviderError::Truncated);
-        };
-        let finish_reason = last
+        // The latest response carrying a finish reason is the raw record.
+        if response
             .candidates
             .first()
-            .and_then(|candidate| super::completion::map_finish_reason(candidate.finish_reason));
-        let cut_short = finish_reason
-            .as_ref()
-            .is_some_and(rig_core::completion::FinishReason::truncated_output);
-        if !self.delivered && !cut_short {
-            return Err(ProviderError::Response(
-                rig_core::message::EMPTY_RESPONSE_ERROR.to_owned(),
-            ));
+            .is_some_and(|candidate| candidate.finish_reason != 0)
+        {
+            self.0.keep_raw(serde_json::to_value(&response)?);
         }
-        out.close_open_text(&mut self.text);
-        self.thoughts.close(&mut out, None);
-        out.raw(serde_json::to_value(&last)?);
-        Ok(out.end(Finish {
-            usage: super::completion::map_usage(last.usage_metadata.as_ref()),
-            reason: finish_reason,
-            response_id: Some(last.response_id),
-            model: Some(last.model_version),
-            ..Finish::default()
-        }))
+        Decoder::<'id, Completion>::decode(&mut self.0, rest_chunk(response), out)
+    }
+
+    fn eof(&mut self, out: Out<'id, Completion>) -> Result<Flow, ProviderError> {
+        Decoder::<'id, Completion>::eof(&mut self.0, out)
     }
 }
 
-#[cfg(any())]
-impl<'id> GrpcAdapter<'id> {
-    /// Write one protobuf part.
-    #[cfg(any())]
-    fn interpret_part(
-        &mut self,
-        part: &proto::Part,
-        out: &mut Out<'id, Completion>,
-    ) -> Result<(), ProviderError> {
-        match &part.data {
-            // A thought part's signature closes the thinking block, using the
-            // same base64 encoding the request side decodes.
-            Some(proto::part::Data::Text(text)) if part.thought => {
-                self.delivered = true;
-                if !text.is_empty() {
-                    out.close_open_text(&mut self.text);
-                }
-                self.thoughts.fragment(out, text);
-                if let Some(signature) = encode_signature(&part.thought_signature) {
-                    self.thoughts.signature(out, signature);
-                }
+/// `response` as the REST chunk it transcodes to. An unspecified finish
+/// reason is left out, as the REST API does.
+fn rest_chunk(response: proto::GenerateContentResponse) -> GenerateContentChunk {
+    let candidates = response
+        .candidates
+        .into_iter()
+        .map(|candidate| {
+            let mut fields = Map::new();
+            if let Some(content) = candidate.content {
+                let parts: Vec<Value> = content.parts.iter().filter_map(rest_part).collect();
+                fields.insert(
+                    "content".to_owned(),
+                    json!({ "parts": parts, "role": content.role }),
+                );
             }
-            // A signature on answer text returns on that text part; a signed
-            // part ends there.
-            Some(proto::part::Data::Text(text)) => {
-                self.delivered = true;
-                let signature = encode_signature(&part.thought_signature);
-                let signed = signature.is_some();
-                if signed && text.is_empty() {
-                    out.close_open_text(&mut self.text);
-                }
-                let params = signature.and_then(|signature| {
-                    rig_core::providers::gemini::text_signature_extras(
-                        rig_core::providers::gemini::GEMINI_TEXT_EXTRAS_KEY,
-                        signature,
-                    )
-                });
-                if !text.is_empty() || params.is_some() {
-                    self.thoughts.boundary();
-                    let part = out.extend_text(&mut self.text, text);
-                    if let Some(params) = params {
-                        out.text_params(part, params);
-                    }
-                }
-                if signed {
-                    out.close_open_text(&mut self.text);
-                }
+            if candidate.finish_reason != 0 {
+                let reason = proto::candidate::FinishReason::try_from(candidate.finish_reason)
+                    .map_or_else(
+                        |_| format!("FINISH_REASON_{}", candidate.finish_reason),
+                        |reason| reason.as_str_name().to_owned(),
+                    );
+                fields.insert("finishReason".to_owned(), reason.into());
             }
-            Some(proto::part::Data::FunctionCall(function_call)) => {
-                self.delivered = true;
-                self.thoughts.boundary();
-                out.close_open_text(&mut self.text);
-                let name = ToolName::new(function_call.name.clone()).map_err(|error| {
-                    ProviderError::Response(format!("Gemini returned a function call: {error}"))
-                })?;
-                let arguments = function_call
-                    .args
-                    .as_ref()
-                    .map_or_else(|| Value::Object(Map::new()), prost_struct_to_json);
-                // Rig issues an id for a call the provider sent without one.
-                out.tool_call(
-                    ToolCall::new(
-                        CallId::from_wire(function_call.id.clone()),
-                        ToolFunction::new(name, arguments),
-                    )
-                    // A signature on a function-call part belongs to the call.
-                    .with_signature(encode_signature(&part.thought_signature)),
-                )?;
+            if let Some(message) = candidate.finish_message {
+                fields.insert("finishMessage".to_owned(), message.into());
             }
-            Some(proto::part::Data::InlineData(inline_data)) => {
-                self.delivered = true;
-                self.thoughts.boundary();
-                out.close_open_text(&mut self.text);
-                let media_type = message::MediaType::from_mime_type(&inline_data.mime_type);
-                let Some(message::MediaType::Image(media_type)) = media_type else {
-                    return Err(ProviderError::Response(format!(
-                        "Unsupported media type {media_type:?}"
-                    )));
-                };
-                out.content(message::AssistantContent::image_base64(
-                    base64::engine::general_purpose::STANDARD.encode(&inline_data.data),
-                    Some(media_type),
-                    Some(message::ImageDetail::default()),
-                ))?;
+            if let Some(index) = candidate.index {
+                fields.insert("index".to_owned(), index.into());
             }
-            None => {
-                // Missing or unknown oneof data uses the shared redacted warning policy.
-                warn_unmodeled("gemini_grpc_part", part);
-            }
-            Some(_) => {}
-        }
-        Ok(())
+            fields
+        })
+        .collect();
+    GenerateContentChunk {
+        response_id: response.response_id,
+        candidates,
+        usage_metadata: response.usage_metadata.as_ref().map(rest_usage),
+        model_version: Some(response.model_version).filter(|model| !model.is_empty()),
+        ..GenerateContentChunk::default()
     }
+}
+
+/// One protobuf part in its REST JSON form. A part whose data this proto
+/// does not model is skipped with the shared redacted warning.
+fn rest_part(part: &proto::Part) -> Option<Value> {
+    use proto::part::Data;
+    let base64 = |bytes: &[u8]| base64::engine::general_purpose::STANDARD.encode(bytes);
+    let (kind, data) = match part.data.as_ref() {
+        Some(Data::Text(text)) => ("text", json!(text)),
+        Some(Data::InlineData(blob)) => (
+            "inlineData",
+            json!({ "mimeType": blob.mime_type, "data": base64(&blob.data) }),
+        ),
+        Some(Data::FileData(file)) => (
+            "fileData",
+            json!({ "mimeType": file.mime_type, "fileUri": file.file_uri }),
+        ),
+        Some(Data::FunctionCall(call)) => {
+            let mut function_call = json!({
+                "name": call.name,
+                "args": call.args.as_ref().map_or_else(|| json!({}), prost_struct_to_json),
+            });
+            if !call.id.is_empty()
+                && let Some(function_call) = function_call.as_object_mut()
+            {
+                function_call.insert("id".to_owned(), json!(call.id));
+            }
+            ("functionCall", function_call)
+        }
+        Some(Data::FunctionResponse(response)) => (
+            "functionResponse",
+            json!({
+                "name": response.name,
+                "response": response.response.as_ref().map(prost_struct_to_json),
+                "id": response.id,
+            }),
+        ),
+        Some(Data::ExecutableCode(code)) => (
+            "executableCode",
+            json!({ "language": code.language, "code": code.code }),
+        ),
+        Some(Data::CodeExecutionResult(result)) => (
+            "codeExecutionResult",
+            json!({ "outcome": result.outcome, "output": result.output }),
+        ),
+        None => {
+            warn_unmodeled("gemini_grpc_part", part);
+            return None;
+        }
+    };
+    let mut rest = Map::from_iter([(kind.to_owned(), data)]);
+    if part.thought {
+        rest.insert("thought".to_owned(), true.into());
+    }
+    if let Some(signature) = encode_optional_base64(&part.thought_signature) {
+        rest.insert("thoughtSignature".to_owned(), signature.into());
+    }
+    Some(Value::Object(rest))
 }
 
 #[cfg(test)]
 #[allow(clippy::expect_used, clippy::panic)]
-#[cfg(any())]
 mod tests;

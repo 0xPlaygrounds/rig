@@ -29,15 +29,14 @@ fn tool_result_serializes_the_executed_name_not_an_identifier() {
         AssistantContent, CallId, ToolCall, ToolFunction, ToolResult, ToolResultContent,
     };
 
-    let call = |wire_id: &str, name: &str| Message::Assistant {
-        id: None,
-        content: vec![AssistantContent::ToolCall(ToolCall::from_wire(
+    let call = |wire_id: &str, name: &str| {
+        Message::from(vec![AssistantContent::ToolCall(ToolCall::from_wire(
             wire_id,
             ToolFunction {
                 name: rig_core::message::ToolName::new(name.to_owned()).expect("tool name"),
                 arguments: serde_json::json!({}),
             },
-        ))],
+        ))])
     };
     let result = |wire_id: &str, name: &str| Message::User {
         content: vec![UserContent::ToolResult(ToolResult {
@@ -46,25 +45,6 @@ fn tool_result_serializes_the_executed_name_not_an_identifier() {
             content: vec![ToolResultContent::text("out")],
         })],
     };
-    let call_dual = |item_id: &str, call_id: &str, name: &str| Message::Assistant {
-        id: None,
-        content: vec![AssistantContent::ToolCall(ToolCall::from_dual_wire(
-            item_id,
-            call_id,
-            ToolFunction {
-                name: rig_core::message::ToolName::new(name.to_owned()).expect("tool name"),
-                arguments: serde_json::json!({}),
-            },
-        ))],
-    };
-    let result_dual = |item_id: &str, call_id: &str, name: &str| Message::User {
-        content: vec![UserContent::ToolResult(ToolResult {
-            call: CallId::from_dual_wire(item_id, call_id),
-            name: rig_core::message::ToolName::new(name.to_owned()).expect("tool name"),
-            content: vec![ToolResultContent::text("out")],
-        })],
-    };
-
     let request = CompletionRequest {
         chat_history: vec![
             // A driver-built result carries the executed name (a repair
@@ -76,11 +56,6 @@ fn tool_result_serializes_the_executed_name_not_an_identifier() {
             // `call_abc` must never reach the wire as a name.
             call("call_abc", "get_weather"),
             result("call_abc", "get_weather"),
-            // A dual-identifier history (OpenAI Responses: item id
-            // `fc_…` + correlator `call_…`, both carried on `provider`) —
-            // `fc_1` must never reach the wire as a name.
-            call_dual("fc_1", "call_9", "get_time"),
-            result_dual("fc_1", "call_9", "get_time"),
         ],
         ..minimal_request()
     };
@@ -96,11 +71,7 @@ fn tool_result_serializes_the_executed_name_not_an_identifier() {
 
     assert_eq!(
         response_names,
-        vec![
-            "sum".to_owned(),
-            "get_weather".to_owned(),
-            "get_time".to_owned()
-        ]
+        vec!["sum".to_owned(), "get_weather".to_owned()]
     );
 }
 
@@ -801,40 +772,57 @@ fn generation_config_rejects_invalid_thinking_config() {
     );
 }
 
+/// A thought replays with its signature only to the model that produced
+/// it; through the driver's adapter another provider's reasoning is text.
 #[test]
-fn only_vertex_reasoning_is_replayed() {
-    use rig_core::message::{AssistantContent, Reasoning};
+fn only_vertex_reasoning_is_replayed_as_thought() {
+    use rig_core::message::{AssistantContent, AssistantMessage, Origin};
 
-    let signed = |text: &str, issuer: &str| {
-        AssistantContent::Reasoning(
-            Reasoning::new_with_signature(text, Some("c2lnbmF0dXJl".to_owned()))
-                .sealed(issuer.to_owned()),
-        )
+    let signed = |text: &str, api: &'static str, provider: &str| {
+        let reasoning = AssistantContent::reasoning(text).with_native(serde_json::json!({
+            "text": text,
+            "thought": true,
+            "thoughtSignature": "c2lnbmF0dXJl",
+        }));
+        Message::from(AssistantMessage {
+            origin: Some(Origin::new(
+                api,
+                provider,
+                crate::completion::GEMINI_2_5_FLASH,
+            )),
+            ..AssistantMessage::new(vec![reasoning, AssistantContent::text("4")])
+        })
     };
     let mut request = minimal_request();
-    request.chat_history = vec![
-        Message::user("What is 2 + 2?"),
-        Message::Assistant {
-            id: None,
-            content: vec![
-                signed(
-                    "vertex thought",
-                    crate::types::completion_response::PROVIDER_NAME,
-                ),
-                signed("anthropic thought", "anthropic"),
-                AssistantContent::text("4"),
-            ],
-        },
-        Message::user("And 3 + 3?"),
-    ];
+    request.chat_history = rig_core::completion::adapt(
+        &[
+            Message::user("What is 2 + 2?"),
+            signed(
+                "vertex thought",
+                "vertexai.generate_content",
+                crate::types::completion_response::PROVIDER_NAME,
+            ),
+            Message::user("And 3 + 3?"),
+            signed("anthropic thought", "anthropic.messages", "anthropic"),
+            Message::user("And 4 + 4?"),
+        ],
+        &crate::completion::GenerateContent::new(crate::completion::GEMINI_2_5_FLASH),
+    );
     let contents = VertexCompletionRequest(request)
         .contents()
         .expect("contents build");
-    let thoughts: Vec<String> = contents
+    let thoughts: Vec<(bool, String)> = contents
         .iter()
+        .filter(|content| content.role == "model")
         .flat_map(|content| content.parts.iter())
-        .filter(|part| part.thought)
-        .filter_map(|part| part.text().cloned())
+        .filter_map(|part| Some((part.thought, part.text()?.clone())))
+        .filter(|(_, text)| text.ends_with("thought"))
         .collect();
-    assert_eq!(thoughts, ["vertex thought"]);
+    assert_eq!(
+        thoughts,
+        [
+            (true, "vertex thought".to_owned()),
+            (false, "anthropic thought".to_owned())
+        ]
+    );
 }

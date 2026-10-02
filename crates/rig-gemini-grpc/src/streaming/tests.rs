@@ -2,8 +2,9 @@ use super::*;
 use crate::completion::tests::{complete, stream_from_events};
 use futures::StreamExt;
 use rig_core::completion::CompletionResponse;
-use rig_core::message::{AssistantContent, Reasoning, ReasoningContent};
+use rig_core::message::{AssistantContent, Reasoning};
 use rig_core::streaming::{Item, StreamEvent};
+use serde_json::json;
 
 fn thought_part(text: &str, signature: &[u8]) -> proto::Part {
     proto::Part {
@@ -39,16 +40,24 @@ async fn reasoning_blocks(events: Vec<proto::GenerateContentResponse>) -> Vec<Re
             ..
         }) = item.expect("stream item should be ok")
         {
-            blocks.push(reasoning.open(reasoning.issuer()).cloned().expect("opens"));
+            blocks.push(reasoning);
         }
     }
     blocks
 }
 
-// Streaming parity with the unary conversion (completion.rs
-// `Reasoning::new_with_signature` + base64): a signed thought part must
-// reach the normalized stream as a completed signed Reasoning block that
-// restates the accumulated thought text.
+/// The REST part a signed thought block holds: the joined text and the
+/// signature as standard base64 over the wire's bytes.
+fn signed_thought(text: &str, signature: &[u8]) -> serde_json::Value {
+    json!({
+        "text": text,
+        "thought": true,
+        "thoughtSignature": base64::engine::general_purpose::STANDARD.encode(signature),
+    })
+}
+
+// Consecutive thought parts continue one block, which holds the merged
+// part with the signature.
 #[tokio::test]
 async fn signed_thought_part_restates_accumulated_text_with_signature() {
     let signature_bytes = b"opaque-signature".as_slice();
@@ -64,14 +73,10 @@ async fn signed_thought_part_restates_accumulated_text_with_signature() {
     let signed = blocks
         .last()
         .expect("the signed part must yield a Reasoning block");
+    assert_eq!(signed.text, "think1 think2");
     assert_eq!(
-        signed.content,
-        vec![ReasoningContent::Text {
-            text: "think1 think2".to_string(),
-            // The expected encoding is the unary path's: standard base64
-            // over the wire's signature bytes.
-            signature: Some(base64::engine::general_purpose::STANDARD.encode(signature_bytes)),
-        }]
+        signed.native.as_ref().map(|native| &native.item),
+        Some(&signed_thought("think1 think2", signature_bytes))
     );
 }
 
@@ -94,11 +99,8 @@ async fn signature_on_empty_trailer_part_still_carries_the_signature() {
         .last()
         .expect("the signed trailer must yield a Reasoning block");
     assert_eq!(
-        signed.content,
-        vec![ReasoningContent::Text {
-            text: "thinking...".to_string(),
-            signature: Some(base64::engine::general_purpose::STANDARD.encode(signature_bytes)),
-        }]
+        signed.native.as_ref().map(|native| &native.item),
+        Some(&signed_thought("thinking...", signature_bytes))
     );
 }
 
@@ -116,12 +118,10 @@ async fn signature_without_any_thought_text_still_surfaces() {
     let signed = blocks
         .last()
         .expect("a lone signature must yield a Reasoning block");
+    assert!(signed.text.is_empty());
     assert_eq!(
-        signed.content,
-        vec![ReasoningContent::Text {
-            text: String::new(),
-            signature: Some(base64::engine::general_purpose::STANDARD.encode(signature_bytes)),
-        }]
+        signed.native.as_ref().map(|native| &native.item),
+        Some(&signed_thought("", signature_bytes))
     );
 }
 
@@ -237,7 +237,7 @@ async fn malformed_function_call_fails_the_stream_with_no_terminal() {
     assert_eq!(drained.errors.len(), 1, "errors: {:?}", drained.errors);
     let error = drained.errors.first().expect("one error");
     assert!(
-        error.contains("MALFORMED_FUNCTION_CALL")
+        error.contains("MalformedFunctionCall")
             && error.contains("could not parse the function call"),
         "error should name the reason and carry finish_message: {error}"
     );
@@ -302,24 +302,18 @@ async fn non_tool_protocol_finish_reasons_still_complete_the_turn() {
     assert!(drained.reached_terminal);
 }
 
-// The unary path routes through the same helper, so the two surfaces
+// The unary path decodes through the same decoder, so the two surfaces
 // report an aborted tool protocol with the same message.
-#[test]
-fn unary_and_streaming_report_the_same_tool_protocol_error() {
+#[tokio::test]
+async fn unary_and_streaming_report_the_same_tool_protocol_error() {
     let response = failed_response(
         proto::candidate::FinishReason::TooManyToolCalls,
         Some("budget exhausted"),
     );
 
-    let expected = super::super::completion::tool_protocol_finish_reason_error(
-        proto::candidate::FinishReason::TooManyToolCalls as i32,
-        Some("budget exhausted"),
-    )
-    .expect("the helper must produce an error")
-    .to_string();
-
+    let streamed = drain(vec![response.clone()]).await;
     match complete(response) {
-        Err(err) => assert_eq!(err.to_string(), expected),
+        Err(err) => assert_eq!(streamed.errors, vec![err.to_string()]),
         Ok(_) => panic!("the unary path must fail on a tool-protocol finish reason"),
     }
 }
@@ -455,28 +449,28 @@ async fn terminal_raw_round_trips_into_the_terminal_type() {
     );
 }
 
-/// Streamed reasoning names the Gemini service, as unary reasoning does.
+/// A streamed turn names this wire as its origin: the Gemini API, as the
+/// REST wire does, and this provider, so it replays only here.
 #[tokio::test]
-async fn the_stream_names_the_gemini_service_as_reasoning_issuer() {
+async fn the_stream_names_this_wire_as_its_origin() {
     let terminal = normalized_terminal(vec![
         response(vec![thought_part("hmm", b"sig")], 0),
         terminal_frame(),
     ])
     .await;
     assert_eq!(terminal.provider(), super::super::completion::PROVIDER_NAME);
-    let Some(AssistantContent::Reasoning(reasoning)) = terminal.choice.first() else {
-        panic!("reasoning first: {:?}", terminal.choice);
-    };
-    assert_eq!(
-        reasoning.issuer().as_str(),
-        super::super::completion::REASONING_ISSUER
-    );
+    assert_eq!(terminal.origin.api.as_str(), "gemini.generate_content");
+    assert!(matches!(
+        terminal.choice.first(),
+        Some(AssistantContent::Reasoning(_))
+    ));
 }
 
 /// The streamed twin of a signed answer: the text, then an empty part
-/// carrying the signature. The signature stays on its own empty part.
+/// carrying the signature, then more text. The parts continue one text
+/// block, which holds the merged part with the signature.
 #[tokio::test]
-async fn a_trailing_signed_part_keeps_its_signature_on_its_own_text() {
+async fn a_trailing_signed_part_continues_the_text_it_follows() {
     let mut signed = text_part("");
     signed.thought_signature = b"sig".to_vec();
     let mut stream = stream_from_events(
@@ -493,23 +487,11 @@ async fn a_trailing_signed_part_keeps_its_signature_on_its_own_text() {
         item.expect("stream item");
     }
     let choice = stream.finish().await.expect("terminal").choice;
-    let texts: Vec<(String, bool)> = choice
-        .iter()
-        .map(|part| match part {
-            rig_core::message::AssistantContent::Text(text) => (
-                text.text.clone(),
-                rig_core::providers::gemini::text_thought_signature(text).is_some(),
-            ),
-            other => panic!("answer text only: {other:?}"),
-        })
-        .collect();
-    // The terminal frame's own text starts after the signed part.
     assert_eq!(
-        texts,
-        [
-            ("289".to_owned(), false),
-            (String::new(), true),
-            ("!".to_owned(), false)
+        choice,
+        vec![
+            AssistantContent::text("289!")
+                .with_native(json!({ "text": "289!", "thoughtSignature": "c2ln" }))
         ]
     );
 }

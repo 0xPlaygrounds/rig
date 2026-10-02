@@ -1,53 +1,21 @@
-use base64::Engine as _;
-use base64::engine::general_purpose::STANDARD as BASE64;
 use google_cloud_aiplatform_v1 as vertexai;
-use rig_core::completion::Usage;
 use rig_core::error::ProviderError;
-use rig_core::message::{
-    AssistantContent, ImageDetail, ImageMediaType, MediaType, MimeType, Reasoning, Text, ToolCall,
-    ToolFunction,
-};
-use rig_core::operation::{Completion, Finish};
-use rig_core::providers::gemini::completion::gemini_api_types::map_google_finish_reason;
+use rig_core::operation::Completion;
+use rig_core::providers::gemini::completion::gemini_api_types::{PromptFeedback, UsageMetadata};
+use rig_core::providers::gemini::streaming::{GenerateContentChunk, GenerateContentDecoder};
 use rig_core::wire::{Decoder, Flow, Out, WireEvent};
+use serde_json::{Map, Value};
 
 /// Stable descriptor name reported on normalized Vertex AI responses.
 pub const PROVIDER_NAME: &str = "vertexai";
 
-/// The issuer of Vertex's reasoning, the only reasoning this wire replays.
-#[cfg(any())]
-pub(crate) const ISSUER: rig_core::message::Issuer =
-    rig_core::message::Issuer::from_static(PROVIDER_NAME);
+/// Decodes Vertex AI's whole `GenerateContent` reply. The reply is restated
+/// as the REST chunk its JSON is and read by the Gemini API's decoder, so a
+/// block's provider item is the SDK part's JSON. A streamed call re-emits
+/// the same reply.
+#[derive(Debug, Default)]
+pub struct VertexDecoder(GenerateContentDecoder);
 
-/// The text-block `AdditionalParams` key holding Vertex AI extras for that
-/// text, today the `thoughtSignature` Vertex put on the answer part. Only the
-/// Vertex codec reads it, so the signature returns only to Vertex.
-pub const VERTEX_TEXT_EXTRAS_KEY: &str = "vertexai";
-
-/// Map Vertex AI's `finishReason` onto rig's normalized vocabulary.
-///
-/// Unmapped values are carried verbatim in their wire SCREAMING_SNAKE spelling
-/// so a reason Vertex adds later surfaces instead of reading as a natural stop.
-pub fn map_finish_reason(
-    reason: &vertexai::model::candidate::FinishReason,
-) -> Option<rig_core::completion::FinishReason> {
-    // `name()` yields the wire form (`MALFORMED_FUNCTION_CALL`) the shared
-    // Google table keys on; a value the SDK does not model falls back to
-    // `Display`, which prints the raw enum value. Formatting the variant with
-    // `Debug` would silently drop the underscores.
-    let wire_name = reason
-        .name()
-        .map_or_else(|| reason.to_string(), ToOwned::to_owned);
-
-    map_google_finish_reason(&wire_name)
-}
-
-/// Decodes Vertex AI's whole `GenerateContent` reply into the events a
-/// stream sends for it; a streamed call re-emits the same reply.
-#[derive(Default)]
-pub struct VertexDecoder;
-
-#[cfg(any())]
 impl<'id> Decoder<'id, Completion, vertexai::model::GenerateContentResponse> for VertexDecoder {
     type Event = vertexai::model::GenerateContentResponse;
 
@@ -61,175 +29,83 @@ impl<'id> Decoder<'id, Completion, vertexai::model::GenerateContentResponse> for
     fn decode(
         &mut self,
         response: vertexai::model::GenerateContentResponse,
-        mut out: Out<'id, Completion>,
+        out: Out<'id, Completion>,
     ) -> Result<Flow, ProviderError> {
-        // The provider's own document, captured before the response is
-        // consumed into normalized content.
-        out.raw(serde_json::to_value(&response)?);
-        for content in assistant_content(&response)? {
-            out.content(content)?;
-        }
-        let finish_reason = response
-            .candidates
-            .first()
-            .and_then(|candidate| map_finish_reason(&candidate.finish_reason));
-        Ok(out.end(Finish {
-            usage: usage(&response),
-            reason: finish_reason,
-            model: Some(response.model_version.clone()),
-            response_id: Some(response.response_id.clone()),
-            ..Finish::default()
-        }))
+        // The provider's own document, captured before it is restated.
+        self.0.keep_raw(serde_json::to_value(&response)?);
+        Decoder::<'id, Completion>::decode(&mut self.0, rest_chunk(&response)?, out)
+    }
+
+    fn eof(&mut self, out: Out<'id, Completion>) -> Result<Flow, ProviderError> {
+        Decoder::<'id, Completion>::eof(&mut self.0, out)
     }
 }
 
-/// The assistant content of a whole reply.
-#[cfg(any())]
-fn assistant_content(
+/// `response` as the REST chunk its JSON is, with the finish and block
+/// reasons spelled by name.
+fn rest_chunk(
     response: &vertexai::model::GenerateContentResponse,
-) -> Result<Vec<AssistantContent>, ProviderError> {
-    let candidate = response
+) -> Result<GenerateContentChunk, ProviderError> {
+    let candidates = response
         .candidates
-        .first()
-        .ok_or_else(|| ProviderError::Provider("No candidates in response".to_string()))?;
-
-    let content = candidate
-        .content
+        .iter()
+        .map(|candidate| {
+            let Value::Object(mut fields) = serde_json::to_value(candidate)? else {
+                return Ok(Map::new());
+            };
+            // The SDK spells enums by number; REST JSON spells them by name.
+            if fields.contains_key("finishReason") {
+                let reason = &candidate.finish_reason;
+                let name = reason
+                    .name()
+                    .map_or_else(|| reason.to_string(), str::to_owned);
+                fields.insert("finishReason".to_owned(), name.into());
+            }
+            Ok(fields)
+        })
+        .collect::<Result<_, serde_json::Error>>()?;
+    let prompt_feedback = response
+        .prompt_feedback
         .as_ref()
-        .ok_or_else(|| ProviderError::Provider("No content in candidate".to_string()))?;
-
-    let mut assistant_contents = Vec::new();
-    // Vertex function calls carry no id: the `index`-th call of the
-    // response mints its own handle, so two calls in one turn never
-    // share one (the position pass below is then a no-op).
-
-    for part in content.parts.iter() {
-        // Preserve opaque signature bytes as base64 for exact replay.
-        let signature =
-            (!part.thought_signature.is_empty()).then(|| BASE64.encode(&part.thought_signature));
-
-        if let Some(function_call) = part.function_call() {
-            let args_json = function_call.args.as_ref().map_or_else(
-                || serde_json::json!({}),
-                |s| serde_json::Value::Object(s.clone()),
-            );
-
-            let name =
-                rig_core::message::ToolName::new(function_call.name.clone()).map_err(|error| {
-                    ProviderError::Response(format!("Vertex returned a function call: {error}"))
-                })?;
-            // Vertex sends no call id: rig issues one per call.
-            assistant_contents.push(AssistantContent::ToolCall(
-                ToolCall::from_wire("", ToolFunction::new(name, args_json))
-                    .with_signature(signature),
-            ));
-        } else if let Some(text) = part.text() {
-            if part.thought {
-                assistant_contents.push(AssistantContent::Reasoning(
-                    Reasoning::new_with_signature(text, signature).sealed(PROVIDER_NAME),
-                ));
-            } else {
-                // A signature on answer text returns on that text part.
-                assistant_contents.push(AssistantContent::Text(Text {
-                    text: text.clone(),
-                    additional_params: signature.clone().and_then(|signature| {
-                        rig_core::providers::gemini::text_signature_extras(
-                            VERTEX_TEXT_EXTRAS_KEY,
-                            signature,
-                        )
-                    }),
-                }));
-            }
-        } else if let Some(inline_data) = part.inline_data() {
-            if signature.is_some() {
-                return Err(ProviderError::Response(
-                    "Vertex inline images with thought_signature cannot be replayed through assistant history"
-                        .to_string(),
-                ));
-            }
-
-            // Assistant history cannot represent the `thought` flag on image parts, so
-            // avoid replaying an internal thought image as visible assistant content.
-            if part.thought {
-                continue;
-            }
-
-            let media_type = MediaType::from_mime_type(&inline_data.mime_type);
-            match media_type {
-                Some(MediaType::Image(
-                    media_type @ (ImageMediaType::JPEG
-                    | ImageMediaType::PNG
-                    | ImageMediaType::WEBP
-                    | ImageMediaType::HEIC
-                    | ImageMediaType::HEIF),
-                )) => {
-                    assistant_contents.push(AssistantContent::image_base64(
-                        BASE64.encode(&inline_data.data),
-                        Some(media_type),
-                        Some(ImageDetail::default()),
-                    ));
-                }
-                Some(MediaType::Image(media_type)) => {
-                    return Err(ProviderError::Response(format!(
-                        "Unsupported Vertex inline image media type {media_type:?}; it cannot be replayed through assistant history"
-                    )));
-                }
-                _ => {
-                    return Err(ProviderError::Response(format!(
-                        "Unsupported Vertex inline media type {:?}",
-                        inline_data.mime_type
-                    )));
-                }
-            }
-        } else if signature.is_some() {
-            // Unrepresentable signatures cannot survive replay; warn without
-            // exposing their contents.
-            tracing::warn!(
-                "Vertex response part carries a thought_signature but is neither a function \
-                 call nor text; signature dropped (no rig-core carrier)."
-            );
-        }
-    }
-
-    rig_core::message::require_non_empty_response(assistant_contents)
+        .and_then(|feedback| feedback.block_reason.name())
+        .filter(|reason| *reason != "BLOCKED_REASON_UNSPECIFIED")
+        .map(|reason| PromptFeedback {
+            block_reason: serde_json::from_value(reason.into()).ok(),
+            safety_ratings: None,
+        });
+    Ok(GenerateContentChunk {
+        response_id: response.response_id.clone(),
+        candidates,
+        prompt_feedback,
+        usage_metadata: response.usage_metadata.as_ref().map(rest_usage),
+        model_version: Some(response.model_version.clone()).filter(|model| !model.is_empty()),
+        error: None,
+    })
 }
 
-/// Rig's input is the prompt plus the tool-use prompt, its output the
-/// candidates plus the thoughts, and its total their sum, which is Vertex's
-/// `totalTokenCount`. Vertex reports the tool-use prompt only per modality, so
-/// its count is the breakdown's sum.
-fn usage(response: &vertexai::model::GenerateContentResponse) -> Usage {
-    response
-        .usage_metadata
-        .as_ref()
-        .map(|usage| {
-            let count = |count: i32| count as u64;
-            let tool_use: u64 = usage
+/// Vertex's usage as the REST usage it reads as. Vertex reports the
+/// tool-use prompt only per modality, so its count is the breakdown's sum;
+/// every count is reported, zero included.
+fn rest_usage(usage: &vertexai::model::generate_content_response::UsageMetadata) -> UsageMetadata {
+    UsageMetadata {
+        prompt_token_count: usage.prompt_token_count,
+        cached_content_token_count: Some(usage.cached_content_token_count),
+        candidates_token_count: Some(usage.candidates_token_count),
+        total_token_count: usage.total_token_count,
+        thoughts_token_count: Some(usage.thoughts_token_count),
+        tool_use_prompt_token_count: Some(
+            usage
                 .tool_use_prompt_tokens_details
                 .iter()
-                .map(|modality| count(modality.token_count))
-                .sum();
-            let input = count(usage.prompt_token_count) + tool_use;
-            let output = count(usage.candidates_token_count) + count(usage.thoughts_token_count);
-            Usage {
-                input_tokens: Some(input),
-                output_tokens: Some(output),
-                total_tokens: Some(input + output),
-                // Cached tokens are already included in prompt_token_count.
-                cached_input_tokens: Some(count(usage.cached_content_token_count)),
-                // Vertex reports no cache-write counter.
-                cache_creation_input_tokens: None,
-                tool_use_prompt_tokens: Some(tool_use),
-                reasoning_tokens: Some(count(usage.thoughts_token_count)),
-            }
-        })
-        .unwrap_or_default()
+                .map(|modality| modality.token_count)
+                .sum(),
+        ),
+        ..UsageMetadata::default()
+    }
 }
 
 #[cfg(test)]
-#[cfg(any())]
 pub(crate) mod tests;
 
 #[cfg(test)]
-#[cfg(any())]
 mod vertex_usage_mapping_tests;

@@ -120,6 +120,17 @@ pub struct GenerateContentDecoder {
     response_id: Option<String>,
     /// At least one part mapped to assistant content.
     delivered: bool,
+    /// The reply document a wire kept in place of the summary record.
+    raw: Option<Value>,
+}
+
+impl GenerateContentDecoder {
+    /// Report `raw` as the reply's raw document in place of the summary
+    /// record, for a wire whose own reply is not REST JSON (an SDK's or
+    /// a protobuf message).
+    pub fn keep_raw(&mut self, raw: Value) {
+        self.raw = Some(raw);
+    }
 }
 
 impl<'id> Decoder<'id, Completion> for GenerateContentDecoder {
@@ -238,7 +249,10 @@ impl<'id> Decoder<'id, Completion> for GenerateContentDecoder {
             model_version: self.model_version.take(),
             response_id: self.response_id.take(),
         };
-        out.raw(serde_json::to_value(&raw)?);
+        out.raw(match self.raw.take() {
+            Some(kept) => kept,
+            None => serde_json::to_value(&raw)?,
+        });
         out.message_native(Value::Object(std::mem::take(&mut self.candidate)));
         Ok(out.end(Finish {
             usage,

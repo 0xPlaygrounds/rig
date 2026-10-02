@@ -35,7 +35,7 @@ fn hello() -> CompletionRequest {
 /// `response` as the unary endpoint answers it.
 pub(crate) fn complete(
     response: GenerateContentResponse,
-) -> Result<completion::CompletionResponse, ProviderError> {
+) -> Result<rig_core::completion::CompletionResponse, ProviderError> {
     futures::executor::block_on(scripted(vec![Ok(response)]).call(hello()))
 }
 
@@ -282,15 +282,14 @@ fn create_grpc_request_sends_the_executed_name_not_an_identifier() {
         AssistantContent, ToolCall, ToolFunction, ToolResult, ToolResultContent,
     };
 
-    let call = |wire_id: &str, name: &str| message::Message::Assistant {
-        id: None,
-        content: vec![AssistantContent::ToolCall(ToolCall::from_wire(
+    let call = |wire_id: &str, name: &str| {
+        message::Message::from(vec![AssistantContent::ToolCall(ToolCall::from_wire(
             wire_id,
             ToolFunction {
                 name: rig_core::message::ToolName::new(name.to_owned()).expect("tool name"),
                 arguments: serde_json::json!({}),
             },
-        ))],
+        ))])
     };
     let result = |wire_id: &str, name: &str| message::Message::User {
         content: vec![message::UserContent::ToolResult(ToolResult {
@@ -301,7 +300,7 @@ fn create_grpc_request_sends_the_executed_name_not_an_identifier() {
     };
 
     let req = create_grpc_request(
-        "gemini-2.5-flash",
+        "gemini-3-flash-preview",
         CompletionRequest {
             model: None,
             chat_history: vec![
@@ -482,46 +481,24 @@ fn a_signature_on_answer_text_stays_on_that_text() {
     };
 
     let normalized = complete(response).expect("payload should normalize");
-    assert_eq!(normalized.choice.len(), 2, "{:?}", normalized.choice);
-    assert!(
-        matches!(
-            normalized.choice.first(),
-            Some(completion::AssistantContent::Reasoning(reasoning))
-                if reasoning.open(reasoning.issuer()).expect("sealed reasoning").first_signature().is_none()
-        ),
-        "the reasoning stays unsigned: {:?}",
-        normalized.choice
+    let signed = serde_json::json!({ "text": "answer", "thoughtSignature": "c2lnLWJ5dGVz" });
+    assert_eq!(
+        normalized.choice,
+        vec![
+            message::AssistantContent::reasoning("the chain")
+                .with_native(serde_json::json!({ "text": "the chain", "thought": true })),
+            message::AssistantContent::text("answer").with_native(signed),
+        ]
     );
-    let signature = match normalized.choice.get(1) {
-        Some(completion::AssistantContent::Text(text)) => {
-            rig_core::providers::gemini::text_thought_signature(text)
-        }
-        _ => None,
-    }
-    .expect("the answer text carries its signature");
 
-    // It replays on the answer part.
+    // The same model replays it on the answer part.
     let request = create_grpc_request(
-        "gemini-3-flash-preview",
-        CompletionRequest {
-            model: None,
-            chat_history: vec![
-                message::Message::user("q"),
-                message::Message::Assistant {
-                    id: None,
-                    content: normalized.choice.clone(),
-                },
-                message::Message::user("again"),
-            ],
-            documents: Vec::new(),
-            tools: Vec::new(),
-            temperature: None,
-            max_tokens: None,
-            tool_choice: None,
-            additional_params: None,
-            output_schema: None,
-            record_telemetry_content: false,
-        },
+        "gemini-2.5-flash",
+        CompletionRequest::from(vec![
+            message::Message::user("q"),
+            message::Message::from(normalized.choice.clone()),
+            message::Message::user("again"),
+        ]),
     )
     .expect("request build");
     let answer = request
@@ -533,7 +510,6 @@ fn a_signature_on_answer_text_stays_on_that_text() {
         .find(|part| matches!(&part.data, Some(proto::part::Data::Text(text)) if text == "answer"))
         .expect("the answer part");
     assert_eq!(answer.thought_signature, b"sig-bytes".to_vec());
-    assert!(!signature.is_empty());
 }
 
 /// The load-bearing property behind `CompletionResponse::raw` for the
@@ -611,7 +587,7 @@ fn generate_content_response_round_trips_through_serde_json_value() {
     );
     assert_eq!(
         restored.finish_reason(),
-        Some(completion::FinishReason::Stop)
+        Some(rig_core::completion::FinishReason::Stop)
     );
 }
 
@@ -662,14 +638,7 @@ fn missing_call_ids_remain_distinct_and_do_not_collide_with_explicit_ids() {
     assert_eq!(second.id, rig_core::message::CallId::from_wire("tool-0"));
     assert!(calls.first().unwrap().id.provider().is_none());
     assert_eq!(
-        calls
-            .get(1)
-            .unwrap()
-            .id
-            .provider()
-            .as_ref()
-            .unwrap()
-            .call_id,
+        calls.get(1).unwrap().id.provider().unwrap().as_str(),
         "tool-0"
     );
     assert!(calls.get(2).unwrap().id.provider().is_none());
@@ -719,61 +688,6 @@ fn rpc_codes_classify_retryability_and_keep_the_code() {
     }
 }
 
-#[test]
-fn only_gemini_reasoning_is_replayed() {
-    use base64::Engine;
-    use rig_core::message::{AssistantContent, Reasoning};
-
-    let signature = |bytes: &[u8]| base64::prelude::BASE64_STANDARD.encode(bytes);
-    let reasoning = |text: &str, bytes: &[u8], issuer: &str| {
-        AssistantContent::Reasoning(
-            Reasoning::new_with_signature(text, Some(signature(bytes))).sealed(issuer.to_owned()),
-        )
-    };
-    let req = create_grpc_request(
-        "gemini-2.5-flash",
-        CompletionRequest {
-            model: None,
-            chat_history: vec![
-                message::Message::user("What is 2 + 2?"),
-                message::Message::Assistant {
-                    id: None,
-                    content: vec![
-                        reasoning("grpc thought", b"grpc", REASONING_ISSUER),
-                        reasoning(
-                            "rest thought",
-                            b"rest",
-                            rig_core::providers::gemini::completion::PROVIDER_NAME,
-                        ),
-                        reasoning("anthropic thought", b"anthropic", "anthropic"),
-                        AssistantContent::text("4"),
-                    ],
-                },
-                message::Message::user("And 3 + 3?"),
-            ],
-            documents: Vec::new(),
-            tools: Vec::new(),
-            temperature: None,
-            max_tokens: None,
-            tool_choice: None,
-            additional_params: None,
-            output_schema: None,
-            record_telemetry_content: false,
-        },
-    )
-    .expect("request build");
-
-    // The Gemini service issued both the gRPC and the REST reasoning.
-    let signatures: Vec<&[u8]> = req
-        .contents
-        .iter()
-        .flat_map(|content| content.parts.iter())
-        .filter(|part| part.thought)
-        .map(|part| part.thought_signature.as_slice())
-        .collect();
-    assert_eq!(signatures, vec![b"grpc".as_slice(), b"rest".as_slice()]);
-}
-
 /// Answers with one text reply and keeps every request it was given.
 #[derive(Clone, Default)]
 struct Recording(std::sync::Arc<std::sync::Mutex<Vec<GenerateContentRequest>>>);
@@ -800,31 +714,50 @@ impl Transport<GenerateContent> for Recording {
     }
 }
 
-/// Through the driver, which scopes history to the wire's replay issuers
-/// before encoding, Gemini's own reasoning still reaches the request.
+/// Through the driver, which adapts history for the wire's model before
+/// encoding, a thought signature reaches the request only from a turn this
+/// wire and model produced: the REST wire's turn and another provider's
+/// replay as plain text.
 #[test]
-fn the_driver_replays_gemini_reasoning_to_the_grpc_wire() {
+fn the_driver_replays_only_this_wires_thought_signatures() {
     use base64::Engine;
-    use rig_core::message::{AssistantContent, Reasoning};
+    use rig_core::message::{AssistantContent, AssistantMessage, Origin};
 
-    let signature = |bytes: &[u8]| base64::prelude::BASE64_STANDARD.encode(bytes);
-    let reasoning = |text: &str, bytes: &[u8], issuer: &str| {
-        AssistantContent::Reasoning(
-            Reasoning::new_with_signature(text, Some(signature(bytes))).sealed(issuer.to_owned()),
-        )
+    let turn = |api: &str, provider: &str, text: &str, bytes: &[u8]| {
+        let signature = base64::prelude::BASE64_STANDARD.encode(bytes);
+        let reasoning = AssistantContent::reasoning(text).with_native(serde_json::json!({
+            "text": text,
+            "thought": true,
+            "thoughtSignature": signature,
+        }));
+        message::Message::from(AssistantMessage {
+            origin: Some(Origin::new(api.to_owned(), provider, GEMINI_2_5_FLASH)),
+            ..AssistantMessage::new(vec![reasoning, AssistantContent::text("4")])
+        })
     };
     let mut request = hello();
     request.chat_history = vec![
         message::Message::user("What is 2 + 2?"),
-        message::Message::Assistant {
-            id: None,
-            content: vec![
-                reasoning("gemini thought", b"gemini", REASONING_ISSUER),
-                reasoning("anthropic thought", b"anthropic", "anthropic"),
-                AssistantContent::text("4"),
-            ],
-        },
+        turn(
+            "gemini.generate_content",
+            PROVIDER_NAME,
+            "grpc thought",
+            b"grpc",
+        ),
         message::Message::user("And 3 + 3?"),
+        turn(
+            "gemini.generate_content",
+            rig_core::providers::gemini::completion::PROVIDER_NAME,
+            "rest thought",
+            b"rest",
+        ),
+        message::Message::user("And 4 + 4?"),
+        turn(
+            "anthropic.messages",
+            "anthropic",
+            "anthropic thought",
+            b"anthropic",
+        ),
     ];
     let recording = Recording::default();
     futures::executor::block_on(
@@ -833,16 +766,24 @@ fn the_driver_replays_gemini_reasoning_to_the_grpc_wire() {
     .expect("the call succeeds");
 
     let sent = recording.0.lock().expect("recording lock");
-    let signatures: Vec<&[u8]> = sent
+    let parts: Vec<(bool, &[u8])> = sent
         .first()
         .expect("one request")
         .contents
         .iter()
+        .filter(|content| content.role == "model")
         .flat_map(|content| content.parts.iter())
-        .filter(|part| part.thought)
-        .map(|part| part.thought_signature.as_slice())
+        .filter(|part| matches!(&part.data, Some(proto::part::Data::Text(text)) if text.ends_with("thought")))
+        .map(|part| (part.thought, part.thought_signature.as_slice()))
         .collect();
-    assert_eq!(signatures, vec![b"gemini".as_slice()]);
+    assert_eq!(
+        parts,
+        vec![
+            (true, b"grpc".as_slice()),
+            (false, b"".as_slice()),
+            (false, b"".as_slice())
+        ]
+    );
 }
 
 /// A tool schema the shared Gemini conversion cannot flatten is a request that
@@ -896,7 +837,7 @@ fn usage_counts_thoughts_as_output_and_the_tool_use_prompt_as_input() {
         .usage;
     assert_eq!(
         usage,
-        completion::Usage {
+        rig_core::completion::Usage {
             input_tokens: Some(175),
             output_tokens: Some(64),
             total_tokens: Some(239),

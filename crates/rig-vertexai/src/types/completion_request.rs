@@ -10,20 +10,13 @@ pub struct VertexCompletionRequest(pub rig_core::completion::CompletionRequest);
 
 impl VertexCompletionRequest {
     pub fn contents(self) -> Result<Vec<vertexai::model::Content>, ProviderError> {
-        Err(ProviderError::request(
-            "Vertex AI has not moved to item-shaped history yet",
-        ))
-    }
-
-    #[cfg(any())]
-    pub fn contents(self) -> Result<Vec<vertexai::model::Content>, ProviderError> {
         let history = self.0.chat_history;
         let mut contents = Vec::new();
         for message in history {
             if matches!(message, rig_core::completion::Message::System { .. }) {
                 continue;
             }
-            contents.push(content_from_message(message)?);
+            contents.push(crate::types::message::content_from_message(message)?);
         }
 
         Ok(contents)
@@ -293,5 +286,4 @@ fn vertex_image_config(image_config: GeminiImageConfig) -> vertexai::model::Imag
 }
 
 #[cfg(test)]
-#[cfg(any())]
 mod tests;

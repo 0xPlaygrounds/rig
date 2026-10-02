@@ -2,7 +2,8 @@ use super::*;
 use crate::types::completion_response::tests::Complete;
 use google_cloud_aiplatform_v1 as vertexai;
 use rig_core::completion::CompletionResponse;
-use rig_core::message::{CallId, Message, Text, ToolResult, ToolResultContent};
+use rig_core::message::{AssistantContent, CallId, Message, Text, ToolResult, ToolResultContent};
+use serde_json::json;
 
 #[test]
 fn test_user_text_message_conversion() {
@@ -23,10 +24,9 @@ fn test_user_text_message_conversion() {
 
 #[test]
 fn test_assistant_text_message_conversion() {
-    let message = Message::Assistant {
-        id: None,
-        content: vec![AssistantContent::Text(Text::new("Hi there".to_string()))],
-    };
+    let message = Message::from(vec![AssistantContent::Text(Text::new(
+        "Hi there".to_string(),
+    ))]);
 
     let vertex_content = content_from_message(message);
 
@@ -41,27 +41,26 @@ fn test_assistant_text_message_conversion() {
 fn test_assistant_image_response_round_trips_through_history_in_order() {
     let raw_image = vec![0, 1, 2, 255];
     let response = vertexai::model::GenerateContentResponse::new().set_candidates([
-        vertexai::model::Candidate::new().set_content(
-            vertexai::model::Content::new()
-                .set_role("model")
-                .set_parts([
-                    vertexai::model::Part::new().set_text("before"),
-                    vertexai::model::Part::new().set_inline_data(
-                        vertexai::model::Blob::new()
-                            .set_mime_type("image/png")
-                            .set_data(raw_image.clone()),
-                    ),
-                    vertexai::model::Part::new().set_text("after"),
-                ]),
-        ),
+        vertexai::model::Candidate::new()
+            .set_finish_reason(vertexai::model::candidate::FinishReason::Stop)
+            .set_content(
+                vertexai::model::Content::new()
+                    .set_role("model")
+                    .set_parts([
+                        vertexai::model::Part::new().set_text("before"),
+                        vertexai::model::Part::new().set_inline_data(
+                            vertexai::model::Blob::new()
+                                .set_mime_type("image/png")
+                                .set_data(raw_image.clone()),
+                        ),
+                        vertexai::model::Part::new().set_text("after"),
+                    ]),
+            ),
     ]);
     let response: CompletionResponse = response.complete().expect("image response should convert");
 
-    let content: vertexai::model::Content = content_from_message(Message::Assistant {
-        id: None,
-        content: response.choice,
-    })
-    .expect("assistant history image should convert");
+    let content: vertexai::model::Content = content_from_message(Message::from(response.choice))
+        .expect("assistant history image should convert");
 
     assert_eq!(content.parts.len(), 3);
     assert_eq!(content.parts[0].text().map(String::as_str), Some("before"));
@@ -86,21 +85,18 @@ fn test_assistant_image_history_rejects_invalid_or_unsupported_input() {
         ),
         (
             AssistantContent::image_base64("not valid base64", Some(ImageMediaType::PNG), None),
-            "Invalid base64",
+            "Invalid symbol",
         ),
     ];
 
     for (image, expected_message) in cases {
         let result: Result<vertexai::model::Content, ProviderError> =
-            content_from_message(Message::Assistant {
-                id: None,
-                content: vec![image],
-            });
+            content_from_message(Message::from(vec![image]));
         let Err(error) = result else {
             panic!("invalid assistant image must fail")
         };
         assert!(matches!(error, ProviderError::Request(_)));
-        assert!(error.to_string().contains(expected_message));
+        assert!(error.to_string().contains(expected_message), "{error}");
     }
 }
 
@@ -120,10 +116,7 @@ fn test_assistant_tool_call_message_conversion() {
         ),
     );
 
-    let message = Message::Assistant {
-        id: None,
-        content: vec![AssistantContent::ToolCall(tool_call)],
-    };
+    let message = Message::from(vec![AssistantContent::ToolCall(tool_call)]);
 
     let vertex_content = content_from_message(message);
 
@@ -138,43 +131,39 @@ fn test_assistant_tool_call_message_conversion() {
     assert_eq!(function_call.name.as_str(), "add");
 }
 
+/// A call's provider item is the SDK part's JSON, so its signature returns
+/// as the bytes Vertex sent.
 #[test]
 fn test_assistant_tool_call_echoes_thought_signature() {
-    use rig_core::message::{ToolCall, ToolFunction};
     let raw = b"\x00\x01\x02thinking-sig\xff";
-    let tool_call = ToolCall::new(
-        CallId::from_wire(""),
-        ToolFunction::new(
-            rig_core::message::ToolName::new("add".to_string()).expect("tool name"),
-            serde_json::json!({"x": 5}),
-        ),
-    )
-    .with_signature(Some(BASE64.encode(raw)));
-    let content: vertexai::model::Content = content_from_message(Message::Assistant {
-        id: None,
-        content: vec![AssistantContent::ToolCall(tool_call)],
-    })
-    .unwrap();
+    let call = AssistantContent::tool_call(
+        "",
+        rig_core::message::ToolName::new("add").expect("tool name"),
+        json!({ "x": 5 }),
+    );
+    let part = json!({
+        "functionCall": { "name": "add", "args": { "x": 5 } },
+        "thoughtSignature": BASE64.encode(raw),
+    });
+    let content = content_from_message(Message::from(vec![call.with_native(part)])).unwrap();
     assert_eq!(content.parts[0].thought_signature.as_ref(), raw.as_slice());
 }
 
+/// A signature that is not base64 is left out of the replayed part rather
+/// than failing the turn.
 #[test]
 fn test_assistant_tool_call_malformed_signature_is_dropped_not_fatal() {
-    // A malformed signature must not abort the whole turn — it is dropped with a warning.
-    use rig_core::message::{ToolCall, ToolFunction};
-    let tool_call = ToolCall::new(
-        CallId::from_wire(""),
-        ToolFunction::new(
-            rig_core::message::ToolName::new("add".to_string()).expect("tool name"),
-            serde_json::json!({"x": 5}),
-        ),
-    )
-    .with_signature(Some("!!! not base64 !!!".to_string()));
-    let content: vertexai::model::Content = content_from_message(Message::Assistant {
-        id: None,
-        content: vec![AssistantContent::ToolCall(tool_call)],
-    })
-    .expect("malformed signature should not fail the conversion");
+    let call = AssistantContent::tool_call(
+        "",
+        rig_core::message::ToolName::new("add").expect("tool name"),
+        json!({ "x": 5 }),
+    );
+    let part = json!({
+        "functionCall": { "name": "add", "args": { "x": 5 } },
+        "thoughtSignature": "!!! not base64 !!!",
+    });
+    let content = content_from_message(Message::from(vec![call.with_native(part)]))
+        .expect("malformed signature should not fail the conversion");
     assert_eq!(content.parts.len(), 1);
     assert!(content.parts[0].thought_signature.is_empty());
     assert!(content.parts[0].function_call().is_some());
@@ -183,16 +172,13 @@ fn test_assistant_tool_call_malformed_signature_is_dropped_not_fatal() {
 #[test]
 fn test_assistant_reasoning_echoes_thought_signature() {
     let raw = b"\x00\x01\x02thinking-text-sig\xff";
-    let reasoning =
-        rig_core::message::Reasoning::new_with_signature("thinking text", Some(BASE64.encode(raw)));
+    let reasoning = AssistantContent::reasoning("thinking text").with_native(json!({
+        "text": "thinking text",
+        "thought": true,
+        "thoughtSignature": BASE64.encode(raw),
+    }));
 
-    let content: vertexai::model::Content = content_from_message(Message::Assistant {
-        id: None,
-        content: vec![AssistantContent::Reasoning(
-            reasoning.sealed(crate::types::completion_response::ISSUER),
-        )],
-    })
-    .unwrap();
+    let content = content_from_message(Message::from(vec![reasoning])).unwrap();
 
     assert_eq!(content.parts.len(), 1);
     assert_eq!(
@@ -205,18 +191,14 @@ fn test_assistant_reasoning_echoes_thought_signature() {
 
 #[test]
 fn test_assistant_reasoning_malformed_signature_is_dropped_not_fatal() {
-    let reasoning = rig_core::message::Reasoning::new_with_signature(
-        "thinking text",
-        Some("!!! not base64 !!!".to_string()),
-    );
+    let reasoning = AssistantContent::reasoning("thinking text").with_native(json!({
+        "text": "thinking text",
+        "thought": true,
+        "thoughtSignature": "!!! not base64 !!!",
+    }));
 
-    let content: vertexai::model::Content = content_from_message(Message::Assistant {
-        id: None,
-        content: vec![AssistantContent::Reasoning(
-            reasoning.sealed(crate::types::completion_response::ISSUER),
-        )],
-    })
-    .expect("malformed signature should not fail the conversion");
+    let content = content_from_message(Message::from(vec![reasoning]))
+        .expect("malformed signature should not fail the conversion");
 
     assert_eq!(content.parts.len(), 1);
     assert!(content.parts[0].thought);
