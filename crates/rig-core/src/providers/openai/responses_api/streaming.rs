@@ -627,6 +627,9 @@ impl ResponsesDecoder {
                 crate::message::Reasoning::new(reasoning),
             ))?;
         }
+        // Only the stream's items are matched by id: a provider may give two
+        // items of one reply the same id.
+        let streamed_ids = std::mem::take(&mut self.written_ids);
         for (index, item) in output.into_iter().enumerate() {
             let id = item_id(&item).map(str::to_owned);
             if let Some(at) = self
@@ -646,7 +649,7 @@ impl ResponsesDecoder {
                 })?;
             }
             let written = self.written.contains(&index)
-                || id.as_ref().is_some_and(|id| self.written_ids.contains(id));
+                || id.as_ref().is_some_and(|id| streamed_ids.contains(id));
             if written {
                 continue;
             }

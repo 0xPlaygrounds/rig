@@ -2232,3 +2232,21 @@ fn every_recorded_whole_reply_agrees_with_its_restatement_as_a_stream() {
     }
     assert!(checked > 100, "the family records whole replies: {checked}");
 }
+
+/// xAI gives every reasoning item of a reply the same id; each stays its
+/// own block in both modes.
+#[test]
+fn items_sharing_an_id_stay_distinct_blocks() {
+    let output = vec![
+        reasoning("rs_1", &["First thought."]),
+        message("msg_1", "Searching."),
+        reasoning("rs_1", &["Second thought."]),
+        message("msg_2", "Done."),
+    ];
+    for response in [
+        decode(Mode::Streaming, frames(&restated(&output))),
+        decode(Mode::Unary, whole(&output)),
+    ] {
+        assert_eq!(natives(&response), output);
+    }
+}
