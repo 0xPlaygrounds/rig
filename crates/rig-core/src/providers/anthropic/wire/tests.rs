@@ -72,13 +72,13 @@ fn the_same_turn_folds_identically_whether_it_was_buffered_or_streamed() {
 
     assert_eq!(buffered.choice, streamed.choice);
     assert_eq!(buffered.usage, streamed.usage);
-    assert_eq!(buffered.model, streamed.model);
+    assert_eq!(buffered.model(), streamed.model());
     assert_eq!(buffered.finish_reason(), streamed.finish_reason());
-    assert_eq!(buffered.message_id, streamed.message_id);
+    assert_eq!(buffered.response_id(), streamed.response_id());
     assert_eq!(buffered.provider_request_id, streamed.provider_request_id);
     assert_eq!(
-        buffered.choice.first(),
-        Some(&AssistantContent::text("parity probe"))
+        buffered.choice.first().map(AssistantContent::canonical),
+        Some(AssistantContent::text("parity probe"))
     );
     assert_eq!(buffered.usage.output_tokens, Some(6));
     assert_eq!(buffered.usage.input_tokens, Some(14));
@@ -182,4 +182,35 @@ fn a_base_url_that_already_names_the_endpoint_is_trimmed() {
     ] {
         assert_eq!(normalize_base_url(pasted), "https://example.invalid");
     }
+}
+
+/// pi's rule for a call id another model issued: characters outside
+/// `[a-zA-Z0-9_-]` become `_`, and the id keeps at most 64 of them.
+#[test]
+fn a_foreign_call_id_is_normalized_to_anthropic_spelling() {
+    use crate::completion::ReplayTarget;
+
+    let wire = wire();
+    assert_eq!(
+        wire.normalize_tool_call_id("call_1|fc_2.x", None),
+        "call_1_fc_2_x"
+    );
+    let long = "a".repeat(80);
+    assert_eq!(wire.normalize_tool_call_id(&long, None).len(), 64);
+    assert_eq!(
+        wire.normalize_tool_call_id("toolu_01-Ab", None),
+        "toolu_01-Ab"
+    );
+}
+
+/// pi's model data: MiniMax's M2 models read no images, every other model
+/// of the family does.
+#[test]
+fn only_minimax_m2_models_refuse_images() {
+    use crate::completion::ReplayTarget;
+
+    assert!(wire().accepts_images());
+    let minimax = AnthropicConfig::with_key(&MINIMAX, "sk-test");
+    assert!(!minimax.completion("MiniMax-M2.7").accepts_images());
+    assert!(minimax.completion("MiniMax-M3").accepts_images());
 }

@@ -26,9 +26,10 @@ use crate::wire::{
 use serde::{Deserialize, Serialize};
 
 use super::completion::{
-    AnthropicCompletionRequest, CacheTtl, ToolDefinition, default_max_tokens_for_model,
-    rejects_forced_tool_choice, sanitize_strict_tool_schema,
+    AnthropicCompletionRequest, AnthropicRequestParams, CacheTtl, ToolDefinition,
+    default_max_tokens_for_model, rejects_forced_tool_choice, sanitize_strict_tool_schema,
 };
+use super::streaming::MessagesDecoder;
 
 /// Endpoint defaults and capabilities for a Messages-format provider.
 /// Serializes by registered name. Serialization rejects modified or unregistered
@@ -444,7 +445,6 @@ impl Messages {
     }
 
     /// The typed request body, shared by both modes.
-    #[cfg(any())]
     fn body(
         &self,
         mut request: CompletionRequest,
@@ -462,7 +462,6 @@ impl Messages {
         let typed = AnthropicCompletionRequest::try_from_params(
             AnthropicRequestParams {
                 model: &model,
-                issuers: &issuers,
                 request,
                 prompt_caching: self.prompt_caching,
                 automatic_caching: self.automatic_caching,
@@ -494,9 +493,7 @@ impl Wire for Messages {
     type Op = Completion;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
-    #[cfg(any())]
-    type Decoder<'id> = MessagesDecoder<'id>;
-    type Decoder<'id> = crate::providers::internal::Unmigrated;
+    type Decoder<'id> = MessagesDecoder;
 
     /// Constrained output decoding does not suppress strict tool calls.
     fn describe(&self) -> Descriptor<'_> {
@@ -510,7 +507,6 @@ impl Wire for Messages {
             .replay(self)
     }
 
-    #[cfg(any())]
     fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, EncodeError> {
         let body = self.body(request, mode)?;
         crate::providers::internal::trace_json(
@@ -536,17 +532,9 @@ impl Wire for Messages {
         .with_request_id_header(self.provider.dialect.request_id_header)
         .with_projection(MessagesDecoder::project))
     }
-    fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, EncodeError> {
-        let _ = (request, mode);
-        Err(crate::providers::internal::Unmigrated::encode_error())
-    }
 
-    #[cfg(any())]
     fn decoder<'id>(&self) -> Self::Decoder<'id> {
         MessagesDecoder::new()
-    }
-    fn decoder<'id>(&self) -> Self::Decoder<'id> {
-        crate::providers::internal::Unmigrated
     }
 }
 
@@ -561,6 +549,26 @@ impl crate::completion::ReplayTarget for Messages {
 
     fn model(&self) -> &str {
         &self.model
+    }
+
+    /// MiniMax's M2 models read no images (pi's model data).
+    fn accepts_images(&self) -> bool {
+        !(self.provider.dialect.name == MINIMAX.name && self.model.starts_with("MiniMax-M2"))
+    }
+
+    /// Anthropic takes call ids of `[a-zA-Z0-9_-]`, at most 64 long (pi's
+    /// rule).
+    fn normalize_tool_call_id(&self, id: &str, _source: Option<&crate::message::Origin>) -> String {
+        id.chars()
+            .map(|c| {
+                if c.is_ascii_alphanumeric() || c == '-' {
+                    c
+                } else {
+                    '_'
+                }
+            })
+            .take(64)
+            .collect()
     }
 }
 
@@ -695,5 +703,4 @@ impl Wire for Verify {
 }
 
 #[cfg(test)]
-#[cfg(any())]
 mod tests;

@@ -1,10 +1,13 @@
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::Value;
 
-use super::completion::{CompletionResponse, Content, anthropic_usage_totals, map_finish_reason};
+use super::completion::{
+    CompletionResponse, ContentItem, anthropic_usage_totals, map_finish_reason,
+};
 use crate::error::ProviderError;
+use crate::message::{CallId, ToolName};
 use crate::observe::ObservedError;
-use crate::operation::{CallFragment, Completion, Finish, IfMalformed};
+use crate::operation::{Block, Completion, Finish, IfMalformed};
 use crate::providers::internal::wire;
 use crate::wire::{
     AdapterEvent, AdapterUsage, AdapterVerdict, Decoder, Flow, ObservationSink, Out, WireEvent,
@@ -13,8 +16,7 @@ use crate::wire::{
 use std::collections::HashMap;
 
 /// Recognized Messages event tags. Listed events must decode fully;
-/// unlisted tags classify as unknown. Novel nested delta tags remain
-/// [`ContentDelta::Unknown`].
+/// unlisted tags classify as unknown.
 const KNOWN_EVENT_TYPES: &[&str] = &[
     // Unary replies use the same classifier with a whole-message tag.
     "message",
@@ -43,13 +45,15 @@ pub enum StreamingEvent {
         #[serde(flatten)]
         message: CompletionResponse,
     },
+    /// A content block opens, as the provider states it before its deltas.
     ContentBlockStart {
         index: usize,
-        content_block: Content,
+        content_block: ContentItem,
     },
+    /// A delta to an open content block, as the provider sent it.
     ContentBlockDelta {
         index: usize,
-        delta: ContentDelta,
+        delta: ContentItem,
     },
     ContentBlockStop {
         index: usize,
@@ -73,92 +77,17 @@ pub enum StreamingEvent {
     },
 }
 
-#[derive(Debug)]
-pub enum ContentDelta {
-    TextDelta {
-        text: String,
-    },
-    InputJsonDelta {
-        partial_json: String,
-    },
-    ThinkingDelta {
-        thinking: String,
-    },
-    SignatureDelta {
-        signature: String,
-    },
-    CitationsDelta {
-        citation: super::completion::Citation,
-    },
-    /// An unrecognized nested delta tag, preserved for a warning and skipped.
-    Unknown(serde_json::Value),
-}
-
-/// Decode known delta tags strictly and preserve unrecognized string tags.
-/// Reject non-object values, missing or non-string tags, and malformed known payloads.
-impl<'de> Deserialize<'de> for ContentDelta {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let value = serde_json::Value::deserialize(deserializer)?;
-        // Non-object values are malformed, not novel delta kinds.
-        if !value.is_object() {
-            return Err(serde::de::Error::custom("content delta must be an object"));
-        }
-        let str_field = |tag: &str, field: &str| -> Result<String, D::Error> {
-            value
-                .get(field)
-                .and_then(serde_json::Value::as_str)
-                .map(ToOwned::to_owned)
-                .ok_or_else(|| {
-                    serde::de::Error::custom(format!(
-                        "`{tag}` content delta is missing a string `{field}` field"
-                    ))
-                })
-        };
-        match value.get("type").cloned() {
-            Some(serde_json::Value::String(tag)) => match tag.as_str() {
-                "text_delta" => Ok(Self::TextDelta {
-                    text: str_field("text_delta", "text")?,
-                }),
-                "input_json_delta" => Ok(Self::InputJsonDelta {
-                    partial_json: str_field("input_json_delta", "partial_json")?,
-                }),
-                "thinking_delta" => Ok(Self::ThinkingDelta {
-                    thinking: str_field("thinking_delta", "thinking")?,
-                }),
-                "signature_delta" => Ok(Self::SignatureDelta {
-                    signature: str_field("signature_delta", "signature")?,
-                }),
-                "citations_delta" => {
-                    let citation = value.get("citation").cloned().ok_or_else(|| {
-                        serde::de::Error::custom(
-                            "`citations_delta` content delta is missing a `citation` field",
-                        )
-                    })?;
-                    Ok(Self::CitationsDelta {
-                        citation: serde_json::from_value(citation)
-                            .map_err(serde::de::Error::custom)?,
-                    })
-                }
-                _ => Ok(Self::Unknown(value)),
-            },
-            Some(_) => Err(serde::de::Error::custom(
-                "content delta `type` must be a string",
-            )),
-            // Missing tags must not silently turn discarded content into successful output.
-            None => Err(serde::de::Error::custom(
-                "content delta is missing a `type` field",
-            )),
-        }
-    }
-}
-
 #[derive(Debug, Deserialize)]
 pub struct MessageDelta {
     pub stop_reason: Option<String>,
     pub stop_sequence: Option<String>,
+    /// What stopped the model beyond `stop_reason`, such as a refusal's
+    /// explanation.
+    #[serde(default)]
+    pub stop_details: Option<Value>,
+    /// The code-execution container the reply ran in.
+    #[serde(default)]
+    pub container: Option<Value>,
 }
 
 #[derive(Debug, Deserialize, Clone, Serialize, Default)]
@@ -198,28 +127,17 @@ impl From<PartialUsage> for crate::completion::Usage {
     }
 }
 
-// Hosted-tool input is assembled locally because it becomes raw text-block
-// metadata rather than an executable tool call.
-struct ServerToolUseState {
-    name: String,
-    id: String,
-    initial_input: Value,
-    input_json: String,
-}
-
-/// Decode Messages replies, a whole message or a stream of events.
-/// EOF without a `message_delta` stop reason is truncation.
-#[cfg(any())]
-pub struct MessagesDecoder<'id> {
-    /// The text part of each open content block.
-    texts: HashMap<usize, TextPart<'id>>,
-    /// The thinking part of each open content block, and its signature:
-    /// fragments win over the opening value, and an absent one is `None`.
-    thinking: HashMap<usize, (ReasoningPart<'id>, String, String)>,
-    /// The content block of the open client tool call, whose index its
-    /// fragments are buffered under.
-    current_tool_call: Option<usize>,
-    server_tool_uses: HashMap<usize, ServerToolUseState>,
+/// Decodes Messages replies, a whole message or a stream of events: each
+/// content block becomes one block, in wire order, whose provider item is
+/// the block as it ended. EOF without a `message_delta` stop reason is
+/// truncation.
+#[derive(Debug, Default)]
+pub struct MessagesDecoder {
+    /// The input JSON streamed so far for each open block that takes
+    /// `input_json_delta`, and whether the block is a call.
+    inputs: HashMap<usize, (bool, String)>,
+    /// Whether a block other than a leading `fallback` marker opened.
+    opened: bool,
     input_tokens: u64,
     /// Per-TTL cache-write breakdown from `message_start`; the terminal
     /// `message_delta` usage omits it.
@@ -230,252 +148,200 @@ pub struct MessagesDecoder<'id> {
     cache_creation_input_tokens: Option<u64>,
     message_id: Option<String>,
     response_model: Option<String>,
+    container: Option<Value>,
 }
 
-#[cfg(any())]
-impl Default for MessagesDecoder<'_> {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-#[cfg(any())]
-impl MessagesDecoder<'_> {
+impl MessagesDecoder {
     /// A fresh decoder for one reply.
     pub fn new() -> Self {
-        Self {
-            texts: HashMap::new(),
-            thinking: HashMap::new(),
-            current_tool_call: None,
-            server_tool_uses: HashMap::new(),
-            input_tokens: 0,
-            cache_creation: None,
-            cache_read_input_tokens: None,
-            cache_creation_input_tokens: None,
-            message_id: None,
-            response_model: None,
-        }
+        Self::default()
     }
-}
 
-#[cfg(any())]
-impl<'id> MessagesDecoder<'id> {
-    /// The content-block frames: `content_block_start` / `_delta` / `_stop`.
-    #[cfg(any())]
-    fn interpret_content(
+    /// Open the content block at `index` as the provider states it.
+    fn start(
         &mut self,
-        event: StreamingEvent,
-        out: &mut Out<'id, Completion>,
+        index: usize,
+        block: ContentItem,
+        out: &mut Out<'_, Completion>,
     ) -> Result<(), ProviderError> {
-        match event {
-            StreamingEvent::ContentBlockDelta { index, delta } => match delta {
-                ContentDelta::TextDelta { text } => {
-                    if self.current_tool_call.is_none() {
-                        let part = self.texts.entry(index).or_insert_with(|| out.text());
-                        out.push_text(part, &text);
-                    }
-                }
-                ContentDelta::InputJsonDelta { partial_json } => {
-                    if let Some(server_tool_use) = self.server_tool_uses.get_mut(&index) {
-                        server_tool_use.input_json.push_str(&partial_json);
-                        return Ok(());
-                    }
-                    if let Some(call) = self.current_tool_call {
-                        out.call_fragment(
-                            call,
-                            CallFragment {
-                                arguments: Some(partial_json.as_str()),
-                                ..CallFragment::default()
-                            },
-                        )?;
-                    }
-                }
-                ContentDelta::ThinkingDelta { thinking } => {
-                    let (part, _, _) = self
-                        .thinking
-                        .entry(index)
-                        .or_insert_with(|| (out.reasoning(), String::new(), String::new()));
-                    out.push_reasoning(part, &thinking);
-                }
-                ContentDelta::SignatureDelta { signature } => {
-                    let (_, fragments, _) = self
-                        .thinking
-                        .entry(index)
-                        .or_insert_with(|| (out.reasoning(), String::new(), String::new()));
-                    // The completed signature closes the thinking part.
-                    fragments.push_str(&signature);
-                }
-                ContentDelta::CitationsDelta { citation } => {
-                    if let Some(params) = crate::message::AdditionalParams::from_entries([(
-                        "citations",
-                        json!([citation]),
-                    )]) {
-                        let part = self.texts.entry(index).or_insert_with(|| out.text());
-                        out.text_params(part, params);
-                    }
-                }
-                ContentDelta::Unknown(value) => {
-                    // Log only the tag; unknown payloads may contain sensitive model output.
-                    tracing::warn!(
-                        delta_type = value.get("type").and_then(serde_json::Value::as_str),
-                        "skipping unrecognized Anthropic content delta type"
-                    );
-                }
-            },
-            StreamingEvent::ContentBlockStart {
+        // A leading `fallback` names the model that took over; one after
+        // output began is a fallback rig cannot represent (pi's rule).
+        if block.kind() == "fallback" {
+            if self.opened {
+                return Err(ProviderError::Response(
+                    "Anthropic performed an unsupported mid-output model fallback".to_owned(),
+                ));
+            }
+            return out.open(
                 index,
-                content_block,
-            } => match content_block {
-                // Text arrives through deltas; cache_control is request-only metadata.
-                Content::Text {
-                    text: _,
-                    citations,
-                    cache_control: _,
-                } => {
-                    let part = out.text();
-                    if let Some(params) = crate::message::AdditionalParams::from_entries(
-                        (!citations.is_empty()).then(|| ("citations", json!(citations))),
-                    ) {
-                        out.text_params(&part, params);
-                    }
-                    self.texts.insert(index, part);
-                }
-                Content::ServerToolUse { id, name, input } => {
-                    self.server_tool_uses.insert(
-                        index,
-                        ServerToolUseState {
-                            name,
-                            id,
-                            initial_input: input,
-                            input_json: String::new(),
-                        },
-                    );
-                }
-                raw @ (Content::WebSearchToolResult { .. }
-                | Content::CodeExecutionToolResult { .. }) => {
-                    if let Some(params) = crate::message::AdditionalParams::from_entries([(
-                        super::completion::ANTHROPIC_RAW_CONTENT_KEY,
-                        json!(raw),
-                    )]) {
-                        let part = out.text();
-                        out.text_params(&part, params);
-                        self.texts.insert(index, part);
-                    }
-                }
-                Content::ToolUse { id, name, .. } => {
-                    self.current_tool_call = Some(index);
-                    out.call_fragment(
-                        index,
-                        CallFragment {
-                            id: Some(id.as_str()),
-                            name: Some(name.as_str()),
-                            ..CallFragment::default()
-                        },
-                    )?;
-                }
-                Content::Thinking {
-                    thinking,
-                    signature,
-                } => {
-                    // Adaptive thinking may carry only a signature, so the
-                    // part opens even when the opening text is empty.
-                    let part = out.reasoning();
-                    out.push_reasoning(&part, &thinking);
-                    self.thinking
-                        .insert(index, (part, String::new(), signature.unwrap_or_default()));
-                }
-                Content::RedactedThinking { data } => {
-                    out.reasoning_block(crate::message::Reasoning {
-                        id: None,
-                        content: vec![ReasoningContent::Redacted { data }],
-                    });
-                }
-                // Request-side content kinds; an assistant stream never
-                // opens a block with them, and there is nothing to write.
-                Content::Image { .. } | Content::ToolResult { .. } | Content::Document { .. } => {}
-            },
-            StreamingEvent::ContentBlockStop { index } => {
-                // Signature-only thinking parts carry provider state required
-                // for replay.
-                if let Some((part, fragments, initial)) = self.thinking.remove(&index) {
-                    let signature = if fragments.is_empty() {
-                        initial
-                    } else {
-                        fragments
-                    };
-                    out.close_reasoning(
-                        part,
-                        Seal {
-                            signature: (!signature.is_empty()).then_some(signature),
-                            ..Seal::default()
-                        },
-                    );
-                    return Ok(());
-                }
+                Block::Opaque { replay: false },
+                Value::Object(block.0),
+            );
+        }
+        self.opened = true;
+        let (opened, text) = match block.kind() {
+            "text" => (Block::Text, block.str("text").to_owned()),
+            "thinking" => (
+                Block::Reasoning { redacted: false },
+                block.str("thinking").to_owned(),
+            ),
+            "redacted_thinking" => (Block::Reasoning { redacted: true }, String::new()),
+            "tool_use" => {
+                let id = CallId::from_wire(block.str("id"));
+                let name = ToolName::new(block.str("name")).map_err(|error| {
+                    ProviderError::Response(format!("Anthropic `tool_use`: {error}"))
+                })?;
+                let input = block.0.get("input").cloned().unwrap_or_default();
+                self.inputs.insert(index, (true, String::new()));
+                out.open(index, Block::Call { id, name }, Value::Object(block.0))?;
+                // A whole reply states the input on the block; a stream
+                // streams it, and the fragments win.
+                return out.announce(index, input);
+            }
+            _ => {
+                self.inputs.insert(index, (false, String::new()));
+                (Block::Opaque { replay: true }, String::new())
+            }
+        };
+        out.open(index, opened, Value::Object(block.0))?;
+        out.push(index, &text)
+    }
 
-                if let Some(server_tool_use) = self.server_tool_uses.remove(&index) {
-                    let input = if server_tool_use.input_json.is_empty() {
-                        if server_tool_use.initial_input.is_null() {
-                            json!({})
-                        } else {
-                            server_tool_use.initial_input
-                        }
-                    } else {
-                        serde_json::from_str(&server_tool_use.input_json)?
-                    };
-                    if let Some(params) = crate::message::AdditionalParams::from_entries([(
-                        super::completion::ANTHROPIC_RAW_CONTENT_KEY,
-                        json!(Content::ServerToolUse {
-                            id: server_tool_use.id,
-                            name: server_tool_use.name,
-                            input,
-                        }),
-                    )]) {
-                        let part = out.text();
-                        out.text_params(&part, params);
-                        out.close_text(part);
-                    }
-                    return Ok(());
-                }
-
-                // `content_block_stop` promises a complete block: empty input
-                // finalizes to `{}`, and malformed input fails the reply.
-                if self.current_tool_call == Some(index) {
-                    self.current_tool_call = None;
-                    out.close_pending(index, IfMalformed::Fail)?;
-                    return Ok(());
-                }
-
-                if let Some(part) = self.texts.remove(&index) {
-                    out.close_text(part);
+    /// Apply a delta to the open block at `index`: text and reasoning grow
+    /// both the block and its item, input JSON is assembled, a citation is
+    /// appended, and any other delta merges into the item by key.
+    fn delta(
+        &mut self,
+        index: usize,
+        delta: ContentItem,
+        out: &mut Out<'_, Completion>,
+    ) -> Result<(), ProviderError> {
+        match delta.kind() {
+            kind @ ("text_delta" | "thinking_delta") => {
+                let key = if kind == "text_delta" {
+                    "text"
+                } else {
+                    "thinking"
+                };
+                out.push(index, delta.str(key))?;
+                out.merge(index, &delta.0)
+            }
+            "input_json_delta" => {
+                let fragment = delta.str("partial_json");
+                let Some((call, json)) = self.inputs.get_mut(&index) else {
+                    return Err(ProviderError::Response(format!(
+                        "Anthropic streamed input to content block {index}, which takes none"
+                    )));
+                };
+                json.push_str(fragment);
+                if *call {
+                    out.push(index, fragment)
+                } else {
+                    Ok(())
                 }
             }
-            StreamingEvent::Message { .. }
-            | StreamingEvent::MessageStart { .. }
-            | StreamingEvent::MessageDelta { .. }
-            | StreamingEvent::MessageStop
-            | StreamingEvent::Ping
-            | StreamingEvent::Error { .. } => {}
+            "citations_delta" => {
+                let citation = delta.0.get("citation").cloned().unwrap_or_default();
+                out.edit(index, |item| {
+                    if let Some(item) = item.as_object_mut() {
+                        match item.get_mut("citations") {
+                            Some(Value::Array(citations)) => citations.push(citation),
+                            _ => {
+                                item.insert("citations".to_owned(), Value::Array(vec![citation]));
+                            }
+                        }
+                    }
+                })
+            }
+            // Signatures concatenate; `compaction_delta` and kinds rig has
+            // never seen land in the item too.
+            _ => out.merge(index, &delta.0),
         }
-        Ok(())
     }
 
-    /// A whole message, written block by block as a stream states it, then
-    /// ended. Empty content is refused unless the stop reason is `end_turn`,
-    /// or `stop_sequence` with a reported sequence.
-    #[cfg(any())]
-    fn interpret_whole_message(
-        &mut self,
-        message: CompletionResponse,
-        mut out: Out<'id, Completion>,
-    ) -> Result<Flow, ProviderError> {
+    /// Close the block at `index`, its streamed input set on its item.
+    fn stop(&mut self, index: usize, out: &mut Out<'_, Completion>) -> Result<(), ProviderError> {
+        if let Some((call, json)) = self.inputs.remove(&index)
+            && !json.is_empty()
+        {
+            match crate::json_utils::parse_tool_arguments(&json) {
+                Ok(input) => out.edit(index, |item| {
+                    if let Some(item) = item.as_object_mut() {
+                        item.insert("input".to_owned(), input);
+                    }
+                })?,
+                // The close reports a call's malformed input with its id.
+                Err(_) if call => {}
+                Err(error) => {
+                    return Err(ProviderError::Response(format!(
+                        "Anthropic content block {index} streamed malformed input: {error}"
+                    )));
+                }
+            }
+        }
+        // `content_block_stop` promises a complete block: malformed input
+        // fails the reply.
+        out.close(index, IfMalformed::Fail)
+    }
+
+    fn metadata(&mut self, message: &CompletionResponse) {
         self.input_tokens = message.usage.input_tokens;
         self.cache_creation
             .clone_from(&message.usage.cache_creation);
-        self.message_id = Some(message.id);
-        self.response_model = Some(message.model);
+        self.cache_read_input_tokens = message.usage.cache_read_input_tokens;
+        self.cache_creation_input_tokens = message.usage.cache_creation_input_tokens;
+        self.message_id = Some(message.id.clone());
+        self.response_model = Some(message.model.clone());
+        self.note_container(message.container.as_ref());
+    }
 
-        // An empty end_turn and a stripped stop sequence are valid answers.
+    fn note_container(&mut self, container: Option<&Value>) {
+        if let Some(container) = container.filter(|container| !container.is_null()) {
+            self.container = Some(container.clone());
+        }
+    }
+
+    /// End the reply with Anthropic's terminal record.
+    fn end(
+        &self,
+        native: &StreamingCompletionResponse,
+        details: Option<&Value>,
+        mut out: Out<'_, Completion>,
+    ) -> Flow {
+        if let Some(container) = &self.container {
+            out.message_native(serde_json::json!({ "container": container }));
+        }
+        // A refusal fails the turn with its explanation (pi's rule).
+        let error = match native.stop_reason.as_deref() {
+            Some("refusal") => Some(
+                details
+                    .and_then(|details| details.get("explanation"))
+                    .and_then(Value::as_str)
+                    .filter(|explanation| !explanation.is_empty())
+                    .unwrap_or("The model refused to complete the request")
+                    .to_owned(),
+            ),
+            Some("sensitive") => Some("Provider stopped with: sensitive".to_owned()),
+            _ => None,
+        };
+        out.end(Finish {
+            usage: crate::completion::Usage::from(&native.usage),
+            reason: native.stop_reason.as_deref().map(map_finish_reason),
+            response_id: native.message_id.clone(),
+            model: native.model.clone(),
+            error,
+        })
+    }
+
+    /// A whole message, written block by block through the calls a stream
+    /// makes, then ended. Empty content is refused unless the stop reason
+    /// is `end_turn`, or `stop_sequence` with a reported sequence.
+    fn whole(
+        &mut self,
+        message: CompletionResponse,
+        mut out: Out<'_, Completion>,
+    ) -> Result<Flow, ProviderError> {
+        self.metadata(&message);
         let legal_empty_turn = match message.stop_reason.as_deref() {
             Some("end_turn") => true,
             Some("stop_sequence") => message.stop_sequence.is_some(),
@@ -486,59 +352,29 @@ impl<'id> MessagesDecoder<'id> {
                 crate::message::EMPTY_RESPONSE_ERROR.to_owned(),
             ));
         }
-
-        for (index, content) in message.content.into_iter().enumerate() {
-            // The payload a stream delivers by delta, for the part kinds
-            // that have one. Everything else is carried by the block's
-            // start frame alone.
-            let delta = match &content {
-                Content::Text { text, .. } if !text.is_empty() => {
-                    Some(ContentDelta::TextDelta { text: text.clone() })
-                }
-                Content::ToolUse { input, .. } => Some(ContentDelta::InputJsonDelta {
-                    partial_json: input.to_string(),
-                }),
-                _ => None,
-            };
-            self.interpret_content(
-                StreamingEvent::ContentBlockStart {
-                    index,
-                    content_block: content,
-                },
-                &mut out,
-            )?;
-            if let Some(delta) = delta {
-                self.interpret_content(
-                    StreamingEvent::ContentBlockDelta { index, delta },
-                    &mut out,
-                )?;
-            }
-            self.interpret_content(StreamingEvent::ContentBlockStop { index }, &mut out)?;
+        for (index, block) in message.content.into_iter().enumerate() {
+            self.start(index, block, &mut out)?;
+            self.stop(index, &mut out)?;
         }
-
-        // A whole message completes the turn even without an explicit stop
-        // reason. Its `raw` is the message itself.
-        let usage = PartialUsage {
-            output_tokens: message.usage.output_tokens as usize,
-            input_tokens: usize::try_from(message.usage.input_tokens).ok(),
-            cache_creation_input_tokens: message.usage.cache_creation_input_tokens,
-            cache_creation: message.usage.cache_creation,
-            cache_read_input_tokens: message.usage.cache_read_input_tokens,
-            output_tokens_details: message.usage.output_tokens_details,
-        };
         let native = StreamingCompletionResponse {
-            usage,
+            usage: PartialUsage {
+                output_tokens: message.usage.output_tokens as usize,
+                input_tokens: usize::try_from(message.usage.input_tokens).ok(),
+                cache_creation_input_tokens: message.usage.cache_creation_input_tokens,
+                cache_creation: message.usage.cache_creation,
+                cache_read_input_tokens: message.usage.cache_read_input_tokens,
+                output_tokens_details: message.usage.output_tokens_details,
+            },
             stop_reason: message.stop_reason,
             stop_sequence: message.stop_sequence,
             message_id: self.message_id.clone(),
             model: self.response_model.clone(),
         };
-        Ok(out.end(finish_of(&native)))
+        Ok(self.end(&native, message.stop_details.as_ref(), out))
     }
 }
 
-#[cfg(any())]
-impl<'id> Decoder<'id, Completion> for MessagesDecoder<'id> {
+impl<'id> Decoder<'id, Completion> for MessagesDecoder {
     type Event = StreamingEvent;
 
     fn classify(&self, frame: WireFrame) -> WireEvent<StreamingEvent> {
@@ -558,28 +394,31 @@ impl<'id> Decoder<'id, Completion> for MessagesDecoder<'id> {
         })
     }
 
+    #[deny(clippy::wildcard_enum_match_arm)]
     fn decode(
         &mut self,
         event: StreamingEvent,
         mut out: Out<'id, Completion>,
     ) -> Result<Flow, ProviderError> {
         match event {
-            StreamingEvent::Message { message } => self.interpret_whole_message(message, out),
+            StreamingEvent::Message { message } => return self.whole(message, out),
             StreamingEvent::MessageStart { message } => {
                 // Bedrock-compat quirk: a `message_start` without a message
                 // body is a no-op, not an error.
                 if let Some(message) = message {
-                    self.input_tokens = message.usage.input_tokens;
-                    self.cache_creation
-                        .clone_from(&message.usage.cache_creation);
-                    self.cache_read_input_tokens = message.usage.cache_read_input_tokens;
-                    self.cache_creation_input_tokens = message.usage.cache_creation_input_tokens;
-                    self.message_id = Some(message.id.clone());
-                    self.response_model = Some(message.model.clone());
+                    self.metadata(&message);
                 }
-                Ok(Flow::More)
             }
+            StreamingEvent::ContentBlockStart {
+                index,
+                content_block,
+            } => self.start(index, content_block, &mut out)?,
+            StreamingEvent::ContentBlockDelta { index, delta } => {
+                self.delta(index, delta, &mut out)?;
+            }
+            StreamingEvent::ContentBlockStop { index } => self.stop(index, &mut out)?,
             StreamingEvent::MessageDelta { delta, usage } => {
+                self.note_container(delta.container.as_ref());
                 // Only a `message_delta` carrying a stop reason is the
                 // provider's end; without one it is a no-op.
                 let Some(reason) = delta.stop_reason else {
@@ -616,26 +455,19 @@ impl<'id> Decoder<'id, Completion> for MessagesDecoder<'id> {
                     model: self.response_model.clone(),
                 };
                 out.raw(serde_json::to_value(&native)?);
-                Ok(out.end(finish_of(&native)))
+                return Ok(self.end(&native, delta.stop_details.as_ref(), out));
             }
             StreamingEvent::Error { raw, .. } => {
                 // Preserve the complete error envelope rather than re-encode modeled fields.
-                Err(crate::error::ProviderError::from_provider_body(raw))
+                return Err(crate::error::ProviderError::from_provider_body(raw));
             }
-            event @ (StreamingEvent::ContentBlockStart { .. }
-            | StreamingEvent::ContentBlockDelta { .. }
-            | StreamingEvent::ContentBlockStop { .. }
-            | StreamingEvent::MessageStop
-            | StreamingEvent::Ping) => {
-                self.interpret_content(event, &mut out)?;
-                Ok(Flow::More)
-            }
+            StreamingEvent::MessageStop | StreamingEvent::Ping => {}
         }
+        Ok(Flow::More)
     }
 }
 
-#[cfg(any())]
-impl MessagesDecoder<'_> {
+impl MessagesDecoder {
     /// Messages metadata projected before normalization can discard it: the
     /// stop reason, the model, the message id, the usage and any error
     /// envelope, on the unary reply and on the stream's `message_start`,
@@ -742,18 +574,5 @@ pub struct StreamingCompletionResponse {
     pub model: Option<String>,
 }
 
-/// The provider's end of the reply, from Anthropic's terminal record.
-#[cfg(any())]
-fn finish_of(response: &StreamingCompletionResponse) -> Finish {
-    Finish {
-        usage: crate::completion::Usage::from(&response.usage),
-        reason: response.stop_reason.as_deref().map(map_finish_reason),
-        message_id: response.message_id.clone(),
-        model: response.model.clone(),
-        ..Finish::default()
-    }
-}
-
 #[cfg(test)]
-#[cfg(any())]
 mod tests;

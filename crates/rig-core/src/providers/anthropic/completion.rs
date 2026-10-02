@@ -9,6 +9,7 @@
 use crate::completion::CompletionRequest;
 use crate::error::EncodeError;
 use crate::json_utils::string_or_vec;
+use crate::providers::internal::wire_ids::WireIds;
 use crate::{
     completion,
     message::{self, DocumentMediaType, DocumentSourceKind, MessageError, MimeType},
@@ -51,17 +52,91 @@ pub const CLAUDE_HAIKU_4_5: &str = "claude-haiku-4-5";
 pub const ANTHROPIC_VERSION_2023_01_01: &str = "2023-01-01";
 pub const ANTHROPIC_VERSION_2023_06_01: &str = "2023-06-01";
 pub const ANTHROPIC_VERSION_LATEST: &str = ANTHROPIC_VERSION_2023_06_01;
-pub(crate) const ANTHROPIC_RAW_CONTENT_KEY: &str = "anthropic_content";
 
+/// A Messages reply, or the message `message_start` opens a stream with.
+/// Each content block is kept as the provider sent it.
 #[derive(Debug, Deserialize, Serialize)]
 pub struct CompletionResponse {
-    pub content: Vec<Content>,
+    pub content: Vec<ContentItem>,
     pub id: String,
     pub model: String,
     pub role: String,
     pub stop_reason: Option<String>,
     pub stop_sequence: Option<String>,
+    /// What stopped the model beyond `stop_reason`, such as a refusal's
+    /// explanation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stop_details: Option<serde_json::Value>,
+    /// The code-execution container the reply ran in.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub container: Option<serde_json::Value>,
     pub usage: Usage,
+}
+
+/// A response content block or delta as the provider sent it, checked to
+/// carry the fields its known kind requires: a defective one fails to
+/// deserialize, and a kind rig has never seen passes as it is.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(transparent)]
+pub struct ContentItem(pub serde_json::Map<String, serde_json::Value>);
+
+impl ContentItem {
+    /// The item's `type`.
+    pub fn kind(&self) -> &str {
+        self.str("type")
+    }
+
+    /// The string field `key`, empty when absent.
+    pub fn str(&self, key: &str) -> &str {
+        self.0
+            .get(key)
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or_default()
+    }
+}
+
+impl<'de> Deserialize<'de> for ContentItem {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        use serde::de::Error;
+        let item = Self(serde_json::Map::deserialize(deserializer)?);
+        let kind = item.0.get("type").and_then(serde_json::Value::as_str);
+        let required: &[&str] = match kind {
+            None => {
+                return Err(D::Error::custom(
+                    "an Anthropic content item needs a string `type`",
+                ));
+            }
+            Some("text" | "text_delta") => &["text"],
+            Some("thinking" | "thinking_delta") => &["thinking"],
+            Some("redacted_thinking") => &["data"],
+            Some("tool_use") => &["id", "name"],
+            Some("signature_delta") => &["signature"],
+            Some("input_json_delta") => &["partial_json"],
+            Some(_) => &[],
+        };
+        if let Some(key) = required
+            .iter()
+            .find(|key| !item.0.get(**key).is_some_and(serde_json::Value::is_string))
+        {
+            return Err(D::Error::custom(format!(
+                "Anthropic `{}` needs a string `{key}`",
+                item.kind()
+            )));
+        }
+        match (item.kind(), item.0.get("citations"), item.0.get("citation")) {
+            ("text", Some(citations), _) if !citations.is_null() => {
+                Vec::<Citation>::deserialize(citations).map_err(D::Error::custom)?;
+            }
+            ("citations_delta", _, citation) => {
+                let citation = citation.ok_or_else(|| {
+                    D::Error::custom("Anthropic `citations_delta` needs a `citation`")
+                })?;
+                Citation::deserialize(citation).map_err(D::Error::custom)?;
+            }
+            _ => {}
+        }
+        Ok(item)
+    }
 }
 
 /// Normalize a Messages `stop_reason`, preserving unrecognized values verbatim.
@@ -257,19 +332,13 @@ pub enum Role {
     System,
 }
 
+/// One request content block. An assistant block replayed to the model
+/// that produced it is [`Content::Native`]: the provider's item verbatim.
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Content {
     Text {
         text: String,
-        /// Citations returned by Claude pointing back into the source documents.
-        /// Empty (and skipped during serialization) on request-side blocks.
-        #[serde(
-            default,
-            deserialize_with = "null_as_empty_vec",
-            skip_serializing_if = "Vec::is_empty"
-        )]
-        citations: Vec<Citation>,
         #[serde(skip_serializing_if = "Option::is_none")]
         cache_control: Option<CacheControl>,
     },
@@ -282,21 +351,6 @@ pub enum Content {
         id: String,
         name: String,
         input: serde_json::Value,
-    },
-    ServerToolUse {
-        id: String,
-        name: String,
-        #[serde(default)]
-        input: serde_json::Value,
-    },
-    WebSearchToolResult {
-        tool_use_id: String,
-        content: serde_json::Value,
-    },
-    /// The result of an Anthropic-hosted code execution tool call.
-    CodeExecutionToolResult {
-        tool_use_id: String,
-        content: serde_json::Value,
     },
     ToolResult {
         tool_use_id: String,
@@ -325,14 +379,9 @@ pub enum Content {
         #[serde(skip_serializing_if = "Option::is_none")]
         cache_control: Option<CacheControl>,
     },
-    Thinking {
-        thinking: String,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        signature: Option<String>,
-    },
-    RedactedThinking {
-        data: String,
-    },
+    /// A provider content block, sent as it arrived.
+    #[serde(untagged)]
+    Native(serde_json::Value),
 }
 
 impl FromStr for Content {
@@ -521,24 +570,13 @@ impl<'de> Deserialize<'de> for Citation {
     }
 }
 
-/// Deserialize a vector, treating explicit JSON `null` as empty.
-/// Anthropic can send null citations on text-block start events.
-fn null_as_empty_vec<'de, D, T>(deserializer: D) -> Result<Vec<T>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-    T: serde::Deserialize<'de>,
-{
-    Ok(Option::<Vec<T>>::deserialize(deserializer)?.unwrap_or_default())
-}
-
 /// Extract Anthropic-specific document fields (`title`, `context`, `citations`)
-/// from the generic [`message::Document::additional_params`] JSON blob.
+/// from the generic [`message::Document::additional_params`] object.
 ///
 /// Return absent fields when parameters are missing. Ignore non-string title
 /// and context values; reject a present, invalid [`CitationsConfig`].
-#[cfg(any())]
 fn extract_anthropic_doc_params(
-    additional_params: Option<message::AdditionalParams>,
+    additional_params: Option<serde_json::Value>,
 ) -> Result<(Option<String>, Option<String>, Option<CitationsConfig>), MessageError> {
     let Some(value) = additional_params else {
         return Ok((None, None, None));
@@ -564,95 +602,37 @@ fn extract_anthropic_doc_params(
     Ok((title, context, citations))
 }
 
-/// Extract Anthropic citations attached to a generic [`message::Text`] block.
+/// The citations Claude attached to an assistant text block, read from the
+/// block's provider item.
 ///
-/// Citations are returned by Claude on assistant text blocks when the request
-/// enabled them via [`CitationsConfig`]. Internally they are stored as JSON in
-/// [`message::Text::additional_params`] so they survive conversion through the
-/// generic [`message::AssistantContent`] surface.
+/// Returns `Ok(vec![])` when the block carries none or was edited since it
+/// was decoded. Unknown citation types are preserved as
+/// [`Citation::Unknown`]; a known citation type with an invalid shape is an
+/// error.
 ///
-/// Returns `Ok(vec![])` when no citations are attached. Unknown citation types
-/// are preserved as [`Citation::Unknown`]. Returns an error if the `citations`
-/// field is malformed or if a known citation type has an invalid shape.
-///
-/// ```no_run
-/// use rig_core::completion::message::{self, AssistantContent};
+/// ```
+/// use rig_core::completion::message::{AssistantContent, Text};
 /// use rig_core::providers::anthropic::completion::anthropic_citations;
 ///
-/// fn print_citations(content: &AssistantContent) {
-///     if let AssistantContent::Text(text) = content
-///         && let Ok(citations) = anthropic_citations(text)
-///         && !citations.is_empty()
-///     {
-///         println!("{citations:?}");
-///     }
+/// let block = AssistantContent::Text(Text::new("Rust is safe.")).with_native(serde_json::json!({
+///     "type": "text",
+///     "text": "Rust is safe.",
+///     "citations": [],
+/// }));
+/// if let AssistantContent::Text(text) = &block {
+///     assert!(anthropic_citations(text)?.is_empty());
 /// }
-/// # let _ = message::Text::new("");
+/// # Ok::<(), serde_json::Error>(())
 /// ```
-#[cfg(any())]
 pub fn anthropic_citations(text: &message::Text) -> Result<Vec<Citation>, serde_json::Error> {
-    match text
-        .additional_params
-        .as_ref()
-        .and_then(|v| v.get("citations"))
+    let block = message::AssistantContent::Text(text.clone());
+    match block
+        .native_item()
+        .and_then(|item| item.get("citations"))
+        .filter(|citations| !citations.is_null())
     {
-        Some(c) => <Vec<Citation> as serde::Deserialize>::deserialize(c),
+        Some(citations) => <Vec<Citation> as serde::Deserialize>::deserialize(citations),
         None => Ok(Vec::new()),
-    }
-}
-
-#[cfg(any())]
-fn extract_anthropic_text_citations(text: &message::Text) -> Result<Vec<Citation>, MessageError> {
-    anthropic_citations(text).map_err(|err| {
-        MessageError::ConversionError(format!(
-            "Text `additional_params.citations` is not valid Anthropic citations: {err}"
-        ))
-    })
-}
-
-#[cfg(any())]
-fn anthropic_text_content_from_message_text(text: message::Text) -> Result<Content, MessageError> {
-    if let Some(raw_content) = extract_anthropic_raw_content(&text)? {
-        if !text.text.is_empty() {
-            return Err(MessageError::ConversionError(format!(
-                "Text `{ANTHROPIC_RAW_CONTENT_KEY}` metadata cannot be combined with non-empty text"
-            )));
-        }
-
-        return Ok(raw_content);
-    }
-
-    let citations = extract_anthropic_text_citations(&text)?;
-    Ok(Content::Text {
-        text: text.text,
-        citations,
-        cache_control: None,
-    })
-}
-
-#[cfg(any())]
-fn extract_anthropic_raw_content(text: &message::Text) -> Result<Option<Content>, MessageError> {
-    let Some(raw_content) = text
-        .additional_params
-        .as_ref()
-        .and_then(|value| value.get(ANTHROPIC_RAW_CONTENT_KEY))
-    else {
-        return Ok(None);
-    };
-
-    let content = <Content as serde::Deserialize>::deserialize(raw_content).map_err(|err| {
-        MessageError::ConversionError(format!(
-            "Text `{ANTHROPIC_RAW_CONTENT_KEY}` metadata is not valid Anthropic content: {err}"
-        ))
-    })?;
-
-    match content {
-        Content::ServerToolUse { .. }
-        | Content::WebSearchToolResult { .. }
-        | Content::CodeExecutionToolResult { .. } => Ok(Some(content)),
-        _ => Err(MessageError::ConversionError(format!(
-            "Text `{ANTHROPIC_RAW_CONTENT_KEY}` metadata only supports Anthropic server_tool_use, web_search_tool_result, and code_execution_tool_result blocks"
-        ))),
     }
 }
 
@@ -757,7 +737,6 @@ impl From<String> for Content {
     fn from(text: String) -> Self {
         Content::Text {
             text,
-            citations: Vec::new(),
             cache_control: None,
         }
     }
@@ -800,272 +779,255 @@ fn coerce_tool_input(input: serde_json::Value) -> serde_json::Value {
     }
 }
 
-#[cfg(any())]
-fn anthropic_content_from_assistant_content(
-    content: message::AssistantContent,
-    issuers: &[message::Issuer],
-) -> Result<Vec<Content>, MessageError> {
-    match content {
-        message::AssistantContent::Text(text) => {
-            // Anthropic rejects empty text; only supported raw hosted-tool metadata
-            // can give an otherwise empty block replayable content.
-            if text.text.is_empty() && extract_anthropic_raw_content(&text)?.is_none() {
-                return Ok(Vec::new());
-            }
-            Ok(vec![anthropic_text_content_from_message_text(text)?])
-        }
-        message::AssistantContent::Image(_) => Err(MessageError::ConversionError(
-            "Anthropic currently doesn't support images.".to_string(),
-        )),
-        message::AssistantContent::ToolCall(tool_call) => Ok(vec![Content::ToolUse {
-            // The wire requires a non-empty id: the provider-issued one when it
-            // exists, else rig's minted handle.
-            id: tool_call.id.wire().into_owned(),
-            name: tool_call.function.name.into(),
-            input: coerce_tool_input(tool_call.function.arguments),
-        }]),
-        message::AssistantContent::Reasoning(reasoning) => {
-            // Reasoning another service issued is not replayed.
-            let Some(reasoning) = reasoning.open_for(issuers) else {
-                return Ok(Vec::new());
-            };
-            let mut converted = Vec::new();
-            for block in reasoning.content.clone() {
-                match block {
-                    message::ReasoningContent::Text { text, signature } => {
-                        converted.push(Content::Thinking {
-                            thinking: text,
-                            signature,
-                        });
-                    }
-                    message::ReasoningContent::Summary(summary) => {
-                        converted.push(Content::Thinking {
-                            thinking: summary,
-                            signature: None,
-                        });
-                    }
-                    message::ReasoningContent::Redacted { data }
-                    | message::ReasoningContent::Encrypted(data) => {
-                        converted.push(Content::RedactedThinking { data });
-                    }
-                }
-            }
-
-            if converted.is_empty() {
-                return Err(MessageError::ConversionError(
-                    "Cannot convert empty reasoning content to Anthropic format".to_string(),
-                ));
-            }
-
-            Ok(converted)
-        }
+/// One assistant block on the wire, `id` its call's spelling: the
+/// provider's item while it is current, else the block rebuilt from its
+/// canonical fields as pi rebuilds it. `None` for a block with nothing
+/// Anthropic takes.
+#[deny(clippy::wildcard_enum_match_arm)]
+fn assistant_content(
+    block: message::AssistantContent,
+    id: Option<&str>,
+) -> Result<Option<Content>, MessageError> {
+    use message::AssistantContent as Block;
+    // Anthropic rejects a blank text block, whatever produced it.
+    if let Block::Text(text) = &block
+        && text.text.trim().is_empty()
+    {
+        return Ok(None);
     }
-}
-
-/// The issuer-free conversion: no reasoning opens, so none is replayed. A
-/// request's own conversion ([`AnthropicRequestParams`]) replays the
-/// reasoning its issuers open.
-#[cfg(any())]
-impl TryFrom<message::Message> for Message {
-    type Error = MessageError;
-
-    fn try_from(message: message::Message) -> Result<Self, Self::Error> {
-        Message::from_message(message, &[])
+    // Thinking without a signature is rejected as thinking; pi sends it as
+    // text.
+    if let Block::Reasoning(reasoning) = &block
+        && !reasoning.redacted
+        && block
+            .native_item()
+            .and_then(|item| item.get("signature"))
+            .and_then(serde_json::Value::as_str)
+            .is_none_or(|signature| signature.trim().is_empty())
+    {
+        let text = &reasoning.text;
+        return Ok((!text.trim().is_empty()).then(|| Content::from(text.clone())));
     }
+    if let Some(item) = block.native_item() {
+        return Ok(Some(Content::Native(item.clone())));
+    }
+    Ok(match block {
+        Block::Text(text) => Some(Content::from(text.text)),
+        // A redacted block's payload lives only in its provider item.
+        Block::Reasoning(_) => None,
+        Block::ToolCall(call) => Some(Content::ToolUse {
+            id: id.map_or_else(|| call.id.wire().into_owned(), str::to_owned),
+            name: call.function.name.into(),
+            input: coerce_tool_input(call.function.arguments),
+        }),
+        Block::Opaque(opaque) => Some(Content::Native(opaque.item)),
+        Block::Image(_) => {
+            return Err(MessageError::ConversionError(
+                "Anthropic currently doesn't support images.".to_string(),
+            ));
+        }
+    })
 }
 
 impl Message {
-    /// `message` on the wire, replaying the reasoning `issuers` open.
-    #[cfg(any())]
+    /// `message` on the wire, its tool ids spelled as `ids` plans them for
+    /// position `at` of the history. `None` when no block is left to send.
     fn from_message(
         message: message::Message,
-        issuers: &[message::Issuer],
-    ) -> Result<Self, MessageError> {
-        Ok(match message {
-            message::Message::User { content } => Message {
-                role: Role::User,
-                content: content.into_iter().map(|content| match content {
-                    message::UserContent::Text(message::Text { text, .. }) => {
-                        Ok(Content::from(text))
+        ids: &WireIds,
+        at: usize,
+    ) -> Result<Option<Self>, MessageError> {
+        let (role, content) = match message {
+            message::Message::System { content } => (Role::System, vec![Content::from(content)]),
+            message::Message::User { content } => (
+                Role::User,
+                content
+                    .into_iter()
+                    .enumerate()
+                    .filter_map(|(slot, part)| user_content(part, ids.get(at, slot)).transpose())
+                    .collect::<Result<_, _>>()?,
+            ),
+            message::Message::Assistant(turn) => (
+                Role::Assistant,
+                turn.content
+                    .into_iter()
+                    .enumerate()
+                    .filter_map(|(slot, block)| {
+                        assistant_content(block, ids.get(at, slot)).transpose()
+                    })
+                    .collect::<Result<_, _>>()?,
+            ),
+        };
+        Ok((!content.is_empty()).then_some(Self { role, content }))
+    }
+
+    /// Whether this is a user message of tool results only.
+    fn is_tool_results(&self) -> bool {
+        self.role == Role::User
+            && self
+                .content
+                .iter()
+                .all(|content| matches!(content, Content::ToolResult { .. }))
+    }
+}
+
+/// One user block on the wire, `id` a tool result's call spelling. `None`
+/// for blank text, which Anthropic rejects.
+fn user_content(
+    content: message::UserContent,
+    id: Option<&str>,
+) -> Result<Option<Content>, MessageError> {
+    Ok(Some(match content {
+        message::UserContent::Text(message::Text { text, .. }) => {
+            if text.trim().is_empty() {
+                return Ok(None);
+            }
+            Content::from(text)
+        }
+        message::UserContent::ToolResult(tool_result) => Content::ToolResult {
+            tool_use_id: id.map_or_else(|| tool_result.call.wire().into_owned(), str::to_owned),
+            content: tool_result
+                .content
+                .into_iter()
+                .map(|content| match content {
+                    message::ToolResultContent::Text(message::Text { text, .. }) => {
+                        Ok(ToolResultContent::Text { text })
                     }
-                    message::UserContent::ToolResult(tool_result) => Ok(Content::ToolResult {
-                        tool_use_id: tool_result.call.wire().into_owned(),
-                        content: tool_result.content.into_iter().map(|content| match content {
-                            message::ToolResultContent::Text(message::Text { text, .. }) => {
-                                Ok(ToolResultContent::Text { text })
-                            }
-                            message::ToolResultContent::Json { value } => {
-                                Ok(ToolResultContent::Text {
-                                    text: value.to_string(),
-                                })
-                            }
-                            message::ToolResultContent::Image(image) => {
-                                let DocumentSourceKind::Base64(data) = image.data else {
-                                    return Err(MessageError::ConversionError(
-                                        "Only base64 strings can be used with the Anthropic API"
-                                            .to_string(),
-                                    ));
-                                };
-                                let media_type =
-                                    image.media_type.ok_or(MessageError::ConversionError(
-                                        "Image media type is required".to_owned(),
-                                    ))?;
-                                Ok(ToolResultContent::Image {
-                                    source: ImageSource::Base64 {
-                                        data,
-                                        media_type: media_type.try_into()?,
-                                    },
-                                })
-                            }
-                        }).collect::<Result<Vec<_>, _>>()?,
-                        is_error: None,
-                        cache_control: None,
+                    message::ToolResultContent::Json { value } => Ok(ToolResultContent::Text {
+                        text: value.to_string(),
                     }),
-                    message::UserContent::Image(message::Image {
-                        data, media_type, ..
-                    }) => {
-                        let source = match data {
-                            DocumentSourceKind::Base64(data) => {
-                                let media_type =
-                                    media_type.ok_or(MessageError::ConversionError(
-                                        "Image media type is required for Claude API".to_string(),
-                                    ))?;
-                                ImageSource::Base64 {
-                                    data,
-                                    media_type: ImageFormat::try_from(media_type)?,
-                                }
-                            }
-                            DocumentSourceKind::Url(url) => ImageSource::Url { url },
-                            DocumentSourceKind::Unknown => {
-                                return Err(MessageError::ConversionError(
-                                    "Image content has no body".into(),
-                                ));
-                            }
-                            doc => {
-                                return Err(MessageError::ConversionError(format!(
-                                    "Unsupported document type: {doc:?}"
-                                )));
-                            }
+                    message::ToolResultContent::Image(image) => {
+                        let DocumentSourceKind::Base64(data) = image.data else {
+                            return Err(MessageError::ConversionError(
+                                "Only base64 strings can be used with the Anthropic API"
+                                    .to_string(),
+                            ));
                         };
-
-                        Ok(Content::Image {
-                            source,
-                            cache_control: None,
-                        })
-                    }
-                    message::UserContent::Document(message::Document {
-                        data,
-                        media_type,
-                        additional_params,
-                    }) => {
-                        let (title, context, citations) =
-                            extract_anthropic_doc_params(additional_params)?;
-
-                        if let DocumentSourceKind::FileId(file_id) = data {
-                            return Ok(Content::Document {
-                                source: DocumentSource::File { file_id },
-                                title,
-                                context,
-                                citations,
-                                cache_control: None,
-                            });
-                        }
-
-                        let media_type = match media_type {
-                            Some(media_type) => media_type,
-                            // Anthropic's URL document source has no media-type field and is
-                            // defined specifically for PDFs, so the source itself is sufficient.
-                            None if matches!(&data, DocumentSourceKind::Url(_)) => {
-                                DocumentMediaType::PDF
-                            }
-                            None => {
-                                return Err(MessageError::ConversionError(
-                                    "Document media type is required".to_string(),
-                                ));
-                            }
-                        };
-
-                        let source = match media_type {
-                            DocumentMediaType::PDF => match data {
-                                DocumentSourceKind::Base64(data)
-                                | DocumentSourceKind::String(data) => DocumentSource::Base64 {
-                                    data,
-                                    media_type: DocumentFormat::PDF,
-                                },
-                                DocumentSourceKind::Url(url) => DocumentSource::Url { url },
-                                _ => {
-                                    return Err(MessageError::ConversionError(
-                                        "Only base64 encoded data or URLs are supported for PDF documents".into(),
-                                    ));
-                                }
+                        let media_type = image.media_type.ok_or(MessageError::ConversionError(
+                            "Image media type is required".to_owned(),
+                        ))?;
+                        Ok(ToolResultContent::Image {
+                            source: ImageSource::Base64 {
+                                data,
+                                media_type: media_type.try_into()?,
                             },
-                            DocumentMediaType::TXT => {
-                                let (DocumentSourceKind::String(data)
-                                | DocumentSourceKind::Base64(data)) = data
-                                else {
-                                    return Err(MessageError::ConversionError(
-                                        "Only string or base64 data is supported for plain text documents".into(),
-                                    ));
-                                };
-                                DocumentSource::Text {
-                                    data,
-                                    media_type: PlainTextMediaType::Plain,
-                                }
-                            }
-                            other => {
-                                return Err(MessageError::ConversionError(format!(
-                                    "Anthropic only supports PDF and plain text documents, got: {}",
-                                    other.to_mime_type()
-                                )));
-                            }
-                        };
-
-                        Ok(Content::Document {
-                            source,
-                            title,
-                            context,
-                            citations,
-                            cache_control: None,
                         })
                     }
-                    message::UserContent::Audio { .. } => Err(MessageError::ConversionError(
-                        "Audio is not supported in Anthropic".to_owned(),
-                    )),
-                    message::UserContent::Video { .. } => Err(MessageError::ConversionError(
-                        "Video is not supported in Anthropic".to_owned(),
-                    )),
-                }).collect::<Result<Vec<_>, _>>()?,
-            },
+                })
+                .collect::<Result<Vec<_>, _>>()?,
+            is_error: None,
+            cache_control: None,
+        },
+        message::UserContent::Image(message::Image {
+            data, media_type, ..
+        }) => {
+            let source = match data {
+                DocumentSourceKind::Base64(data) => {
+                    let media_type = media_type.ok_or(MessageError::ConversionError(
+                        "Image media type is required for Claude API".to_string(),
+                    ))?;
+                    ImageSource::Base64 {
+                        data,
+                        media_type: ImageFormat::try_from(media_type)?,
+                    }
+                }
+                DocumentSourceKind::Url(url) => ImageSource::Url { url },
+                DocumentSourceKind::Unknown => {
+                    return Err(MessageError::ConversionError(
+                        "Image content has no body".into(),
+                    ));
+                }
+                doc => {
+                    return Err(MessageError::ConversionError(format!(
+                        "Unsupported document type: {doc:?}"
+                    )));
+                }
+            };
+            Content::Image {
+                source,
+                cache_control: None,
+            }
+        }
+        message::UserContent::Document(message::Document {
+            data,
+            media_type,
+            additional_params,
+        }) => {
+            let (title, context, citations) = extract_anthropic_doc_params(additional_params)?;
+            let source = document_source(data, media_type)?;
+            Content::Document {
+                source,
+                title,
+                context,
+                citations,
+                cache_control: None,
+            }
+        }
+        message::UserContent::Audio { .. } => {
+            return Err(MessageError::ConversionError(
+                "Audio is not supported in Anthropic".to_owned(),
+            ));
+        }
+        message::UserContent::Video { .. } => {
+            return Err(MessageError::ConversionError(
+                "Video is not supported in Anthropic".to_owned(),
+            ));
+        }
+    }))
+}
 
-            message::Message::System { content } => Message {
-                role: Role::System,
-                content: vec![Content::from(content)],
-            },
-
-            message::Message::Assistant { content, .. } => {
-                let converted_content = content.into_iter().try_fold(
-                    Vec::new(),
-                    |mut accumulated, assistant_content| {
-                        accumulated.extend(anthropic_content_from_assistant_content(
-                            assistant_content,
-                            issuers,
-                        )?);
-                        Ok::<Vec<Content>, MessageError>(accumulated)
-                    },
-                )?;
-
-                Message {
-                    content: crate::message::require_non_empty(converted_content, || {
-                        MessageError::ConversionError(
-                            "Assistant message did not contain Anthropic-compatible content"
-                                .to_owned(),
-                        )
-                    })?,
-                    role: Role::Assistant,
+/// A document's source on the wire: a file id, a PDF or a plain text body.
+fn document_source(
+    data: DocumentSourceKind,
+    media_type: Option<DocumentMediaType>,
+) -> Result<DocumentSource, MessageError> {
+    if let DocumentSourceKind::FileId(file_id) = data {
+        return Ok(DocumentSource::File { file_id });
+    }
+    let media_type = match media_type {
+        Some(media_type) => media_type,
+        // Anthropic's URL document source has no media-type field and is
+        // defined specifically for PDFs, so the source itself is sufficient.
+        None if matches!(&data, DocumentSourceKind::Url(_)) => DocumentMediaType::PDF,
+        None => {
+            return Err(MessageError::ConversionError(
+                "Document media type is required".to_string(),
+            ));
+        }
+    };
+    Ok(match media_type {
+        DocumentMediaType::PDF => match data {
+            DocumentSourceKind::Base64(data) | DocumentSourceKind::String(data) => {
+                DocumentSource::Base64 {
+                    data,
+                    media_type: DocumentFormat::PDF,
                 }
             }
-        })
-    }
+            DocumentSourceKind::Url(url) => DocumentSource::Url { url },
+            _ => {
+                return Err(MessageError::ConversionError(
+                    "Only base64 encoded data or URLs are supported for PDF documents".into(),
+                ));
+            }
+        },
+        DocumentMediaType::TXT => {
+            let (DocumentSourceKind::String(data) | DocumentSourceKind::Base64(data)) = data else {
+                return Err(MessageError::ConversionError(
+                    "Only string or base64 data is supported for plain text documents".into(),
+                ));
+            };
+            DocumentSource::Text {
+                data,
+                media_type: PlainTextMediaType::Plain,
+            }
+        }
+        other => {
+            return Err(MessageError::ConversionError(format!(
+                "Anthropic only supports PDF and plain text documents, got: {}",
+                other.to_mime_type()
+            )));
+        }
+    })
 }
 
 /// Whether `model` is `id` or one of its dated snapshots (`<id>-YYYYMMDD`),
@@ -2009,7 +1971,6 @@ pub(super) fn resolve_top_level_cache_control(
 /// the prompt prefix, which misses the cache from the first token and, on
 /// models that bind thinking blocks to their conversation, turns every earlier
 /// thinking block into a 400. It is hoisted only when no such slot exists.
-#[cfg(any())]
 pub(super) fn split_system_messages_from_history(
     history: &[message::Message],
     preserve_mid_conversation_system_messages: bool,
@@ -2067,7 +2028,6 @@ fn is_system_message_slot(history: &[message::Message], index: usize) -> bool {
             .is_none_or(|message| matches!(message, message::Message::Assistant { .. }))
 }
 
-#[cfg(any())]
 fn is_valid_mid_conversation_system_message(history: &[message::Message], index: usize) -> bool {
     let follows_valid_turn = index > 0
         && history.get(index - 1).is_some_and(|message| {
@@ -2081,34 +2041,20 @@ fn is_valid_mid_conversation_system_message(history: &[message::Message], index:
     follows_valid_turn && is_last_or_precedes_assistant
 }
 
-#[cfg(any())]
+/// Whether `message` is an assistant turn ending in a server tool call or
+/// result, after which Anthropic takes a system message.
 fn assistant_ends_in_server_tool_block(message: &message::Message) -> bool {
-    let message::Message::Assistant { content, .. } = message else {
+    let message::Message::Assistant(turn) = message else {
         return false;
     };
-
-    let Some(message::AssistantContent::Text(text)) = content.iter().last() else {
-        return false;
-    };
-
-    let Some(raw_type) = text
-        .additional_params
-        .as_ref()
-        .and_then(|params| params.get(ANTHROPIC_RAW_CONTENT_KEY))
-        .and_then(|raw_content| raw_content.get("type"))
-        .and_then(serde_json::Value::as_str)
-    else {
-        return false;
-    };
-
     matches!(
-        raw_type,
-        "server_tool_use" | "web_search_tool_result" | "code_execution_tool_result"
+        turn.content.last(),
+        Some(message::AssistantContent::Opaque(opaque))
+            if opaque.kind().is_some_and(|kind| kind.ends_with("_tool_use") || kind.ends_with("_tool_result"))
     )
 }
 
 /// Parameters for building an AnthropicCompletionRequest
-#[cfg(any())]
 pub struct AnthropicRequestParams<'a> {
     pub model: &'a str,
     pub request: CompletionRequest,
@@ -2119,14 +2065,11 @@ pub struct AnthropicRequestParams<'a> {
     pub automatic_caching_ttl: Option<CacheTtl>,
     /// TTL for the static prefix (tools + system). `None` inherits the top-level TTL.
     pub static_prefix_cache_ttl: Option<CacheTtl>,
-    /// The issuers whose reasoning the request replays.
-    pub issuers: &'a [message::Issuer],
 }
 
 impl AnthropicCompletionRequest {
     /// Build the typed request, optionally transforming generated tools with `strict`.
     /// Reject missing token limits, invalid message conversions, and cache conflicts.
-    #[cfg(any())]
     pub(super) fn try_from_params(
         params: AnthropicRequestParams<'_>,
         strict: Option<fn(&mut ToolDefinition)>,
@@ -2138,7 +2081,6 @@ impl AnthropicCompletionRequest {
             automatic_caching,
             automatic_caching_ttl,
             static_prefix_cache_ttl,
-            issuers,
         } = params;
         let chat_history = req.chat_history_with_documents();
 
@@ -2153,35 +2095,20 @@ impl AnthropicCompletionRequest {
             supports_mid_conversation_system_messages(model),
         );
 
-        let mut messages = full_history
-            .iter()
-            .cloned()
-            .map(|message| Message::from_message(message, issuers))
-            .collect::<Result<Vec<_>, _>>()?;
-        // Server-tool references are preserved opaque content, not local calls.
-        // Reserve their genuine handles so arbitrary local hints cannot alias them.
-        let server_ids = messages
-            .iter()
-            .flat_map(|message| &message.content)
-            .filter_map(|part| match part {
-                Content::ServerToolUse { id, .. } => Some(id.clone()),
-                Content::WebSearchToolResult { tool_use_id, .. }
-                | Content::CodeExecutionToolResult { tool_use_id, .. } => Some(tool_use_id.clone()),
-                _ => None,
-            });
-        let tool_ids =
-            crate::providers::internal::wire_ids::WireIds::with_reserved(&full_history, server_ids);
-        for (position, message) in messages.iter_mut().enumerate() {
-            tool_ids
-                .apply(
-                    position,
-                    message.content.iter_mut().filter_map(|part| match part {
-                        Content::ToolUse { id, .. } => Some(id),
-                        Content::ToolResult { tool_use_id, .. } => Some(tool_use_id),
-                        _ => None,
-                    }),
-                )
-                .map_err(EncodeError::request)?;
+        let ids = WireIds::new(&full_history);
+        let mut messages: Vec<Message> = Vec::new();
+        for (at, message) in full_history.into_iter().enumerate() {
+            let Some(message) = Message::from_message(message, &ids, at)? else {
+                continue;
+            };
+            // Consecutive tool results go in one user message, which Z.AI
+            // requires (pi's rule).
+            match messages.last_mut() {
+                Some(last) if last.is_tool_results() && message.is_tool_results() => {
+                    last.content.extend(message.content);
+                }
+                _ => messages.push(message),
+            }
         }
 
         let mut additional_params_payload = req
@@ -2237,7 +2164,6 @@ impl AnthropicCompletionRequest {
     }
 }
 
-#[cfg(any())]
 impl TryFrom<AnthropicRequestParams<'_>> for AnthropicCompletionRequest {
     type Error = EncodeError;
 
@@ -2294,5 +2220,4 @@ pub(super) fn build_tool_definitions(
 }
 
 #[cfg(test)]
-#[cfg(any())]
 mod tests;
