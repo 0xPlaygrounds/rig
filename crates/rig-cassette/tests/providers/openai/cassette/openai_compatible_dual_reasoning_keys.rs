@@ -92,7 +92,11 @@ async fn dual_reasoning_keys_tool_roundtrip() {
         let arguments: serde_json::Value =
             serde_json::from_str(call["function"]["arguments"].as_str().unwrap_or("{}"))
                 .unwrap_or_default();
-        (call["id"].clone(), call["function"]["name"].clone(), arguments)
+        (
+            call["id"].clone(),
+            call["function"]["name"].clone(),
+            arguments,
+        )
     };
     assert_eq!(call(echoed), call(replied), "the tool call is replayed");
 }

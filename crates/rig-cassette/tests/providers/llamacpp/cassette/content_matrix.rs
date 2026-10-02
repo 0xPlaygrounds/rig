@@ -9,7 +9,7 @@
 //! | Cell | Shape | Pinned |
 //! | --- | --- | --- |
 //! | [`an_answer_fully_consumed_by_a_stop_sequence_surfaces_as_an_empty_response`] | empty content | 200 on the wire, `EMPTY_RESPONSE_ERROR` at the seam |
-//! | [`consecutive_same_role_messages_are_sent_as_sent`] | user, user | rig does not merge or reorder them; the template accepts both |
+//! | [`consecutive_user_messages_become_one`] | user, user | the history adapter makes adjacent user messages one |
 //! | [`unicode_split_across_stream_chunks_reassembles`] | emoji + CJK, streaming | multi-byte characters survive SSE chunk boundaries |
 //! | [`a_very_long_tool_output_survives_the_round_trip`] | 8 KiB tool result | the payload reaches the model intact |
 //! | [`a_system_message_plus_history_keeps_its_order`] | system + 3 turns | the system message stays first and the turns keep their order |
@@ -119,14 +119,13 @@ async fn an_answer_fully_consumed_by_a_stop_sequence_surfaces_as_an_empty_respon
     );
 }
 
-/// Two consecutive `user` messages go out as two messages.
+/// Two consecutive `user` messages and the prompt go out as one message.
 ///
-/// Some providers reject alternation violations and some clients silently
-/// merge them; llama.cpp's chat templates accept them, and rig sends what it
-/// was given. The cell reads the recorded request so a future "helpful"
-/// merge in the shared conversion cannot land unnoticed.
+/// Some providers reject alternation violations, so the history adapter
+/// makes adjacent user messages one on every wire. The cell reads the
+/// recorded request so the merge stays visible.
 #[tokio::test]
-async fn consecutive_same_role_messages_are_sent_as_sent() {
+async fn consecutive_user_messages_become_one() {
     with_llamacpp_cassette(
         "content_matrix/consecutive_same_role",
         |client| async move {
@@ -160,9 +159,8 @@ async fn consecutive_same_role_messages_are_sent_as_sent() {
         .collect::<Vec<_>>();
     assert_eq!(
         roles,
-        vec!["user".to_string(), "user".to_string(), "user".to_string()],
-        "the two history turns plus the prompt must all arrive as separate user \
-         messages — nothing merged them: {roles:?}"
+        vec!["user".to_string()],
+        "the two history turns and the prompt arrive as one user message: {roles:?}"
     );
 }
 
@@ -362,8 +360,8 @@ async fn a_system_message_plus_history_keeps_its_order() {
             "user".to_string(),
             "assistant".to_string(),
             "user".to_string(),
-            "user".to_string(),
         ],
-        "the preamble leads and the history keeps its order: {roles:?}"
+        "the preamble leads, the history keeps its order, and its last user turn \
+         and the prompt are one message: {roles:?}"
     );
 }

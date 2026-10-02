@@ -225,7 +225,6 @@ struct SumReport {
 /// so a loop with it never converges and the max-turns failure would mask the
 /// wire error this is about.
 #[tokio::test]
-#[ignore = "stale cassette: its request predates item-shaped history, and Mistral rate-limited the re-record"]
 async fn a_forced_tool_choice_beside_a_response_format_is_accepted() -> Result<()> {
     with_mistral_capability_cassette(
         "capability_edges/a_forced_tool_choice_beside_a_response_format_is_accepted",
