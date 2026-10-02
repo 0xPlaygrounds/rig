@@ -351,7 +351,8 @@ const CALL_INDEX: usize = 1 << 32;
 /// A model that writes its reasoning into `content` (`<think>…</think>`, or
 /// Qwen3 after its template prefilled the opening tag) is split the same way
 /// in both modes: its content is held until the reasoning closes, or until
-/// the reply ends for a Qwen3 model that never closes one.
+/// the reply ends for a Qwen3 model that never closes one, and its message
+/// keeps the reasoning under `thinking`.
 #[derive(Default)]
 pub struct OllamaDecoder {
     /// The message as assembled so far, without its tool calls.
@@ -484,6 +485,25 @@ impl OllamaDecoder {
             return Ok(Flow::More);
         }
         let mut message = std::mem::take(&mut self.message);
+        // A reply that wrote its reasoning inline is kept in the shape Ollama
+        // gives a thinking reply: the reasoning under `thinking`.
+        let inline = message
+            .get("content")
+            .and_then(Value::as_str)
+            .filter(|_| {
+                message
+                    .get("thinking")
+                    .and_then(Value::as_str)
+                    .is_none_or(str::is_empty)
+            })
+            .and_then(|content| split_legacy_thinking(content, permits_omitted_start))
+            .map(|(reasoning, visible)| (reasoning.to_owned(), visible.to_owned()));
+        if let Some((reasoning, visible)) = inline {
+            if !reasoning.is_empty() {
+                message.insert("thinking".to_owned(), reasoning.into());
+            }
+            message.insert("content".to_owned(), visible.into());
+        }
         for (index, key) in [
             (self.reasoning.take(), "thinking"),
             (self.text.take(), "content"),
