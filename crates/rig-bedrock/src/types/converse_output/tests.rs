@@ -99,34 +99,52 @@ fn skipped_provider_fields_round_trip_as_absent() {
 #[test]
 fn mirror_enum_converts_known_variants() {
     assert_eq!(
-        StopReason::try_from(aws_bedrock::StopReason::EndTurn).unwrap(),
+        StopReason::from(aws_bedrock::StopReason::EndTurn),
         StopReason::EndTurn
     );
     // Borrowed impl.
     assert_eq!(
-        StopReason::try_from(&aws_bedrock::StopReason::ToolUse).unwrap(),
-        StopReason::ToolUse
+        StopReason::from(&aws_bedrock::StopReason::ModelContextWindowExceeded),
+        StopReason::ModelContextWindowExceeded
     );
     // A renamed pairing (aws `Error` -> ours `IsError`).
     assert_eq!(
-        ToolResultStatus::try_from(aws_bedrock::ToolResultStatus::Error).unwrap(),
+        ToolResultStatus::from(aws_bedrock::ToolResultStatus::Error),
         ToolResultStatus::IsError
     );
 }
 
+/// A variant this crate does not name keeps its wire spelling rather than
+/// failing the reply.
 #[test]
-fn mirror_enum_unknown_variant_preserves_error_string() {
-    let unknown = aws_bedrock::StopReason::from("weird_stop");
-    let err = StopReason::try_from(unknown.clone()).unwrap_err();
+fn mirror_enum_unknown_variant_keeps_its_spelling() {
+    let reason = StopReason::from(aws_bedrock::StopReason::from("weird_stop"));
+    assert_eq!(reason.as_str(), "weird_stop");
     assert_eq!(
-        err.to_string(),
-        format!("Unknown variant for StopReason: {unknown:?}")
+        ConversationRole::from(aws_bedrock::ConversationRole::from("nope")),
+        ConversationRole::Unknown(UnknownVariantValue("nope".to_owned()))
     );
+}
 
-    let err = ConversationRole::try_from(aws_bedrock::ConversationRole::from("nope")).unwrap_err();
-    assert!(
-        err.to_string()
-            .starts_with("Unknown variant for ConversationRole:")
+/// A union variant this crate does not mirror is `Unknown`, not an error.
+#[test]
+fn mirror_union_unmirrored_variant_is_unknown() {
+    let block = aws_bedrock::ContentBlock::SearchResult(
+        aws_bedrock::SearchResultBlock::builder()
+            .source("s")
+            .title("t")
+            .content(
+                aws_bedrock::SearchResultContentBlock::builder()
+                    .text("x")
+                    .build()
+                    .unwrap(),
+            )
+            .build()
+            .unwrap(),
+    );
+    assert_eq!(
+        ContentBlock::try_from(block).unwrap(),
+        ContentBlock::Unknown
     );
 }
 

@@ -7,11 +7,17 @@ use crate::types::{json, tool};
 #[test]
 fn rig_tool_text_to_aws_tool() {
     let content = ToolResultContent::Text(Text::new("42"));
-    let aws_tool: Result<aws_bedrock::ToolResultContentBlock, _> = tool::to_aws(content);
-    assert!(aws_tool.is_ok());
-    assert_eq!(
-        String::from(aws_tool.unwrap().as_text().unwrap()),
-        String::from("42")
+    let aws_tool = tool::to_aws(content).unwrap().unwrap();
+    assert_eq!(aws_tool.as_text().unwrap(), "42");
+}
+
+/// Converse rejects blank text, so a blank tool-result text sends nothing.
+#[test]
+fn blank_tool_text_sends_nothing() {
+    assert!(
+        tool::to_aws(ToolResultContent::text(" \n"))
+            .unwrap()
+            .is_none()
     );
 }
 
@@ -22,12 +28,10 @@ fn rig_tool_image_to_aws_tool() {
         data: DocumentSourceKind::Base64(encoded_str),
         media_type: Some(ImageMediaType::JPEG),
         detail: None,
-        additional_params: None,
+        native: None,
     };
     let content = ToolResultContent::Image(image);
-    let aws_tool: Result<aws_bedrock::ToolResultContentBlock, _> = tool::to_aws(content);
-    assert!(aws_tool.is_ok());
-    assert!(aws_tool.unwrap().is_image());
+    assert!(tool::to_aws(content).unwrap().unwrap().is_image());
 }
 
 #[test]
@@ -37,8 +41,9 @@ fn rig_tool_json_maps_to_native_aws_json() {
         value: expected.clone(),
     };
 
-    let aws_tool: aws_bedrock::ToolResultContentBlock =
-        tool::to_aws(content).expect("JSON should render at the AWS boundary");
+    let aws_tool: aws_bedrock::ToolResultContentBlock = tool::to_aws(content)
+        .expect("JSON should render at the AWS boundary")
+        .expect("JSON is never blank");
     let document = match aws_tool {
         aws_bedrock::ToolResultContentBlock::Json(document) => document,
         other => panic!("expected Bedrock JSON tool result, got {other:?}"),
@@ -60,8 +65,9 @@ fn rig_tool_non_object_json_is_wrapped_for_bedrock() {
             value: value.clone(),
         };
 
-        let aws_tool: aws_bedrock::ToolResultContentBlock =
-            tool::to_aws(content).expect("JSON should render at the AWS boundary");
+        let aws_tool: aws_bedrock::ToolResultContentBlock = tool::to_aws(content)
+            .expect("JSON should render at the AWS boundary")
+            .expect("JSON is never blank");
         let document = match aws_tool {
             aws_bedrock::ToolResultContentBlock::Json(document) => document,
             other => panic!("expected Bedrock JSON tool result, got {other:?}"),

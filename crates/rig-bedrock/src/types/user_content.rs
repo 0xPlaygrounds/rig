@@ -5,22 +5,31 @@ use rig_core::message::UserContent;
 
 use super::{document, image, tool};
 
-/// The Converse content blocks for one piece of user content.
+/// What stands in for content left empty once blank text is skipped:
+/// Converse rejects blank text and empty content.
+pub(crate) const EMPTY_TEXT: &str = "<empty>";
+
+/// The Converse content blocks for one piece of user content. Blank text has
+/// none.
 pub(crate) fn to_aws(
     content: UserContent,
 ) -> Result<Vec<aws_bedrock::ContentBlock>, ProviderError> {
     match content {
+        UserContent::Text(text) if text.text.trim().is_empty() => Ok(Vec::new()),
         UserContent::Text(text) => Ok(vec![aws_bedrock::ContentBlock::Text(text.text)]),
         UserContent::ToolResult(tool_result) => {
+            let mut content = Vec::new();
+            for part in tool_result.content {
+                content.extend(tool::to_aws(part)?);
+            }
+            if content.is_empty() {
+                content.push(aws_bedrock::ToolResultContentBlock::Text(
+                    EMPTY_TEXT.to_owned(),
+                ));
+            }
             let builder = aws_bedrock::ToolResultBlock::builder()
                 .tool_use_id(tool_result.call.wire().into_owned())
-                .set_content(Some(
-                    tool_result
-                        .content
-                        .into_iter()
-                        .map(tool::to_aws)
-                        .collect::<Result<Vec<aws_bedrock::ToolResultContentBlock>, _>>()?,
-                ))
+                .set_content(Some(content))
                 .build()
                 .map_err(|e| ProviderError::Provider(e.to_string()))?;
             Ok(vec![aws_bedrock::ContentBlock::ToolResult(builder)])

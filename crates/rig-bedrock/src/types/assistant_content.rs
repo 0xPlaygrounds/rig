@@ -1,11 +1,14 @@
 use aws_sdk_bedrockruntime::types as aws_bedrock;
+use aws_smithy_types::Blob;
 use base64::{Engine, prelude::BASE64_STANDARD};
+use serde_json::Value;
 
 use rig_core::error::ProviderError;
-use rig_core::message::{AssistantContent, Text, ToolName};
+use rig_core::message::{AssistantContent, Reasoning};
+use rig_core::operation::Finish;
 
 use super::{
-    converse_output::{ContentBlock, ReasoningContentBlock, StopReason, TokenUsage},
+    converse_output::{StopReason, TokenUsage},
     json,
 };
 use rig_core::completion;
@@ -32,237 +35,126 @@ pub(crate) fn normalize_usage(usage: &TokenUsage) -> completion::Usage {
 /// Stable descriptor name reported on normalized Bedrock responses.
 pub const PROVIDER_NAME: &str = "aws_bedrock";
 
-/// The issuer Bedrock's reasoning records for `model`. Anthropic documents
-/// Claude thinking signatures as valid across the Claude API, Bedrock and
-/// Vertex AI, so Claude reasoning records `anthropic`; other models' reasoning
-/// records [`PROVIDER_NAME`]. An inference-profile ARN that does not name the
-/// model counts as another model.
-pub fn reasoning_issuer(model: &str) -> &'static str {
-    if model.contains("anthropic.claude") {
-        "anthropic"
-    } else {
-        PROVIDER_NAME
-    }
+/// Whether `model` reads the `signature` of replayed reasoning. Only Claude
+/// does; other models reject the field. An inference-profile ARN that does
+/// not name the model counts as another model.
+pub(crate) fn reads_signatures(model: &str) -> bool {
+    model.contains("anthropic.claude")
 }
 
-/// Normalizes stop reasons, preserving unknown values in `Other`.
-/// Stop sequences map to `Stop`; guardrail intervention maps to `ContentFilter`.
+/// Normalizes stop reasons, preserving the others' wire spelling in `Other`.
+/// Stop sequences map to `Stop`, an exceeded context window to `Length`, and
+/// guardrail intervention to `ContentFilter`.
 pub fn map_stop_reason(stop_reason: &StopReason) -> completion::FinishReason {
     match stop_reason {
         StopReason::EndTurn | StopReason::StopSequence => completion::FinishReason::Stop,
-        StopReason::MaxTokens => completion::FinishReason::Length,
+        StopReason::MaxTokens | StopReason::ModelContextWindowExceeded => {
+            completion::FinishReason::Length
+        }
         StopReason::ToolUse => completion::FinishReason::ToolCalls,
         StopReason::ContentFiltered | StopReason::GuardrailIntervened => {
             completion::FinishReason::ContentFilter
         }
-        StopReason::Unknown(value) => completion::FinishReason::Other(value.to_string()),
+        StopReason::MalformedModelOutput
+        | StopReason::MalformedToolUse
+        | StopReason::Unknown(_) => {
+            completion::FinishReason::Other(stop_reason.as_str().to_owned())
+        }
     }
 }
 
-/// The Rig content for one block of a Converse reply.
-#[cfg(any())]
-pub fn from_converse(block: ContentBlock) -> Result<AssistantContent, ProviderError> {
-    match block {
-        ContentBlock::Text(text) => Ok(AssistantContent::Text(Text::new(text))),
-        ContentBlock::ToolUse(call) => Ok(completion::AssistantContent::tool_call(
-            &call.tool_use_id,
-            ToolName::new(call.name).map_err(|error| {
-                ProviderError::Response(format!("AWS Bedrock returned a tool call: {error}"))
-            })?,
-            call.input,
-        )),
-        ContentBlock::ReasoningContent(reasoning_block) => match reasoning_block {
-            ReasoningContentBlock::ReasoningText(reasoning_text) => {
-                Ok(AssistantContent::Reasoning(
-                    // The issuer depends on the model, which the Converse
-                    // output does not name: the completion fold seals it.
-                    rig_core::message::Reasoning::new_with_signature(
-                        &reasoning_text.text,
-                        reasoning_text.signature,
-                    )
-                    .sealed(PROVIDER_NAME),
-                ))
-            }
-            // Base64 preserves opaque redacted bytes for request replay.
-            ReasoningContentBlock::RedactedContent(blob) => Ok(AssistantContent::Reasoning(
-                rig_core::message::Reasoning::redacted(BASE64_STANDARD.encode(blob.inner))
-                    .sealed(PROVIDER_NAME),
-            )),
-            _ => Err(ProviderError::Provider(
-                "AWS Bedrock returned unsupported ReasoningContentBlock variant".into(),
-            )),
-        },
-        _ => Err(ProviderError::Provider(
-            "AWS Bedrock returned unsupported ContentBlock".into(),
-        )),
+/// The provider's end of a reply that stopped for `stop_reason`. A
+/// malformed output or an unknown reason fails the turn, which is then
+/// never replayed.
+pub(crate) fn finish(usage: Option<&TokenUsage>, stop_reason: Option<&StopReason>) -> Finish {
+    let error = stop_reason
+        .filter(|reason| {
+            matches!(
+                reason,
+                StopReason::MalformedModelOutput
+                    | StopReason::MalformedToolUse
+                    | StopReason::Unknown(_)
+            )
+        })
+        .map(|reason| format!("Provider stopped with: {}", reason.as_str()));
+    Finish {
+        usage: usage.map(normalize_usage).unwrap_or_default(),
+        reason: stop_reason.map(map_stop_reason),
+        error,
+        ..Finish::default()
     }
 }
 
-/// Converts assistant content for a Converse request, replaying the reasoning
-/// `issuer` issued.
-/// Returns `Ok(None)` after dropping unsupported ciphertext or invalid base64
-/// with a warning. Rejects images and unrepresentable signed reasoning.
-#[cfg(any())]
+/// The Converse block for one assistant block, or `None` when there is
+/// nothing to send. `signatures` is [`reads_signatures`] of the target model.
+#[deny(clippy::wildcard_enum_match_arm)]
 pub(crate) fn to_aws(
     content: AssistantContent,
-    issuer: &Issuer,
+    signatures: bool,
 ) -> Result<Option<aws_bedrock::ContentBlock>, ProviderError> {
+    let native = content.native_item().cloned();
     match content {
+        // Converse rejects blank text.
+        AssistantContent::Text(text) if text.text.trim().is_empty() => Ok(None),
         AssistantContent::Text(text) => Ok(Some(aws_bedrock::ContentBlock::Text(text.text))),
-        AssistantContent::ToolCall(tool_call) => {
-            // Calls and results must use the same provider-issued identity,
-            // not a potentially different local assembly handle.
-            let tool_use_id = tool_call.id.wire().into_owned();
-            let input = json::to_document(tool_call.function.arguments);
-            Ok(Some(aws_bedrock::ContentBlock::ToolUse(
-                aws_bedrock::ToolUseBlock::builder()
-                    .tool_use_id(tool_use_id)
-                    .name(tool_call.function.name)
-                    .input(input)
-                    .build()
-                    .map_err(|e| ProviderError::Provider(e.to_string()))?,
-            )))
-        }
-        AssistantContent::Reasoning(reasoning) => {
-            // Reasoning another service issued is not replayed.
-            let Some(reasoning) = reasoning.open(issuer) else {
-                return Ok(None);
-            };
-            let mut reasoning = reasoning.clone();
-            // Only Redacted payloads represent base64-encoded Converse bytes.
-            // Drop Encrypted payloads rather than reinterpret foreign ciphertext.
-            let foreign = reasoning
-                .content
-                .iter()
-                .filter(|content| {
-                    matches!(content, rig_core::message::ReasoningContent::Encrypted(_))
-                })
-                .count();
-            if foreign > 0 {
-                tracing::warn!(
-                    dropped = foreign,
-                    "dropping foreign encrypted reasoning payload(s); Bedrock cannot \
-                     verify another provider's ciphertext"
-                );
-                reasoning.content.retain(|content| {
-                    !matches!(content, rig_core::message::ReasoningContent::Encrypted(_))
-                });
-                if reasoning.content.is_empty() {
-                    return Ok(None);
-                }
-            }
-
-            let redacted: Vec<&str> = reasoning
-                .content
-                .iter()
-                .filter_map(|content| match content {
-                    rig_core::message::ReasoningContent::Redacted { data } => Some(data.as_str()),
-                    _ => None,
-                })
-                .collect();
-
-            if !redacted.is_empty() {
-                if redacted.len() != reasoning.content.len() {
-                    // Converse cannot mix redacted bytes and text in one
-                    // block; retain only the representable text.
-                    tracing::warn!(
-                        dropped = redacted.len(),
-                        "dropping redacted reasoning payloads Bedrock cannot carry \
-                         alongside reasoning text; replaying the text only"
-                    );
-                    reasoning.content.retain(|content| {
-                        !matches!(
-                            content,
-                            rig_core::message::ReasoningContent::Redacted { .. }
-                        )
-                    });
-                } else {
-                    if redacted.len() > 1 {
-                        tracing::warn!(
-                            dropped = redacted.len() - 1,
-                            "dropping extra redacted reasoning payloads; Bedrock carries \
-                             one redactedContent blob per block"
-                        );
-                    }
-
-                    // Invalid base64 cannot reconstruct wire bytes; omit it
-                    // rather than fail the whole history conversion.
-                    let data = redacted.first().copied().unwrap_or_default();
-                    return match BASE64_STANDARD.decode(data) {
-                        Ok(bytes) => Ok(Some(aws_bedrock::ContentBlock::ReasoningContent(
-                            aws_bedrock::ReasoningContentBlock::RedactedContent(
-                                aws_smithy_types::Blob::new(bytes),
-                            ),
-                        ))),
-                        Err(error) => {
-                            tracing::warn!(
-                                %error,
-                                "dropping redacted reasoning content that is not valid \
-                                 base64"
-                            );
-                            Ok(None)
-                        }
-                    };
-                }
-            }
-
-            let signed_text_count = reasoning
-                .content
-                .iter()
-                .filter(|content| {
-                    matches!(
-                        content,
-                        rig_core::message::ReasoningContent::Text {
-                            signature: Some(_),
-                            ..
-                        }
-                    )
-                })
-                .count();
-            if signed_text_count > 1 {
-                return Err(ProviderError::Provider(
-                    "AWS Bedrock does not support multiple signed reasoning text blocks".to_owned(),
-                ));
-            }
-            if signed_text_count == 1 && reasoning.content.len() > 1 {
-                return Err(ProviderError::Provider(
-                    "AWS Bedrock requires a single signed reasoning text block without additional reasoning parts"
-                        .to_owned(),
-                ));
-            }
-
-            let flattened_text = reasoning.display_text();
-            let has_signature = reasoning.first_signature().is_some();
-            // Signature-only reasoning must survive tool-call replay even
-            // when its plaintext is empty.
-            if flattened_text.is_empty() && !has_signature {
-                return Err(ProviderError::Provider(
-                    "AWS Bedrock reasoning conversion requires at least one text or summary block"
-                        .to_owned(),
-                ));
-            }
-
-            let mut reasoning_block =
-                aws_bedrock::ReasoningTextBlock::builder().text(flattened_text);
-
-            if let Some(sig) = reasoning.first_signature().map(str::to_owned) {
-                reasoning_block = reasoning_block.signature(sig);
-            }
-
-            let reasoning_text_block = reasoning_block.build().map_err(|e| {
-                ProviderError::Provider(format!("Failed to build reasoning block: {e}"))
-            })?;
-
-            Ok(Some(aws_bedrock::ContentBlock::ReasoningContent(
-                aws_bedrock::ReasoningContentBlock::ReasoningText(reasoning_text_block),
-            )))
-        }
-        AssistantContent::Image(_) => Err(ProviderError::Provider(
-            "AWS Bedrock does not support image content in assistant messages".to_owned(),
-        )),
+        AssistantContent::ToolCall(call) => aws_bedrock::ToolUseBlock::builder()
+            .tool_use_id(call.id.wire())
+            .name(call.function.name)
+            .input(json::to_document(call.function.arguments))
+            .build()
+            .map(|call| Some(aws_bedrock::ContentBlock::ToolUse(call)))
+            .map_err(ProviderError::request),
+        AssistantContent::Reasoning(reasoning) => reasoning_to_aws(reasoning, native, signatures),
+        AssistantContent::Image(image) => Ok(Some(aws_bedrock::ContentBlock::Image(
+            super::image::to_aws(image)?,
+        ))),
+        // Every opaque item this wire decodes is marked not to replay, so
+        // the adapter never hands one back.
+        AssistantContent::Opaque(_) => Ok(None),
     }
+}
+
+/// Reasoning with its provider item `native`: redacted bytes go back as
+/// they came; signed text goes back signed to a model that reads
+/// signatures, even when the text is empty.
+fn reasoning_to_aws(
+    reasoning: Reasoning,
+    native: Option<Value>,
+    signatures: bool,
+) -> Result<Option<aws_bedrock::ContentBlock>, ProviderError> {
+    let field = |key| native.as_ref()?.get(key)?.as_str();
+    if let Some(data) = field("redacted") {
+        // A payload that is not base64 cannot be the bytes Bedrock sent.
+        return Ok(match BASE64_STANDARD.decode(data) {
+            Ok(bytes) => Some(aws_bedrock::ContentBlock::ReasoningContent(
+                aws_bedrock::ReasoningContentBlock::RedactedContent(Blob::new(bytes)),
+            )),
+            Err(error) => {
+                tracing::warn!(%error, "dropping redacted reasoning that is not base64");
+                None
+            }
+        });
+    }
+    let signature = field("signature").filter(|signature| !signature.trim().is_empty());
+    let text = reasoning.text;
+    let block = match (signatures, signature) {
+        (true, Some(signature)) => aws_bedrock::ReasoningTextBlock::builder()
+            .text(text)
+            .signature(signature),
+        _ if text.trim().is_empty() => return Ok(None),
+        // Claude rejects unsigned reasoning: it goes back as text.
+        (true, None) => return Ok(Some(aws_bedrock::ContentBlock::Text(text))),
+        (false, _) => aws_bedrock::ReasoningTextBlock::builder().text(text),
+    };
+    block
+        .build()
+        .map(|block| {
+            Some(aws_bedrock::ContentBlock::ReasoningContent(
+                aws_bedrock::ReasoningContentBlock::ReasoningText(block),
+            ))
+        })
+        .map_err(ProviderError::request)
 }
 
 #[cfg(test)]
-#[cfg(any())]
-pub(crate) mod tests;
+mod tests;

@@ -21,11 +21,7 @@ fn minimal_request() -> CompletionRequest {
 }
 
 fn aws_request(request: CompletionRequest, prompt_caching: bool) -> AwsCompletionRequest {
-    AwsCompletionRequest {
-        inner: request,
-        issuer: "test".into(),
-        prompt_caching,
-    }
+    AwsCompletionRequest::new(request, "amazon.nova-lite-v1:0", prompt_caching)
 }
 
 /// Synthetic transcript checks wire correlation without a live Bedrock call.
@@ -41,10 +37,7 @@ fn full_request_preserves_typed_tool_pairs_across_turns() {
     );
     let hint = generated.id.wire().into_owned();
     let real = ToolCall::from_wire(&hint, generated.function.clone());
-    let call = |call: &ToolCall| Message::Assistant {
-        id: None,
-        content: vec![AssistantContent::ToolCall(call.clone())],
-    };
+    let call = |call: &ToolCall| Message::from(vec![AssistantContent::ToolCall(call.clone())]);
     let result = |call: &ToolCall| Message::User {
         content: vec![UserContent::tool_result(
             call.id.clone(),
@@ -416,19 +409,14 @@ fn test_messages_skip_cache_point_when_history_contains_reasoning() {
     // after reasoning block" whenever the chat history carries a prior
     // reasoning turn, even if the literal trailing block is a tool result.
     // Verify the message-level checkpoint is suppressed in that case.
-    let reasoning =
-        rig_core::message::Reasoning::new_with_signature("thinking", Some("sig".to_string()));
+    let reasoning = rig_core::message::AssistantContent::reasoning("thinking")
+        .with_native(serde_json::json!({ "signature": "sig" }));
     let request = CompletionRequest {
         chat_history: vec![
             Message::User {
                 content: vec![UserContent::Text(Text::new("user prompt".to_string()))],
             },
-            Message::Assistant {
-                id: None,
-                content: vec![rig_core::completion::AssistantContent::Reasoning(
-                    reasoning.sealed("test"),
-                )],
-            },
+            Message::from(vec![reasoning]),
             Message::User {
                 content: vec![UserContent::Text(Text::new("follow up".to_string()))],
             },

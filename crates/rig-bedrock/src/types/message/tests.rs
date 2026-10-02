@@ -1,15 +1,13 @@
 use crate::types::message;
 use aws_sdk_bedrockruntime::types as aws_bedrock;
-use rig_core::message::{Message, UserContent};
+use rig_core::message::{AssistantContent, Message, UserContent};
 
 #[test]
 fn message_to_aws_message() {
     let rig_message = Message::User {
         content: vec![UserContent::Text("text".into())],
     };
-    let aws_message: Result<aws_bedrock::Message, _> = message::to_aws(rig_message, &"test".into());
-    assert!(aws_message.is_ok());
-    let aws_message = aws_message.unwrap();
+    let aws_message = message::to_aws(rig_message, false).unwrap().unwrap();
     assert_eq!(aws_message.role, aws_bedrock::ConversationRole::User);
     assert_eq!(
         aws_message.content,
@@ -17,46 +15,33 @@ fn message_to_aws_message() {
     );
 }
 
-/// Synthetic SDK input exercises tolerated empty IDs, not a claim about live Bedrock output.
+/// Converse rejects blank text and empty messages: blank text is never
+/// sent, an assistant turn left with nothing is left out, and a user
+/// message left with nothing sends pi's placeholder.
 #[test]
-fn missing_call_ids_reserve_later_explicit_handles() {
-    let wire = aws_bedrock::Message::builder()
-        .role(aws_bedrock::ConversationRole::Assistant)
-        .set_content(Some(
-            (0..3)
-                .map(|i| {
-                    aws_bedrock::ContentBlock::ToolUse(
-                        aws_bedrock::ToolUseBlock::builder()
-                            .tool_use_id(if i == 1 { "tool-0" } else { "" })
-                            .name("same")
-                            .input(aws_smithy_types::Document::Object(Default::default()))
-                            .build()
-                            .unwrap(),
-                    )
-                })
-                .collect(),
-        ))
-        .build()
-        .unwrap();
-    let reply = crate::types::converse_output::Message::try_from(wire).unwrap();
-    let content = message::assistant_reply(reply).unwrap();
-    let calls: Vec<_> = content
-        .iter()
-        .filter_map(|item| match item {
-            rig_core::message::AssistantContent::ToolCall(call) => Some(call),
-            _ => None,
-        })
-        .collect();
-    assert_eq!(calls.len(), 3);
+fn blank_text_is_never_sent_and_no_message_is_empty() {
+    let assistant = Message::from(vec![
+        AssistantContent::text(" "),
+        AssistantContent::reasoning(""),
+    ]);
+    assert!(message::to_aws(assistant, true).unwrap().is_none());
+
+    let user = Message::User {
+        content: vec![UserContent::text("\n")],
+    };
+    let aws_message = message::to_aws(user, true).unwrap().unwrap();
     assert_eq!(
-        calls
-            .iter()
-            .map(|call| &call.id)
-            .collect::<std::collections::HashSet<_>>()
-            .len(),
-        3
+        aws_message.content,
+        vec![aws_bedrock::ContentBlock::Text("<empty>".into())]
     );
-    assert!(calls[0].id.provider().is_none());
-    assert_eq!(calls[1].id.provider().as_ref().unwrap().call_id, "tool-0");
-    assert!(calls[2].id.provider().is_none());
+
+    let kept = Message::from(vec![
+        AssistantContent::text(""),
+        AssistantContent::text("answer"),
+    ]);
+    let aws_message = message::to_aws(kept, true).unwrap().unwrap();
+    assert_eq!(
+        aws_message.content,
+        vec![aws_bedrock::ContentBlock::Text("answer".into())]
+    );
 }

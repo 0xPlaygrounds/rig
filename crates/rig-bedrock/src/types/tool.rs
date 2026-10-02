@@ -5,15 +5,18 @@ use rig_core::error::ProviderError;
 use rig_core::message::ToolResultContent;
 use serde_json::Value;
 
-/// The Converse tool-result block for `content`.
+/// The Converse tool-result block for `content`; blank text has none.
 pub(crate) fn to_aws(
     content: ToolResultContent,
-) -> Result<aws_bedrock::ToolResultContentBlock, ProviderError> {
+) -> Result<Option<aws_bedrock::ToolResultContentBlock>, ProviderError> {
     match content {
-        ToolResultContent::Text(text) => Ok(aws_bedrock::ToolResultContentBlock::Text(text.text)),
+        ToolResultContent::Text(text) if text.text.trim().is_empty() => Ok(None),
+        ToolResultContent::Text(text) => {
+            Ok(Some(aws_bedrock::ToolResultContentBlock::Text(text.text)))
+        }
         ToolResultContent::Image(image) => {
             let image = image::to_aws(image)?;
-            Ok(aws_bedrock::ToolResultContentBlock::Image(image))
+            Ok(Some(aws_bedrock::ToolResultContentBlock::Image(image)))
         }
         ToolResultContent::Json { value } => {
             // Object-only tool-result schemas require a wrapper for other
@@ -22,13 +25,12 @@ pub(crate) fn to_aws(
                 Value::Object(_) => value,
                 value => serde_json::json!({ "result": value }),
             };
-            Ok(aws_bedrock::ToolResultContentBlock::Json(
+            Ok(Some(aws_bedrock::ToolResultContentBlock::Json(
                 json::to_document(value),
-            ))
+            )))
         }
     }
 }
 
 #[cfg(test)]
-#[cfg(any())]
 mod tests;

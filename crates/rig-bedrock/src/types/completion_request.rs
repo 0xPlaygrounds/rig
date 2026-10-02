@@ -11,6 +11,8 @@ use rig_core::message::{DocumentMediaType, UserContent};
 pub struct AwsCompletionRequest {
     pub inner: rig_core::completion::CompletionRequest,
     pub prompt_caching: bool,
+    /// Whether the model reads reasoning signatures.
+    pub signatures: bool,
 }
 
 fn cache_point_block() -> Result<CachePointBlock, ProviderError> {
@@ -21,18 +23,16 @@ fn cache_point_block() -> Result<CachePointBlock, ProviderError> {
 }
 
 impl AwsCompletionRequest {
-    /// A Converse request over `inner`, replaying the reasoning `issuer`
-    /// issued.
-    #[cfg(any())]
+    /// A Converse request over `inner` for `model`.
     pub fn new(
         inner: rig_core::completion::CompletionRequest,
-        issuer: rig_core::message::Issuer,
+        model: &str,
         prompt_caching: bool,
     ) -> Self {
         Self {
             inner,
-            issuer,
             prompt_caching,
+            signatures: crate::types::assistant_content::reads_signatures(model),
         }
     }
 
@@ -179,13 +179,6 @@ impl AwsCompletionRequest {
     /// Consumes the request: this is the one accessor that needs the chat
     /// history by value, so call it after the borrowing accessors.
     pub fn messages(self) -> Result<Vec<aws_bedrock::Message>, ProviderError> {
-        Err(ProviderError::request(
-            "Bedrock has not moved to item-shaped history yet",
-        ))
-    }
-
-    #[cfg(any())]
-    pub fn messages(self) -> Result<Vec<aws_bedrock::Message>, ProviderError> {
         let mut full_history: Vec<Message> = Vec::new();
 
         if !self.inner.documents.is_empty() {
@@ -206,7 +199,8 @@ impl AwsCompletionRequest {
         }
 
         let has_reasoning = self.inner.chat_history.iter().any(|message| match message {
-            Message::Assistant { content, .. } => content
+            Message::Assistant(turn) => turn
+                .content
                 .iter()
                 .any(|c| matches!(c, rig_core::completion::AssistantContent::Reasoning(_))),
             _ => false,
@@ -222,7 +216,9 @@ impl AwsCompletionRequest {
         let tool_ids = rig_core::providers::internal::wire_ids::WireIds::new(&full_history);
         let mut messages = Vec::new();
         for (position, message) in full_history.into_iter().enumerate() {
-            let mut message = message::to_aws(message, &self.issuer)?;
+            let Some(mut message) = message::to_aws(message, self.signatures)? else {
+                continue;
+            };
             tool_ids
                 .apply(
                     position,
@@ -260,5 +256,4 @@ impl AwsCompletionRequest {
 }
 
 #[cfg(test)]
-#[cfg(any())]
 mod tests;

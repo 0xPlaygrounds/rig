@@ -12,7 +12,7 @@ fn test_image_to_aws_image() {
         data: DocumentSourceKind::Base64(encoded_str),
         media_type: Some(ImageMediaType::JPEG),
         detail: None,
-        additional_params: None,
+        native: None,
     };
     let aws_image: Result<aws_bedrock::ImageBlock, _> = image::to_aws(rig_image.clone());
     assert!(aws_image.is_ok());
@@ -39,7 +39,7 @@ fn test_unsupported_image_to_aws_image() {
         data: DocumentSourceKind::Base64(encoded_str),
         media_type: Some(ImageMediaType::HEIC),
         detail: None,
-        additional_params: None,
+        native: None,
     };
     let aws_image: Result<aws_bedrock::ImageBlock, _> = image::to_aws(rig_image);
     assert_eq!(

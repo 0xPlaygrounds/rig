@@ -1,84 +1,53 @@
 use aws_sdk_bedrockruntime::types as aws_bedrock;
 
 use rig_core::error::ProviderError;
-use rig_core::message::{AssistantContent, Message};
+use rig_core::message::Message;
 
-use super::{
-    assistant_content,
-    converse_output::{ConversationRole, Message as ConverseMessage},
-    user_content,
-};
+use super::{assistant_content, user_content};
 
-/// The Converse message for `message`, replaying the reasoning `issuer`
-/// issued.
-#[cfg(any())]
+/// The Converse message for `message`, or `None` for an assistant turn with
+/// nothing to send: Converse rejects an empty message. `signatures` is
+/// whether the target model reads reasoning signatures.
 pub(crate) fn to_aws(
     message: Message,
-    issuer: &Issuer,
-) -> Result<aws_bedrock::Message, ProviderError> {
-    let result = match message {
+    signatures: bool,
+) -> Result<Option<aws_bedrock::Message>, ProviderError> {
+    let (role, content) = match message {
         Message::System { .. } => {
             return Err(ProviderError::Provider(
                 "System messages must be sent via Bedrock system blocks".to_string(),
             ));
         }
         Message::User { content } => {
-            let message_content = content
-                .into_iter()
-                .map(user_content::to_aws)
-                .collect::<Result<Vec<Vec<_>>, _>>()
-                .map_err(ProviderError::request)
-                .map(|nested| nested.into_iter().flatten().collect())?;
-
-            aws_bedrock::Message::builder()
-                .role(aws_bedrock::ConversationRole::User)
-                .set_content(Some(message_content))
-                .build()
-                .map_err(ProviderError::request)?
+            let mut blocks = Vec::new();
+            for part in content {
+                blocks.extend(user_content::to_aws(part)?);
+            }
+            if blocks.is_empty() {
+                blocks.push(aws_bedrock::ContentBlock::Text(
+                    user_content::EMPTY_TEXT.to_owned(),
+                ));
+            }
+            (aws_bedrock::ConversationRole::User, blocks)
         }
-        Message::Assistant { content, .. } => aws_bedrock::Message::builder()
-            .role(aws_bedrock::ConversationRole::Assistant)
-            .set_content(Some(
-                // `Ok(None)` items degrade away (foreign opaque
-                // reasoning Bedrock cannot carry); errors still fail.
-                content
-                    .into_iter()
-                    .map(|content| assistant_content::to_aws(content, issuer))
-                    .collect::<Result<Vec<Option<aws_bedrock::ContentBlock>>, _>>()?
-                    .into_iter()
-                    .flatten()
-                    .collect(),
-            ))
-            .build()
-            .map_err(ProviderError::request)?,
+        Message::Assistant(turn) => {
+            let mut blocks = Vec::new();
+            for part in turn.content {
+                blocks.extend(assistant_content::to_aws(part, signatures)?);
+            }
+            if blocks.is_empty() {
+                return Ok(None);
+            }
+            (aws_bedrock::ConversationRole::Assistant, blocks)
+        }
     };
-    Ok(result)
-}
-
-/// The content of a Converse reply message. A reply is the assistant's turn,
-/// so a reply in any other role is an error.
-#[cfg(any())]
-pub(crate) fn assistant_reply(
-    message: ConverseMessage,
-) -> Result<Vec<AssistantContent>, ProviderError> {
-    match message.role {
-        ConversationRole::Assistant => {
-            let content = message
-                .content
-                .into_iter()
-                .map(assistant_content::from_converse)
-                .collect::<Result<Vec<_>, _>>()?;
-            rig_core::message::require_non_empty_response(content)
-        }
-        ConversationRole::User => Err(ProviderError::Response(
-            "Converse output message was not an assistant message".to_owned(),
-        )),
-        ConversationRole::Unknown(_) => Err(ProviderError::Provider(
-            "AWS Bedrock returned unsupported ConversationRole".into(),
-        )),
-    }
+    aws_bedrock::Message::builder()
+        .role(role)
+        .set_content(Some(content))
+        .build()
+        .map(Some)
+        .map_err(ProviderError::request)
 }
 
 #[cfg(test)]
-#[cfg(any())]
 mod tests;

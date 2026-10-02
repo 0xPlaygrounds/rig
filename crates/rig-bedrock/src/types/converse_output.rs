@@ -90,7 +90,7 @@ impl TryFrom<aws_sdk_bedrockruntime::operation::converse::ConverseOutput>
 
         Ok(Self {
             output: output.map(std::convert::TryInto::try_into).transpose()?,
-            stop_reason: stop_reason.try_into()?,
+            stop_reason: stop_reason.into(),
             usage: usage.map(std::convert::TryInto::try_into).transpose()?,
             metrics: metrics.map(std::convert::TryInto::try_into).transpose()?,
             additional_model_response_fields: additional_model_response_fields.map(json::to_value),
@@ -120,10 +120,31 @@ pub enum StopReason {
     ContentFiltered,
     EndTurn,
     GuardrailIntervened,
+    MalformedModelOutput,
+    MalformedToolUse,
     MaxTokens,
+    ModelContextWindowExceeded,
     StopSequence,
     ToolUse,
     Unknown(UnknownVariantValue),
+}
+
+impl StopReason {
+    /// Bedrock's wire spelling of the reason.
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::ContentFiltered => "content_filtered",
+            Self::EndTurn => "end_turn",
+            Self::GuardrailIntervened => "guardrail_intervened",
+            Self::MalformedModelOutput => "malformed_model_output",
+            Self::MalformedToolUse => "malformed_tool_use",
+            Self::MaxTokens => "max_tokens",
+            Self::ModelContextWindowExceeded => "model_context_window_exceeded",
+            Self::StopSequence => "stop_sequence",
+            Self::ToolUse => "tool_use",
+            Self::Unknown(value) => &value.0,
+        }
+    }
 }
 
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
@@ -416,27 +437,21 @@ pub enum ToolResultStatus {
     Unknown(UnknownVariantValue),
 }
 
-/// Mirror a unit-variant AWS enum: emits owned + borrowed `TryFrom<aws>`
-/// impls. Unlisted variants (including this crate's `Unknown`) fall through to
-/// a `TypeConversionError`.
+/// Mirror a unit-variant AWS enum: emits owned + borrowed `From<aws>` impls.
+/// An unlisted variant keeps its wire spelling in `Unknown`.
 macro_rules! mirror_enum {
     ($ours:ident, $aws:ty { $($aws_variant:ident => $ours_variant:ident),+ $(,)? }) => {
-        impl TryFrom<$aws> for $ours {
-            type Error = TypeConversionError;
-            fn try_from(value: $aws) -> Result<Self, Self::Error> {
-                <$ours>::try_from(&value)
+        impl From<$aws> for $ours {
+            fn from(value: $aws) -> Self {
+                <$ours>::from(&value)
             }
         }
-        impl TryFrom<&$aws> for $ours {
-            type Error = TypeConversionError;
-            fn try_from(value: &$aws) -> Result<Self, Self::Error> {
+        impl From<&$aws> for $ours {
+            fn from(value: &$aws) -> Self {
                 type Aws = $aws;
                 match value {
-                    $(Aws::$aws_variant => Ok($ours::$ours_variant),)+
-                    invalid => Err(TypeConversionError::new(&format!(
-                        concat!("Unknown variant for ", stringify!($ours), ": {:?}"),
-                        invalid
-                    ))),
+                    $(Aws::$aws_variant => $ours::$ours_variant,)+
+                    unknown => $ours::Unknown(UnknownVariantValue(unknown.as_str().to_owned())),
                 }
             }
         }
@@ -444,7 +459,8 @@ macro_rules! mirror_enum {
 }
 
 /// Mirror an AWS union (every listed variant carries a single payload that
-/// converts via `TryInto`): emits the owned `TryFrom<aws>` impl.
+/// converts via `TryInto`): emits the owned `TryFrom<aws>` impl. An unlisted
+/// variant is `Unknown`.
 macro_rules! mirror_union {
     ($ours:ident, $aws:ty { $($aws_variant:ident => $ours_variant:ident),+ $(,)? }) => {
         impl TryFrom<$aws> for $ours {
@@ -453,10 +469,7 @@ macro_rules! mirror_union {
                 type Aws = $aws;
                 match value {
                     $(Aws::$aws_variant(value) => Ok($ours::$ours_variant(value.try_into()?)),)+
-                    invalid => Err(TypeConversionError::new(&format!(
-                        concat!("Unknown variant for ", stringify!($ours), ": {:?}"),
-                        invalid
-                    ))),
+                    _ => Ok($ours::Unknown),
                 }
             }
         }
@@ -467,7 +480,10 @@ mirror_enum!(StopReason, aws_bedrock::StopReason {
     ContentFiltered => ContentFiltered,
     EndTurn => EndTurn,
     GuardrailIntervened => GuardrailIntervened,
+    MalformedModelOutput => MalformedModelOutput,
+    MalformedToolUse => MalformedToolUse,
     MaxTokens => MaxTokens,
+    ModelContextWindowExceeded => ModelContextWindowExceeded,
     StopSequence => StopSequence,
     ToolUse => ToolUse,
 });
@@ -590,9 +606,7 @@ impl TryFrom<aws_bedrock::DocumentSource> for DocumentSource {
                 Ok(DocumentSource::S3Location(value.try_into()?))
             }
             aws_bedrock::DocumentSource::Text(value) => Ok(DocumentSource::Text(value)),
-            invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for DocumentSource: {invalid:?}"
-            ))),
+            _ => Ok(DocumentSource::Unknown),
         }
     }
 }
@@ -616,9 +630,7 @@ impl TryFrom<aws_bedrock::ToolResultContentBlock> for ToolResultContentBlock {
             aws_bedrock::ToolResultContentBlock::Video(value) => {
                 Ok(ToolResultContentBlock::Video(value.try_into()?))
             }
-            invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for ToolResultContentBlock: {invalid:?}"
-            ))),
+            _ => Ok(ToolResultContentBlock::Unknown),
         }
     }
 }
@@ -649,7 +661,7 @@ impl TryFrom<aws_bedrock::Message> for Message {
     type Error = TypeConversionError;
     fn try_from(value: aws_bedrock::Message) -> Result<Self, Self::Error> {
         Ok(Message {
-            role: value.role.try_into()?,
+            role: value.role.into(),
             content: value
                 .content
                 .into_iter()
@@ -663,7 +675,7 @@ impl TryFrom<aws_bedrock::CachePointBlock> for CachePointBlock {
     type Error = TypeConversionError;
     fn try_from(value: aws_bedrock::CachePointBlock) -> Result<Self, Self::Error> {
         Ok(CachePointBlock {
-            kind: value.r#type.try_into()?,
+            kind: value.r#type.into(),
         })
     }
 }
@@ -736,7 +748,7 @@ impl TryFrom<aws_bedrock::DocumentBlock> for DocumentBlock {
     type Error = TypeConversionError;
     fn try_from(value: aws_bedrock::DocumentBlock) -> Result<Self, Self::Error> {
         Ok(DocumentBlock {
-            format: value.format.try_into()?,
+            format: value.format.into(),
             name: value.name,
             source: value.source.map(TryInto::try_into).transpose()?,
             context: value.context,
@@ -777,7 +789,7 @@ impl TryFrom<aws_bedrock::GuardrailConverseImageBlock> for GuardrailConverseImag
     type Error = TypeConversionError;
     fn try_from(value: aws_bedrock::GuardrailConverseImageBlock) -> Result<Self, Self::Error> {
         Ok(GuardrailConverseImageBlock {
-            format: value.format.try_into()?,
+            format: value.format.into(),
             source: value.source.map(TryInto::try_into).transpose()?,
         })
     }
@@ -792,9 +804,9 @@ impl TryFrom<aws_bedrock::GuardrailConverseTextBlock> for GuardrailConverseTextB
                 value
                     .qualifiers
                     .unwrap_or_default()
-                    .into_iter()
-                    .map(|v| (&v).try_into())
-                    .collect::<Result<_, Self::Error>>()?,
+                    .iter()
+                    .map(Into::into)
+                    .collect(),
             ),
         })
     }
@@ -804,7 +816,7 @@ impl TryFrom<aws_bedrock::ImageBlock> for ImageBlock {
     type Error = TypeConversionError;
     fn try_from(value: aws_bedrock::ImageBlock) -> Result<Self, Self::Error> {
         Ok(ImageBlock {
-            format: value.format.try_into()?,
+            format: value.format.into(),
             source: value.source.map(TryInto::try_into).transpose()?,
         })
     }
@@ -830,7 +842,7 @@ impl TryFrom<aws_bedrock::ToolResultBlock> for ToolResultBlock {
                 .into_iter()
                 .map(TryInto::try_into)
                 .collect::<Result<_, Self::Error>>()?,
-            status: value.status.map(|v| (&v).try_into()).transpose()?,
+            status: value.status.map(Into::into),
         })
     }
 }
@@ -839,7 +851,7 @@ impl TryFrom<aws_bedrock::VideoBlock> for VideoBlock {
     type Error = TypeConversionError;
     fn try_from(value: aws_bedrock::VideoBlock) -> Result<Self, Self::Error> {
         Ok(VideoBlock {
-            format: value.format.try_into()?,
+            format: value.format.into(),
             source: value.source.map(TryInto::try_into).transpose()?,
         })
     }

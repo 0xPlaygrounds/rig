@@ -11,8 +11,9 @@
 
 use crate::{
     client::BedrockRuntime,
+    streaming::StreamState,
     types::{
-        assistant_content::{PROVIDER_NAME, reasoning_issuer},
+        assistant_content::PROVIDER_NAME,
         completion_request::AwsCompletionRequest,
         converse_output::InternalConverseOutput,
         errors::{sdk_error, stream_error},
@@ -204,9 +205,7 @@ impl Wire for Converse {
     type Op = Completion;
     type Payload = ConverseRequest;
     type Frame = ConverseFrame;
-    #[cfg(any())]
-    type Decoder<'id> = StreamState<'id>;
-    type Decoder<'id> = rig_core::providers::internal::Unmigrated;
+    type Decoder<'id> = StreamState;
 
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(PROVIDER_NAME)
@@ -214,40 +213,32 @@ impl Wire for Converse {
             .replay(self)
     }
 
-    /// Claude reasoning on Bedrock is Anthropic's; other models' is
-    /// Bedrock's, so a request replays only the reasoning its model's issuer
-    /// signed.
-    #[cfg(any())]
     fn encode(
         &self,
         request: CompletionRequest,
         _mode: Mode,
     ) -> Result<ConverseRequest, EncodeError> {
         let model = self.request_model(request.model.as_deref()).to_owned();
-        let issuer = rig_core::message::Issuer::from(reasoning_issuer(&model));
         Ok(ConverseRequest {
-            request: AwsCompletionRequest::new(request, issuer, self.prompt_caching),
+            request: AwsCompletionRequest::new(request, &model, self.prompt_caching),
             model,
             guardrail: self.guardrail.clone(),
         })
     }
-    fn encode(
-        &self,
-        request: CompletionRequest,
-        _mode: Mode,
-    ) -> Result<ConverseRequest, EncodeError> {
-        let _ = (request, _mode);
-        Err(rig_core::providers::internal::Unmigrated::encode_error())
-    }
 
-    #[cfg(any())]
     fn decoder<'id>(&self) -> Self::Decoder<'id> {
         StreamState::default()
     }
-    fn decoder<'id>(&self) -> Self::Decoder<'id> {
-        rig_core::providers::internal::Unmigrated
-    }
 }
+
+/// Model families pi's catalog lists as text-only on Bedrock, separated by
+/// spaces.
+const TEXT_ONLY: &str = "amazon.nova-micro deepseek. meta.llama3-8b meta.llama3-70b \
+    meta.llama3-1- meta.llama3-3- minimax. mistral.devstral mistral.mistral-7b \
+    mistral.mistral-large-2402 mistral.mistral-small-2402 mistral.mixtral mistral.voxtral \
+    moonshot.kimi-k2-thinking nvidia.nemotron-nano-3 nvidia.nemotron-nano-9b \
+    nvidia.nemotron-super openai.gpt-oss qwen.qwen3-2 qwen.qwen3-3 qwen.qwen3-coder \
+    qwen.qwen3-next writer.palmyra zai.glm";
 
 impl rig_core::completion::ReplayTarget for Converse {
     fn api(&self) -> rig_core::message::Api {
@@ -260,6 +251,30 @@ impl rig_core::completion::ReplayTarget for Converse {
 
     fn model(&self) -> &str {
         &self.model
+    }
+
+    fn accepts_images(&self) -> bool {
+        !TEXT_ONLY
+            .split_whitespace()
+            .any(|family| self.model.contains(family))
+    }
+
+    /// Converse tool-use ids match `[a-zA-Z0-9_-]{1,64}`.
+    fn normalize_tool_call_id(
+        &self,
+        id: &str,
+        _source: Option<&rig_core::message::Origin>,
+    ) -> String {
+        id.chars()
+            .map(|c| {
+                if c.is_ascii_alphanumeric() || c == '_' || c == '-' {
+                    c
+                } else {
+                    '_'
+                }
+            })
+            .take(64)
+            .collect()
     }
 }
 
