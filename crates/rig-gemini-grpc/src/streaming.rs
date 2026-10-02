@@ -169,11 +169,11 @@ fn rest_part(part: &proto::Part) -> Option<Value> {
         ),
         Some(Data::ExecutableCode(code)) => (
             "executableCode",
-            json!({ "language": code.language, "code": code.code }),
+            json!({ "language": code.language().as_str_name(), "code": code.code }),
         ),
         Some(Data::CodeExecutionResult(result)) => (
             "codeExecutionResult",
-            json!({ "outcome": result.outcome, "output": result.output }),
+            json!({ "outcome": result.outcome().as_str_name(), "output": result.output }),
         ),
         None => {
             warn_unmodeled("gemini_grpc_part", part);

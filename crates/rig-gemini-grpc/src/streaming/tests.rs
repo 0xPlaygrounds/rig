@@ -529,3 +529,33 @@ async fn safety_ratings_and_citations_are_the_turns_native() {
         Some(&json!("https://example.com"))
     );
 }
+
+/// Code execution's language and outcome are proto enums; the restated part
+/// spells them the way the REST API does.
+#[test]
+fn code_execution_parts_restate_with_rest_enum_names() {
+    let code = proto::Part {
+        data: Some(proto::part::Data::ExecutableCode(proto::ExecutableCode {
+            language: proto::executable_code::Language::Python as i32,
+            code: "print(1)".to_owned(),
+        })),
+        ..Default::default()
+    };
+    let result = proto::Part {
+        data: Some(proto::part::Data::CodeExecutionResult(
+            proto::CodeExecutionResult {
+                outcome: proto::code_execution_result::Outcome::Ok as i32,
+                output: "1\n".to_owned(),
+            },
+        )),
+        ..Default::default()
+    };
+    assert_eq!(
+        rest_part(&code),
+        Some(json!({"executableCode": {"language": "PYTHON", "code": "print(1)"}}))
+    );
+    assert_eq!(
+        rest_part(&result),
+        Some(json!({"codeExecutionResult": {"outcome": "OUTCOME_OK", "output": "1\n"}}))
+    );
+}

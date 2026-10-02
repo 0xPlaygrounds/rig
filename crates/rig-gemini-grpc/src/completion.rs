@@ -345,13 +345,19 @@ fn grpc_part(part: Part) -> Result<proto::Part, EncodeError> {
         }
         PartKind::ExecutableCode(code) => {
             proto::part::Data::ExecutableCode(proto::ExecutableCode {
-                language: wire_name(&code.language)?,
+                language: proto::executable_code::Language::from_str_name(&wire_name(
+                    &code.language,
+                )?)
+                .unwrap_or_default() as i32,
                 code: code.code,
             })
         }
         PartKind::CodeExecutionResult(result) => {
             proto::part::Data::CodeExecutionResult(proto::CodeExecutionResult {
-                outcome: wire_name(&result.outcome)?,
+                outcome: proto::code_execution_result::Outcome::from_str_name(&wire_name(
+                    &result.outcome,
+                )?)
+                .unwrap_or_default() as i32,
                 output: result.output.unwrap_or_default(),
             })
         }

@@ -106,12 +106,22 @@ message FunctionResponse {
 }
 
 message ExecutableCode {
-  string language = 1;
+  enum Language {
+    LANGUAGE_UNSPECIFIED = 0;
+    PYTHON = 1;
+  }
+  Language language = 1;
   string code = 2;
 }
 
 message CodeExecutionResult {
-  string outcome = 1;
+  enum Outcome {
+    OUTCOME_UNSPECIFIED = 0;
+    OUTCOME_OK = 1;
+    OUTCOME_FAILED = 2;
+    OUTCOME_DEADLINE_EXCEEDED = 3;
+  }
+  Outcome outcome = 1;
   string output = 2;
 }
 
