@@ -178,12 +178,17 @@ impl<'id> Decoder<'id, Completion> for GenerateContentDecoder {
             return Err(blocked);
         }
 
+        // The candidates, their content and its parts hold every block and
+        // the finish, so a wrongly typed one fails the reply.
         let candidate = match data.shift_remove("candidates") {
             Some(Value::Array(candidates)) => candidates.into_iter().next(),
-            _ => None,
+            None | Some(Value::Null) => None,
+            Some(_) => return Err(malformed("candidates that are not a list")),
         };
-        let Some(Value::Object(mut candidate)) = candidate else {
-            return Ok(Flow::More);
+        let mut candidate = match candidate {
+            Some(Value::Object(candidate)) => candidate,
+            None => return Ok(Flow::More),
+            Some(_) => return Err(malformed("a candidate that is not an object")),
         };
         let content = candidate.shift_remove("content");
         let failed = candidate
@@ -195,12 +200,17 @@ impl<'id> Decoder<'id, Completion> for GenerateContentDecoder {
         self.candidate.extend(candidate);
         let parts = match content {
             Some(Value::Object(mut content)) => content.shift_remove("parts"),
-            _ => None,
+            None | Some(Value::Null) => None,
+            Some(_) => return Err(malformed("candidate content that is not an object")),
         };
-        if let Some(Value::Array(parts)) = parts {
-            for part in parts {
-                self.part(part, &mut out)?;
+        match parts {
+            Some(Value::Array(parts)) => {
+                for part in parts {
+                    self.part(part, &mut out)?;
+                }
             }
+            None | Some(Value::Null) => {}
+            Some(_) => return Err(malformed("candidate parts that are not a list")),
         }
         // A failure is final: nothing after it is read.
         if failed {
@@ -411,6 +421,10 @@ impl GenerateContentDecoder {
             error.emit(sink);
         }
     }
+}
+
+fn malformed(what: &str) -> ProviderError {
+    ProviderError::Response(format!("Gemini sent {what}"))
 }
 
 /// Merge a streamed part into the part its block holds so far: the text

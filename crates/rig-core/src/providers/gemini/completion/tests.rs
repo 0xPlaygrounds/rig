@@ -2361,3 +2361,37 @@ fn documents_open_the_first_user_message_on_gemini() {
         "{body}"
     );
 }
+
+/// A user message that holds tool results and then the user's next words
+/// (the adapter merges adjacent user messages) goes out as two contents,
+/// as pi sends them: Gemini answers text sharing a content with function
+/// responses poorly, often with an empty reply.
+#[test]
+fn function_responses_and_user_text_go_in_separate_contents() {
+    let call = message::ToolCall::new(
+        message::CallId::from_wire("call_1"),
+        message::ToolFunction::new(
+            message::ToolName::new("lookup").expect("a tool name"),
+            json!({}),
+        ),
+    );
+    let contents = contents(
+        vec![message::Message::User {
+            content: vec![
+                message::UserContent::ToolResult(
+                    call.result(vec![message::ToolResultContent::text("found")]),
+                ),
+                message::UserContent::text("now answer"),
+            ],
+        }],
+        "gemini-2.5-flash",
+    )
+    .expect("encodes");
+    assert_eq!(
+        contents,
+        vec![
+            json!({"role": "user", "parts": [{"thought": false, "functionResponse": {"name": "lookup", "response": {"result": "found"}}}]}),
+            json!({"role": "user", "parts": [{"thought": false, "text": "now answer"}]}),
+        ]
+    );
+}

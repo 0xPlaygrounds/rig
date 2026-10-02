@@ -72,15 +72,11 @@ rig-bedrock/src/embedding.rs | .and_then(|body| serde_json::from_str(&body).map_
 rig-bedrock/src/image.rs | serde_json::from_str::<TextToImageResponse>(&body) | The unary InvokeModel reply is one opaque JSON blob with no frames to triage; its typed decode fails the call with a ProviderError, never skipped.
 
 # --- vertexai: SDK reply restated as the REST chunk ------------------------
-rig-vertexai/src/types/completion_response.rs | block_reason: serde_json::from_value(reason.into()).ok(), | Converts the SDK's prompt-feedback block reason name into the REST enum while restating the SDK reply as a GenerateContent chunk; no frame is triaged here.
 
 # --- item-shaped decoders: typed views of classified frames ----------------
 # Each decoder keeps a classified frame as JSON so the provider's item survives
 # verbatim, then reads one field of it through its typed form.
 providers/openai/wire/chat.rs | let incoming = serde_json::from_value::<StreamingToolCall>(call.clone()) | Typed view of one tool-call fragment of a classified chunk; the fragment itself is merged into the call's provider item as sent.
-providers/gemini/streaming.rs | let reason: FinishReason = serde_json::from_value(reason.clone())?; | Typed view of a classified candidate's `finishReason`; the candidate's fields stay the turn's provider item as sent.
-providers/gemini/streaming.rs | let call: FunctionCall = serde_json::from_value(call.clone())?; | Typed view of a classified part's `functionCall`; the part stays the call's provider item as sent.
-providers/gemini/streaming.rs | let blob: Blob = serde_json::from_value(blob.clone())?; | Typed view of a classified part's `inlineData`; the part stays the image's provider item as sent.
 providers/gemini/interactions_api/streaming.rs | serde_json::from_value(Value::Object(delta.clone()))?; | Typed view of a classified `step.delta`; the delta is merged into the step's provider item as sent.
 providers/gemini/interactions_api/streaming.rs | match serde_json::from_value(item.clone()) { | Typed view of a classified step; a step of an unknown type stays an opaque provider item.
 providers/gemini/interactions_api/streaming.rs | if serde_json::from_value::<Step>(tag).is_ok() { | Asks whether a classified step's `type` names a known step, so a known step that fails to parse is an error and an unknown one stays opaque.

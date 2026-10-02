@@ -204,10 +204,16 @@ pub(crate) fn create_grpc_request(
         .map(crate::rest::from_rest::<proto::Content>)
         .collect::<Result<Vec<_>, _>>()?;
     let CompletionRequest {
+        model: _,
+        chat_history: _,
+        documents: _,
         tools,
         temperature,
         max_tokens,
-        ..
+        tool_choice: _,
+        additional_params: _,
+        output_schema: _,
+        record_telemetry_content: _,
     } = completion_request;
 
     let mut system_parts = Vec::new();

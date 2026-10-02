@@ -460,7 +460,8 @@ pub fn conversation(
 }
 
 /// The Gemini contents for `history`. A user part is converted, and a
-/// system message becomes user text. An assistant block is sent as the
+/// system message becomes user text. A user message's function responses
+/// and its other parts go in separate contents, in order. An assistant block is sent as the
 /// provider item it was decoded from while that is current, and rebuilt
 /// from its canonical fields otherwise. Calls and their responses carry ids
 /// when `model` takes them, an id rig issued spelled as a request-local
@@ -471,38 +472,47 @@ pub fn contents(history: Vec<completion::Message>, model: &str) -> Result<Vec<Va
         .then(|| crate::providers::internal::wire_ids::WireIds::new(&history));
     let sign = gemini_3_or_later(model);
     let id = |message: usize, content: usize| ids.as_ref()?.get(message, content);
-    history
-        .into_iter()
-        .enumerate()
-        .map(|(at, message)| {
-            let (role, parts) = match message {
-                completion::Message::System { content } => {
-                    (Role::User, vec![serde_json::to_value(Part::from(content))?])
+    let content =
+        |role: &Role, parts: Vec<Value>| serde_json::json!({ "parts": parts, "role": role });
+    let mut contents = Vec::with_capacity(history.len());
+    for (at, message) in history.into_iter().enumerate() {
+        match message {
+            completion::Message::System { content: text } => contents.push(content(
+                &Role::User,
+                vec![serde_json::to_value(Part::from(text))?],
+            )),
+            // Function responses and the user's own parts go in contents of
+            // their own, as pi sends them: Gemini answers text that shares a
+            // content with function responses poorly, often with nothing.
+            completion::Message::User { content: parts } => {
+                let mut run: Vec<Value> = Vec::new();
+                let mut responses = false;
+                for (index, part) in parts.into_iter().enumerate() {
+                    let response = matches!(part, crate::message::UserContent::ToolResult(_));
+                    if response != responses && !run.is_empty() {
+                        contents.push(content(&Role::User, std::mem::take(&mut run)));
+                    }
+                    responses = response;
+                    run.push(serde_json::to_value(user_part(part, id(at, index))?)?);
                 }
-                completion::Message::User { content } => (
-                    Role::User,
-                    content
-                        .into_iter()
-                        .enumerate()
-                        .map(|(index, part)| {
-                            Ok(serde_json::to_value(user_part(part, id(at, index))?)?)
-                        })
-                        .collect::<Result<_, EncodeError>>()?,
-                ),
-                completion::Message::Assistant(turn) => (
-                    Role::Model,
-                    turn.content
-                        .iter()
-                        .enumerate()
-                        .filter_map(|(index, block)| {
-                            assistant_part(block, id(at, index), sign).transpose()
-                        })
-                        .collect::<Result<_, _>>()?,
-                ),
-            };
-            Ok(serde_json::json!({ "parts": parts, "role": role }))
-        })
-        .collect()
+                if !run.is_empty() {
+                    contents.push(content(&Role::User, run));
+                }
+            }
+            completion::Message::Assistant(turn) => {
+                let parts = turn
+                    .content
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(index, block)| {
+                        assistant_part(block, id(at, index), sign).transpose()
+                    })
+                    .collect::<Result<_, _>>()?;
+                contents.push(content(&Role::Model, parts));
+            }
+        }
+    }
+    Ok(contents)
 }
 
 /// Split system messages out of a chat history, keeping their contents in

@@ -76,12 +76,6 @@ const SURVIVAL_EXEMPT: &[(&str, &str, &str)] = &[
         "the same rename by a repair hook, on a streamed turn",
     ),
     (
-        "gemini/agent_run_streamed/streamed_skip_abandons_the_turn_and_recovers.yaml",
-        "thought_signature",
-        "a streamed turn abandoned at an invalid call was cut short, so it replays from its \
-         canonical fields",
-    ),
-    (
         "gemini/auto_caching/support_chat_100_current_turn.yaml",
         "thought_signature",
         "the run opts into ThoughtReplay::CurrentTurn, which stops re-sending a turn's \
@@ -121,10 +115,6 @@ const VERBATIM_EXEMPT: &[(&str, &str)] = &[
     (
         "gemini/agent_run_streamed/streamed_repair_continues_the_same_stream.yaml",
         "the same rename by a repair hook, on a streamed turn",
-    ),
-    (
-        "gemini/agent_run_streamed/streamed_skip_abandons_the_turn_and_recovers.yaml",
-        "a streamed turn abandoned at an invalid call replays from its canonical fields",
     ),
     (
         "gemini/auto_caching/support_chat_100_compaction.yaml",
