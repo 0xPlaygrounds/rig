@@ -4,9 +4,10 @@
 //!
 //! Not live traffic: the fixture is recorded from a local server that
 //! answers in that shape. No configured endpoint was found sending both
-//! keys. The two keys carry different text so the recording shows which one
-//! rig keeps, and the server refuses a continuation that does not echo
-//! `reasoning_content` back, as reasoning endpoints do.
+//! keys. The two keys carry different text: rig reads `reasoning_content`
+//! as the turn's reasoning and sends the message back as the server sent it,
+//! both keys included, and the server refuses a continuation that does not
+//! echo `reasoning_content` back, as reasoning endpoints do.
 
 use std::future::Future;
 use std::net::SocketAddr;
@@ -64,7 +65,7 @@ async fn dual_reasoning_keys_tool_roundtrip() {
     let turns = crate::cassettes::recorded_json_turns("openai", SCENARIO);
     assert_eq!(turns.len(), 2, "the tool call, then the continuation");
     let replied = &turns[0].1["choices"][0]["message"];
-    let (Some(upstream), Some(_surface)) = (
+    let (Some(upstream), Some(surface)) = (
         replied["reasoning_content"].as_str(),
         replied["reasoning"].as_str(),
     ) else {
@@ -77,12 +78,12 @@ async fn dual_reasoning_keys_tool_roundtrip() {
         .find(|message| message["role"] == "assistant")
         .expect("the continuation replays the assistant turn");
     assert_eq!(
-        echoed["reasoning_content"], upstream,
-        "reasoning_content wins"
-    );
-    assert!(
-        echoed.get("reasoning").is_none(),
-        "one key is sent: {echoed}"
+        (
+            echoed["reasoning_content"].as_str(),
+            echoed["reasoning"].as_str()
+        ),
+        (Some(upstream), Some(surface)),
+        "the message goes back with both keys, as the server sent it: {echoed}"
     );
     assert_eq!(
         echoed["tool_calls"], replied["tool_calls"],

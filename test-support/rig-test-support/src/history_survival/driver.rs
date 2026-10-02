@@ -363,9 +363,17 @@ pub async fn run(
 
 /// Whether a provider item carries a non-empty `key`.
 pub(crate) fn item_has(native: Option<&Native>, key: &str) -> bool {
-    native
-        .and_then(|native| native.item.get(key))
-        .is_some_and(|value| value.as_str().is_none_or(|value| !value.is_empty()))
+    let present = |item: &Value| {
+        item.get(key)
+            .is_some_and(|value| value.as_str().is_none_or(|value| !value.is_empty()))
+    };
+    // A Chat Completions reasoning block holds its details in an array.
+    native.is_some_and(|native| {
+        present(&native.item)
+            || native.item["reasoning_details"]
+                .as_array()
+                .is_some_and(|details| details.iter().any(present))
+    })
 }
 
 fn reasoning_blocks(history: &[Message]) -> Vec<&Reasoning> {

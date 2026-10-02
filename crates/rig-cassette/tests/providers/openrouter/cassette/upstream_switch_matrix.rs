@@ -1,11 +1,12 @@
-//! Reasoning through OpenRouter belongs to the upstream family that produced
-//! it. A conversation that moves between families inside OpenRouter must not
-//! forward one family's signatures to another, and the home family's
-//! reasoning must return intact when the conversation comes back.
+//! Reasoning through OpenRouter replays only to the model that produced it.
+//! A conversation that moves to another model, of any family, sends that
+//! model the reasoning as plain text and no signature or ciphertext, and the
+//! home model's signed reasoning returns intact when the conversation comes
+//! back.
 //!
 //! The switch cells run a Claude tool turn, continue on Gemini, then return
 //! to Claude, all through OpenRouter. The same-family cells continue a Claude
-//! tool turn on another Claude model. Each runs on the chat route, and the
+//! tool turn on another Claude model, which is another model too. Each runs on the chat route, and the
 //! `responses_` cells repeat them on OpenRouter's Responses route, where
 //! Claude's signature rides beside the reasoning item. Each is checked from
 //! the recorded bytes: which signatures and reasoning texts every request
@@ -13,7 +14,7 @@
 
 use futures::StreamExt;
 use rig::completion::{CompletionRequest, ToolDefinition};
-use rig::message::{AssistantContent, Message, ToolResultContent, UserContent};
+use rig::message::{AssistantContent, AssistantMessage, Message, ToolResultContent, UserContent};
 use rig_test_support::cassette_models::OpenAiModels;
 use serde_json::{Value, json};
 
@@ -69,7 +70,7 @@ async fn turn(
     model: &str,
     history: Vec<Message>,
     streamed: bool,
-) -> Vec<AssistantContent> {
+) -> AssistantMessage {
     let request = request(route, history);
     match route {
         Route::Chat => run(client.completion(model), request, streamed).await,
@@ -77,37 +78,33 @@ async fn turn(
     }
 }
 
+/// The turn the model answered, with who answered it.
 async fn run<W, T>(
     model: rig::driver::Model<W, T>,
     request: CompletionRequest,
     streamed: bool,
-) -> Vec<AssistantContent>
+) -> AssistantMessage
 where
     W: rig::wire::Wire<Op = rig::operation::Completion>,
     T: rig::driver::Transport<W>,
 {
-    if !streamed {
-        return model
-            .call(request)
-            .await
-            .expect("the turn completes")
-            .choice
-            .to_vec();
+    let response = if streamed {
+        let mut stream = model.stream(request).expect("the stream opens");
+        while let Some(item) = stream.next().await {
+            item.expect("a stream item");
+        }
+        stream.finish().await.expect("a terminal record")
+    } else {
+        model.call(request).await.expect("the turn completes")
+    };
+    AssistantMessage {
+        content: response.choice.clone(),
+        ..response.head()
     }
-    let mut stream = model.stream(request).expect("the stream opens");
-    while let Some(item) = stream.next().await {
-        item.expect("a stream item");
-    }
-    stream
-        .finish()
-        .await
-        .expect("a terminal record")
-        .choice
-        .to_vec()
 }
 
-fn text(choice: &[AssistantContent]) -> String {
-    choice
+fn text(turn: &AssistantMessage) -> String {
+    turn.content
         .iter()
         .filter_map(|content| match content {
             AssistantContent::Text(text) => Some(text.text.as_str()),
@@ -121,15 +118,13 @@ async fn claude_tool_turn(client: &OpenAiModels, route: Route, streamed: bool) -
     let prompt = Message::user("Think it through, then call lookup_code for record alpha.");
     let first = turn(client, route, CLAUDE, vec![prompt.clone()], streamed).await;
     let call = first
-        .iter()
-        .find_map(|content| match content {
-            AssistantContent::ToolCall(call) => Some(call.clone()),
-            _ => None,
-        })
+        .tool_calls()
+        .next()
+        .cloned()
         .unwrap_or_else(|| panic!("Claude calls lookup_code: {first:?}"));
     vec![
         prompt,
-        Message::Assistant(rig_core::message::AssistantMessage::new(first)),
+        Message::Assistant(first),
         Message::User {
             content: vec![UserContent::tool_result(
                 call.id.clone(),
@@ -149,9 +144,7 @@ async fn switch(client: OpenAiModels, route: Route, streamed: bool) {
     ));
     let on_gemini = turn(&client, route, GEMINI, history.clone(), streamed).await;
     assert!(text(&on_gemini).contains(CODE), "{on_gemini:?}");
-    history.push(Message::Assistant(
-        rig_core::message::AssistantMessage::new(on_gemini),
-    ));
+    history.push(Message::Assistant(on_gemini));
     history.push(Message::user(
         "Without calling any tool, say the code once more, in uppercase.",
     ));
@@ -272,10 +265,10 @@ fn assert_switch_recorded(scenario: &str) {
     );
     assert!(
         turns[0]
-            .all
+            .opaque
             .iter()
             .all(|value| !turns[1].sent.contains(value.as_str())),
-        "no Claude reasoning reaches Gemini"
+        "no Claude signature reaches Gemini"
     );
     let back_home = carried(&turns[2].request);
     assert!(
@@ -287,10 +280,10 @@ fn assert_switch_recorded(scenario: &str) {
     );
     assert!(
         turns[1]
-            .all
+            .opaque
             .iter()
             .all(|value| !turns[2].sent.contains(value.as_str())),
-        "no Gemini reasoning reaches Claude"
+        "no Gemini signature reaches Claude"
     );
 }
 
@@ -303,8 +296,8 @@ fn assert_same_family_recorded(scenario: &str) {
     );
     let next = carried(&turns[1].request);
     assert!(
-        turns[0].opaque.iter().all(|value| next.contains(value)),
-        "the family's signed reasoning continues intact on another Claude model"
+        turns[0].opaque.iter().all(|value| !next.contains(value)),
+        "another Claude model is another model: no signature reaches it"
     );
 }
 

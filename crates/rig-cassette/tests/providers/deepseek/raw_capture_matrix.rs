@@ -270,15 +270,29 @@ async fn reasoning_raw_round_trips_and_exposes_reasoning_content() {
         "the typed view carries the fixture's reasoning_content verbatim"
     );
     // The normalized view carries the same text, but only as a `Reasoning`
-    // content block: there is no `reasoning_content` key anywhere on it.
+    // content block: no `reasoning_content` key anywhere on its canonical
+    // form. The block's provider item keeps DeepSeek's own spelling.
     assert_eq!(
         reasoning_text_of(&response.choice),
         recorded_reasoning,
         "the normalized Reasoning block is the same text raw spells reasoning_content"
     );
-    let normalized_choice = serde_json::to_value(&response.choice).expect("choice serializes");
+    let canonical: Vec<AssistantContent> = response
+        .choice
+        .iter()
+        .map(AssistantContent::canonical)
+        .collect();
+    let normalized_choice = serde_json::to_value(&canonical).expect("choice serializes");
     assert!(
         !json_contains_key(&normalized_choice, "reasoning_content"),
         "the normalized choice never spells reasoning_content: {normalized_choice}"
+    );
+    assert!(
+        response.choice.iter().any(|block| matches!(
+            block,
+            AssistantContent::Reasoning(reasoning)
+                if reasoning.native.as_ref().is_some_and(|native| native.item["reasoning_content"] == recorded_reasoning)
+        )),
+        "the reasoning block keeps the field DeepSeek sent it under"
     );
 }
