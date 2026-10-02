@@ -9,18 +9,21 @@
 //! `test-support/rig-test-support/src/history_survival.rs` so the recorded
 //! round-trip cells apply the identical rule to fresh exchanges.
 //!
-//! Four checks:
+//! Five checks:
 //!
 //! 1. [`delivered_opaque_fields_reach_the_next_request`]: each continuation
 //!    request carries every opaque value the previous response delivered.
-//! 2. [`every_recorded_request_pairs_tool_calls_with_results`]: no request
+//! 2. [`same_model_replay_sends_the_recorded_output_items`]: a continuation
+//!    on the same model sends each output item of the previous reply back
+//!    equal to the recorded item, as JSON values, in the reply's order.
+//! 3. [`every_recorded_request_pairs_tool_calls_with_results`]: no request
 //!    leaves a tool call unanswered or a result unmatched, including the
 //!    request after a fault.
-//! 3. [`every_native_request_pairs_tool_calls_with_results`]: the same
+//! 4. [`every_native_request_pairs_tool_calls_with_results`]: the same
 //!    pairing rule over the normalized `chat_history` of every completion
 //!    request in the effect goldens, which include the requests after
 //!    cancellations, invalid arguments and provider faults.
-//! 4. [`every_provider_and_content_kind_is_examined`]: the first checks
+//! 5. [`every_provider_and_content_kind_is_examined`]: the first checks
 //!    actually looked at each provider, and each content kind the corpus can
 //!    show was seen somewhere. A kind no cassette carries is a coverage gap
 //!    to record, not a silent pass.
@@ -58,10 +61,15 @@ const SURVIVAL_EXEMPT: &[(&str, &str, &str)] = &[
          text block to carry the message's phase",
     ),
     (
-        "openai/gpt_5_6_reasoning/five_turn_streaming_metadata_roundtrip.yaml",
-        "phase",
-        "the cell rebuilds each streamed answer from its text deltas rather than from rig's \
-         decoded choice, so the history it sends holds no text block to carry the phase",
+        "xai/prompt_caching/streaming_probe.yaml",
+        "encrypted_content",
+        "the streaming cache probe rebuilds each answer from its text deltas rather than \
+         from rig's decoded choice, so the history it sends holds no reasoning item",
+    ),
+    (
+        "xai/prompt_caching/streaming_probe.yaml",
+        "reasoning_id",
+        "the same text-only rebuild of each streamed answer",
     ),
     (
         "gemini/agent_run_recovery/repair_renames_tool_call_and_executes_it.yaml",
@@ -102,6 +110,74 @@ const SURVIVAL_EXEMPT: &[(&str, &str, &str)] = &[
         "gemini/auto_caching/support_chat_100_compaction.yaml",
         "thought_signature",
         "the same opt-in current-turn thought replay, with a compaction at turn 51",
+    ),
+];
+
+/// Scenarios whose same-model continuation legitimately sends an output item
+/// other than as recorded. `(cassette path suffix, reason)`, reported as
+/// stale once it stops matching a real difference.
+const VERBATIM_EXEMPT: &[(&str, &str)] = &[
+    (
+        "anthropic/response_identity_edge/repaired_invalid_call_keeps_call_identity.yaml",
+        "the repair hook renames the call, and an edited block replays from its canonical fields",
+    ),
+    (
+        "gemini/agent_run_recovery/repair_renames_tool_call_and_executes_it.yaml",
+        "the repair hook renames the call, and an edited block replays from its canonical fields",
+    ),
+    (
+        "gemini/agent_run_streamed/streamed_repair_continues_the_same_stream.yaml",
+        "the same rename by a repair hook, on a streamed turn",
+    ),
+    (
+        "gemini/agent_run_streamed/streamed_skip_abandons_the_turn_and_recovers.yaml",
+        "a streamed turn abandoned at an invalid call replays from its canonical fields",
+    ),
+    (
+        "gemini/auto_caching/support_chat_100_compaction.yaml",
+        "the run opts into ThoughtReplay::CurrentTurn, which drops a finished turn's signatures",
+    ),
+    (
+        "gemini/auto_caching/support_chat_100_current_turn.yaml",
+        "the same opt-in current-turn thought replay",
+    ),
+    (
+        "gemini/auto_caching/support_chat_100_resume.yaml",
+        "the same opt-in current-turn thought replay, across a checkpoint and resume",
+    ),
+    (
+        "gemini/reasoning_tool_roundtrip/nonstreaming.yaml",
+        "Gemini can split one thought across parts; both modes merge consecutive thought parts \
+         into one block so a stream and a whole reply fold alike, and the block replays as one part",
+    ),
+    (
+        "doubleword/prompt_caching/blocking_probe.yaml",
+        "the cache probe rebuilds each answer from its text, so the history holds no reasoning",
+    ),
+    (
+        "groq/prompt_caching/blocking_probe.yaml",
+        "the cache probe rebuilds each answer from its text, so the history holds no reasoning",
+    ),
+    (
+        "openai/prompt_caching/responses_streaming_probe.yaml",
+        "the cache probe rebuilds each answer from its text, so the history holds no item ids",
+    ),
+    (
+        "xai/prompt_caching/streaming_probe.yaml",
+        "the cache probe rebuilds each answer from its text, so the history holds no reasoning",
+    ),
+    (
+        "openrouter/refusal_matrix/blocking_refusal_survives_into_history.yaml",
+        "the cell builds its history by hand from the refusal text",
+    ),
+    (
+        "ollama/tools/optional_argument.yaml",
+        "the model wrote its reasoning inline in content; both modes split it into `thinking`, \
+         which the turn replays",
+    ),
+    (
+        "ollama/raw_capture_agent_matrix/multi_turn_tool_run_records_distinct_raw_blocking.yaml",
+        "the same inline reasoning split into `thinking`",
     ),
 ];
 
@@ -397,6 +473,175 @@ fn delivered_opaque_fields_reach_the_next_request() {
         "opaque content lost between turns ({} pairs compared):\n{}\n\nstale exemptions:\n{}",
         compared,
         losses.join("\n"),
+        stale.join("\n")
+    );
+}
+
+/// The output items of a whole reply, or of a Responses stream's finished
+/// items, as the provider sent them. `None` for a stream whose items arrive
+/// as deltas.
+fn output_items(dialect: Dialect, body: &str) -> Option<Vec<Value>> {
+    let documents = rig_test_support::history_survival::response_documents(body);
+    if dialect == Dialect::OpenAiResponses && documents.len() > 1 {
+        return Some(
+            documents
+                .into_iter()
+                .filter(|document| document["type"] == "response.output_item.done")
+                .map(|document| document["item"].clone())
+                .collect(),
+        );
+    }
+    let [reply] = documents.as_slice() else {
+        return None;
+    };
+    let items = match dialect {
+        Dialect::AnthropicMessages => reply.get("content")?.clone(),
+        Dialect::OpenAiResponses => reply.get("output")?.clone(),
+        Dialect::GeminiGenerateContent => reply.pointer("/candidates/0/content/parts")?.clone(),
+        Dialect::GeminiInteractions => reply.get("steps")?.clone(),
+        Dialect::BedrockConverse => reply.pointer("/output/message/content")?.clone(),
+        Dialect::ChatCompletions => {
+            Value::Array(vec![reply.pointer("/choices/0/message")?.clone()])
+        }
+        Dialect::OllamaChat | Dialect::CohereChat => {
+            Value::Array(vec![reply.get("message")?.clone()])
+        }
+        Dialect::Unmodeled => return None,
+    };
+    match items {
+        Value::Array(items) => Some(items),
+        _ => None,
+    }
+}
+
+/// The history items a request sends, in order: the content of each model
+/// turn for wires whose turns hold content arrays, the turns themselves
+/// otherwise.
+fn replayed_items(dialect: Dialect, request: &Value) -> Vec<Value> {
+    let Some(turns) = dialect
+        .conversation_field()
+        .and_then(|field| request.get(field))
+        .and_then(Value::as_array)
+    else {
+        return Vec::new();
+    };
+    let content = match dialect {
+        Dialect::AnthropicMessages | Dialect::BedrockConverse => Some(("assistant", "content")),
+        Dialect::GeminiGenerateContent => Some(("model", "parts")),
+        _ => None,
+    };
+    match content {
+        Some((role, field)) => turns
+            .iter()
+            .filter(|turn| turn["role"] == role)
+            .filter_map(|turn| turn.get(field).and_then(Value::as_array))
+            .flatten()
+            .cloned()
+            .collect(),
+        None => turns.clone(),
+    }
+}
+
+/// `item` with the wire rules every replay applies, for comparing a reply's
+/// item with the item the next request sends. A Chat call's `index` orders
+/// a stream, so it is compared without it, and an empty `tool_calls` list
+/// carries no call; DeepSeek takes an empty `reasoning_content` on every
+/// assistant turn (pi's rule).
+fn as_replayed(scenario: &str, dialect: Dialect, mut item: Value) -> Value {
+    if dialect == Dialect::ChatCompletions
+        && let Some(message) = item.as_object_mut()
+    {
+        if let Some(Value::Array(calls)) = message.get_mut("tool_calls") {
+            for call in calls.iter_mut().filter_map(Value::as_object_mut) {
+                call.shift_remove("index");
+            }
+        }
+        if message
+            .get("tool_calls")
+            .and_then(Value::as_array)
+            .is_some_and(Vec::is_empty)
+        {
+            message.shift_remove("tool_calls");
+        }
+        if scenario.starts_with("deepseek/") && !message.contains_key("reasoning_content") {
+            message.insert("reasoning_content".to_owned(), Value::from(""));
+        }
+    }
+    item
+}
+
+#[test]
+fn same_model_replay_sends_the_recorded_output_items() {
+    for (suffix, reason) in VERBATIM_EXEMPT {
+        assert!(
+            !reason.trim().is_empty(),
+            "VERBATIM_EXEMPT `{suffix}` needs a reason"
+        );
+    }
+    let root = cassette_root();
+    let cassettes = all_cassettes(&root);
+    let mut failures = Vec::new();
+    let mut used = BTreeSet::new();
+    let mut compared = 0usize;
+    for (scenario, index, earlier, later) in continuation_pairs(&cassettes) {
+        if !same_model(earlier, later) {
+            continue;
+        }
+        let Some(items) = output_items(earlier.dialect, &earlier.response) else {
+            continue;
+        };
+        let items: Vec<Value> = items
+            .into_iter()
+            .map(|item| as_replayed(scenario, earlier.dialect, item))
+            .collect();
+        compared += 1;
+        let sent: Vec<Value> = replayed_items(later.dialect, &later.request)
+            .into_iter()
+            .map(|item| as_replayed(scenario, later.dialect, item))
+            .collect();
+        let mut from = 0;
+        let missing: Vec<&Value> = items
+            .iter()
+            .filter(
+                |item| match sent.iter().skip(from).position(|sent| sent == *item) {
+                    Some(at) => {
+                        from += at + 1;
+                        false
+                    }
+                    None => true,
+                },
+            )
+            .collect();
+        if missing.is_empty() {
+            continue;
+        }
+        if let Some((suffix, _)) = VERBATIM_EXEMPT
+            .iter()
+            .find(|(suffix, _)| scenario.ends_with(suffix))
+        {
+            used.insert(*suffix);
+            continue;
+        }
+        failures.push(format!(
+            "{scenario} exchange {index}: not sent as recorded, in order: {}",
+            missing
+                .iter()
+                .map(|item| item.to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
+    }
+    let stale: Vec<&str> = VERBATIM_EXEMPT
+        .iter()
+        .filter(|(suffix, _)| !used.contains(suffix))
+        .map(|(suffix, _)| *suffix)
+        .collect();
+    assert!(compared > 0, "no same-model continuation pairs found");
+    eprintln!("same-model replies compared item by item: {compared}");
+    assert!(
+        failures.is_empty() && stale.is_empty(),
+        "same-model replay changed recorded output items ({compared} replies compared):\n{}\n\nstale exemptions:\n{}",
+        failures.join("\n"),
         stale.join("\n")
     );
 }
