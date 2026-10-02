@@ -7,12 +7,12 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"messages":[{"content":[{"text":"You are a concise assistant. Answer directly.","type":"text"}],"role":"system"},{"content":"<file id: shaping-context>\nDefinition of a glarb-glarb: an ancient farming tool from planet Jiro.\n</file>\n","role":"user"},{"content":"What is a glarb-glarb? Answer in one sentence.","role":"user"}],"model":"gpt-5-mini"}'
+  body: '{"messages":[{"content":[{"text":"You are a concise assistant. Answer directly.","type":"text"}],"role":"system"},{"content":[{"text":"<file id: shaping-context>\nDefinition of a glarb-glarb: an ancient farming tool from planet Jiro.\n</file>\n","type":"text"},{"text":"What is a glarb-glarb? Answer in one sentence.","type":"text"}],"role":"user"}],"model":"gpt-5-mini"}'
 then:
   status: 200
   header:
   - name: content-type
     value: application/json
   - name: x-request-id
-    value: req_5de6de1e353243f29274ac5448845679
-  body: '{"choices":[{"finish_reason":"stop","index":0,"message":{"annotations":[],"content":"A glarb-glarb is an ancient farming tool from planet Jiro.","refusal":null,"role":"assistant"}}],"created":0,"id":"chatcmpl-ERDCo927uTBLnd8cDhs9zrBlPB4cj","model":"gpt-5-mini-2025-08-07","object":"chat.completion","service_tier":"default","system_fingerprint":null,"usage":{"completion_tokens":89,"completion_tokens_details":{"accepted_prediction_tokens":0,"audio_tokens":0,"reasoning_tokens":64,"rejected_prediction_tokens":0},"prompt_tokens":65,"prompt_tokens_details":{"audio_tokens":0,"cached_tokens":0},"total_tokens":154}}'
+    value: req_a34239ce5ed24ef4b358c705fd6ff277
+  body: '{"choices":[{"finish_reason":"stop","index":0,"message":{"annotations":[],"content":"A glarb-glarb is an ancient farming tool from planet Jiro.","refusal":null,"role":"assistant"}}],"created":0,"id":"chatcmpl-EUeC0h4cdD6iU8vFi6fr3XIgAAZxB","model":"gpt-5-mini-2025-08-07","object":"chat.completion","service_tier":"default","system_fingerprint":null,"usage":{"completion_tokens":89,"completion_tokens_details":{"accepted_prediction_tokens":0,"audio_tokens":0,"reasoning_tokens":64,"rejected_prediction_tokens":0},"prompt_tokens":61,"prompt_tokens_details":{"audio_tokens":0,"cached_tokens":0},"total_tokens":150}}'

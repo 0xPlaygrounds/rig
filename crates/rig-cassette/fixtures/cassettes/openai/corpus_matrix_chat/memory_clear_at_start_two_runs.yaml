@@ -14,8 +14,8 @@ then:
   - name: content-type
     value: application/json
   - name: x-request-id
-    value: req_91d0fb9ae35f47ba98b04316556a1bdb
-  body: '{"choices":[{"finish_reason":"stop","index":0,"message":{"annotations":[],"content":"ready","refusal":null,"role":"assistant"}}],"created":0,"id":"chatcmpl-EUPYgIGKQnAfDU3Ntnh4iVgOD2w9j","model":"gpt-5-mini-2025-08-07","object":"chat.completion","service_tier":"default","system_fingerprint":null,"usage":{"completion_tokens":10,"completion_tokens_details":{"accepted_prediction_tokens":0,"audio_tokens":0,"reasoning_tokens":0,"rejected_prediction_tokens":0},"prompt_tokens":27,"prompt_tokens_details":{"audio_tokens":0,"cached_tokens":0},"total_tokens":37}}'
+    value: req_7822c3c980334752b8e3f2f9f9c0cd5e
+  body: '{"choices":[{"finish_reason":"stop","index":0,"message":{"annotations":[],"content":"ready","refusal":null,"role":"assistant"}}],"created":0,"id":"chatcmpl-EUe7uT73gJlBWIjiVoW5wkj8CGS7p","model":"gpt-5-mini-2025-08-07","object":"chat.completion","service_tier":"default","system_fingerprint":null,"usage":{"completion_tokens":10,"completion_tokens_details":{"accepted_prediction_tokens":0,"audio_tokens":0,"reasoning_tokens":0,"rejected_prediction_tokens":0},"prompt_tokens":27,"prompt_tokens_details":{"audio_tokens":0,"cached_tokens":0},"total_tokens":37}}'
 ---
 when:
   path: /v1/chat/completions
@@ -26,12 +26,12 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"messages":[{"content":[{"text":"You are a concise assistant. Answer directly.","type":"text"}],"role":"system"},{"content":"Reply with the single word: ready.","role":"user"},{"annotations":[],"content":"ready","refusal":null,"role":"assistant"},{"content":"Now reply with the single word: again.","role":"user"}],"model":"gpt-5-mini"}'
+  body: '{"messages":[{"content":[{"text":"You are a concise assistant. Answer directly.","type":"text"}],"role":"system"},{"content":"Reply with the single word: ready.","role":"user"},{"content":"ready","role":"assistant"},{"content":"Now reply with the single word: again.","role":"user"}],"model":"gpt-5-mini"}'
 then:
   status: 200
   header:
   - name: content-type
     value: application/json
   - name: x-request-id
-    value: req_e42378af662749fc9f59341814412b84
-  body: '{"choices":[{"finish_reason":"stop","index":0,"message":{"annotations":[],"content":"again","refusal":null,"role":"assistant"}}],"created":0,"id":"chatcmpl-EUPYhEqm3ul4VwRqH0aAcfsb9zKwz","model":"gpt-5-mini-2025-08-07","object":"chat.completion","service_tier":"default","system_fingerprint":null,"usage":{"completion_tokens":10,"completion_tokens_details":{"accepted_prediction_tokens":0,"audio_tokens":0,"reasoning_tokens":0,"rejected_prediction_tokens":0},"prompt_tokens":47,"prompt_tokens_details":{"audio_tokens":0,"cached_tokens":0},"total_tokens":57}}'
+    value: req_9dbc97911887465b9180d1d37a103a5f
+  body: '{"choices":[{"finish_reason":"stop","index":0,"message":{"annotations":[],"content":"again","refusal":null,"role":"assistant"}}],"created":0,"id":"chatcmpl-EUe7v2I2YrkHXVHLUAvvlIuehaZ82","model":"gpt-5-mini-2025-08-07","object":"chat.completion","service_tier":"default","system_fingerprint":null,"usage":{"completion_tokens":10,"completion_tokens_details":{"accepted_prediction_tokens":0,"audio_tokens":0,"reasoning_tokens":0,"rejected_prediction_tokens":0},"prompt_tokens":47,"prompt_tokens_details":{"audio_tokens":0,"cached_tokens":0},"total_tokens":57}}'
