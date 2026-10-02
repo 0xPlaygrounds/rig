@@ -61,6 +61,8 @@ pub enum PartKind {
     ToolCall,
     /// An image.
     Image,
+    /// A provider item with no canonical meaning.
+    Opaque,
 }
 
 /// One event of a completion stream: a part starts, grows, or ends with the
@@ -142,14 +144,16 @@ pub enum Item<E> {
 }
 
 /// A completion stream's items read back from their serialized form, in an
-/// order the writer could have produced: each part starts once, at the next
-/// position, grows only while open and with its own kind of fragment, and
-/// ends once. Unmodeled payloads may come anywhere.
+/// order the writer could have produced: each part starts once, at a
+/// position no part took before, grows only while open and with its own
+/// kind of fragment, and ends once. Positions follow the order provider
+/// items opened, so a dropped item leaves a gap. Unmodeled payloads may come
+/// anywhere.
 #[derive(Debug, Clone, Default)]
 pub struct Transcript {
     items: Vec<Item<StreamEvent>>,
     /// Each started part's kind, and whether it ended.
-    parts: Vec<(PartKind, bool)>,
+    parts: std::collections::BTreeMap<usize, (PartKind, bool)>,
 }
 
 impl PartialEq for Transcript {
@@ -170,7 +174,7 @@ pub enum SequenceError {
     /// The value is not a list of stream items.
     #[error("not a list of stream items: {0}")]
     Shape(String),
-    /// An event names a part that has not started, or a start skips a
+    /// An event names a part that has not started, or a start reuses a
     /// position.
     #[error("item {0} names a part that has not started")]
     UnknownPart(usize),
@@ -266,10 +270,9 @@ impl Transcript {
             let index = event.part().index();
             let kind = match event {
                 StreamEvent::Start { kind, .. } => {
-                    if index != self.parts.len() {
+                    if self.parts.insert(index, (*kind, false)).is_some() {
                         return Err(SequenceError::UnknownPart(position));
                     }
-                    self.parts.push((*kind, false));
                     None
                 }
                 StreamEvent::Text { .. } => Some(PartKind::Text),
@@ -280,10 +283,11 @@ impl Transcript {
                     AssistantContent::Reasoning(_) => PartKind::Reasoning,
                     AssistantContent::ToolCall(_) => PartKind::ToolCall,
                     AssistantContent::Image(_) => PartKind::Image,
+                    AssistantContent::Opaque(_) => PartKind::Opaque,
                 }),
             };
             if let Some(kind) = kind {
-                match self.parts.get_mut(index) {
+                match self.parts.get_mut(&index) {
                     None => return Err(SequenceError::UnknownPart(position)),
                     Some((_, true)) => return Err(SequenceError::EndedTwice(position)),
                     Some((open, false)) if *open != kind => {
@@ -298,8 +302,8 @@ impl Transcript {
     }
 
     fn check_closed(&self) -> Result<(), SequenceError> {
-        match self.parts.iter().position(|(_, ended)| !ended) {
-            Some(part) => Err(SequenceError::Unclosed(part)),
+        match self.parts.iter().find(|(_, (_, ended))| !ended) {
+            Some((part, _)) => Err(SequenceError::Unclosed(*part)),
             None => Ok(()),
         }
     }

@@ -127,7 +127,7 @@ async fn program_2_an_out_of_tree_compatible_provider_reuses_the_shared_wire() {
         .completion("acme-large");
     let turn = model.call("hi").await.expect("the turn decodes");
     assert_eq!(turn.text(), "hello");
-    assert_eq!(turn.provider, "acme");
+    assert_eq!(turn.provider(), "acme");
     assert_eq!(
         http.requests()
             .into_iter()

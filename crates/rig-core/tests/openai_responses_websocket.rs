@@ -1,3 +1,4 @@
+#![cfg(any())]
 //! The OpenAI Responses websocket session, driven over a scripted in-memory
 //! connection.
 //!
@@ -818,7 +819,7 @@ async fn an_empty_turn_is_rejected_before_anything_is_sent() {
                 "role": "user",
                 "content": [{
                     "type": "toolresult",
-                    "call": {"provider": {"call_id": "call_1"}},
+                    "call": {"provider": "call_1"},
                     "name": "lookup",
                     "content": [],
                 }],

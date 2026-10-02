@@ -13,7 +13,7 @@ mod streaming_conformance_suite;
 mod trace_capture;
 mod tracing_isolation;
 
-pub use completion::{MockCompletionModel, MockError, MockRuntime, MockScript, MockTurn};
+pub use completion::{MOCK_API, MockCompletionModel, MockError, MockRuntime, MockScript, MockTurn};
 pub use embeddings::{MockEmbeddingModel, MockEmbeddings, MockMultiTextDocument, MockTextDocument};
 pub use memory::{AppendFailingMemory, CountingMemory, FailingMemory};
 pub use relay::MockRelay;

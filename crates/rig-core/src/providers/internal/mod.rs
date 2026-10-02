@@ -15,7 +15,6 @@ pub(crate) mod auth;
 pub(crate) mod device_auth;
 pub(crate) mod openai_chat_completions_compatible;
 pub(crate) mod schema;
-pub mod thoughts;
 /// The debug-mode sequence-law validator the completion fold checks a
 /// decoder's output against; its checks run under `debug_assertions`.
 pub mod wire;
@@ -98,4 +97,37 @@ pub(crate) fn with_query_pairs(path: &str, pairs: &[(&str, &str)]) -> String {
         serializer.append_pair(name, value);
     }
     format!("{path}?{}", serializer.finish())
+}
+
+/// The decoder and encode error of a completion wire whose family has not
+/// moved to item-shaped history yet: every request and reply fails. The
+/// family migration replaces it.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Unmigrated;
+
+impl Unmigrated {
+    const MESSAGE: &'static str = "this provider has not moved to item-shaped history yet";
+
+    /// The error every request to an unmigrated wire fails with.
+    pub fn encode_error() -> crate::error::EncodeError {
+        crate::error::EncodeError::request(Self::MESSAGE)
+    }
+}
+
+impl<'id, F> crate::wire::Decoder<'id, crate::operation::Completion, F> for Unmigrated {
+    type Event = ();
+
+    fn classify(&self, _frame: F) -> crate::wire::WireEvent<()> {
+        crate::wire::WireEvent::Known(())
+    }
+
+    fn decode(
+        &mut self,
+        _event: (),
+        _out: crate::wire::Out<'id, crate::operation::Completion>,
+    ) -> Result<crate::wire::Flow, crate::error::ProviderError> {
+        Err(crate::error::ProviderError::Response(
+            Self::MESSAGE.to_owned(),
+        ))
+    }
 }

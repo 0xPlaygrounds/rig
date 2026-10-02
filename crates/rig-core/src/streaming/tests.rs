@@ -1,7 +1,7 @@
 use super::*;
 use crate::completion::{FinishReason, Usage};
 use crate::error::ErrorKind;
-use crate::message::{AssistantContent, ReasoningContent};
+use crate::message::AssistantContent;
 use crate::operation::Finish;
 use crate::test_utils::{MockCompletionModel, MockStreamEvent};
 use futures::StreamExt;
@@ -145,6 +145,7 @@ async fn the_choice_is_in_the_order_its_parts_started() {
             AssistantContent::ToolCall(_) => "call",
             AssistantContent::Reasoning(_) => "reasoning",
             AssistantContent::Image(_) => "image",
+            AssistantContent::Opaque(_) => "opaque",
         })
         .collect();
     assert_eq!(kinds, ["text", "call", "reasoning", "text"]);
@@ -152,17 +153,11 @@ async fn the_choice_is_in_the_order_its_parts_started() {
         .choice
         .iter()
         .find_map(|part| match part {
-            AssistantContent::Reasoning(reasoning) => reasoning.open(reasoning.issuer()).cloned(),
+            AssistantContent::Reasoning(reasoning) => Some(reasoning.clone()),
             _ => None,
         })
-        .expect("the reasoning opens for its issuer");
-    assert_eq!(
-        reasoning.content,
-        vec![ReasoningContent::Text {
-            text: "thinking".to_owned(),
-            signature: None,
-        }]
-    );
+        .expect("the reasoning");
+    assert_eq!(reasoning.text, "thinking");
 }
 
 #[tokio::test]
@@ -237,7 +232,6 @@ async fn an_empty_id_is_no_id() {
         MockStreamEvent::text("Hello"),
         MockStreamEvent::RequestId(String::new()),
         MockStreamEvent::FinalResponse(Finish {
-            message_id: Some(String::new()),
             response_id: Some(String::new()),
             model: Some(String::new()),
             ..Finish::default()
@@ -247,7 +241,6 @@ async fn an_empty_id_is_no_id() {
     assert!(items.iter().all(Result::is_ok), "{items:?}");
     let response = stream.finish().await.expect("the reply ended");
     assert_eq!(response.provider_request_id, None);
-    assert_eq!(response.message_id, None);
-    assert_eq!(response.response_id, None);
-    assert_eq!(response.model, None);
+    assert_eq!(response.response_id(), None);
+    assert_eq!(response.model(), None);
 }

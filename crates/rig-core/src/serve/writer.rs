@@ -14,8 +14,8 @@ use futures::{SinkExt, StreamExt, channel::mpsc};
 
 use crate::{
     error::{ErrorReport, ProviderError},
-    message::{CallId, LocalCallId, ToolCall, ToolFunction, ToolName},
-    operation::{Finish, Turn},
+    message::{AssistantContent, CallId, LocalCallId, ToolCall, ToolFunction, ToolName},
+    operation::{Block, Finish, Turn},
     streaming::{Item, Relayed, StreamEvent},
     wire::{Fold, Reply as WireReply},
 };
@@ -31,9 +31,6 @@ pub struct StreamWriter {
     events: mpsc::Sender<Result<Relayed, ErrorReport>>,
     turn: Turn,
     items: std::collections::VecDeque<Result<Item<StreamEvent>, ProviderError>>,
-    /// The open text and reasoning parts bare fragments extend.
-    text: Option<usize>,
-    reasoning: Option<usize>,
     raw: serde_json::Value,
     request_id: Option<String>,
 }
@@ -51,10 +48,8 @@ impl Reply {
         let (events, mut receiver) = mpsc::channel(0);
         let writer = StreamWriter {
             events,
-            turn: Turn::new(""),
+            turn: Turn::relayed(""),
             items: std::collections::VecDeque::new(),
-            text: None,
-            reasoning: None,
             raw: serde_json::Value::Null,
             request_id: None,
         };
@@ -77,33 +72,20 @@ impl StreamWriter {
     /// A text fragment: extends the open text part, or opens one after
     /// closing an open reasoning part.
     pub async fn text(&mut self, text: impl Into<String>) -> Result<(), SinkClosed> {
-        self.close_reasoning();
-        let slot = match self.text {
-            Some(slot) => slot,
-            None => {
-                let slot = self.turn.open_text();
-                self.text = Some(slot);
-                slot
-            }
-        };
-        self.turn.write_text(&mut self.items, slot, &text.into());
-        self.flush().await
+        self.write(Block::Text, &text.into()).await
     }
 
     /// A reasoning fragment: extends the open reasoning part, or opens one
     /// after closing an open text part.
     pub async fn reasoning(&mut self, text: impl Into<String>) -> Result<(), SinkClosed> {
-        self.close_text();
-        let slot = match self.reasoning {
-            Some(slot) => slot,
-            None => {
-                let slot = self.turn.open_reasoning();
-                self.reasoning = Some(slot);
-                slot
-            }
-        };
-        self.turn
-            .write_reasoning(&mut self.items, slot, &text.into());
+        self.write(Block::Reasoning { redacted: false }, &text.into())
+            .await
+    }
+
+    async fn write(&mut self, block: Block, fragment: &str) -> Result<(), SinkClosed> {
+        if let Err(error) = self.turn.run_item(&mut self.items, block, fragment) {
+            return self.error(ErrorReport::from(&error)).await;
+        }
         self.flush().await
     }
 
@@ -113,8 +95,6 @@ impl StreamWriter {
         name: impl Into<String>,
         arguments: serde_json::Value,
     ) -> Result<(), SinkClosed> {
-        self.close_text();
-        self.close_reasoning();
         let Ok(name) = ToolName::new(name) else {
             return self
                 .error(ErrorReport::from(&ProviderError::Response(
@@ -122,13 +102,15 @@ impl StreamWriter {
                 )))
                 .await;
         };
-        let call = ToolCall {
-            id: CallId::Local(LocalCallId::new()),
-            function: ToolFunction { name, arguments },
-            signature: None,
-            additional_params: None,
-        };
-        if let Err(error) = self.turn.write_call(&mut self.items, call) {
+        let call = ToolCall::new(
+            CallId::Local(LocalCallId::new()),
+            ToolFunction { name, arguments },
+        );
+        let written = self.turn.end_run(&mut self.items).and_then(|()| {
+            self.turn
+                .write_content(&mut self.items, AssistantContent::ToolCall(call))
+        });
+        if let Err(error) = written {
             return self.error(ErrorReport::from(&error)).await;
         }
         self.flush().await
@@ -160,8 +142,6 @@ impl StreamWriter {
         provider: impl Into<String>,
         finish: Finish,
     ) -> Result<(), SinkClosed> {
-        self.close_text();
-        self.close_reasoning();
         self.turn.close_open(&mut self.items);
         self.flush().await?;
         let reply = WireReply {
@@ -169,7 +149,7 @@ impl StreamWriter {
             raw: std::mem::take(&mut self.raw),
             provider_request_id: self.request_id.take(),
         };
-        let turn = std::mem::replace(&mut self.turn, Turn::new(""));
+        let turn = std::mem::replace(&mut self.turn, Turn::relayed(""));
         let item = match turn.finish(finish, reply) {
             Ok(response) => Ok(Relayed::Done(Box::new(response))),
             Err(error) => Err(ErrorReport::from(&error)),
@@ -180,18 +160,6 @@ impl StreamWriter {
     /// Whether the consumer has closed the receiving side.
     pub fn is_closed(&self) -> bool {
         self.events.is_closed()
-    }
-
-    fn close_text(&mut self) {
-        if let Some(slot) = self.text.take() {
-            self.turn.end_text(&mut self.items, slot);
-        }
-    }
-
-    fn close_reasoning(&mut self) {
-        if let Some(slot) = self.reasoning.take() {
-            self.turn.end_reasoning(&mut self.items, slot);
-        }
     }
 
     /// Send what the writer emitted, folding each event as it leaves.

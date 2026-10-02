@@ -259,21 +259,6 @@ impl Streamed<Completion> {
             .fold
             .partial(shared.end.as_ref(), &shared.reply(&self.provider))
     }
-
-    /// The assistant message id the reply recorded so far.
-    pub fn message_id(&self) -> Option<String> {
-        let shared = lock(&self.shared);
-        shared
-            .response
-            .as_ref()
-            .and_then(|response| response.message_id.clone())
-            .or_else(|| shared.fold.message_id().map(str::to_owned))
-    }
-
-    /// The issuer this reply's reasoning is sealed to.
-    pub fn reasoning_issuer(&self) -> crate::message::Issuer {
-        lock(&self.shared).fold.reasoning_issuer()
-    }
 }
 
 impl<Op: Operation> Stream for Streamed<Op> {

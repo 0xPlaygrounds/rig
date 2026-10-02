@@ -1,3 +1,4 @@
+#![cfg(any())]
 //! Wire-conformance suite for the `openai_responses_websocket` family.
 //!
 //! End-to-end over the REAL tungstenite backend and a local websocket server:

@@ -574,7 +574,7 @@ impl DrainedStream {
         self.choice
             .iter()
             .filter_map(|content| match content {
-                AssistantContent::Reasoning(reasoning) => reasoning.open(reasoning.issuer()),
+                AssistantContent::Reasoning(reasoning) => Some(reasoning),
                 _ => None,
             })
             .collect()
@@ -1312,13 +1312,8 @@ pub async fn reasoning_summary_deltas_are_superseded_without_duplication(
     let reasoning = drained.choice_reasoning();
     let occurrences: usize = reasoning
         .iter()
-        .flat_map(|item| item.content.iter())
-        .filter(|content| match content {
-            crate::message::ReasoningContent::Summary(text)
-            | crate::message::ReasoningContent::Text { text, .. } => text.contains(summary_text),
-            _ => false,
-        })
-        .count();
+        .map(|item| item.text.matches(summary_text).count())
+        .sum();
     checks.require(occurrences == 1, || {
         format!(
             "the summary must appear exactly once in the aggregated choice, observed {occurrences} across {reasoning:?}"
@@ -1336,12 +1331,8 @@ pub async fn reasoning_summary_deltas_are_superseded_without_duplication(
 }
 
 /// A reasoning item whose `output_item.done` carries several parts under one
-/// item id (summary parts, text, encrypted) must keep every part, in order —
-/// same-id sibling blocks append, they never replace each other.
-///
-/// Pins the open P1 in `rig-2257-code-review-findings-34ee8ba5.md` ("The by-id
-/// fallback collapses multi-part same-id reasoning items"): the `rposition`
-/// fallback replaces the just-appended same-id sibling.
+/// item id (summary parts, text, encrypted) must keep every part, in order:
+/// the item is one block whose provider item holds them all.
 pub async fn multi_part_same_id_reasoning_keeps_every_part(
     driver: &WireDriver,
     frames: Vec<WireInput>,
@@ -1357,18 +1348,24 @@ pub async fn multi_part_same_id_reasoning_keeps_every_part(
         drained.completed_cleanly(),
         || "the reasoning stream must complete without errors",
     )?;
-    let observed: Vec<String> = drained
+    let items: Vec<String> = drained
         .choice_reasoning()
         .iter()
-        .flat_map(|item| item.content.iter())
-        .map(|content| match content {
-            crate::message::ReasoningContent::Summary(text) => text.clone(),
-            crate::message::ReasoningContent::Text { text, .. } => text.clone(),
-            crate::message::ReasoningContent::Encrypted(data) => data.clone(),
-            crate::message::ReasoningContent::Redacted { data } => data.clone(),
-        })
+        .filter_map(|item| item.native.as_ref())
+        .map(|native| native.item.to_string())
         .collect();
-    checks.require(observed == expected_parts, || {
+    let in_order = |item: &String| {
+        let mut rest = item.as_str();
+        expected_parts.iter().all(|part| match rest.find(part) {
+            Some(at) => {
+                rest = &rest[at + part.len()..];
+                true
+            }
+            None => false,
+        })
+    };
+    let observed = items;
+    checks.require(observed.len() == 1 && observed.iter().all(in_order), || {
         format!(
             "every same-id reasoning part must survive in order: expected {expected_parts:?}, observed {observed:?}"
         )
@@ -1410,14 +1407,7 @@ pub async fn interleaved_reasoning_aggregates_to_one_item(
             reasoning.len()
         )
     })?;
-    let carries_text = reasoning
-        .iter()
-        .flat_map(|item| item.content.iter())
-        .any(|content| match content {
-            crate::message::ReasoningContent::Summary(text)
-            | crate::message::ReasoningContent::Text { text, .. } => text == expected_text,
-            _ => false,
-        });
+    let carries_text = reasoning.iter().any(|item| item.text == expected_text);
     checks.require(carries_text, || {
         format!("the reasoning item must carry the completed block's text {expected_text:?}")
     })?;
@@ -1491,17 +1481,10 @@ pub async fn interleaved_signed_full_reasoning_does_not_erase_prior_thought(
         || "the interleaved stream must complete without errors",
     )?;
     assert_reasoning_tool_reasoning(&checks, &drained, first, tool_name, second)?;
-    let signed = drained.choice_reasoning().last().is_some_and(|reasoning| {
-        reasoning.content.iter().any(|content| {
-            matches!(
-                content,
-                crate::message::ReasoningContent::Text {
-                    signature: Some(_),
-                    ..
-                }
-            )
-        })
-    });
+    let signed = drained
+        .choice_reasoning()
+        .last()
+        .is_some_and(|reasoning| reasoning.native.is_some());
     checks.require(signed, || "the post-boundary block must keep its signature")?;
 
     checks.note("pre-boundary thought survived; signed block completed the post-boundary part");
@@ -1521,26 +1504,13 @@ fn assert_reasoning_tool_reasoning(
         .choice
         .iter()
         .map(|content| match content {
-            AssistantContent::Reasoning(reasoning) => {
-                let text: String = reasoning
-                    .value()
-                    .content
-                    .iter()
-                    .filter_map(|content| match content {
-                        crate::message::ReasoningContent::Summary(text)
-                        | crate::message::ReasoningContent::Text { text, .. } => {
-                            Some(text.as_str())
-                        }
-                        _ => None,
-                    })
-                    .collect();
-                format!("reasoning:{text}")
-            }
+            AssistantContent::Reasoning(reasoning) => format!("reasoning:{}", reasoning.text),
             AssistantContent::ToolCall(tool_call) => {
                 format!("tool:{}", tool_call.function.name)
             }
             AssistantContent::Text(text) => format!("text:{}", text.text),
             AssistantContent::Image(_) => "image".to_string(),
+            AssistantContent::Opaque(opaque) => format!("opaque:{}", opaque.kind().unwrap_or("")),
         })
         .collect();
     let expected = vec![

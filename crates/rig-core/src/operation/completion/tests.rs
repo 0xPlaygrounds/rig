@@ -1,488 +1,332 @@
-use bytes::Bytes;
+use serde_json::{Value, json};
 
-use crate::completion::{CompletionRequest, Message};
-use crate::message::{AssistantContent, Reasoning};
-use crate::providers::anthropic::wire::AnthropicConfig;
-use crate::providers::gemini::GeminiConfig;
-use crate::providers::gemini::completion::GenerateContent;
-use crate::providers::openai::wire::{DEEPSEEK, OPENROUTER, OpenAIConfig};
-use crate::test_utils::RecordingHttpClient;
-use crate::wire::Wire;
+use super::{Block, CallFragment, Completion, Finish, IfMalformed, Turn, events_of};
+use crate::completion::CompletionResponse;
+use crate::driver::{Decoded, decode_with};
+use crate::error::ProviderError;
+use crate::message::{
+    AssistantContent, CallId, Opaque, Reasoning, Text, ToolCall, ToolFunction, ToolName,
+};
+use crate::streaming::{Item, StreamEvent, Transcript};
+use crate::wire::Out;
 
-const OWN: &str = "own-opaque-reasoning-state";
-const FOREIGN: &str = "foreign-opaque-reasoning-state";
-
-/// One of each reasoning representation, signed or encrypted with `data`.
-/// Each carries an item id, which the Responses encoder requires to replay.
-fn reasoning(data: &str) -> Vec<Reasoning> {
-    [
-        Reasoning::new_with_signature(&format!("thought {data}"), Some(data.to_owned())),
-        Reasoning::encrypted(format!("{data}-encrypted")),
-        Reasoning::redacted(format!("{data}-redacted")),
-    ]
-    .into_iter()
-    .enumerate()
-    .map(|(index, mut reasoning)| {
-        reasoning.id = Some(format!("rs_{data}_{index}"));
-        reasoning
+/// One reply written by `write`, then ended.
+fn write(
+    write: impl for<'id> FnOnce(&mut Out<'id, Completion>) -> Result<(), ProviderError>,
+) -> Decoded<Completion> {
+    decode_with(Turn::relayed("test"), "test", |reply| {
+        let mut out = reply.out();
+        write(&mut out)?;
+        let _ = out.end(Finish::default());
+        Ok(())
     })
-    .collect()
 }
 
-fn history(own: &str) -> CompletionRequest {
-    let content = [
-        reasoning(OWN)
-            .into_iter()
-            .map(|reasoning| reasoning.sealed(own.to_owned()))
-            .collect::<Vec<_>>(),
-        reasoning(FOREIGN)
-            .into_iter()
-            .map(|reasoning| reasoning.sealed("another.provider"))
-            .collect(),
-    ]
-    .concat()
-    .into_iter()
-    .map(AssistantContent::Reasoning)
-    .chain([AssistantContent::text("The answer is 4.")])
-    .collect::<Vec<_>>();
-    CompletionRequest::new("And 3 + 3?")
-        .messages([
-            Message::user("What is 2 + 2?"),
-            Message::Assistant { id: None, content },
-        ])
-        .max_tokens(64)
+fn response(decoded: Decoded<Completion>) -> CompletionResponse {
+    decoded.outcome.expect("the reply ends")
 }
 
-/// The body `wire` sends for a history holding its own and another
-/// provider's reasoning.
-async fn sent<W>(wire: W) -> String
-where
-    W: Wire<Op = super::Completion>,
-    RecordingHttpClient: crate::driver::Transport<W>,
-{
-    let own = wire.describe().name.to_owned();
-    let http = RecordingHttpClient::new(Bytes::from_static(b"{}"));
-    // The canned reply does not decode; only the request matters here.
-    let _ = crate::driver::Model::new(wire, http.clone())
-        .call(history(&own))
-        .await;
-    let requests = http.requests();
-    let request = requests.first().expect("the wire sent its request");
-    String::from_utf8_lossy(&request.body).into_owned()
+fn name(name: &str) -> ToolName {
+    ToolName::new(name).expect("a tool name")
 }
 
-fn assert_scoped(body: &str, wire: &str, replays_opaque: bool) {
-    assert!(
-        !body.contains(FOREIGN),
-        "{wire} must not replay another provider's reasoning: {body}"
-    );
-    if replays_opaque {
-        assert!(
-            body.contains(OWN),
-            "{wire} replays its own reasoning: {body}"
-        );
+fn object(value: Value) -> serde_json::Map<String, Value> {
+    match value {
+        Value::Object(map) => map,
+        other => panic!("not an object: {other}"),
     }
 }
 
-#[tokio::test]
-async fn anthropic_replays_only_its_own_reasoning() {
-    let body = sent(AnthropicConfig::new("test-key").completion("claude-sonnet-4-6")).await;
-    assert_scoped(&body, "anthropic", true);
-}
-
-#[tokio::test]
-async fn gemini_replays_only_its_own_reasoning() {
-    let body = sent(GenerateContent::new(
-        GeminiConfig::new("test-key"),
-        "gemini-2.5-flash",
-    ))
-    .await;
-    assert_scoped(&body, "gemini", true);
-}
-
-#[tokio::test]
-async fn openai_responses_replays_only_its_own_reasoning() {
-    let body = sent(OpenAIConfig::new("test-key").responses("gpt-5.2")).await;
-    assert_scoped(&body, "openai responses", true);
-}
-
-#[tokio::test]
-async fn openrouter_replays_only_its_own_reasoning() {
-    let body = sent(OpenAIConfig::with_key(&OPENROUTER, "test-key").chat("openai/gpt-5.2")).await;
-    assert_scoped(&body, "openrouter", true);
-}
-
-#[tokio::test]
-async fn deepseek_replays_only_its_own_reasoning() {
-    // DeepSeek replays reasoning as plain text, so only the foreign text is
-    // checked.
-    let body = sent(OpenAIConfig::with_key(&DEEPSEEK, "test-key").chat("deepseek-v4-flash")).await;
-    assert!(
-        !body.contains(FOREIGN),
-        "deepseek must not replay foreign reasoning: {body}"
-    );
-}
-
-#[tokio::test]
-async fn a_local_runtime_replays_only_its_own_reasoning() {
-    use crate::test_utils::{MOCK_PROVIDER, MockCompletionModel};
-
-    let model = MockCompletionModel::text("done");
-    let call = model.call(history(MOCK_PROVIDER));
-    // The call opens when first polled, under the caller's context.
-    assert!(model.requests().is_empty());
-    call.await.expect("the scripted turn answers");
-    let body = serde_json::to_string(&model.requests()).expect("serializes");
-    assert_scoped(&body, "a local runtime", true);
-}
-
 #[test]
-fn sealed_reasoning_round_trips_and_older_histories_do_not_load() {
-    let signed =
-        Reasoning::new_with_signature("thought", Some("sig".to_owned())).sealed("anthropic");
-    let json = serde_json::to_value(&signed).expect("serializes");
-    assert_eq!(json["issuer"], "anthropic");
-    let back: crate::message::Sealed<Reasoning> =
-        serde_json::from_value(json.clone()).expect("loads");
-    assert_eq!(back, signed);
-    assert!(back.open(&"anthropic".into()).is_some());
-    assert!(back.open(&"gcp.gemini".into()).is_none());
-
-    // Reasoning persisted before it was sealed names a `provider`, or no
-    // issuer at all: it does not load.
-    let mut legacy = json;
-    let object = legacy.as_object_mut().expect("an object");
-    object.remove("issuer");
-    assert!(serde_json::from_value::<crate::message::Sealed<Reasoning>>(legacy.clone()).is_err());
-    legacy["provider"] = serde_json::json!("anthropic");
-    assert!(serde_json::from_value::<crate::message::Sealed<Reasoning>>(legacy).is_err());
-}
-
-#[test]
-fn a_turn_that_held_only_foreign_reasoning_is_omitted() {
-    let mut request = history("anthropic");
-    request.chat_history.insert(
-        1,
-        Message::Assistant {
-            id: None,
-            content: reasoning(FOREIGN)
-                .into_iter()
-                .map(|reasoning| AssistantContent::Reasoning(reasoning.sealed("another")))
-                .collect(),
-        },
-    );
-    assert_eq!(request.chat_history.len(), 4);
-    // What the Messages wire keeps of a history before it encodes it.
-    let request = request
-        .replayable_to(&["anthropic".into()])
-        .expect("messages are left");
-    assert_eq!(request.chat_history.len(), 3, "{:?}", request.chat_history);
-    assert!(request.chat_history.iter().all(|message| match message {
-        Message::Assistant { content, .. } => !content.is_empty(),
-        _ => true,
-    }));
-}
-
-#[test]
-fn a_gateway_attributes_reasoning_to_the_upstream_family() {
-    use crate::providers::openai::wire::upstream_reasoning_issuer;
-    assert_eq!(
-        upstream_reasoning_issuer("openrouter", "anthropic/claude-haiku-4.5"),
-        "anthropic"
-    );
-    assert_eq!(
-        upstream_reasoning_issuer("openrouter", "~anthropic/claude-sonnet"),
-        "anthropic"
-    );
-    assert_eq!(
-        upstream_reasoning_issuer("openrouter", "openai/gpt-5-mini"),
-        "openrouter/openai"
-    );
-    assert_eq!(
-        upstream_reasoning_issuer("openrouter", "google/gemini-3-flash-preview"),
-        "openrouter/google"
-    );
-    assert_eq!(
-        upstream_reasoning_issuer("openrouter", "openrouter/auto"),
-        "openrouter/openrouter"
-    );
-}
-
-/// A request to OpenRouter replays only the requested model family's
-/// reasoning, plus reasoning stamped with the gateway alone before issuers
-/// were upstream-scoped.
-#[tokio::test]
-async fn openrouter_replays_only_the_requested_familys_reasoning() {
-    let issuers = [
-        "anthropic",
-        "openrouter/openai",
-        "openrouter/google",
-        "openrouter",
-        "aws_bedrock",
-    ];
-    let content: Vec<AssistantContent> = issuers
-        .iter()
-        .map(|issuer| {
-            AssistantContent::Reasoning(
-                Reasoning::new_with_signature(issuer, Some(format!("sig-{issuer}")))
-                    .sealed(*issuer),
-            )
-        })
-        .chain([AssistantContent::text("4")])
-        .collect();
-    // Through the chat wire itself and through the route wrapper
-    // `completion` returns, which must delegate its issuers.
-    async fn send<W>(wire: W, content: Vec<AssistantContent>) -> String
-    where
-        W: Wire<Op = super::Completion>,
-        RecordingHttpClient: crate::driver::Transport<W>,
-    {
-        let mut request = history("unused");
-        request.chat_history[1] = Message::Assistant { id: None, content };
-        let http = RecordingHttpClient::new(Bytes::from_static(b"{}"));
-        let _ = crate::driver::Model::new(wire, http.clone())
-            .call(request)
-            .await;
-        let requests = http.requests();
-        String::from_utf8_lossy(&requests[0].body).into_owned()
-    }
-    let body_for = |model: &'static str| {
-        let content: Vec<AssistantContent> = content.clone();
-        async move {
-            let chat = send(
-                OpenAIConfig::with_key(&OPENROUTER, "test-key").chat(model),
-                content.clone(),
-            )
-            .await;
-            let routed = send(
-                OpenAIConfig::with_key(&OPENROUTER, "test-key").completion(model),
-                content,
-            )
-            .await;
-            assert_eq!(chat, routed, "the route wrapper scopes like the chat wire");
-            chat
-        }
-    };
-    let kept = |body: &str| {
-        issuers
-            .iter()
-            .filter(|issuer| body.contains(&format!("sig-{issuer}")))
-            .copied()
-            .collect::<Vec<_>>()
-    };
-    assert_eq!(
-        kept(&body_for("google/gemini-3-flash-preview").await),
-        ["openrouter/google", "openrouter"]
-    );
-    assert_eq!(
-        kept(&body_for("anthropic/claude-haiku-4.5").await),
-        ["anthropic", "openrouter"]
-    );
-    // A router or preset names no family, so every relayed family replays;
-    // direct-provider reasoning of another service still does not.
-    for router in ["openrouter/auto", "@preset/fast"] {
-        assert_eq!(
-            kept(&body_for(router).await),
-            [
-                "anthropic",
-                "openrouter/openai",
-                "openrouter/google",
-                "openrouter",
-            ],
-            "{router}"
-        );
-    }
-}
-
-/// OpenRouter's Responses route scopes replay and records reasoning issuers
-/// the way its chat route does.
-#[tokio::test]
-async fn openrouter_responses_route_scopes_reasoning_by_family() {
-    let issuers = [
-        "anthropic",
-        "openrouter/openai",
-        "openrouter/google",
-        "openrouter",
-        "aws_bedrock",
-    ];
-    let content: Vec<AssistantContent> = issuers
-        .iter()
-        .map(|issuer| {
-            AssistantContent::Reasoning(
-                Reasoning::new(issuer)
-                    .with_id(format!("rs-{issuer}"))
-                    .sealed(*issuer),
-            )
-        })
-        .chain([AssistantContent::text("4")])
-        .collect();
-    let kept = |model: &'static str| {
-        let content = content.clone();
-        async move {
-            let mut request = history("unused");
-            request.chat_history[1] = Message::Assistant { id: None, content };
-            let http = RecordingHttpClient::new(Bytes::from_static(b"{}"));
-            let wire = OpenAIConfig::with_key(&OPENROUTER, "test-key").responses(model);
-            let _ = crate::driver::Model::new(wire, http.clone())
-                .call(request)
-                .await;
-            let body = String::from_utf8_lossy(&http.requests()[0].body).into_owned();
-            issuers
-                .iter()
-                .filter(|issuer| body.contains(&format!("\"rs-{issuer}\"")))
-                .copied()
-                .collect::<Vec<_>>()
-        }
-    };
-    assert_eq!(
-        kept("openai/gpt-5-mini").await,
-        ["openrouter/openai", "openrouter"]
-    );
-    assert_eq!(
-        kept("anthropic/claude-haiku-4.5").await,
-        ["anthropic", "openrouter"]
-    );
-
-    let reply = serde_json::json!({
-        "id": "resp_1", "object": "response", "created_at": 0, "status": "completed",
-        "model": "openai/gpt-5-mini",
-        "output": [
-            { "type": "reasoning", "id": "rs_1", "summary": [{ "type": "summary_text", "text": "thinking" }], "encrypted_content": "ciphertext" },
-            { "type": "message", "id": "msg_1", "role": "assistant", "status": "completed",
-              "content": [{ "type": "output_text", "text": "4", "annotations": [] }] }
-        ],
-        "usage": { "input_tokens": 1, "output_tokens": 1, "total_tokens": 2 }
+fn blocks_keep_the_order_their_items_opened_in() {
+    let decoded = write(|out| {
+        out.open(0, Block::Reasoning { redacted: false }, Value::Null)?;
+        out.open(1, Block::Text, Value::Null)?;
+        out.open(
+            2,
+            Block::Call {
+                id: CallId::from_wire("call_1"),
+                name: name("lookup"),
+            },
+            Value::Null,
+        )?;
+        out.push(2, "{}")?;
+        // The call finishes first, the reasoning last: neither moves.
+        out.close(2, IfMalformed::Fail)?;
+        out.push(1, "answer")?;
+        out.close(1, IfMalformed::Fail)?;
+        out.push(0, "think")?;
+        out.close(0, IfMalformed::Fail)
     });
-    let response = crate::driver::Model::new(
-        OpenAIConfig::with_key(&OPENROUTER, "test-key").responses("openai/gpt-5-mini"),
-        RecordingHttpClient::new(Bytes::from(reply.to_string())),
-    )
-    .call(history("unused"))
-    .await
-    .expect("the reply decodes");
-    let recorded: Vec<_> = response
+    let kinds: Vec<_> = response(decoded)
         .choice
         .iter()
-        .filter_map(|part| match part {
-            AssistantContent::Reasoning(reasoning) => Some(reasoning.issuer().as_str()),
+        .map(|block| match block {
+            AssistantContent::Reasoning(_) => "reasoning",
+            AssistantContent::Text(_) => "text",
+            AssistantContent::ToolCall(_) => "call",
+            _ => "other",
+        })
+        .collect();
+    assert_eq!(kinds, ["reasoning", "text", "call"]);
+}
+
+#[test]
+fn deltas_merge_into_the_item_signatures_concatenate_and_unknown_fields_survive() {
+    let decoded = write(|out| {
+        out.open(
+            7,
+            Block::Reasoning { redacted: false },
+            json!({"type": "thinking", "thinking": "", "signature": ""}),
+        )?;
+        for delta in [
+            json!({"type": "thinking_delta", "thinking": "hm"}),
+            json!({"type": "signature_delta", "signature": "abc"}),
+            json!({"type": "signature_delta", "signature": "def"}),
+            json!({"type": "novel_delta", "novel": "x", "list": [1]}),
+            json!({"type": "novel_delta", "novel": "y", "list": [2]}),
+        ] {
+            out.merge(7, &object(delta))?;
+        }
+        out.push(7, "hm")?;
+        out.close(7, IfMalformed::Fail)
+    });
+    let block = response(decoded).choice.remove(0);
+    assert_eq!(
+        block.native_item(),
+        Some(&json!({
+            "type": "thinking",
+            "thinking": "hm",
+            "signature": "abcdef",
+            "novel": "xy",
+            "list": [1, 2],
+        }))
+    );
+    assert_eq!(
+        block.canonical(),
+        AssistantContent::Reasoning(Reasoning::new("hm"))
+    );
+}
+
+#[test]
+fn empty_text_survives_only_with_a_provider_item() {
+    let decoded = write(|out| {
+        out.open(0, Block::Text, Value::Null)?;
+        out.close(0, IfMalformed::Fail)?;
+        out.open(1, Block::Text, json!({"thoughtSignature": "c2ln"}))?;
+        out.close(1, IfMalformed::Fail)?;
+        out.open(2, Block::Reasoning { redacted: true }, Value::Null)?;
+        out.close(2, IfMalformed::Fail)
+    });
+    let choice = response(decoded).choice;
+    assert_eq!(choice.len(), 2);
+    assert!(
+        matches!(&choice[0], AssistantContent::Text(text) if text.text.is_empty() && text.native.is_some())
+    );
+    assert!(matches!(&choice[1], AssistantContent::Reasoning(reasoning) if reasoning.redacted));
+}
+
+#[test]
+fn an_opaque_item_closes_as_its_assembled_item() {
+    let decoded = write(|out| {
+        out.open(
+            0,
+            Block::Opaque { replay: true },
+            json!({"type": "compaction", "content": ""}),
+        )?;
+        out.merge(
+            0,
+            &object(json!({"type": "compaction_delta", "content": "summary"})),
+        )?;
+        out.close(0, IfMalformed::Fail)
+    });
+    assert_eq!(
+        response(decoded).choice,
+        vec![AssistantContent::Opaque(Opaque {
+            item: json!({"type": "compaction", "content": "summary"}),
+            replay: true,
+        })]
+    );
+}
+
+#[test]
+fn a_buffered_call_opens_at_its_first_fragment_and_closes_whole() {
+    let decoded = write(|out| {
+        out.fragment(
+            0,
+            CallFragment {
+                arguments: Some("{\"q\":"),
+                ..CallFragment::default()
+            },
+        )?;
+        out.run(Block::Text, "between")?;
+        out.fragment(
+            0,
+            CallFragment {
+                id: Some("call_1"),
+                name: Some("lookup"),
+                arguments: Some("1}"),
+            },
+        )?;
+        out.end_run()?;
+        out.close(0, IfMalformed::Fail)
+    });
+    let choice = response(decoded).choice;
+    assert_eq!(
+        choice,
+        vec![
+            AssistantContent::ToolCall(ToolCall::new(
+                CallId::from_wire("call_1"),
+                ToolFunction::new(name("lookup"), json!({"q": 1})),
+            )),
+            AssistantContent::Text(Text::new("between")),
+        ]
+    );
+}
+
+#[test]
+fn a_call_that_never_got_an_id_is_issued_one_only_when_closed() {
+    let closed = write(|out| {
+        out.fragment(
+            3,
+            CallFragment {
+                name: Some("lookup"),
+                arguments: Some("{}"),
+                ..CallFragment::default()
+            },
+        )?;
+        out.close(3, IfMalformed::Fail)
+    });
+    assert!(matches!(
+        response(closed).choice.as_slice(),
+        [AssistantContent::ToolCall(call)] if call.id.is_local()
+    ));
+
+    let ended = write(|out| {
+        out.fragment(
+            3,
+            CallFragment {
+                name: Some("lookup"),
+                arguments: Some("{}"),
+                ..CallFragment::default()
+            },
+        )
+    });
+    assert!(response(ended).choice.is_empty());
+}
+
+#[test]
+fn a_reused_call_id_fails_the_reply() {
+    let decoded = write(|out| {
+        for index in 0..2 {
+            out.open(
+                index,
+                Block::Call {
+                    id: CallId::from_wire("call_1"),
+                    name: name("lookup"),
+                },
+                Value::Null,
+            )?;
+            out.push(index, "{}")?;
+            out.close(index, IfMalformed::Fail)?;
+        }
+        Ok(())
+    });
+    assert!(matches!(
+        decoded.outcome,
+        Err(ProviderError::DuplicateCallId(_))
+    ));
+}
+
+#[test]
+fn writing_to_an_item_that_is_not_open_is_an_error() {
+    let decoded = write(|out| out.push(9, "orphan"));
+    assert!(matches!(decoded.outcome, Err(ProviderError::Response(_))));
+}
+
+#[test]
+fn a_boundaryless_run_continues_while_the_kind_stays_the_same() {
+    let decoded = write(|out| {
+        out.run(Block::Text, "a")?;
+        out.run(Block::Text, "b")?;
+        out.run(Block::Reasoning { redacted: false }, "r")?;
+        out.run(Block::Text, "c")?;
+        Ok(())
+    });
+    assert_eq!(
+        response(decoded).choice,
+        vec![
+            AssistantContent::text("ab"),
+            AssistantContent::reasoning("r"),
+            AssistantContent::text("c"),
+        ]
+    );
+}
+
+#[test]
+fn a_message_native_covers_the_whole_choice() {
+    let decoded = write(|out| {
+        out.run(Block::Text, "hi")?;
+        out.message_native(json!({"role": "assistant", "content": "hi"}));
+        Ok(())
+    });
+    let response = response(decoded);
+    let message = match response.message() {
+        Some(crate::message::Message::Assistant(message)) => message,
+        other => panic!("expected an assistant message, got {other:?}"),
+    };
+    assert_eq!(
+        message.native_item(),
+        Some(&json!({"role": "assistant", "content": "hi"}))
+    );
+}
+
+#[test]
+fn a_restated_response_streams_the_same_blocks() {
+    let decoded = write(|out| {
+        out.open(0, Block::Text, json!({"type": "text", "text": ""}))?;
+        out.merge(0, &object(json!({"text": "hi"})))?;
+        out.push(0, "hi")?;
+        out.close(0, IfMalformed::Fail)?;
+        out.open(
+            1,
+            Block::Opaque { replay: false },
+            json!({"type": "computer_call"}),
+        )?;
+        out.close(1, IfMalformed::Fail)
+    });
+    let original = response(decoded);
+    let events = events_of(&original).expect("restates");
+    let transcript = Transcript::from_items(events.clone()).expect("a valid sequence");
+    let ended: Vec<_> = transcript
+        .events()
+        .filter_map(|event| match event {
+            StreamEvent::End { content, .. } => Some(content.clone()),
             _ => None,
         })
         .collect();
-    assert_eq!(recorded, ["openrouter/openai"]);
+    assert_eq!(ended, original.choice);
+    assert!(events.iter().all(|item| matches!(item, Item::Event(_))));
 }
 
-/// OpenRouter's Responses route returns Claude's thinking with a `signature`
-/// beside it; the reasoning keeps it and a continuation sends it back, which
-/// is what makes the thinking reach Claude again.
-#[tokio::test]
-async fn openrouter_responses_route_round_trips_a_claude_signature() {
-    let model = "anthropic/claude-haiku-4.5";
-    let reply = serde_json::json!({
-        "id": "resp_1", "object": "response", "created_at": 0, "status": "completed",
-        "model": model,
-        "output": [
-            { "type": "reasoning", "id": "rs_tmp_1", "summary": [],
-              "content": [{ "type": "reasoning_text", "text": "thinking it through" }],
-              "signature": "claude-signature", "format": "anthropic-claude-v1" },
-            { "type": "message", "id": "msg_1", "role": "assistant", "status": "completed",
-              "content": [{ "type": "output_text", "text": "4", "annotations": [] }] }
-        ],
-        "usage": { "input_tokens": 1, "output_tokens": 1, "total_tokens": 2 }
+#[test]
+fn starts_follow_item_order_and_a_dropped_item_leaves_a_gap() {
+    let decoded = write(|out| {
+        out.open(0, Block::Text, Value::Null)?;
+        out.open(1, Block::Text, Value::Null)?;
+        out.push(1, "second")?;
+        out.close(0, IfMalformed::Fail)?;
+        out.close(1, IfMalformed::Fail)
     });
-    let wire = OpenAIConfig::with_key(&OPENROUTER, "test-key").responses(model);
-    let response = crate::driver::Model::new(
-        wire.clone(),
-        RecordingHttpClient::new(Bytes::from(reply.to_string())),
-    )
-    .call(history("unused"))
-    .await
-    .expect("the reply decodes");
-    let Some(AssistantContent::Reasoning(reasoning)) = response.choice.first() else {
-        panic!("the reply opens with reasoning: {:?}", response.choice);
-    };
+    let items: Vec<_> = decoded.items.iter().flatten().cloned().collect();
+    let transcript = Transcript::from_items(items).expect("a gap is a valid sequence");
+    let parts: Vec<_> = transcript
+        .events()
+        .map(|event| event.part().index())
+        .collect();
+    assert!(parts.iter().all(|part| *part == 1));
     assert_eq!(
-        reasoning.value().first_signature(),
-        Some("claude-signature")
+        response(decoded).choice,
+        vec![AssistantContent::text("second")]
     );
-    assert_eq!(Some(reasoning.issuer().as_str()), Some("anthropic"));
-
-    let mut request = history("unused");
-    request.chat_history[1] = Message::Assistant {
-        id: None,
-        content: response.choice.clone(),
-    };
-    let http = RecordingHttpClient::new(Bytes::from_static(b"{}"));
-    let _ = crate::driver::Model::new(wire, http.clone())
-        .call(request)
-        .await;
-    let body: serde_json::Value =
-        serde_json::from_slice(&http.requests()[0].body).expect("a JSON body");
-    let item = body["input"]
-        .as_array()
-        .and_then(|items| items.iter().find(|item| item["type"] == "reasoning"))
-        .expect("the reasoning item is replayed");
-    assert_eq!(item["id"], "rs_tmp_1");
-    assert_eq!(item["signature"], "claude-signature");
-    assert_eq!(item["content"][0]["text"], "thinking it through");
-}
-
-/// OpenRouter's reasoning records the family of the model that produced it,
-/// on a unary reply and on a stream.
-#[tokio::test]
-async fn openrouter_reasoning_records_its_upstream_family() {
-    use crate::test_utils::MockStreamingClient;
-    use futures::StreamExt;
-
-    let reply = |model: &str| {
-        serde_json::json!({
-            "id": "gen-1", "object": "chat.completion", "created": 0, "model": model,
-            "choices": [{ "index": 0, "finish_reason": "stop", "message": {
-                "role": "assistant", "content": "4",
-                "reasoning_details": [
-                    { "type": "reasoning.text", "text": "thinking", "signature": "sig", "format": "anthropic-claude-v1", "index": 0 }
-                ]
-            }}],
-            "usage": { "prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2 }
-        })
-    };
-    let issuers = |choice: &[AssistantContent]| {
-        choice
-            .iter()
-            .filter_map(|part| match part {
-                AssistantContent::Reasoning(reasoning) => Some(reasoning.issuer().to_string()),
-                _ => None,
-            })
-            .collect::<Vec<_>>()
-    };
-    for (model, expected) in [
-        ("anthropic/claude-4.5-haiku-20251001", "anthropic"),
-        ("openai/gpt-5-mini", "openrouter/openai"),
-    ] {
-        let wire = OpenAIConfig::with_key(&OPENROUTER, "test-key").chat(model);
-        let unary = crate::driver::Model::new(
-            wire.clone(),
-            RecordingHttpClient::new(Bytes::from(reply(model).to_string())),
-        )
-        .call(history("unused"))
-        .await
-        .expect("the reply decodes");
-        assert_eq!(issuers(&unary.choice), [expected], "unary {model}");
-
-        let mut chunk = reply(model);
-        chunk["object"] = "chat.completion.chunk".into();
-        let message = chunk["choices"][0]["message"].take();
-        chunk["choices"][0]["delta"] = message;
-        let sse = format!("data: {chunk}\n\ndata: [DONE]\n\n");
-        let mut stream = crate::driver::Model::new(
-            wire,
-            MockStreamingClient {
-                sse_bytes: Bytes::from(sse),
-            },
-        )
-        .stream(history("unused"))
-        .expect("the stream opens");
-        while stream.next().await.is_some() {}
-        let streamed = stream.finish().await.expect("a terminal record");
-        assert_eq!(issuers(&streamed.choice), [expected], "streamed {model}");
-    }
 }

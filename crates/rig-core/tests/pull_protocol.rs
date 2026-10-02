@@ -263,7 +263,7 @@ impl Serve for ImageAnswer {
                 ..Image::default()
             })],
             Usage::default(),
-            "proof",
+            rig_core::message::Origin::new("test.api", "proof", ""),
             serde_json::json!({}),
         ))))
     }

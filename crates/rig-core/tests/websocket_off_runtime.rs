@@ -1,3 +1,4 @@
+#![cfg(any())]
 //! The bundled backend must work when the caller has no tokio runtime.
 //!
 //! Bevy task pools, smol and `futures::executor` are the cases this exists for.

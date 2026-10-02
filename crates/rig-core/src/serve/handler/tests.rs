@@ -61,13 +61,12 @@ fn resolved_stream_preserves_original_response_for_outcome_only_replay() {
                 }),
             ],
             Default::default(),
-            "test",
+            crate::message::Origin::new("test.api", "test", ""),
             serde_json::json!({}),
         );
-        response.message_id = Some("message".into());
-        response.response_id = Some("response".into());
+        response.origin.response_id = Some("response".into());
         response.provider_request_id = Some("request".into());
-        response.model = Some("image-model".into());
+        response.origin.response_model = Some("image-model".into());
         let expected = serde_json::to_value(&response).expect("response JSON");
         let reply = Reply::Outcome(Ok(Outcome::Completion(response))).observed(
             true,
@@ -226,20 +225,21 @@ fn response_reemission_preserves_local_tool_ids_without_provider_provenance() {
             ))
         })
         .collect::<Vec<_>>();
-    let mut provider_call = ToolCall::new(
-        CallId::from_dual_wire("wire-item", "wire-call"),
+    let provider_call = ToolCall::new(
+        CallId::from_wire("wire-call"),
         ToolFunction::new(
             ToolName::new("provider").expect("tool name"),
             serde_json::json!({"x": 1}),
         ),
     );
-    provider_call.signature = Some("signature".into());
-    provider_call.additional_params = Some(serde_json::json!({"metadata": true}));
-    calls.push(AssistantContent::ToolCall(provider_call));
+    calls.push(
+        AssistantContent::ToolCall(provider_call)
+            .with_native(serde_json::json!({"id": "wire-item", "metadata": true})),
+    );
     let response = CompletionResponse::new(
         calls.clone(),
         Default::default(),
-        "local",
+        crate::message::Origin::new("test.api", "local", ""),
         serde_json::json!({}),
     );
     let items = re_emitted_events(&response);
@@ -288,7 +288,7 @@ fn a_writer_reports_the_request_id_and_document_of_the_reply_it_relays() {
         done
     };
     let response = finished("req-1");
-    assert_eq!(response.provider, "relay");
+    assert_eq!(response.provider(), "relay");
     assert_eq!(response.provider_request_id.as_deref(), Some("req-1"));
     assert_eq!(response.raw, serde_json::json!({"id": "body"}));
     assert_eq!(finished("").provider_request_id, None);
@@ -366,7 +366,7 @@ fn terminal_items_carry_the_original_answer_in_one_observer_call() {
             ..Image::default()
         })],
         Default::default(),
-        "image-provider",
+        crate::message::Origin::new("test.api", "image-provider", ""),
         serde_json::json!({}),
     );
     let original = Ok(Outcome::Completion(response.clone()));
@@ -595,7 +595,7 @@ fn an_observer_never_changes_what_the_consumer_receives() {
         Ok(Relayed::Done(Box::new(CompletionResponse::new(
             vec![AssistantContent::text("body")],
             Default::default(),
-            "test",
+            crate::message::Origin::new("test.api", "test", ""),
             serde_json::json!({}),
         ))))
     }
@@ -616,7 +616,7 @@ fn an_observer_never_changes_what_the_consumer_receives() {
                     }),
                 ],
                 Default::default(),
-                "test",
+                crate::message::Origin::new("test.api", "test", ""),
                 serde_json::json!({}),
             ))))
         }),
@@ -704,7 +704,7 @@ fn done(text: &str) -> Result<Relayed, ErrorReport> {
     Ok(Relayed::Done(Box::new(CompletionResponse::new(
         vec![crate::message::AssistantContent::text(text)],
         Default::default(),
-        "local",
+        crate::message::Origin::new("test.api", "local", ""),
         serde_json::Value::Null,
     ))))
 }
