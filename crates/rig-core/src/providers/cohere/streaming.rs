@@ -170,7 +170,7 @@ pub enum ChatEvent {
 }
 
 /// The writer index of tool call `index`: content items keep their own.
-const CALL_INDEX: usize = 1 << 32;
+const CALL_INDEX: usize = 1 << 24;
 
 /// The `/v2/chat` decoder: one state machine for the stream of events and
 /// the whole reply, which is restated as the events of its message. Each

@@ -340,7 +340,7 @@ fn finish_of(response: StreamingCompletionResponse) -> Finish {
 }
 
 /// The writer index of a reply's `n`th tool call.
-const CALL_INDEX: usize = 1 << 32;
+const CALL_INDEX: usize = 1 << 24;
 
 /// Decode `/api/chat` records, one whole reply or a stream of lines. Each
 /// record's message is a delta of the turn's: its thinking and content grow

@@ -290,7 +290,7 @@ pub struct CallFragment<'a> {
 
 /// The first index the writer hands out itself ([`Out::fresh_index`]); a
 /// provider's wire indices stay below it.
-pub const AUTO_INDEX: usize = 1 << 48;
+pub const AUTO_INDEX: usize = 1 << 30;
 
 fn not_open(index: usize) -> ProviderError {
     ProviderError::Response(format!(
