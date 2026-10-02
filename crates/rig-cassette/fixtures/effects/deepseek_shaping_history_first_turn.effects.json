@@ -53,7 +53,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -87,7 +86,13 @@
           "choice": [
             {
               "type": "text",
-              "text": "Ada."
+              "text": "Ada.",
+              "native": {
+                "item": {
+                  "content": "Ada."
+                },
+                "fingerprint": 9227371055595747413
+              }
             }
           ],
           "usage": {
@@ -96,11 +101,21 @@
             "total_tokens": 40,
             "cached_input_tokens": 0
           },
-          "message_id": null,
-          "response_id": "aae8c69b-ac59-423f-b255-17abd706e7d1",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "deepseek",
+            "model": "deepseek-chat",
+            "response_model": "deepseek-flash",
+            "response_id": "70235505-c8af-4e5a-a2dc-8ac64eaf5d96"
+          },
+          "native": {
+            "item": {
+              "content": "Ada.",
+              "role": "assistant"
+            },
+            "fingerprint": 11568595277695389863
+          },
           "finish_reason": "stop",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
           "raw": {
             "choices": [
               {
@@ -114,7 +129,7 @@
               }
             ],
             "created": 0,
-            "id": "aae8c69b-ac59-423f-b255-17abd706e7d1",
+            "id": "70235505-c8af-4e5a-a2dc-8ac64eaf5d96",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",

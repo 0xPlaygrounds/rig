@@ -82,7 +82,15 @@
           "choice": [
             {
               "type": "text",
-              "text": "Maple trees are known for their vibrant fall foliage, displaying brilliant shades of red"
+              "text": "Maple trees are known for their vibrant fall foliage, displaying brilliant shades of red",
+              "native": {
+                "item": {
+                  "annotations": [],
+                  "content": "Maple trees are known for their vibrant fall foliage, displaying brilliant shades of red",
+                  "refusal": null
+                },
+                "fingerprint": 16171626019599134392
+              }
             }
           ],
           "usage": {
@@ -92,12 +100,24 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
-          "response_id": "chatcmpl-ERDE2iTfuwb1c8KUHB4wqWnTO1EOr",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "openai",
+            "model": "gpt-4o-mini",
+            "response_model": "gpt-4o-mini-2024-07-18",
+            "response_id": "chatcmpl-ERDE2iTfuwb1c8KUHB4wqWnTO1EOr"
+          },
+          "native": {
+            "item": {
+              "annotations": [],
+              "content": "Maple trees are known for their vibrant fall foliage, displaying brilliant shades of red",
+              "refusal": null,
+              "role": "assistant"
+            },
+            "fingerprint": 9902477179914569264
+          },
           "provider_request_id": "req_8fb49266ec16452784936b271b7ff961",
           "finish_reason": "length",
-          "provider": "openai",
-          "model": "gpt-4o-mini-2024-07-18",
           "raw": {
             "choices": [
               {
@@ -177,7 +197,15 @@
           "choice": [
             {
               "type": "text",
-              "text": "Maple trees are known for their vibrant fall foliage, displaying brilliant shades of red, orange, and yellow. They are also valued for their sap, which is harvested to produce maple syrup."
+              "text": "Maple trees are known for their vibrant fall foliage, displaying brilliant shades of red, orange, and yellow. They are also valued for their sap, which is harvested to produce maple syrup.",
+              "native": {
+                "item": {
+                  "annotations": [],
+                  "content": "Maple trees are known for their vibrant fall foliage, displaying brilliant shades of red, orange, and yellow. They are also valued for their sap, which is harvested to produce maple syrup.",
+                  "refusal": null
+                },
+                "fingerprint": 739081525465207394
+              }
             }
           ],
           "usage": {
@@ -187,12 +215,24 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
-          "response_id": "chatcmpl-ERDE3XAN0Tgncx4nCUYA90Yw16dCT",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "openai",
+            "model": "gpt-4o-mini",
+            "response_model": "gpt-4o-mini-2024-07-18",
+            "response_id": "chatcmpl-ERDE3XAN0Tgncx4nCUYA90Yw16dCT"
+          },
+          "native": {
+            "item": {
+              "annotations": [],
+              "content": "Maple trees are known for their vibrant fall foliage, displaying brilliant shades of red, orange, and yellow. They are also valued for their sap, which is harvested to produce maple syrup.",
+              "refusal": null,
+              "role": "assistant"
+            },
+            "fingerprint": 12195917227053765318
+          },
           "provider_request_id": "req_1592a9aab07c4f7dae4f6b227e590a58",
           "finish_reason": "stop",
-          "provider": "openai",
-          "model": "gpt-4o-mini-2024-07-18",
           "raw": {
             "choices": [
               {

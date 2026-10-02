@@ -128,12 +128,15 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_011CfLcdVPLFQVZ4DJMY1Hcy",
-          "response_id": null,
+          "origin": {
+            "api": "anthropic.messages",
+            "provider": "anthropic",
+            "model": "claude-sonnet-4-6",
+            "response_model": "claude-sonnet-4-6",
+            "response_id": "msg_011CfLcdVPLFQVZ4DJMY1Hcy"
+          },
           "provider_request_id": "req_011CfLcdUuoVgAfp62JtDBUa",
           "finish_reason": "stop",
-          "provider": "anthropic",
-          "model": "claude-sonnet-4-6",
           "raw": {
             "container": null,
             "content": [],

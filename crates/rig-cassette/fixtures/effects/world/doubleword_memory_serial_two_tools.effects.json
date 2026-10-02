@@ -2,14 +2,14 @@
   "header": {
     "deliveries": [
       {
-        "batch": 2,
+        "batch": 1,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 16,
+        "batch": 12,
         "id": 1,
         "kind": {
           "delivery": "stream",
@@ -17,32 +17,56 @@
         }
       },
       {
-        "batch": 18,
+        "batch": 14,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 19,
+        "batch": 15,
         "id": 2,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 21,
+        "batch": 16,
         "id": 3,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 26,
+        "batch": 21,
         "id": 4,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 2
+        }
+      },
+      {
+        "batch": 22,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 23,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 24,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
         }
       },
       {
@@ -54,78 +78,14 @@
         }
       },
       {
-        "batch": 28,
-        "id": 4,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 29,
-        "id": 4,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 30,
-        "id": 4,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 31,
-        "id": 4,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 32,
-        "id": 4,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 33,
-        "id": 4,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 34,
-        "id": 4,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 36,
-        "id": 4,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 36,
+        "batch": 27,
         "id": 4,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 37,
+        "batch": 28,
         "id": 5,
         "kind": {
           "delivery": "outcome"
@@ -278,49 +238,91 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_5da55878294a4a1d995b2bbc"
-                }
+                "provider": "call_8217054210be4e08a5d32a08"
               },
               "function": {
                 "name": "lookup_harbor_label",
                 "arguments": {}
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{}",
+                    "name": "lookup_harbor_label"
+                  },
+                  "id": "call_8217054210be4e08a5d32a08",
+                  "type": "function"
+                },
+                "fingerprint": 8194316420135879165
+              }
             },
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_56f6ae1067714e16b7defcfb"
-                }
+                "provider": "call_8914c63662c34310bec0a8b2"
               },
               "function": {
                 "name": "lookup_orchard_label",
                 "arguments": {}
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{}",
+                    "name": "lookup_orchard_label"
+                  },
+                  "id": "call_8914c63662c34310bec0a8b2",
+                  "type": "function"
+                },
+                "fingerprint": 7956877051310979235
+              }
             }
           ],
           "usage": {
             "input_tokens": 410,
-            "output_tokens": 36,
-            "total_tokens": 446,
+            "output_tokens": 35,
+            "total_tokens": 445,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": null,
-          "response_id": "gen-1790146040-6JwwO0vohBWS5sd3KKpI",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "doubleword",
+            "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+            "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
+            "response_id": "gen-1790914742-jcYvOXrZZBb7QzP2QR9H"
+          },
+          "native": {
+            "item": {
+              "role": "assistant",
+              "content": "",
+              "tool_calls": [
+                {
+                  "function": {
+                    "arguments": "{}",
+                    "name": "lookup_harbor_label"
+                  },
+                  "id": "call_8217054210be4e08a5d32a08",
+                  "type": "function"
+                },
+                {
+                  "function": {
+                    "arguments": "{}",
+                    "name": "lookup_orchard_label"
+                  },
+                  "id": "call_8914c63662c34310bec0a8b2",
+                  "type": "function"
+                }
+              ]
+            },
+            "fingerprint": 16751289634046577513
+          },
           "finish_reason": "tool_calls",
-          "provider": "doubleword",
-          "model": "Qwen/Qwen3.5-397B-A17B-FP8",
           "raw": {
             "usage": {
               "prompt_tokens": 410,
-              "completion_tokens": 36,
-              "total_tokens": 446,
+              "completion_tokens": 35,
+              "total_tokens": 445,
               "prompt_tokens_details": {
                 "cached_tokens": 0,
                 "cache_write_tokens": 0
@@ -337,7 +339,7 @@
               "cache_read_input_tokens": 0
             },
             "finish_reason": "tool_calls",
-            "response_id": "gen-1790146040-6JwwO0vohBWS5sd3KKpI",
+            "response_id": "gen-1790914742-jcYvOXrZZBb7QzP2QR9H",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "additional_params": {
               "created": 0,
@@ -371,16 +373,23 @@
             "content": {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_5da55878294a4a1d995b2bbc"
-                }
+                "provider": "call_8217054210be4e08a5d32a08"
               },
               "function": {
                 "name": "lookup_harbor_label",
                 "arguments": {}
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{}",
+                    "name": "lookup_harbor_label"
+                  },
+                  "id": "call_8217054210be4e08a5d32a08",
+                  "type": "function"
+                },
+                "fingerprint": 8194316420135879165
+              }
             }
           }
         },
@@ -408,16 +417,23 @@
             "content": {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_56f6ae1067714e16b7defcfb"
-                }
+                "provider": "call_8914c63662c34310bec0a8b2"
               },
               "function": {
                 "name": "lookup_orchard_label",
                 "arguments": {}
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{}",
+                    "name": "lookup_orchard_label"
+                  },
+                  "id": "call_8914c63662c34310bec0a8b2",
+                  "type": "function"
+                },
+                "fingerprint": 7956877051310979235
+              }
             }
           }
         }
@@ -498,37 +514,83 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_5da55878294a4a1d995b2bbc"
-                    }
+                    "provider": "call_8217054210be4e08a5d32a08"
                   },
                   "function": {
                     "name": "lookup_harbor_label",
                     "arguments": {}
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "lookup_harbor_label"
+                      },
+                      "id": "call_8217054210be4e08a5d32a08",
+                      "type": "function"
+                    },
+                    "fingerprint": 8194316420135879165
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_56f6ae1067714e16b7defcfb"
-                    }
+                    "provider": "call_8914c63662c34310bec0a8b2"
                   },
                   "function": {
                     "name": "lookup_orchard_label",
                     "arguments": {}
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "lookup_orchard_label"
+                      },
+                      "id": "call_8914c63662c34310bec0a8b2",
+                      "type": "function"
+                    },
+                    "fingerprint": 7956877051310979235
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "doubleword",
+                "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+                "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
+                "response_id": "gen-1790914742-jcYvOXrZZBb7QzP2QR9H"
+              },
+              "stop": "tool_use",
+              "native": {
+                "item": {
+                  "role": "assistant",
+                  "content": "",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "lookup_harbor_label"
+                      },
+                      "id": "call_8217054210be4e08a5d32a08",
+                      "type": "function"
+                    },
+                    {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "lookup_orchard_label"
+                      },
+                      "id": "call_8914c63662c34310bec0a8b2",
+                      "type": "function"
+                    }
+                  ]
+                },
+                "fingerprint": 16751289634046577513
+              }
             },
             {
               "role": "user",
@@ -536,9 +598,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_5da55878294a4a1d995b2bbc"
-                    }
+                    "provider": "call_8217054210be4e08a5d32a08"
                   },
                   "name": "lookup_harbor_label",
                   "content": [
@@ -551,9 +611,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_56f6ae1067714e16b7defcfb"
-                    }
+                    "provider": "call_8914c63662c34310bec0a8b2"
                   },
                   "name": "lookup_orchard_label",
                   "content": [
@@ -603,26 +661,42 @@
           "choice": [
             {
               "type": "text",
-              "text": "The labels are crimson-harbor and silver-orchard."
+              "text": "The labels are crimson-harbor and silver-orchard.",
+              "native": {
+                "item": {
+                  "content": "The labels are crimson-harbor and silver-orchard."
+                },
+                "fingerprint": 3295787737534410207
+              }
             }
           ],
           "usage": {
-            "input_tokens": 477,
-            "output_tokens": 14,
-            "total_tokens": 491,
+            "input_tokens": 473,
+            "output_tokens": 13,
+            "total_tokens": 486,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": null,
-          "response_id": "gen-1790146041-aVXcvXhEXfOpIGMcq0X8",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "doubleword",
+            "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+            "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
+            "response_id": "gen-1790914754-rDIDFCu3e19g3fjHRjNm"
+          },
+          "native": {
+            "item": {
+              "content": "The labels are crimson-harbor and silver-orchard.",
+              "role": "assistant"
+            },
+            "fingerprint": 17511034586454729307
+          },
           "finish_reason": "stop",
-          "provider": "doubleword",
-          "model": "Qwen/Qwen3.5-397B-A17B-FP8",
           "raw": {
             "usage": {
-              "prompt_tokens": 477,
-              "completion_tokens": 14,
-              "total_tokens": 491,
+              "prompt_tokens": 473,
+              "completion_tokens": 13,
+              "total_tokens": 486,
               "prompt_tokens_details": {
                 "cached_tokens": 0,
                 "cache_write_tokens": 0
@@ -639,7 +713,7 @@
               "cache_read_input_tokens": 0
             },
             "finish_reason": "stop",
-            "response_id": "gen-1790146041-aVXcvXhEXfOpIGMcq0X8",
+            "response_id": "gen-1790914754-rDIDFCu3e19g3fjHRjNm",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "additional_params": {
               "created": 0,
@@ -686,7 +760,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": " crimson"
+            "text": " crimson-harbor"
           }
         },
         {
@@ -694,7 +768,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": "-h"
+            "text": " and silver-orch"
           }
         },
         {
@@ -702,63 +776,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": "ar"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": "bor"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " and"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " silver"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": "-"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": "orch"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": "ard"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": "."
+            "text": "ard."
           }
         },
         {
@@ -768,7 +786,13 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "The labels are crimson-harbor and silver-orchard."
+              "text": "The labels are crimson-harbor and silver-orchard.",
+              "native": {
+                "item": {
+                  "content": "The labels are crimson-harbor and silver-orchard."
+                },
+                "fingerprint": 3295787737534410207
+              }
             }
           }
         }
@@ -796,37 +820,83 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_5da55878294a4a1d995b2bbc"
-                    }
+                    "provider": "call_8217054210be4e08a5d32a08"
                   },
                   "function": {
                     "name": "lookup_harbor_label",
                     "arguments": {}
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "lookup_harbor_label"
+                      },
+                      "id": "call_8217054210be4e08a5d32a08",
+                      "type": "function"
+                    },
+                    "fingerprint": 8194316420135879165
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_56f6ae1067714e16b7defcfb"
-                    }
+                    "provider": "call_8914c63662c34310bec0a8b2"
                   },
                   "function": {
                     "name": "lookup_orchard_label",
                     "arguments": {}
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "lookup_orchard_label"
+                      },
+                      "id": "call_8914c63662c34310bec0a8b2",
+                      "type": "function"
+                    },
+                    "fingerprint": 7956877051310979235
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "doubleword",
+                "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+                "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
+                "response_id": "gen-1790914742-jcYvOXrZZBb7QzP2QR9H"
+              },
+              "stop": "tool_use",
+              "native": {
+                "item": {
+                  "role": "assistant",
+                  "content": "",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "lookup_harbor_label"
+                      },
+                      "id": "call_8217054210be4e08a5d32a08",
+                      "type": "function"
+                    },
+                    {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "lookup_orchard_label"
+                      },
+                      "id": "call_8914c63662c34310bec0a8b2",
+                      "type": "function"
+                    }
+                  ]
+                },
+                "fingerprint": 16751289634046577513
+              }
             },
             {
               "role": "user",
@@ -834,9 +904,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_5da55878294a4a1d995b2bbc"
-                    }
+                    "provider": "call_8217054210be4e08a5d32a08"
                   },
                   "name": "lookup_harbor_label",
                   "content": [
@@ -849,9 +917,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_56f6ae1067714e16b7defcfb"
-                    }
+                    "provider": "call_8914c63662c34310bec0a8b2"
                   },
                   "name": "lookup_orchard_label",
                   "content": [
@@ -865,13 +931,33 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
-                  "text": "The labels are crimson-harbor and silver-orchard."
+                  "text": "The labels are crimson-harbor and silver-orchard.",
+                  "native": {
+                    "item": {
+                      "content": "The labels are crimson-harbor and silver-orchard."
+                    },
+                    "fingerprint": 3295787737534410207
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "doubleword",
+                "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+                "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
+                "response_id": "gen-1790914754-rDIDFCu3e19g3fjHRjNm"
+              },
+              "stop": "stop",
+              "native": {
+                "item": {
+                  "content": "The labels are crimson-harbor and silver-orchard.",
+                  "role": "assistant"
+                },
+                "fingerprint": 17511034586454729307
+              }
             }
           ]
         }

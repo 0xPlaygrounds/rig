@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 43,
+        "batch": 113,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,7 +10,7 @@
         }
       },
       {
-        "batch": 45,
+        "batch": 115,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -108,9 +108,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_TPhKfdv0JBZz64kdgR7pYGou"
-                }
+                "provider": "call_TPhKfdv0JBZz64kdgR7pYGou"
               },
               "function": {
                 "name": "final_result",
@@ -120,8 +118,17 @@
                   "summary": "Monthly Seattle Rust Meetup — 2nd Wednesday, 6:30–8:30 PM at Impact Hub Seattle (Pioneer Square) with hybrid Zoom option. Agenda: 15‑minute lightning talks, one 45‑minute deep‑dive talk, open help desk and networking. Open to all Rust developers; RSVP at meetup.com/seattle-rust or email seattle-rust@example.org."
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"title\":\"Seattle Rust Meetup — Monthly\",\"category\":\"Meetup\",\"summary\":\"Monthly Seattle Rust Meetup — 2nd Wednesday, 6:30–8:30 PM at Impact Hub Seattle (Pioneer Square) with hybrid Zoom option. Agenda: 15‑minute lightning talks, one 45‑minute deep‑dive talk, open help desk and networking. Open to all Rust developers; RSVP at meetup.com/seattle-rust or email seattle-rust@example.org.\"}",
+                    "name": "final_result"
+                  },
+                  "id": "call_TPhKfdv0JBZz64kdgR7pYGou",
+                  "type": "function"
+                },
+                "fingerprint": 3946606506112299840
+              }
             }
           ],
           "usage": {
@@ -131,12 +138,33 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 448
           },
-          "message_id": null,
-          "response_id": "chatcmpl-ERDCKIF5YUAtKKZVGendTPt3EY6YL",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "openai",
+            "model": "gpt-5-mini",
+            "response_model": "gpt-5-mini-2025-08-07",
+            "response_id": "chatcmpl-ERDCKIF5YUAtKKZVGendTPt3EY6YL"
+          },
+          "native": {
+            "item": {
+              "content": null,
+              "refusal": null,
+              "role": "assistant",
+              "tool_calls": [
+                {
+                  "function": {
+                    "arguments": "{\"title\":\"Seattle Rust Meetup — Monthly\",\"category\":\"Meetup\",\"summary\":\"Monthly Seattle Rust Meetup — 2nd Wednesday, 6:30–8:30 PM at Impact Hub Seattle (Pioneer Square) with hybrid Zoom option. Agenda: 15‑minute lightning talks, one 45‑minute deep‑dive talk, open help desk and networking. Open to all Rust developers; RSVP at meetup.com/seattle-rust or email seattle-rust@example.org.\"}",
+                    "name": "final_result"
+                  },
+                  "id": "call_TPhKfdv0JBZz64kdgR7pYGou",
+                  "type": "function"
+                }
+              ]
+            },
+            "fingerprint": 924024866493932334
+          },
           "provider_request_id": "req_54014dcf423e4d2b929bc3300f9eaf11",
           "finish_reason": "tool_calls",
-          "provider": "openai",
-          "model": "gpt-5-mini-2025-08-07",
           "raw": {
             "usage": {
               "prompt_tokens": 224,
@@ -187,9 +215,7 @@
             "content": {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_TPhKfdv0JBZz64kdgR7pYGou"
-                }
+                "provider": "call_TPhKfdv0JBZz64kdgR7pYGou"
               },
               "function": {
                 "name": "final_result",
@@ -199,8 +225,17 @@
                   "summary": "Monthly Seattle Rust Meetup — 2nd Wednesday, 6:30–8:30 PM at Impact Hub Seattle (Pioneer Square) with hybrid Zoom option. Agenda: 15‑minute lightning talks, one 45‑minute deep‑dive talk, open help desk and networking. Open to all Rust developers; RSVP at meetup.com/seattle-rust or email seattle-rust@example.org."
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"title\":\"Seattle Rust Meetup — Monthly\",\"category\":\"Meetup\",\"summary\":\"Monthly Seattle Rust Meetup — 2nd Wednesday, 6:30–8:30 PM at Impact Hub Seattle (Pioneer Square) with hybrid Zoom option. Agenda: 15‑minute lightning talks, one 45‑minute deep‑dive talk, open help desk and networking. Open to all Rust developers; RSVP at meetup.com/seattle-rust or email seattle-rust@example.org.\"}",
+                    "name": "final_result"
+                  },
+                  "id": "call_TPhKfdv0JBZz64kdgR7pYGou",
+                  "type": "function"
+                },
+                "fingerprint": 3946606506112299840
+              }
             }
           }
         }

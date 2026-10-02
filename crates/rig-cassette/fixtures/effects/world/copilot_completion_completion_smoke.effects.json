@@ -75,7 +75,14 @@
           "choice": [
             {
               "type": "text",
-              "text": "Rust is a systems programming language focused on performance, safety, and concurrency, enforcing memory safety without a garbage collector. Memory safety matters to prevent common bugs like null pointer dereferencing or data races, which can lead to crashes or security vulnerabilities."
+              "text": "Rust is a systems programming language focused on performance, safety, and concurrency, enforcing memory safety without a garbage collector. Memory safety matters to prevent common bugs like null pointer dereferencing or data races, which can lead to crashes or security vulnerabilities.",
+              "native": {
+                "item": {
+                  "content": "Rust is a systems programming language focused on performance, safety, and concurrency, enforcing memory safety without a garbage collector. Memory safety matters to prevent common bugs like null pointer dereferencing or data races, which can lead to crashes or security vulnerabilities.",
+                  "padding": "ab"
+                },
+                "fingerprint": 16745454607975641505
+              }
             }
           ],
           "usage": {
@@ -85,11 +92,22 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "copilot",
+            "model": "gpt-4o",
+            "response_model": "gpt-4o-2024-11-20",
+            "response_id": "chatcmpl-REDACTED_1"
+          },
+          "native": {
+            "item": {
+              "content": "Rust is a systems programming language focused on performance, safety, and concurrency, enforcing memory safety without a garbage collector. Memory safety matters to prevent common bugs like null pointer dereferencing or data races, which can lead to crashes or security vulnerabilities.",
+              "padding": "ab",
+              "role": "assistant"
+            },
+            "fingerprint": 10744548034767723713
+          },
           "finish_reason": "stop",
-          "provider": "copilot",
-          "model": "gpt-4o-2024-11-20",
           "raw": {
             "choices": [
               {

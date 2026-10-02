@@ -244,21 +244,34 @@
           "choice": [
             {
               "type": "text",
-              "text": "I'll start by listing the repository files."
+              "text": "I'll start by listing the repository files.",
+              "native": {
+                "item": {
+                  "content": "I'll start by listing the repository files."
+                },
+                "fingerprint": 8528915275346856014
+              }
             },
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_00_RVBqFIY9SoOm1eV4apwe8568"
-                }
+                "provider": "call_00_uD5AhFgxNJfaECH7gcoW9645"
               },
               "function": {
                 "name": "list_files",
                 "arguments": {}
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{}",
+                    "name": "list_files"
+                  },
+                  "id": "call_00_uD5AhFgxNJfaECH7gcoW9645",
+                  "type": "function"
+                },
+                "fingerprint": 7978726243409452072
+              }
             }
           ],
           "usage": {
@@ -267,11 +280,31 @@
             "total_tokens": 751,
             "cached_input_tokens": 512
           },
-          "message_id": null,
-          "response_id": "d7fe9ca7-2be1-4026-a36e-62e5157a1375",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "deepseek",
+            "model": "deepseek-flash",
+            "response_model": "deepseek-flash",
+            "response_id": "be660dd6-e862-4828-b6ca-1988315fe7d3"
+          },
+          "native": {
+            "item": {
+              "content": "I'll start by listing the repository files.",
+              "role": "assistant",
+              "tool_calls": [
+                {
+                  "function": {
+                    "arguments": "{}",
+                    "name": "list_files"
+                  },
+                  "id": "call_00_uD5AhFgxNJfaECH7gcoW9645",
+                  "type": "function"
+                }
+              ]
+            },
+            "fingerprint": 8870389167459103941
+          },
           "finish_reason": "tool_calls",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
           "raw": {
             "choices": [
               {
@@ -287,7 +320,7 @@
                         "arguments": "{}",
                         "name": "list_files"
                       },
-                      "id": "call_00_RVBqFIY9SoOm1eV4apwe8568",
+                      "id": "call_00_uD5AhFgxNJfaECH7gcoW9645",
                       "index": 0,
                       "type": "function"
                     }
@@ -296,7 +329,7 @@
               }
             ],
             "created": 0,
-            "id": "d7fe9ca7-2be1-4026-a36e-62e5157a1375",
+            "id": "be660dd6-e862-4828-b6ca-1988315fe7d3",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
@@ -364,27 +397,64 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
-                  "text": "I'll start by listing the repository files."
+                  "text": "I'll start by listing the repository files.",
+                  "native": {
+                    "item": {
+                      "content": "I'll start by listing the repository files."
+                    },
+                    "fingerprint": 8528915275346856014
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_00_RVBqFIY9SoOm1eV4apwe8568"
-                    }
+                    "provider": "call_00_uD5AhFgxNJfaECH7gcoW9645"
                   },
                   "function": {
                     "name": "list_files",
                     "arguments": {}
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "list_files"
+                      },
+                      "id": "call_00_uD5AhFgxNJfaECH7gcoW9645",
+                      "type": "function"
+                    },
+                    "fingerprint": 7978726243409452072
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "be660dd6-e862-4828-b6ca-1988315fe7d3"
+              },
+              "stop": "tool_use",
+              "native": {
+                "item": {
+                  "content": "I'll start by listing the repository files.",
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "list_files"
+                      },
+                      "id": "call_00_uD5AhFgxNJfaECH7gcoW9645",
+                      "type": "function"
+                    }
+                  ]
+                },
+                "fingerprint": 8870389167459103941
+              }
             },
             {
               "role": "user",
@@ -392,9 +462,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_00_RVBqFIY9SoOm1eV4apwe8568"
-                    }
+                    "provider": "call_00_uD5AhFgxNJfaECH7gcoW9645"
                   },
                   "name": "list_files",
                   "content": [
@@ -486,9 +554,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_00_psT9fOiGzEemGVRKWcCp1002"
-                }
+                "provider": "call_00_4JODNcqmuaNnmEbTRu5w8553"
               },
               "function": {
                 "name": "read_file",
@@ -496,8 +562,17 @@
                   "path": "README.md"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"path\": \"README.md\"}",
+                    "name": "read_file"
+                  },
+                  "id": "call_00_4JODNcqmuaNnmEbTRu5w8553",
+                  "type": "function"
+                },
+                "fingerprint": 6213140262937037789
+              }
             }
           ],
           "usage": {
@@ -506,11 +581,31 @@
             "total_tokens": 816,
             "cached_input_tokens": 640
           },
-          "message_id": null,
-          "response_id": "49e9a670-1abc-4cb4-911b-022fd110c41c",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "deepseek",
+            "model": "deepseek-flash",
+            "response_model": "deepseek-flash",
+            "response_id": "754d2df9-713c-4af9-a0d0-28796a863b4b"
+          },
+          "native": {
+            "item": {
+              "content": "",
+              "role": "assistant",
+              "tool_calls": [
+                {
+                  "function": {
+                    "arguments": "{\"path\": \"README.md\"}",
+                    "name": "read_file"
+                  },
+                  "id": "call_00_4JODNcqmuaNnmEbTRu5w8553",
+                  "type": "function"
+                }
+              ]
+            },
+            "fingerprint": 1609346819955185627
+          },
           "finish_reason": "length",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
           "raw": {
             "choices": [
               {
@@ -526,7 +621,7 @@
                         "arguments": "{\"path\": \"README.md\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_psT9fOiGzEemGVRKWcCp1002",
+                      "id": "call_00_4JODNcqmuaNnmEbTRu5w8553",
                       "index": 0,
                       "type": "function"
                     }
@@ -535,7 +630,7 @@
               }
             ],
             "created": 0,
-            "id": "49e9a670-1abc-4cb4-911b-022fd110c41c",
+            "id": "754d2df9-713c-4af9-a0d0-28796a863b4b",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
@@ -603,27 +698,64 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
-                  "text": "I'll start by listing the repository files."
+                  "text": "I'll start by listing the repository files.",
+                  "native": {
+                    "item": {
+                      "content": "I'll start by listing the repository files."
+                    },
+                    "fingerprint": 8528915275346856014
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_00_RVBqFIY9SoOm1eV4apwe8568"
-                    }
+                    "provider": "call_00_uD5AhFgxNJfaECH7gcoW9645"
                   },
                   "function": {
                     "name": "list_files",
                     "arguments": {}
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "list_files"
+                      },
+                      "id": "call_00_uD5AhFgxNJfaECH7gcoW9645",
+                      "type": "function"
+                    },
+                    "fingerprint": 7978726243409452072
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "be660dd6-e862-4828-b6ca-1988315fe7d3"
+              },
+              "stop": "tool_use",
+              "native": {
+                "item": {
+                  "content": "I'll start by listing the repository files.",
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "list_files"
+                      },
+                      "id": "call_00_uD5AhFgxNJfaECH7gcoW9645",
+                      "type": "function"
+                    }
+                  ]
+                },
+                "fingerprint": 8870389167459103941
+              }
             },
             {
               "role": "user",
@@ -631,9 +763,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_00_RVBqFIY9SoOm1eV4apwe8568"
-                    }
+                    "provider": "call_00_uD5AhFgxNJfaECH7gcoW9645"
                   },
                   "name": "list_files",
                   "content": [
@@ -647,14 +777,11 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_00_psT9fOiGzEemGVRKWcCp1002"
-                    }
+                    "provider": "call_00_4JODNcqmuaNnmEbTRu5w8553"
                   },
                   "function": {
                     "name": "read_file",
@@ -662,10 +789,44 @@
                       "path": "README.md"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"path\": \"README.md\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_00_4JODNcqmuaNnmEbTRu5w8553",
+                      "type": "function"
+                    },
+                    "fingerprint": 6213140262937037789
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "754d2df9-713c-4af9-a0d0-28796a863b4b"
+              },
+              "stop": "length",
+              "native": {
+                "item": {
+                  "content": "",
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{\"path\": \"README.md\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_00_4JODNcqmuaNnmEbTRu5w8553",
+                      "type": "function"
+                    }
+                  ]
+                },
+                "fingerprint": 1609346819955185627
+              }
             },
             {
               "role": "user",
@@ -673,9 +834,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_00_psT9fOiGzEemGVRKWcCp1002"
-                    }
+                    "provider": "call_00_4JODNcqmuaNnmEbTRu5w8553"
                   },
                   "name": "read_file",
                   "content": [
@@ -770,11 +929,21 @@
             "total_tokens": 932,
             "cached_input_tokens": 766
           },
-          "message_id": null,
-          "response_id": "c684ae8f-0189-4276-b54a-7f9079844db4",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "deepseek",
+            "model": "deepseek-flash",
+            "response_model": "deepseek-flash",
+            "response_id": "ec36e451-f880-4c48-ae4d-1fb578e93008"
+          },
+          "native": {
+            "item": {
+              "content": "",
+              "role": "assistant"
+            },
+            "fingerprint": 675868731199239589
+          },
           "finish_reason": "length",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
           "raw": {
             "choices": [
               {
@@ -790,7 +959,7 @@
                         "arguments": "{\"path\": \"tests/basic.rs\"",
                         "name": "read_file"
                       },
-                      "id": "call_00_uwBLoiio4ljs7eXSUF3Z5804",
+                      "id": "call_00_xkACZJKCDeZhdQYJq0zy7908",
                       "index": 0,
                       "type": "function"
                     }
@@ -799,7 +968,7 @@
               }
             ],
             "created": 0,
-            "id": "c684ae8f-0189-4276-b54a-7f9079844db4",
+            "id": "ec36e451-f880-4c48-ae4d-1fb578e93008",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",

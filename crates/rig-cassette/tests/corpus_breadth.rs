@@ -152,8 +152,14 @@ const OPENAI_MEMORY_TWO_RUNS: Program = Program {
     fixture: "openai_breadth_memory_two_runs",
     conversation: Some(CONVERSATION),
     second_prompt: Some(SECOND_PROMPT),
+    additional_params: Some(stateless),
     ..BASIC
 };
+
+/// A Responses request that stores nothing.
+fn stateless() -> serde_json::Value {
+    serde_json::json!({ "store": false })
+}
 
 both_interpreters! {
     gemini_output_tool_unary: GEMINI_OUTPUT_TOOL_UNARY,

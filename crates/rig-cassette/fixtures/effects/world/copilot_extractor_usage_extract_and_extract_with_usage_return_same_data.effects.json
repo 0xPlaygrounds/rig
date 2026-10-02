@@ -122,9 +122,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_REDACTED_1"
-                }
+                "provider": "call_REDACTED_1"
               },
               "function": {
                 "name": "submit",
@@ -134,8 +132,17 @@
                   "profession": "retired teacher"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"age\":55,\"name\":\"Bob Johnson\",\"profession\":\"retired teacher\"}",
+                    "name": "submit"
+                  },
+                  "id": "call_REDACTED_1",
+                  "type": "function"
+                },
+                "fingerprint": 10954679250147334216
+              }
             }
           ],
           "usage": {
@@ -145,11 +152,31 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "copilot",
+            "model": "gpt-4o-mini",
+            "response_model": "gpt-4o-mini-2024-07-18",
+            "response_id": "chatcmpl-REDACTED_1"
+          },
+          "native": {
+            "item": {
+              "padding": "abcdefghijklmnopqrstu",
+              "role": "assistant",
+              "tool_calls": [
+                {
+                  "function": {
+                    "arguments": "{\"age\":55,\"name\":\"Bob Johnson\",\"profession\":\"retired teacher\"}",
+                    "name": "submit"
+                  },
+                  "id": "call_REDACTED_1",
+                  "type": "function"
+                }
+              ]
+            },
+            "fingerprint": 14462816712029305472
+          },
           "finish_reason": "tool_calls",
-          "provider": "copilot",
-          "model": "gpt-4o-mini-2024-07-18",
           "raw": {
             "choices": [
               {
@@ -302,9 +329,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_REDACTED_2"
-                }
+                "provider": "call_REDACTED_2"
               },
               "function": {
                 "name": "submit",
@@ -314,8 +339,17 @@
                   "profession": "retired teacher"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"age\":55,\"name\":\"Bob Johnson\",\"profession\":\"retired teacher\"}",
+                    "name": "submit"
+                  },
+                  "id": "call_REDACTED_2",
+                  "type": "function"
+                },
+                "fingerprint": 9709271410861418767
+              }
             }
           ],
           "usage": {
@@ -325,11 +359,31 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
-          "response_id": "chatcmpl-REDACTED_2",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "copilot",
+            "model": "gpt-4o-mini",
+            "response_model": "gpt-4o-mini-2024-07-18",
+            "response_id": "chatcmpl-REDACTED_2"
+          },
+          "native": {
+            "item": {
+              "padding": "abcdefghijklmnopqrstuvwxyz",
+              "role": "assistant",
+              "tool_calls": [
+                {
+                  "function": {
+                    "arguments": "{\"age\":55,\"name\":\"Bob Johnson\",\"profession\":\"retired teacher\"}",
+                    "name": "submit"
+                  },
+                  "id": "call_REDACTED_2",
+                  "type": "function"
+                }
+              ]
+            },
+            "fingerprint": 10964940708909785373
+          },
           "finish_reason": "tool_calls",
-          "provider": "copilot",
-          "model": "gpt-4o-mini-2024-07-18",
           "raw": {
             "choices": [
               {

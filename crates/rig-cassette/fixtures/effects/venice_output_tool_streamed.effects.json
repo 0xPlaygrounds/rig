@@ -90,7 +90,13 @@
           "choice": [
             {
               "type": "text",
-              "text": "I'm sorry, but I don't have the capability to provide real-time event information or create event objects. However, I can suggest that you check local event platforms or community websites for the latest information on Rust meetups in Seattle."
+              "text": "I'm sorry, but I don't have the capability to provide real-time event information or create event objects. However, I can suggest that you check local event platforms or community websites for the latest information on Rust meetups in Seattle.",
+              "native": {
+                "item": {
+                  "content": "I'm sorry, but I don't have the capability to provide real-time event information or create event objects. However, I can suggest that you check local event platforms or community websites for the latest information on Rust meetups in Seattle."
+                },
+                "fingerprint": 1531547703409747209
+              }
             }
           ],
           "usage": {
@@ -98,11 +104,22 @@
             "output_tokens": 48,
             "total_tokens": 1179
           },
-          "message_id": null,
-          "response_id": "chatcmpl-RO9bJkOQ46g6G4tXVaF6rVTo",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "venice",
+            "model": "mistral-small-3-2-24b-instruct",
+            "response_model": "mistral-small-3-2-24b-instruct",
+            "response_id": "chatcmpl-RO9bJkOQ46g6G4tXVaF6rVTo"
+          },
+          "native": {
+            "item": {
+              "content": "I'm sorry, but I don't have the capability to provide real-time event information or create event objects. However, I can suggest that you check local event platforms or community websites for the latest information on Rust meetups in Seattle.",
+              "reasoning_content": null,
+              "role": "assistant"
+            },
+            "fingerprint": 18075204039979235117
+          },
           "finish_reason": "stop",
-          "provider": "venice",
-          "model": "mistral-small-3-2-24b-instruct",
           "raw": {
             "usage": {
               "prompt_tokens": 1131,
@@ -516,7 +533,13 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "I'm sorry, but I don't have the capability to provide real-time event information or create event objects. However, I can suggest that you check local event platforms or community websites for the latest information on Rust meetups in Seattle."
+              "text": "I'm sorry, but I don't have the capability to provide real-time event information or create event objects. However, I can suggest that you check local event platforms or community websites for the latest information on Rust meetups in Seattle.",
+              "native": {
+                "item": {
+                  "content": "I'm sorry, but I don't have the capability to provide real-time event information or create event objects. However, I can suggest that you check local event platforms or community websites for the latest information on Rust meetups in Seattle."
+                },
+                "fingerprint": 1531547703409747209
+              }
             }
           }
         }

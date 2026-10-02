@@ -130,7 +130,7 @@
                 }
               },
               "media_type": "png",
-              "additional_params": null,
+              "native": null,
               "detail": null
             }
           }
@@ -300,7 +300,7 @@
                 }
               },
               "media_type": "png",
-              "additional_params": null,
+              "native": null,
               "detail": null
             }
           }
@@ -323,8 +323,8 @@
             }
           },
           "rig_ecs::bus::effect::Issued": 0,
-          "rig_ecs::bus::handlers::ServedBy": 0,
-          "rig_ecs::bus::effect::Seq": 0
+          "rig_ecs::bus::effect::Seq": 0,
+          "rig_ecs::bus::handlers::ServedBy": 0
         },
         {
           "bevy_ecs::hierarchy::ChildOf": 3,
@@ -332,10 +332,36 @@
             "content": [
               {
                 "type": "text",
-                "text": "The dominant non-background color is bright red."
+                "text": "The dominant non-background color is bright red.",
+                "native": {
+                  "item": {
+                    "annotations": [],
+                    "content": "The dominant non-background color is bright red.",
+                    "refusal": null
+                  },
+                  "fingerprint": 17672256777754227434
+                }
               }
             ],
-            "message_id": null,
+            "head": {
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openai",
+                "model": "gpt-5-mini",
+                "response_model": "gpt-5-mini-2025-08-07",
+                "response_id": "chatcmpl-EUPabWT8s18fooVK0mJxpqRuSyENA"
+              },
+              "stop": "stop",
+              "native": {
+                "item": {
+                  "annotations": [],
+                  "content": "The dominant non-background color is bright red.",
+                  "refusal": null,
+                  "role": "assistant"
+                },
+                "fingerprint": 11073571618283544370
+              }
+            },
             "done": true,
             "usage_recorded": true,
             "stream_validated": 0
@@ -356,7 +382,15 @@
               "choice": [
                 {
                   "type": "text",
-                  "text": "The dominant non-background color is bright red."
+                  "text": "The dominant non-background color is bright red.",
+                  "native": {
+                    "item": {
+                      "annotations": [],
+                      "content": "The dominant non-background color is bright red.",
+                      "refusal": null
+                    },
+                    "fingerprint": 17672256777754227434
+                  }
                 }
               ],
               "usage": {
@@ -366,12 +400,24 @@
                 "cached_input_tokens": 0,
                 "reasoning_tokens": 64
               },
-              "message_id": null,
-              "response_id": "chatcmpl-ERDDAce2DyMQqEJNYks9xHRHwFj4Y",
-              "provider_request_id": "req_5051bd1ae4734be2bc43d62fd48ff072",
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openai",
+                "model": "gpt-5-mini",
+                "response_model": "gpt-5-mini-2025-08-07",
+                "response_id": "chatcmpl-EUPabWT8s18fooVK0mJxpqRuSyENA"
+              },
+              "native": {
+                "item": {
+                  "annotations": [],
+                  "content": "The dominant non-background color is bright red.",
+                  "refusal": null,
+                  "role": "assistant"
+                },
+                "fingerprint": 11073571618283544370
+              },
+              "provider_request_id": "req_74c7a7210b1840a4979f2fec711f1353",
               "finish_reason": "stop",
-              "provider": "openai",
-              "model": "gpt-5-mini-2025-08-07",
               "raw": {
                 "choices": [
                   {
@@ -386,7 +432,7 @@
                   }
                 ],
                 "created": 0,
-                "id": "chatcmpl-ERDDAce2DyMQqEJNYks9xHRHwFj4Y",
+                "id": "chatcmpl-EUPabWT8s18fooVK0mJxpqRuSyENA",
                 "model": "gpt-5-mini-2025-08-07",
                 "object": "chat.completion",
                 "service_tier": "default",
@@ -410,20 +456,46 @@
             }
           },
           "rig_ecs::bus::effect::Issued": 1,
-          "rig_ecs::bus::handlers::ServedBy": 1,
-          "rig_ecs::bus::effect::Seq": 1
+          "rig_ecs::bus::effect::Seq": 1,
+          "rig_ecs::bus::handlers::ServedBy": 1
         },
         {
           "bevy_ecs::hierarchy::ChildOf": 3,
           "rig_ecs::agent::Role": "Assistant",
           "rig_ecs::agent::Utterance": {},
-          "rig_ecs::agent::content::parts::MessageId": null
+          "rig_ecs::agent::content::parts::AssistantHead": {
+            "origin": {
+              "api": "openai.chat",
+              "provider": "openai",
+              "model": "gpt-5-mini",
+              "response_model": "gpt-5-mini-2025-08-07",
+              "response_id": "chatcmpl-EUPabWT8s18fooVK0mJxpqRuSyENA"
+            },
+            "stop": "stop",
+            "native": {
+              "item": {
+                "annotations": [],
+                "content": "The dominant non-background color is bright red.",
+                "refusal": null,
+                "role": "assistant"
+              },
+              "fingerprint": 11073571618283544370
+            }
+          }
         },
         {
           "bevy_ecs::hierarchy::ChildOf": 10,
           "rig_ecs::agent::content::parts::ContentPart": {
             "Text": {
-              "text": "The dominant non-background color is bright red."
+              "text": "The dominant non-background color is bright red.",
+              "native": {
+                "item": {
+                  "annotations": [],
+                  "content": "The dominant non-background color is bright red.",
+                  "refusal": null
+                },
+                "fingerprint": 17672256777754227434
+              }
             }
           }
         },
@@ -436,8 +508,8 @@
             }
           },
           "rig_ecs::bus::effect::Issued": 2,
-          "rig_ecs::bus::handlers::ServedBy": 0,
-          "rig_ecs::bus::effect::Seq": 2
+          "rig_ecs::bus::effect::Seq": 2,
+          "rig_ecs::bus::handlers::ServedBy": 0
         },
         {
           "rig_ecs::agent::Conversation": "golden-conversation",

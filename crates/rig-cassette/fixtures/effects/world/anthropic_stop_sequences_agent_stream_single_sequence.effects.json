@@ -2,15 +2,31 @@
   "header": {
     "deliveries": [
       {
-        "batch": 5,
+        "batch": 8,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 5
+          "items": 2
         }
       },
       {
-        "batch": 5,
+        "batch": 9,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 10,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 11,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -87,7 +103,14 @@
           "choice": [
             {
               "type": "text",
-              "text": "alpha\nbravo\n"
+              "text": "alpha\nbravo\n",
+              "native": {
+                "item": {
+                  "text": "alpha\nbravo\n",
+                  "type": "text"
+                },
+                "fingerprint": 3770950035364444451
+              }
             }
           ],
           "usage": {
@@ -97,12 +120,15 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_011CfLcgGsMAXEZWekUxTM8j",
-          "response_id": null,
+          "origin": {
+            "api": "anthropic.messages",
+            "provider": "anthropic",
+            "model": "claude-haiku-4-5",
+            "response_model": "claude-haiku-4-5-20251001",
+            "response_id": "msg_011CfLcgGsMAXEZWekUxTM8j"
+          },
           "provider_request_id": "req_011CfLcgGPKavDsLJh8gCUhK",
           "finish_reason": "stop",
-          "provider": "anthropic",
-          "model": "claude-haiku-4-5-20251001",
           "raw": {
             "usage": {
               "output_tokens": 6,
@@ -161,7 +187,14 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "alpha\nbravo\n"
+              "text": "alpha\nbravo\n",
+              "native": {
+                "item": {
+                  "text": "alpha\nbravo\n",
+                  "type": "text"
+                },
+                "fingerprint": 3770950035364444451
+              }
             }
           }
         }

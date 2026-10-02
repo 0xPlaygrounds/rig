@@ -2,46 +2,46 @@
   "header": {
     "deliveries": [
       {
-        "batch": 6,
+        "batch": 8,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 2
         }
       },
       {
-        "batch": 7,
+        "batch": 9,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
-        "batch": 7,
+        "batch": 10,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 14,
+        "batch": 18,
         "id": 1,
         "kind": {
           "delivery": "stream",
-          "items": 4
+          "items": 2
         }
       },
       {
-        "batch": 15,
+        "batch": 19,
         "id": 1,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 3
         }
       },
       {
-        "batch": 15,
+        "batch": 21,
         "id": 1,
         "kind": {
           "delivery": "outcome"
@@ -114,7 +114,14 @@
           "choice": [
             {
               "type": "text",
-              "text": "alpha\nbr"
+              "text": "alpha\nbr",
+              "native": {
+                "item": {
+                  "text": "alpha\nbr",
+                  "type": "text"
+                },
+                "fingerprint": 11198565648850881689
+              }
             }
           ],
           "usage": {
@@ -124,12 +131,15 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_011CfLcgTgxmtjTZAVWc25nw",
-          "response_id": null,
+          "origin": {
+            "api": "anthropic.messages",
+            "provider": "anthropic",
+            "model": "claude-haiku-4-5",
+            "response_model": "claude-haiku-4-5-20251001",
+            "response_id": "msg_011CfLcgTgxmtjTZAVWc25nw"
+          },
           "provider_request_id": "req_011CfLcgT8EPc86XmCi7yzvi",
           "finish_reason": "length",
-          "provider": "anthropic",
-          "model": "claude-haiku-4-5-20251001",
           "raw": {
             "usage": {
               "output_tokens": 3,
@@ -179,7 +189,14 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "alpha\nbr"
+              "text": "alpha\nbr",
+              "native": {
+                "item": {
+                  "text": "alpha\nbr",
+                  "type": "text"
+                },
+                "fingerprint": 11198565648850881689
+              }
             }
           }
         }
@@ -225,7 +242,14 @@
           "choice": [
             {
               "type": "text",
-              "text": "alpha\nbravo\ncharlie\ndelta"
+              "text": "alpha\nbravo\ncharlie\ndelta",
+              "native": {
+                "item": {
+                  "text": "alpha\nbravo\ncharlie\ndelta",
+                  "type": "text"
+                },
+                "fingerprint": 11506640690942770549
+              }
             }
           ],
           "usage": {
@@ -235,12 +259,15 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_011CfLcgWf4VhtXBK2SQFfKt",
-          "response_id": null,
+          "origin": {
+            "api": "anthropic.messages",
+            "provider": "anthropic",
+            "model": "claude-haiku-4-5",
+            "response_model": "claude-haiku-4-5-20251001",
+            "response_id": "msg_011CfLcgWf4VhtXBK2SQFfKt"
+          },
           "provider_request_id": "req_011CfLcgW4bGUJWoL27ChS8v",
           "finish_reason": "stop",
-          "provider": "anthropic",
-          "model": "claude-haiku-4-5-20251001",
           "raw": {
             "usage": {
               "output_tokens": 11,
@@ -298,7 +325,14 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "alpha\nbravo\ncharlie\ndelta"
+              "text": "alpha\nbravo\ncharlie\ndelta",
+              "native": {
+                "item": {
+                  "text": "alpha\nbravo\ncharlie\ndelta",
+                  "type": "text"
+                },
+                "fingerprint": 11506640690942770549
+              }
             }
           }
         }

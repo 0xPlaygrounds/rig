@@ -114,8 +114,20 @@
                   "last_name": "Lovelace"
                 }
               },
-              "signature": "CtECAWkUfRPNbgdIrhQTb8VG+R4Vvo/R1ubAAKGJRj3w0HT0ByVyd7O66VUHI6uLIVLK8/v6n8hgDnq0Mvb0ERu4Ut69yG/QnHLxOeMefHGJMDgEoLKt018vS+/Ss2yT/zNT4EscCN3zZJoi1erAcQGQBueCyv+v+vgylNRuv2UiZzuysUMC7vkQWzm755pCrsWJpI4qAyCBrIxqVNU/OYAihJicq6WypwTFnvY/m7djQ8X6UuZqJ1hBdplnZHvwnR0RNoccBpOeWoXS0ygA4KLBrO/ewMRd6rqCX8hJI6gSGddEqSgYIlr6Sftyw/0i1VWgN8gUsiMkgPcb/YHuM6Uq7kDTj16hGqdEpGfyM+MbYiFMmNEePGLua6OsruL3AePLHmHYgxdcn+a5A/AH2oNNC8F+3ywm3ES2LjI4dzgC4rp8ZFDpaZj0E+NyX3MWYEjHzA==",
-              "additional_params": null
+              "native": {
+                "item": {
+                  "functionCall": {
+                    "args": {
+                      "first_name": "Ada",
+                      "job": "mathematician",
+                      "last_name": "Lovelace"
+                    },
+                    "name": "submit"
+                  },
+                  "thoughtSignature": "CtECAWkUfRPNbgdIrhQTb8VG+R4Vvo/R1ubAAKGJRj3w0HT0ByVyd7O66VUHI6uLIVLK8/v6n8hgDnq0Mvb0ERu4Ut69yG/QnHLxOeMefHGJMDgEoLKt018vS+/Ss2yT/zNT4EscCN3zZJoi1erAcQGQBueCyv+v+vgylNRuv2UiZzuysUMC7vkQWzm755pCrsWJpI4qAyCBrIxqVNU/OYAihJicq6WypwTFnvY/m7djQ8X6UuZqJ1hBdplnZHvwnR0RNoccBpOeWoXS0ygA4KLBrO/ewMRd6rqCX8hJI6gSGddEqSgYIlr6Sftyw/0i1VWgN8gUsiMkgPcb/YHuM6Uq7kDTj16hGqdEpGfyM+MbYiFMmNEePGLua6OsruL3AePLHmHYgxdcn+a5A/AH2oNNC8F+3ywm3ES2LjI4dzgC4rp8ZFDpaZj0E+NyX3MWYEjHzA=="
+                },
+                "fingerprint": 15323371027614180064
+              }
             }
           ],
           "usage": {
@@ -124,11 +136,22 @@
             "total_tokens": 290,
             "reasoning_tokens": 91
           },
-          "message_id": null,
-          "response_id": "9K2yavfuHYGhz7IPkZKquQQ",
+          "origin": {
+            "api": "gemini.generate_content",
+            "provider": "gcp.gemini",
+            "model": "gemini-2.5-flash",
+            "response_model": "gemini-2.5-flash",
+            "response_id": "9K2yavfuHYGhz7IPkZKquQQ"
+          },
+          "native": {
+            "item": {
+              "finishMessage": "Model generated function call(s).",
+              "finishReason": "STOP",
+              "index": 0
+            },
+            "fingerprint": 2730620268203792498
+          },
           "finish_reason": "tool_calls",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
           "raw": {
             "candidates": [
               {

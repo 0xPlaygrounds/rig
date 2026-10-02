@@ -120,23 +120,18 @@
           "choice": [
             {
               "type": "reasoning",
-              "issuer": "deepseek",
-              "id": null,
-              "content": [
-                {
-                  "type": "text",
-                  "content": {
-                    "text": "We need to extract structured data. Address: 123 Main St, Springfield, IL, 62701.\n\nStreet: 123 Main St\nCity: Springfield\nState: IL\nZip: 62701"
-                  }
-                }
-              ]
+              "text": "We need to extract structured data. Address: 123 Main St, Springfield, IL, 62701.\n\nStreet: 123 Main St\nCity: Springfield\nState: IL\nZip: 62701",
+              "native": {
+                "item": {
+                  "reasoning_content": "We need to extract structured data. Address: 123 Main St, Springfield, IL, 62701.\n\nStreet: 123 Main St\nCity: Springfield\nState: IL\nZip: 62701"
+                },
+                "fingerprint": 4695249510154464221
+              }
             },
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_00_RxiGOALqiQeYFOmWght70756"
-                }
+                "provider": "call_00_RxiGOALqiQeYFOmWght70756"
               },
               "function": {
                 "name": "submit",
@@ -147,8 +142,17 @@
                   "zip_code": "62701"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"street\": \"123 Main St\", \"city\": \"Springfield\", \"state\": \"IL\", \"zip_code\": \"62701\"}",
+                    "name": "submit"
+                  },
+                  "id": "call_00_RxiGOALqiQeYFOmWght70756",
+                  "type": "function"
+                },
+                "fingerprint": 15870217736359584206
+              }
             }
           ],
           "usage": {
@@ -158,11 +162,32 @@
             "cached_input_tokens": 128,
             "reasoning_tokens": 42
           },
-          "message_id": null,
-          "response_id": "90dcfc96-1fec-44e2-bd0f-db706b55a32c",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "deepseek",
+            "model": "deepseek-v4-flash",
+            "response_model": "deepseek-flash",
+            "response_id": "90dcfc96-1fec-44e2-bd0f-db706b55a32c"
+          },
+          "native": {
+            "item": {
+              "content": "",
+              "reasoning_content": "We need to extract structured data. Address: 123 Main St, Springfield, IL, 62701.\n\nStreet: 123 Main St\nCity: Springfield\nState: IL\nZip: 62701",
+              "role": "assistant",
+              "tool_calls": [
+                {
+                  "function": {
+                    "arguments": "{\"street\": \"123 Main St\", \"city\": \"Springfield\", \"state\": \"IL\", \"zip_code\": \"62701\"}",
+                    "name": "submit"
+                  },
+                  "id": "call_00_RxiGOALqiQeYFOmWght70756",
+                  "type": "function"
+                }
+              ]
+            },
+            "fingerprint": 8942204549625348918
+          },
           "finish_reason": "tool_calls",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
           "raw": {
             "choices": [
               {

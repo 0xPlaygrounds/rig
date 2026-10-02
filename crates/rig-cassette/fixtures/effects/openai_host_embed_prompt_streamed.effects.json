@@ -3199,7 +3199,24 @@
           "choice": [
             {
               "type": "text",
-              "text": "Ready."
+              "text": "Ready.",
+              "native": {
+                "item": {
+                  "content": [
+                    {
+                      "annotations": [],
+                      "logprobs": [],
+                      "text": "Ready.",
+                      "type": "output_text"
+                    }
+                  ],
+                  "id": "msg_01c5284677fdb93a006ab395fd518487d09aa3b562317b7d62",
+                  "role": "assistant",
+                  "status": "completed",
+                  "type": "message"
+                },
+                "fingerprint": 14469525620358765280
+              }
             }
           ],
           "usage": {
@@ -3210,12 +3227,15 @@
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": "msg_01c5284677fdb93a006ab395fd518487d09aa3b562317b7d62",
-          "response_id": "resp_01c5284677fdb93a006ab395fc55b487d0935621cfc8e95528",
+          "origin": {
+            "api": "openai.responses",
+            "provider": "openai",
+            "model": "gpt-4o",
+            "response_model": "gpt-4o-2024-08-06",
+            "response_id": "resp_01c5284677fdb93a006ab395fc55b487d0935621cfc8e95528"
+          },
           "provider_request_id": "req_475dd217ebaa46b4a2b097b103cd11f6",
           "finish_reason": "stop",
-          "provider": "openai",
-          "model": "gpt-4o-2024-08-06",
           "raw": {
             "id": "resp_01c5284677fdb93a006ab395fc55b487d0935621cfc8e95528",
             "object": "response",
@@ -3307,7 +3327,24 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "Ready."
+              "text": "Ready.",
+              "native": {
+                "item": {
+                  "content": [
+                    {
+                      "annotations": [],
+                      "logprobs": [],
+                      "text": "Ready.",
+                      "type": "output_text"
+                    }
+                  ],
+                  "id": "msg_01c5284677fdb93a006ab395fd518487d09aa3b562317b7d62",
+                  "role": "assistant",
+                  "status": "completed",
+                  "type": "message"
+                },
+                "fingerprint": 14469525620358765280
+              }
             }
           }
         }

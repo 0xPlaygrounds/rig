@@ -115,7 +115,14 @@
           "choice": [
             {
               "type": "text",
-              "text": "ready"
+              "text": "ready",
+              "native": {
+                "item": {
+                  "content": "ready",
+                  "refusal": null
+                },
+                "fingerprint": 815434921069355996
+              }
             }
           ],
           "usage": {
@@ -125,11 +132,22 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": null,
-          "response_id": "resp_67257de8-d004-49ba-9ef6-8894fb80ccfb",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "doubleword",
+            "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+            "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
+            "response_id": "resp_67257de8-d004-49ba-9ef6-8894fb80ccfb"
+          },
+          "native": {
+            "item": {
+              "content": "ready",
+              "refusal": null,
+              "role": "assistant"
+            },
+            "fingerprint": 16268972914252074274
+          },
           "finish_reason": "stop",
-          "provider": "doubleword",
-          "model": "Qwen/Qwen3.5-397B-A17B-FP8",
           "raw": {
             "choices": [
               {

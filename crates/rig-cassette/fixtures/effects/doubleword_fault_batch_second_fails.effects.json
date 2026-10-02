@@ -118,49 +118,91 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_7ae078410b5249eea6b86568"
-                }
+                "provider": "call_641b64a395c0401a8d6eac3b"
               },
               "function": {
                 "name": "lookup_harbor_label",
                 "arguments": {}
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{}",
+                    "name": "lookup_harbor_label"
+                  },
+                  "id": "call_641b64a395c0401a8d6eac3b",
+                  "type": "function"
+                },
+                "fingerprint": 10323801985631115659
+              }
             },
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_d519a11aefe343b786a0157d"
-                }
+                "provider": "call_ebb2c1ec9a524199a0364c49"
               },
               "function": {
                 "name": "lookup_orchard_label",
                 "arguments": {}
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{}",
+                    "name": "lookup_orchard_label"
+                  },
+                  "id": "call_ebb2c1ec9a524199a0364c49",
+                  "type": "function"
+                },
+                "fingerprint": 1021452312189610549
+              }
             }
           ],
           "usage": {
             "input_tokens": 425,
-            "output_tokens": 36,
-            "total_tokens": 461,
+            "output_tokens": 35,
+            "total_tokens": 460,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": null,
-          "response_id": "gen-1790145982-A767sEQ2L1iLRO7gJswt",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "doubleword",
+            "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+            "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
+            "response_id": "gen-1790914592-skDSP7ZhvVEDMbMERLwz"
+          },
+          "native": {
+            "item": {
+              "role": "assistant",
+              "content": "",
+              "tool_calls": [
+                {
+                  "function": {
+                    "arguments": "{}",
+                    "name": "lookup_harbor_label"
+                  },
+                  "id": "call_641b64a395c0401a8d6eac3b",
+                  "type": "function"
+                },
+                {
+                  "function": {
+                    "arguments": "{}",
+                    "name": "lookup_orchard_label"
+                  },
+                  "id": "call_ebb2c1ec9a524199a0364c49",
+                  "type": "function"
+                }
+              ]
+            },
+            "fingerprint": 2966185256751524321
+          },
           "finish_reason": "tool_calls",
-          "provider": "doubleword",
-          "model": "Qwen/Qwen3.5-397B-A17B-FP8",
           "raw": {
             "usage": {
               "prompt_tokens": 425,
-              "completion_tokens": 36,
-              "total_tokens": 461,
+              "completion_tokens": 35,
+              "total_tokens": 460,
               "prompt_tokens_details": {
                 "cached_tokens": 0,
                 "cache_write_tokens": 0
@@ -177,7 +219,7 @@
               "cache_read_input_tokens": 0
             },
             "finish_reason": "tool_calls",
-            "response_id": "gen-1790145982-A767sEQ2L1iLRO7gJswt",
+            "response_id": "gen-1790914592-skDSP7ZhvVEDMbMERLwz",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "additional_params": {
               "created": 0,
@@ -211,16 +253,23 @@
             "content": {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_7ae078410b5249eea6b86568"
-                }
+                "provider": "call_641b64a395c0401a8d6eac3b"
               },
               "function": {
                 "name": "lookup_harbor_label",
                 "arguments": {}
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{}",
+                    "name": "lookup_harbor_label"
+                  },
+                  "id": "call_641b64a395c0401a8d6eac3b",
+                  "type": "function"
+                },
+                "fingerprint": 10323801985631115659
+              }
             }
           }
         },
@@ -248,16 +297,23 @@
             "content": {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_d519a11aefe343b786a0157d"
-                }
+                "provider": "call_ebb2c1ec9a524199a0364c49"
               },
               "function": {
                 "name": "lookup_orchard_label",
                 "arguments": {}
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{}",
+                    "name": "lookup_orchard_label"
+                  },
+                  "id": "call_ebb2c1ec9a524199a0364c49",
+                  "type": "function"
+                },
+                "fingerprint": 1021452312189610549
+              }
             }
           }
         }
@@ -343,37 +399,83 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_7ae078410b5249eea6b86568"
-                    }
+                    "provider": "call_641b64a395c0401a8d6eac3b"
                   },
                   "function": {
                     "name": "lookup_harbor_label",
                     "arguments": {}
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "lookup_harbor_label"
+                      },
+                      "id": "call_641b64a395c0401a8d6eac3b",
+                      "type": "function"
+                    },
+                    "fingerprint": 10323801985631115659
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_d519a11aefe343b786a0157d"
-                    }
+                    "provider": "call_ebb2c1ec9a524199a0364c49"
                   },
                   "function": {
                     "name": "lookup_orchard_label",
                     "arguments": {}
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "lookup_orchard_label"
+                      },
+                      "id": "call_ebb2c1ec9a524199a0364c49",
+                      "type": "function"
+                    },
+                    "fingerprint": 1021452312189610549
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "doubleword",
+                "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+                "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
+                "response_id": "gen-1790914592-skDSP7ZhvVEDMbMERLwz"
+              },
+              "stop": "tool_use",
+              "native": {
+                "item": {
+                  "role": "assistant",
+                  "content": "",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "lookup_harbor_label"
+                      },
+                      "id": "call_641b64a395c0401a8d6eac3b",
+                      "type": "function"
+                    },
+                    {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "lookup_orchard_label"
+                      },
+                      "id": "call_ebb2c1ec9a524199a0364c49",
+                      "type": "function"
+                    }
+                  ]
+                },
+                "fingerprint": 2966185256751524321
+              }
             },
             {
               "role": "user",
@@ -381,9 +483,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_7ae078410b5249eea6b86568"
-                    }
+                    "provider": "call_641b64a395c0401a8d6eac3b"
                   },
                   "name": "lookup_harbor_label",
                   "content": [
@@ -396,9 +496,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_d519a11aefe343b786a0157d"
-                    }
+                    "provider": "call_ebb2c1ec9a524199a0364c49"
                   },
                   "name": "lookup_orchard_label",
                   "content": [
@@ -448,26 +546,42 @@
           "choice": [
             {
               "type": "text",
-              "text": "The harbor label is crimson-harbor and the orchard tool reported the error: the orchard lookup is broken."
+              "text": "The harbor label is crimson-harbor and the orchard tool's error text is \"the orchard lookup is broken\".",
+              "native": {
+                "item": {
+                  "content": "The harbor label is crimson-harbor and the orchard tool's error text is \"the orchard lookup is broken\"."
+                },
+                "fingerprint": 12920283993125781721
+              }
             }
           ],
           "usage": {
-            "input_tokens": 494,
+            "input_tokens": 490,
             "output_tokens": 25,
-            "total_tokens": 519,
+            "total_tokens": 515,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": null,
-          "response_id": "gen-1790145983-bSCz8j3SG1SZsyhBGnGz",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "doubleword",
+            "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+            "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
+            "response_id": "gen-1790914594-XS1uwKNUPYUxKSqHaHOg"
+          },
+          "native": {
+            "item": {
+              "content": "The harbor label is crimson-harbor and the orchard tool's error text is \"the orchard lookup is broken\".",
+              "role": "assistant"
+            },
+            "fingerprint": 5984570111815758065
+          },
           "finish_reason": "stop",
-          "provider": "doubleword",
-          "model": "Qwen/Qwen3.5-397B-A17B-FP8",
           "raw": {
             "usage": {
-              "prompt_tokens": 494,
+              "prompt_tokens": 490,
               "completion_tokens": 25,
-              "total_tokens": 519,
+              "total_tokens": 515,
               "prompt_tokens_details": {
                 "cached_tokens": 0,
                 "cache_write_tokens": 0
@@ -484,7 +598,7 @@
               "cache_read_input_tokens": 0
             },
             "finish_reason": "stop",
-            "response_id": "gen-1790145983-bSCz8j3SG1SZsyhBGnGz",
+            "response_id": "gen-1790914594-XS1uwKNUPYUxKSqHaHOg",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "additional_params": {
               "created": 0,
@@ -515,7 +629,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": " harbor"
+            "text": " harbor label is crimson"
           }
         },
         {
@@ -523,7 +637,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": " label"
+            "text": "-harbor and"
           }
         },
         {
@@ -531,7 +645,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": " is"
+            "text": " the orchard tool"
           }
         },
         {
@@ -539,7 +653,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": " crimson"
+            "text": "'s error text is"
           }
         },
         {
@@ -547,7 +661,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": "-h"
+            "text": " \"the orchard"
           }
         },
         {
@@ -555,119 +669,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": "ar"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": "bor and the orch"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": "ard"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " tool"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " reported"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " the"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " error"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": ":"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " the"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " orch"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": "ard"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " lookup"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " is"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " broken"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": "."
+            "text": " lookup is broken\"."
           }
         },
         {
@@ -677,7 +679,13 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "The harbor label is crimson-harbor and the orchard tool reported the error: the orchard lookup is broken."
+              "text": "The harbor label is crimson-harbor and the orchard tool's error text is \"the orchard lookup is broken\".",
+              "native": {
+                "item": {
+                  "content": "The harbor label is crimson-harbor and the orchard tool's error text is \"the orchard lookup is broken\"."
+                },
+                "fingerprint": 12920283993125781721
+              }
             }
           }
         }

@@ -77,7 +77,14 @@
           "choice": [
             {
               "type": "text",
-              "text": "Maple trees are renowned for their distinctive palmate leaves that turn brilliant shades of"
+              "text": "Maple trees are renowned for their distinctive palmate leaves that turn brilliant shades of",
+              "native": {
+                "item": {
+                  "content": "Maple trees are renowned for their distinctive palmate leaves that turn brilliant shades of",
+                  "refusal": null
+                },
+                "fingerprint": 17075141236395229400
+              }
             }
           ],
           "usage": {
@@ -87,11 +94,22 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": null,
-          "response_id": "resp_378570a7-7260-4668-995b-62c61731ee8e",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "doubleword",
+            "model": "Qwen/Qwen3.5-9B",
+            "response_model": "Qwen/Qwen3.5-9B",
+            "response_id": "resp_378570a7-7260-4668-995b-62c61731ee8e"
+          },
+          "native": {
+            "item": {
+              "content": "Maple trees are renowned for their distinctive palmate leaves that turn brilliant shades of",
+              "refusal": null,
+              "role": "assistant"
+            },
+            "fingerprint": 12035101208924912814
+          },
           "finish_reason": "length",
-          "provider": "doubleword",
-          "model": "Qwen/Qwen3.5-9B",
           "raw": {
             "choices": [
               {

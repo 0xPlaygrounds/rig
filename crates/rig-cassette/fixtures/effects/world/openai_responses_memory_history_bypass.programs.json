@@ -35,7 +35,9 @@
           }
         },
         {
-          "rig_ecs::agent::AdditionalParams": null,
+          "rig_ecs::agent::AdditionalParams": {
+            "store": false
+          },
           "rig_ecs::agent::Conversation": "golden-conversation",
           "rig_ecs::agent::DefaultMaxTurns": null,
           "rig_ecs::agent::InvalidCalls": {
@@ -90,7 +92,11 @@
           "bevy_ecs::hierarchy::ChildOf": 3,
           "rig_ecs::agent::Role": "Assistant",
           "rig_ecs::agent::Utterance": {},
-          "rig_ecs::agent::content::parts::MessageId": null
+          "rig_ecs::agent::content::parts::AssistantHead": {
+            "origin": null,
+            "stop": null,
+            "native": null
+          }
         },
         {
           "bevy_ecs::hierarchy::ChildOf": 6,

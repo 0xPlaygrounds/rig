@@ -2,15 +2,23 @@
   "header": {
     "deliveries": [
       {
-        "batch": 6,
+        "batch": 7,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 4
+          "items": 2
         }
       },
       {
-        "batch": 7,
+        "batch": 8,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 9,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -79,7 +87,14 @@
           "choice": [
             {
               "type": "text",
-              "text": "agent raw probe"
+              "text": "agent raw probe",
+              "native": {
+                "item": {
+                  "text": "agent raw probe",
+                  "type": "text"
+                },
+                "fingerprint": 1784595374874271870
+              }
             }
           ],
           "usage": {
@@ -89,12 +104,15 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_011CfLcfr6pTtkcwU7MrJuqy",
-          "response_id": null,
+          "origin": {
+            "api": "anthropic.messages",
+            "provider": "anthropic",
+            "model": "claude-haiku-4-5",
+            "response_model": "claude-haiku-4-5-20251001",
+            "response_id": "msg_011CfLcfr6pTtkcwU7MrJuqy"
+          },
           "provider_request_id": "req_011CfLcfqdnwT7Pj5P6nCH61",
           "finish_reason": "stop",
-          "provider": "anthropic",
-          "model": "claude-haiku-4-5-20251001",
           "raw": {
             "usage": {
               "output_tokens": 6,
@@ -144,7 +162,14 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "agent raw probe"
+              "text": "agent raw probe",
+              "native": {
+                "item": {
+                  "text": "agent raw probe",
+                  "type": "text"
+                },
+                "fingerprint": 1784595374874271870
+              }
             }
           }
         }

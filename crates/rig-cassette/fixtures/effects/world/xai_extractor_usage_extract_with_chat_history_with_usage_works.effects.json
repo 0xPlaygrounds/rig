@@ -120,22 +120,26 @@
           "choice": [
             {
               "type": "reasoning",
-              "issuer": "xai",
-              "id": "rs_937fc0da-7da5-912f-a5e1-b9c203d20abd",
-              "content": [
-                {
-                  "type": "summary",
-                  "content": "Extracting structured data from the provided address.\n\nIdentified the address components: street 123 Main St, city Springfield, state IL, and zip code 62701. Preparing to submit the structured data."
-                }
-              ]
+              "text": "Extracting structured data from the provided address.\n\nIdentified the address components: street 123 Main St, city Springfield, state IL, and zip code 62701. Preparing to submit the structured data.",
+              "native": {
+                "item": {
+                  "id": "rs_937fc0da-7da5-912f-a5e1-b9c203d20abd",
+                  "status": "completed",
+                  "summary": [
+                    {
+                      "text": "Extracting structured data from the provided address.\n\nIdentified the address components: street 123 Main St, city Springfield, state IL, and zip code 62701. Preparing to submit the structured data.",
+                      "type": "summary_text"
+                    }
+                  ],
+                  "type": "reasoning"
+                },
+                "fingerprint": 3787832979512811305
+              }
             },
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call-ca18eae2-52f1-4b76-96f1-186c4fe2f711-0",
-                  "item_id": "fc_937fc0da-7da5-912f-a5e1-b9c203d20abd_0"
-                }
+                "provider": "call-ca18eae2-52f1-4b76-96f1-186c4fe2f711-0"
               },
               "function": {
                 "name": "submit",
@@ -146,8 +150,17 @@
                   "zip_code": "62701"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "arguments": "{\"street\":\"123 Main St\",\"city\":\"Springfield\",\"state\":\"IL\",\"zip_code\":\"62701\"}",
+                  "call_id": "call-ca18eae2-52f1-4b76-96f1-186c4fe2f711-0",
+                  "id": "fc_937fc0da-7da5-912f-a5e1-b9c203d20abd_0",
+                  "name": "submit",
+                  "status": "completed",
+                  "type": "function_call"
+                },
+                "fingerprint": 17171304718662454655
+              }
             }
           ],
           "usage": {
@@ -157,12 +170,15 @@
             "cached_input_tokens": 192,
             "reasoning_tokens": 323
           },
-          "message_id": null,
-          "response_id": "937fc0da-7da5-912f-a5e1-b9c203d20abd",
+          "origin": {
+            "api": "openai.responses",
+            "provider": "xai",
+            "model": "grok-3-mini",
+            "response_model": "grok-4.3",
+            "response_id": "937fc0da-7da5-912f-a5e1-b9c203d20abd"
+          },
           "provider_request_id": "937fc0da-7da5-912f-a5e1-b9c203d20abd",
           "finish_reason": "tool_calls",
-          "provider": "xai",
-          "model": "grok-4.3",
           "raw": {
             "background": false,
             "completed_at": 0,

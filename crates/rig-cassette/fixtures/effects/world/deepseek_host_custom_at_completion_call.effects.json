@@ -112,7 +112,13 @@
           "choice": [
             {
               "type": "text",
-              "text": "ready"
+              "text": "ready",
+              "native": {
+                "item": {
+                  "content": "ready"
+                },
+                "fingerprint": 815434921069355996
+              }
             }
           ],
           "usage": {
@@ -121,11 +127,21 @@
             "total_tokens": 23,
             "cached_input_tokens": 0
           },
-          "message_id": null,
-          "response_id": "b336cade-8de6-40e1-9719-fe74a4df1eaa",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "deepseek",
+            "model": "deepseek-chat",
+            "response_model": "deepseek-flash",
+            "response_id": "b336cade-8de6-40e1-9719-fe74a4df1eaa"
+          },
+          "native": {
+            "item": {
+              "content": "ready",
+              "role": "assistant"
+            },
+            "fingerprint": 16268972914252074274
+          },
           "finish_reason": "stop",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
           "raw": {
             "choices": [
               {

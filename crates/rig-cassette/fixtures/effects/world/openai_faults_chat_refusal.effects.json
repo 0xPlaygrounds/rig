@@ -83,7 +83,14 @@
           "choice": [
             {
               "type": "text",
-              "text": "I'm sorry, I can't help."
+              "text": "I'm sorry, I can't help.",
+              "native": {
+                "item": {
+                  "content": null,
+                  "refusal": "I'm sorry, I can't help."
+                },
+                "fingerprint": 13020734023778899724
+              }
             }
           ],
           "usage": {
@@ -91,11 +98,22 @@
             "output_tokens": 8,
             "total_tokens": 18
           },
-          "message_id": null,
-          "response_id": "chatcmpl-1",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "openai",
+            "model": "gpt-5-mini",
+            "response_model": "gpt-4o",
+            "response_id": "chatcmpl-1"
+          },
+          "native": {
+            "item": {
+              "role": "assistant",
+              "content": null,
+              "refusal": "I'm sorry, I can't help."
+            },
+            "fingerprint": 2170833060454508384
+          },
           "finish_reason": "stop",
-          "provider": "openai",
-          "model": "gpt-4o",
           "raw": {
             "usage": {
               "prompt_tokens": 10,
@@ -140,7 +158,14 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "I'm sorry, I can't help."
+              "text": "I'm sorry, I can't help.",
+              "native": {
+                "item": {
+                  "content": null,
+                  "refusal": "I'm sorry, I can't help."
+                },
+                "fingerprint": 13020734023778899724
+              }
             }
           }
         }

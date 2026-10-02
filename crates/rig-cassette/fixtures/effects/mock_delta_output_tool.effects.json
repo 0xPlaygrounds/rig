@@ -91,9 +91,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call-1"
-                }
+                "provider": "call-1"
               },
               "function": {
                 "name": "final_result",
@@ -102,20 +100,18 @@
                   "category": "Technology",
                   "summary": "A meetup."
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {},
-          "message_id": null,
-          "response_id": null,
+          "origin": {
+            "api": "mock.script",
+            "provider": "mock",
+            "model": ""
+          },
           "finish_reason": null,
-          "provider": "mock",
-          "model": null,
           "raw": {
             "usage": {},
-            "message_id": null,
             "response_id": null,
             "model": null
           }
@@ -146,9 +142,7 @@
             "content": {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call-1"
-                }
+                "provider": "call-1"
               },
               "function": {
                 "name": "final_result",
@@ -157,9 +151,7 @@
                   "category": "Technology",
                   "summary": "A meetup."
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           }
         }

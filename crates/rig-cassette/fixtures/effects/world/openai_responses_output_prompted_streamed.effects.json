@@ -14,7 +14,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -38,7 +38,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -54,7 +54,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -86,7 +86,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -94,7 +94,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -118,7 +118,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -126,7 +126,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -150,7 +150,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -166,11 +166,11 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
-        "batch": 46,
+        "batch": 37,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -178,7 +178,15 @@
         }
       },
       {
-        "batch": 46,
+        "batch": 42,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 48,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -251,7 +259,24 @@
           "choice": [
             {
               "type": "text",
-              "text": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Technology\",\"summary\":\"Join local Rust enthusiasts for networking and discussions on Rust programming.\"}"
+              "text": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Technology\",\"summary\":\"Join local Rust enthusiasts for networking and discussions on Rust programming.\"}",
+              "native": {
+                "item": {
+                  "content": [
+                    {
+                      "annotations": [],
+                      "logprobs": [],
+                      "text": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Technology\",\"summary\":\"Join local Rust enthusiasts for networking and discussions on Rust programming.\"}",
+                      "type": "output_text"
+                    }
+                  ],
+                  "id": "msg_051be6577c9430e6006ab395f3263087d0b879d750427b36bf",
+                  "role": "assistant",
+                  "status": "completed",
+                  "type": "message"
+                },
+                "fingerprint": 7327436369369734546
+              }
             }
           ],
           "usage": {
@@ -262,12 +287,15 @@
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": "msg_051be6577c9430e6006ab395f3263087d0b879d750427b36bf",
-          "response_id": "resp_051be6577c9430e6006ab395f289cc87d0be6be0726fac40ff",
+          "origin": {
+            "api": "openai.responses",
+            "provider": "openai",
+            "model": "gpt-4o",
+            "response_model": "gpt-4o-2024-08-06",
+            "response_id": "resp_051be6577c9430e6006ab395f289cc87d0be6be0726fac40ff"
+          },
           "provider_request_id": "req_e2d2a525378f453cbaf7fe55dfbbfafd",
           "finish_reason": "stop",
-          "provider": "openai",
-          "model": "gpt-4o-2024-08-06",
           "raw": {
             "id": "resp_051be6577c9430e6006ab395f289cc87d0be6be0726fac40ff",
             "object": "response",
@@ -551,7 +579,24 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Technology\",\"summary\":\"Join local Rust enthusiasts for networking and discussions on Rust programming.\"}"
+              "text": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Technology\",\"summary\":\"Join local Rust enthusiasts for networking and discussions on Rust programming.\"}",
+              "native": {
+                "item": {
+                  "content": [
+                    {
+                      "annotations": [],
+                      "logprobs": [],
+                      "text": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Technology\",\"summary\":\"Join local Rust enthusiasts for networking and discussions on Rust programming.\"}",
+                      "type": "output_text"
+                    }
+                  ],
+                  "id": "msg_051be6577c9430e6006ab395f3263087d0b879d750427b36bf",
+                  "role": "assistant",
+                  "status": "completed",
+                  "type": "message"
+                },
+                "fingerprint": 7327436369369734546
+              }
             }
           }
         }

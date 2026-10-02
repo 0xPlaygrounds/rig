@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 32,
+        "batch": 33,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,21 +10,21 @@
         }
       },
       {
-        "batch": 41,
+        "batch": 43,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 42,
+        "batch": 44,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 63,
+        "batch": 66,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -32,31 +32,7 @@
         }
       },
       {
-        "batch": 64,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 65,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
         "batch": 67,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 68,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -112,6 +88,14 @@
         }
       },
       {
+        "batch": 75,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 76,
         "id": 2,
         "kind": {
@@ -152,7 +136,7 @@
         }
       },
       {
-        "batch": 93,
+        "batch": 82,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -160,7 +144,23 @@
         }
       },
       {
-        "batch": 93,
+        "batch": 83,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 87,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 97,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -330,10 +330,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_nqQoyAI8s94obZpYJLyaT8VL",
-                  "item_id": "fc_08cb637cfdc74423006ab396a050d887d0b1f7f3da90392f62"
-                }
+                "provider": "call_nqQoyAI8s94obZpYJLyaT8VL"
               },
               "function": {
                 "name": "subtract",
@@ -342,8 +339,17 @@
                   "y": 5
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "arguments": "{\"x\":2,\"y\":5}",
+                  "call_id": "call_nqQoyAI8s94obZpYJLyaT8VL",
+                  "id": "fc_08cb637cfdc74423006ab396a050d887d0b1f7f3da90392f62",
+                  "name": "subtract",
+                  "status": "completed",
+                  "type": "function_call"
+                },
+                "fingerprint": 3742636557727814235
+              }
             }
           ],
           "usage": {
@@ -354,12 +360,15 @@
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
-          "response_id": "resp_08cb637cfdc74423006ab3969fd19887d090e897c81d86bc91",
+          "origin": {
+            "api": "openai.responses",
+            "provider": "openai",
+            "model": "gpt-4o",
+            "response_model": "gpt-4o-2024-08-06",
+            "response_id": "resp_08cb637cfdc74423006ab3969fd19887d090e897c81d86bc91"
+          },
           "provider_request_id": "req_149a8dbe91a54b308e7d8ecf56581e83",
           "finish_reason": "tool_calls",
-          "provider": "openai",
-          "model": "gpt-4o-2024-08-06",
           "raw": {
             "id": "resp_08cb637cfdc74423006ab3969fd19887d090e897c81d86bc91",
             "object": "response",
@@ -487,10 +496,7 @@
             "content": {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_nqQoyAI8s94obZpYJLyaT8VL",
-                  "item_id": "fc_08cb637cfdc74423006ab396a050d887d0b1f7f3da90392f62"
-                }
+                "provider": "call_nqQoyAI8s94obZpYJLyaT8VL"
               },
               "function": {
                 "name": "subtract",
@@ -499,8 +505,17 @@
                   "y": 5
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "arguments": "{\"x\":2,\"y\":5}",
+                  "call_id": "call_nqQoyAI8s94obZpYJLyaT8VL",
+                  "id": "fc_08cb637cfdc74423006ab396a050d887d0b1f7f3da90392f62",
+                  "name": "subtract",
+                  "status": "completed",
+                  "type": "function_call"
+                },
+                "fingerprint": 3742636557727814235
+              }
             }
           }
         }
@@ -556,15 +571,11 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_nqQoyAI8s94obZpYJLyaT8VL",
-                      "item_id": "fc_08cb637cfdc74423006ab396a050d887d0b1f7f3da90392f62"
-                    }
+                    "provider": "call_nqQoyAI8s94obZpYJLyaT8VL"
                   },
                   "function": {
                     "name": "subtract",
@@ -573,10 +584,27 @@
                       "y": 5
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "arguments": "{\"x\":2,\"y\":5}",
+                      "call_id": "call_nqQoyAI8s94obZpYJLyaT8VL",
+                      "id": "fc_08cb637cfdc74423006ab396a050d887d0b1f7f3da90392f62",
+                      "name": "subtract",
+                      "status": "completed",
+                      "type": "function_call"
+                    },
+                    "fingerprint": 3742636557727814235
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.responses",
+                "provider": "openai",
+                "model": "gpt-4o",
+                "response_model": "gpt-4o-2024-08-06",
+                "response_id": "resp_08cb637cfdc74423006ab3969fd19887d090e897c81d86bc91"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -584,10 +612,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_nqQoyAI8s94obZpYJLyaT8VL",
-                      "item_id": "fc_08cb637cfdc74423006ab396a050d887d0b1f7f3da90392f62"
-                    }
+                    "provider": "call_nqQoyAI8s94obZpYJLyaT8VL"
                   },
                   "name": "subtract",
                   "content": [
@@ -659,7 +684,24 @@
           "choice": [
             {
               "type": "text",
-              "text": "The result of \\(2 - 5\\) is \\(-3\\)."
+              "text": "The result of \\(2 - 5\\) is \\(-3\\).",
+              "native": {
+                "item": {
+                  "content": [
+                    {
+                      "annotations": [],
+                      "logprobs": [],
+                      "text": "The result of \\(2 - 5\\) is \\(-3\\).",
+                      "type": "output_text"
+                    }
+                  ],
+                  "id": "msg_08cb637cfdc74423006ab396a1820487d08c4320f270906771",
+                  "role": "assistant",
+                  "status": "completed",
+                  "type": "message"
+                },
+                "fingerprint": 10980446232331066488
+              }
             }
           ],
           "usage": {
@@ -670,12 +712,15 @@
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": "msg_08cb637cfdc74423006ab396a1820487d08c4320f270906771",
-          "response_id": "resp_08cb637cfdc74423006ab396a1308c87d09f7a0b4422c9f4be",
+          "origin": {
+            "api": "openai.responses",
+            "provider": "openai",
+            "model": "gpt-4o",
+            "response_model": "gpt-4o-2024-08-06",
+            "response_id": "resp_08cb637cfdc74423006ab396a1308c87d09f7a0b4422c9f4be"
+          },
           "provider_request_id": "req_e66def1a598849b69878bfe18fddfb3a",
           "finish_reason": "stop",
-          "provider": "openai",
-          "model": "gpt-4o-2024-08-06",
           "raw": {
             "id": "resp_08cb637cfdc74423006ab396a1308c87d09f7a0b4422c9f4be",
             "object": "response",
@@ -928,7 +973,24 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "The result of \\(2 - 5\\) is \\(-3\\)."
+              "text": "The result of \\(2 - 5\\) is \\(-3\\).",
+              "native": {
+                "item": {
+                  "content": [
+                    {
+                      "annotations": [],
+                      "logprobs": [],
+                      "text": "The result of \\(2 - 5\\) is \\(-3\\).",
+                      "type": "output_text"
+                    }
+                  ],
+                  "id": "msg_08cb637cfdc74423006ab396a1820487d08c4320f270906771",
+                  "role": "assistant",
+                  "status": "completed",
+                  "type": "message"
+                },
+                "fingerprint": 10980446232331066488
+              }
             }
           }
         }

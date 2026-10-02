@@ -188,8 +188,8 @@
             }
           },
           "rig_ecs::bus::effect::Issued": 0,
-          "rig_ecs::bus::handlers::ServedBy": 0,
-          "rig_ecs::bus::effect::Seq": 0
+          "rig_ecs::bus::effect::Seq": 0,
+          "rig_ecs::bus::handlers::ServedBy": 0
         },
         {
           "bevy_ecs::hierarchy::ChildOf": 3,
@@ -200,8 +200,8 @@
             }
           },
           "rig_ecs::bus::effect::Issued": 1,
-          "rig_ecs::bus::handlers::ServedBy": 0,
-          "rig_ecs::bus::effect::Seq": 1
+          "rig_ecs::bus::effect::Seq": 1,
+          "rig_ecs::bus::handlers::ServedBy": 0
         },
         {
           "bevy_ecs::hierarchy::ChildOf": 3,
@@ -209,10 +209,27 @@
             "content": [
               {
                 "type": "text",
-                "text": "ready"
+                "text": "ready",
+                "native": {
+                  "item": {
+                    "text": "ready",
+                    "type": "text"
+                  },
+                  "fingerprint": 815434921069355996
+                }
               }
             ],
-            "message_id": "msg_011CfLcbFV77Tjj13MFeNrDM",
+            "head": {
+              "origin": {
+                "api": "anthropic.messages",
+                "provider": "anthropic",
+                "model": "claude-sonnet-4-6",
+                "response_model": "claude-sonnet-4-6",
+                "response_id": "msg_011CfLcbFV77Tjj13MFeNrDM"
+              },
+              "stop": "stop",
+              "native": null
+            },
             "done": true,
             "usage_recorded": true,
             "stream_validated": 0
@@ -233,7 +250,14 @@
               "choice": [
                 {
                   "type": "text",
-                  "text": "ready"
+                  "text": "ready",
+                  "native": {
+                    "item": {
+                      "text": "ready",
+                      "type": "text"
+                    },
+                    "fingerprint": 815434921069355996
+                  }
                 }
               ],
               "usage": {
@@ -243,12 +267,15 @@
                 "cached_input_tokens": 0,
                 "cache_creation_input_tokens": 0
               },
-              "message_id": "msg_011CfLcbFV77Tjj13MFeNrDM",
-              "response_id": null,
+              "origin": {
+                "api": "anthropic.messages",
+                "provider": "anthropic",
+                "model": "claude-sonnet-4-6",
+                "response_model": "claude-sonnet-4-6",
+                "response_id": "msg_011CfLcbFV77Tjj13MFeNrDM"
+              },
               "provider_request_id": "req_011CfLcbF1adVYLjjPw8M6c9",
               "finish_reason": "stop",
-              "provider": "anthropic",
-              "model": "claude-sonnet-4-6",
               "raw": {
                 "container": null,
                 "content": [
@@ -280,20 +307,37 @@
             }
           },
           "rig_ecs::bus::effect::Issued": 2,
-          "rig_ecs::bus::handlers::ServedBy": 1,
-          "rig_ecs::bus::effect::Seq": 2
+          "rig_ecs::bus::effect::Seq": 2,
+          "rig_ecs::bus::handlers::ServedBy": 1
         },
         {
           "bevy_ecs::hierarchy::ChildOf": 3,
           "rig_ecs::agent::Role": "Assistant",
           "rig_ecs::agent::Utterance": {},
-          "rig_ecs::agent::content::parts::MessageId": "msg_011CfLcbFV77Tjj13MFeNrDM"
+          "rig_ecs::agent::content::parts::AssistantHead": {
+            "origin": {
+              "api": "anthropic.messages",
+              "provider": "anthropic",
+              "model": "claude-sonnet-4-6",
+              "response_model": "claude-sonnet-4-6",
+              "response_id": "msg_011CfLcbFV77Tjj13MFeNrDM"
+            },
+            "stop": "stop",
+            "native": null
+          }
         },
         {
           "bevy_ecs::hierarchy::ChildOf": 10,
           "rig_ecs::agent::content::parts::ContentPart": {
             "Text": {
-              "text": "ready"
+              "text": "ready",
+              "native": {
+                "item": {
+                  "text": "ready",
+                  "type": "text"
+                },
+                "fingerprint": 815434921069355996
+              }
             }
           }
         },
@@ -306,8 +350,8 @@
             }
           },
           "rig_ecs::bus::effect::Issued": 3,
-          "rig_ecs::bus::handlers::ServedBy": 0,
-          "rig_ecs::bus::effect::Seq": 3
+          "rig_ecs::bus::effect::Seq": 3,
+          "rig_ecs::bus::handlers::ServedBy": 0
         },
         {
           "rig_ecs::agent::Conversation": "golden-conversation",

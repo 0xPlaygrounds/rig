@@ -210,8 +210,8 @@
             }
           },
           "rig_ecs::bus::effect::Issued": 0,
-          "rig_ecs::bus::handlers::ServedBy": 0,
-          "rig_ecs::bus::effect::Seq": 0
+          "rig_ecs::bus::effect::Seq": 0,
+          "rig_ecs::bus::handlers::ServedBy": 0
         },
         {
           "bevy_ecs::hierarchy::ChildOf": 3,
@@ -219,10 +219,34 @@
             "content": [
               {
                 "type": "text",
-                "text": "ready"
+                "text": "ready",
+                "native": {
+                  "item": {
+                    "content": "ready",
+                    "refusal": null
+                  },
+                  "fingerprint": 815434921069355996
+                }
               }
             ],
-            "message_id": null,
+            "head": {
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openai",
+                "model": "gpt-5-mini",
+                "response_model": "gpt-5-mini-2025-08-07",
+                "response_id": "chatcmpl-EUPYsXlZeB9nBXYp90YDAAOJ1esG5"
+              },
+              "stop": "stop",
+              "native": {
+                "item": {
+                  "content": "ready",
+                  "refusal": null,
+                  "role": "assistant"
+                },
+                "fingerprint": 16268972914252074274
+              }
+            },
             "done": true,
             "usage_recorded": true,
             "stream_validated": 3
@@ -243,7 +267,14 @@
               "choice": [
                 {
                   "type": "text",
-                  "text": "ready"
+                  "text": "ready",
+                  "native": {
+                    "item": {
+                      "content": "ready",
+                      "refusal": null
+                    },
+                    "fingerprint": 815434921069355996
+                  }
                 }
               ],
               "usage": {
@@ -253,12 +284,23 @@
                 "cached_input_tokens": 0,
                 "reasoning_tokens": 0
               },
-              "message_id": null,
-              "response_id": "chatcmpl-ERDCCPLwIhtVWDfKKxvzTYvk8Vg3j",
-              "provider_request_id": "req_2ad450a02e234492a82aaa35d4f9b86e",
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openai",
+                "model": "gpt-5-mini",
+                "response_model": "gpt-5-mini-2025-08-07",
+                "response_id": "chatcmpl-EUPYsXlZeB9nBXYp90YDAAOJ1esG5"
+              },
+              "native": {
+                "item": {
+                  "content": "ready",
+                  "refusal": null,
+                  "role": "assistant"
+                },
+                "fingerprint": 16268972914252074274
+              },
+              "provider_request_id": "req_e6b5ede90c654ff6be779419d39b8a7f",
               "finish_reason": "stop",
-              "provider": "openai",
-              "model": "gpt-5-mini-2025-08-07",
               "raw": {
                 "usage": {
                   "prompt_tokens": 27,
@@ -272,11 +314,11 @@
                   }
                 },
                 "finish_reason": "stop",
-                "response_id": "chatcmpl-ERDCCPLwIhtVWDfKKxvzTYvk8Vg3j",
+                "response_id": "chatcmpl-EUPYsXlZeB9nBXYp90YDAAOJ1esG5",
                 "model": "gpt-5-mini-2025-08-07",
                 "additional_params": {
                   "created": 0,
-                  "obfuscation": "bYsI0y",
+                  "obfuscation": "uLwHiz",
                   "object": "chat.completion.chunk",
                   "service_tier": "default",
                   "system_fingerprint": null
@@ -285,7 +327,6 @@
             }
           },
           "rig_ecs::bus::effect::Issued": 1,
-          "rig_ecs::bus::handlers::ServedBy": 1,
           "rig_ecs::bus::effect::Seq": 1,
           "rig_ecs::bus::effect::Streamed": {
             "errors": [],
@@ -313,7 +354,14 @@
                   "part": 0,
                   "content": {
                     "type": "text",
-                    "text": "ready"
+                    "text": "ready",
+                    "native": {
+                      "item": {
+                        "content": "ready",
+                        "refusal": null
+                      },
+                      "fingerprint": 815434921069355996
+                    }
                   }
                 }
               }
@@ -325,7 +373,14 @@
                 "choice": [
                   {
                     "type": "text",
-                    "text": "ready"
+                    "text": "ready",
+                    "native": {
+                      "item": {
+                        "content": "ready",
+                        "refusal": null
+                      },
+                      "fingerprint": 815434921069355996
+                    }
                   }
                 ],
                 "usage": {
@@ -335,12 +390,23 @@
                   "cached_input_tokens": 0,
                   "reasoning_tokens": 0
                 },
-                "message_id": null,
-                "response_id": "chatcmpl-ERDCCPLwIhtVWDfKKxvzTYvk8Vg3j",
-                "provider_request_id": "req_2ad450a02e234492a82aaa35d4f9b86e",
+                "origin": {
+                  "api": "openai.chat",
+                  "provider": "openai",
+                  "model": "gpt-5-mini",
+                  "response_model": "gpt-5-mini-2025-08-07",
+                  "response_id": "chatcmpl-EUPYsXlZeB9nBXYp90YDAAOJ1esG5"
+                },
+                "native": {
+                  "item": {
+                    "content": "ready",
+                    "refusal": null,
+                    "role": "assistant"
+                  },
+                  "fingerprint": 16268972914252074274
+                },
+                "provider_request_id": "req_e6b5ede90c654ff6be779419d39b8a7f",
                 "finish_reason": "stop",
-                "provider": "openai",
-                "model": "gpt-5-mini-2025-08-07",
                 "raw": {
                   "usage": {
                     "prompt_tokens": 27,
@@ -354,11 +420,11 @@
                     }
                   },
                   "finish_reason": "stop",
-                  "response_id": "chatcmpl-ERDCCPLwIhtVWDfKKxvzTYvk8Vg3j",
+                  "response_id": "chatcmpl-EUPYsXlZeB9nBXYp90YDAAOJ1esG5",
                   "model": "gpt-5-mini-2025-08-07",
                   "additional_params": {
                     "created": 0,
-                    "obfuscation": "bYsI0y",
+                    "obfuscation": "uLwHiz",
                     "object": "chat.completion.chunk",
                     "service_tier": "default",
                     "system_fingerprint": null
@@ -366,19 +432,44 @@
                 }
               }
             }
-          }
+          },
+          "rig_ecs::bus::handlers::ServedBy": 1
         },
         {
           "bevy_ecs::hierarchy::ChildOf": 3,
           "rig_ecs::agent::Role": "Assistant",
           "rig_ecs::agent::Utterance": {},
-          "rig_ecs::agent::content::parts::MessageId": null
+          "rig_ecs::agent::content::parts::AssistantHead": {
+            "origin": {
+              "api": "openai.chat",
+              "provider": "openai",
+              "model": "gpt-5-mini",
+              "response_model": "gpt-5-mini-2025-08-07",
+              "response_id": "chatcmpl-EUPYsXlZeB9nBXYp90YDAAOJ1esG5"
+            },
+            "stop": "stop",
+            "native": {
+              "item": {
+                "content": "ready",
+                "refusal": null,
+                "role": "assistant"
+              },
+              "fingerprint": 16268972914252074274
+            }
+          }
         },
         {
           "bevy_ecs::hierarchy::ChildOf": 9,
           "rig_ecs::agent::content::parts::ContentPart": {
             "Text": {
-              "text": "ready"
+              "text": "ready",
+              "native": {
+                "item": {
+                  "content": "ready",
+                  "refusal": null
+                },
+                "fingerprint": 815434921069355996
+              }
             }
           }
         },
@@ -391,8 +482,8 @@
             }
           },
           "rig_ecs::bus::effect::Issued": 2,
-          "rig_ecs::bus::handlers::ServedBy": 0,
-          "rig_ecs::bus::effect::Seq": 2
+          "rig_ecs::bus::effect::Seq": 2,
+          "rig_ecs::bus::handlers::ServedBy": 0
         },
         {
           "rig_ecs::agent::Conversation": "golden-conversation",

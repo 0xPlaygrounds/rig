@@ -75,7 +75,13 @@
           "choice": [
             {
               "type": "text",
-              "text": "Maple trees are known for their distinctive lobed leaves and vibrant autumn colors."
+              "text": "Maple trees are known for their distinctive lobed leaves and vibrant autumn colors.",
+              "native": {
+                "item": {
+                  "content": "Maple trees are known for their distinctive lobed leaves and vibrant autumn colors."
+                },
+                "fingerprint": 17082460993108746870
+              }
             }
           ],
           "usage": {
@@ -84,11 +90,21 @@
             "total_tokens": 40,
             "cached_input_tokens": 0
           },
-          "message_id": null,
-          "response_id": "f26bcd20-d38a-4870-87e4-b4b14085365f",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "deepseek",
+            "model": "deepseek-chat",
+            "response_model": "deepseek-flash",
+            "response_id": "f26bcd20-d38a-4870-87e4-b4b14085365f"
+          },
+          "native": {
+            "item": {
+              "content": "Maple trees are known for their distinctive lobed leaves and vibrant autumn colors.",
+              "role": "assistant"
+            },
+            "fingerprint": 4919459816657788076
+          },
           "finish_reason": "length",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
           "raw": {
             "choices": [
               {

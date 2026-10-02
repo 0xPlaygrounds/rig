@@ -2,35 +2,11 @@
   "header": {
     "deliveries": [
       {
-        "batch": 3,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 4,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
         "batch": 5,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 10
-        }
-      },
-      {
-        "batch": 6,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 3
+          "items": 2
         }
       },
       {
@@ -46,7 +22,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -54,7 +30,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -70,7 +46,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -86,7 +62,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -94,7 +70,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -102,7 +78,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -118,7 +94,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -150,7 +126,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -190,7 +166,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -206,7 +182,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -214,7 +190,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -230,7 +206,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -270,7 +246,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -294,7 +270,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -302,7 +278,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -318,7 +294,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -334,7 +310,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -342,7 +318,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -350,7 +326,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -374,7 +350,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -382,7 +358,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -422,7 +398,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -430,7 +406,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -462,7 +438,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -478,7 +454,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -502,7 +478,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -518,7 +494,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -574,7 +550,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -598,7 +574,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -622,7 +598,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -694,7 +670,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -718,7 +694,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -726,7 +702,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -750,7 +726,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -758,7 +734,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -790,7 +766,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -806,7 +782,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -902,7 +878,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -926,7 +902,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -950,7 +926,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -958,7 +934,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -1014,7 +990,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -1030,7 +1006,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -1054,7 +1030,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -1070,7 +1046,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -1078,7 +1054,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -1102,7 +1078,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -1126,7 +1102,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -1142,7 +1118,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -1206,7 +1182,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -1214,7 +1190,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -1238,7 +1214,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -1246,7 +1222,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -1278,7 +1254,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -1302,7 +1278,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -1326,7 +1302,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -1334,7 +1310,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -1374,7 +1350,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -1390,7 +1366,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -1402,11 +1378,19 @@
         }
       },
       {
-        "batch": 179,
+        "batch": 178,
         "id": 0,
         "kind": {
           "delivery": "stream",
           "items": 2
+        }
+      },
+      {
+        "batch": 179,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
         }
       },
       {
@@ -1430,7 +1414,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -1446,7 +1430,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -1462,7 +1446,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -1470,7 +1454,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -1526,7 +1510,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -1542,7 +1526,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -1606,7 +1590,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -1622,7 +1606,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -1654,7 +1638,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -1662,7 +1646,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -1694,7 +1678,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -1734,7 +1718,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -1758,7 +1742,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -1766,7 +1750,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -1782,7 +1766,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -1790,7 +1774,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -1814,7 +1798,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -1822,7 +1806,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -1830,7 +1814,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -1854,7 +1838,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -1878,7 +1862,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -1886,7 +1870,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -1902,7 +1886,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -1910,7 +1894,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -1926,7 +1910,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -1934,7 +1918,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -1942,7 +1926,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -1982,7 +1966,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -1990,7 +1974,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -1998,7 +1982,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -2022,7 +2006,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -2030,7 +2014,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -2054,7 +2038,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -2070,7 +2054,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -2094,7 +2078,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -2142,7 +2126,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -2150,7 +2134,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -2166,7 +2150,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -2194,7 +2178,7 @@
         }
       },
       {
-        "batch": 316,
+        "batch": 278,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -2202,7 +2186,263 @@
         }
       },
       {
-        "batch": 316,
+        "batch": 279,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 280,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 281,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 282,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 283,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 284,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 285,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 286,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 287,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 288,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 289,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 290,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 291,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 292,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 293,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 294,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 295,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 296,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 297,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 298,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 299,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 300,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 301,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 302,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 303,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 304,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 305,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 306,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 307,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 308,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 309,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 329,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 340,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -2275,7 +2515,24 @@
           "choice": [
             {
               "type": "text",
-              "text": "Rust is a systems programming language that emerged from a project initiated by Mozilla employee Graydon Hoare in 2006. Initially a personal project, Rust aimed to create a language that offered both performance and safety, addressing common issues like memory errors and concurrency problems prevalent in languages like C and C++. Mozilla saw the potential in Rust and began sponsoring its development in 2009, providing resources and support to refine the language.\n\nThe first major milestone for Rust was the release of version 0.1 in 2010, which showcased its core principles: memory safety without a garbage collector, concurrency, and zero-cost abstractions. Rust's unique ownership model, which enforces strict rules on how memory is accessed and managed, was a groundbreaking feature that set it apart from other languages. This model prevents data races and ensures memory safety at compile time, eliminating a significant class of bugs.\n\nIn 2015, Rust reached a significant milestone with the release of version 1.0. This release marked Rust as stable and production-ready, leading to increased adoption in various industries. The language's emphasis on safety and performance made it particularly appealing for developing web browsers, operating systems, and other performance-critical applications. Mozilla's own browser engine, Servo, was one of the first major projects to leverage Rust, demonstrating its capabilities in real-world applications.\n\nSince then, Rust has continued to grow in popularity, driven by a strong community and active development. The language has been consistently praised for its excellent documentation, tooling, and community support. It has been adopted by major companies like Microsoft, Amazon, and Dropbox for various projects, further cementing its reputation as a reliable and efficient language for systems programming. Rust's ongoing evolution and its focus on safety and concurrency continue to attract developers looking for a modern alternative to traditional systems programming languages."
+              "text": "Rust is a systems programming language that emerged from a project initiated by Mozilla employee Graydon Hoare in 2006. Initially a personal project, Rust aimed to create a language that offered both performance and safety, addressing common issues like memory errors and concurrency problems prevalent in languages like C and C++. Mozilla saw the potential in Rust and began sponsoring its development in 2009, providing resources and support to refine the language.\n\nThe first major milestone for Rust was the release of version 0.1 in 2010, which showcased its core principles: memory safety without a garbage collector, concurrency, and zero-cost abstractions. Rust's unique ownership model, which enforces strict rules on how memory is accessed and managed, was a groundbreaking feature that set it apart from other languages. This model prevents data races and ensures memory safety at compile time, eliminating a significant class of bugs.\n\nIn 2015, Rust reached a significant milestone with the release of version 1.0. This release marked Rust as stable and production-ready, leading to increased adoption in various industries. The language's emphasis on safety and performance made it particularly appealing for developing web browsers, operating systems, and other performance-critical applications. Mozilla's own browser engine, Servo, was one of the first major projects to leverage Rust, demonstrating its capabilities in real-world applications.\n\nSince then, Rust has continued to grow in popularity, driven by a strong community and active development. The language has been consistently praised for its excellent documentation, tooling, and community support. It has been adopted by major companies like Microsoft, Amazon, and Dropbox for various projects, further cementing its reputation as a reliable and efficient language for systems programming. Rust's ongoing evolution and its focus on safety and concurrency continue to attract developers looking for a modern alternative to traditional systems programming languages.",
+              "native": {
+                "item": {
+                  "content": [
+                    {
+                      "annotations": [],
+                      "logprobs": [],
+                      "text": "Rust is a systems programming language that emerged from a project initiated by Mozilla employee Graydon Hoare in 2006. Initially a personal project, Rust aimed to create a language that offered both performance and safety, addressing common issues like memory errors and concurrency problems prevalent in languages like C and C++. Mozilla saw the potential in Rust and began sponsoring its development in 2009, providing resources and support to refine the language.\n\nThe first major milestone for Rust was the release of version 0.1 in 2010, which showcased its core principles: memory safety without a garbage collector, concurrency, and zero-cost abstractions. Rust's unique ownership model, which enforces strict rules on how memory is accessed and managed, was a groundbreaking feature that set it apart from other languages. This model prevents data races and ensures memory safety at compile time, eliminating a significant class of bugs.\n\nIn 2015, Rust reached a significant milestone with the release of version 1.0. This release marked Rust as stable and production-ready, leading to increased adoption in various industries. The language's emphasis on safety and performance made it particularly appealing for developing web browsers, operating systems, and other performance-critical applications. Mozilla's own browser engine, Servo, was one of the first major projects to leverage Rust, demonstrating its capabilities in real-world applications.\n\nSince then, Rust has continued to grow in popularity, driven by a strong community and active development. The language has been consistently praised for its excellent documentation, tooling, and community support. It has been adopted by major companies like Microsoft, Amazon, and Dropbox for various projects, further cementing its reputation as a reliable and efficient language for systems programming. Rust's ongoing evolution and its focus on safety and concurrency continue to attract developers looking for a modern alternative to traditional systems programming languages.",
+                      "type": "output_text"
+                    }
+                  ],
+                  "id": "msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
+                  "role": "assistant",
+                  "status": "completed",
+                  "type": "message"
+                },
+                "fingerprint": 8714090070451989369
+              }
             }
           ],
           "usage": {
@@ -2286,12 +2543,15 @@
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": "msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "response_id": "resp_07a8c3da1c500a56006ab395f29db887d0ba3a0a628fc5a9dd",
+          "origin": {
+            "api": "openai.responses",
+            "provider": "openai",
+            "model": "gpt-4o",
+            "response_model": "gpt-4o-2024-08-06",
+            "response_id": "resp_07a8c3da1c500a56006ab395f29db887d0ba3a0a628fc5a9dd"
+          },
           "provider_request_id": "req_e6d807d301384958abbb64c43868f444",
           "finish_reason": "stop",
-          "provider": "openai",
-          "model": "gpt-4o-2024-08-06",
           "raw": {
             "id": "resp_07a8c3da1c500a56006ab395f29db887d0ba3a0a628fc5a9dd",
             "object": "response",
@@ -5271,7 +5531,24 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "Rust is a systems programming language that emerged from a project initiated by Mozilla employee Graydon Hoare in 2006. Initially a personal project, Rust aimed to create a language that offered both performance and safety, addressing common issues like memory errors and concurrency problems prevalent in languages like C and C++. Mozilla saw the potential in Rust and began sponsoring its development in 2009, providing resources and support to refine the language.\n\nThe first major milestone for Rust was the release of version 0.1 in 2010, which showcased its core principles: memory safety without a garbage collector, concurrency, and zero-cost abstractions. Rust's unique ownership model, which enforces strict rules on how memory is accessed and managed, was a groundbreaking feature that set it apart from other languages. This model prevents data races and ensures memory safety at compile time, eliminating a significant class of bugs.\n\nIn 2015, Rust reached a significant milestone with the release of version 1.0. This release marked Rust as stable and production-ready, leading to increased adoption in various industries. The language's emphasis on safety and performance made it particularly appealing for developing web browsers, operating systems, and other performance-critical applications. Mozilla's own browser engine, Servo, was one of the first major projects to leverage Rust, demonstrating its capabilities in real-world applications.\n\nSince then, Rust has continued to grow in popularity, driven by a strong community and active development. The language has been consistently praised for its excellent documentation, tooling, and community support. It has been adopted by major companies like Microsoft, Amazon, and Dropbox for various projects, further cementing its reputation as a reliable and efficient language for systems programming. Rust's ongoing evolution and its focus on safety and concurrency continue to attract developers looking for a modern alternative to traditional systems programming languages."
+              "text": "Rust is a systems programming language that emerged from a project initiated by Mozilla employee Graydon Hoare in 2006. Initially a personal project, Rust aimed to create a language that offered both performance and safety, addressing common issues like memory errors and concurrency problems prevalent in languages like C and C++. Mozilla saw the potential in Rust and began sponsoring its development in 2009, providing resources and support to refine the language.\n\nThe first major milestone for Rust was the release of version 0.1 in 2010, which showcased its core principles: memory safety without a garbage collector, concurrency, and zero-cost abstractions. Rust's unique ownership model, which enforces strict rules on how memory is accessed and managed, was a groundbreaking feature that set it apart from other languages. This model prevents data races and ensures memory safety at compile time, eliminating a significant class of bugs.\n\nIn 2015, Rust reached a significant milestone with the release of version 1.0. This release marked Rust as stable and production-ready, leading to increased adoption in various industries. The language's emphasis on safety and performance made it particularly appealing for developing web browsers, operating systems, and other performance-critical applications. Mozilla's own browser engine, Servo, was one of the first major projects to leverage Rust, demonstrating its capabilities in real-world applications.\n\nSince then, Rust has continued to grow in popularity, driven by a strong community and active development. The language has been consistently praised for its excellent documentation, tooling, and community support. It has been adopted by major companies like Microsoft, Amazon, and Dropbox for various projects, further cementing its reputation as a reliable and efficient language for systems programming. Rust's ongoing evolution and its focus on safety and concurrency continue to attract developers looking for a modern alternative to traditional systems programming languages.",
+              "native": {
+                "item": {
+                  "content": [
+                    {
+                      "annotations": [],
+                      "logprobs": [],
+                      "text": "Rust is a systems programming language that emerged from a project initiated by Mozilla employee Graydon Hoare in 2006. Initially a personal project, Rust aimed to create a language that offered both performance and safety, addressing common issues like memory errors and concurrency problems prevalent in languages like C and C++. Mozilla saw the potential in Rust and began sponsoring its development in 2009, providing resources and support to refine the language.\n\nThe first major milestone for Rust was the release of version 0.1 in 2010, which showcased its core principles: memory safety without a garbage collector, concurrency, and zero-cost abstractions. Rust's unique ownership model, which enforces strict rules on how memory is accessed and managed, was a groundbreaking feature that set it apart from other languages. This model prevents data races and ensures memory safety at compile time, eliminating a significant class of bugs.\n\nIn 2015, Rust reached a significant milestone with the release of version 1.0. This release marked Rust as stable and production-ready, leading to increased adoption in various industries. The language's emphasis on safety and performance made it particularly appealing for developing web browsers, operating systems, and other performance-critical applications. Mozilla's own browser engine, Servo, was one of the first major projects to leverage Rust, demonstrating its capabilities in real-world applications.\n\nSince then, Rust has continued to grow in popularity, driven by a strong community and active development. The language has been consistently praised for its excellent documentation, tooling, and community support. It has been adopted by major companies like Microsoft, Amazon, and Dropbox for various projects, further cementing its reputation as a reliable and efficient language for systems programming. Rust's ongoing evolution and its focus on safety and concurrency continue to attract developers looking for a modern alternative to traditional systems programming languages.",
+                      "type": "output_text"
+                    }
+                  ],
+                  "id": "msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
+                  "role": "assistant",
+                  "status": "completed",
+                  "type": "message"
+                },
+                "fingerprint": 8714090070451989369
+              }
             }
           }
         }

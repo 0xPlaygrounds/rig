@@ -141,9 +141,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_e1e77aa2e0fb4378b534fcde"
-                }
+                "provider": "call_15eeb36106354b78be29e105"
               },
               "function": {
                 "name": "add",
@@ -152,22 +150,51 @@
                   "y": 25
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"x\": 17, \"y\": 25}",
+                    "name": "add"
+                  },
+                  "id": "call_15eeb36106354b78be29e105",
+                  "type": "function"
+                },
+                "fingerprint": 6183863555364358932
+              }
             }
           ],
           "usage": {
             "input_tokens": 346,
-            "output_tokens": 37,
-            "total_tokens": 383,
+            "output_tokens": 36,
+            "total_tokens": 382,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": null,
-          "response_id": "resp_a4f2d4d2-fc9d-449f-9876-23ae462719b1",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "doubleword",
+            "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+            "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
+            "response_id": "resp_1bd064a9-8d78-48c1-a802-96d1afa4b371"
+          },
+          "native": {
+            "item": {
+              "refusal": null,
+              "role": "assistant",
+              "tool_calls": [
+                {
+                  "function": {
+                    "arguments": "{\"x\": 17, \"y\": 25}",
+                    "name": "add"
+                  },
+                  "id": "call_15eeb36106354b78be29e105",
+                  "type": "function"
+                }
+              ]
+            },
+            "fingerprint": 13688351412874725492
+          },
           "finish_reason": "tool_calls",
-          "provider": "doubleword",
-          "model": "Qwen/Qwen3.5-397B-A17B-FP8",
           "raw": {
             "choices": [
               {
@@ -182,7 +209,7 @@
                         "arguments": "{\"x\": 17, \"y\": 25}",
                         "name": "add"
                       },
-                      "id": "call_e1e77aa2e0fb4378b534fcde",
+                      "id": "call_15eeb36106354b78be29e105",
                       "type": "function"
                     }
                   ]
@@ -190,7 +217,7 @@
               }
             ],
             "created": 0,
-            "id": "resp_a4f2d4d2-fc9d-449f-9876-23ae462719b1",
+            "id": "resp_1bd064a9-8d78-48c1-a802-96d1afa4b371",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "object": "chat.completion",
             "usage": {
@@ -201,7 +228,7 @@
               },
               "cache_creation_input_tokens": 0,
               "cache_read_input_tokens": 0,
-              "completion_tokens": 37,
+              "completion_tokens": 36,
               "completion_tokens_details": {
                 "audio_tokens": 0,
                 "image_tokens": 0,
@@ -214,7 +241,7 @@
                 "cached_tokens": 0,
                 "video_tokens": 0
               },
-              "total_tokens": 383
+              "total_tokens": 382
             }
           }
         }
@@ -270,14 +297,11 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_e1e77aa2e0fb4378b534fcde"
-                    }
+                    "provider": "call_15eeb36106354b78be29e105"
                   },
                   "function": {
                     "name": "add",
@@ -286,10 +310,44 @@
                       "y": 25
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"x\": 17, \"y\": 25}",
+                        "name": "add"
+                      },
+                      "id": "call_15eeb36106354b78be29e105",
+                      "type": "function"
+                    },
+                    "fingerprint": 6183863555364358932
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "doubleword",
+                "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+                "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
+                "response_id": "resp_1bd064a9-8d78-48c1-a802-96d1afa4b371"
+              },
+              "stop": "tool_use",
+              "native": {
+                "item": {
+                  "refusal": null,
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{\"x\": 17, \"y\": 25}",
+                        "name": "add"
+                      },
+                      "id": "call_15eeb36106354b78be29e105",
+                      "type": "function"
+                    }
+                  ]
+                },
+                "fingerprint": 13688351412874725492
+              }
             },
             {
               "role": "user",
@@ -297,9 +355,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_e1e77aa2e0fb4378b534fcde"
-                    }
+                    "provider": "call_15eeb36106354b78be29e105"
                   },
                   "name": "add",
                   "content": [
@@ -352,47 +408,79 @@
           "choice": [
             {
               "type": "reasoning",
-              "issuer": "doubleword",
-              "id": null,
-              "content": [
-                {
-                  "type": "text",
-                  "content": {
-                    "text": "Thinking Process:\n\n1.  **Analyze the Request:** The user wants me to use the `add` tool to add 17 and 25, and then reply with *just* the number (the result).\n2.  **Execute the Tool:** I need to call the `add` function with `x=17` and `y=25`.\n3.  **Process the Output:** The tool returned `42`.\n4.  **Format the Response:** The user explicitly requested \"just the number\".\n5.  **Final Output:** 42.\n\n*Self-Correction/Constraint Check:* The instruction says \"reply with just the number\". I should avoid any explanatory text.\n\n*Action:* Output \"42\".\n"
-                  }
-                }
-              ]
+              "text": "Thinking Process:\n\n1.  **Analyze the Request:** The user wants me to use the `add` tool to add 17 and 25, and then reply with *just* the number.\n2.  **Execute the Tool:** I have already called the `add` tool with `x=17` and `y=25`.\n3.  **Receive Result:** The tool returned `42`.\n4.  **Format the Output:** The user specified \"reply with just the number\".\n5.  **Final Output:** 42.\n\nConstraint Checklist & Confidence Score:\n1. Use add tool? Yes.\n2. Add 17 and 25? Yes.\n3. Reply with just the number? Yes.\n\nConfidence Score: 5/5\n\nMental Sandbox Simulation:\n- If I reply \"The answer is 42\", I violate the \"just the number\" constraint.\n- If I reply \"42\", I satisfy the constraint.\n- The tool call was successful.\n\nKey Learnings from Policy:\n- No need for specific policy checks here as it's a simple arithmetic task.\n- Ensure strict adherence to output format constraints (\"just the number\").\n\nStrategy: Output the result directly.\n\nOutput: 42\n",
+              "native": {
+                "item": {
+                  "reasoning_details": [
+                    {
+                      "format": "unknown",
+                      "index": 0,
+                      "text": "Thinking Process:\n\n1.  **Analyze the Request:** The user wants me to use the `add` tool to add 17 and 25, and then reply with *just* the number.\n2.  **Execute the Tool:** I have already called the `add` tool with `x=17` and `y=25`.\n3.  **Receive Result:** The tool returned `42`.\n4.  **Format the Output:** The user specified \"reply with just the number\".\n5.  **Final Output:** 42.\n\nConstraint Checklist & Confidence Score:\n1. Use add tool? Yes.\n2. Add 17 and 25? Yes.\n3. Reply with just the number? Yes.\n\nConfidence Score: 5/5\n\nMental Sandbox Simulation:\n- If I reply \"The answer is 42\", I violate the \"just the number\" constraint.\n- If I reply \"42\", I satisfy the constraint.\n- The tool call was successful.\n\nKey Learnings from Policy:\n- No need for specific policy checks here as it's a simple arithmetic task.\n- Ensure strict adherence to output format constraints (\"just the number\").\n\nStrategy: Output the result directly.\n\nOutput: 42\n",
+                      "type": "reasoning.text"
+                    }
+                  ],
+                  "reasoning_content": "Thinking Process:\n\n1.  **Analyze the Request:** The user wants me to use the `add` tool to add 17 and 25, and then reply with *just* the number.\n2.  **Execute the Tool:** I have already called the `add` tool with `x=17` and `y=25`.\n3.  **Receive Result:** The tool returned `42`.\n4.  **Format the Output:** The user specified \"reply with just the number\".\n5.  **Final Output:** 42.\n\nConstraint Checklist & Confidence Score:\n1. Use add tool? Yes.\n2. Add 17 and 25? Yes.\n3. Reply with just the number? Yes.\n\nConfidence Score: 5/5\n\nMental Sandbox Simulation:\n- If I reply \"The answer is 42\", I violate the \"just the number\" constraint.\n- If I reply \"42\", I satisfy the constraint.\n- The tool call was successful.\n\nKey Learnings from Policy:\n- No need for specific policy checks here as it's a simple arithmetic task.\n- Ensure strict adherence to output format constraints (\"just the number\").\n\nStrategy: Output the result directly.\n\nOutput: 42\n"
+                },
+                "fingerprint": 10645609471815020430
+              }
             },
             {
               "type": "text",
-              "text": "42"
+              "text": "\n\n42",
+              "native": {
+                "item": {
+                  "content": "\n\n42",
+                  "refusal": null
+                },
+                "fingerprint": 7313475253113603169
+              }
             }
           ],
           "usage": {
             "input_tokens": 400,
-            "output_tokens": 167,
-            "total_tokens": 567,
+            "output_tokens": 281,
+            "total_tokens": 681,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": null,
-          "response_id": "resp_77de1f07-3f75-4e52-9e12-35678cd21d19",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "doubleword",
+            "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+            "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
+            "response_id": "resp_eaea24a8-2d56-446d-9855-ef0903f43a92"
+          },
+          "native": {
+            "item": {
+              "reasoning_details": [
+                {
+                  "format": "unknown",
+                  "index": 0,
+                  "text": "Thinking Process:\n\n1.  **Analyze the Request:** The user wants me to use the `add` tool to add 17 and 25, and then reply with *just* the number.\n2.  **Execute the Tool:** I have already called the `add` tool with `x=17` and `y=25`.\n3.  **Receive Result:** The tool returned `42`.\n4.  **Format the Output:** The user specified \"reply with just the number\".\n5.  **Final Output:** 42.\n\nConstraint Checklist & Confidence Score:\n1. Use add tool? Yes.\n2. Add 17 and 25? Yes.\n3. Reply with just the number? Yes.\n\nConfidence Score: 5/5\n\nMental Sandbox Simulation:\n- If I reply \"The answer is 42\", I violate the \"just the number\" constraint.\n- If I reply \"42\", I satisfy the constraint.\n- The tool call was successful.\n\nKey Learnings from Policy:\n- No need for specific policy checks here as it's a simple arithmetic task.\n- Ensure strict adherence to output format constraints (\"just the number\").\n\nStrategy: Output the result directly.\n\nOutput: 42\n",
+                  "type": "reasoning.text"
+                }
+              ],
+              "content": "\n\n42",
+              "reasoning_content": "Thinking Process:\n\n1.  **Analyze the Request:** The user wants me to use the `add` tool to add 17 and 25, and then reply with *just* the number.\n2.  **Execute the Tool:** I have already called the `add` tool with `x=17` and `y=25`.\n3.  **Receive Result:** The tool returned `42`.\n4.  **Format the Output:** The user specified \"reply with just the number\".\n5.  **Final Output:** 42.\n\nConstraint Checklist & Confidence Score:\n1. Use add tool? Yes.\n2. Add 17 and 25? Yes.\n3. Reply with just the number? Yes.\n\nConfidence Score: 5/5\n\nMental Sandbox Simulation:\n- If I reply \"The answer is 42\", I violate the \"just the number\" constraint.\n- If I reply \"42\", I satisfy the constraint.\n- The tool call was successful.\n\nKey Learnings from Policy:\n- No need for specific policy checks here as it's a simple arithmetic task.\n- Ensure strict adherence to output format constraints (\"just the number\").\n\nStrategy: Output the result directly.\n\nOutput: 42\n",
+              "refusal": null,
+              "role": "assistant"
+            },
+            "fingerprint": 2813107440236183786
+          },
           "finish_reason": "stop",
-          "provider": "doubleword",
-          "model": "Qwen/Qwen3.5-397B-A17B-FP8",
           "raw": {
             "choices": [
               {
                 "finish_reason": "stop",
                 "index": 0,
                 "message": {
-                  "content": "42",
-                  "reasoning_content": "Thinking Process:\n\n1.  **Analyze the Request:** The user wants me to use the `add` tool to add 17 and 25, and then reply with *just* the number (the result).\n2.  **Execute the Tool:** I need to call the `add` function with `x=17` and `y=25`.\n3.  **Process the Output:** The tool returned `42`.\n4.  **Format the Response:** The user explicitly requested \"just the number\".\n5.  **Final Output:** 42.\n\n*Self-Correction/Constraint Check:* The instruction says \"reply with just the number\". I should avoid any explanatory text.\n\n*Action:* Output \"42\".\n",
+                  "content": "\n\n42",
+                  "reasoning_content": "Thinking Process:\n\n1.  **Analyze the Request:** The user wants me to use the `add` tool to add 17 and 25, and then reply with *just* the number.\n2.  **Execute the Tool:** I have already called the `add` tool with `x=17` and `y=25`.\n3.  **Receive Result:** The tool returned `42`.\n4.  **Format the Output:** The user specified \"reply with just the number\".\n5.  **Final Output:** 42.\n\nConstraint Checklist & Confidence Score:\n1. Use add tool? Yes.\n2. Add 17 and 25? Yes.\n3. Reply with just the number? Yes.\n\nConfidence Score: 5/5\n\nMental Sandbox Simulation:\n- If I reply \"The answer is 42\", I violate the \"just the number\" constraint.\n- If I reply \"42\", I satisfy the constraint.\n- The tool call was successful.\n\nKey Learnings from Policy:\n- No need for specific policy checks here as it's a simple arithmetic task.\n- Ensure strict adherence to output format constraints (\"just the number\").\n\nStrategy: Output the result directly.\n\nOutput: 42\n",
                   "reasoning_details": [
                     {
                       "format": "unknown",
                       "index": 0,
-                      "text": "Thinking Process:\n\n1.  **Analyze the Request:** The user wants me to use the `add` tool to add 17 and 25, and then reply with *just* the number (the result).\n2.  **Execute the Tool:** I need to call the `add` function with `x=17` and `y=25`.\n3.  **Process the Output:** The tool returned `42`.\n4.  **Format the Response:** The user explicitly requested \"just the number\".\n5.  **Final Output:** 42.\n\n*Self-Correction/Constraint Check:* The instruction says \"reply with just the number\". I should avoid any explanatory text.\n\n*Action:* Output \"42\".\n",
+                      "text": "Thinking Process:\n\n1.  **Analyze the Request:** The user wants me to use the `add` tool to add 17 and 25, and then reply with *just* the number.\n2.  **Execute the Tool:** I have already called the `add` tool with `x=17` and `y=25`.\n3.  **Receive Result:** The tool returned `42`.\n4.  **Format the Output:** The user specified \"reply with just the number\".\n5.  **Final Output:** 42.\n\nConstraint Checklist & Confidence Score:\n1. Use add tool? Yes.\n2. Add 17 and 25? Yes.\n3. Reply with just the number? Yes.\n\nConfidence Score: 5/5\n\nMental Sandbox Simulation:\n- If I reply \"The answer is 42\", I violate the \"just the number\" constraint.\n- If I reply \"42\", I satisfy the constraint.\n- The tool call was successful.\n\nKey Learnings from Policy:\n- No need for specific policy checks here as it's a simple arithmetic task.\n- Ensure strict adherence to output format constraints (\"just the number\").\n\nStrategy: Output the result directly.\n\nOutput: 42\n",
                       "type": "reasoning.text"
                     }
                   ],
@@ -402,7 +490,7 @@
               }
             ],
             "created": 0,
-            "id": "resp_77de1f07-3f75-4e52-9e12-35678cd21d19",
+            "id": "resp_eaea24a8-2d56-446d-9855-ef0903f43a92",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "object": "chat.completion",
             "usage": {
@@ -413,11 +501,11 @@
               },
               "cache_creation_input_tokens": 0,
               "cache_read_input_tokens": 0,
-              "completion_tokens": 167,
+              "completion_tokens": 281,
               "completion_tokens_details": {
                 "audio_tokens": 0,
                 "image_tokens": 0,
-                "reasoning_tokens": 140
+                "reasoning_tokens": 276
               },
               "prompt_tokens": 400,
               "prompt_tokens_details": {
@@ -426,7 +514,7 @@
                 "cached_tokens": 0,
                 "video_tokens": 0
               },
-              "total_tokens": 567
+              "total_tokens": 681
             }
           }
         }

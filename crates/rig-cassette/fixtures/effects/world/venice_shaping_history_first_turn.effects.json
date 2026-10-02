@@ -60,7 +60,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -94,7 +93,14 @@
           "choice": [
             {
               "type": "text",
-              "text": "Ada"
+              "text": "Ada",
+              "native": {
+                "item": {
+                  "content": "Ada",
+                  "name": null
+                },
+                "fingerprint": 11689945161834907103
+              }
             }
           ],
           "usage": {
@@ -102,11 +108,23 @@
             "output_tokens": 3,
             "total_tokens": 993
           },
-          "message_id": null,
-          "response_id": "chatcmpl-RczStPWB8YWvm5pPYHJwpS7L",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "venice",
+            "model": "mistral-small-3-2-24b-instruct",
+            "response_model": "mistral-small-3-2-24b-instruct",
+            "response_id": "chatcmpl-RFJMJ8oJ6y7zrNh8vcV1NXyF"
+          },
+          "native": {
+            "item": {
+              "content": "Ada",
+              "name": null,
+              "reasoning_content": null,
+              "role": "assistant"
+            },
+            "fingerprint": 8448737388283586131
+          },
           "finish_reason": "stop",
-          "provider": "venice",
-          "model": "mistral-small-3-2-24b-instruct",
           "raw": {
             "choices": [
               {
@@ -127,7 +145,7 @@
               "usd": 0.0000935625
             },
             "created": 0,
-            "id": "chatcmpl-RczStPWB8YWvm5pPYHJwpS7L",
+            "id": "chatcmpl-RFJMJ8oJ6y7zrNh8vcV1NXyF",
             "model": "mistral-small-3-2-24b-instruct",
             "object": "chat.completion",
             "service_tier": "default",

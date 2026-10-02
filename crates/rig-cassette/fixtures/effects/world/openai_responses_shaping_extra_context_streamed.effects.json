@@ -10,7 +10,7 @@
         }
       },
       {
-        "batch": 25,
+        "batch": 24,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -18,11 +18,19 @@
         }
       },
       {
+        "batch": 25,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 26,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -38,7 +46,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -54,7 +62,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -102,7 +110,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -114,15 +122,7 @@
         }
       },
       {
-        "batch": 38,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 51,
+        "batch": 40,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -159,7 +159,7 @@
         "required": {
           "golden/model:default": "completion"
         },
-        "policy": 10509036198680463020
+        "policy": 9428080907639856485
       }
     }
   },
@@ -197,7 +197,9 @@
           "temperature": null,
           "max_tokens": null,
           "tool_choice": null,
-          "additional_params": null,
+          "additional_params": {
+            "store": false
+          },
           "output_schema": null
         },
         "stream": true
@@ -208,36 +210,59 @@
           "choice": [
             {
               "type": "reasoning",
-              "issuer": "openai",
-              "id": "rs_00b0f43c455ec3c1006ab2b3df54f887d0a03a62160fe38a32",
-              "content": [
-                {
-                  "type": "encrypted",
-                  "content": "gAAAAABqsrPgOQ6gmLYieyVyvRkLQvqi9S0QdCNsZIWUaNPbe3zQWRUzkIIsdrhAnHYlAnoZWeUJWUp-s0CfVhKYKJIRGU1E90Y9FmDij_M7L-XKqpmQXaylC7zbZLSp81nA0EMHcGx9aFiqHjW9WdeIzeVE6-kf6ovvluQrF5kBybRjXNJHJdJAeqP6VMgTZsyKxH5O1SjM3n3TUDaRaa5Ev7AQiX4lEMiovvBJdPHVGs3glBOqt9kkMD1HuR4JF-mPlqlnvLtVT2uKahuNe6AvAtOBmrsSt66j8lwQ-rwhmiMEYvoHEdfbFgkVDHFIUwcH57X-NuNWqpcAWT3TauywVwJJYOTUk55VGoi76zZAI_JbR4ZOIprdVie8v6-A7gteqsvsrGQtecgBw-vIPgPlZxou5IBe8gkEAIiNbii83MiaCqnRrKHEkR1q1C1rzlwH7AWn38EabsuBqvMVHde1FMWyH2ZIGMgY_J2XH3dcClvQDPkRCw00RiWVL5UYGcbA_2rLPLRYdpDMBBJGiYc365PKKT1IW2UA7fbbDza7oGASB5dwS24dqTIljdEpqKKxnB023poTwdGj6J-mqo5GVLB1rbHNIzbZMv1gAu1oOKq6tzaDo-ZQMPl6zZArlZ7Vv84X8FKVPDxe_cSLqlCeGH3gP0McB8W-Q2kHkRd0VglfWhVrN5XO36ucIP8BDjF8B9i1TcWy2eky0RcVARcG0rmOFlFK7vo-OP4th9ORGh_5qNOC4HlSgcVAAKKyWPj9SXkZFJJufO36tzrVGWqBWIUBr_zC8ZjQXGzRoWVZujcmdbsF4tZjyosVTJV2oCC-4EK03nP-5Q24kzNpOd6MWYcXtrawjNhm8nJKYTiB8sSZ8-mxN6QBu1AYzVzamesuetP8iR5Oa9oFZtM4S3MIkEjzFmwhTQtAcalqkh-inOdy4KOcUQMgBcv1RovFUgcBaprj3E-2_nDoyfLZYx38MdNXY-UVFl4DSWqEU3VEcAS5nZ3BvI2119iEenU5X31_fnk_dRtiQGIGLdHWg5VuIND18_8QAU1kYQH3vkl--hfkdeiZ-RbK6qXz4kf8K8WQkqin4sx10ALwUf47fQyV-8Y2PBP6Bscs1q4NfUVcp-3QUSuuotkW9OhfeIyk-Kml6MVV0qY6yNltlGmowDnWL1kiy4YnNIu2w4qTOssAzHqh-vpNCQIKdVeq7hukE2wZYY9ldWl4dlN6_hlK_BF6_RHtH7U3haReWdJzegF5n-bFrNP7-1uCFoqWx7ZgT4rU1vuU727u4REfvgbhkyCUGsBWqB9iEmgKP9YKdTjtWvGUE8mqSl3iijKpt-jViP_fosiC_Cl1CeVR-kr2eG2e9-fhAEGGXeQHMdqvkxqYaMBkoSidYrh66J0ZVhaIgZRrWAb876833tFzRmqBx4DwGrPAZ9ShGOch0nsL7g3GcKjBDQtIQ2o1Xh8NWMzD1VsHG_iudBlB98ZWNcgS9ya-NtXd8HKpxh57ErPIbFxxQ7jbtnNsyccKOSnk9Z_DIbZLeDGIjDywlQknPwOp_5asaTf4Q_3QFgMUXQXdex_ui5C_8PIutL8_qMz36Xe-cnNbB8IbeSDB79RUx81vPqWO2MUEMRXiQ9X358eFuS0dUMhdbVPaWwMcFlriQ8MaY_8oCHCMVO9VBc__HX5Yue9ZcmmHZ3teViref8kSR61DbuMLJhQgDfiYd9ZwoyLcnc_Z1u6XdmaohS6FyVxrHU_hLy4A4C8DMkYARh6UrWlpRudtMJU3l8_4nfxUKHFEYi-hzPFChD7bWqlS8jUozl3bNGmZB27G9Q=="
-                }
-              ]
+              "text": "",
+              "native": {
+                "item": {
+                  "content": [],
+                  "encrypted_content": "gAAAAABqv0tOZKi4T6eyJabdQ3JNG05291aVZ3HBTWWrKqbYLEFhMppgjG87xy3b5sfR5dKwC7-O8hTI8fk1LR2GKAxNGxBtr0kk3bnCSVq583JYldkl8lmAc0dAXJNU-o2FKs4TfmS3oIzPNUAIdH7QySicxpUDXkl8bQswgxjL3eUoDqaf_VbwNSnjDKtNgevNqKH7rP2vQ_saPC7Ibv54Mqr26WnG6QDt4AtFoz-0Jag6DSrdb_rp3hDS_lKHAYy_WueyowKQTjh5wKAd-6L2xdq-Qjx1ntlM0To39Yb4psnJEb_3JIs6MDdFurwNszs3PEWNUNpHnNOKUEDzzQ4TZ0hm0mKuOr_h_-TNd4Sy-HqWedFAgPH2cFJCLw2Au-p5_bAEYJrhplAZHScdc1O-9WrvzYuCcClgENRJu9c4gDcjhZ9ih7g-Hx-N7YNBPcgpLzCB7r7wtz05aIe8w57QDxibvu-sd-kBrGUYUDcwOH6Z7_EghWqAbd3s0mE_zXW2Ikq0Ujdj9NsdPPQK8uXKbFt3GYXJeua9_iXwikMtDVWCGlhr3RxGFZf-SowV5bHoANPtY85Icsb4toNpup21RLBe55gnfUUODTava0ra-NjHJOd5k2zUj-LHq2bTFXBHABFnqk2ph95-Wq0J0Z3Tmys1UXLNiq7NmXwxvfep_Y9H_Lf338fc0vTzUN4bSVkhXxMX8zxxqgdu45GTstBfpsTT3gnlGrxkCdKDnzqTeoL7-P7IyQo6h6pxjpBDhYL23pvH7pqrsJSbN-f3ExMk9Or-GAgUw2BKurrYfQ6HBqjN9OjAJPKgbZ5vrpgdQBpDY5uLKaoax0567Gb6lvj4eg8yUBHNTNz1ttcfFb7CJA-kopwyX44XCnHL_EWJURb9t8ZVAjI9L9_6KiDHxqasCnHJg9rk1UTCgucxq4LYAoO-yWDgGcTgohZLrXFF4TWQOP_jbYp3yqxF_D6tUlpVwwhlSZYMjNElpNZFIBOy4rOmm1MmU2gr5xT3Bsn1__s1EzmJh2YyGgiK1Tyb6pS6gH9K_wPGon_fJ3zdHWg9ERKqHQzBnjaQNCpb7gU--gb9xUdVD02n34nXABE3WARqrvTsoVdiSVM8d5iJwcK1UV7KcgvII4cVjUs04ldvD-RNJb-98bp1dExAlfZ6WIOLeNp3-Vcrbcypy5gzlhpDK01zyaoPHcs7W0JJ-lQc0CiLg70IIL_jbW1f3TWKEIoN5Xv29-n_ggD6J0auFYS0lngq3D57jH0k1T89nWKBvpn1lnenevbLqx3G0sJZ4fomNrIhTFac9-B6TjI0RiUUullDEmhV5TZL4RhBOCU4RooKTDvJ9wIQhq8O7GmA-lOZXxcsJGJtj2dNPuyEHjj57uQGHWIwy7D2v8wI861d0EBy8cH5qfpRI0QWAmbryLK2AVhrskhEYKFwM-6VmElq5XH1osltAtEyETF4NAqVMkptYhbPMVOo9twChxPYTHtDshAet1Oycv6YsKgXHtAjovby8ZoBLdin5lQA2UBD2QV0eJD1D8-gfiyAkMsHVRiXpZBAKfr4lPaz44AXnBCEVmxAtJSaebJIduv1zS6sp2sDRNmgWSBhUjttvHOhtn2J_QzamlutJhv5olAp09ngCWr91rdzqNaftpjNgDpSwBreSdufA1EsNyB1RHmMD-FfwlC9Kqw5LK31cEn9j9wJIG0aFLArooxU7d7pe6wgNNJcHnrn1RziEhetZQQZF3qMq5O0q7PfhEMtWkyeM05ZgKWVyYPVELxxaGmMmTwwJvFJfcFzhb9sXNczdFj3w6QXjQwYTgdJjI8vNZsxyNdh5i0Vq_3Cj9Y=",
+                  "id": "rs_0796149fddbbe48a016abf4b4d713087d08be922958ed1bc64",
+                  "summary": [],
+                  "type": "reasoning"
+                },
+                "fingerprint": 17796600549832473228
+              }
             },
             {
               "type": "text",
-              "text": "A glarb-glarb is an ancient farming tool from the planet Jiro."
+              "text": "A glarb-glarb is an ancient farming tool from the planet Jiro.",
+              "native": {
+                "item": {
+                  "content": [
+                    {
+                      "annotations": [],
+                      "logprobs": [],
+                      "text": "A glarb-glarb is an ancient farming tool from the planet Jiro.",
+                      "type": "output_text"
+                    }
+                  ],
+                  "id": "msg_0796149fddbbe48a016abf4b4e149887d0a7463e87d38d1bcb",
+                  "role": "assistant",
+                  "status": "completed",
+                  "type": "message"
+                },
+                "fingerprint": 9658890132495485441
+              }
             }
           ],
           "usage": {
             "input_tokens": 65,
-            "output_tokens": 134,
-            "total_tokens": 199,
+            "output_tokens": 144,
+            "total_tokens": 209,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 64
           },
-          "message_id": "msg_00b0f43c455ec3c1006ab2b3e0784087d0880914ecfd7efc61",
-          "response_id": "resp_00b0f43c455ec3c1006ab2b3dee3b087d083d794bca3a1b668",
-          "provider_request_id": "req_ac87decac9cc43c2b4ed0a2039dedb37",
+          "origin": {
+            "api": "openai.responses",
+            "provider": "openai",
+            "model": "gpt-5-mini",
+            "response_model": "gpt-5-mini-2025-08-07",
+            "response_id": "resp_0796149fddbbe48a016abf4b4d086487d08b8292f0de17a1ac"
+          },
+          "provider_request_id": "req_bad708048a5e4801be8f73114c461023",
           "finish_reason": "stop",
-          "provider": "openai",
-          "model": "gpt-5-mini-2025-08-07",
           "raw": {
-            "id": "resp_00b0f43c455ec3c1006ab2b3dee3b087d083d794bca3a1b668",
+            "id": "resp_0796149fddbbe48a016abf4b4d086487d08b8292f0de17a1ac",
             "object": "response",
             "created_at": 0,
             "status": "completed",
@@ -258,22 +283,22 @@
                 "cached_tokens": 0,
                 "cache_write_tokens": 0
               },
-              "output_tokens": 134,
+              "output_tokens": 144,
               "output_tokens_details": {
                 "reasoning_tokens": 64
               },
-              "total_tokens": 199
+              "total_tokens": 209
             },
             "output": [
               {
                 "type": "reasoning",
-                "id": "rs_00b0f43c455ec3c1006ab2b3df54f887d0a03a62160fe38a32",
+                "id": "rs_0796149fddbbe48a016abf4b4d713087d08be922958ed1bc64",
                 "summary": [],
-                "encrypted_content": "gAAAAABqsrPgv3NyVBQXMgC7n2MUnfpfL45g_LKtLvcR1CRkHW0wiSpTwYZfyNRjNCHMhaF34_sw8BQvqi_pHcIlrQg_P6iXlPGaclB_n26QRLWhwAWNFf6rLm4Kr8hCPQWiY_0UcEd6i3nKr8vpktTcpx-_gG1C1Gah4indLOlHZH5--C9GjrvkTsIrMON2ui6LQtBSYrI0b6XhOUPm01QbPBIQw6_GJKJ2QbDsNxdBPA2587haO77uuP4POR0Akb_qF-GEqVV08XlNuRsTx31fnNPU1yLQ1U54ib20G-_5McmObqEx8NMbwRVe3CnRNeq4z8Nl6tV8BeJ2Lgb3-D7Rt02lHuoCQ4ZCWmAr4-kXoBCDOnDuaypG-CzrXtrUw4E7y2nk-h2eWz0cXUNS9-w2BGy6GcHn4pEdPeN3pCcfE5iG5zgnPjGtlsQEaOMXRyeJupmWw6IM4R_dzBbOELfLPRqosGXdqe7VOURRIeuWbbS-17B90pftuh0-PSSQqThMgO_da8oq5ToBXgT1_fsictk7BhW_OnAn-qxHBo8zst1rUNwm27-oKfQt2MkkdjoCNVb8SOArW-GUafzg7YDu2LiuPZjRdbH24yi0Ya6ZIEGqbA4VmWRjIRq_-UuKq6g7VuPjeGsd1fP4lXaP7RSXA6XtoXZiGKqS2RyDYOVryEBf7_z5v9OkV3kI-5yGn5csNIz9ZmQ-_xZvYnJhywxpPRhKSUuPx3ZY00RIU_RGGiR0dXtzme2GX4h6uJf3sNa3Ne3-G8QUetpcNz62i4idSV1JL0JW4XMhKoX8nZGqmuFJ0L5aghqzzLwmamJrqrCClL1iyFHyN1x-AvvbmlZpd_kFnnkTozSfqRQaG8Sw-v_TXd_ZWXOkeiOVr_rzkPbpUt2xVFbmrmKLCAva1yImJYB6Q6KwD8HY41aC3Wq0z9raw5SrMmPqZXWGzJyTV2Rwt3e91ERK1Zz2nnyzNyPGNU8Z5swu5T6O5Lp7frFdCUMazerRr8BqVkInadX7j2QfNcLOQoMbMh4HFwg19in50I3ametUimXkDJ5s_yeWI8h-k2WTCiTtxWHCn13mPGcAyXI6xnl7Vx7whpmjGnS7M9C8rWCHtL-0qe4TJMomMyCQUDdfol21JmPfR1JObzzse8rINP92U9kf0NonehpESjwkDSV7SD3lCH5CCEcJy9_KKr-Ybn5GLxc_8suCejQNgaIqnBxG6gYGocMsSm8SnK9N-ZPqkxcl9wGxqSnUsOxG_q13hD3IKnSFM9r8MTucGptLl-BAlj5eDWr6W0DyS56RAzc8kpf4rjQDxgehQjUGnD6GcP5pWkvlmN9NH5N988ImGyJLTYNFKL2Z1KI4dyRvMWY0APpWpAZOke-a6OGe6bqbd224hNsgu4OKnQ_kdDw9TrEhsEULMubXz2WQR9QgS4bovfFN8-U6KC7jffhcix__3qiH42JzjKqL3I6pPtlRY5Q8iZPl6j1oCO38D2RkgEnuCEH0tUVPaPai0TwPIpFh7vkLoOLMAxd29MyqU3I1Fgsik-d5qZvQtJbvPizhB6jebbx2yk-sql9VKfMfwRBz9JmtrevrV-WKrmTtjqvLOX3zx5onfxcko381BkTYBZqM-M25GbUwlpphGWZBsEjbPX1hxuS-LAQn55ybOTI4ul3M4vKBXmwOxH7-jkNuXkgCF2kPJIzCALM24BoaOZKFGqTfto2MfqmwUEUuW9Gom2O6HT0RqWFOaBC7s9BDadDqBM3nYQtPquPmNmnT_KV-aOCuV3Z5B-lj0aFhkUuRvuNHBYOxuFyW9mRWMJMbf4yCXA==",
+                "encrypted_content": "gAAAAABqv0tOZkML2o0ZABaNPyc7i2wIKmtaXK5LXnzdneYzx4CpkoJ1rocSksDsIfhNyedf1PkD4PHBoO7GcXqQAV8-N-Xc4tmByxqQuk_VZ7aIsOTVyhBQ_yhq8xWkSuUp60rsBjPPw0l1RkqhuDw-SQayLaC64Z6KrBq-iZK33hJR7PEUbwcHEBXmPiXRgS-M4FEClq-fFK_5ECL9FVdlh22FYICnlvr4f5DRapTrFCwBWNf36uEFGzg-Xc3qaffF6DqJBWTfaBPmuqhu03klwHQtSFIMQH7m1bnc0fj5__aAUYfmRFbfG5xFxXlhxL3rqSpzstb08nBQC4xz17P92vcnvVj942owPqnV4lJvWKlx1g6DJH9ab33FryGwZT00Cw4YfMlcx1dxJUWZItb4mqxMKvxjWOZqGxBojhrzb0c6zodbqDslZ29Ftcm8uG-4drSnL_wXaAxEJKn10GHUkV8h2S8Oa1DxGTh0mlW_qfWoQJCjiZW06HWet-fiKxvv162zm_mLhx6WND9YGJl7WDsLEq1R_rLWDJUBJjY3ZQlPNnw8Rs3OwUBl3Xuxt-2wTNVbpx0wIJpUq0FmUREHKOMGthvE8dVRkTNjXzjeX0BsEPaf_Bcs7Lrl4zEyOIo97niAfKuXXq2YE8cyFRvsHL-0nUDmgXhZuwgT-Spk1U43To0F_TXMxWZY3iqcIkWyI9B1y66NNEDtwzJItxEE25rUbctWMUupRJwspzlBK7EMmPPCwSwC4e69JUQhUoadSUhYXNfqYnXeBBQ75DL_rd4dNTJO5kvRKkmhsy9XrkYmjSM9sjYks_IXhdT6THacT0RGcoxlwRnG9pLBUcvugTB-6z8pshI-PrVWQa2HPx-dfxknL62yq2FlCJnX0EABw9G-6IbjPAKQaZ7meui5kWRrejNeJrNVGTatbOMGql1hnUpxkHcEoMOz_LzxEDIc8RyzBo5ttdHLv_XX-jCal_-8BT1ljYKvfLed-NUZNrEEc9PUOp6_ICFAjJigKDcWEmavb3CsvHE_GU7iNTfr_FwMNG9qMBm1q7pCxnPEUPOUYL5il-QWQrZ4tHzFS4YJA8mK9EnlYqqqRlsy5MJnTpvk3jMIADb-1zFvMzSWchmjvuJspEHXtBpREfAVj6iK8PxNFNQemgXz8v-8SNp22MZtcnGjlk1TsCXEwbIKlG711I1TSmC-apSL9LDRe7DtDsh8E5b05Jgoai7f6RCJ8uWVGRgrFlzDN_WNxli4ywL4QSGCaNw8VFIs4hnk6ZGpCDOC5Xe2Etw6zXnN7dFV7dhV653QTfWTY0NWpYH1sZ7s4e-9MuLhOyy_5bRvR6H9xkA3RgzWMoy-Qe09ChwFIVVhYBHg4KNoQOFpAqOjjngEUOWnIrFM-k75Ks3G7oyysFfh7lHRDt5sXF2xz55UWGx_NQlpluGhjPKzS4TgoFqjmEVYq_kKStfMSX-NY0kX_z2AD55I5zIVLd9B3aEmcLX_MXHaaNahYiyBRSOtLUfD4FtwxgxBXj3z8cTGYc_1onzO12GC_fjU9eoDtSCecScip3wmUOsXhfbXX1cOOIHwQ61tsVAQfTwfsjvjeKUIav5Tffz09pn6hSmgb1nGbZmZbZ_uofJkFHh95P8067s8yKGwxg-hRMl9XrYJH6Nvtrs_1xJ-Q7WFwmmbsSEfvcIwD7WlgF3XfMO5Bizlcs8mq5gEEQ1g6SHDtPo_Prr-g7XKtL7u9bL6Id7MRg6ZbQKDEPfTMCijYh-XCrdyTF05q480C6IuNZw7QvXjxXligcaEHm9Szjc2z-M1CgE7rarIRci44S--rKiTaNBMO5SIN65O-nw=",
                 "status": null
               },
               {
-                "id": "msg_00b0f43c455ec3c1006ab2b3e0784087d0880914ecfd7efc61",
+                "id": "msg_0796149fddbbe48a016abf4b4e149887d0a7463e87d38d1bcb",
                 "role": "assistant",
                 "status": "completed",
                 "content": [
@@ -299,7 +324,7 @@
             "prompt_cache_retention": "in_memory",
             "parallel_tool_calls": true,
             "service_tier": "default",
-            "store": true
+            "store": false
           }
         }
       },
@@ -319,14 +344,17 @@
             "part": 0,
             "content": {
               "type": "reasoning",
-              "issuer": "openai",
-              "id": "rs_00b0f43c455ec3c1006ab2b3df54f887d0a03a62160fe38a32",
-              "content": [
-                {
-                  "type": "encrypted",
-                  "content": "gAAAAABqsrPgOQ6gmLYieyVyvRkLQvqi9S0QdCNsZIWUaNPbe3zQWRUzkIIsdrhAnHYlAnoZWeUJWUp-s0CfVhKYKJIRGU1E90Y9FmDij_M7L-XKqpmQXaylC7zbZLSp81nA0EMHcGx9aFiqHjW9WdeIzeVE6-kf6ovvluQrF5kBybRjXNJHJdJAeqP6VMgTZsyKxH5O1SjM3n3TUDaRaa5Ev7AQiX4lEMiovvBJdPHVGs3glBOqt9kkMD1HuR4JF-mPlqlnvLtVT2uKahuNe6AvAtOBmrsSt66j8lwQ-rwhmiMEYvoHEdfbFgkVDHFIUwcH57X-NuNWqpcAWT3TauywVwJJYOTUk55VGoi76zZAI_JbR4ZOIprdVie8v6-A7gteqsvsrGQtecgBw-vIPgPlZxou5IBe8gkEAIiNbii83MiaCqnRrKHEkR1q1C1rzlwH7AWn38EabsuBqvMVHde1FMWyH2ZIGMgY_J2XH3dcClvQDPkRCw00RiWVL5UYGcbA_2rLPLRYdpDMBBJGiYc365PKKT1IW2UA7fbbDza7oGASB5dwS24dqTIljdEpqKKxnB023poTwdGj6J-mqo5GVLB1rbHNIzbZMv1gAu1oOKq6tzaDo-ZQMPl6zZArlZ7Vv84X8FKVPDxe_cSLqlCeGH3gP0McB8W-Q2kHkRd0VglfWhVrN5XO36ucIP8BDjF8B9i1TcWy2eky0RcVARcG0rmOFlFK7vo-OP4th9ORGh_5qNOC4HlSgcVAAKKyWPj9SXkZFJJufO36tzrVGWqBWIUBr_zC8ZjQXGzRoWVZujcmdbsF4tZjyosVTJV2oCC-4EK03nP-5Q24kzNpOd6MWYcXtrawjNhm8nJKYTiB8sSZ8-mxN6QBu1AYzVzamesuetP8iR5Oa9oFZtM4S3MIkEjzFmwhTQtAcalqkh-inOdy4KOcUQMgBcv1RovFUgcBaprj3E-2_nDoyfLZYx38MdNXY-UVFl4DSWqEU3VEcAS5nZ3BvI2119iEenU5X31_fnk_dRtiQGIGLdHWg5VuIND18_8QAU1kYQH3vkl--hfkdeiZ-RbK6qXz4kf8K8WQkqin4sx10ALwUf47fQyV-8Y2PBP6Bscs1q4NfUVcp-3QUSuuotkW9OhfeIyk-Kml6MVV0qY6yNltlGmowDnWL1kiy4YnNIu2w4qTOssAzHqh-vpNCQIKdVeq7hukE2wZYY9ldWl4dlN6_hlK_BF6_RHtH7U3haReWdJzegF5n-bFrNP7-1uCFoqWx7ZgT4rU1vuU727u4REfvgbhkyCUGsBWqB9iEmgKP9YKdTjtWvGUE8mqSl3iijKpt-jViP_fosiC_Cl1CeVR-kr2eG2e9-fhAEGGXeQHMdqvkxqYaMBkoSidYrh66J0ZVhaIgZRrWAb876833tFzRmqBx4DwGrPAZ9ShGOch0nsL7g3GcKjBDQtIQ2o1Xh8NWMzD1VsHG_iudBlB98ZWNcgS9ya-NtXd8HKpxh57ErPIbFxxQ7jbtnNsyccKOSnk9Z_DIbZLeDGIjDywlQknPwOp_5asaTf4Q_3QFgMUXQXdex_ui5C_8PIutL8_qMz36Xe-cnNbB8IbeSDB79RUx81vPqWO2MUEMRXiQ9X358eFuS0dUMhdbVPaWwMcFlriQ8MaY_8oCHCMVO9VBc__HX5Yue9ZcmmHZ3teViref8kSR61DbuMLJhQgDfiYd9ZwoyLcnc_Z1u6XdmaohS6FyVxrHU_hLy4A4C8DMkYARh6UrWlpRudtMJU3l8_4nfxUKHFEYi-hzPFChD7bWqlS8jUozl3bNGmZB27G9Q=="
-                }
-              ]
+              "text": "",
+              "native": {
+                "item": {
+                  "content": [],
+                  "encrypted_content": "gAAAAABqv0tOZKi4T6eyJabdQ3JNG05291aVZ3HBTWWrKqbYLEFhMppgjG87xy3b5sfR5dKwC7-O8hTI8fk1LR2GKAxNGxBtr0kk3bnCSVq583JYldkl8lmAc0dAXJNU-o2FKs4TfmS3oIzPNUAIdH7QySicxpUDXkl8bQswgxjL3eUoDqaf_VbwNSnjDKtNgevNqKH7rP2vQ_saPC7Ibv54Mqr26WnG6QDt4AtFoz-0Jag6DSrdb_rp3hDS_lKHAYy_WueyowKQTjh5wKAd-6L2xdq-Qjx1ntlM0To39Yb4psnJEb_3JIs6MDdFurwNszs3PEWNUNpHnNOKUEDzzQ4TZ0hm0mKuOr_h_-TNd4Sy-HqWedFAgPH2cFJCLw2Au-p5_bAEYJrhplAZHScdc1O-9WrvzYuCcClgENRJu9c4gDcjhZ9ih7g-Hx-N7YNBPcgpLzCB7r7wtz05aIe8w57QDxibvu-sd-kBrGUYUDcwOH6Z7_EghWqAbd3s0mE_zXW2Ikq0Ujdj9NsdPPQK8uXKbFt3GYXJeua9_iXwikMtDVWCGlhr3RxGFZf-SowV5bHoANPtY85Icsb4toNpup21RLBe55gnfUUODTava0ra-NjHJOd5k2zUj-LHq2bTFXBHABFnqk2ph95-Wq0J0Z3Tmys1UXLNiq7NmXwxvfep_Y9H_Lf338fc0vTzUN4bSVkhXxMX8zxxqgdu45GTstBfpsTT3gnlGrxkCdKDnzqTeoL7-P7IyQo6h6pxjpBDhYL23pvH7pqrsJSbN-f3ExMk9Or-GAgUw2BKurrYfQ6HBqjN9OjAJPKgbZ5vrpgdQBpDY5uLKaoax0567Gb6lvj4eg8yUBHNTNz1ttcfFb7CJA-kopwyX44XCnHL_EWJURb9t8ZVAjI9L9_6KiDHxqasCnHJg9rk1UTCgucxq4LYAoO-yWDgGcTgohZLrXFF4TWQOP_jbYp3yqxF_D6tUlpVwwhlSZYMjNElpNZFIBOy4rOmm1MmU2gr5xT3Bsn1__s1EzmJh2YyGgiK1Tyb6pS6gH9K_wPGon_fJ3zdHWg9ERKqHQzBnjaQNCpb7gU--gb9xUdVD02n34nXABE3WARqrvTsoVdiSVM8d5iJwcK1UV7KcgvII4cVjUs04ldvD-RNJb-98bp1dExAlfZ6WIOLeNp3-Vcrbcypy5gzlhpDK01zyaoPHcs7W0JJ-lQc0CiLg70IIL_jbW1f3TWKEIoN5Xv29-n_ggD6J0auFYS0lngq3D57jH0k1T89nWKBvpn1lnenevbLqx3G0sJZ4fomNrIhTFac9-B6TjI0RiUUullDEmhV5TZL4RhBOCU4RooKTDvJ9wIQhq8O7GmA-lOZXxcsJGJtj2dNPuyEHjj57uQGHWIwy7D2v8wI861d0EBy8cH5qfpRI0QWAmbryLK2AVhrskhEYKFwM-6VmElq5XH1osltAtEyETF4NAqVMkptYhbPMVOo9twChxPYTHtDshAet1Oycv6YsKgXHtAjovby8ZoBLdin5lQA2UBD2QV0eJD1D8-gfiyAkMsHVRiXpZBAKfr4lPaz44AXnBCEVmxAtJSaebJIduv1zS6sp2sDRNmgWSBhUjttvHOhtn2J_QzamlutJhv5olAp09ngCWr91rdzqNaftpjNgDpSwBreSdufA1EsNyB1RHmMD-FfwlC9Kqw5LK31cEn9j9wJIG0aFLArooxU7d7pe6wgNNJcHnrn1RziEhetZQQZF3qMq5O0q7PfhEMtWkyeM05ZgKWVyYPVELxxaGmMmTwwJvFJfcFzhb9sXNczdFj3w6QXjQwYTgdJjI8vNZsxyNdh5i0Vq_3Cj9Y=",
+                  "id": "rs_0796149fddbbe48a016abf4b4d713087d08be922958ed1bc64",
+                  "summary": [],
+                  "type": "reasoning"
+                },
+                "fingerprint": 17796600549832473228
+              }
             }
           }
         },
@@ -481,7 +509,24 @@
             "part": 1,
             "content": {
               "type": "text",
-              "text": "A glarb-glarb is an ancient farming tool from the planet Jiro."
+              "text": "A glarb-glarb is an ancient farming tool from the planet Jiro.",
+              "native": {
+                "item": {
+                  "content": [
+                    {
+                      "annotations": [],
+                      "logprobs": [],
+                      "text": "A glarb-glarb is an ancient farming tool from the planet Jiro.",
+                      "type": "output_text"
+                    }
+                  ],
+                  "id": "msg_0796149fddbbe48a016abf4b4e149887d0a7463e87d38d1bcb",
+                  "role": "assistant",
+                  "status": "completed",
+                  "type": "message"
+                },
+                "fingerprint": 9658890132495485441
+              }
             }
           }
         }

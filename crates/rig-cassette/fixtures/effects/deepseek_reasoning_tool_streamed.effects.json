@@ -119,23 +119,18 @@
           "choice": [
             {
               "type": "reasoning",
-              "issuer": "deepseek",
-              "id": null,
-              "content": [
-                {
-                  "type": "text",
-                  "content": {
-                    "text": "We need answer. Need call add tool. Must then reply with just number. Let's call."
-                  }
-                }
-              ]
+              "text": "We need answer. Need use add tool. Then reply just number. Let's call.",
+              "native": {
+                "item": {
+                  "reasoning_content": "We need answer. Need use add tool. Then reply just number. Let's call."
+                },
+                "fingerprint": 7457863639887445363
+              }
             },
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_00_fkvEZ57qqR4YRa7bRAxj9853"
-                }
+                "provider": "call_00_2NKJDq5vMnj1DLCL6Z3v6051"
               },
               "function": {
                 "name": "add",
@@ -144,38 +139,68 @@
                   "y": 25
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"x\": 17, \"y\": 25}",
+                    "name": "add"
+                  },
+                  "id": "call_00_2NKJDq5vMnj1DLCL6Z3v6051",
+                  "type": "function"
+                },
+                "fingerprint": 14709192756282012752
+              }
             }
           ],
           "usage": {
             "input_tokens": 361,
-            "output_tokens": 73,
-            "total_tokens": 434,
+            "output_tokens": 71,
+            "total_tokens": 432,
             "cached_input_tokens": 128,
-            "reasoning_tokens": 20
+            "reasoning_tokens": 18
           },
-          "message_id": null,
-          "response_id": "9b1b3e25-a80d-4049-9d24-01904efcd741",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "deepseek",
+            "model": "deepseek-flash",
+            "response_model": "deepseek-flash",
+            "response_id": "a4cfaec1-b549-46e8-9c96-2df2955eb275"
+          },
+          "native": {
+            "item": {
+              "content": "",
+              "reasoning_content": "We need answer. Need use add tool. Then reply just number. Let's call.",
+              "role": "assistant",
+              "tool_calls": [
+                {
+                  "function": {
+                    "arguments": "{\"x\": 17, \"y\": 25}",
+                    "name": "add"
+                  },
+                  "id": "call_00_2NKJDq5vMnj1DLCL6Z3v6051",
+                  "type": "function"
+                }
+              ]
+            },
+            "fingerprint": 9445341726439349532
+          },
           "finish_reason": "tool_calls",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
           "raw": {
             "usage": {
               "prompt_tokens": 361,
-              "completion_tokens": 73,
-              "total_tokens": 434,
+              "completion_tokens": 71,
+              "total_tokens": 432,
               "prompt_tokens_details": {
                 "cached_tokens": 128
               },
               "completion_tokens_details": {
-                "reasoning_tokens": 20
+                "reasoning_tokens": 18
               },
               "prompt_cache_hit_tokens": 128,
               "prompt_cache_miss_tokens": 233
             },
             "finish_reason": "tool_calls",
-            "response_id": "9b1b3e25-a80d-4049-9d24-01904efcd741",
+            "response_id": "a4cfaec1-b549-46e8-9c96-2df2955eb275",
             "model": "deepseek-flash",
             "additional_params": {
               "created": 0,
@@ -239,7 +264,7 @@
           "value": {
             "event": "reasoning",
             "part": 0,
-            "text": " call"
+            "text": " use"
           }
         },
         {
@@ -271,15 +296,7 @@
           "value": {
             "event": "reasoning",
             "part": 0,
-            "text": " Must"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "reasoning",
-            "part": 0,
-            "text": " then"
+            "text": " Then"
           }
         },
         {
@@ -288,14 +305,6 @@
             "event": "reasoning",
             "part": 0,
             "text": " reply"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "reasoning",
-            "part": 0,
-            "text": " with"
           }
         },
         {
@@ -378,9 +387,7 @@
             "content": {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_00_fkvEZ57qqR4YRa7bRAxj9853"
-                }
+                "provider": "call_00_2NKJDq5vMnj1DLCL6Z3v6051"
               },
               "function": {
                 "name": "add",
@@ -389,8 +396,17 @@
                   "y": 25
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"x\": 17, \"y\": 25}",
+                    "name": "add"
+                  },
+                  "id": "call_00_2NKJDq5vMnj1DLCL6Z3v6051",
+                  "type": "function"
+                },
+                "fingerprint": 14709192756282012752
+              }
             }
           }
         },
@@ -401,16 +417,13 @@
             "part": 0,
             "content": {
               "type": "reasoning",
-              "issuer": "deepseek",
-              "id": null,
-              "content": [
-                {
-                  "type": "text",
-                  "content": {
-                    "text": "We need answer. Need call add tool. Must then reply with just number. Let's call."
-                  }
-                }
-              ]
+              "text": "We need answer. Need use add tool. Then reply just number. Let's call.",
+              "native": {
+                "item": {
+                  "reasoning_content": "We need answer. Need use add tool. Then reply just number. Let's call."
+                },
+                "fingerprint": 7457863639887445363
+              }
             }
           }
         }
@@ -464,27 +477,21 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "reasoning",
-                  "issuer": "deepseek",
-                  "id": null,
-                  "content": [
-                    {
-                      "type": "text",
-                      "content": {
-                        "text": "We need answer. Need call add tool. Must then reply with just number. Let's call."
-                      }
-                    }
-                  ]
+                  "text": "We need answer. Need use add tool. Then reply just number. Let's call.",
+                  "native": {
+                    "item": {
+                      "reasoning_content": "We need answer. Need use add tool. Then reply just number. Let's call."
+                    },
+                    "fingerprint": 7457863639887445363
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_00_fkvEZ57qqR4YRa7bRAxj9853"
-                    }
+                    "provider": "call_00_2NKJDq5vMnj1DLCL6Z3v6051"
                   },
                   "function": {
                     "name": "add",
@@ -493,10 +500,45 @@
                       "y": 25
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"x\": 17, \"y\": 25}",
+                        "name": "add"
+                      },
+                      "id": "call_00_2NKJDq5vMnj1DLCL6Z3v6051",
+                      "type": "function"
+                    },
+                    "fingerprint": 14709192756282012752
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "a4cfaec1-b549-46e8-9c96-2df2955eb275"
+              },
+              "stop": "tool_use",
+              "native": {
+                "item": {
+                  "content": "",
+                  "reasoning_content": "We need answer. Need use add tool. Then reply just number. Let's call.",
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{\"x\": 17, \"y\": 25}",
+                        "name": "add"
+                      },
+                      "id": "call_00_2NKJDq5vMnj1DLCL6Z3v6051",
+                      "type": "function"
+                    }
+                  ]
+                },
+                "fingerprint": 9445341726439349532
+              }
             },
             {
               "role": "user",
@@ -504,9 +546,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_00_fkvEZ57qqR4YRa7bRAxj9853"
-                    }
+                    "provider": "call_00_2NKJDq5vMnj1DLCL6Z3v6051"
                   },
                   "name": "add",
                   "content": [
@@ -561,50 +601,64 @@
           "choice": [
             {
               "type": "reasoning",
-              "issuer": "deepseek",
-              "id": null,
-              "content": [
-                {
-                  "type": "text",
-                  "content": {
-                    "text": "42"
-                  }
-                }
-              ]
+              "text": "Need final just number.",
+              "native": {
+                "item": {
+                  "reasoning_content": "Need final just number."
+                },
+                "fingerprint": 7641485825173050361
+              }
             },
             {
               "type": "text",
-              "text": "42"
+              "text": "42",
+              "native": {
+                "item": {
+                  "content": "42"
+                },
+                "fingerprint": 15903709825217441321
+              }
             }
           ],
           "usage": {
-            "input_tokens": 447,
-            "output_tokens": 3,
-            "total_tokens": 450,
+            "input_tokens": 445,
+            "output_tokens": 7,
+            "total_tokens": 452,
             "cached_input_tokens": 256,
-            "reasoning_tokens": 1
+            "reasoning_tokens": 5
           },
-          "message_id": null,
-          "response_id": "8fd60c41-65c6-42c9-9142-f1fb7e348964",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "deepseek",
+            "model": "deepseek-flash",
+            "response_model": "deepseek-flash",
+            "response_id": "1e4954c2-c828-4ba4-b344-a6ef55478f53"
+          },
+          "native": {
+            "item": {
+              "content": "42",
+              "reasoning_content": "Need final just number.",
+              "role": "assistant"
+            },
+            "fingerprint": 14166965533610615513
+          },
           "finish_reason": "stop",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
           "raw": {
             "usage": {
-              "prompt_tokens": 447,
-              "completion_tokens": 3,
-              "total_tokens": 450,
+              "prompt_tokens": 445,
+              "completion_tokens": 7,
+              "total_tokens": 452,
               "prompt_tokens_details": {
                 "cached_tokens": 256
               },
               "completion_tokens_details": {
-                "reasoning_tokens": 1
+                "reasoning_tokens": 5
               },
               "prompt_cache_hit_tokens": 256,
-              "prompt_cache_miss_tokens": 191
+              "prompt_cache_miss_tokens": 189
             },
             "finish_reason": "stop",
-            "response_id": "8fd60c41-65c6-42c9-9142-f1fb7e348964",
+            "response_id": "1e4954c2-c828-4ba4-b344-a6ef55478f53",
             "model": "deepseek-flash",
             "additional_params": {
               "created": 0,
@@ -628,7 +682,39 @@
           "value": {
             "event": "reasoning",
             "part": 0,
-            "text": "42"
+            "text": "Need"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " final"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " just"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " number"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": "."
           }
         },
         {
@@ -651,10 +737,16 @@
           "item": "event",
           "value": {
             "event": "end",
-            "part": 1,
+            "part": 0,
             "content": {
-              "type": "text",
-              "text": "42"
+              "type": "reasoning",
+              "text": "Need final just number.",
+              "native": {
+                "item": {
+                  "reasoning_content": "Need final just number."
+                },
+                "fingerprint": 7641485825173050361
+              }
             }
           }
         },
@@ -662,19 +754,16 @@
           "item": "event",
           "value": {
             "event": "end",
-            "part": 0,
+            "part": 1,
             "content": {
-              "type": "reasoning",
-              "issuer": "deepseek",
-              "id": null,
-              "content": [
-                {
-                  "type": "text",
-                  "content": {
-                    "text": "42"
-                  }
-                }
-              ]
+              "type": "text",
+              "text": "42",
+              "native": {
+                "item": {
+                  "content": "42"
+                },
+                "fingerprint": 15903709825217441321
+              }
             }
           }
         }

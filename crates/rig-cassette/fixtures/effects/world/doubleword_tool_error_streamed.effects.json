@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 8,
+        "batch": 11,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,45 +10,37 @@
         }
       },
       {
-        "batch": 10,
+        "batch": 14,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 11,
+        "batch": 15,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 16,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 3
-        }
-      },
-      {
-        "batch": 17,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 18,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
         "batch": 20,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 21,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 24,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -56,7 +48,7 @@
         }
       },
       {
-        "batch": 20,
+        "batch": 24,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -177,9 +169,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_9c5d468761b646c58c5806f5"
-                }
+                "provider": "call_db054f16c1d74d8897913da9"
               },
               "function": {
                 "name": "add",
@@ -188,27 +178,56 @@
                   "y": 25
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"x\": 17, \"y\": 25}",
+                    "name": "add"
+                  },
+                  "id": "call_db054f16c1d74d8897913da9",
+                  "type": "function"
+                },
+                "fingerprint": 1239568004565241074
+              }
             }
           ],
           "usage": {
             "input_tokens": 338,
-            "output_tokens": 37,
-            "total_tokens": 375,
+            "output_tokens": 36,
+            "total_tokens": 374,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": null,
-          "response_id": "gen-1790145985-jpkFBzbTI8A2dVl2jjI6",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "doubleword",
+            "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+            "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
+            "response_id": "gen-1790914602-xb777S6tnxpYaE9WXWzI"
+          },
+          "native": {
+            "item": {
+              "role": "assistant",
+              "content": "",
+              "tool_calls": [
+                {
+                  "function": {
+                    "arguments": "{\"x\": 17, \"y\": 25}",
+                    "name": "add"
+                  },
+                  "id": "call_db054f16c1d74d8897913da9",
+                  "type": "function"
+                }
+              ]
+            },
+            "fingerprint": 9400249570449526018
+          },
           "finish_reason": "tool_calls",
-          "provider": "doubleword",
-          "model": "Qwen/Qwen3.5-397B-A17B-FP8",
           "raw": {
             "usage": {
               "prompt_tokens": 338,
-              "completion_tokens": 37,
-              "total_tokens": 375,
+              "completion_tokens": 36,
+              "total_tokens": 374,
               "prompt_tokens_details": {
                 "cached_tokens": 0,
                 "cache_write_tokens": 0
@@ -225,7 +244,7 @@
               "cache_read_input_tokens": 0
             },
             "finish_reason": "tool_calls",
-            "response_id": "gen-1790145985-jpkFBzbTI8A2dVl2jjI6",
+            "response_id": "gen-1790914602-xb777S6tnxpYaE9WXWzI",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "additional_params": {
               "created": 0,
@@ -259,9 +278,7 @@
             "content": {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_9c5d468761b646c58c5806f5"
-                }
+                "provider": "call_db054f16c1d74d8897913da9"
               },
               "function": {
                 "name": "add",
@@ -270,8 +287,17 @@
                   "y": 25
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"x\": 17, \"y\": 25}",
+                    "name": "add"
+                  },
+                  "id": "call_db054f16c1d74d8897913da9",
+                  "type": "function"
+                },
+                "fingerprint": 1239568004565241074
+              }
             }
           }
         }
@@ -335,14 +361,11 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_9c5d468761b646c58c5806f5"
-                    }
+                    "provider": "call_db054f16c1d74d8897913da9"
                   },
                   "function": {
                     "name": "add",
@@ -351,10 +374,44 @@
                       "y": 25
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"x\": 17, \"y\": 25}",
+                        "name": "add"
+                      },
+                      "id": "call_db054f16c1d74d8897913da9",
+                      "type": "function"
+                    },
+                    "fingerprint": 1239568004565241074
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "doubleword",
+                "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+                "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
+                "response_id": "gen-1790914602-xb777S6tnxpYaE9WXWzI"
+              },
+              "stop": "tool_use",
+              "native": {
+                "item": {
+                  "role": "assistant",
+                  "content": "",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{\"x\": 17, \"y\": 25}",
+                        "name": "add"
+                      },
+                      "id": "call_db054f16c1d74d8897913da9",
+                      "type": "function"
+                    }
+                  ]
+                },
+                "fingerprint": 9400249570449526018
+              }
             },
             {
               "role": "user",
@@ -362,9 +419,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_9c5d468761b646c58c5806f5"
-                    }
+                    "provider": "call_db054f16c1d74d8897913da9"
                   },
                   "name": "add",
                   "content": [
@@ -415,26 +470,42 @@
           "choice": [
             {
               "type": "text",
-              "text": "The adder is broken."
+              "text": "The adder is broken.",
+              "native": {
+                "item": {
+                  "content": "The adder is broken."
+                },
+                "fingerprint": 15429366047148669751
+              }
             }
           ],
           "usage": {
             "input_tokens": 397,
-            "output_tokens": 7,
-            "total_tokens": 404,
+            "output_tokens": 6,
+            "total_tokens": 403,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": null,
-          "response_id": "gen-1790145987-xB7Qg7O7xfqufD5JxBrs",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "doubleword",
+            "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+            "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
+            "response_id": "gen-1790914604-26Q1QjG9H07E1A7kPE1U"
+          },
+          "native": {
+            "item": {
+              "content": "The adder is broken.",
+              "role": "assistant"
+            },
+            "fingerprint": 3671977202678499801
+          },
           "finish_reason": "stop",
-          "provider": "doubleword",
-          "model": "Qwen/Qwen3.5-397B-A17B-FP8",
           "raw": {
             "usage": {
               "prompt_tokens": 397,
-              "completion_tokens": 7,
-              "total_tokens": 404,
+              "completion_tokens": 6,
+              "total_tokens": 403,
               "prompt_tokens_details": {
                 "cached_tokens": 0,
                 "cache_write_tokens": 0
@@ -451,7 +522,7 @@
               "cache_read_input_tokens": 0
             },
             "finish_reason": "stop",
-            "response_id": "gen-1790145987-xB7Qg7O7xfqufD5JxBrs",
+            "response_id": "gen-1790914604-26Q1QjG9H07E1A7kPE1U",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "additional_params": {
               "created": 0,
@@ -482,31 +553,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": " add"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": "er"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " is"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " broken"
+            "text": " adder is broken"
           }
         },
         {
@@ -524,7 +571,13 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "The adder is broken."
+              "text": "The adder is broken.",
+              "native": {
+                "item": {
+                  "content": "The adder is broken."
+                },
+                "fingerprint": 15429366047148669751
+              }
             }
           }
         }

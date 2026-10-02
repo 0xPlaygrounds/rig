@@ -79,7 +79,13 @@
           "choice": [
             {
               "type": "text",
-              "text": "Rust is a systems programming language that enforces memory safety at compile time through its ownership and borrowing rules, without needing a garbage collector. Memory safety matters because bugs like use-after-free, buffer overflows, and data races cause crashes and security vulnerabilities, which Rust prevents by design."
+              "text": "Rust is a systems programming language that enforces memory safety at compile time through its ownership and borrowing rules, without needing a garbage collector. Memory safety matters because bugs like use-after-free, buffer overflows, and data races cause crashes and security vulnerabilities, which Rust prevents by design.",
+              "native": {
+                "item": {
+                  "content": "Rust is a systems programming language that enforces memory safety at compile time through its ownership and borrowing rules, without needing a garbage collector. Memory safety matters because bugs like use-after-free, buffer overflows, and data races cause crashes and security vulnerabilities, which Rust prevents by design."
+                },
+                "fingerprint": 16192179913258200687
+              }
             }
           ],
           "usage": {
@@ -88,11 +94,21 @@
             "total_tokens": 89,
             "cached_input_tokens": 0
           },
-          "message_id": null,
-          "response_id": "33341f7f-c049-4921-a0e7-992090b19060",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "deepseek",
+            "model": "deepseek-flash",
+            "response_model": "deepseek-flash",
+            "response_id": "33341f7f-c049-4921-a0e7-992090b19060"
+          },
+          "native": {
+            "item": {
+              "content": "Rust is a systems programming language that enforces memory safety at compile time through its ownership and borrowing rules, without needing a garbage collector. Memory safety matters because bugs like use-after-free, buffer overflows, and data races cause crashes and security vulnerabilities, which Rust prevents by design.",
+              "role": "assistant"
+            },
+            "fingerprint": 6924204515444598681
+          },
           "finish_reason": "stop",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
           "raw": {
             "choices": [
               {

@@ -124,9 +124,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_120a0e68b80644079ecd4917"
-                }
+                "provider": "call_2db9c40f033d4d33942d24c0"
               },
               "function": {
                 "name": "add",
@@ -135,22 +133,51 @@
                   "y": 25
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"x\": 17, \"y\": 25}",
+                    "name": "add"
+                  },
+                  "id": "call_2db9c40f033d4d33942d24c0",
+                  "type": "function"
+                },
+                "fingerprint": 9728219083345213816
+              }
             }
           ],
           "usage": {
             "input_tokens": 346,
-            "output_tokens": 37,
-            "total_tokens": 383,
+            "output_tokens": 36,
+            "total_tokens": 382,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": null,
-          "response_id": "resp_8dc4c714-b2f3-4453-bfdc-2188046d12ad",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "doubleword",
+            "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+            "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
+            "response_id": "resp_4352451d-e4eb-4236-8dc5-3bb0918fd537"
+          },
+          "native": {
+            "item": {
+              "refusal": null,
+              "role": "assistant",
+              "tool_calls": [
+                {
+                  "function": {
+                    "arguments": "{\"x\": 17, \"y\": 25}",
+                    "name": "add"
+                  },
+                  "id": "call_2db9c40f033d4d33942d24c0",
+                  "type": "function"
+                }
+              ]
+            },
+            "fingerprint": 13959623784331768256
+          },
           "finish_reason": "tool_calls",
-          "provider": "doubleword",
-          "model": "Qwen/Qwen3.5-397B-A17B-FP8",
           "raw": {
             "choices": [
               {
@@ -165,7 +192,7 @@
                         "arguments": "{\"x\": 17, \"y\": 25}",
                         "name": "add"
                       },
-                      "id": "call_120a0e68b80644079ecd4917",
+                      "id": "call_2db9c40f033d4d33942d24c0",
                       "type": "function"
                     }
                   ]
@@ -173,7 +200,7 @@
               }
             ],
             "created": 0,
-            "id": "resp_8dc4c714-b2f3-4453-bfdc-2188046d12ad",
+            "id": "resp_4352451d-e4eb-4236-8dc5-3bb0918fd537",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "object": "chat.completion",
             "usage": {
@@ -184,7 +211,7 @@
               },
               "cache_creation_input_tokens": 0,
               "cache_read_input_tokens": 0,
-              "completion_tokens": 37,
+              "completion_tokens": 36,
               "completion_tokens_details": {
                 "audio_tokens": 0,
                 "image_tokens": 0,
@@ -197,7 +224,7 @@
                 "cached_tokens": 0,
                 "video_tokens": 0
               },
-              "total_tokens": 383
+              "total_tokens": 382
             }
           }
         }
@@ -251,14 +278,11 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_120a0e68b80644079ecd4917"
-                    }
+                    "provider": "call_2db9c40f033d4d33942d24c0"
                   },
                   "function": {
                     "name": "add",
@@ -267,10 +291,44 @@
                       "y": 25
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"x\": 17, \"y\": 25}",
+                        "name": "add"
+                      },
+                      "id": "call_2db9c40f033d4d33942d24c0",
+                      "type": "function"
+                    },
+                    "fingerprint": 9728219083345213816
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "doubleword",
+                "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+                "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
+                "response_id": "resp_4352451d-e4eb-4236-8dc5-3bb0918fd537"
+              },
+              "stop": "tool_use",
+              "native": {
+                "item": {
+                  "refusal": null,
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{\"x\": 17, \"y\": 25}",
+                        "name": "add"
+                      },
+                      "id": "call_2db9c40f033d4d33942d24c0",
+                      "type": "function"
+                    }
+                  ]
+                },
+                "fingerprint": 13959623784331768256
+              }
             },
             {
               "role": "user",
@@ -278,9 +336,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_120a0e68b80644079ecd4917"
-                    }
+                    "provider": "call_2db9c40f033d4d33942d24c0"
                   },
                   "name": "add",
                   "content": [
@@ -333,21 +389,39 @@
           "choice": [
             {
               "type": "text",
-              "text": "42"
+              "text": "42",
+              "native": {
+                "item": {
+                  "content": "42",
+                  "refusal": null
+                },
+                "fingerprint": 15903709825217441321
+              }
             }
           ],
           "usage": {
             "input_tokens": 402,
-            "output_tokens": 3,
-            "total_tokens": 405,
+            "output_tokens": 2,
+            "total_tokens": 404,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": null,
-          "response_id": "resp_64a6302f-79ce-4685-8ca4-503ae20324bc",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "doubleword",
+            "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+            "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
+            "response_id": "resp_f50317a6-5355-46fb-adb6-7e9e76b6d7ae"
+          },
+          "native": {
+            "item": {
+              "content": "42",
+              "refusal": null,
+              "role": "assistant"
+            },
+            "fingerprint": 5372475738331673531
+          },
           "finish_reason": "stop",
-          "provider": "doubleword",
-          "model": "Qwen/Qwen3.5-397B-A17B-FP8",
           "raw": {
             "choices": [
               {
@@ -361,7 +435,7 @@
               }
             ],
             "created": 0,
-            "id": "resp_64a6302f-79ce-4685-8ca4-503ae20324bc",
+            "id": "resp_f50317a6-5355-46fb-adb6-7e9e76b6d7ae",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "object": "chat.completion",
             "usage": {
@@ -372,7 +446,7 @@
               },
               "cache_creation_input_tokens": 0,
               "cache_read_input_tokens": 0,
-              "completion_tokens": 3,
+              "completion_tokens": 2,
               "completion_tokens_details": {
                 "audio_tokens": 0,
                 "image_tokens": 0,
@@ -385,7 +459,7 @@
                 "cached_tokens": 0,
                 "video_tokens": 0
               },
-              "total_tokens": 405
+              "total_tokens": 404
             }
           }
         }

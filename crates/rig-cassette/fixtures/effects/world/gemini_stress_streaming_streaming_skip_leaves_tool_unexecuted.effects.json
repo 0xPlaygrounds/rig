@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 6,
+        "batch": 9,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,52 +10,36 @@
         }
       },
       {
-        "batch": 6,
+        "batch": 9,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 7,
+        "batch": 10,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 12,
+        "batch": 16,
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 3
         }
       },
       {
-        "batch": 13,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 14,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 4
-        }
-      },
-      {
-        "batch": 14,
+        "batch": 16,
         "id": 2,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 20,
+        "batch": 24,
         "id": 3,
         "kind": {
           "delivery": "stream",
@@ -63,15 +47,7 @@
         }
       },
       {
-        "batch": 21,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 22,
+        "batch": 25,
         "id": 3,
         "kind": {
           "delivery": "stream",
@@ -79,7 +55,7 @@
         }
       },
       {
-        "batch": 22,
+        "batch": 25,
         "id": 3,
         "kind": {
           "delivery": "outcome"
@@ -258,27 +234,49 @@
                   "y": 6
                 }
               },
-              "signature": "CnIBaRR9EwSMJcGOFUdmD3jKT1y55A7g1iDrTamWzZ9WPU8KABY92wYY1NhcgxzzoLBswBeKdv8grIPWO2gBuuJ9dveQB1dxcjrj/FYppVg8mvBqrJt1nLSINyiGbgbgCrFDs3dhsDJRIlzcAxz0u8dTkcAKxQEBaRR9Ew+6Z/gFVYwnEsIf8qPTxLbtZus6x/uG9fQN0+nvswaUYt9ZtOvrVTCgHp2+d1q4ptNFJYzfQ1ZSbowfn5LNmeyKm2yl7bU30rIxJ74EYPajtQCYH5HPcJj0MYjhfm2sH9LiEEXZ8A9wrzjvR53MdJ7yRxw8AG4McsrkN8WJLJe65n+Ihsb/BZ8fSN5ILKJH1u58Aoh1+qihIXIPYoPX4m2ev5sAog1DFoOymcEVZvzHvvxs/LJbDgD8OJ9s9aPX0wpnAWkUfRN7npZ6bAIFmCu4/jhCX4Dc7Vx5ERU4VdDy6yiX3Wb2pBq4wIc6R14nR6a+GA1ni/Nz2FZxaNkRvM1fZFgM6VZNruXhSIAMsdqfRs1hrLbFV/xRr/PsZdA7lpeutPTtZG4Vbw==",
-              "additional_params": null
+              "native": {
+                "item": {
+                  "functionCall": {
+                    "args": {
+                      "x": 14,
+                      "y": 6
+                    },
+                    "name": "add"
+                  },
+                  "thoughtSignature": "CmYBaRR9EzBfahhhYCNlqkdOWtooGINEHsahg/CdTODC4rC8LE3HxcQLKne/G3qshNMxwoQJB6iyqUb/P8NYOi/OWBSpc/sb2r4bqGqJF2qBAImx+c3N0+L9aCKYwpzRq2wKNAxuSS8KwgEBaRR9EzI7ro7MXgqH8fTjQRqRHOHjsY6dVG5qdds9gZNWaIYQ535oURsTrl2MAB6//KnR53dirWmBLorRQCPf04qUKp1eDKbV2nYOjreGjIE4ZzHcXlayRUAXvE2lXMxiqdWNmPths8yGc/oM+0XML0Mlz5Wq+9xFEjgm/5I3PjTpB953KcN4lN/x4RJ5OaAP6ZwGsiOB2C6NMS2HpSK6WeVbujDiivs7RvE2EEfVy2+ThfdiB0e97h4xUHpo0w11HA=="
+                },
+                "fingerprint": 15879525233566552350
+              }
             }
           ],
           "usage": {
             "input_tokens": 162,
-            "output_tokens": 100,
-            "total_tokens": 262,
-            "reasoning_tokens": 81
+            "output_tokens": 79,
+            "total_tokens": 241,
+            "reasoning_tokens": 60
           },
-          "message_id": null,
-          "response_id": "ka6yavOQF4aNmtkP6-y0sQM",
+          "origin": {
+            "api": "gemini.generate_content",
+            "provider": "gcp.gemini",
+            "model": "gemini-2.5-flash",
+            "response_model": "gemini-2.5-flash",
+            "response_id": "LDC_avdUhonp2Q-rldmACw"
+          },
+          "native": {
+            "item": {
+              "finishMessage": "Model generated function call(s).",
+              "finishReason": "STOP",
+              "index": 0
+            },
+            "fingerprint": 9872982789176771296
+          },
           "finish_reason": "tool_calls",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
           "raw": {
             "usage_metadata": {
               "promptTokenCount": 162,
               "candidatesTokenCount": 19,
-              "totalTokenCount": 262,
-              "thoughtsTokenCount": 81,
+              "totalTokenCount": 241,
+              "thoughtsTokenCount": 60,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
@@ -289,7 +287,7 @@
             "finish_reason": "STOP",
             "finish_message": "Model generated function call(s).",
             "model_version": "gemini-2.5-flash",
-            "response_id": "ka6yavOQF4aNmtkP6-y0sQM"
+            "response_id": "LDC_avdUhonp2Q-rldmACw"
           }
         }
       },
@@ -327,8 +325,19 @@
                   "y": 6
                 }
               },
-              "signature": "CnIBaRR9EwSMJcGOFUdmD3jKT1y55A7g1iDrTamWzZ9WPU8KABY92wYY1NhcgxzzoLBswBeKdv8grIPWO2gBuuJ9dveQB1dxcjrj/FYppVg8mvBqrJt1nLSINyiGbgbgCrFDs3dhsDJRIlzcAxz0u8dTkcAKxQEBaRR9Ew+6Z/gFVYwnEsIf8qPTxLbtZus6x/uG9fQN0+nvswaUYt9ZtOvrVTCgHp2+d1q4ptNFJYzfQ1ZSbowfn5LNmeyKm2yl7bU30rIxJ74EYPajtQCYH5HPcJj0MYjhfm2sH9LiEEXZ8A9wrzjvR53MdJ7yRxw8AG4McsrkN8WJLJe65n+Ihsb/BZ8fSN5ILKJH1u58Aoh1+qihIXIPYoPX4m2ev5sAog1DFoOymcEVZvzHvvxs/LJbDgD8OJ9s9aPX0wpnAWkUfRN7npZ6bAIFmCu4/jhCX4Dc7Vx5ERU4VdDy6yiX3Wb2pBq4wIc6R14nR6a+GA1ni/Nz2FZxaNkRvM1fZFgM6VZNruXhSIAMsdqfRs1hrLbFV/xRr/PsZdA7lpeutPTtZG4Vbw==",
-              "additional_params": null
+              "native": {
+                "item": {
+                  "functionCall": {
+                    "args": {
+                      "x": 14,
+                      "y": 6
+                    },
+                    "name": "add"
+                  },
+                  "thoughtSignature": "CmYBaRR9EzBfahhhYCNlqkdOWtooGINEHsahg/CdTODC4rC8LE3HxcQLKne/G3qshNMxwoQJB6iyqUb/P8NYOi/OWBSpc/sb2r4bqGqJF2qBAImx+c3N0+L9aCKYwpzRq2wKNAxuSS8KwgEBaRR9EzI7ro7MXgqH8fTjQRqRHOHjsY6dVG5qdds9gZNWaIYQ535oURsTrl2MAB6//KnR53dirWmBLorRQCPf04qUKp1eDKbV2nYOjreGjIE4ZzHcXlayRUAXvE2lXMxiqdWNmPths8yGc/oM+0XML0Mlz5Wq+9xFEjgm/5I3PjTpB953KcN4lN/x4RJ5OaAP6ZwGsiOB2C6NMS2HpSK6WeVbujDiivs7RvE2EEfVy2+ThfdiB0e97h4xUHpo0w11HA=="
+                },
+                "fingerprint": 15879525233566552350
+              }
             }
           }
         }
@@ -384,7 +393,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -398,10 +406,37 @@
                       "y": 6
                     }
                   },
-                  "signature": "CnIBaRR9EwSMJcGOFUdmD3jKT1y55A7g1iDrTamWzZ9WPU8KABY92wYY1NhcgxzzoLBswBeKdv8grIPWO2gBuuJ9dveQB1dxcjrj/FYppVg8mvBqrJt1nLSINyiGbgbgCrFDs3dhsDJRIlzcAxz0u8dTkcAKxQEBaRR9Ew+6Z/gFVYwnEsIf8qPTxLbtZus6x/uG9fQN0+nvswaUYt9ZtOvrVTCgHp2+d1q4ptNFJYzfQ1ZSbowfn5LNmeyKm2yl7bU30rIxJ74EYPajtQCYH5HPcJj0MYjhfm2sH9LiEEXZ8A9wrzjvR53MdJ7yRxw8AG4McsrkN8WJLJe65n+Ihsb/BZ8fSN5ILKJH1u58Aoh1+qihIXIPYoPX4m2ev5sAog1DFoOymcEVZvzHvvxs/LJbDgD8OJ9s9aPX0wpnAWkUfRN7npZ6bAIFmCu4/jhCX4Dc7Vx5ERU4VdDy6yiX3Wb2pBq4wIc6R14nR6a+GA1ni/Nz2FZxaNkRvM1fZFgM6VZNruXhSIAMsdqfRs1hrLbFV/xRr/PsZdA7lpeutPTtZG4Vbw==",
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "functionCall": {
+                        "args": {
+                          "x": 14,
+                          "y": 6
+                        },
+                        "name": "add"
+                      },
+                      "thoughtSignature": "CmYBaRR9EzBfahhhYCNlqkdOWtooGINEHsahg/CdTODC4rC8LE3HxcQLKne/G3qshNMxwoQJB6iyqUb/P8NYOi/OWBSpc/sb2r4bqGqJF2qBAImx+c3N0+L9aCKYwpzRq2wKNAxuSS8KwgEBaRR9EzI7ro7MXgqH8fTjQRqRHOHjsY6dVG5qdds9gZNWaIYQ535oURsTrl2MAB6//KnR53dirWmBLorRQCPf04qUKp1eDKbV2nYOjreGjIE4ZzHcXlayRUAXvE2lXMxiqdWNmPths8yGc/oM+0XML0Mlz5Wq+9xFEjgm/5I3PjTpB953KcN4lN/x4RJ5OaAP6ZwGsiOB2C6NMS2HpSK6WeVbujDiivs7RvE2EEfVy2+ThfdiB0e97h4xUHpo0w11HA=="
+                    },
+                    "fingerprint": 15879525233566552350
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "gemini.generate_content",
+                "provider": "gcp.gemini",
+                "model": "gemini-2.5-flash",
+                "response_model": "gemini-2.5-flash",
+                "response_id": "LDC_avdUhonp2Q-rldmACw"
+              },
+              "stop": "tool_use",
+              "native": {
+                "item": {
+                  "finishMessage": "Model generated function call(s).",
+                  "finishReason": "STOP",
+                  "index": 0
+                },
+                "fingerprint": 9872982789176771296
+              }
             },
             {
               "role": "user",
@@ -480,10 +515,6 @@
           "outcome": "completion",
           "choice": [
             {
-              "type": "text",
-              "text": "The sum of 14 and 6 is 20.\n"
-            },
-            {
               "type": "toolcall",
               "id": {
                 "local": "00000000-0000-4000-8000-000000000001"
@@ -495,36 +526,57 @@
                   "y": 9
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "functionCall": {
+                    "args": {
+                      "x": 40,
+                      "y": 9
+                    },
+                    "name": "subtract"
+                  }
+                },
+                "fingerprint": 7156519883554418655
+              }
             }
           ],
           "usage": {
-            "input_tokens": 276,
-            "output_tokens": 32,
-            "total_tokens": 308
+            "input_tokens": 255,
+            "output_tokens": 19,
+            "total_tokens": 274
           },
-          "message_id": null,
-          "response_id": "kq6yatzPE56ImtkPjfrG6QQ",
+          "origin": {
+            "api": "gemini.generate_content",
+            "provider": "gcp.gemini",
+            "model": "gemini-2.5-flash",
+            "response_model": "gemini-2.5-flash",
+            "response_id": "LTC_avHyAraO6dkP8-DjqQo"
+          },
+          "native": {
+            "item": {
+              "finishMessage": "Model generated function call(s).",
+              "finishReason": "STOP",
+              "index": 0
+            },
+            "fingerprint": 15984356306164371777
+          },
           "finish_reason": "tool_calls",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
           "raw": {
             "usage_metadata": {
-              "promptTokenCount": 276,
-              "candidatesTokenCount": 32,
-              "totalTokenCount": 308,
+              "promptTokenCount": 255,
+              "candidatesTokenCount": 19,
+              "totalTokenCount": 274,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
-                  "tokenCount": 276
+                  "tokenCount": 255
                 }
               ]
             },
             "finish_reason": "STOP",
             "finish_message": "Model generated function call(s).",
             "model_version": "gemini-2.5-flash",
-            "response_id": "kq6yatzPE56ImtkPjfrG6QQ"
+            "response_id": "LTC_avHyAraO6dkP8-DjqQo"
           }
         }
       },
@@ -534,41 +586,6 @@
           "value": {
             "event": "start",
             "part": 0,
-            "kind": "text"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": "The sum of "
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": "14 and 6 is 20.\n"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "end",
-            "part": 0,
-            "content": {
-              "type": "text",
-              "text": "The sum of 14 and 6 is 20.\n"
-            }
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "start",
-            "part": 1,
             "kind": "tool_call"
           }
         },
@@ -576,7 +593,7 @@
           "item": "event",
           "value": {
             "event": "arguments",
-            "part": 1,
+            "part": 0,
             "json": "{\"x\":40,\"y\":9}"
           }
         },
@@ -584,7 +601,7 @@
           "item": "event",
           "value": {
             "event": "end",
-            "part": 1,
+            "part": 0,
             "content": {
               "type": "toolcall",
               "id": {
@@ -597,8 +614,18 @@
                   "y": 9
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "functionCall": {
+                    "args": {
+                      "x": 40,
+                      "y": 9
+                    },
+                    "name": "subtract"
+                  }
+                },
+                "fingerprint": 7156519883554418655
+              }
             }
           }
         }
@@ -629,7 +656,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -643,10 +669,37 @@
                       "y": 6
                     }
                   },
-                  "signature": "CnIBaRR9EwSMJcGOFUdmD3jKT1y55A7g1iDrTamWzZ9WPU8KABY92wYY1NhcgxzzoLBswBeKdv8grIPWO2gBuuJ9dveQB1dxcjrj/FYppVg8mvBqrJt1nLSINyiGbgbgCrFDs3dhsDJRIlzcAxz0u8dTkcAKxQEBaRR9Ew+6Z/gFVYwnEsIf8qPTxLbtZus6x/uG9fQN0+nvswaUYt9ZtOvrVTCgHp2+d1q4ptNFJYzfQ1ZSbowfn5LNmeyKm2yl7bU30rIxJ74EYPajtQCYH5HPcJj0MYjhfm2sH9LiEEXZ8A9wrzjvR53MdJ7yRxw8AG4McsrkN8WJLJe65n+Ihsb/BZ8fSN5ILKJH1u58Aoh1+qihIXIPYoPX4m2ev5sAog1DFoOymcEVZvzHvvxs/LJbDgD8OJ9s9aPX0wpnAWkUfRN7npZ6bAIFmCu4/jhCX4Dc7Vx5ERU4VdDy6yiX3Wb2pBq4wIc6R14nR6a+GA1ni/Nz2FZxaNkRvM1fZFgM6VZNruXhSIAMsdqfRs1hrLbFV/xRr/PsZdA7lpeutPTtZG4Vbw==",
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "functionCall": {
+                        "args": {
+                          "x": 14,
+                          "y": 6
+                        },
+                        "name": "add"
+                      },
+                      "thoughtSignature": "CmYBaRR9EzBfahhhYCNlqkdOWtooGINEHsahg/CdTODC4rC8LE3HxcQLKne/G3qshNMxwoQJB6iyqUb/P8NYOi/OWBSpc/sb2r4bqGqJF2qBAImx+c3N0+L9aCKYwpzRq2wKNAxuSS8KwgEBaRR9EzI7ro7MXgqH8fTjQRqRHOHjsY6dVG5qdds9gZNWaIYQ535oURsTrl2MAB6//KnR53dirWmBLorRQCPf04qUKp1eDKbV2nYOjreGjIE4ZzHcXlayRUAXvE2lXMxiqdWNmPths8yGc/oM+0XML0Mlz5Wq+9xFEjgm/5I3PjTpB953KcN4lN/x4RJ5OaAP6ZwGsiOB2C6NMS2HpSK6WeVbujDiivs7RvE2EEfVy2+ThfdiB0e97h4xUHpo0w11HA=="
+                    },
+                    "fingerprint": 15879525233566552350
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "gemini.generate_content",
+                "provider": "gcp.gemini",
+                "model": "gemini-2.5-flash",
+                "response_model": "gemini-2.5-flash",
+                "response_id": "LDC_avdUhonp2Q-rldmACw"
+              },
+              "stop": "tool_use",
+              "native": {
+                "item": {
+                  "finishMessage": "Model generated function call(s).",
+                  "finishReason": "STOP",
+                  "index": 0
+                },
+                "fingerprint": 9872982789176771296
+              }
             },
             {
               "role": "user",
@@ -668,12 +721,7 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
-                {
-                  "type": "text",
-                  "text": "The sum of 14 and 6 is 20.\n"
-                },
                 {
                   "type": "toolcall",
                   "id": {
@@ -686,10 +734,36 @@
                       "y": 9
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "functionCall": {
+                        "args": {
+                          "x": 40,
+                          "y": 9
+                        },
+                        "name": "subtract"
+                      }
+                    },
+                    "fingerprint": 7156519883554418655
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "gemini.generate_content",
+                "provider": "gcp.gemini",
+                "model": "gemini-2.5-flash",
+                "response_model": "gemini-2.5-flash",
+                "response_id": "LTC_avHyAraO6dkP8-DjqQo"
+              },
+              "stop": "tool_use",
+              "native": {
+                "item": {
+                  "finishMessage": "Model generated function call(s).",
+                  "finishReason": "STOP",
+                  "index": 0
+                },
+                "fingerprint": 15984356306164371777
+              }
             },
             {
               "role": "user",
@@ -769,34 +843,53 @@
           "choice": [
             {
               "type": "text",
-              "text": "I was able to add 14 and 6 to get 20. However, the subtract tool is currently offline, so I cannot subtract 9 from 40."
+              "text": "I added 14 and 6, and the result is 20. The subtract tool is offline, so I could not subtract 9 from 40.",
+              "native": {
+                "item": {
+                  "text": "I added 14 and 6, and the result is 20. The subtract tool is offline, so I could not subtract 9 from 40.",
+                  "thoughtSignature": "CnEBaRR9E3xEY6IELA39Yz3EdLllmWwc1mUIrNsJsFrERGngqOn01ay52WVJX6o9t5HpggfPaaJK6GzrIiLzG9qXAaPnOQ+oEcufChgwtdWFwGxpSBTT6fcLe18Shf/+ts1G2c+HgHtsuo9XX0S2PG0p+Aq8AQFpFH0TJ4xAzZRnWqAOBsgPkCSD29Xe2lNld1dikDFOsbowhVZGe1Jy8UWtGHUVmrK48AG5Hr0OTJFuQ4aD5D//tewmmjL/PN5Hrxu/rJiAwrNXZTf27hP+bb/PYkHDzIoWFKLO3p/Vpr2jD0OnFHBpgupyFcqlmb+nLrPcZNPWkvtiwwxyVYbg0kHcmuQzRzf6SVt6vPLRV53gCClELXytA27lKIOvRj5sWtxu/Lxim8gbeXmGKcS41LOg"
+                },
+                "fingerprint": 4628051944386906311
+              }
             }
           ],
           "usage": {
-            "input_tokens": 331,
-            "output_tokens": 37,
-            "total_tokens": 368
+            "input_tokens": 295,
+            "output_tokens": 93,
+            "total_tokens": 388,
+            "reasoning_tokens": 59
           },
-          "message_id": null,
-          "response_id": "kq6yau7-Mp-JqtsP3pTD0QE",
+          "origin": {
+            "api": "gemini.generate_content",
+            "provider": "gcp.gemini",
+            "model": "gemini-2.5-flash",
+            "response_model": "gemini-2.5-flash",
+            "response_id": "LTC_avGQIaSj6dkPzafG4Ao"
+          },
+          "native": {
+            "item": {
+              "index": 0,
+              "finishReason": "STOP"
+            },
+            "fingerprint": 5966435508037651721
+          },
           "finish_reason": "stop",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
           "raw": {
             "usage_metadata": {
-              "promptTokenCount": 331,
-              "candidatesTokenCount": 37,
-              "totalTokenCount": 368,
+              "promptTokenCount": 295,
+              "candidatesTokenCount": 34,
+              "totalTokenCount": 388,
+              "thoughtsTokenCount": 59,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
-                  "tokenCount": 331
+                  "tokenCount": 295
                 }
               ]
             },
             "finish_reason": "STOP",
             "model_version": "gemini-2.5-flash",
-            "response_id": "kq6yau7-Mp-JqtsP3pTD0QE"
+            "response_id": "LTC_avGQIaSj6dkPzafG4Ao"
           }
         }
       },
@@ -814,7 +907,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": "I was"
+            "text": "I added 14 and"
           }
         },
         {
@@ -822,15 +915,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": " able to add 14 and 6 to get 20. However, the"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " subtract tool is currently offline, so I cannot subtract 9 from 40."
+            "text": " 6, and the result is 20. The subtract tool is offline, so I could not subtract 9 from 40."
           }
         },
         {
@@ -840,7 +925,14 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "I was able to add 14 and 6 to get 20. However, the subtract tool is currently offline, so I cannot subtract 9 from 40."
+              "text": "I added 14 and 6, and the result is 20. The subtract tool is offline, so I could not subtract 9 from 40.",
+              "native": {
+                "item": {
+                  "text": "I added 14 and 6, and the result is 20. The subtract tool is offline, so I could not subtract 9 from 40.",
+                  "thoughtSignature": "CnEBaRR9E3xEY6IELA39Yz3EdLllmWwc1mUIrNsJsFrERGngqOn01ay52WVJX6o9t5HpggfPaaJK6GzrIiLzG9qXAaPnOQ+oEcufChgwtdWFwGxpSBTT6fcLe18Shf/+ts1G2c+HgHtsuo9XX0S2PG0p+Aq8AQFpFH0TJ4xAzZRnWqAOBsgPkCSD29Xe2lNld1dikDFOsbowhVZGe1Jy8UWtGHUVmrK48AG5Hr0OTJFuQ4aD5D//tewmmjL/PN5Hrxu/rJiAwrNXZTf27hP+bb/PYkHDzIoWFKLO3p/Vpr2jD0OnFHBpgupyFcqlmb+nLrPcZNPWkvtiwwxyVYbg0kHcmuQzRzf6SVt6vPLRV53gCClELXytA27lKIOvRj5sWtxu/Lxim8gbeXmGKcS41LOg"
+                },
+                "fingerprint": 4628051944386906311
+              }
             }
           }
         }

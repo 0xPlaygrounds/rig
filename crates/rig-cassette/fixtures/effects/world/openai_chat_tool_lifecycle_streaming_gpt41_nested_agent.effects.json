@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 36,
+        "batch": 41,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,14 +10,14 @@
         }
       },
       {
-        "batch": 38,
+        "batch": 43,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 39,
+        "batch": 44,
         "id": 1,
         "kind": {
           "delivery": "outcome"
@@ -169,9 +169,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_LBFsWWsRJ4D8hoq61ZwRQUi1"
-                }
+                "provider": "call_LBFsWWsRJ4D8hoq61ZwRQUi1"
               },
               "function": {
                 "name": "record_payload",
@@ -187,8 +185,17 @@
                   }
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"label\":\"café 東京\",\"values\":[3,5,8],\"meta\":{\"active\":true}}",
+                    "name": "record_payload"
+                  },
+                  "id": "call_LBFsWWsRJ4D8hoq61ZwRQUi1",
+                  "type": "function"
+                },
+                "fingerprint": 7039696387772128068
+              }
             }
           ],
           "usage": {
@@ -198,12 +205,33 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
-          "response_id": "chatcmpl-ERDAy5PUCAm0ly6Nshq6VcGfQNZQY",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "openai",
+            "model": "gpt-4.1-mini",
+            "response_model": "gpt-4.1-mini-2025-04-14",
+            "response_id": "chatcmpl-ERDAy5PUCAm0ly6Nshq6VcGfQNZQY"
+          },
+          "native": {
+            "item": {
+              "content": null,
+              "refusal": null,
+              "role": "assistant",
+              "tool_calls": [
+                {
+                  "function": {
+                    "arguments": "{\"label\":\"café 東京\",\"values\":[3,5,8],\"meta\":{\"active\":true}}",
+                    "name": "record_payload"
+                  },
+                  "id": "call_LBFsWWsRJ4D8hoq61ZwRQUi1",
+                  "type": "function"
+                }
+              ]
+            },
+            "fingerprint": 782513832232441140
+          },
           "provider_request_id": "req_7d0a92f792564beead456732a22c9362",
           "finish_reason": "tool_calls",
-          "provider": "openai",
-          "model": "gpt-4.1-mini-2025-04-14",
           "raw": {
             "usage": {
               "prompt_tokens": 93,
@@ -254,9 +282,7 @@
             "content": {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_LBFsWWsRJ4D8hoq61ZwRQUi1"
-                }
+                "provider": "call_LBFsWWsRJ4D8hoq61ZwRQUi1"
               },
               "function": {
                 "name": "record_payload",
@@ -272,8 +298,17 @@
                   }
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"label\":\"café 東京\",\"values\":[3,5,8],\"meta\":{\"active\":true}}",
+                    "name": "record_payload"
+                  },
+                  "id": "call_LBFsWWsRJ4D8hoq61ZwRQUi1",
+                  "type": "function"
+                },
+                "fingerprint": 7039696387772128068
+              }
             }
           }
         }

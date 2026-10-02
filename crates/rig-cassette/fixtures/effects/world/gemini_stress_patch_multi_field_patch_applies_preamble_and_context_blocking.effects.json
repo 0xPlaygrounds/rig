@@ -80,7 +80,13 @@
           "choice": [
             {
               "type": "text",
-              "text": "GAMMA-33 ZULU-99"
+              "text": "GAMMA-33 ZULU-99",
+              "native": {
+                "item": {
+                  "text": "GAMMA-33 ZULU-99"
+                },
+                "fingerprint": 18041984267339580370
+              }
             }
           ],
           "usage": {
@@ -89,11 +95,21 @@
             "total_tokens": 113,
             "reasoning_tokens": 51
           },
-          "message_id": null,
-          "response_id": "pXizar31Ooi-qtsPpfaNwQQ",
+          "origin": {
+            "api": "gemini.generate_content",
+            "provider": "gcp.gemini",
+            "model": "gemini-2.5-flash",
+            "response_model": "gemini-2.5-flash",
+            "response_id": "pXizar31Ooi-qtsPpfaNwQQ"
+          },
+          "native": {
+            "item": {
+              "finishReason": "STOP",
+              "index": 0
+            },
+            "fingerprint": 17837582668208769922
+          },
           "finish_reason": "stop",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
           "raw": {
             "candidates": [
               {

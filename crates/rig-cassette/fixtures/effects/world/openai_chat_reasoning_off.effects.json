@@ -77,7 +77,15 @@
           "choice": [
             {
               "type": "text",
-              "text": "Rust is a modern systems programming language that provides performance like C/C++ while using a strong static type system and an ownership/borrowing model to prevent data races and many classes of memory bugs at compile time. Memory safety matters because it eliminates crashes, security vulnerabilities (like buffer overflows and use-after-free), and unpredictable behavior, enabling more reliable and secure software."
+              "text": "Rust is a modern systems programming language that provides performance like C/C++ while using a strong static type system and an ownership/borrowing model to prevent data races and many classes of memory bugs at compile time. Memory safety matters because it eliminates crashes, security vulnerabilities (like buffer overflows and use-after-free), and unpredictable behavior, enabling more reliable and secure software.",
+              "native": {
+                "item": {
+                  "annotations": [],
+                  "content": "Rust is a modern systems programming language that provides performance like C/C++ while using a strong static type system and an ownership/borrowing model to prevent data races and many classes of memory bugs at compile time. Memory safety matters because it eliminates crashes, security vulnerabilities (like buffer overflows and use-after-free), and unpredictable behavior, enabling more reliable and secure software.",
+                  "refusal": null
+                },
+                "fingerprint": 3409552623171009880
+              }
             }
           ],
           "usage": {
@@ -87,12 +95,24 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
-          "response_id": "chatcmpl-ERDCafZbF7zYVUh8dgcqGP7k3ziQ0",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "openai",
+            "model": "gpt-5-mini",
+            "response_model": "gpt-5-mini-2025-08-07",
+            "response_id": "chatcmpl-ERDCafZbF7zYVUh8dgcqGP7k3ziQ0"
+          },
+          "native": {
+            "item": {
+              "annotations": [],
+              "content": "Rust is a modern systems programming language that provides performance like C/C++ while using a strong static type system and an ownership/borrowing model to prevent data races and many classes of memory bugs at compile time. Memory safety matters because it eliminates crashes, security vulnerabilities (like buffer overflows and use-after-free), and unpredictable behavior, enabling more reliable and secure software.",
+              "refusal": null,
+              "role": "assistant"
+            },
+            "fingerprint": 16818842831433009196
+          },
           "provider_request_id": "req_69b52aa3111948cea97e5c3af9e16e1a",
           "finish_reason": "stop",
-          "provider": "openai",
-          "model": "gpt-5-mini-2025-08-07",
           "raw": {
             "choices": [
               {

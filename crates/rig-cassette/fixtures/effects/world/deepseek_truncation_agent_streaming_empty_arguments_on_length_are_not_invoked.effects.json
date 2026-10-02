@@ -107,11 +107,21 @@
             "total_tokens": 362,
             "cached_input_tokens": 128
           },
-          "message_id": null,
-          "response_id": "38ab9160-89fb-4c7d-9125-4ad998bdd1e0",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "deepseek",
+            "model": "deepseek-v4-flash",
+            "response_model": "deepseek-flash",
+            "response_id": "38ab9160-89fb-4c7d-9125-4ad998bdd1e0"
+          },
+          "native": {
+            "item": {
+              "content": "",
+              "role": "assistant"
+            },
+            "fingerprint": 675868731199239589
+          },
           "finish_reason": "length",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
           "raw": {
             "usage": {
               "prompt_tokens": 346,

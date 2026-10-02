@@ -75,7 +75,13 @@
           "choice": [
             {
               "type": "text",
-              "text": "Rust be a systems language that stops ye from shootin' yer own foot with memory bugs, and memory safety matters 'cause a wild pointer can sink yer whole ship."
+              "text": "Rust be a systems language that stops ye from shootin' yer own foot with memory bugs, and memory safety matters 'cause a wild pointer can sink yer whole ship.",
+              "native": {
+                "item": {
+                  "content": "Rust be a systems language that stops ye from shootin' yer own foot with memory bugs, and memory safety matters 'cause a wild pointer can sink yer whole ship."
+                },
+                "fingerprint": 7481365758383667144
+              }
             }
           ],
           "usage": {
@@ -84,11 +90,21 @@
             "total_tokens": 69,
             "cached_input_tokens": 0
           },
-          "message_id": null,
-          "response_id": "39bd2ab0-2de8-4745-9a1b-7ce94129dfe4",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "deepseek",
+            "model": "deepseek-chat",
+            "response_model": "deepseek-flash",
+            "response_id": "39bd2ab0-2de8-4745-9a1b-7ce94129dfe4"
+          },
+          "native": {
+            "item": {
+              "content": "Rust be a systems language that stops ye from shootin' yer own foot with memory bugs, and memory safety matters 'cause a wild pointer can sink yer whole ship.",
+              "role": "assistant"
+            },
+            "fingerprint": 10342751857868011060
+          },
           "finish_reason": "stop",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
           "raw": {
             "choices": [
               {

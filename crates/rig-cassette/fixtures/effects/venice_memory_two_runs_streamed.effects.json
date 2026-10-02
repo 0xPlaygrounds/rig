@@ -93,7 +93,13 @@
           "choice": [
             {
               "type": "text",
-              "text": "ready"
+              "text": "ready",
+              "native": {
+                "item": {
+                  "content": "ready"
+                },
+                "fingerprint": 815434921069355996
+              }
             }
           ],
           "usage": {
@@ -101,11 +107,22 @@
             "output_tokens": 2,
             "total_tokens": 977
           },
-          "message_id": null,
-          "response_id": "chatcmpl-RuVEyQPpi7zfOimaHsJTSBfE",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "venice",
+            "model": "mistral-small-3-2-24b-instruct",
+            "response_model": "mistral-small-3-2-24b-instruct",
+            "response_id": "chatcmpl-RtQW7hSvTLTyRO0RHWmFGUws"
+          },
+          "native": {
+            "item": {
+              "content": "ready",
+              "reasoning_content": null,
+              "role": "assistant"
+            },
+            "fingerprint": 16268972914252074274
+          },
           "finish_reason": "stop",
-          "provider": "venice",
-          "model": "mistral-small-3-2-24b-instruct",
           "raw": {
             "usage": {
               "prompt_tokens": 975,
@@ -113,7 +130,7 @@
               "total_tokens": 977
             },
             "finish_reason": "stop",
-            "response_id": "chatcmpl-RuVEyQPpi7zfOimaHsJTSBfE",
+            "response_id": "chatcmpl-RtQW7hSvTLTyRO0RHWmFGUws",
             "model": "mistral-small-3-2-24b-instruct",
             "additional_params": {
               "created": 0,
@@ -151,7 +168,13 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "ready"
+              "text": "ready",
+              "native": {
+                "item": {
+                  "content": "ready"
+                },
+                "fingerprint": 815434921069355996
+              }
             }
           }
         }
@@ -178,13 +201,34 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
-                  "text": "ready"
+                  "text": "ready",
+                  "native": {
+                    "item": {
+                      "content": "ready"
+                    },
+                    "fingerprint": 815434921069355996
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "venice",
+                "model": "mistral-small-3-2-24b-instruct",
+                "response_model": "mistral-small-3-2-24b-instruct",
+                "response_id": "chatcmpl-RtQW7hSvTLTyRO0RHWmFGUws"
+              },
+              "stop": "stop",
+              "native": {
+                "item": {
+                  "content": "ready",
+                  "reasoning_content": null,
+                  "role": "assistant"
+                },
+                "fingerprint": 16268972914252074274
+              }
             }
           ]
         }
@@ -223,13 +267,34 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
-                  "text": "ready"
+                  "text": "ready",
+                  "native": {
+                    "item": {
+                      "content": "ready"
+                    },
+                    "fingerprint": 815434921069355996
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "venice",
+                "model": "mistral-small-3-2-24b-instruct",
+                "response_model": "mistral-small-3-2-24b-instruct",
+                "response_id": "chatcmpl-RtQW7hSvTLTyRO0RHWmFGUws"
+              },
+              "stop": "stop",
+              "native": {
+                "item": {
+                  "content": "ready",
+                  "reasoning_content": null,
+                  "role": "assistant"
+                },
+                "fingerprint": 16268972914252074274
+              }
             }
           ]
         }
@@ -259,13 +324,34 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
-                  "text": "ready"
+                  "text": "ready",
+                  "native": {
+                    "item": {
+                      "content": "ready"
+                    },
+                    "fingerprint": 815434921069355996
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "venice",
+                "model": "mistral-small-3-2-24b-instruct",
+                "response_model": "mistral-small-3-2-24b-instruct",
+                "response_id": "chatcmpl-RtQW7hSvTLTyRO0RHWmFGUws"
+              },
+              "stop": "stop",
+              "native": {
+                "item": {
+                  "content": "ready",
+                  "reasoning_content": null,
+                  "role": "assistant"
+                },
+                "fingerprint": 16268972914252074274
+              }
             },
             {
               "role": "user",
@@ -293,7 +379,13 @@
           "choice": [
             {
               "type": "text",
-              "text": "again"
+              "text": "again",
+              "native": {
+                "item": {
+                  "content": "again"
+                },
+                "fingerprint": 1676338818300893999
+              }
             }
           ],
           "usage": {
@@ -301,11 +393,22 @@
             "output_tokens": 2,
             "total_tokens": 990
           },
-          "message_id": null,
-          "response_id": "chatcmpl-R59bgLcVjxW7Czl4xhMtOSad",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "venice",
+            "model": "mistral-small-3-2-24b-instruct",
+            "response_model": "mistral-small-3-2-24b-instruct",
+            "response_id": "chatcmpl-RkSdtAyOB0ueSgpikIXmRfoL"
+          },
+          "native": {
+            "item": {
+              "content": "again",
+              "reasoning_content": null,
+              "role": "assistant"
+            },
+            "fingerprint": 3259939305862458759
+          },
           "finish_reason": "stop",
-          "provider": "venice",
-          "model": "mistral-small-3-2-24b-instruct",
           "raw": {
             "usage": {
               "prompt_tokens": 988,
@@ -313,7 +416,7 @@
               "total_tokens": 990
             },
             "finish_reason": "stop",
-            "response_id": "chatcmpl-R59bgLcVjxW7Czl4xhMtOSad",
+            "response_id": "chatcmpl-RkSdtAyOB0ueSgpikIXmRfoL",
             "model": "mistral-small-3-2-24b-instruct",
             "additional_params": {
               "created": 0,
@@ -351,7 +454,13 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "again"
+              "text": "again",
+              "native": {
+                "item": {
+                  "content": "again"
+                },
+                "fingerprint": 1676338818300893999
+              }
             }
           }
         }
@@ -378,13 +487,34 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
-                  "text": "again"
+                  "text": "again",
+                  "native": {
+                    "item": {
+                      "content": "again"
+                    },
+                    "fingerprint": 1676338818300893999
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "venice",
+                "model": "mistral-small-3-2-24b-instruct",
+                "response_model": "mistral-small-3-2-24b-instruct",
+                "response_id": "chatcmpl-RkSdtAyOB0ueSgpikIXmRfoL"
+              },
+              "stop": "stop",
+              "native": {
+                "item": {
+                  "content": "again",
+                  "reasoning_content": null,
+                  "role": "assistant"
+                },
+                "fingerprint": 3259939305862458759
+              }
             }
           ]
         }

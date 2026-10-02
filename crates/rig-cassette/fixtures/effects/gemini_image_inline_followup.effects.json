@@ -102,10 +102,12 @@
             {
               "type": "text",
               "text": "The dominant non-background color is red.",
-              "additional_params": {
-                "gemini": {
-                  "thoughtSignature": "EtwCCtkCAWkUfRMVZfhluvkgBKlrrEfuITuHmOUw3FvcjVcgS3ld5CDgcf7NEDTlp5cVLfMDY+utjaQQckkzQcPGMMeIvX6BMnpl0DntltmmTQt1XMZLZMGIMZ4pdUuSp8qGxjuqx1cpMvmYnvrY/T1k4Mpe+ogPZDuJFDsATW5OPLz7u+iS15s73Jr4pCerZ205ALj5N+4EZI068FS+5EtZPuzEL/kcQ3LKjPi+4qLrI+cy9Jkvoc4XXZMtlUhbvAp9FwXj5YQHLOii9cNOucMQCQClXbiwLVNqaNCkuB6S3xb7ET0WMKkM2GZfGmlGdu3Z5puBUa3mz0vT2+/X52QkummApVd4KVOKoWbTVSCO5rNcfcpCHQa3/pi/f/VKdes6eC3LCDP2ou5co+R9L0oi40tYYMeWNP7NAUBzbDjGXd8jF81WlglsJ9lkPqaSgrvbB2tHyHbkSTlx0ajP"
-                }
+              "native": {
+                "item": {
+                  "text": "The dominant non-background color is red.",
+                  "thoughtSignature": "EtwCCtkCAWkUfRNPLbTH7foi4QstAanulZdJ6hhK9BlcJ786uLG5rg4hl9YjBMg60fBoTVKTAKJTpE7MmhZePbzsblxmUTQlqZVCo7pMs/MMerfxKyWjvuqPg+/tGJfw44+3KEu9bUgoIqnm4x4JJ7Gs0Kl2cWmCzPrbTq2ahO7I2ETx1XnhbP++51AxKRwyw9LqzHdKi3Q2cWXYT89mbAnAiCrFILYtxXszyev4IL7//u9DWNbpS241bjJebs4OB7UtMM6167hPSC6oBxQyVgxaHL6s/HxllZ9UFWuuOrONVl/tqrfkql110kaOT6B6F05FcwhIzj2u0q667I6cpMXtG+fIxlzAH9TxReeoCvHxmZbeomF7IKZGh9hYEn0Dmbkk8Ox7mnlG+mAOUs76bqpkgV7ewHQ8R7oLDtoSfjPhDOGQ+3jhap/9Ve8n/vjRMqE0RgSV5Dlci5VyvWkI"
+                },
+                "fingerprint": 9948335598516222334
               }
             }
           ],
@@ -115,11 +117,21 @@
             "total_tokens": 1177,
             "reasoning_tokens": 53
           },
-          "message_id": null,
-          "response_id": "W2GzavWdO4qsz7IP3-jl0Ac",
+          "origin": {
+            "api": "gemini.generate_content",
+            "provider": "gcp.gemini",
+            "model": "gemini-3-flash-preview",
+            "response_model": "gemini-3-flash-preview",
+            "response_id": "jyy_apTkB8efz7IPqszOgQ0"
+          },
+          "native": {
+            "item": {
+              "finishReason": "STOP",
+              "index": 0
+            },
+            "fingerprint": 16374624290964267592
+          },
           "finish_reason": "stop",
-          "provider": "gcp.gemini",
-          "model": "gemini-3-flash-preview",
           "raw": {
             "candidates": [
               {
@@ -127,7 +139,7 @@
                   "parts": [
                     {
                       "text": "The dominant non-background color is red.",
-                      "thoughtSignature": "EtwCCtkCAWkUfRMVZfhluvkgBKlrrEfuITuHmOUw3FvcjVcgS3ld5CDgcf7NEDTlp5cVLfMDY+utjaQQckkzQcPGMMeIvX6BMnpl0DntltmmTQt1XMZLZMGIMZ4pdUuSp8qGxjuqx1cpMvmYnvrY/T1k4Mpe+ogPZDuJFDsATW5OPLz7u+iS15s73Jr4pCerZ205ALj5N+4EZI068FS+5EtZPuzEL/kcQ3LKjPi+4qLrI+cy9Jkvoc4XXZMtlUhbvAp9FwXj5YQHLOii9cNOucMQCQClXbiwLVNqaNCkuB6S3xb7ET0WMKkM2GZfGmlGdu3Z5puBUa3mz0vT2+/X52QkummApVd4KVOKoWbTVSCO5rNcfcpCHQa3/pi/f/VKdes6eC3LCDP2ou5co+R9L0oi40tYYMeWNP7NAUBzbDjGXd8jF81WlglsJ9lkPqaSgrvbB2tHyHbkSTlx0ajP"
+                      "thoughtSignature": "EtwCCtkCAWkUfRNPLbTH7foi4QstAanulZdJ6hhK9BlcJ786uLG5rg4hl9YjBMg60fBoTVKTAKJTpE7MmhZePbzsblxmUTQlqZVCo7pMs/MMerfxKyWjvuqPg+/tGJfw44+3KEu9bUgoIqnm4x4JJ7Gs0Kl2cWmCzPrbTq2ahO7I2ETx1XnhbP++51AxKRwyw9LqzHdKi3Q2cWXYT89mbAnAiCrFILYtxXszyev4IL7//u9DWNbpS241bjJebs4OB7UtMM6167hPSC6oBxQyVgxaHL6s/HxllZ9UFWuuOrONVl/tqrfkql110kaOT6B6F05FcwhIzj2u0q667I6cpMXtG+fIxlzAH9TxReeoCvHxmZbeomF7IKZGh9hYEn0Dmbkk8Ox7mnlG+mAOUs76bqpkgV7ewHQ8R7oLDtoSfjPhDOGQ+3jhap/9Ve8n/vjRMqE0RgSV5Dlci5VyvWkI"
                     }
                   ],
                   "role": "model"
@@ -137,7 +149,7 @@
               }
             ],
             "modelVersion": "gemini-3-flash-preview",
-            "responseId": "W2GzavWdO4qsz7IP3-jl0Ac",
+            "responseId": "jyy_apTkB8efz7IPqszOgQ0",
             "usageMetadata": {
               "candidatesTokenCount": 9,
               "promptTokenCount": 1115,
@@ -188,18 +200,34 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
                   "text": "The dominant non-background color is red.",
-                  "additional_params": {
-                    "gemini": {
-                      "thoughtSignature": "EtwCCtkCAWkUfRMVZfhluvkgBKlrrEfuITuHmOUw3FvcjVcgS3ld5CDgcf7NEDTlp5cVLfMDY+utjaQQckkzQcPGMMeIvX6BMnpl0DntltmmTQt1XMZLZMGIMZ4pdUuSp8qGxjuqx1cpMvmYnvrY/T1k4Mpe+ogPZDuJFDsATW5OPLz7u+iS15s73Jr4pCerZ205ALj5N+4EZI068FS+5EtZPuzEL/kcQ3LKjPi+4qLrI+cy9Jkvoc4XXZMtlUhbvAp9FwXj5YQHLOii9cNOucMQCQClXbiwLVNqaNCkuB6S3xb7ET0WMKkM2GZfGmlGdu3Z5puBUa3mz0vT2+/X52QkummApVd4KVOKoWbTVSCO5rNcfcpCHQa3/pi/f/VKdes6eC3LCDP2ou5co+R9L0oi40tYYMeWNP7NAUBzbDjGXd8jF81WlglsJ9lkPqaSgrvbB2tHyHbkSTlx0ajP"
-                    }
+                  "native": {
+                    "item": {
+                      "text": "The dominant non-background color is red.",
+                      "thoughtSignature": "EtwCCtkCAWkUfRNPLbTH7foi4QstAanulZdJ6hhK9BlcJ786uLG5rg4hl9YjBMg60fBoTVKTAKJTpE7MmhZePbzsblxmUTQlqZVCo7pMs/MMerfxKyWjvuqPg+/tGJfw44+3KEu9bUgoIqnm4x4JJ7Gs0Kl2cWmCzPrbTq2ahO7I2ETx1XnhbP++51AxKRwyw9LqzHdKi3Q2cWXYT89mbAnAiCrFILYtxXszyev4IL7//u9DWNbpS241bjJebs4OB7UtMM6167hPSC6oBxQyVgxaHL6s/HxllZ9UFWuuOrONVl/tqrfkql110kaOT6B6F05FcwhIzj2u0q667I6cpMXtG+fIxlzAH9TxReeoCvHxmZbeomF7IKZGh9hYEn0Dmbkk8Ox7mnlG+mAOUs76bqpkgV7ewHQ8R7oLDtoSfjPhDOGQ+3jhap/9Ve8n/vjRMqE0RgSV5Dlci5VyvWkI"
+                    },
+                    "fingerprint": 9948335598516222334
                   }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "gemini.generate_content",
+                "provider": "gcp.gemini",
+                "model": "gemini-3-flash-preview",
+                "response_model": "gemini-3-flash-preview",
+                "response_id": "jyy_apTkB8efz7IPqszOgQ0"
+              },
+              "stop": "stop",
+              "native": {
+                "item": {
+                  "finishReason": "STOP",
+                  "index": 0
+                },
+                "fingerprint": 16374624290964267592
+              }
             }
           ]
         }
@@ -246,18 +274,34 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
                   "text": "The dominant non-background color is red.",
-                  "additional_params": {
-                    "gemini": {
-                      "thoughtSignature": "EtwCCtkCAWkUfRMVZfhluvkgBKlrrEfuITuHmOUw3FvcjVcgS3ld5CDgcf7NEDTlp5cVLfMDY+utjaQQckkzQcPGMMeIvX6BMnpl0DntltmmTQt1XMZLZMGIMZ4pdUuSp8qGxjuqx1cpMvmYnvrY/T1k4Mpe+ogPZDuJFDsATW5OPLz7u+iS15s73Jr4pCerZ205ALj5N+4EZI068FS+5EtZPuzEL/kcQ3LKjPi+4qLrI+cy9Jkvoc4XXZMtlUhbvAp9FwXj5YQHLOii9cNOucMQCQClXbiwLVNqaNCkuB6S3xb7ET0WMKkM2GZfGmlGdu3Z5puBUa3mz0vT2+/X52QkummApVd4KVOKoWbTVSCO5rNcfcpCHQa3/pi/f/VKdes6eC3LCDP2ou5co+R9L0oi40tYYMeWNP7NAUBzbDjGXd8jF81WlglsJ9lkPqaSgrvbB2tHyHbkSTlx0ajP"
-                    }
+                  "native": {
+                    "item": {
+                      "text": "The dominant non-background color is red.",
+                      "thoughtSignature": "EtwCCtkCAWkUfRNPLbTH7foi4QstAanulZdJ6hhK9BlcJ786uLG5rg4hl9YjBMg60fBoTVKTAKJTpE7MmhZePbzsblxmUTQlqZVCo7pMs/MMerfxKyWjvuqPg+/tGJfw44+3KEu9bUgoIqnm4x4JJ7Gs0Kl2cWmCzPrbTq2ahO7I2ETx1XnhbP++51AxKRwyw9LqzHdKi3Q2cWXYT89mbAnAiCrFILYtxXszyev4IL7//u9DWNbpS241bjJebs4OB7UtMM6167hPSC6oBxQyVgxaHL6s/HxllZ9UFWuuOrONVl/tqrfkql110kaOT6B6F05FcwhIzj2u0q667I6cpMXtG+fIxlzAH9TxReeoCvHxmZbeomF7IKZGh9hYEn0Dmbkk8Ox7mnlG+mAOUs76bqpkgV7ewHQ8R7oLDtoSfjPhDOGQ+3jhap/9Ve8n/vjRMqE0RgSV5Dlci5VyvWkI"
+                    },
+                    "fingerprint": 9948335598516222334
                   }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "gemini.generate_content",
+                "provider": "gcp.gemini",
+                "model": "gemini-3-flash-preview",
+                "response_model": "gemini-3-flash-preview",
+                "response_id": "jyy_apTkB8efz7IPqszOgQ0"
+              },
+              "stop": "stop",
+              "native": {
+                "item": {
+                  "finishReason": "STOP",
+                  "index": 0
+                },
+                "fingerprint": 16374624290964267592
+              }
             }
           ]
         }
@@ -295,18 +339,34 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
                   "text": "The dominant non-background color is red.",
-                  "additional_params": {
-                    "gemini": {
-                      "thoughtSignature": "EtwCCtkCAWkUfRMVZfhluvkgBKlrrEfuITuHmOUw3FvcjVcgS3ld5CDgcf7NEDTlp5cVLfMDY+utjaQQckkzQcPGMMeIvX6BMnpl0DntltmmTQt1XMZLZMGIMZ4pdUuSp8qGxjuqx1cpMvmYnvrY/T1k4Mpe+ogPZDuJFDsATW5OPLz7u+iS15s73Jr4pCerZ205ALj5N+4EZI068FS+5EtZPuzEL/kcQ3LKjPi+4qLrI+cy9Jkvoc4XXZMtlUhbvAp9FwXj5YQHLOii9cNOucMQCQClXbiwLVNqaNCkuB6S3xb7ET0WMKkM2GZfGmlGdu3Z5puBUa3mz0vT2+/X52QkummApVd4KVOKoWbTVSCO5rNcfcpCHQa3/pi/f/VKdes6eC3LCDP2ou5co+R9L0oi40tYYMeWNP7NAUBzbDjGXd8jF81WlglsJ9lkPqaSgrvbB2tHyHbkSTlx0ajP"
-                    }
+                  "native": {
+                    "item": {
+                      "text": "The dominant non-background color is red.",
+                      "thoughtSignature": "EtwCCtkCAWkUfRNPLbTH7foi4QstAanulZdJ6hhK9BlcJ786uLG5rg4hl9YjBMg60fBoTVKTAKJTpE7MmhZePbzsblxmUTQlqZVCo7pMs/MMerfxKyWjvuqPg+/tGJfw44+3KEu9bUgoIqnm4x4JJ7Gs0Kl2cWmCzPrbTq2ahO7I2ETx1XnhbP++51AxKRwyw9LqzHdKi3Q2cWXYT89mbAnAiCrFILYtxXszyev4IL7//u9DWNbpS241bjJebs4OB7UtMM6167hPSC6oBxQyVgxaHL6s/HxllZ9UFWuuOrONVl/tqrfkql110kaOT6B6F05FcwhIzj2u0q667I6cpMXtG+fIxlzAH9TxReeoCvHxmZbeomF7IKZGh9hYEn0Dmbkk8Ox7mnlG+mAOUs76bqpkgV7ewHQ8R7oLDtoSfjPhDOGQ+3jhap/9Ve8n/vjRMqE0RgSV5Dlci5VyvWkI"
+                    },
+                    "fingerprint": 9948335598516222334
                   }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "gemini.generate_content",
+                "provider": "gcp.gemini",
+                "model": "gemini-3-flash-preview",
+                "response_model": "gemini-3-flash-preview",
+                "response_id": "jyy_apTkB8efz7IPqszOgQ0"
+              },
+              "stop": "stop",
+              "native": {
+                "item": {
+                  "finishReason": "STOP",
+                  "index": 0
+                },
+                "fingerprint": 16374624290964267592
+              }
             },
             {
               "role": "user",
@@ -335,10 +395,12 @@
             {
               "type": "text",
               "text": "The image contained a red square.",
-              "additional_params": {
-                "gemini": {
-                  "thoughtSignature": "Ev0CCvoCAWkUfRMChDv+Lk8J3b1qRW7BRk3+3aCDVXup04sZqgAV2phs0uH/qkI3F4D7fL0gcYEOpl4tt4AjKEOSWjuIViYrFDTM0ZcfsCATyWyENEOutcBS/sJG8vD1lliSssFhH5Ma5fusMntdFO+FFs5ywlaD5G9KKmE6TwHkNy3Eb8mhDUtdwAB8I3nd0FvhMQyCO9MsVaMU2wsDdgD68ehy5WsIg84tZSTD44YTrHZm6eErTOWtMN77AqbRX7LxEwpmtsBoLZyulrnQHI1HdVEnzv0IhzNzITu7/Qk6RwcaItmmauzjnKdHXoyJjNGb8XEtS76LvH2hmHAjLmE6sEm3pByBt5+oBgk475RPdhy6gF3kPpP5/d+AI++IlT09SVeFDxjEsrnnxSJ8bOzgU8mI1SyTxCsDVUAegfKDqb1PasNrc16FWDen3i5Va7EGetPi4QILS/DW1hI9QENMTvnPccreYYnOQCQjJQaIsHUuRpTveYCsUDAUPR65"
-                }
+              "native": {
+                "item": {
+                  "text": "The image contained a red square.",
+                  "thoughtSignature": "Ev0CCvoCAWkUfRP446rCoxFnuoWwwn6YuDo2T2F4XDxwJFvyD+5s4UTB2GmfYbcW/L0oKeO/0rl2SAWJXj8prKGwDxbuxiL8zuwQ3sVh9xLdMW1YRLHoF4SXdt2VjQ3LZmHsKYw4nNepU+Rz4twE7rJ15mTpKpk+3ydcA5aYZ1937wVdq4Y6rKC9eKKmGEt4k8EgMfLVEJR9B6uo161X1ZEe/EDa9jVjVGJ1qT2xLeIJdEkQzNIqOtNNR4qjFUrz6OpAOL5sXBFpArfozqrh57pn1fdt41hXCgidZUAIevwHrhrsDjEavk572rJ/ya0XiQl0/9Zkwm5tDv+kCClKXjIZB4cWPmfGzI5keCjGOXcaaenMKDIcTpvxz1VE2z2+pwPf9bPOckvIibrtnRZ9q2VJ4UMwkzZxbpikJIbkqdA4WlTGgimpQsAHHKzwtLr0lKwK/C+deeZB9Dt4GnCavlHUH0xoZjvp5DPWoWze6wymPhjb9QUVuIS9+fZKUxVs"
+                },
+                "fingerprint": 13900007505027985091
               }
             }
           ],
@@ -348,11 +410,21 @@
             "total_tokens": 1214,
             "reasoning_tokens": 65
           },
-          "message_id": null,
-          "response_id": "XWGzaubYIp_jz7IP7qHS4AE",
+          "origin": {
+            "api": "gemini.generate_content",
+            "provider": "gcp.gemini",
+            "model": "gemini-3-flash-preview",
+            "response_model": "gemini-3-flash-preview",
+            "response_id": "kCy_atTVGYKfz7IPsvi8yA0"
+          },
+          "native": {
+            "item": {
+              "finishReason": "STOP",
+              "index": 0
+            },
+            "fingerprint": 2892067707786533307
+          },
           "finish_reason": "stop",
-          "provider": "gcp.gemini",
-          "model": "gemini-3-flash-preview",
           "raw": {
             "candidates": [
               {
@@ -360,7 +432,7 @@
                   "parts": [
                     {
                       "text": "The image contained a red square.",
-                      "thoughtSignature": "Ev0CCvoCAWkUfRMChDv+Lk8J3b1qRW7BRk3+3aCDVXup04sZqgAV2phs0uH/qkI3F4D7fL0gcYEOpl4tt4AjKEOSWjuIViYrFDTM0ZcfsCATyWyENEOutcBS/sJG8vD1lliSssFhH5Ma5fusMntdFO+FFs5ywlaD5G9KKmE6TwHkNy3Eb8mhDUtdwAB8I3nd0FvhMQyCO9MsVaMU2wsDdgD68ehy5WsIg84tZSTD44YTrHZm6eErTOWtMN77AqbRX7LxEwpmtsBoLZyulrnQHI1HdVEnzv0IhzNzITu7/Qk6RwcaItmmauzjnKdHXoyJjNGb8XEtS76LvH2hmHAjLmE6sEm3pByBt5+oBgk475RPdhy6gF3kPpP5/d+AI++IlT09SVeFDxjEsrnnxSJ8bOzgU8mI1SyTxCsDVUAegfKDqb1PasNrc16FWDen3i5Va7EGetPi4QILS/DW1hI9QENMTvnPccreYYnOQCQjJQaIsHUuRpTveYCsUDAUPR65"
+                      "thoughtSignature": "Ev0CCvoCAWkUfRP446rCoxFnuoWwwn6YuDo2T2F4XDxwJFvyD+5s4UTB2GmfYbcW/L0oKeO/0rl2SAWJXj8prKGwDxbuxiL8zuwQ3sVh9xLdMW1YRLHoF4SXdt2VjQ3LZmHsKYw4nNepU+Rz4twE7rJ15mTpKpk+3ydcA5aYZ1937wVdq4Y6rKC9eKKmGEt4k8EgMfLVEJR9B6uo161X1ZEe/EDa9jVjVGJ1qT2xLeIJdEkQzNIqOtNNR4qjFUrz6OpAOL5sXBFpArfozqrh57pn1fdt41hXCgidZUAIevwHrhrsDjEavk572rJ/ya0XiQl0/9Zkwm5tDv+kCClKXjIZB4cWPmfGzI5keCjGOXcaaenMKDIcTpvxz1VE2z2+pwPf9bPOckvIibrtnRZ9q2VJ4UMwkzZxbpikJIbkqdA4WlTGgimpQsAHHKzwtLr0lKwK/C+deeZB9Dt4GnCavlHUH0xoZjvp5DPWoWze6wymPhjb9QUVuIS9+fZKUxVs"
                     }
                   ],
                   "role": "model"
@@ -370,18 +442,18 @@
               }
             ],
             "modelVersion": "gemini-3-flash-preview",
-            "responseId": "XWGzaubYIp_jz7IP7qHS4AE",
+            "responseId": "kCy_atTVGYKfz7IPsvi8yA0",
             "usageMetadata": {
               "candidatesTokenCount": 7,
               "promptTokenCount": 1142,
               "promptTokensDetails": [
                 {
-                  "modality": "IMAGE",
-                  "tokenCount": 1089
-                },
-                {
                   "modality": "TEXT",
                   "tokenCount": 53
+                },
+                {
+                  "modality": "IMAGE",
+                  "tokenCount": 1089
                 }
               ],
               "serviceTier": "standard",
@@ -413,18 +485,34 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
                   "text": "The image contained a red square.",
-                  "additional_params": {
-                    "gemini": {
-                      "thoughtSignature": "Ev0CCvoCAWkUfRMChDv+Lk8J3b1qRW7BRk3+3aCDVXup04sZqgAV2phs0uH/qkI3F4D7fL0gcYEOpl4tt4AjKEOSWjuIViYrFDTM0ZcfsCATyWyENEOutcBS/sJG8vD1lliSssFhH5Ma5fusMntdFO+FFs5ywlaD5G9KKmE6TwHkNy3Eb8mhDUtdwAB8I3nd0FvhMQyCO9MsVaMU2wsDdgD68ehy5WsIg84tZSTD44YTrHZm6eErTOWtMN77AqbRX7LxEwpmtsBoLZyulrnQHI1HdVEnzv0IhzNzITu7/Qk6RwcaItmmauzjnKdHXoyJjNGb8XEtS76LvH2hmHAjLmE6sEm3pByBt5+oBgk475RPdhy6gF3kPpP5/d+AI++IlT09SVeFDxjEsrnnxSJ8bOzgU8mI1SyTxCsDVUAegfKDqb1PasNrc16FWDen3i5Va7EGetPi4QILS/DW1hI9QENMTvnPccreYYnOQCQjJQaIsHUuRpTveYCsUDAUPR65"
-                    }
+                  "native": {
+                    "item": {
+                      "text": "The image contained a red square.",
+                      "thoughtSignature": "Ev0CCvoCAWkUfRP446rCoxFnuoWwwn6YuDo2T2F4XDxwJFvyD+5s4UTB2GmfYbcW/L0oKeO/0rl2SAWJXj8prKGwDxbuxiL8zuwQ3sVh9xLdMW1YRLHoF4SXdt2VjQ3LZmHsKYw4nNepU+Rz4twE7rJ15mTpKpk+3ydcA5aYZ1937wVdq4Y6rKC9eKKmGEt4k8EgMfLVEJR9B6uo161X1ZEe/EDa9jVjVGJ1qT2xLeIJdEkQzNIqOtNNR4qjFUrz6OpAOL5sXBFpArfozqrh57pn1fdt41hXCgidZUAIevwHrhrsDjEavk572rJ/ya0XiQl0/9Zkwm5tDv+kCClKXjIZB4cWPmfGzI5keCjGOXcaaenMKDIcTpvxz1VE2z2+pwPf9bPOckvIibrtnRZ9q2VJ4UMwkzZxbpikJIbkqdA4WlTGgimpQsAHHKzwtLr0lKwK/C+deeZB9Dt4GnCavlHUH0xoZjvp5DPWoWze6wymPhjb9QUVuIS9+fZKUxVs"
+                    },
+                    "fingerprint": 13900007505027985091
                   }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "gemini.generate_content",
+                "provider": "gcp.gemini",
+                "model": "gemini-3-flash-preview",
+                "response_model": "gemini-3-flash-preview",
+                "response_id": "kCy_atTVGYKfz7IPsvi8yA0"
+              },
+              "stop": "stop",
+              "native": {
+                "item": {
+                  "finishReason": "STOP",
+                  "index": 0
+                },
+                "fingerprint": 2892067707786533307
+              }
             }
           ]
         }

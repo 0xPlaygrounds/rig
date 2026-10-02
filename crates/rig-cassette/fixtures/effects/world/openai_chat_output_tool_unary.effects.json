@@ -100,9 +100,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_k0y6hswwYu6H4cxUiK8toxnH"
-                }
+                "provider": "call_k0y6hswwYu6H4cxUiK8toxnH"
               },
               "function": {
                 "name": "final_result",
@@ -112,8 +110,17 @@
                   "summary": "Monthly Rust meetup in Seattle for developers of all levels. Regular schedule: 2nd Tuesday, 6:30–8:30 PM. Format: quick community announcements, two 20–30 minute talks (or one longer), lightning talks, followed by open Q&A and informal networking. Venue: central Seattle (venue announced per event). Suggested items to bring: laptop, a project to demo, and willingness to help others. RSVP required — contact organizer for time/room details."
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"title\":\"Seattle Rust Meetup — Monthly Networking & Talks\",\"category\":\"Tech Meetup / Rust\",\"summary\":\"Monthly Rust meetup in Seattle for developers of all levels. Regular schedule: 2nd Tuesday, 6:30–8:30 PM. Format: quick community announcements, two 20–30 minute talks (or one longer), lightning talks, followed by open Q&A and informal networking. Venue: central Seattle (venue announced per event). Suggested items to bring: laptop, a project to demo, and willingness to help others. RSVP required — contact organizer for time/room details.\"}",
+                    "name": "final_result"
+                  },
+                  "id": "call_k0y6hswwYu6H4cxUiK8toxnH",
+                  "type": "function"
+                },
+                "fingerprint": 2124265215060947089
+              }
             }
           ],
           "usage": {
@@ -123,12 +130,34 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 320
           },
-          "message_id": null,
-          "response_id": "chatcmpl-ERDCQ22zQWqjh2pd0NEtVIbg6JjSD",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "openai",
+            "model": "gpt-5-mini",
+            "response_model": "gpt-5-mini-2025-08-07",
+            "response_id": "chatcmpl-ERDCQ22zQWqjh2pd0NEtVIbg6JjSD"
+          },
+          "native": {
+            "item": {
+              "annotations": [],
+              "content": null,
+              "refusal": null,
+              "role": "assistant",
+              "tool_calls": [
+                {
+                  "function": {
+                    "arguments": "{\"title\":\"Seattle Rust Meetup — Monthly Networking & Talks\",\"category\":\"Tech Meetup / Rust\",\"summary\":\"Monthly Rust meetup in Seattle for developers of all levels. Regular schedule: 2nd Tuesday, 6:30–8:30 PM. Format: quick community announcements, two 20–30 minute talks (or one longer), lightning talks, followed by open Q&A and informal networking. Venue: central Seattle (venue announced per event). Suggested items to bring: laptop, a project to demo, and willingness to help others. RSVP required — contact organizer for time/room details.\"}",
+                    "name": "final_result"
+                  },
+                  "id": "call_k0y6hswwYu6H4cxUiK8toxnH",
+                  "type": "function"
+                }
+              ]
+            },
+            "fingerprint": 17263818012441666411
+          },
           "provider_request_id": "req_671d2f71edae47a482c681eb9c27f5b5",
           "finish_reason": "tool_calls",
-          "provider": "openai",
-          "model": "gpt-5-mini-2025-08-07",
           "raw": {
             "choices": [
               {

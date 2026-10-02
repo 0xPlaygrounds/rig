@@ -2,30 +2,46 @@
   "header": {
     "deliveries": [
       {
-        "batch": 6,
+        "batch": 8,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 4
+          "items": 3
         }
       },
       {
-        "batch": 6,
+        "batch": 9,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 10,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 10,
+        "batch": 18,
         "id": 1,
         "kind": {
           "delivery": "stream",
-          "items": 4
+          "items": 2
         }
       },
       {
-        "batch": 10,
+        "batch": 19,
+        "id": 1,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 20,
         "id": 1,
         "kind": {
           "delivery": "outcome"
@@ -94,7 +110,14 @@
           "choice": [
             {
               "type": "text",
-              "text": "agent raw probe"
+              "text": "agent raw probe",
+              "native": {
+                "item": {
+                  "text": "agent raw probe",
+                  "type": "text"
+                },
+                "fingerprint": 1784595374874271870
+              }
             }
           ],
           "usage": {
@@ -104,12 +127,15 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_011CfLcg5JKuZueX1QmD4A5r",
-          "response_id": null,
+          "origin": {
+            "api": "anthropic.messages",
+            "provider": "anthropic",
+            "model": "claude-haiku-4-5",
+            "response_model": "claude-haiku-4-5-20251001",
+            "response_id": "msg_011CfLcg5JKuZueX1QmD4A5r"
+          },
           "provider_request_id": "req_011CfLcg4sGnerTaHDu3d7fJ",
           "finish_reason": "stop",
-          "provider": "anthropic",
-          "model": "claude-haiku-4-5-20251001",
           "raw": {
             "usage": {
               "output_tokens": 6,
@@ -159,7 +185,14 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "agent raw probe"
+              "text": "agent raw probe",
+              "native": {
+                "item": {
+                  "text": "agent raw probe",
+                  "type": "text"
+                },
+                "fingerprint": 1784595374874271870
+              }
             }
           }
         }
@@ -201,7 +234,14 @@
           "choice": [
             {
               "type": "text",
-              "text": "agent raw probe"
+              "text": "agent raw probe",
+              "native": {
+                "item": {
+                  "text": "agent raw probe",
+                  "type": "text"
+                },
+                "fingerprint": 1784595374874271870
+              }
             }
           ],
           "usage": {
@@ -211,12 +251,15 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_011CfLcg7kuYVkLE5BmVcUz8",
-          "response_id": null,
+          "origin": {
+            "api": "anthropic.messages",
+            "provider": "anthropic",
+            "model": "claude-haiku-4-5",
+            "response_model": "claude-haiku-4-5-20251001",
+            "response_id": "msg_011CfLcg7kuYVkLE5BmVcUz8"
+          },
           "provider_request_id": "req_011CfLcg7KMsrFfjNHuVXDdk",
           "finish_reason": "stop",
-          "provider": "anthropic",
-          "model": "claude-haiku-4-5-20251001",
           "raw": {
             "usage": {
               "output_tokens": 6,
@@ -266,7 +309,14 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "agent raw probe"
+              "text": "agent raw probe",
+              "native": {
+                "item": {
+                  "text": "agent raw probe",
+                  "type": "text"
+                },
+                "fingerprint": 1784595374874271870
+              }
             }
           }
         }

@@ -31,7 +31,8 @@
             },
             "include": [
               "reasoning.encrypted_content"
-            ]
+            ],
+            "store": false
           },
           "rig_ecs::agent::DefaultMaxTurns": null,
           "rig_ecs::agent::InvalidCalls": {

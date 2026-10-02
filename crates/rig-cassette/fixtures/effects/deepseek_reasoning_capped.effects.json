@@ -72,16 +72,13 @@
           "choice": [
             {
               "type": "reasoning",
-              "issuer": "deepseek",
-              "id": null,
-              "content": [
-                {
-                  "type": "text",
-                  "content": {
-                    "text": "We need answer 1-2 sentences. Explain Rust and why memory safety matters"
-                  }
-                }
-              ]
+              "text": "We need answer 1-2 sentences. Explain Rust and why memory safety matters",
+              "native": {
+                "item": {
+                  "reasoning_content": "We need answer 1-2 sentences. Explain Rust and why memory safety matters"
+                },
+                "fingerprint": 10347013845584705859
+              }
             }
           ],
           "usage": {
@@ -91,11 +88,22 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 16
           },
-          "message_id": null,
-          "response_id": "d313630b-a376-4f20-be7e-76e1e3e7221b",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "deepseek",
+            "model": "deepseek-flash",
+            "response_model": "deepseek-flash",
+            "response_id": "d313630b-a376-4f20-be7e-76e1e3e7221b"
+          },
+          "native": {
+            "item": {
+              "content": "",
+              "reasoning_content": "We need answer 1-2 sentences. Explain Rust and why memory safety matters",
+              "role": "assistant"
+            },
+            "fingerprint": 11257013725503657455
+          },
           "finish_reason": "length",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
           "raw": {
             "choices": [
               {

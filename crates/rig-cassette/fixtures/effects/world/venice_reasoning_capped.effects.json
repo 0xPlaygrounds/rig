@@ -79,16 +79,13 @@
           "choice": [
             {
               "type": "reasoning",
-              "issuer": "venice",
-              "id": null,
-              "content": [
-                {
-                  "type": "text",
-                  "content": {
-                    "text": "Here's a thinking process:\n\n1.  **Analyze User Input:**"
-                  }
-                }
-              ]
+              "text": "Here's a thinking process:\n\n1.  **Analyze User Input:**",
+              "native": {
+                "item": {
+                  "reasoning_content": "Here's a thinking process:\n\n1.  **Analyze User Input:**"
+                },
+                "fingerprint": 10458759381634124062
+              }
             }
           ],
           "usage": {
@@ -96,11 +93,23 @@
             "output_tokens": 16,
             "total_tokens": 1022
           },
-          "message_id": null,
-          "response_id": "chatcmpl-RqRBfGOV1gJZTR0fcgDZyFBj",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "venice",
+            "model": "qwen3-235b-a22b-thinking-2507",
+            "response_model": "qwen3-235b-a22b-thinking-2507",
+            "response_id": "chatcmpl-RqRBfGOV1gJZTR0fcgDZyFBj"
+          },
+          "native": {
+            "item": {
+              "content": "",
+              "name": null,
+              "reasoning_content": "Here's a thinking process:\n\n1.  **Analyze User Input:**",
+              "role": "assistant"
+            },
+            "fingerprint": 5888614307451041814
+          },
           "finish_reason": "length",
-          "provider": "venice",
-          "model": "qwen3-235b-a22b-thinking-2507",
           "raw": {
             "choices": [
               {

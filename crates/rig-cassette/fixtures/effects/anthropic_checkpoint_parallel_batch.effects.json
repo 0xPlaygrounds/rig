@@ -116,9 +116,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "toolu_01XwL6vwqwrpTEDYJDjtUHXi"
-                }
+                "provider": "toolu_01BhUwNsAR18CVUmeUU6KQta"
               },
               "function": {
                 "name": "checkpoint_batch",
@@ -126,15 +124,25 @@
                   "slot": 0
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "caller": {
+                    "type": "direct"
+                  },
+                  "id": "toolu_01BhUwNsAR18CVUmeUU6KQta",
+                  "input": {
+                    "slot": 0
+                  },
+                  "name": "checkpoint_batch",
+                  "type": "tool_use"
+                },
+                "fingerprint": 13628595842603186874
+              }
             },
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "toolu_01Gfsdsqd8CE5y5VCuGFvuAn"
-                }
+                "provider": "toolu_01T9Jxvdu2z4gTErqzwzYcd2"
               },
               "function": {
                 "name": "checkpoint_batch",
@@ -142,15 +150,25 @@
                   "slot": 1
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "caller": {
+                    "type": "direct"
+                  },
+                  "id": "toolu_01T9Jxvdu2z4gTErqzwzYcd2",
+                  "input": {
+                    "slot": 1
+                  },
+                  "name": "checkpoint_batch",
+                  "type": "tool_use"
+                },
+                "fingerprint": 13862906636158764223
+              }
             },
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "toolu_01H6ZTyJRiGq6WMrFoyGU4dd"
-                }
+                "provider": "toolu_01U8fAwoRZ63hV9GrKhLUUE9"
               },
               "function": {
                 "name": "checkpoint_batch",
@@ -158,8 +176,20 @@
                   "slot": 2
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "caller": {
+                    "type": "direct"
+                  },
+                  "id": "toolu_01U8fAwoRZ63hV9GrKhLUUE9",
+                  "input": {
+                    "slot": 2
+                  },
+                  "name": "checkpoint_batch",
+                  "type": "tool_use"
+                },
+                "fingerprint": 7342664676558553906
+              }
             }
           ],
           "usage": {
@@ -169,12 +199,15 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_011CfLcZNYTVmtEFFk7XH1Jw",
-          "response_id": null,
-          "provider_request_id": "req_011CfLcZN5vLEWqCbGZQTdoa",
+          "origin": {
+            "api": "anthropic.messages",
+            "provider": "anthropic",
+            "model": "claude-haiku-4-5-20251001",
+            "response_model": "claude-haiku-4-5-20251001",
+            "response_id": "msg_011Cfchw8vRUzGdPNNkD2r6i"
+          },
+          "provider_request_id": "req_011Cfchw8aKp4tKNiv8igBVq",
           "finish_reason": "tool_calls",
-          "provider": "anthropic",
-          "model": "claude-haiku-4-5-20251001",
           "raw": {
             "container": null,
             "content": [
@@ -182,7 +215,7 @@
                 "caller": {
                   "type": "direct"
                 },
-                "id": "toolu_01XwL6vwqwrpTEDYJDjtUHXi",
+                "id": "toolu_01BhUwNsAR18CVUmeUU6KQta",
                 "input": {
                   "slot": 0
                 },
@@ -193,7 +226,7 @@
                 "caller": {
                   "type": "direct"
                 },
-                "id": "toolu_01Gfsdsqd8CE5y5VCuGFvuAn",
+                "id": "toolu_01T9Jxvdu2z4gTErqzwzYcd2",
                 "input": {
                   "slot": 1
                 },
@@ -204,7 +237,7 @@
                 "caller": {
                   "type": "direct"
                 },
-                "id": "toolu_01H6ZTyJRiGq6WMrFoyGU4dd",
+                "id": "toolu_01U8fAwoRZ63hV9GrKhLUUE9",
                 "input": {
                   "slot": 2
                 },
@@ -212,7 +245,8 @@
                 "type": "tool_use"
               }
             ],
-            "id": "msg_011CfLcZNYTVmtEFFk7XH1Jw",
+            "diagnostics": null,
+            "id": "msg_011Cfchw8vRUzGdPNNkD2r6i",
             "model": "claude-haiku-4-5-20251001",
             "role": "assistant",
             "stop_details": null,
@@ -339,14 +373,11 @@
             },
             {
               "role": "assistant",
-              "id": "msg_011CfLcZNYTVmtEFFk7XH1Jw",
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "toolu_01XwL6vwqwrpTEDYJDjtUHXi"
-                    }
+                    "provider": "toolu_01BhUwNsAR18CVUmeUU6KQta"
                   },
                   "function": {
                     "name": "checkpoint_batch",
@@ -354,15 +385,25 @@
                       "slot": 0
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "caller": {
+                        "type": "direct"
+                      },
+                      "id": "toolu_01BhUwNsAR18CVUmeUU6KQta",
+                      "input": {
+                        "slot": 0
+                      },
+                      "name": "checkpoint_batch",
+                      "type": "tool_use"
+                    },
+                    "fingerprint": 13628595842603186874
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "toolu_01Gfsdsqd8CE5y5VCuGFvuAn"
-                    }
+                    "provider": "toolu_01T9Jxvdu2z4gTErqzwzYcd2"
                   },
                   "function": {
                     "name": "checkpoint_batch",
@@ -370,15 +411,25 @@
                       "slot": 1
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "caller": {
+                        "type": "direct"
+                      },
+                      "id": "toolu_01T9Jxvdu2z4gTErqzwzYcd2",
+                      "input": {
+                        "slot": 1
+                      },
+                      "name": "checkpoint_batch",
+                      "type": "tool_use"
+                    },
+                    "fingerprint": 13862906636158764223
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "toolu_01H6ZTyJRiGq6WMrFoyGU4dd"
-                    }
+                    "provider": "toolu_01U8fAwoRZ63hV9GrKhLUUE9"
                   },
                   "function": {
                     "name": "checkpoint_batch",
@@ -386,10 +437,30 @@
                       "slot": 2
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "caller": {
+                        "type": "direct"
+                      },
+                      "id": "toolu_01U8fAwoRZ63hV9GrKhLUUE9",
+                      "input": {
+                        "slot": 2
+                      },
+                      "name": "checkpoint_batch",
+                      "type": "tool_use"
+                    },
+                    "fingerprint": 7342664676558553906
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "anthropic.messages",
+                "provider": "anthropic",
+                "model": "claude-haiku-4-5-20251001",
+                "response_model": "claude-haiku-4-5-20251001",
+                "response_id": "msg_011Cfchw8vRUzGdPNNkD2r6i"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -397,9 +468,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "toolu_01XwL6vwqwrpTEDYJDjtUHXi"
-                    }
+                    "provider": "toolu_01BhUwNsAR18CVUmeUU6KQta"
                   },
                   "name": "checkpoint_batch",
                   "content": [
@@ -412,9 +481,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "toolu_01Gfsdsqd8CE5y5VCuGFvuAn"
-                    }
+                    "provider": "toolu_01T9Jxvdu2z4gTErqzwzYcd2"
                   },
                   "name": "checkpoint_batch",
                   "content": [
@@ -427,9 +494,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "toolu_01H6ZTyJRiGq6WMrFoyGU4dd"
-                    }
+                    "provider": "toolu_01U8fAwoRZ63hV9GrKhLUUE9"
                   },
                   "name": "checkpoint_batch",
                   "content": [
@@ -480,7 +545,14 @@
           "choice": [
             {
               "type": "text",
-              "text": "All three checkpoint_batch calls have completed:\n- slot=0: checkpoint-slot-zero\n- slot=1: failed (as expected)\n- slot=2: checkpoint-slot-two\n\ncheckpoint-complete"
+              "text": "All three checkpoint_batch calls have completed:\n- slot=0: checkpoint-slot-zero\n- slot=1: failed (as expected)\n- slot=2: checkpoint-slot-two\n\ncheckpoint-complete",
+              "native": {
+                "item": {
+                  "text": "All three checkpoint_batch calls have completed:\n- slot=0: checkpoint-slot-zero\n- slot=1: failed (as expected)\n- slot=2: checkpoint-slot-two\n\ncheckpoint-complete",
+                  "type": "text"
+                },
+                "fingerprint": 4608458020512181328
+              }
             }
           ],
           "usage": {
@@ -490,12 +562,15 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_011CfLcZTaq3JTjSs2KUZB9H",
-          "response_id": null,
-          "provider_request_id": "req_011CfLcZT9mhs59LvJMutGFX",
+          "origin": {
+            "api": "anthropic.messages",
+            "provider": "anthropic",
+            "model": "claude-haiku-4-5-20251001",
+            "response_model": "claude-haiku-4-5-20251001",
+            "response_id": "msg_011CfchwEJdEtePpbfY19FNs"
+          },
+          "provider_request_id": "req_011CfchwDfg3xFXTAD82M6Za",
           "finish_reason": "stop",
-          "provider": "anthropic",
-          "model": "claude-haiku-4-5-20251001",
           "raw": {
             "container": null,
             "content": [
@@ -504,7 +579,8 @@
                 "type": "text"
               }
             ],
-            "id": "msg_011CfLcZTaq3JTjSs2KUZB9H",
+            "diagnostics": null,
+            "id": "msg_011CfchwEJdEtePpbfY19FNs",
             "model": "claude-haiku-4-5-20251001",
             "role": "assistant",
             "stop_details": null,

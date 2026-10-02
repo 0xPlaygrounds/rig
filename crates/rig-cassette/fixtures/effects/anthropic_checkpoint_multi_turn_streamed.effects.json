@@ -105,14 +105,19 @@
           "choice": [
             {
               "type": "text",
-              "text": "I'll start by calling checkpoint_step with token=start."
+              "text": "I'll start by calling checkpoint_step with token=start.",
+              "native": {
+                "item": {
+                  "text": "I'll start by calling checkpoint_step with token=start.",
+                  "type": "text"
+                },
+                "fingerprint": 12936876649898317401
+              }
             },
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "toolu_01AiN7DdKdwtWCabD6ULdR9g"
-                }
+                "provider": "toolu_01GWKs7GMaQz6HNRiFEx8JdM"
               },
               "function": {
                 "name": "checkpoint_step",
@@ -120,8 +125,20 @@
                   "token": "start"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "caller": {
+                    "type": "direct"
+                  },
+                  "id": "toolu_01GWKs7GMaQz6HNRiFEx8JdM",
+                  "input": {
+                    "token": "start"
+                  },
+                  "name": "checkpoint_step",
+                  "type": "tool_use"
+                },
+                "fingerprint": 4721713932761284983
+              }
             }
           ],
           "usage": {
@@ -131,12 +148,15 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_011CfLcZDAef683Wen3WuBgK",
-          "response_id": null,
-          "provider_request_id": "req_011CfLcZChcvqFFEZLMRXoHx",
+          "origin": {
+            "api": "anthropic.messages",
+            "provider": "anthropic",
+            "model": "claude-haiku-4-5-20251001",
+            "response_model": "claude-haiku-4-5-20251001",
+            "response_id": "msg_011CfchvAMTMJivoEX2daxpo"
+          },
+          "provider_request_id": "req_011Cfchv9zPQ8myPzvyvWGWm",
           "finish_reason": "tool_calls",
-          "provider": "anthropic",
-          "model": "claude-haiku-4-5-20251001",
           "raw": {
             "usage": {
               "output_tokens": 67,
@@ -149,7 +169,7 @@
               "cache_read_input_tokens": 0
             },
             "stop_reason": "tool_use",
-            "message_id": "msg_011CfLcZDAef683Wen3WuBgK",
+            "message_id": "msg_011CfchvAMTMJivoEX2daxpo",
             "model": "claude-haiku-4-5-20251001"
           }
         }
@@ -176,7 +196,15 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": " by calling checkpoint_step with token"
+            "text": " by calling checkpoint_step with"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": " token"
           }
         },
         {
@@ -202,7 +230,14 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "I'll start by calling checkpoint_step with token=start."
+              "text": "I'll start by calling checkpoint_step with token=start.",
+              "native": {
+                "item": {
+                  "text": "I'll start by calling checkpoint_step with token=start.",
+                  "type": "text"
+                },
+                "fingerprint": 12936876649898317401
+              }
             }
           }
         },
@@ -230,9 +265,7 @@
             "content": {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "toolu_01AiN7DdKdwtWCabD6ULdR9g"
-                }
+                "provider": "toolu_01GWKs7GMaQz6HNRiFEx8JdM"
               },
               "function": {
                 "name": "checkpoint_step",
@@ -240,8 +273,20 @@
                   "token": "start"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "caller": {
+                    "type": "direct"
+                  },
+                  "id": "toolu_01GWKs7GMaQz6HNRiFEx8JdM",
+                  "input": {
+                    "token": "start"
+                  },
+                  "name": "checkpoint_step",
+                  "type": "tool_use"
+                },
+                "fingerprint": 4721713932761284983
+              }
             }
           }
         }
@@ -299,18 +344,22 @@
             },
             {
               "role": "assistant",
-              "id": "msg_011CfLcZDAef683Wen3WuBgK",
               "content": [
                 {
                   "type": "text",
-                  "text": "I'll start by calling checkpoint_step with token=start."
+                  "text": "I'll start by calling checkpoint_step with token=start.",
+                  "native": {
+                    "item": {
+                      "text": "I'll start by calling checkpoint_step with token=start.",
+                      "type": "text"
+                    },
+                    "fingerprint": 12936876649898317401
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "toolu_01AiN7DdKdwtWCabD6ULdR9g"
-                    }
+                    "provider": "toolu_01GWKs7GMaQz6HNRiFEx8JdM"
                   },
                   "function": {
                     "name": "checkpoint_step",
@@ -318,10 +367,30 @@
                       "token": "start"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "caller": {
+                        "type": "direct"
+                      },
+                      "id": "toolu_01GWKs7GMaQz6HNRiFEx8JdM",
+                      "input": {
+                        "token": "start"
+                      },
+                      "name": "checkpoint_step",
+                      "type": "tool_use"
+                    },
+                    "fingerprint": 4721713932761284983
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "anthropic.messages",
+                "provider": "anthropic",
+                "model": "claude-haiku-4-5-20251001",
+                "response_model": "claude-haiku-4-5-20251001",
+                "response_id": "msg_011CfchvAMTMJivoEX2daxpo"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -329,9 +398,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "toolu_01AiN7DdKdwtWCabD6ULdR9g"
-                    }
+                    "provider": "toolu_01GWKs7GMaQz6HNRiFEx8JdM"
                   },
                   "name": "checkpoint_step",
                   "content": [
@@ -381,14 +448,19 @@
           "choice": [
             {
               "type": "text",
-              "text": "Now I'll call checkpoint_step with the next_token \"cobalt-17\"."
+              "text": "Now I'll call checkpoint_step with the next_token \"cobalt-17\".",
+              "native": {
+                "item": {
+                  "text": "Now I'll call checkpoint_step with the next_token \"cobalt-17\".",
+                  "type": "text"
+                },
+                "fingerprint": 7237165070405339194
+              }
             },
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "toolu_01H22SxTAbgsAyKCb3eMBYr2"
-                }
+                "provider": "toolu_01DSvtz7pvm5qNoD52BgrPbw"
               },
               "function": {
                 "name": "checkpoint_step",
@@ -396,8 +468,20 @@
                   "token": "cobalt-17"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "caller": {
+                    "type": "direct"
+                  },
+                  "id": "toolu_01DSvtz7pvm5qNoD52BgrPbw",
+                  "input": {
+                    "token": "cobalt-17"
+                  },
+                  "name": "checkpoint_step",
+                  "type": "tool_use"
+                },
+                "fingerprint": 16840398654581379040
+              }
             }
           ],
           "usage": {
@@ -407,12 +491,15 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_011CfLcZGekvH9gqdrpiv31s",
-          "response_id": null,
-          "provider_request_id": "req_011CfLcZGAUbCzPqHHzXyCRY",
+          "origin": {
+            "api": "anthropic.messages",
+            "provider": "anthropic",
+            "model": "claude-haiku-4-5-20251001",
+            "response_model": "claude-haiku-4-5-20251001",
+            "response_id": "msg_011CfchvDqJzGYYE5ugHPBUp"
+          },
+          "provider_request_id": "req_011CfchvDUVM33gE4KaYy4e7",
           "finish_reason": "tool_calls",
-          "provider": "anthropic",
-          "model": "claude-haiku-4-5-20251001",
           "raw": {
             "usage": {
               "output_tokens": 75,
@@ -425,7 +512,7 @@
               "cache_read_input_tokens": 0
             },
             "stop_reason": "tool_use",
-            "message_id": "msg_011CfLcZGekvH9gqdrpiv31s",
+            "message_id": "msg_011CfchvDqJzGYYE5ugHPBUp",
             "model": "claude-haiku-4-5-20251001"
           }
         }
@@ -452,7 +539,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": " I'll call checkpoint_step with the"
+            "text": " I'll call checkpoint_step"
           }
         },
         {
@@ -460,7 +547,15 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": " next_token \""
+            "text": " with"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": " the next_token \""
           }
         },
         {
@@ -478,7 +573,14 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "Now I'll call checkpoint_step with the next_token \"cobalt-17\"."
+              "text": "Now I'll call checkpoint_step with the next_token \"cobalt-17\".",
+              "native": {
+                "item": {
+                  "text": "Now I'll call checkpoint_step with the next_token \"cobalt-17\".",
+                  "type": "text"
+                },
+                "fingerprint": 7237165070405339194
+              }
             }
           }
         },
@@ -506,9 +608,7 @@
             "content": {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "toolu_01H22SxTAbgsAyKCb3eMBYr2"
-                }
+                "provider": "toolu_01DSvtz7pvm5qNoD52BgrPbw"
               },
               "function": {
                 "name": "checkpoint_step",
@@ -516,8 +616,20 @@
                   "token": "cobalt-17"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "caller": {
+                    "type": "direct"
+                  },
+                  "id": "toolu_01DSvtz7pvm5qNoD52BgrPbw",
+                  "input": {
+                    "token": "cobalt-17"
+                  },
+                  "name": "checkpoint_step",
+                  "type": "tool_use"
+                },
+                "fingerprint": 16840398654581379040
+              }
             }
           }
         }
@@ -575,18 +687,22 @@
             },
             {
               "role": "assistant",
-              "id": "msg_011CfLcZDAef683Wen3WuBgK",
               "content": [
                 {
                   "type": "text",
-                  "text": "I'll start by calling checkpoint_step with token=start."
+                  "text": "I'll start by calling checkpoint_step with token=start.",
+                  "native": {
+                    "item": {
+                      "text": "I'll start by calling checkpoint_step with token=start.",
+                      "type": "text"
+                    },
+                    "fingerprint": 12936876649898317401
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "toolu_01AiN7DdKdwtWCabD6ULdR9g"
-                    }
+                    "provider": "toolu_01GWKs7GMaQz6HNRiFEx8JdM"
                   },
                   "function": {
                     "name": "checkpoint_step",
@@ -594,10 +710,30 @@
                       "token": "start"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "caller": {
+                        "type": "direct"
+                      },
+                      "id": "toolu_01GWKs7GMaQz6HNRiFEx8JdM",
+                      "input": {
+                        "token": "start"
+                      },
+                      "name": "checkpoint_step",
+                      "type": "tool_use"
+                    },
+                    "fingerprint": 4721713932761284983
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "anthropic.messages",
+                "provider": "anthropic",
+                "model": "claude-haiku-4-5-20251001",
+                "response_model": "claude-haiku-4-5-20251001",
+                "response_id": "msg_011CfchvAMTMJivoEX2daxpo"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -605,9 +741,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "toolu_01AiN7DdKdwtWCabD6ULdR9g"
-                    }
+                    "provider": "toolu_01GWKs7GMaQz6HNRiFEx8JdM"
                   },
                   "name": "checkpoint_step",
                   "content": [
@@ -625,18 +759,22 @@
             },
             {
               "role": "assistant",
-              "id": "msg_011CfLcZGekvH9gqdrpiv31s",
               "content": [
                 {
                   "type": "text",
-                  "text": "Now I'll call checkpoint_step with the next_token \"cobalt-17\"."
+                  "text": "Now I'll call checkpoint_step with the next_token \"cobalt-17\".",
+                  "native": {
+                    "item": {
+                      "text": "Now I'll call checkpoint_step with the next_token \"cobalt-17\".",
+                      "type": "text"
+                    },
+                    "fingerprint": 7237165070405339194
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "toolu_01H22SxTAbgsAyKCb3eMBYr2"
-                    }
+                    "provider": "toolu_01DSvtz7pvm5qNoD52BgrPbw"
                   },
                   "function": {
                     "name": "checkpoint_step",
@@ -644,10 +782,30 @@
                       "token": "cobalt-17"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "caller": {
+                        "type": "direct"
+                      },
+                      "id": "toolu_01DSvtz7pvm5qNoD52BgrPbw",
+                      "input": {
+                        "token": "cobalt-17"
+                      },
+                      "name": "checkpoint_step",
+                      "type": "tool_use"
+                    },
+                    "fingerprint": 16840398654581379040
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "anthropic.messages",
+                "provider": "anthropic",
+                "model": "claude-haiku-4-5-20251001",
+                "response_model": "claude-haiku-4-5-20251001",
+                "response_id": "msg_011CfchvDqJzGYYE5ugHPBUp"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -655,9 +813,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "toolu_01H22SxTAbgsAyKCb3eMBYr2"
-                    }
+                    "provider": "toolu_01DSvtz7pvm5qNoD52BgrPbw"
                   },
                   "name": "checkpoint_step",
                   "content": [
@@ -707,14 +863,19 @@
           "choice": [
             {
               "type": "text",
-              "text": "Now I'll call checkpoint_step with the next_token \"orchard-29\"."
+              "text": "Now I'll call checkpoint_step with the next_token \"orchard-29\".",
+              "native": {
+                "item": {
+                  "text": "Now I'll call checkpoint_step with the next_token \"orchard-29\".",
+                  "type": "text"
+                },
+                "fingerprint": 2586537906401683227
+              }
             },
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "toolu_01DY5FicrpihRneDHwuAoLvb"
-                }
+                "provider": "toolu_01XPLcZqCSwpzUBLboG3gQ3Q"
               },
               "function": {
                 "name": "checkpoint_step",
@@ -722,8 +883,20 @@
                   "token": "orchard-29"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "caller": {
+                    "type": "direct"
+                  },
+                  "id": "toolu_01XPLcZqCSwpzUBLboG3gQ3Q",
+                  "input": {
+                    "token": "orchard-29"
+                  },
+                  "name": "checkpoint_step",
+                  "type": "tool_use"
+                },
+                "fingerprint": 7695642908813718609
+              }
             }
           ],
           "usage": {
@@ -733,12 +906,15 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_011CfLcZLHn4hMopUP2c4fru",
-          "response_id": null,
-          "provider_request_id": "req_011CfLcZKrUenoN2QCMXaq1C",
+          "origin": {
+            "api": "anthropic.messages",
+            "provider": "anthropic",
+            "model": "claude-haiku-4-5-20251001",
+            "response_model": "claude-haiku-4-5-20251001",
+            "response_id": "msg_011CfchvHJRYKckpFrXn91wC"
+          },
+          "provider_request_id": "req_011CfchvGxaSpDbYfDjbmF8E",
           "finish_reason": "tool_calls",
-          "provider": "anthropic",
-          "model": "claude-haiku-4-5-20251001",
           "raw": {
             "usage": {
               "output_tokens": 75,
@@ -751,7 +927,7 @@
               "cache_read_input_tokens": 0
             },
             "stop_reason": "tool_use",
-            "message_id": "msg_011CfLcZLHn4hMopUP2c4fru",
+            "message_id": "msg_011CfchvHJRYKckpFrXn91wC",
             "model": "claude-haiku-4-5-20251001"
           }
         }
@@ -786,7 +962,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": " checkpoint_step with the next_token"
+            "text": " checkpoint_step with the next"
           }
         },
         {
@@ -794,7 +970,15 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": " \"orchard-29\"."
+            "text": "_token \"orchard-"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": "29\"."
           }
         },
         {
@@ -804,7 +988,14 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "Now I'll call checkpoint_step with the next_token \"orchard-29\"."
+              "text": "Now I'll call checkpoint_step with the next_token \"orchard-29\".",
+              "native": {
+                "item": {
+                  "text": "Now I'll call checkpoint_step with the next_token \"orchard-29\".",
+                  "type": "text"
+                },
+                "fingerprint": 2586537906401683227
+              }
             }
           }
         },
@@ -832,9 +1023,7 @@
             "content": {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "toolu_01DY5FicrpihRneDHwuAoLvb"
-                }
+                "provider": "toolu_01XPLcZqCSwpzUBLboG3gQ3Q"
               },
               "function": {
                 "name": "checkpoint_step",
@@ -842,8 +1031,20 @@
                   "token": "orchard-29"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "caller": {
+                    "type": "direct"
+                  },
+                  "id": "toolu_01XPLcZqCSwpzUBLboG3gQ3Q",
+                  "input": {
+                    "token": "orchard-29"
+                  },
+                  "name": "checkpoint_step",
+                  "type": "tool_use"
+                },
+                "fingerprint": 7695642908813718609
+              }
             }
           }
         }
@@ -901,18 +1102,22 @@
             },
             {
               "role": "assistant",
-              "id": "msg_011CfLcZDAef683Wen3WuBgK",
               "content": [
                 {
                   "type": "text",
-                  "text": "I'll start by calling checkpoint_step with token=start."
+                  "text": "I'll start by calling checkpoint_step with token=start.",
+                  "native": {
+                    "item": {
+                      "text": "I'll start by calling checkpoint_step with token=start.",
+                      "type": "text"
+                    },
+                    "fingerprint": 12936876649898317401
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "toolu_01AiN7DdKdwtWCabD6ULdR9g"
-                    }
+                    "provider": "toolu_01GWKs7GMaQz6HNRiFEx8JdM"
                   },
                   "function": {
                     "name": "checkpoint_step",
@@ -920,10 +1125,30 @@
                       "token": "start"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "caller": {
+                        "type": "direct"
+                      },
+                      "id": "toolu_01GWKs7GMaQz6HNRiFEx8JdM",
+                      "input": {
+                        "token": "start"
+                      },
+                      "name": "checkpoint_step",
+                      "type": "tool_use"
+                    },
+                    "fingerprint": 4721713932761284983
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "anthropic.messages",
+                "provider": "anthropic",
+                "model": "claude-haiku-4-5-20251001",
+                "response_model": "claude-haiku-4-5-20251001",
+                "response_id": "msg_011CfchvAMTMJivoEX2daxpo"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -931,9 +1156,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "toolu_01AiN7DdKdwtWCabD6ULdR9g"
-                    }
+                    "provider": "toolu_01GWKs7GMaQz6HNRiFEx8JdM"
                   },
                   "name": "checkpoint_step",
                   "content": [
@@ -951,18 +1174,22 @@
             },
             {
               "role": "assistant",
-              "id": "msg_011CfLcZGekvH9gqdrpiv31s",
               "content": [
                 {
                   "type": "text",
-                  "text": "Now I'll call checkpoint_step with the next_token \"cobalt-17\"."
+                  "text": "Now I'll call checkpoint_step with the next_token \"cobalt-17\".",
+                  "native": {
+                    "item": {
+                      "text": "Now I'll call checkpoint_step with the next_token \"cobalt-17\".",
+                      "type": "text"
+                    },
+                    "fingerprint": 7237165070405339194
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "toolu_01H22SxTAbgsAyKCb3eMBYr2"
-                    }
+                    "provider": "toolu_01DSvtz7pvm5qNoD52BgrPbw"
                   },
                   "function": {
                     "name": "checkpoint_step",
@@ -970,10 +1197,30 @@
                       "token": "cobalt-17"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "caller": {
+                        "type": "direct"
+                      },
+                      "id": "toolu_01DSvtz7pvm5qNoD52BgrPbw",
+                      "input": {
+                        "token": "cobalt-17"
+                      },
+                      "name": "checkpoint_step",
+                      "type": "tool_use"
+                    },
+                    "fingerprint": 16840398654581379040
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "anthropic.messages",
+                "provider": "anthropic",
+                "model": "claude-haiku-4-5-20251001",
+                "response_model": "claude-haiku-4-5-20251001",
+                "response_id": "msg_011CfchvDqJzGYYE5ugHPBUp"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -981,9 +1228,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "toolu_01H22SxTAbgsAyKCb3eMBYr2"
-                    }
+                    "provider": "toolu_01DSvtz7pvm5qNoD52BgrPbw"
                   },
                   "name": "checkpoint_step",
                   "content": [
@@ -1001,18 +1246,22 @@
             },
             {
               "role": "assistant",
-              "id": "msg_011CfLcZLHn4hMopUP2c4fru",
               "content": [
                 {
                   "type": "text",
-                  "text": "Now I'll call checkpoint_step with the next_token \"orchard-29\"."
+                  "text": "Now I'll call checkpoint_step with the next_token \"orchard-29\".",
+                  "native": {
+                    "item": {
+                      "text": "Now I'll call checkpoint_step with the next_token \"orchard-29\".",
+                      "type": "text"
+                    },
+                    "fingerprint": 2586537906401683227
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "toolu_01DY5FicrpihRneDHwuAoLvb"
-                    }
+                    "provider": "toolu_01XPLcZqCSwpzUBLboG3gQ3Q"
                   },
                   "function": {
                     "name": "checkpoint_step",
@@ -1020,10 +1269,30 @@
                       "token": "orchard-29"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "caller": {
+                        "type": "direct"
+                      },
+                      "id": "toolu_01XPLcZqCSwpzUBLboG3gQ3Q",
+                      "input": {
+                        "token": "orchard-29"
+                      },
+                      "name": "checkpoint_step",
+                      "type": "tool_use"
+                    },
+                    "fingerprint": 7695642908813718609
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "anthropic.messages",
+                "provider": "anthropic",
+                "model": "claude-haiku-4-5-20251001",
+                "response_model": "claude-haiku-4-5-20251001",
+                "response_id": "msg_011CfchvHJRYKckpFrXn91wC"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -1031,9 +1300,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "toolu_01DY5FicrpihRneDHwuAoLvb"
-                    }
+                    "provider": "toolu_01XPLcZqCSwpzUBLboG3gQ3Q"
                   },
                   "name": "checkpoint_step",
                   "content": [
@@ -1083,14 +1350,19 @@
           "choice": [
             {
               "type": "text",
-              "text": "Now I'll call checkpoint_step with the next_token \"harbor-43\"."
+              "text": "Now I'll call checkpoint_step with the next_token \"harbor-43\".",
+              "native": {
+                "item": {
+                  "text": "Now I'll call checkpoint_step with the next_token \"harbor-43\".",
+                  "type": "text"
+                },
+                "fingerprint": 882992453871664156
+              }
             },
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "toolu_01EfZqgSpZvPywVe1a5UJJQ3"
-                }
+                "provider": "toolu_01C5bqZWe3RWvtsgwVUPR2xY"
               },
               "function": {
                 "name": "checkpoint_step",
@@ -1098,8 +1370,20 @@
                   "token": "harbor-43"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "caller": {
+                    "type": "direct"
+                  },
+                  "id": "toolu_01C5bqZWe3RWvtsgwVUPR2xY",
+                  "input": {
+                    "token": "harbor-43"
+                  },
+                  "name": "checkpoint_step",
+                  "type": "tool_use"
+                },
+                "fingerprint": 14805938102741543483
+              }
             }
           ],
           "usage": {
@@ -1109,12 +1393,15 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_011CfLcZPwZ7tKpyegz75vjQ",
-          "response_id": null,
-          "provider_request_id": "req_011CfLcZPU2BCayaoTU13rxd",
+          "origin": {
+            "api": "anthropic.messages",
+            "provider": "anthropic",
+            "model": "claude-haiku-4-5-20251001",
+            "response_model": "claude-haiku-4-5-20251001",
+            "response_id": "msg_011CfchvLjYgvuMWYpBv1xkd"
+          },
+          "provider_request_id": "req_011CfchvLRwPtrbkxSCsx6PM",
           "finish_reason": "tool_calls",
-          "provider": "anthropic",
-          "model": "claude-haiku-4-5-20251001",
           "raw": {
             "usage": {
               "output_tokens": 73,
@@ -1127,7 +1414,7 @@
               "cache_read_input_tokens": 0
             },
             "stop_reason": "tool_use",
-            "message_id": "msg_011CfLcZPwZ7tKpyegz75vjQ",
+            "message_id": "msg_011CfchvLjYgvuMWYpBv1xkd",
             "model": "claude-haiku-4-5-20251001"
           }
         }
@@ -1146,7 +1433,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": "Now I'll call checkpoint_step with"
+            "text": "Now I'll call checkpoint_"
           }
         },
         {
@@ -1154,7 +1441,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": " the next_token \"harbor-43"
+            "text": "step with the next_token"
           }
         },
         {
@@ -1162,7 +1449,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": "\"."
+            "text": " \"harbor-43\"."
           }
         },
         {
@@ -1172,7 +1459,14 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "Now I'll call checkpoint_step with the next_token \"harbor-43\"."
+              "text": "Now I'll call checkpoint_step with the next_token \"harbor-43\".",
+              "native": {
+                "item": {
+                  "text": "Now I'll call checkpoint_step with the next_token \"harbor-43\".",
+                  "type": "text"
+                },
+                "fingerprint": 882992453871664156
+              }
             }
           }
         },
@@ -1200,9 +1494,7 @@
             "content": {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "toolu_01EfZqgSpZvPywVe1a5UJJQ3"
-                }
+                "provider": "toolu_01C5bqZWe3RWvtsgwVUPR2xY"
               },
               "function": {
                 "name": "checkpoint_step",
@@ -1210,8 +1502,20 @@
                   "token": "harbor-43"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "caller": {
+                    "type": "direct"
+                  },
+                  "id": "toolu_01C5bqZWe3RWvtsgwVUPR2xY",
+                  "input": {
+                    "token": "harbor-43"
+                  },
+                  "name": "checkpoint_step",
+                  "type": "tool_use"
+                },
+                "fingerprint": 14805938102741543483
+              }
             }
           }
         }
@@ -1269,18 +1573,22 @@
             },
             {
               "role": "assistant",
-              "id": "msg_011CfLcZDAef683Wen3WuBgK",
               "content": [
                 {
                   "type": "text",
-                  "text": "I'll start by calling checkpoint_step with token=start."
+                  "text": "I'll start by calling checkpoint_step with token=start.",
+                  "native": {
+                    "item": {
+                      "text": "I'll start by calling checkpoint_step with token=start.",
+                      "type": "text"
+                    },
+                    "fingerprint": 12936876649898317401
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "toolu_01AiN7DdKdwtWCabD6ULdR9g"
-                    }
+                    "provider": "toolu_01GWKs7GMaQz6HNRiFEx8JdM"
                   },
                   "function": {
                     "name": "checkpoint_step",
@@ -1288,10 +1596,30 @@
                       "token": "start"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "caller": {
+                        "type": "direct"
+                      },
+                      "id": "toolu_01GWKs7GMaQz6HNRiFEx8JdM",
+                      "input": {
+                        "token": "start"
+                      },
+                      "name": "checkpoint_step",
+                      "type": "tool_use"
+                    },
+                    "fingerprint": 4721713932761284983
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "anthropic.messages",
+                "provider": "anthropic",
+                "model": "claude-haiku-4-5-20251001",
+                "response_model": "claude-haiku-4-5-20251001",
+                "response_id": "msg_011CfchvAMTMJivoEX2daxpo"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -1299,9 +1627,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "toolu_01AiN7DdKdwtWCabD6ULdR9g"
-                    }
+                    "provider": "toolu_01GWKs7GMaQz6HNRiFEx8JdM"
                   },
                   "name": "checkpoint_step",
                   "content": [
@@ -1319,18 +1645,22 @@
             },
             {
               "role": "assistant",
-              "id": "msg_011CfLcZGekvH9gqdrpiv31s",
               "content": [
                 {
                   "type": "text",
-                  "text": "Now I'll call checkpoint_step with the next_token \"cobalt-17\"."
+                  "text": "Now I'll call checkpoint_step with the next_token \"cobalt-17\".",
+                  "native": {
+                    "item": {
+                      "text": "Now I'll call checkpoint_step with the next_token \"cobalt-17\".",
+                      "type": "text"
+                    },
+                    "fingerprint": 7237165070405339194
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "toolu_01H22SxTAbgsAyKCb3eMBYr2"
-                    }
+                    "provider": "toolu_01DSvtz7pvm5qNoD52BgrPbw"
                   },
                   "function": {
                     "name": "checkpoint_step",
@@ -1338,10 +1668,30 @@
                       "token": "cobalt-17"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "caller": {
+                        "type": "direct"
+                      },
+                      "id": "toolu_01DSvtz7pvm5qNoD52BgrPbw",
+                      "input": {
+                        "token": "cobalt-17"
+                      },
+                      "name": "checkpoint_step",
+                      "type": "tool_use"
+                    },
+                    "fingerprint": 16840398654581379040
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "anthropic.messages",
+                "provider": "anthropic",
+                "model": "claude-haiku-4-5-20251001",
+                "response_model": "claude-haiku-4-5-20251001",
+                "response_id": "msg_011CfchvDqJzGYYE5ugHPBUp"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -1349,9 +1699,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "toolu_01H22SxTAbgsAyKCb3eMBYr2"
-                    }
+                    "provider": "toolu_01DSvtz7pvm5qNoD52BgrPbw"
                   },
                   "name": "checkpoint_step",
                   "content": [
@@ -1369,18 +1717,22 @@
             },
             {
               "role": "assistant",
-              "id": "msg_011CfLcZLHn4hMopUP2c4fru",
               "content": [
                 {
                   "type": "text",
-                  "text": "Now I'll call checkpoint_step with the next_token \"orchard-29\"."
+                  "text": "Now I'll call checkpoint_step with the next_token \"orchard-29\".",
+                  "native": {
+                    "item": {
+                      "text": "Now I'll call checkpoint_step with the next_token \"orchard-29\".",
+                      "type": "text"
+                    },
+                    "fingerprint": 2586537906401683227
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "toolu_01DY5FicrpihRneDHwuAoLvb"
-                    }
+                    "provider": "toolu_01XPLcZqCSwpzUBLboG3gQ3Q"
                   },
                   "function": {
                     "name": "checkpoint_step",
@@ -1388,10 +1740,30 @@
                       "token": "orchard-29"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "caller": {
+                        "type": "direct"
+                      },
+                      "id": "toolu_01XPLcZqCSwpzUBLboG3gQ3Q",
+                      "input": {
+                        "token": "orchard-29"
+                      },
+                      "name": "checkpoint_step",
+                      "type": "tool_use"
+                    },
+                    "fingerprint": 7695642908813718609
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "anthropic.messages",
+                "provider": "anthropic",
+                "model": "claude-haiku-4-5-20251001",
+                "response_model": "claude-haiku-4-5-20251001",
+                "response_id": "msg_011CfchvHJRYKckpFrXn91wC"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -1399,9 +1771,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "toolu_01DY5FicrpihRneDHwuAoLvb"
-                    }
+                    "provider": "toolu_01XPLcZqCSwpzUBLboG3gQ3Q"
                   },
                   "name": "checkpoint_step",
                   "content": [
@@ -1419,18 +1789,22 @@
             },
             {
               "role": "assistant",
-              "id": "msg_011CfLcZPwZ7tKpyegz75vjQ",
               "content": [
                 {
                   "type": "text",
-                  "text": "Now I'll call checkpoint_step with the next_token \"harbor-43\"."
+                  "text": "Now I'll call checkpoint_step with the next_token \"harbor-43\".",
+                  "native": {
+                    "item": {
+                      "text": "Now I'll call checkpoint_step with the next_token \"harbor-43\".",
+                      "type": "text"
+                    },
+                    "fingerprint": 882992453871664156
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "toolu_01EfZqgSpZvPywVe1a5UJJQ3"
-                    }
+                    "provider": "toolu_01C5bqZWe3RWvtsgwVUPR2xY"
                   },
                   "function": {
                     "name": "checkpoint_step",
@@ -1438,10 +1812,30 @@
                       "token": "harbor-43"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "caller": {
+                        "type": "direct"
+                      },
+                      "id": "toolu_01C5bqZWe3RWvtsgwVUPR2xY",
+                      "input": {
+                        "token": "harbor-43"
+                      },
+                      "name": "checkpoint_step",
+                      "type": "tool_use"
+                    },
+                    "fingerprint": 14805938102741543483
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "anthropic.messages",
+                "provider": "anthropic",
+                "model": "claude-haiku-4-5-20251001",
+                "response_model": "claude-haiku-4-5-20251001",
+                "response_id": "msg_011CfchvLjYgvuMWYpBv1xkd"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -1449,9 +1843,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "toolu_01EfZqgSpZvPywVe1a5UJJQ3"
-                    }
+                    "provider": "toolu_01C5bqZWe3RWvtsgwVUPR2xY"
                   },
                   "name": "checkpoint_step",
                   "content": [
@@ -1501,7 +1893,14 @@
           "choice": [
             {
               "type": "text",
-              "text": "The checkpoint sequence is complete. The result shows done=true with no next_token.\n\ncheckpoint-complete"
+              "text": "The checkpoint sequence is complete. The result shows done=true with no next_token.\n\ncheckpoint-complete",
+              "native": {
+                "item": {
+                  "text": "The checkpoint sequence is complete. The result shows done=true with no next_token.\n\ncheckpoint-complete",
+                  "type": "text"
+                },
+                "fingerprint": 17699134755372334105
+              }
             }
           ],
           "usage": {
@@ -1511,12 +1910,15 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_011CfLcZSyrSAixQCPKYsmA7",
-          "response_id": null,
-          "provider_request_id": "req_011CfLcZSZoMTaNWAYKxQsYu",
+          "origin": {
+            "api": "anthropic.messages",
+            "provider": "anthropic",
+            "model": "claude-haiku-4-5-20251001",
+            "response_model": "claude-haiku-4-5-20251001",
+            "response_id": "msg_011CfchvQH7f7Exza9a3TDCE"
+          },
+          "provider_request_id": "req_011CfchvPuJ9mJyvKnH8W1bR",
           "finish_reason": "stop",
-          "provider": "anthropic",
-          "model": "claude-haiku-4-5-20251001",
           "raw": {
             "usage": {
               "output_tokens": 25,
@@ -1529,7 +1931,7 @@
               "cache_read_input_tokens": 0
             },
             "stop_reason": "end_turn",
-            "message_id": "msg_011CfLcZSyrSAixQCPKYsmA7",
+            "message_id": "msg_011CfchvQH7f7Exza9a3TDCE",
             "model": "claude-haiku-4-5-20251001"
           }
         }
@@ -1638,7 +2040,14 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "The checkpoint sequence is complete. The result shows done=true with no next_token.\n\ncheckpoint-complete"
+              "text": "The checkpoint sequence is complete. The result shows done=true with no next_token.\n\ncheckpoint-complete",
+              "native": {
+                "item": {
+                  "text": "The checkpoint sequence is complete. The result shows done=true with no next_token.\n\ncheckpoint-complete",
+                  "type": "text"
+                },
+                "fingerprint": 17699134755372334105
+              }
             }
           }
         }

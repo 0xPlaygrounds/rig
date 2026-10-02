@@ -75,7 +75,14 @@
           "choice": [
             {
               "type": "text",
-              "text": "PINEAPPLE"
+              "text": "PINEAPPLE",
+              "native": {
+                "item": {
+                  "text": "PINEAPPLE",
+                  "type": "text"
+                },
+                "fingerprint": 4134350431190614909
+              }
             }
           ],
           "usage": {
@@ -85,12 +92,15 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_011CfLcfX3qzGc4quNT1iCQe",
-          "response_id": null,
+          "origin": {
+            "api": "anthropic.messages",
+            "provider": "anthropic",
+            "model": "claude-sonnet-4-6",
+            "response_model": "claude-sonnet-4-6",
+            "response_id": "msg_011CfLcfX3qzGc4quNT1iCQe"
+          },
           "provider_request_id": "req_011CfLcfWoTpapTz2uQbb61g",
           "finish_reason": "stop",
-          "provider": "anthropic",
-          "model": "claude-sonnet-4-6",
           "raw": {
             "container": null,
             "content": [

@@ -6,7 +6,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 3
         }
       },
       {
@@ -14,11 +14,219 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 57
+          "items": 2
         }
       },
       {
-        "batch": 7,
+        "batch": 8,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 9,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 10,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 11,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 12,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 13,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 14,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 15,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 16,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 17,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 18,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 19,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 20,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 21,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 22,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 23,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 24,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 25,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 26,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 27,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 28,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 29,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 30,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 31,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 32,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 33,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 34,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -91,7 +299,14 @@
           "choice": [
             {
               "type": "text",
-              "text": "A solar eclipse occurs when the Moon passes directly between the Earth and the Sun, temporarily blocking the Sun's light from reaching certain parts of Earth's surface. During a total solar eclipse, the Moon completely covers the Sun's disk, casting a shadow on Earth and briefly turning day into an eerie twilight, allowing observers in the path of totality to see the Sun's outer atmosphere, called the corona. Partial and annular eclipses occur when the alignment is not perfect, resulting in only a portion of the Sun being covered or a ring of sunlight remaining visible around the Moon's silhouette."
+              "text": "A solar eclipse occurs when the Moon passes directly between the Earth and the Sun, temporarily blocking the Sun's light from reaching certain parts of Earth's surface. During a total solar eclipse, the Moon completely covers the Sun's disk, casting a shadow on Earth and briefly turning day into an eerie twilight, allowing observers in the path of totality to see the Sun's outer atmosphere, called the corona. Partial and annular eclipses occur when the alignment is not perfect, resulting in only a portion of the Sun being covered or a ring of sunlight remaining visible around the Moon's silhouette.",
+              "native": {
+                "item": {
+                  "text": "A solar eclipse occurs when the Moon passes directly between the Earth and the Sun, temporarily blocking the Sun's light from reaching certain parts of Earth's surface. During a total solar eclipse, the Moon completely covers the Sun's disk, casting a shadow on Earth and briefly turning day into an eerie twilight, allowing observers in the path of totality to see the Sun's outer atmosphere, called the corona. Partial and annular eclipses occur when the alignment is not perfect, resulting in only a portion of the Sun being covered or a ring of sunlight remaining visible around the Moon's silhouette.",
+                  "type": "text"
+                },
+                "fingerprint": 13058335235054059057
+              }
             }
           ],
           "usage": {
@@ -101,12 +316,15 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_011CfLcfGCsfC8dkJMJzGEZD",
-          "response_id": null,
+          "origin": {
+            "api": "anthropic.messages",
+            "provider": "anthropic",
+            "model": "claude-sonnet-4-6",
+            "response_model": "claude-sonnet-4-6",
+            "response_id": "msg_011CfLcfGCsfC8dkJMJzGEZD"
+          },
           "provider_request_id": "req_011CfLcfFkqgdatP3YWCyFcy",
           "finish_reason": "stop",
-          "provider": "anthropic",
-          "model": "claude-sonnet-4-6",
           "raw": {
             "usage": {
               "output_tokens": 127,
@@ -596,7 +814,14 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "A solar eclipse occurs when the Moon passes directly between the Earth and the Sun, temporarily blocking the Sun's light from reaching certain parts of Earth's surface. During a total solar eclipse, the Moon completely covers the Sun's disk, casting a shadow on Earth and briefly turning day into an eerie twilight, allowing observers in the path of totality to see the Sun's outer atmosphere, called the corona. Partial and annular eclipses occur when the alignment is not perfect, resulting in only a portion of the Sun being covered or a ring of sunlight remaining visible around the Moon's silhouette."
+              "text": "A solar eclipse occurs when the Moon passes directly between the Earth and the Sun, temporarily blocking the Sun's light from reaching certain parts of Earth's surface. During a total solar eclipse, the Moon completely covers the Sun's disk, casting a shadow on Earth and briefly turning day into an eerie twilight, allowing observers in the path of totality to see the Sun's outer atmosphere, called the corona. Partial and annular eclipses occur when the alignment is not perfect, resulting in only a portion of the Sun being covered or a ring of sunlight remaining visible around the Moon's silhouette.",
+              "native": {
+                "item": {
+                  "text": "A solar eclipse occurs when the Moon passes directly between the Earth and the Sun, temporarily blocking the Sun's light from reaching certain parts of Earth's surface. During a total solar eclipse, the Moon completely covers the Sun's disk, casting a shadow on Earth and briefly turning day into an eerie twilight, allowing observers in the path of totality to see the Sun's outer atmosphere, called the corona. Partial and annular eclipses occur when the alignment is not perfect, resulting in only a portion of the Sun being covered or a ring of sunlight remaining visible around the Moon's silhouette.",
+                  "type": "text"
+                },
+                "fingerprint": 13058335235054059057
+              }
             }
           }
         }

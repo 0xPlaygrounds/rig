@@ -118,49 +118,91 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_3bbe883962ac48469d8a9da4"
-                }
+                "provider": "call_8192bf4684174004bfb5d2db"
               },
               "function": {
                 "name": "lookup_harbor_label",
                 "arguments": {}
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{}",
+                    "name": "lookup_harbor_label"
+                  },
+                  "id": "call_8192bf4684174004bfb5d2db",
+                  "type": "function"
+                },
+                "fingerprint": 12383635637428578080
+              }
             },
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_ccfb5570df7c457fae60f73a"
-                }
+                "provider": "call_8d43e384c85847efaff4dab9"
               },
               "function": {
                 "name": "lookup_orchard_label",
                 "arguments": {}
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{}",
+                    "name": "lookup_orchard_label"
+                  },
+                  "id": "call_8d43e384c85847efaff4dab9",
+                  "type": "function"
+                },
+                "fingerprint": 17159735494524364928
+              }
             }
           ],
           "usage": {
             "input_tokens": 410,
-            "output_tokens": 36,
-            "total_tokens": 446,
+            "output_tokens": 35,
+            "total_tokens": 445,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": null,
-          "response_id": "gen-1790146070-4eniUr02QOSd2PLKbsbT",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "doubleword",
+            "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+            "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
+            "response_id": "gen-1790914827-U6YX76FzkfU4zSQiqHys"
+          },
+          "native": {
+            "item": {
+              "role": "assistant",
+              "content": "",
+              "tool_calls": [
+                {
+                  "function": {
+                    "arguments": "{}",
+                    "name": "lookup_harbor_label"
+                  },
+                  "id": "call_8192bf4684174004bfb5d2db",
+                  "type": "function"
+                },
+                {
+                  "function": {
+                    "arguments": "{}",
+                    "name": "lookup_orchard_label"
+                  },
+                  "id": "call_8d43e384c85847efaff4dab9",
+                  "type": "function"
+                }
+              ]
+            },
+            "fingerprint": 12223774264025431011
+          },
           "finish_reason": "tool_calls",
-          "provider": "doubleword",
-          "model": "Qwen/Qwen3.5-397B-A17B-FP8",
           "raw": {
             "usage": {
               "prompt_tokens": 410,
-              "completion_tokens": 36,
-              "total_tokens": 446,
+              "completion_tokens": 35,
+              "total_tokens": 445,
               "prompt_tokens_details": {
                 "cached_tokens": 0,
                 "cache_write_tokens": 0
@@ -177,7 +219,7 @@
               "cache_read_input_tokens": 0
             },
             "finish_reason": "tool_calls",
-            "response_id": "gen-1790146070-4eniUr02QOSd2PLKbsbT",
+            "response_id": "gen-1790914827-U6YX76FzkfU4zSQiqHys",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "additional_params": {
               "created": 0,
@@ -259,37 +301,83 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_3bbe883962ac48469d8a9da4"
-                    }
+                    "provider": "call_8192bf4684174004bfb5d2db"
                   },
                   "function": {
                     "name": "lookup_harbor_label",
                     "arguments": {}
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "lookup_harbor_label"
+                      },
+                      "id": "call_8192bf4684174004bfb5d2db",
+                      "type": "function"
+                    },
+                    "fingerprint": 12383635637428578080
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_ccfb5570df7c457fae60f73a"
-                    }
+                    "provider": "call_8d43e384c85847efaff4dab9"
                   },
                   "function": {
                     "name": "lookup_orchard_label",
                     "arguments": {}
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "lookup_orchard_label"
+                      },
+                      "id": "call_8d43e384c85847efaff4dab9",
+                      "type": "function"
+                    },
+                    "fingerprint": 17159735494524364928
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "doubleword",
+                "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+                "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
+                "response_id": "gen-1790914827-U6YX76FzkfU4zSQiqHys"
+              },
+              "stop": "tool_use",
+              "native": {
+                "item": {
+                  "role": "assistant",
+                  "content": "",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "lookup_harbor_label"
+                      },
+                      "id": "call_8192bf4684174004bfb5d2db",
+                      "type": "function"
+                    },
+                    {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "lookup_orchard_label"
+                      },
+                      "id": "call_8d43e384c85847efaff4dab9",
+                      "type": "function"
+                    }
+                  ]
+                },
+                "fingerprint": 12223774264025431011
+              }
             },
             {
               "role": "user",
@@ -297,9 +385,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_3bbe883962ac48469d8a9da4"
-                    }
+                    "provider": "call_8192bf4684174004bfb5d2db"
                   },
                   "name": "lookup_harbor_label",
                   "content": [
@@ -312,9 +398,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_ccfb5570df7c457fae60f73a"
-                    }
+                    "provider": "call_8d43e384c85847efaff4dab9"
                   },
                   "name": "lookup_orchard_label",
                   "content": [
@@ -364,26 +448,42 @@
           "choice": [
             {
               "type": "text",
-              "text": "The alpha signal marker is crimson-harbor and the beta signal marker is silver-orchard."
+              "text": "The alpha signal marker is crimson-harbor and the beta signal marker is silver-orchard.",
+              "native": {
+                "item": {
+                  "content": "The alpha signal marker is crimson-harbor and the beta signal marker is silver-orchard."
+                },
+                "fingerprint": 14170487281069361561
+              }
             }
           ],
           "usage": {
-            "input_tokens": 477,
-            "output_tokens": 21,
-            "total_tokens": 498,
+            "input_tokens": 473,
+            "output_tokens": 20,
+            "total_tokens": 493,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": null,
-          "response_id": "gen-1790146071-gE2rdEVHdEmVdOGUzcMs",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "doubleword",
+            "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+            "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
+            "response_id": "gen-1790914829-EW22shZhbEmPWhjJY9mf"
+          },
+          "native": {
+            "item": {
+              "content": "The alpha signal marker is crimson-harbor and the beta signal marker is silver-orchard.",
+              "role": "assistant"
+            },
+            "fingerprint": 11488736273050172533
+          },
           "finish_reason": "stop",
-          "provider": "doubleword",
-          "model": "Qwen/Qwen3.5-397B-A17B-FP8",
           "raw": {
             "usage": {
-              "prompt_tokens": 477,
-              "completion_tokens": 21,
-              "total_tokens": 498,
+              "prompt_tokens": 473,
+              "completion_tokens": 20,
+              "total_tokens": 493,
               "prompt_tokens_details": {
                 "cached_tokens": 0,
                 "cache_write_tokens": 0
@@ -400,7 +500,7 @@
               "cache_read_input_tokens": 0
             },
             "finish_reason": "stop",
-            "response_id": "gen-1790146071-gE2rdEVHdEmVdOGUzcMs",
+            "response_id": "gen-1790914829-EW22shZhbEmPWhjJY9mf",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "additional_params": {
               "created": 0,

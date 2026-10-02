@@ -169,9 +169,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "QB6KaaCSs"
-                }
+                "provider": "e2UHv2IZr"
               },
               "function": {
                 "name": "add",
@@ -180,8 +178,17 @@
                   "y": 25
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"x\": 17, \"y\": 25}",
+                    "name": "add"
+                  },
+                  "id": "e2UHv2IZr",
+                  "type": "function"
+                },
+                "fingerprint": 10568455601932114472
+              }
             }
           ],
           "usage": {
@@ -189,11 +196,33 @@
             "output_tokens": 18,
             "total_tokens": 1270
           },
-          "message_id": null,
-          "response_id": "chatcmpl-R3TBt3JrwG8HzR3b9gsCg3fv",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "venice",
+            "model": "mistral-small-3-2-24b-instruct",
+            "response_model": "mistral-small-3-2-24b-instruct",
+            "response_id": "chatcmpl-RDcczyT0G05SJ9PlEdSSUYbv"
+          },
+          "native": {
+            "item": {
+              "content": "",
+              "name": null,
+              "reasoning_content": null,
+              "role": "assistant",
+              "tool_calls": [
+                {
+                  "function": {
+                    "arguments": "{\"x\": 17, \"y\": 25}",
+                    "name": "add"
+                  },
+                  "id": "e2UHv2IZr",
+                  "type": "function"
+                }
+              ]
+            },
+            "fingerprint": 12529516508524479100
+          },
           "finish_reason": "tool_calls",
-          "provider": "venice",
-          "model": "mistral-small-3-2-24b-instruct",
           "raw": {
             "choices": [
               {
@@ -211,7 +240,7 @@
                         "arguments": "{\"x\": 17, \"y\": 25}",
                         "name": "add"
                       },
-                      "id": "QB6KaaCSs",
+                      "id": "e2UHv2IZr",
                       "type": "function"
                     }
                   ]
@@ -223,7 +252,7 @@
               "usd": 0.000121875
             },
             "created": 0,
-            "id": "chatcmpl-R3TBt3JrwG8HzR3b9gsCg3fv",
+            "id": "chatcmpl-RDcczyT0G05SJ9PlEdSSUYbv",
             "model": "mistral-small-3-2-24b-instruct",
             "object": "chat.completion",
             "service_tier": "default",
@@ -299,14 +328,11 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "QB6KaaCSs"
-                    }
+                    "provider": "e2UHv2IZr"
                   },
                   "function": {
                     "name": "add",
@@ -315,10 +341,46 @@
                       "y": 25
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"x\": 17, \"y\": 25}",
+                        "name": "add"
+                      },
+                      "id": "e2UHv2IZr",
+                      "type": "function"
+                    },
+                    "fingerprint": 10568455601932114472
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "venice",
+                "model": "mistral-small-3-2-24b-instruct",
+                "response_model": "mistral-small-3-2-24b-instruct",
+                "response_id": "chatcmpl-RDcczyT0G05SJ9PlEdSSUYbv"
+              },
+              "stop": "tool_use",
+              "native": {
+                "item": {
+                  "content": "",
+                  "name": null,
+                  "reasoning_content": null,
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{\"x\": 17, \"y\": 25}",
+                        "name": "add"
+                      },
+                      "id": "e2UHv2IZr",
+                      "type": "function"
+                    }
+                  ]
+                },
+                "fingerprint": 12529516508524479100
+              }
             },
             {
               "role": "user",
@@ -326,9 +388,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "QB6KaaCSs"
-                    }
+                    "provider": "e2UHv2IZr"
                   },
                   "name": "add",
                   "content": [
@@ -402,19 +462,38 @@
           "choice": [
             {
               "type": "text",
-              "text": "final_result\n\n```json\n{\n  \"event\": {\n    \"name\": \"Seattle Rust Meetup\",\n    \"summary\": \"The sum of 17 and 25 is 42.\",\n    \"location\": \"Seattle, WA\",\n    \"date\": \"2026-09-23\"\n  }\n}\n```"
+              "text": "final_result{\n  \"event\": {\n    \"title\": \"Rust Meetup in Seattle\",\n    \"summary\": \"The sum of 17 and 25 is 42.\",\n    \"start\": {\n      \"dateTime\": \"2026-10-02T19:00:00-07:00\"\n    },\n    \"end\": {\n      \"dateTime\": \"2026-10-02T21:00:00-07:00\"\n    },\n    \"location\": \"Seattle, WA\"\n  }\n}",
+              "native": {
+                "item": {
+                  "content": "final_result{\n  \"event\": {\n    \"title\": \"Rust Meetup in Seattle\",\n    \"summary\": \"The sum of 17 and 25 is 42.\",\n    \"start\": {\n      \"dateTime\": \"2026-10-02T19:00:00-07:00\"\n    },\n    \"end\": {\n      \"dateTime\": \"2026-10-02T21:00:00-07:00\"\n    },\n    \"location\": \"Seattle, WA\"\n  }\n}",
+                  "name": null
+                },
+                "fingerprint": 16034187707634980584
+              }
             }
           ],
           "usage": {
-            "input_tokens": 1099,
-            "output_tokens": 74,
-            "total_tokens": 1173
+            "input_tokens": 1101,
+            "output_tokens": 132,
+            "total_tokens": 1233
           },
-          "message_id": null,
-          "response_id": "chatcmpl-RQjn5Tl7sLa8zTL6nLPo1qLC",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "venice",
+            "model": "mistral-small-3-2-24b-instruct",
+            "response_model": "mistral-small-3-2-24b-instruct",
+            "response_id": "chatcmpl-RIgOORutazOb9PN1KHtBynlc"
+          },
+          "native": {
+            "item": {
+              "content": "final_result{\n  \"event\": {\n    \"title\": \"Rust Meetup in Seattle\",\n    \"summary\": \"The sum of 17 and 25 is 42.\",\n    \"start\": {\n      \"dateTime\": \"2026-10-02T19:00:00-07:00\"\n    },\n    \"end\": {\n      \"dateTime\": \"2026-10-02T21:00:00-07:00\"\n    },\n    \"location\": \"Seattle, WA\"\n  }\n}",
+              "name": null,
+              "reasoning_content": null,
+              "role": "assistant"
+            },
+            "fingerprint": 3400508699239068722
+          },
           "finish_reason": "stop",
-          "provider": "venice",
-          "model": "mistral-small-3-2-24b-instruct",
           "raw": {
             "choices": [
               {
@@ -422,7 +501,7 @@
                 "index": 0,
                 "logprobs": null,
                 "message": {
-                  "content": "final_result\n\n```json\n{\n  \"event\": {\n    \"name\": \"Seattle Rust Meetup\",\n    \"summary\": \"The sum of 17 and 25 is 42.\",\n    \"location\": \"Seattle, WA\",\n    \"date\": \"2026-09-23\"\n  }\n}\n```",
+                  "content": "final_result{\n  \"event\": {\n    \"title\": \"Rust Meetup in Seattle\",\n    \"summary\": \"The sum of 17 and 25 is 42.\",\n    \"start\": {\n      \"dateTime\": \"2026-10-02T19:00:00-07:00\"\n    },\n    \"end\": {\n      \"dateTime\": \"2026-10-02T21:00:00-07:00\"\n    },\n    \"location\": \"Seattle, WA\"\n  }\n}",
                   "name": null,
                   "reasoning_content": null,
                   "role": "assistant",
@@ -432,17 +511,17 @@
             ],
             "cost": {
               "diem": 0,
-              "usd": 0.00012153125
+              "usd": 0.00013621875
             },
             "created": 0,
-            "id": "chatcmpl-RQjn5Tl7sLa8zTL6nLPo1qLC",
+            "id": "chatcmpl-RIgOORutazOb9PN1KHtBynlc",
             "model": "mistral-small-3-2-24b-instruct",
             "object": "chat.completion",
             "service_tier": "default",
             "usage": {
-              "completion_tokens": 74,
-              "prompt_tokens": 1099,
-              "total_tokens": 1173
+              "completion_tokens": 132,
+              "prompt_tokens": 1101,
+              "total_tokens": 1233
             },
             "venice_parameters": {
               "disable_thinking": false,
@@ -486,14 +565,11 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "QB6KaaCSs"
-                    }
+                    "provider": "e2UHv2IZr"
                   },
                   "function": {
                     "name": "add",
@@ -502,10 +578,46 @@
                       "y": 25
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"x\": 17, \"y\": 25}",
+                        "name": "add"
+                      },
+                      "id": "e2UHv2IZr",
+                      "type": "function"
+                    },
+                    "fingerprint": 10568455601932114472
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "venice",
+                "model": "mistral-small-3-2-24b-instruct",
+                "response_model": "mistral-small-3-2-24b-instruct",
+                "response_id": "chatcmpl-RDcczyT0G05SJ9PlEdSSUYbv"
+              },
+              "stop": "tool_use",
+              "native": {
+                "item": {
+                  "content": "",
+                  "name": null,
+                  "reasoning_content": null,
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{\"x\": 17, \"y\": 25}",
+                        "name": "add"
+                      },
+                      "id": "e2UHv2IZr",
+                      "type": "function"
+                    }
+                  ]
+                },
+                "fingerprint": 12529516508524479100
+              }
             },
             {
               "role": "user",
@@ -513,9 +625,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "QB6KaaCSs"
-                    }
+                    "provider": "e2UHv2IZr"
                   },
                   "name": "add",
                   "content": [
@@ -529,13 +639,36 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
-                  "text": "final_result\n\n```json\n{\n  \"event\": {\n    \"name\": \"Seattle Rust Meetup\",\n    \"summary\": \"The sum of 17 and 25 is 42.\",\n    \"location\": \"Seattle, WA\",\n    \"date\": \"2026-09-23\"\n  }\n}\n```"
+                  "text": "final_result{\n  \"event\": {\n    \"title\": \"Rust Meetup in Seattle\",\n    \"summary\": \"The sum of 17 and 25 is 42.\",\n    \"start\": {\n      \"dateTime\": \"2026-10-02T19:00:00-07:00\"\n    },\n    \"end\": {\n      \"dateTime\": \"2026-10-02T21:00:00-07:00\"\n    },\n    \"location\": \"Seattle, WA\"\n  }\n}",
+                  "native": {
+                    "item": {
+                      "content": "final_result{\n  \"event\": {\n    \"title\": \"Rust Meetup in Seattle\",\n    \"summary\": \"The sum of 17 and 25 is 42.\",\n    \"start\": {\n      \"dateTime\": \"2026-10-02T19:00:00-07:00\"\n    },\n    \"end\": {\n      \"dateTime\": \"2026-10-02T21:00:00-07:00\"\n    },\n    \"location\": \"Seattle, WA\"\n  }\n}",
+                      "name": null
+                    },
+                    "fingerprint": 16034187707634980584
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "venice",
+                "model": "mistral-small-3-2-24b-instruct",
+                "response_model": "mistral-small-3-2-24b-instruct",
+                "response_id": "chatcmpl-RIgOORutazOb9PN1KHtBynlc"
+              },
+              "stop": "stop",
+              "native": {
+                "item": {
+                  "content": "final_result{\n  \"event\": {\n    \"title\": \"Rust Meetup in Seattle\",\n    \"summary\": \"The sum of 17 and 25 is 42.\",\n    \"start\": {\n      \"dateTime\": \"2026-10-02T19:00:00-07:00\"\n    },\n    \"end\": {\n      \"dateTime\": \"2026-10-02T21:00:00-07:00\"\n    },\n    \"location\": \"Seattle, WA\"\n  }\n}",
+                  "name": null,
+                  "reasoning_content": null,
+                  "role": "assistant"
+                },
+                "fingerprint": 3400508699239068722
+              }
             },
             {
               "role": "user",
@@ -609,32 +742,61 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "tZ5y1eNDh"
-                }
+                "provider": "lbtcQCjE3"
               },
               "function": {
                 "name": "final_result",
                 "arguments": {
-                  "title": "Seattle Rust Meetup",
-                  "category": "Tech Meetup",
+                  "title": "Rust Meetup in Seattle",
+                  "category": "Technology",
                   "summary": "The sum of 17 and 25 is 42."
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"title\": \"Rust Meetup in Seattle\", \"category\": \"Technology\", \"summary\": \"The sum of 17 and 25 is 42.\"}",
+                    "name": "final_result"
+                  },
+                  "id": "lbtcQCjE3",
+                  "type": "function"
+                },
+                "fingerprint": 9191796348622289903
+              }
             }
           ],
           "usage": {
-            "input_tokens": 1392,
+            "input_tokens": 1452,
             "output_tokens": 43,
-            "total_tokens": 1435
+            "total_tokens": 1495
           },
-          "message_id": null,
-          "response_id": "chatcmpl-RBAB0jffPHZ93bMImGU2k6Mc",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "venice",
+            "model": "mistral-small-3-2-24b-instruct",
+            "response_model": "mistral-small-3-2-24b-instruct",
+            "response_id": "chatcmpl-RksnZ5tuCXfNTGytmDqSBcWl"
+          },
+          "native": {
+            "item": {
+              "content": "",
+              "name": null,
+              "reasoning_content": null,
+              "role": "assistant",
+              "tool_calls": [
+                {
+                  "function": {
+                    "arguments": "{\"title\": \"Rust Meetup in Seattle\", \"category\": \"Technology\", \"summary\": \"The sum of 17 and 25 is 42.\"}",
+                    "name": "final_result"
+                  },
+                  "id": "lbtcQCjE3",
+                  "type": "function"
+                }
+              ]
+            },
+            "fingerprint": 17600636568525577529
+          },
           "finish_reason": "tool_calls",
-          "provider": "venice",
-          "model": "mistral-small-3-2-24b-instruct",
           "raw": {
             "choices": [
               {
@@ -649,10 +811,10 @@
                   "tool_calls": [
                     {
                       "function": {
-                        "arguments": "{\"title\": \"Seattle Rust Meetup\", \"category\": \"Tech Meetup\", \"summary\": \"The sum of 17 and 25 is 42.\"}",
+                        "arguments": "{\"title\": \"Rust Meetup in Seattle\", \"category\": \"Technology\", \"summary\": \"The sum of 17 and 25 is 42.\"}",
                         "name": "final_result"
                       },
-                      "id": "tZ5y1eNDh",
+                      "id": "lbtcQCjE3",
                       "type": "function"
                     }
                   ]
@@ -661,17 +823,17 @@
             ],
             "cost": {
               "diem": 0,
-              "usd": 0.00014125
+              "usd": 0.00014687499999999998
             },
             "created": 0,
-            "id": "chatcmpl-RBAB0jffPHZ93bMImGU2k6Mc",
+            "id": "chatcmpl-RksnZ5tuCXfNTGytmDqSBcWl",
             "model": "mistral-small-3-2-24b-instruct",
             "object": "chat.completion",
             "service_tier": "default",
             "usage": {
               "completion_tokens": 43,
-              "prompt_tokens": 1392,
-              "total_tokens": 1435
+              "prompt_tokens": 1452,
+              "total_tokens": 1495
             },
             "venice_parameters": {
               "disable_thinking": false,

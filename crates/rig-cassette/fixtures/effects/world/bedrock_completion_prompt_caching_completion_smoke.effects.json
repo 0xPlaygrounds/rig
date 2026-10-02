@@ -85,11 +85,12 @@
             "cached_input_tokens": 27,
             "cache_creation_input_tokens": 0
           },
-          "message_id": null,
-          "response_id": null,
+          "origin": {
+            "api": "bedrock.converse",
+            "provider": "aws_bedrock",
+            "model": "amazon.nova-lite-v1:0"
+          },
           "finish_reason": "stop",
-          "provider": "aws_bedrock",
-          "model": null,
           "raw": {
             "output": {
               "Message": {

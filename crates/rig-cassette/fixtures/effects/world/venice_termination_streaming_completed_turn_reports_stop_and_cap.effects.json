@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 9,
+        "batch": 8,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -99,7 +99,13 @@
           "choice": [
             {
               "type": "text",
-              "text": "cedar"
+              "text": "cedar",
+              "native": {
+                "item": {
+                  "content": "cedar"
+                },
+                "fingerprint": 1019647121729191188
+              }
             }
           ],
           "usage": {
@@ -107,11 +113,22 @@
             "output_tokens": 3,
             "total_tokens": 982
           },
-          "message_id": null,
-          "response_id": "chatcmpl-RKZzUEQtOYKxtb8g2l1u9MOK",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "venice",
+            "model": "mistral-small-3-2-24b-instruct",
+            "response_model": "mistral-small-3-2-24b-instruct",
+            "response_id": "chatcmpl-RKZzUEQtOYKxtb8g2l1u9MOK"
+          },
+          "native": {
+            "item": {
+              "content": "cedar",
+              "reasoning_content": null,
+              "role": "assistant"
+            },
+            "fingerprint": 452362687342519526
+          },
           "finish_reason": "stop",
-          "provider": "venice",
-          "model": "mistral-small-3-2-24b-instruct",
           "raw": {
             "usage": {
               "prompt_tokens": 979,
@@ -165,7 +182,13 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "cedar"
+              "text": "cedar",
+              "native": {
+                "item": {
+                  "content": "cedar"
+                },
+                "fingerprint": 1019647121729191188
+              }
             }
           }
         }

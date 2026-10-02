@@ -120,9 +120,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_75abeaf7378644cea5cc79e6"
-                }
+                "provider": "call_75abeaf7378644cea5cc79e6"
               },
               "function": {
                 "name": "add",
@@ -131,8 +129,17 @@
                   "y": 25
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"x\": 17, \"y\": 25}",
+                    "name": "add"
+                  },
+                  "id": "call_75abeaf7378644cea5cc79e6",
+                  "type": "function"
+                },
+                "fingerprint": 12044329169927419511
+              }
             }
           ],
           "usage": {
@@ -142,11 +149,31 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": null,
-          "response_id": "resp_c1828a5b-53e8-4d73-8f0e-fa5596df767b",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "doubleword",
+            "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+            "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
+            "response_id": "resp_c1828a5b-53e8-4d73-8f0e-fa5596df767b"
+          },
+          "native": {
+            "item": {
+              "refusal": null,
+              "role": "assistant",
+              "tool_calls": [
+                {
+                  "function": {
+                    "arguments": "{\"x\": 17, \"y\": 25}",
+                    "name": "add"
+                  },
+                  "id": "call_75abeaf7378644cea5cc79e6",
+                  "type": "function"
+                }
+              ]
+            },
+            "fingerprint": 15934639901842167077
+          },
           "finish_reason": "tool_calls",
-          "provider": "doubleword",
-          "model": "Qwen/Qwen3.5-397B-A17B-FP8",
           "raw": {
             "choices": [
               {

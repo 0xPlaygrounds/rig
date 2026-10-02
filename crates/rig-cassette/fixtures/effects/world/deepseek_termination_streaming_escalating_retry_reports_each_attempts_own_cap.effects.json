@@ -34,14 +34,6 @@
         }
       },
       {
-        "batch": 11,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
         "batch": 12,
         "id": 0,
         "kind": {
@@ -58,15 +50,23 @@
         }
       },
       {
+        "batch": 14,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 15,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
-        "batch": 17,
+        "batch": 16,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -114,7 +114,7 @@
         }
       },
       {
-        "batch": 23,
+        "batch": 24,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -130,26 +130,18 @@
         }
       },
       {
-        "batch": 25,
+        "batch": 27,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 27,
         "id": 0,
         "kind": {
           "delivery": "outcome"
-        }
-      },
-      {
-        "batch": 30,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 32,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
         }
       },
       {
@@ -157,7 +149,7 @@
         "id": 1,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -185,7 +177,7 @@
         }
       },
       {
-        "batch": 38,
+        "batch": 37,
         "id": 1,
         "kind": {
           "delivery": "stream",
@@ -210,14 +202,6 @@
       },
       {
         "batch": 41,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 42,
         "id": 1,
         "kind": {
           "delivery": "stream",
@@ -273,7 +257,7 @@
         }
       },
       {
-        "batch": 49,
+        "batch": 50,
         "id": 1,
         "kind": {
           "delivery": "stream",
@@ -281,7 +265,7 @@
         }
       },
       {
-        "batch": 50,
+        "batch": 51,
         "id": 1,
         "kind": {
           "delivery": "stream",
@@ -313,14 +297,6 @@
         }
       },
       {
-        "batch": 55,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
         "batch": 56,
         "id": 1,
         "kind": {
@@ -337,7 +313,7 @@
         }
       },
       {
-        "batch": 58,
+        "batch": 59,
         "id": 1,
         "kind": {
           "delivery": "stream",
@@ -353,7 +329,39 @@
         }
       },
       {
-        "batch": 60,
+        "batch": 61,
+        "id": 1,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 62,
+        "id": 1,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 63,
+        "id": 1,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 65,
+        "id": 1,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 65,
         "id": 1,
         "kind": {
           "delivery": "outcome"
@@ -426,7 +434,13 @@
           "choice": [
             {
               "type": "text",
-              "text": "Maple trees are known for their distinctive lobed leaves and winged seeds called sam"
+              "text": "Maple trees are known for their distinctive lobed leaves and winged seeds called sam",
+              "native": {
+                "item": {
+                  "content": "Maple trees are known for their distinctive lobed leaves and winged seeds called sam"
+                },
+                "fingerprint": 7041845178419161880
+              }
             }
           ],
           "usage": {
@@ -435,11 +449,21 @@
             "total_tokens": 40,
             "cached_input_tokens": 0
           },
-          "message_id": null,
-          "response_id": "6eab369d-4506-4135-932e-187d96bb6475",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "deepseek",
+            "model": "deepseek-chat",
+            "response_model": "deepseek-flash",
+            "response_id": "6eab369d-4506-4135-932e-187d96bb6475"
+          },
+          "native": {
+            "item": {
+              "content": "Maple trees are known for their distinctive lobed leaves and winged seeds called sam",
+              "role": "assistant"
+            },
+            "fingerprint": 13747112572298762844
+          },
           "finish_reason": "length",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
           "raw": {
             "usage": {
               "prompt_tokens": 24,
@@ -606,7 +630,13 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "Maple trees are known for their distinctive lobed leaves and winged seeds called sam"
+              "text": "Maple trees are known for their distinctive lobed leaves and winged seeds called sam",
+              "native": {
+                "item": {
+                  "content": "Maple trees are known for their distinctive lobed leaves and winged seeds called sam"
+                },
+                "fingerprint": 7041845178419161880
+              }
             }
           }
         }
@@ -652,7 +682,13 @@
           "choice": [
             {
               "type": "text",
-              "text": "Maple trees are known for their distinctive lobed leaves and vibrant autumn colors. Their sap is often harvested to produce maple syrup."
+              "text": "Maple trees are known for their distinctive lobed leaves and vibrant autumn colors. Their sap is often harvested to produce maple syrup.",
+              "native": {
+                "item": {
+                  "content": "Maple trees are known for their distinctive lobed leaves and vibrant autumn colors. Their sap is often harvested to produce maple syrup."
+                },
+                "fingerprint": 10254871152948873255
+              }
             }
           ],
           "usage": {
@@ -661,11 +697,21 @@
             "total_tokens": 50,
             "cached_input_tokens": 0
           },
-          "message_id": null,
-          "response_id": "20c82455-0fec-433d-bc11-6a8513fa8743",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "deepseek",
+            "model": "deepseek-chat",
+            "response_model": "deepseek-flash",
+            "response_id": "20c82455-0fec-433d-bc11-6a8513fa8743"
+          },
+          "native": {
+            "item": {
+              "content": "Maple trees are known for their distinctive lobed leaves and vibrant autumn colors. Their sap is often harvested to produce maple syrup.",
+              "role": "assistant"
+            },
+            "fingerprint": 14638622891340536721
+          },
           "finish_reason": "stop",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
           "raw": {
             "usage": {
               "prompt_tokens": 24,
@@ -912,7 +958,13 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "Maple trees are known for their distinctive lobed leaves and vibrant autumn colors. Their sap is often harvested to produce maple syrup."
+              "text": "Maple trees are known for their distinctive lobed leaves and vibrant autumn colors. Their sap is often harvested to produce maple syrup.",
+              "native": {
+                "item": {
+                  "content": "Maple trees are known for their distinctive lobed leaves and vibrant autumn colors. Their sap is often harvested to produce maple syrup."
+                },
+                "fingerprint": 10254871152948873255
+              }
             }
           }
         }

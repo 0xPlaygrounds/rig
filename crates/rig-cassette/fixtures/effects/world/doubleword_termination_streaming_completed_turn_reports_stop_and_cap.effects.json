@@ -6,11 +6,11 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 2
         }
       },
       {
-        "batch": 9,
+        "batch": 7,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -18,7 +18,15 @@
         }
       },
       {
-        "batch": 9,
+        "batch": 11,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 11,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -93,7 +101,13 @@
           "choice": [
             {
               "type": "text",
-              "text": "cedar"
+              "text": "cedar",
+              "native": {
+                "item": {
+                  "content": "cedar"
+                },
+                "fingerprint": 1019647121729191188
+              }
             }
           ],
           "usage": {
@@ -103,11 +117,21 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": null,
-          "response_id": "gen-1790146093-WuyGPAbUsMMWf9VvZNxJ",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "doubleword",
+            "model": "Qwen/Qwen3.5-9B",
+            "response_model": "Qwen/Qwen3.5-9B",
+            "response_id": "gen-1790146093-WuyGPAbUsMMWf9VvZNxJ"
+          },
+          "native": {
+            "item": {
+              "content": "cedar",
+              "role": "assistant"
+            },
+            "fingerprint": 452362687342519526
+          },
           "finish_reason": "stop",
-          "provider": "doubleword",
-          "model": "Qwen/Qwen3.5-9B",
           "raw": {
             "usage": {
               "prompt_tokens": 37,
@@ -171,7 +195,13 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "cedar"
+              "text": "cedar",
+              "native": {
+                "item": {
+                  "content": "cedar"
+                },
+                "fingerprint": 1019647121729191188
+              }
             }
           }
         }

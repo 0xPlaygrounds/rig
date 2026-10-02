@@ -122,9 +122,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_4D9c9lzfuevNRwhu75VqsCkj"
-                }
+                "provider": "call_4D9c9lzfuevNRwhu75VqsCkj"
               },
               "function": {
                 "name": "submit",
@@ -134,8 +132,17 @@
                   "profession": "retired teacher"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"name\":\"Bob Johnson\",\"age\":55,\"profession\":\"retired teacher\"}",
+                    "name": "submit"
+                  },
+                  "id": "call_4D9c9lzfuevNRwhu75VqsCkj",
+                  "type": "function"
+                },
+                "fingerprint": 12616152138573737615
+              }
             }
           ],
           "usage": {
@@ -146,11 +153,33 @@
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
-          "response_id": "gen-1790152491-dVUe6IZtE3v1lV1YV1G1",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "openrouter",
+            "model": "openai/gpt-4o-mini",
+            "response_model": "openai/gpt-4o-mini",
+            "response_id": "gen-1790152491-dVUe6IZtE3v1lV1YV1G1"
+          },
+          "native": {
+            "item": {
+              "content": null,
+              "reasoning": null,
+              "refusal": null,
+              "role": "assistant",
+              "tool_calls": [
+                {
+                  "function": {
+                    "arguments": "{\"name\":\"Bob Johnson\",\"age\":55,\"profession\":\"retired teacher\"}",
+                    "name": "submit"
+                  },
+                  "id": "call_4D9c9lzfuevNRwhu75VqsCkj",
+                  "type": "function"
+                }
+              ]
+            },
+            "fingerprint": 11334373814632815869
+          },
           "finish_reason": "tool_calls",
-          "provider": "openrouter",
-          "model": "openai/gpt-4o-mini",
           "raw": {
             "choices": [
               {
@@ -285,9 +314,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_6gWZ1TWO9e4wFBbCrEOwZCq8"
-                }
+                "provider": "call_6gWZ1TWO9e4wFBbCrEOwZCq8"
               },
               "function": {
                 "name": "submit",
@@ -297,8 +324,17 @@
                   "profession": "retired teacher"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"name\":\"Bob Johnson\",\"age\":55,\"profession\":\"retired teacher\"}",
+                    "name": "submit"
+                  },
+                  "id": "call_6gWZ1TWO9e4wFBbCrEOwZCq8",
+                  "type": "function"
+                },
+                "fingerprint": 706512002893803324
+              }
             }
           ],
           "usage": {
@@ -309,11 +345,33 @@
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
-          "response_id": "gen-1790152492-TkU4PEHEPlbFEfmX1IeU",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "openrouter",
+            "model": "openai/gpt-4o-mini",
+            "response_model": "openai/gpt-4o-mini",
+            "response_id": "gen-1790152492-TkU4PEHEPlbFEfmX1IeU"
+          },
+          "native": {
+            "item": {
+              "content": null,
+              "reasoning": null,
+              "refusal": null,
+              "role": "assistant",
+              "tool_calls": [
+                {
+                  "function": {
+                    "arguments": "{\"name\":\"Bob Johnson\",\"age\":55,\"profession\":\"retired teacher\"}",
+                    "name": "submit"
+                  },
+                  "id": "call_6gWZ1TWO9e4wFBbCrEOwZCq8",
+                  "type": "function"
+                }
+              ]
+            },
+            "fingerprint": 9499811104234361664
+          },
           "finish_reason": "tool_calls",
-          "provider": "openrouter",
-          "model": "openai/gpt-4o-mini",
           "raw": {
             "choices": [
               {

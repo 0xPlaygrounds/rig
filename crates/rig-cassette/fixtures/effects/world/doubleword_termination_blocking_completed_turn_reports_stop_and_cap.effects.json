@@ -77,7 +77,14 @@
           "choice": [
             {
               "type": "text",
-              "text": "cedar"
+              "text": "cedar",
+              "native": {
+                "item": {
+                  "content": "cedar",
+                  "refusal": null
+                },
+                "fingerprint": 1019647121729191188
+              }
             }
           ],
           "usage": {
@@ -87,11 +94,22 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": null,
-          "response_id": "resp_808f1b70-1303-45fd-b419-f7c38e0d6f6d",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "doubleword",
+            "model": "Qwen/Qwen3.5-9B",
+            "response_model": "Qwen/Qwen3.5-9B",
+            "response_id": "resp_808f1b70-1303-45fd-b419-f7c38e0d6f6d"
+          },
+          "native": {
+            "item": {
+              "content": "cedar",
+              "refusal": null,
+              "role": "assistant"
+            },
+            "fingerprint": 452362687342519526
+          },
           "finish_reason": "stop",
-          "provider": "doubleword",
-          "model": "Qwen/Qwen3.5-9B",
           "raw": {
             "choices": [
               {

@@ -2,19 +2,11 @@
   "header": {
     "deliveries": [
       {
-        "batch": 2,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 4
-        }
-      },
-      {
         "batch": 3,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 6
         }
       },
       {
@@ -22,7 +14,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 6
+          "items": 8
         }
       },
       {
@@ -38,7 +30,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 4
+          "items": 7
         }
       },
       {
@@ -46,7 +38,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 9
         }
       },
       {
@@ -54,7 +46,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 6
+          "items": 8
         }
       },
       {
@@ -62,7 +54,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 6
+          "items": 8
         }
       },
       {
@@ -70,7 +62,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 6
+          "items": 9
         }
       },
       {
@@ -78,7 +70,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 5
+          "items": 10
         }
       },
       {
@@ -86,7 +78,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 5
+          "items": 7
         }
       },
       {
@@ -94,7 +86,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 5
+          "items": 9
         }
       },
       {
@@ -102,7 +94,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 7
+          "items": 9
         }
       },
       {
@@ -110,7 +102,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 11
+          "items": 9
         }
       },
       {
@@ -118,7 +110,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 12
+          "items": 7
         }
       },
       {
@@ -126,7 +118,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 7
+          "items": 9
         }
       },
       {
@@ -134,7 +126,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 7
+          "items": 8
         }
       },
       {
@@ -142,7 +134,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 6
+          "items": 8
         }
       },
       {
@@ -150,7 +142,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 5
+          "items": 7
         }
       },
       {
@@ -158,7 +150,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 7
+          "items": 9
         }
       },
       {
@@ -166,7 +158,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 5
+          "items": 9
         }
       },
       {
@@ -174,7 +166,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 5
+          "items": 9
         }
       },
       {
@@ -182,7 +174,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 6
+          "items": 9
         }
       },
       {
@@ -190,7 +182,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 6
+          "items": 8
         }
       },
       {
@@ -198,7 +190,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 5
+          "items": 9
         }
       },
       {
@@ -206,7 +198,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 5
+          "items": 9
         }
       },
       {
@@ -214,7 +206,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 6
+          "items": 9
         }
       },
       {
@@ -222,7 +214,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 6
+          "items": 9
         }
       },
       {
@@ -230,7 +222,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 5
+          "items": 9
         }
       },
       {
@@ -238,7 +230,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 6
+          "items": 7
         }
       },
       {
@@ -246,7 +238,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 6
+          "items": 9
         }
       },
       {
@@ -254,7 +246,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 6
+          "items": 8
         }
       },
       {
@@ -262,7 +254,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 5
+          "items": 9
         }
       },
       {
@@ -270,7 +262,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 4
+          "items": 9
         }
       },
       {
@@ -278,7 +270,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 4
+          "items": 9
         }
       },
       {
@@ -286,7 +278,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 5
+          "items": 9
         }
       },
       {
@@ -294,7 +286,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 4
+          "items": 8
         }
       },
       {
@@ -302,7 +294,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 4
+          "items": 9
         }
       },
       {
@@ -310,7 +302,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 5
+          "items": 8
         }
       },
       {
@@ -318,7 +310,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 5
+          "items": 9
         }
       },
       {
@@ -326,7 +318,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 4
+          "items": 9
         }
       },
       {
@@ -334,7 +326,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 6
+          "items": 9
         }
       },
       {
@@ -342,7 +334,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 5
+          "items": 9
         }
       },
       {
@@ -350,7 +342,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 5
+          "items": 8
         }
       },
       {
@@ -358,7 +350,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 5
+          "items": 9
         }
       },
       {
@@ -366,7 +358,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 6
+          "items": 9
         }
       },
       {
@@ -374,7 +366,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 6
+          "items": 9
         }
       },
       {
@@ -382,7 +374,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 4
+          "items": 9
         }
       },
       {
@@ -390,7 +382,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 8
         }
       },
       {
@@ -398,7 +390,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 9
         }
       },
       {
@@ -406,7 +398,15 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 9
+        }
+      },
+      {
+        "batch": 53,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 8
         }
       },
       {
@@ -414,7 +414,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 8
         }
       },
       {
@@ -422,7 +422,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 5
+          "items": 8
         }
       },
       {
@@ -430,7 +430,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 4
+          "items": 9
         }
       },
       {
@@ -438,7 +438,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 5
+          "items": 9
         }
       },
       {
@@ -446,7 +446,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 8
         }
       },
       {
@@ -454,7 +454,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 7
         }
       },
       {
@@ -462,7 +462,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 4
+          "items": 9
         }
       },
       {
@@ -470,7 +470,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 4
+          "items": 7
         }
       },
       {
@@ -478,7 +478,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 6
+          "items": 9
         }
       },
       {
@@ -486,7 +486,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 4
+          "items": 8
         }
       },
       {
@@ -494,7 +494,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 6
+          "items": 9
         }
       },
       {
@@ -502,7 +502,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 6
+          "items": 7
         }
       },
       {
@@ -510,7 +510,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 4
+          "items": 8
         }
       },
       {
@@ -518,7 +518,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 5
+          "items": 8
         }
       },
       {
@@ -526,7 +526,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 5
+          "items": 9
         }
       },
       {
@@ -534,7 +534,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 5
+          "items": 9
         }
       },
       {
@@ -542,7 +542,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 5
+          "items": 7
         }
       },
       {
@@ -550,7 +550,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 5
+          "items": 8
         }
       },
       {
@@ -558,7 +558,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 5
+          "items": 7
         }
       },
       {
@@ -566,7 +566,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 4
+          "items": 7
         }
       },
       {
@@ -574,7 +574,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 4
+          "items": 8
         }
       },
       {
@@ -582,7 +582,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 6
+          "items": 10
         }
       },
       {
@@ -590,7 +590,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 6
+          "items": 11
         }
       },
       {
@@ -598,7 +598,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 6
+          "items": 9
         }
       },
       {
@@ -606,7 +606,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 5
+          "items": 10
         }
       },
       {
@@ -614,7 +614,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 5
+          "items": 8
         }
       },
       {
@@ -622,7 +622,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 6
+          "items": 9
         }
       },
       {
@@ -630,7 +630,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 5
+          "items": 9
         }
       },
       {
@@ -638,7 +638,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 4
+          "items": 9
         }
       },
       {
@@ -646,7 +646,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 5
+          "items": 9
         }
       },
       {
@@ -654,7 +654,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 5
+          "items": 9
         }
       },
       {
@@ -662,7 +662,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 4
+          "items": 8
         }
       },
       {
@@ -670,7 +670,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 5
+          "items": 9
         }
       },
       {
@@ -678,7 +678,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 5
+          "items": 9
         }
       },
       {
@@ -686,7 +686,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 6
+          "items": 9
         }
       },
       {
@@ -694,7 +694,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 6
+          "items": 7
         }
       },
       {
@@ -702,7 +702,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 7
+          "items": 8
         }
       },
       {
@@ -710,7 +710,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 5
+          "items": 9
         }
       },
       {
@@ -718,7 +718,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 5
+          "items": 9
         }
       },
       {
@@ -726,7 +726,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 6
+          "items": 9
         }
       },
       {
@@ -734,7 +734,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 8
         }
       },
       {
@@ -742,7 +742,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 6
+          "items": 9
         }
       },
       {
@@ -750,587 +750,11 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 5
+          "items": 8
         }
       },
       {
-        "batch": 97,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 7
-        }
-      },
-      {
-        "batch": 98,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 4
-        }
-      },
-      {
-        "batch": 99,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 4
-        }
-      },
-      {
-        "batch": 100,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 4
-        }
-      },
-      {
-        "batch": 101,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 5
-        }
-      },
-      {
-        "batch": 102,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 4
-        }
-      },
-      {
-        "batch": 103,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 4
-        }
-      },
-      {
-        "batch": 104,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 5
-        }
-      },
-      {
-        "batch": 105,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 6
-        }
-      },
-      {
-        "batch": 106,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 5
-        }
-      },
-      {
-        "batch": 107,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 4
-        }
-      },
-      {
-        "batch": 108,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 5
-        }
-      },
-      {
-        "batch": 109,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 5
-        }
-      },
-      {
-        "batch": 110,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 3
-        }
-      },
-      {
-        "batch": 111,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 4
-        }
-      },
-      {
-        "batch": 112,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 4
-        }
-      },
-      {
-        "batch": 113,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 4
-        }
-      },
-      {
-        "batch": 114,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 5
-        }
-      },
-      {
-        "batch": 115,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 5
-        }
-      },
-      {
-        "batch": 116,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 5
-        }
-      },
-      {
-        "batch": 117,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 5
-        }
-      },
-      {
-        "batch": 118,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 4
-        }
-      },
-      {
-        "batch": 119,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 5
-        }
-      },
-      {
-        "batch": 120,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 5
-        }
-      },
-      {
-        "batch": 121,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 6
-        }
-      },
-      {
-        "batch": 122,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 5
-        }
-      },
-      {
-        "batch": 123,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 4
-        }
-      },
-      {
-        "batch": 124,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 6
-        }
-      },
-      {
-        "batch": 125,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 6
-        }
-      },
-      {
-        "batch": 126,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 5
-        }
-      },
-      {
-        "batch": 127,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 6
-        }
-      },
-      {
-        "batch": 128,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 5
-        }
-      },
-      {
-        "batch": 129,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 5
-        }
-      },
-      {
-        "batch": 130,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 5
-        }
-      },
-      {
-        "batch": 131,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 5
-        }
-      },
-      {
-        "batch": 132,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 5
-        }
-      },
-      {
-        "batch": 133,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 5
-        }
-      },
-      {
-        "batch": 134,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 5
-        }
-      },
-      {
-        "batch": 135,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 5
-        }
-      },
-      {
-        "batch": 136,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 5
-        }
-      },
-      {
-        "batch": 137,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 6
-        }
-      },
-      {
-        "batch": 138,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 5
-        }
-      },
-      {
-        "batch": 139,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 3
-        }
-      },
-      {
-        "batch": 140,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 5
-        }
-      },
-      {
-        "batch": 141,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 4
-        }
-      },
-      {
-        "batch": 142,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 5
-        }
-      },
-      {
-        "batch": 143,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 3
-        }
-      },
-      {
-        "batch": 144,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 145,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 146,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 4
-        }
-      },
-      {
-        "batch": 147,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 4
-        }
-      },
-      {
-        "batch": 148,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 5
-        }
-      },
-      {
-        "batch": 149,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 6
-        }
-      },
-      {
-        "batch": 150,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 5
-        }
-      },
-      {
-        "batch": 151,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 6
-        }
-      },
-      {
-        "batch": 152,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 4
-        }
-      },
-      {
-        "batch": 153,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 5
-        }
-      },
-      {
-        "batch": 154,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 4
-        }
-      },
-      {
-        "batch": 155,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 6
-        }
-      },
-      {
-        "batch": 156,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 4
-        }
-      },
-      {
-        "batch": 157,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 3
-        }
-      },
-      {
-        "batch": 158,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 159,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 3
-        }
-      },
-      {
-        "batch": 160,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 3
-        }
-      },
-      {
-        "batch": 161,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 3
-        }
-      },
-      {
-        "batch": 162,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 163,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 5
-        }
-      },
-      {
-        "batch": 164,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 3
-        }
-      },
-      {
-        "batch": 165,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 5
-        }
-      },
-      {
-        "batch": 166,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 5
-        }
-      },
-      {
-        "batch": 167,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 3
-        }
-      },
-      {
-        "batch": 168,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 3
-        }
-      },
-      {
-        "batch": 168,
+        "batch": 96,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -1403,7 +827,13 @@
           "choice": [
             {
               "type": "text",
-              "text": "# The History of Rust: From Personal Project to Systems Programming Powerhouse\n\nRust began in 2006 as a personal project by Graydon Hoare, a Canadian programmer working at Mozilla. Frustrated by a recurring problem in software—memory bugs like buffer overflows and use-after-free errors that plagued C and C++ codebases—Hoare started designing a language that could offer memory safety without sacrificing performance. He named it \"Rust\" after a group of fungi known for their robustness, a fitting metaphor for a language intended to be resilient.\n\nThe project remained a solo endeavor until 2009, when Mozilla officially sponsored it. The company saw potential in Rust for building a safer browser engine, particularly as it worked on Servo, an experimental parallel rendering engine. Mozilla assembled a small team, and in 2010 the first public announcement of Rust appeared. That same year, the language's compiler, originally written in OCaml, became self-hosting—Rust could compile itself, a milestone known as bootstrapping.\n\nEarly Rust was markedly different from today's version. It featured garbage collection, a green-thread runtime, and typestate—a system for tracking object states. Over time, the team stripped away these features in favor of a leaner design. The pivotal innovation was the ownership and borrow-checking system, which enforces memory safety at compile time without a garbage collector. By 2012, garbage collection was removed; by 2014, the runtime was gone. This period of rapid, breaking changes became known as the \"pre-1.0 churn,\" and it tested the patience of early adopters.\n\nA turning point came in 2014 with the formation of the Rust Core Team and the introduction of RFCs (Request for Comments), a community-driven process for proposing and reviewing changes. This governance model gave the language a stable, transparent evolution path. In May 2015, Rust 1.0 was released, promising backward compatibility. The \"stability without stagnation\" philosophy meant new features could be added without breaking existing code.\n\nRust's adoption accelerated through the late 2010s. In 2016, it topped Stack Overflow's \"most loved programming language\" survey for the first time—a streak that continued for years. Major companies took notice: Dropbox used Rust for its file-sync engine, Cloudflare for edge computing, and Microsoft for Windows components. In 2018, the Rust community published \"The Rust Programming Language\" book, widely known as \"the Book,\" which became a standard learning resource.\n\nThe language also gained formal backing. In 2020, the Rust Foundation was established with founding members including Mozilla, AWS, Google, Microsoft, and Huawei, ensuring long-term stewardship independent of any single company. In 2021, Rust was accepted into the Linux kernel, a landmark moment for a language once seen as experimental. That same year, the first edition of the Rust specification effort began, aiming to formalize the language's definition.\n\nRust's design priorities—safety, speed, and concurrency—resonated in an era of increasing concern over software security. Its compiler's helpful error messages and its package manager, Cargo, lowered barriers for newcomers. The async/await syntax, stabilized in 2019, made asynchronous programming more accessible. Const generics, stabilized in 2021, added further flexibility.\n\nToday, Rust is used in operating systems, web browsers, embedded devices, blockchain platforms, and command-line tools. It has won admiration for proving that systems programming need not be synonymous with memory unsafety. From a lone programmer's frustration to a global community with a foundation and corporate sponsors, Rust's history reflects a rare achievement: a language that changed how developers think about safety and performance. Its journey is far from over, but its first two decades have already reshaped the landscape of software engineering."
+              "text": "# The History of Rust: From Personal Project to Systems Programming Powerhouse\n\nRust began in 2006 as a personal project by Graydon Hoare, a Canadian programmer working at Mozilla. Frustrated by a recurring problem in software—memory bugs like buffer overflows and use-after-free errors that plagued C and C++ codebases—Hoare started designing a language that could offer memory safety without sacrificing performance. He named it \"Rust\" after a group of fungi known for their robustness, a fitting metaphor for a language intended to be resilient.\n\nThe project remained a solo endeavor until 2009, when Mozilla officially sponsored it. The company saw potential in Rust for building a safer browser engine, particularly as it worked on Servo, an experimental parallel rendering engine. Mozilla assembled a small team, and in 2010 the first public announcement of Rust appeared. That same year, the language's compiler, originally written in OCaml, became self-hosting—Rust could compile itself, a milestone known as bootstrapping.\n\nEarly Rust was markedly different from today's version. It featured garbage collection, a green-thread runtime, and typestate—a system for tracking object states. Over time, the team stripped away these features in favor of a leaner design. The pivotal innovation was the ownership and borrow-checking system, which enforces memory safety at compile time without a garbage collector. By 2012, garbage collection was removed; by 2014, the runtime was gone. This period of rapid, breaking changes became known as the \"pre-1.0 churn,\" and it tested the patience of early adopters.\n\nA turning point came in 2014 with the formation of the Rust Core Team and the introduction of RFCs (Request for Comments), a community-driven process for proposing and reviewing changes. This governance model gave the language a stable, transparent evolution path. In May 2015, Rust 1.0 was released, promising backward compatibility. The \"stability without stagnation\" philosophy meant new features could be added without breaking existing code.\n\nRust's adoption accelerated through the late 2010s. In 2016, it topped Stack Overflow's \"most loved programming language\" survey for the first time—a streak that continued for years. Major companies took notice: Dropbox used Rust for its file-sync engine, Cloudflare for edge computing, and Microsoft for Windows components. In 2018, the Rust community published \"The Rust Programming Language\" book, widely known as \"the Book,\" which became a standard learning resource.\n\nThe language also gained formal backing. In 2020, the Rust Foundation was established with founding members including Mozilla, AWS, Google, Microsoft, and Huawei, ensuring long-term stewardship independent of any single company. In 2021, Rust was accepted into the Linux kernel, a landmark moment for a language once seen as experimental. That same year, the first edition of the Rust specification effort began, aiming to formalize the language's definition.\n\nRust's design priorities—safety, speed, and concurrency—resonated in an era of increasing concern over software security. Its compiler's helpful error messages and its package manager, Cargo, lowered barriers for newcomers. The async/await syntax, stabilized in 2019, made asynchronous programming more accessible. Const generics, stabilized in 2021, added further flexibility.\n\nToday, Rust is used in operating systems, web browsers, embedded devices, blockchain platforms, and command-line tools. It has won admiration for proving that systems programming need not be synonymous with memory unsafety. From a lone programmer's frustration to a global community with a foundation and corporate sponsors, Rust's history reflects a rare achievement: a language that changed how developers think about safety and performance. Its journey is far from over, but its first two decades have already reshaped the landscape of software engineering.",
+              "native": {
+                "item": {
+                  "content": "# The History of Rust: From Personal Project to Systems Programming Powerhouse\n\nRust began in 2006 as a personal project by Graydon Hoare, a Canadian programmer working at Mozilla. Frustrated by a recurring problem in software—memory bugs like buffer overflows and use-after-free errors that plagued C and C++ codebases—Hoare started designing a language that could offer memory safety without sacrificing performance. He named it \"Rust\" after a group of fungi known for their robustness, a fitting metaphor for a language intended to be resilient.\n\nThe project remained a solo endeavor until 2009, when Mozilla officially sponsored it. The company saw potential in Rust for building a safer browser engine, particularly as it worked on Servo, an experimental parallel rendering engine. Mozilla assembled a small team, and in 2010 the first public announcement of Rust appeared. That same year, the language's compiler, originally written in OCaml, became self-hosting—Rust could compile itself, a milestone known as bootstrapping.\n\nEarly Rust was markedly different from today's version. It featured garbage collection, a green-thread runtime, and typestate—a system for tracking object states. Over time, the team stripped away these features in favor of a leaner design. The pivotal innovation was the ownership and borrow-checking system, which enforces memory safety at compile time without a garbage collector. By 2012, garbage collection was removed; by 2014, the runtime was gone. This period of rapid, breaking changes became known as the \"pre-1.0 churn,\" and it tested the patience of early adopters.\n\nA turning point came in 2014 with the formation of the Rust Core Team and the introduction of RFCs (Request for Comments), a community-driven process for proposing and reviewing changes. This governance model gave the language a stable, transparent evolution path. In May 2015, Rust 1.0 was released, promising backward compatibility. The \"stability without stagnation\" philosophy meant new features could be added without breaking existing code.\n\nRust's adoption accelerated through the late 2010s. In 2016, it topped Stack Overflow's \"most loved programming language\" survey for the first time—a streak that continued for years. Major companies took notice: Dropbox used Rust for its file-sync engine, Cloudflare for edge computing, and Microsoft for Windows components. In 2018, the Rust community published \"The Rust Programming Language\" book, widely known as \"the Book,\" which became a standard learning resource.\n\nThe language also gained formal backing. In 2020, the Rust Foundation was established with founding members including Mozilla, AWS, Google, Microsoft, and Huawei, ensuring long-term stewardship independent of any single company. In 2021, Rust was accepted into the Linux kernel, a landmark moment for a language once seen as experimental. That same year, the first edition of the Rust specification effort began, aiming to formalize the language's definition.\n\nRust's design priorities—safety, speed, and concurrency—resonated in an era of increasing concern over software security. Its compiler's helpful error messages and its package manager, Cargo, lowered barriers for newcomers. The async/await syntax, stabilized in 2019, made asynchronous programming more accessible. Const generics, stabilized in 2021, added further flexibility.\n\nToday, Rust is used in operating systems, web browsers, embedded devices, blockchain platforms, and command-line tools. It has won admiration for proving that systems programming need not be synonymous with memory unsafety. From a lone programmer's frustration to a global community with a foundation and corporate sponsors, Rust's history reflects a rare achievement: a language that changed how developers think about safety and performance. Its journey is far from over, but its first two decades have already reshaped the landscape of software engineering."
+                },
+                "fingerprint": 3651526560242099979
+              }
             }
           ],
           "usage": {
@@ -1412,11 +842,21 @@
             "total_tokens": 824,
             "cached_input_tokens": 0
           },
-          "message_id": null,
-          "response_id": "a905955b-eb05-45c1-aecc-25cc3a0432e5",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "deepseek",
+            "model": "deepseek-chat",
+            "response_model": "deepseek-flash",
+            "response_id": "a905955b-eb05-45c1-aecc-25cc3a0432e5"
+          },
+          "native": {
+            "item": {
+              "content": "# The History of Rust: From Personal Project to Systems Programming Powerhouse\n\nRust began in 2006 as a personal project by Graydon Hoare, a Canadian programmer working at Mozilla. Frustrated by a recurring problem in software—memory bugs like buffer overflows and use-after-free errors that plagued C and C++ codebases—Hoare started designing a language that could offer memory safety without sacrificing performance. He named it \"Rust\" after a group of fungi known for their robustness, a fitting metaphor for a language intended to be resilient.\n\nThe project remained a solo endeavor until 2009, when Mozilla officially sponsored it. The company saw potential in Rust for building a safer browser engine, particularly as it worked on Servo, an experimental parallel rendering engine. Mozilla assembled a small team, and in 2010 the first public announcement of Rust appeared. That same year, the language's compiler, originally written in OCaml, became self-hosting—Rust could compile itself, a milestone known as bootstrapping.\n\nEarly Rust was markedly different from today's version. It featured garbage collection, a green-thread runtime, and typestate—a system for tracking object states. Over time, the team stripped away these features in favor of a leaner design. The pivotal innovation was the ownership and borrow-checking system, which enforces memory safety at compile time without a garbage collector. By 2012, garbage collection was removed; by 2014, the runtime was gone. This period of rapid, breaking changes became known as the \"pre-1.0 churn,\" and it tested the patience of early adopters.\n\nA turning point came in 2014 with the formation of the Rust Core Team and the introduction of RFCs (Request for Comments), a community-driven process for proposing and reviewing changes. This governance model gave the language a stable, transparent evolution path. In May 2015, Rust 1.0 was released, promising backward compatibility. The \"stability without stagnation\" philosophy meant new features could be added without breaking existing code.\n\nRust's adoption accelerated through the late 2010s. In 2016, it topped Stack Overflow's \"most loved programming language\" survey for the first time—a streak that continued for years. Major companies took notice: Dropbox used Rust for its file-sync engine, Cloudflare for edge computing, and Microsoft for Windows components. In 2018, the Rust community published \"The Rust Programming Language\" book, widely known as \"the Book,\" which became a standard learning resource.\n\nThe language also gained formal backing. In 2020, the Rust Foundation was established with founding members including Mozilla, AWS, Google, Microsoft, and Huawei, ensuring long-term stewardship independent of any single company. In 2021, Rust was accepted into the Linux kernel, a landmark moment for a language once seen as experimental. That same year, the first edition of the Rust specification effort began, aiming to formalize the language's definition.\n\nRust's design priorities—safety, speed, and concurrency—resonated in an era of increasing concern over software security. Its compiler's helpful error messages and its package manager, Cargo, lowered barriers for newcomers. The async/await syntax, stabilized in 2019, made asynchronous programming more accessible. Const generics, stabilized in 2021, added further flexibility.\n\nToday, Rust is used in operating systems, web browsers, embedded devices, blockchain platforms, and command-line tools. It has won admiration for proving that systems programming need not be synonymous with memory unsafety. From a lone programmer's frustration to a global community with a foundation and corporate sponsors, Rust's history reflects a rare achievement: a language that changed how developers think about safety and performance. Its journey is far from over, but its first two decades have already reshaped the landscape of software engineering.",
+              "role": "assistant"
+            },
+            "fingerprint": 2179447601168403587
+          },
           "finish_reason": "stop",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
           "raw": {
             "usage": {
               "prompt_tokens": 29,
@@ -7815,7 +7255,13 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "# The History of Rust: From Personal Project to Systems Programming Powerhouse\n\nRust began in 2006 as a personal project by Graydon Hoare, a Canadian programmer working at Mozilla. Frustrated by a recurring problem in software—memory bugs like buffer overflows and use-after-free errors that plagued C and C++ codebases—Hoare started designing a language that could offer memory safety without sacrificing performance. He named it \"Rust\" after a group of fungi known for their robustness, a fitting metaphor for a language intended to be resilient.\n\nThe project remained a solo endeavor until 2009, when Mozilla officially sponsored it. The company saw potential in Rust for building a safer browser engine, particularly as it worked on Servo, an experimental parallel rendering engine. Mozilla assembled a small team, and in 2010 the first public announcement of Rust appeared. That same year, the language's compiler, originally written in OCaml, became self-hosting—Rust could compile itself, a milestone known as bootstrapping.\n\nEarly Rust was markedly different from today's version. It featured garbage collection, a green-thread runtime, and typestate—a system for tracking object states. Over time, the team stripped away these features in favor of a leaner design. The pivotal innovation was the ownership and borrow-checking system, which enforces memory safety at compile time without a garbage collector. By 2012, garbage collection was removed; by 2014, the runtime was gone. This period of rapid, breaking changes became known as the \"pre-1.0 churn,\" and it tested the patience of early adopters.\n\nA turning point came in 2014 with the formation of the Rust Core Team and the introduction of RFCs (Request for Comments), a community-driven process for proposing and reviewing changes. This governance model gave the language a stable, transparent evolution path. In May 2015, Rust 1.0 was released, promising backward compatibility. The \"stability without stagnation\" philosophy meant new features could be added without breaking existing code.\n\nRust's adoption accelerated through the late 2010s. In 2016, it topped Stack Overflow's \"most loved programming language\" survey for the first time—a streak that continued for years. Major companies took notice: Dropbox used Rust for its file-sync engine, Cloudflare for edge computing, and Microsoft for Windows components. In 2018, the Rust community published \"The Rust Programming Language\" book, widely known as \"the Book,\" which became a standard learning resource.\n\nThe language also gained formal backing. In 2020, the Rust Foundation was established with founding members including Mozilla, AWS, Google, Microsoft, and Huawei, ensuring long-term stewardship independent of any single company. In 2021, Rust was accepted into the Linux kernel, a landmark moment for a language once seen as experimental. That same year, the first edition of the Rust specification effort began, aiming to formalize the language's definition.\n\nRust's design priorities—safety, speed, and concurrency—resonated in an era of increasing concern over software security. Its compiler's helpful error messages and its package manager, Cargo, lowered barriers for newcomers. The async/await syntax, stabilized in 2019, made asynchronous programming more accessible. Const generics, stabilized in 2021, added further flexibility.\n\nToday, Rust is used in operating systems, web browsers, embedded devices, blockchain platforms, and command-line tools. It has won admiration for proving that systems programming need not be synonymous with memory unsafety. From a lone programmer's frustration to a global community with a foundation and corporate sponsors, Rust's history reflects a rare achievement: a language that changed how developers think about safety and performance. Its journey is far from over, but its first two decades have already reshaped the landscape of software engineering."
+              "text": "# The History of Rust: From Personal Project to Systems Programming Powerhouse\n\nRust began in 2006 as a personal project by Graydon Hoare, a Canadian programmer working at Mozilla. Frustrated by a recurring problem in software—memory bugs like buffer overflows and use-after-free errors that plagued C and C++ codebases—Hoare started designing a language that could offer memory safety without sacrificing performance. He named it \"Rust\" after a group of fungi known for their robustness, a fitting metaphor for a language intended to be resilient.\n\nThe project remained a solo endeavor until 2009, when Mozilla officially sponsored it. The company saw potential in Rust for building a safer browser engine, particularly as it worked on Servo, an experimental parallel rendering engine. Mozilla assembled a small team, and in 2010 the first public announcement of Rust appeared. That same year, the language's compiler, originally written in OCaml, became self-hosting—Rust could compile itself, a milestone known as bootstrapping.\n\nEarly Rust was markedly different from today's version. It featured garbage collection, a green-thread runtime, and typestate—a system for tracking object states. Over time, the team stripped away these features in favor of a leaner design. The pivotal innovation was the ownership and borrow-checking system, which enforces memory safety at compile time without a garbage collector. By 2012, garbage collection was removed; by 2014, the runtime was gone. This period of rapid, breaking changes became known as the \"pre-1.0 churn,\" and it tested the patience of early adopters.\n\nA turning point came in 2014 with the formation of the Rust Core Team and the introduction of RFCs (Request for Comments), a community-driven process for proposing and reviewing changes. This governance model gave the language a stable, transparent evolution path. In May 2015, Rust 1.0 was released, promising backward compatibility. The \"stability without stagnation\" philosophy meant new features could be added without breaking existing code.\n\nRust's adoption accelerated through the late 2010s. In 2016, it topped Stack Overflow's \"most loved programming language\" survey for the first time—a streak that continued for years. Major companies took notice: Dropbox used Rust for its file-sync engine, Cloudflare for edge computing, and Microsoft for Windows components. In 2018, the Rust community published \"The Rust Programming Language\" book, widely known as \"the Book,\" which became a standard learning resource.\n\nThe language also gained formal backing. In 2020, the Rust Foundation was established with founding members including Mozilla, AWS, Google, Microsoft, and Huawei, ensuring long-term stewardship independent of any single company. In 2021, Rust was accepted into the Linux kernel, a landmark moment for a language once seen as experimental. That same year, the first edition of the Rust specification effort began, aiming to formalize the language's definition.\n\nRust's design priorities—safety, speed, and concurrency—resonated in an era of increasing concern over software security. Its compiler's helpful error messages and its package manager, Cargo, lowered barriers for newcomers. The async/await syntax, stabilized in 2019, made asynchronous programming more accessible. Const generics, stabilized in 2021, added further flexibility.\n\nToday, Rust is used in operating systems, web browsers, embedded devices, blockchain platforms, and command-line tools. It has won admiration for proving that systems programming need not be synonymous with memory unsafety. From a lone programmer's frustration to a global community with a foundation and corporate sponsors, Rust's history reflects a rare achievement: a language that changed how developers think about safety and performance. Its journey is far from over, but its first two decades have already reshaped the landscape of software engineering.",
+              "native": {
+                "item": {
+                  "content": "# The History of Rust: From Personal Project to Systems Programming Powerhouse\n\nRust began in 2006 as a personal project by Graydon Hoare, a Canadian programmer working at Mozilla. Frustrated by a recurring problem in software—memory bugs like buffer overflows and use-after-free errors that plagued C and C++ codebases—Hoare started designing a language that could offer memory safety without sacrificing performance. He named it \"Rust\" after a group of fungi known for their robustness, a fitting metaphor for a language intended to be resilient.\n\nThe project remained a solo endeavor until 2009, when Mozilla officially sponsored it. The company saw potential in Rust for building a safer browser engine, particularly as it worked on Servo, an experimental parallel rendering engine. Mozilla assembled a small team, and in 2010 the first public announcement of Rust appeared. That same year, the language's compiler, originally written in OCaml, became self-hosting—Rust could compile itself, a milestone known as bootstrapping.\n\nEarly Rust was markedly different from today's version. It featured garbage collection, a green-thread runtime, and typestate—a system for tracking object states. Over time, the team stripped away these features in favor of a leaner design. The pivotal innovation was the ownership and borrow-checking system, which enforces memory safety at compile time without a garbage collector. By 2012, garbage collection was removed; by 2014, the runtime was gone. This period of rapid, breaking changes became known as the \"pre-1.0 churn,\" and it tested the patience of early adopters.\n\nA turning point came in 2014 with the formation of the Rust Core Team and the introduction of RFCs (Request for Comments), a community-driven process for proposing and reviewing changes. This governance model gave the language a stable, transparent evolution path. In May 2015, Rust 1.0 was released, promising backward compatibility. The \"stability without stagnation\" philosophy meant new features could be added without breaking existing code.\n\nRust's adoption accelerated through the late 2010s. In 2016, it topped Stack Overflow's \"most loved programming language\" survey for the first time—a streak that continued for years. Major companies took notice: Dropbox used Rust for its file-sync engine, Cloudflare for edge computing, and Microsoft for Windows components. In 2018, the Rust community published \"The Rust Programming Language\" book, widely known as \"the Book,\" which became a standard learning resource.\n\nThe language also gained formal backing. In 2020, the Rust Foundation was established with founding members including Mozilla, AWS, Google, Microsoft, and Huawei, ensuring long-term stewardship independent of any single company. In 2021, Rust was accepted into the Linux kernel, a landmark moment for a language once seen as experimental. That same year, the first edition of the Rust specification effort began, aiming to formalize the language's definition.\n\nRust's design priorities—safety, speed, and concurrency—resonated in an era of increasing concern over software security. Its compiler's helpful error messages and its package manager, Cargo, lowered barriers for newcomers. The async/await syntax, stabilized in 2019, made asynchronous programming more accessible. Const generics, stabilized in 2021, added further flexibility.\n\nToday, Rust is used in operating systems, web browsers, embedded devices, blockchain platforms, and command-line tools. It has won admiration for proving that systems programming need not be synonymous with memory unsafety. From a lone programmer's frustration to a global community with a foundation and corporate sponsors, Rust's history reflects a rare achievement: a language that changed how developers think about safety and performance. Its journey is far from over, but its first two decades have already reshaped the landscape of software engineering."
+                },
+                "fingerprint": 3651526560242099979
+              }
             }
           }
         }

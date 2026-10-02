@@ -116,23 +116,18 @@
           "choice": [
             {
               "type": "reasoning",
-              "issuer": "llamacpp",
-              "id": null,
-              "content": [
-                {
-                  "type": "text",
-                  "content": {
-                    "text": "Okay, let's see. The user mentioned the address is 123 Main St in Springfield, IL 62701. I need to extract the street, city, state, and zip code from this.\n\nFirst, the street is clearly \"123 Main St\". The city is \"Springfield\". The state is \"IL\" because it's abbreviated. The zip code is \"62701\". \n\nI should check if all the required fields are present. The submit function needs street, city, state, and zip_code. All are here. No missing fields. So I can call the submit function with these values.\n"
-                  }
-                }
-              ]
+              "text": "Okay, let's see. The user mentioned the address is 123 Main St in Springfield, IL 62701. I need to extract the street, city, state, and zip code from this.\n\nFirst, the street is clearly \"123 Main St\". The city is \"Springfield\". The state is \"IL\" because it's abbreviated. The zip code is \"62701\". \n\nI should check if all the required fields are present. The submit function needs street, city, state, and zip_code. All are here. No missing fields. So I can call the submit function with these values.\n",
+              "native": {
+                "item": {
+                  "reasoning_content": "Okay, let's see. The user mentioned the address is 123 Main St in Springfield, IL 62701. I need to extract the street, city, state, and zip code from this.\n\nFirst, the street is clearly \"123 Main St\". The city is \"Springfield\". The state is \"IL\" because it's abbreviated. The zip code is \"62701\". \n\nI should check if all the required fields are present. The submit function needs street, city, state, and zip_code. All are here. No missing fields. So I can call the submit function with these values.\n"
+                },
+                "fingerprint": 12771542982889402391
+              }
             },
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "rPufh4x95h7x33dvuABIt51agMEeiVbz"
-                }
+                "provider": "rPufh4x95h7x33dvuABIt51agMEeiVbz"
               },
               "function": {
                 "name": "submit",
@@ -143,8 +138,17 @@
                   "zip_code": "62701"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"street\": \"123 Main St\", \"city\": \"Springfield\", \"state\": \"IL\", \"zip_code\": \"62701\"}",
+                    "name": "submit"
+                  },
+                  "id": "rPufh4x95h7x33dvuABIt51agMEeiVbz",
+                  "type": "function"
+                },
+                "fingerprint": 1083081494339068753
+              }
             }
           ],
           "usage": {
@@ -153,11 +157,32 @@
             "total_tokens": 550,
             "cached_input_tokens": 197
           },
-          "message_id": null,
-          "response_id": "chatcmpl-h0seZ8K0kUR79yfl4YXKeXvkoLwI8AwC",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "llamacpp",
+            "model": "Qwen3-1.7B-Q4_K_M",
+            "response_model": "/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf",
+            "response_id": "chatcmpl-h0seZ8K0kUR79yfl4YXKeXvkoLwI8AwC"
+          },
+          "native": {
+            "item": {
+              "content": "",
+              "reasoning_content": "Okay, let's see. The user mentioned the address is 123 Main St in Springfield, IL 62701. I need to extract the street, city, state, and zip code from this.\n\nFirst, the street is clearly \"123 Main St\". The city is \"Springfield\". The state is \"IL\" because it's abbreviated. The zip code is \"62701\". \n\nI should check if all the required fields are present. The submit function needs street, city, state, and zip_code. All are here. No missing fields. So I can call the submit function with these values.\n",
+              "role": "assistant",
+              "tool_calls": [
+                {
+                  "function": {
+                    "arguments": "{\"street\": \"123 Main St\", \"city\": \"Springfield\", \"state\": \"IL\", \"zip_code\": \"62701\"}",
+                    "name": "submit"
+                  },
+                  "id": "rPufh4x95h7x33dvuABIt51agMEeiVbz",
+                  "type": "function"
+                }
+              ]
+            },
+            "fingerprint": 6822630728463318969
+          },
           "finish_reason": "tool_calls",
-          "provider": "llamacpp",
-          "model": "/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf",
           "raw": {
             "choices": [
               {

@@ -116,9 +116,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_00_5GV0ydkTzBSynd7XW0768017"
-                }
+                "provider": "call_00_RV1MzdZwlWUZbTg8tNWh0906"
               },
               "function": {
                 "name": "add",
@@ -127,21 +125,50 @@
                   "y": 25
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"x\": 17, \"y\": 25}",
+                    "name": "add"
+                  },
+                  "id": "call_00_RV1MzdZwlWUZbTg8tNWh0906",
+                  "type": "function"
+                },
+                "fingerprint": 17678221498561375915
+              }
             }
           ],
           "usage": {
             "input_tokens": 417,
             "output_tokens": 52,
             "total_tokens": 469,
-            "cached_input_tokens": 0
+            "cached_input_tokens": 256
           },
-          "message_id": null,
-          "response_id": "012bb47a-4189-43fd-8178-2dcd0265a864",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "deepseek",
+            "model": "deepseek-chat",
+            "response_model": "deepseek-flash",
+            "response_id": "c0925476-6d1d-478d-9250-dfa81cc35251"
+          },
+          "native": {
+            "item": {
+              "content": "",
+              "role": "assistant",
+              "tool_calls": [
+                {
+                  "function": {
+                    "arguments": "{\"x\": 17, \"y\": 25}",
+                    "name": "add"
+                  },
+                  "id": "call_00_RV1MzdZwlWUZbTg8tNWh0906",
+                  "type": "function"
+                }
+              ]
+            },
+            "fingerprint": 15259304198926257559
+          },
           "finish_reason": "tool_calls",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
           "raw": {
             "choices": [
               {
@@ -157,7 +184,7 @@
                         "arguments": "{\"x\": 17, \"y\": 25}",
                         "name": "add"
                       },
-                      "id": "call_00_5GV0ydkTzBSynd7XW0768017",
+                      "id": "call_00_RV1MzdZwlWUZbTg8tNWh0906",
                       "index": 0,
                       "type": "function"
                     }
@@ -166,17 +193,17 @@
               }
             ],
             "created": 0,
-            "id": "012bb47a-4189-43fd-8178-2dcd0265a864",
+            "id": "c0925476-6d1d-478d-9250-dfa81cc35251",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
             "usage": {
               "completion_tokens": 52,
-              "prompt_cache_hit_tokens": 0,
-              "prompt_cache_miss_tokens": 417,
+              "prompt_cache_hit_tokens": 256,
+              "prompt_cache_miss_tokens": 161,
               "prompt_tokens": 417,
               "prompt_tokens_details": {
-                "cached_tokens": 0
+                "cached_tokens": 256
               },
               "total_tokens": 469
             }
@@ -232,14 +259,11 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_00_5GV0ydkTzBSynd7XW0768017"
-                    }
+                    "provider": "call_00_RV1MzdZwlWUZbTg8tNWh0906"
                   },
                   "function": {
                     "name": "add",
@@ -248,10 +272,44 @@
                       "y": 25
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"x\": 17, \"y\": 25}",
+                        "name": "add"
+                      },
+                      "id": "call_00_RV1MzdZwlWUZbTg8tNWh0906",
+                      "type": "function"
+                    },
+                    "fingerprint": 17678221498561375915
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-chat",
+                "response_model": "deepseek-flash",
+                "response_id": "c0925476-6d1d-478d-9250-dfa81cc35251"
+              },
+              "stop": "tool_use",
+              "native": {
+                "item": {
+                  "content": "",
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{\"x\": 17, \"y\": 25}",
+                        "name": "add"
+                      },
+                      "id": "call_00_RV1MzdZwlWUZbTg8tNWh0906",
+                      "type": "function"
+                    }
+                  ]
+                },
+                "fingerprint": 15259304198926257559
+              }
             },
             {
               "role": "user",
@@ -259,9 +317,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_00_5GV0ydkTzBSynd7XW0768017"
-                    }
+                    "provider": "call_00_RV1MzdZwlWUZbTg8tNWh0906"
                   },
                   "name": "add",
                   "content": [
@@ -312,7 +368,13 @@
           "choice": [
             {
               "type": "text",
-              "text": "{\"title\":\"Rust Meetup in Seattle\",\"category\":\"meetup\",\"summary\":\"A Rust meetup in Seattle; the sum of 17 and 25 is 42.\"}"
+              "text": "{\"title\":\"Rust Meetup in Seattle\",\"category\":\"meetup\",\"summary\":\"A Rust meetup in Seattle; the sum of 17 and 25 is 42.\"}",
+              "native": {
+                "item": {
+                  "content": "{\"title\":\"Rust Meetup in Seattle\",\"category\":\"meetup\",\"summary\":\"A Rust meetup in Seattle; the sum of 17 and 25 is 42.\"}"
+                },
+                "fingerprint": 9843035444632606670
+              }
             }
           ],
           "usage": {
@@ -321,11 +383,21 @@
             "total_tokens": 520,
             "cached_input_tokens": 256
           },
-          "message_id": null,
-          "response_id": "5eb0a8c1-019d-47d7-a37f-1f019db0b147",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "deepseek",
+            "model": "deepseek-chat",
+            "response_model": "deepseek-flash",
+            "response_id": "ea590efa-4f9c-4dcd-aebd-be929bd24426"
+          },
+          "native": {
+            "item": {
+              "content": "{\"title\":\"Rust Meetup in Seattle\",\"category\":\"meetup\",\"summary\":\"A Rust meetup in Seattle; the sum of 17 and 25 is 42.\"}",
+              "role": "assistant"
+            },
+            "fingerprint": 9958711037658026794
+          },
           "finish_reason": "stop",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
           "raw": {
             "choices": [
               {
@@ -339,7 +411,7 @@
               }
             ],
             "created": 0,
-            "id": "5eb0a8c1-019d-47d7-a37f-1f019db0b147",
+            "id": "ea590efa-4f9c-4dcd-aebd-be929bd24426",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",

@@ -138,10 +138,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_T8nV84wy8khgTx1vDqfFjD2o",
-                  "item_id": "fc_0503a7b952dd8323006ab2ba99a58c87d0b90eaac490ff4085"
-                }
+                "provider": "call_T8nV84wy8khgTx1vDqfFjD2o"
               },
               "function": {
                 "name": "lookup_cache_policy",
@@ -149,16 +146,22 @@
                   "topic": "prefix"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "arguments": "{\"topic\":\"prefix\"}",
+                  "call_id": "call_T8nV84wy8khgTx1vDqfFjD2o",
+                  "id": "fc_0503a7b952dd8323006ab2ba99a58c87d0b90eaac490ff4085",
+                  "name": "lookup_cache_policy",
+                  "status": "completed",
+                  "type": "function_call"
+                },
+                "fingerprint": 15143648698185523843
+              }
             },
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_ihdmd9ekwkyz5sKY8xqXrQY0",
-                  "item_id": "fc_0503a7b952dd8323006ab2ba99a5a487d08aedffda27bf8e9e"
-                }
+                "provider": "call_ihdmd9ekwkyz5sKY8xqXrQY0"
               },
               "function": {
                 "name": "lookup_cache_policy",
@@ -166,8 +169,17 @@
                   "topic": "breakpoint"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "arguments": "{\"topic\":\"breakpoint\"}",
+                  "call_id": "call_ihdmd9ekwkyz5sKY8xqXrQY0",
+                  "id": "fc_0503a7b952dd8323006ab2ba99a5a487d08aedffda27bf8e9e",
+                  "name": "lookup_cache_policy",
+                  "status": "completed",
+                  "type": "function_call"
+                },
+                "fingerprint": 4187586466856371900
+              }
             }
           ],
           "usage": {
@@ -178,12 +190,15 @@
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
-          "response_id": "resp_0503a7b952dd8323006ab2ba98292487d0960eb054ba0476e4",
+          "origin": {
+            "api": "openai.responses",
+            "provider": "openai",
+            "model": "gpt-4o-mini",
+            "response_model": "gpt-4o-mini-2024-07-18",
+            "response_id": "resp_0503a7b952dd8323006ab2ba98292487d0960eb054ba0476e4"
+          },
           "provider_request_id": "req_901bae62f1b646be839e314965b9164a",
           "finish_reason": "tool_calls",
-          "provider": "openai",
-          "model": "gpt-4o-mini-2024-07-18",
           "raw": {
             "background": false,
             "billing": {
@@ -376,15 +391,11 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_T8nV84wy8khgTx1vDqfFjD2o",
-                      "item_id": "fc_0503a7b952dd8323006ab2ba99a58c87d0b90eaac490ff4085"
-                    }
+                    "provider": "call_T8nV84wy8khgTx1vDqfFjD2o"
                   },
                   "function": {
                     "name": "lookup_cache_policy",
@@ -392,16 +403,22 @@
                       "topic": "prefix"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "arguments": "{\"topic\":\"prefix\"}",
+                      "call_id": "call_T8nV84wy8khgTx1vDqfFjD2o",
+                      "id": "fc_0503a7b952dd8323006ab2ba99a58c87d0b90eaac490ff4085",
+                      "name": "lookup_cache_policy",
+                      "status": "completed",
+                      "type": "function_call"
+                    },
+                    "fingerprint": 15143648698185523843
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_ihdmd9ekwkyz5sKY8xqXrQY0",
-                      "item_id": "fc_0503a7b952dd8323006ab2ba99a5a487d08aedffda27bf8e9e"
-                    }
+                    "provider": "call_ihdmd9ekwkyz5sKY8xqXrQY0"
                   },
                   "function": {
                     "name": "lookup_cache_policy",
@@ -409,10 +426,27 @@
                       "topic": "breakpoint"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "arguments": "{\"topic\":\"breakpoint\"}",
+                      "call_id": "call_ihdmd9ekwkyz5sKY8xqXrQY0",
+                      "id": "fc_0503a7b952dd8323006ab2ba99a5a487d08aedffda27bf8e9e",
+                      "name": "lookup_cache_policy",
+                      "status": "completed",
+                      "type": "function_call"
+                    },
+                    "fingerprint": 4187586466856371900
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.responses",
+                "provider": "openai",
+                "model": "gpt-4o-mini",
+                "response_model": "gpt-4o-mini-2024-07-18",
+                "response_id": "resp_0503a7b952dd8323006ab2ba98292487d0960eb054ba0476e4"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -420,10 +454,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_T8nV84wy8khgTx1vDqfFjD2o",
-                      "item_id": "fc_0503a7b952dd8323006ab2ba99a58c87d0b90eaac490ff4085"
-                    }
+                    "provider": "call_T8nV84wy8khgTx1vDqfFjD2o"
                   },
                   "name": "lookup_cache_policy",
                   "content": [
@@ -436,10 +467,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_ihdmd9ekwkyz5sKY8xqXrQY0",
-                      "item_id": "fc_0503a7b952dd8323006ab2ba99a5a487d08aedffda27bf8e9e"
-                    }
+                    "provider": "call_ihdmd9ekwkyz5sKY8xqXrQY0"
                   },
                   "name": "lookup_cache_policy",
                   "content": [
@@ -487,7 +515,24 @@
           "choice": [
             {
               "type": "text",
-              "text": "cache probe ready"
+              "text": "cache probe ready",
+              "native": {
+                "item": {
+                  "content": [
+                    {
+                      "annotations": [],
+                      "logprobs": [],
+                      "text": "cache probe ready",
+                      "type": "output_text"
+                    }
+                  ],
+                  "id": "msg_0503a7b952dd8323006ab2ba9aa65c87d094b2cacf0592b923",
+                  "role": "assistant",
+                  "status": "completed",
+                  "type": "message"
+                },
+                "fingerprint": 17931945363212184360
+              }
             }
           ],
           "usage": {
@@ -498,12 +543,15 @@
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": "msg_0503a7b952dd8323006ab2ba9aa65c87d094b2cacf0592b923",
-          "response_id": "resp_0503a7b952dd8323006ab2ba9a0f5087d0968d2dfa6077cacc",
+          "origin": {
+            "api": "openai.responses",
+            "provider": "openai",
+            "model": "gpt-4o-mini",
+            "response_model": "gpt-4o-mini-2024-07-18",
+            "response_id": "resp_0503a7b952dd8323006ab2ba9a0f5087d0968d2dfa6077cacc"
+          },
           "provider_request_id": "req_eb0383125d374aa1ad2af87b1e09634f",
           "finish_reason": "stop",
-          "provider": "openai",
-          "model": "gpt-4o-mini-2024-07-18",
           "raw": {
             "background": false,
             "billing": {

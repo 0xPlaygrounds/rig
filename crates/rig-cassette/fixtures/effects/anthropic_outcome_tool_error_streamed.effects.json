@@ -112,9 +112,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "toolu_01BJ9r2UfGrVt2QLHFkTpsgx"
-                }
+                "provider": "toolu_01Gs2XkxUsbF1JDNVyyhSx88"
               },
               "function": {
                 "name": "add",
@@ -123,8 +121,21 @@
                   "y": 25
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "caller": {
+                    "type": "direct"
+                  },
+                  "id": "toolu_01Gs2XkxUsbF1JDNVyyhSx88",
+                  "input": {
+                    "x": 17,
+                    "y": 25
+                  },
+                  "name": "add",
+                  "type": "tool_use"
+                },
+                "fingerprint": 5290853352672464497
+              }
             }
           ],
           "usage": {
@@ -134,12 +145,15 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_011CfLccFvvqgbpzszzQiC27",
-          "response_id": null,
-          "provider_request_id": "req_011CfLccFZbXbNrcUHnACKi1",
+          "origin": {
+            "api": "anthropic.messages",
+            "provider": "anthropic",
+            "model": "claude-sonnet-4-6",
+            "response_model": "claude-sonnet-4-6",
+            "response_id": "msg_011Cfci5HpRnVCymaeAoi7Rn"
+          },
+          "provider_request_id": "req_011Cfci5HaJ5LCERPEScteCZ",
           "finish_reason": "tool_calls",
-          "provider": "anthropic",
-          "model": "claude-sonnet-4-6",
           "raw": {
             "usage": {
               "output_tokens": 69,
@@ -152,7 +166,7 @@
               "cache_read_input_tokens": 0
             },
             "stop_reason": "tool_use",
-            "message_id": "msg_011CfLccFvvqgbpzszzQiC27",
+            "message_id": "msg_011Cfci5HpRnVCymaeAoi7Rn",
             "model": "claude-sonnet-4-6"
           }
         }
@@ -182,9 +196,7 @@
             "content": {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "toolu_01BJ9r2UfGrVt2QLHFkTpsgx"
-                }
+                "provider": "toolu_01Gs2XkxUsbF1JDNVyyhSx88"
               },
               "function": {
                 "name": "add",
@@ -193,8 +205,21 @@
                   "y": 25
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "caller": {
+                    "type": "direct"
+                  },
+                  "id": "toolu_01Gs2XkxUsbF1JDNVyyhSx88",
+                  "input": {
+                    "x": 17,
+                    "y": 25
+                  },
+                  "name": "add",
+                  "type": "tool_use"
+                },
+                "fingerprint": 5290853352672464497
+              }
             }
           }
         }
@@ -256,14 +281,11 @@
             },
             {
               "role": "assistant",
-              "id": "msg_011CfLccFvvqgbpzszzQiC27",
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "toolu_01BJ9r2UfGrVt2QLHFkTpsgx"
-                    }
+                    "provider": "toolu_01Gs2XkxUsbF1JDNVyyhSx88"
                   },
                   "function": {
                     "name": "add",
@@ -272,10 +294,31 @@
                       "y": 25
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "caller": {
+                        "type": "direct"
+                      },
+                      "id": "toolu_01Gs2XkxUsbF1JDNVyyhSx88",
+                      "input": {
+                        "x": 17,
+                        "y": 25
+                      },
+                      "name": "add",
+                      "type": "tool_use"
+                    },
+                    "fingerprint": 5290853352672464497
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "anthropic.messages",
+                "provider": "anthropic",
+                "model": "claude-sonnet-4-6",
+                "response_model": "claude-sonnet-4-6",
+                "response_id": "msg_011Cfci5HpRnVCymaeAoi7Rn"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -283,9 +326,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "toolu_01BJ9r2UfGrVt2QLHFkTpsgx"
-                    }
+                    "provider": "toolu_01Gs2XkxUsbF1JDNVyyhSx88"
                   },
                   "name": "add",
                   "content": [
@@ -334,25 +375,35 @@
           "choice": [
             {
               "type": "text",
-              "text": "I'm sorry, it seems the add tool is currently broken and unable to return a result. You may want to try again later!"
+              "text": "I'm sorry, but it seems the addition tool is currently broken and was unable to compute the result. Please try again later!",
+              "native": {
+                "item": {
+                  "text": "I'm sorry, but it seems the addition tool is currently broken and was unable to compute the result. Please try again later!",
+                  "type": "text"
+                },
+                "fingerprint": 6772620641962432407
+              }
             }
           ],
           "usage": {
             "input_tokens": 697,
-            "output_tokens": 30,
-            "total_tokens": 727,
+            "output_tokens": 29,
+            "total_tokens": 726,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_011CfLccNMdyEMZ4MumLQcXe",
-          "response_id": null,
-          "provider_request_id": "req_011CfLccMtMZ5pogox7Zv2UZ",
+          "origin": {
+            "api": "anthropic.messages",
+            "provider": "anthropic",
+            "model": "claude-sonnet-4-6",
+            "response_model": "claude-sonnet-4-6",
+            "response_id": "msg_011Cfci5No5NAYkM76zonnuy"
+          },
+          "provider_request_id": "req_011Cfci5NTjDcXGVazEgHaC3",
           "finish_reason": "stop",
-          "provider": "anthropic",
-          "model": "claude-sonnet-4-6",
           "raw": {
             "usage": {
-              "output_tokens": 30,
+              "output_tokens": 29,
               "input_tokens": 697,
               "cache_creation_input_tokens": 0,
               "cache_creation": {
@@ -362,7 +413,7 @@
               "cache_read_input_tokens": 0
             },
             "stop_reason": "end_turn",
-            "message_id": "msg_011CfLccNMdyEMZ4MumLQcXe",
+            "message_id": "msg_011Cfci5No5NAYkM76zonnuy",
             "model": "claude-sonnet-4-6"
           }
         }
@@ -397,7 +448,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": " sorry, it"
+            "text": " sorry, but it"
           }
         },
         {
@@ -413,7 +464,15 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": " the add tool is currently"
+            "text": " the addition"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": " tool is currently"
           }
         },
         {
@@ -429,6 +488,14 @@
           "value": {
             "event": "text",
             "part": 0,
+            "text": " was"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " unable"
           }
         },
@@ -437,7 +504,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": " to return"
+            "text": " to compute"
           }
         },
         {
@@ -445,7 +512,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": " a result. You"
+            "text": " the"
           }
         },
         {
@@ -453,7 +520,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": " may"
+            "text": " result. Please"
           }
         },
         {
@@ -461,15 +528,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": " want"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " to try again"
+            "text": " try again"
           }
         },
         {
@@ -495,7 +554,14 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "I'm sorry, it seems the add tool is currently broken and unable to return a result. You may want to try again later!"
+              "text": "I'm sorry, but it seems the addition tool is currently broken and was unable to compute the result. Please try again later!",
+              "native": {
+                "item": {
+                  "text": "I'm sorry, but it seems the addition tool is currently broken and was unable to compute the result. Please try again later!",
+                  "type": "text"
+                },
+                "fingerprint": 6772620641962432407
+              }
             }
           }
         }

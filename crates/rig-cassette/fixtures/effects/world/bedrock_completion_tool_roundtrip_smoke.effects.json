@@ -190,9 +190,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "tooluse_REDACTED_1"
-                }
+                "provider": "tooluse_REDACTED_1"
               },
               "function": {
                 "name": "subtract",
@@ -200,9 +198,7 @@
                   "x": 2,
                   "y": 5
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {
@@ -210,11 +206,12 @@
             "output_tokens": 70,
             "total_tokens": 584
           },
-          "message_id": null,
-          "response_id": null,
+          "origin": {
+            "api": "bedrock.converse",
+            "provider": "aws_bedrock",
+            "model": "amazon.nova-lite-v1:0"
+          },
           "finish_reason": "tool_calls",
-          "provider": "aws_bedrock",
-          "model": null,
           "raw": {
             "output": {
               "Message": {
@@ -300,7 +297,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -309,9 +305,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "tooluse_REDACTED_1"
-                    }
+                    "provider": "tooluse_REDACTED_1"
                   },
                   "function": {
                     "name": "subtract",
@@ -319,11 +313,15 @@
                       "x": 2,
                       "y": 5
                     }
-                  },
-                  "signature": null,
-                  "additional_params": null
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "bedrock.converse",
+                "provider": "aws_bedrock",
+                "model": "amazon.nova-lite-v1:0"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -331,9 +329,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "tooluse_REDACTED_1"
-                    }
+                    "provider": "tooluse_REDACTED_1"
                   },
                   "name": "subtract",
                   "content": [
@@ -413,11 +409,12 @@
             "output_tokens": 45,
             "total_tokens": 659
           },
-          "message_id": null,
-          "response_id": null,
+          "origin": {
+            "api": "bedrock.converse",
+            "provider": "aws_bedrock",
+            "model": "amazon.nova-lite-v1:0"
+          },
           "finish_reason": "stop",
-          "provider": "aws_bedrock",
-          "model": null,
           "raw": {
             "output": {
               "Message": {

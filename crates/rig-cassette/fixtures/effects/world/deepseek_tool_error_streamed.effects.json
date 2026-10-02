@@ -2,11 +2,19 @@
   "header": {
     "deliveries": [
       {
-        "batch": 6,
+        "batch": 5,
         "id": 0,
         "kind": {
           "delivery": "stream",
           "items": 2
+        }
+      },
+      {
+        "batch": 6,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
         }
       },
       {
@@ -62,7 +70,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -74,27 +82,11 @@
         }
       },
       {
-        "batch": 15,
+        "batch": 30,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 16,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 17,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
+          "items": 3
         }
       },
       {
@@ -102,7 +94,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 1
         }
       },
       {
@@ -120,11 +112,19 @@
         }
       },
       {
+        "batch": 37,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
         "batch": 38,
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 1
         }
       },
       {
@@ -204,7 +204,7 @@
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -252,7 +252,7 @@
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -288,7 +288,23 @@
         }
       },
       {
-        "batch": 58,
+        "batch": 59,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 60,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 60,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -406,14 +422,18 @@
           "choice": [
             {
               "type": "text",
-              "text": "I'll add 17 and 25 for you."
+              "text": "I'll add 17 and 25 for you.",
+              "native": {
+                "item": {
+                  "content": "I'll add 17 and 25 for you."
+                },
+                "fingerprint": 9863645442859622190
+              }
             },
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_00_hjq0Yw52ST1jSHJGMHCN8577"
-                }
+                "provider": "call_00_335ZuTMhWLFkVS3wFD482123"
               },
               "function": {
                 "name": "add",
@@ -422,8 +442,17 @@
                   "y": 25
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"x\": 17, \"y\": 25}",
+                    "name": "add"
+                  },
+                  "id": "call_00_335ZuTMhWLFkVS3wFD482123",
+                  "type": "function"
+                },
+                "fingerprint": 16757330312084256443
+              }
             }
           ],
           "usage": {
@@ -432,11 +461,31 @@
             "total_tokens": 391,
             "cached_input_tokens": 128
           },
-          "message_id": null,
-          "response_id": "b9a7922a-b38f-4d80-b2f0-b0358c377ec5",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "deepseek",
+            "model": "deepseek-chat",
+            "response_model": "deepseek-flash",
+            "response_id": "303a597e-4fe3-44f5-a3dc-e6da7ec46da9"
+          },
+          "native": {
+            "item": {
+              "content": "I'll add 17 and 25 for you.",
+              "role": "assistant",
+              "tool_calls": [
+                {
+                  "function": {
+                    "arguments": "{\"x\": 17, \"y\": 25}",
+                    "name": "add"
+                  },
+                  "id": "call_00_335ZuTMhWLFkVS3wFD482123",
+                  "type": "function"
+                }
+              ]
+            },
+            "fingerprint": 5825262259643612560
+          },
           "finish_reason": "tool_calls",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
           "raw": {
             "usage": {
               "prompt_tokens": 329,
@@ -449,7 +498,7 @@
               "prompt_cache_miss_tokens": 201
             },
             "finish_reason": "tool_calls",
-            "response_id": "b9a7922a-b38f-4d80-b2f0-b0358c377ec5",
+            "response_id": "303a597e-4fe3-44f5-a3dc-e6da7ec46da9",
             "model": "deepseek-flash",
             "additional_params": {
               "created": 0,
@@ -559,17 +608,6 @@
         {
           "item": "event",
           "value": {
-            "event": "end",
-            "part": 0,
-            "content": {
-              "type": "text",
-              "text": "I'll add 17 and 25 for you."
-            }
-          }
-        },
-        {
-          "item": "event",
-          "value": {
             "event": "start",
             "part": 1,
             "kind": "tool_call"
@@ -591,9 +629,7 @@
             "content": {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_00_hjq0Yw52ST1jSHJGMHCN8577"
-                }
+                "provider": "call_00_335ZuTMhWLFkVS3wFD482123"
               },
               "function": {
                 "name": "add",
@@ -602,8 +638,34 @@
                   "y": 25
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"x\": 17, \"y\": 25}",
+                    "name": "add"
+                  },
+                  "id": "call_00_335ZuTMhWLFkVS3wFD482123",
+                  "type": "function"
+                },
+                "fingerprint": 16757330312084256443
+              }
+            }
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "text",
+              "text": "I'll add 17 and 25 for you.",
+              "native": {
+                "item": {
+                  "content": "I'll add 17 and 25 for you."
+                },
+                "fingerprint": 9863645442859622190
+              }
             }
           }
         }
@@ -667,18 +729,21 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
-                  "text": "I'll add 17 and 25 for you."
+                  "text": "I'll add 17 and 25 for you.",
+                  "native": {
+                    "item": {
+                      "content": "I'll add 17 and 25 for you."
+                    },
+                    "fingerprint": 9863645442859622190
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_00_hjq0Yw52ST1jSHJGMHCN8577"
-                    }
+                    "provider": "call_00_335ZuTMhWLFkVS3wFD482123"
                   },
                   "function": {
                     "name": "add",
@@ -687,10 +752,44 @@
                       "y": 25
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"x\": 17, \"y\": 25}",
+                        "name": "add"
+                      },
+                      "id": "call_00_335ZuTMhWLFkVS3wFD482123",
+                      "type": "function"
+                    },
+                    "fingerprint": 16757330312084256443
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-chat",
+                "response_model": "deepseek-flash",
+                "response_id": "303a597e-4fe3-44f5-a3dc-e6da7ec46da9"
+              },
+              "stop": "tool_use",
+              "native": {
+                "item": {
+                  "content": "I'll add 17 and 25 for you.",
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{\"x\": 17, \"y\": 25}",
+                        "name": "add"
+                      },
+                      "id": "call_00_335ZuTMhWLFkVS3wFD482123",
+                      "type": "function"
+                    }
+                  ]
+                },
+                "fingerprint": 5825262259643612560
+              }
             },
             {
               "role": "user",
@@ -698,9 +797,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_00_hjq0Yw52ST1jSHJGMHCN8577"
-                    }
+                    "provider": "call_00_335ZuTMhWLFkVS3wFD482123"
                   },
                   "name": "add",
                   "content": [
@@ -749,7 +846,13 @@
           "choice": [
             {
               "type": "text",
-              "text": "The tool reported an error: **\"the adder is broken\"**\n\nAs instructed, I won't call it again."
+              "text": "The tool reported an error: **\"the adder is broken\"**\n\nAs instructed, I won't call it again.",
+              "native": {
+                "item": {
+                  "content": "The tool reported an error: **\"the adder is broken\"**\n\nAs instructed, I won't call it again."
+                },
+                "fingerprint": 9114975990929898530
+              }
             }
           ],
           "usage": {
@@ -758,11 +861,21 @@
             "total_tokens": 431,
             "cached_input_tokens": 256
           },
-          "message_id": null,
-          "response_id": "cafd0690-dccd-4ff9-bb34-8353364c872c",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "deepseek",
+            "model": "deepseek-chat",
+            "response_model": "deepseek-flash",
+            "response_id": "432b1468-a389-4f32-b3e2-0d8256006224"
+          },
+          "native": {
+            "item": {
+              "content": "The tool reported an error: **\"the adder is broken\"**\n\nAs instructed, I won't call it again.",
+              "role": "assistant"
+            },
+            "fingerprint": 16696126654475521490
+          },
           "finish_reason": "stop",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
           "raw": {
             "usage": {
               "prompt_tokens": 407,
@@ -775,7 +888,7 @@
               "prompt_cache_miss_tokens": 151
             },
             "finish_reason": "stop",
-            "response_id": "cafd0690-dccd-4ff9-bb34-8353364c872c",
+            "response_id": "432b1468-a389-4f32-b3e2-0d8256006224",
             "model": "deepseek-flash",
             "additional_params": {
               "created": 0,
@@ -993,7 +1106,13 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "The tool reported an error: **\"the adder is broken\"**\n\nAs instructed, I won't call it again."
+              "text": "The tool reported an error: **\"the adder is broken\"**\n\nAs instructed, I won't call it again.",
+              "native": {
+                "item": {
+                  "content": "The tool reported an error: **\"the adder is broken\"**\n\nAs instructed, I won't call it again."
+                },
+                "fingerprint": 9114975990929898530
+              }
             }
           }
         }

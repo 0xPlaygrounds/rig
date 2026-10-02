@@ -24,14 +24,6 @@
         }
       },
       {
-        "batch": 13,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
         "batch": 14,
         "id": 2,
         "kind": {
@@ -40,7 +32,15 @@
         }
       },
       {
-        "batch": 14,
+        "batch": 15,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 15,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -178,8 +178,18 @@
                   "y": 3
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "functionCall": {
+                    "args": {
+                      "x": 2,
+                      "y": 3
+                    },
+                    "name": "add"
+                  }
+                },
+                "fingerprint": 6371134056182217490
+              }
             }
           ],
           "usage": {
@@ -187,11 +197,22 @@
             "output_tokens": 18,
             "total_tokens": 90
           },
-          "message_id": null,
-          "response_id": "qXizapSGDcywqtsP2bT52Ag",
+          "origin": {
+            "api": "gemini.generate_content",
+            "provider": "gcp.gemini",
+            "model": "gemini-2.5-flash",
+            "response_model": "gemini-2.5-flash",
+            "response_id": "Jj-_aoaOJIHUz7IPz9iV4AI"
+          },
+          "native": {
+            "item": {
+              "finishMessage": "Model generated function call(s).",
+              "finishReason": "STOP",
+              "index": 0
+            },
+            "fingerprint": 6045103011133150466
+          },
           "finish_reason": "tool_calls",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
           "raw": {
             "usage_metadata": {
               "promptTokenCount": 72,
@@ -207,7 +228,7 @@
             "finish_reason": "STOP",
             "finish_message": "Model generated function call(s).",
             "model_version": "gemini-2.5-flash",
-            "response_id": "qXizapSGDcywqtsP2bT52Ag"
+            "response_id": "Jj-_aoaOJIHUz7IPz9iV4AI"
           }
         }
       },
@@ -245,8 +266,18 @@
                   "y": 3
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "functionCall": {
+                    "args": {
+                      "x": 2,
+                      "y": 3
+                    },
+                    "name": "add"
+                  }
+                },
+                "fingerprint": 6371134056182217490
+              }
             }
           }
         }
@@ -302,7 +333,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -316,10 +346,36 @@
                       "y": 3
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "functionCall": {
+                        "args": {
+                          "x": 2,
+                          "y": 3
+                        },
+                        "name": "add"
+                      }
+                    },
+                    "fingerprint": 6371134056182217490
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "gemini.generate_content",
+                "provider": "gcp.gemini",
+                "model": "gemini-2.5-flash",
+                "response_model": "gemini-2.5-flash",
+                "response_id": "Jj-_aoaOJIHUz7IPz9iV4AI"
+              },
+              "stop": "tool_use",
+              "native": {
+                "item": {
+                  "finishMessage": "Model generated function call(s).",
+                  "finishReason": "STOP",
+                  "index": 0
+                },
+                "fingerprint": 6045103011133150466
+              }
             },
             {
               "role": "user",
@@ -384,7 +440,13 @@
           "choice": [
             {
               "type": "text",
-              "text": "The sum of 2 and 3 is 5."
+              "text": "The sum of 2 and 3 is 5.",
+              "native": {
+                "item": {
+                  "text": "The sum of 2 and 3 is 5."
+                },
+                "fingerprint": 13681953634836108699
+              }
             }
           ],
           "usage": {
@@ -392,11 +454,21 @@
             "output_tokens": 11,
             "total_tokens": 114
           },
-          "message_id": null,
-          "response_id": "qXizauG5KuujqtsPx4aGuQ8",
+          "origin": {
+            "api": "gemini.generate_content",
+            "provider": "gcp.gemini",
+            "model": "gemini-2.5-flash",
+            "response_model": "gemini-2.5-flash",
+            "response_id": "Jz-_atbjBajqz7IPzZ_I2Qo"
+          },
+          "native": {
+            "item": {
+              "index": 0,
+              "finishReason": "STOP"
+            },
+            "fingerprint": 11460517687772110533
+          },
           "finish_reason": "stop",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
           "raw": {
             "usage_metadata": {
               "promptTokenCount": 103,
@@ -411,7 +483,7 @@
             },
             "finish_reason": "STOP",
             "model_version": "gemini-2.5-flash",
-            "response_id": "qXizauG5KuujqtsPx4aGuQ8"
+            "response_id": "Jz-_atbjBajqz7IPzZ_I2Qo"
           }
         }
       },
@@ -447,7 +519,13 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "The sum of 2 and 3 is 5."
+              "text": "The sum of 2 and 3 is 5.",
+              "native": {
+                "item": {
+                  "text": "The sum of 2 and 3 is 5."
+                },
+                "fingerprint": 13681953634836108699
+              }
             }
           }
         }

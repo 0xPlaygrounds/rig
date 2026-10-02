@@ -124,9 +124,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_W1bcgwsOJ4tP8zEEvMq7ec9s"
-                }
+                "provider": "call_fUntqMvVa7sd1d8vW4UWSK51"
               },
               "function": {
                 "name": "add",
@@ -135,8 +133,17 @@
                   "y": 25
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"x\":17,\"y\":25}",
+                    "name": "add"
+                  },
+                  "id": "call_fUntqMvVa7sd1d8vW4UWSK51",
+                  "type": "function"
+                },
+                "fingerprint": 9838280060658197686
+              }
             }
           ],
           "usage": {
@@ -146,12 +153,34 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 128
           },
-          "message_id": null,
-          "response_id": "chatcmpl-ERDDGapJowDo8nucQyixnJRS2uRPU",
-          "provider_request_id": "req_3ba79ba035024d70a1af1186283e8705",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "openai",
+            "model": "gpt-5-mini",
+            "response_model": "gpt-5-mini-2025-08-07",
+            "response_id": "chatcmpl-EUPam8hHj1rsi92t2sqcq5ACq8HQw"
+          },
+          "native": {
+            "item": {
+              "annotations": [],
+              "content": null,
+              "refusal": null,
+              "role": "assistant",
+              "tool_calls": [
+                {
+                  "function": {
+                    "arguments": "{\"x\":17,\"y\":25}",
+                    "name": "add"
+                  },
+                  "id": "call_fUntqMvVa7sd1d8vW4UWSK51",
+                  "type": "function"
+                }
+              ]
+            },
+            "fingerprint": 8229708153003852014
+          },
+          "provider_request_id": "req_985fe6c685aa474ca65221929eb6bb22",
           "finish_reason": "tool_calls",
-          "provider": "openai",
-          "model": "gpt-5-mini-2025-08-07",
           "raw": {
             "choices": [
               {
@@ -168,7 +197,7 @@
                         "arguments": "{\"x\":17,\"y\":25}",
                         "name": "add"
                       },
-                      "id": "call_W1bcgwsOJ4tP8zEEvMq7ec9s",
+                      "id": "call_fUntqMvVa7sd1d8vW4UWSK51",
                       "type": "function"
                     }
                   ]
@@ -176,7 +205,7 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-ERDDGapJowDo8nucQyixnJRS2uRPU",
+            "id": "chatcmpl-EUPam8hHj1rsi92t2sqcq5ACq8HQw",
             "model": "gpt-5-mini-2025-08-07",
             "object": "chat.completion",
             "service_tier": "default",
@@ -256,14 +285,11 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_W1bcgwsOJ4tP8zEEvMq7ec9s"
-                    }
+                    "provider": "call_fUntqMvVa7sd1d8vW4UWSK51"
                   },
                   "function": {
                     "name": "add",
@@ -272,10 +298,46 @@
                       "y": 25
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"x\":17,\"y\":25}",
+                        "name": "add"
+                      },
+                      "id": "call_fUntqMvVa7sd1d8vW4UWSK51",
+                      "type": "function"
+                    },
+                    "fingerprint": 9838280060658197686
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openai",
+                "model": "gpt-5-mini",
+                "response_model": "gpt-5-mini-2025-08-07",
+                "response_id": "chatcmpl-EUPam8hHj1rsi92t2sqcq5ACq8HQw"
+              },
+              "stop": "tool_use",
+              "native": {
+                "item": {
+                  "annotations": [],
+                  "content": null,
+                  "refusal": null,
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{\"x\":17,\"y\":25}",
+                        "name": "add"
+                      },
+                      "id": "call_fUntqMvVa7sd1d8vW4UWSK51",
+                      "type": "function"
+                    }
+                  ]
+                },
+                "fingerprint": 8229708153003852014
+              }
             },
             {
               "role": "user",
@@ -283,9 +345,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_W1bcgwsOJ4tP8zEEvMq7ec9s"
-                    }
+                    "provider": "call_fUntqMvVa7sd1d8vW4UWSK51"
                   },
                   "name": "add",
                   "content": [
@@ -336,22 +396,42 @@
           "choice": [
             {
               "type": "text",
-              "text": "The image's dominant non-background color is red and the sum is 42."
+              "text": "The image's dominant non-background color is red and the sum is 42.",
+              "native": {
+                "item": {
+                  "annotations": [],
+                  "content": "The image's dominant non-background color is red and the sum is 42.",
+                  "refusal": null
+                },
+                "fingerprint": 10131752980281933376
+              }
             }
           ],
           "usage": {
             "input_tokens": 235,
-            "output_tokens": 19,
-            "total_tokens": 254,
+            "output_tokens": 89,
+            "total_tokens": 324,
             "cached_input_tokens": 0,
-            "reasoning_tokens": 0
+            "reasoning_tokens": 64
           },
-          "message_id": null,
-          "response_id": "chatcmpl-ERDDIBzaFv3lz8ifXzpun5zgeVZT7",
-          "provider_request_id": "req_206a77d2ea38430fa9de26abb2e0f5a7",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "openai",
+            "model": "gpt-5-mini",
+            "response_model": "gpt-5-mini-2025-08-07",
+            "response_id": "chatcmpl-EUPao9fcywGugwB59JF0SQ68UDbfl"
+          },
+          "native": {
+            "item": {
+              "annotations": [],
+              "content": "The image's dominant non-background color is red and the sum is 42.",
+              "refusal": null,
+              "role": "assistant"
+            },
+            "fingerprint": 8274936160204181174
+          },
+          "provider_request_id": "req_ec11c32d0177443e95ef3fe1002382c1",
           "finish_reason": "stop",
-          "provider": "openai",
-          "model": "gpt-5-mini-2025-08-07",
           "raw": {
             "choices": [
               {
@@ -366,17 +446,17 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-ERDDIBzaFv3lz8ifXzpun5zgeVZT7",
+            "id": "chatcmpl-EUPao9fcywGugwB59JF0SQ68UDbfl",
             "model": "gpt-5-mini-2025-08-07",
             "object": "chat.completion",
             "service_tier": "default",
             "system_fingerprint": null,
             "usage": {
-              "completion_tokens": 19,
+              "completion_tokens": 89,
               "completion_tokens_details": {
                 "accepted_prediction_tokens": 0,
                 "audio_tokens": 0,
-                "reasoning_tokens": 0,
+                "reasoning_tokens": 64,
                 "rejected_prediction_tokens": 0
               },
               "prompt_tokens": 235,
@@ -384,7 +464,7 @@
                 "audio_tokens": 0,
                 "cached_tokens": 0
               },
-              "total_tokens": 254
+              "total_tokens": 324
             }
           }
         }

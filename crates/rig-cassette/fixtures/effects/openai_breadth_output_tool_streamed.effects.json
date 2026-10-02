@@ -91,10 +91,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_smewKkzEg9vHkYrDlNpbRFlv",
-                  "item_id": "fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71"
-                }
+                "provider": "call_smewKkzEg9vHkYrDlNpbRFlv"
               },
               "function": {
                 "name": "final_result",
@@ -104,8 +101,17 @@
                   "summary": "Join fellow Rust enthusiasts in Seattle for an evening of networking, discussions, and presentations on Rust programming. Whether you're a beginner or an expert, this meetup is a great opportunity to learn and share knowledge about Rust."
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "arguments": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Technology\",\"summary\":\"Join fellow Rust enthusiasts in Seattle for an evening of networking, discussions, and presentations on Rust programming. Whether you're a beginner or an expert, this meetup is a great opportunity to learn and share knowledge about Rust.\"}",
+                  "call_id": "call_smewKkzEg9vHkYrDlNpbRFlv",
+                  "id": "fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
+                  "name": "final_result",
+                  "status": "completed",
+                  "type": "function_call"
+                },
+                "fingerprint": 16165572987774453885
+              }
             }
           ],
           "usage": {
@@ -116,12 +122,15 @@
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
-          "response_id": "resp_0cb36fe4ea03a21b006ab395f1137487d095f4a6ca8f5038ae",
+          "origin": {
+            "api": "openai.responses",
+            "provider": "openai",
+            "model": "gpt-4o",
+            "response_model": "gpt-4o-2024-08-06",
+            "response_id": "resp_0cb36fe4ea03a21b006ab395f1137487d095f4a6ca8f5038ae"
+          },
           "provider_request_id": "req_98db09ef93e9458f9ee1cfe62c0f0e8e",
           "finish_reason": "tool_calls",
-          "provider": "openai",
-          "model": "gpt-4o-2024-08-06",
           "raw": {
             "id": "resp_0cb36fe4ea03a21b006ab395f1137487d095f4a6ca8f5038ae",
             "object": "response",
@@ -227,10 +236,7 @@
             "content": {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_smewKkzEg9vHkYrDlNpbRFlv",
-                  "item_id": "fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71"
-                }
+                "provider": "call_smewKkzEg9vHkYrDlNpbRFlv"
               },
               "function": {
                 "name": "final_result",
@@ -240,8 +246,17 @@
                   "summary": "Join fellow Rust enthusiasts in Seattle for an evening of networking, discussions, and presentations on Rust programming. Whether you're a beginner or an expert, this meetup is a great opportunity to learn and share knowledge about Rust."
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "arguments": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Technology\",\"summary\":\"Join fellow Rust enthusiasts in Seattle for an evening of networking, discussions, and presentations on Rust programming. Whether you're a beginner or an expert, this meetup is a great opportunity to learn and share knowledge about Rust.\"}",
+                  "call_id": "call_smewKkzEg9vHkYrDlNpbRFlv",
+                  "id": "fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
+                  "name": "final_result",
+                  "status": "completed",
+                  "type": "function_call"
+                },
+                "fingerprint": 16165572987774453885
+              }
             }
           }
         }

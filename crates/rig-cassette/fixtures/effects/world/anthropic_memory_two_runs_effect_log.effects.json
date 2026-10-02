@@ -145,7 +145,14 @@
           "choice": [
             {
               "type": "text",
-              "text": "ready."
+              "text": "ready.",
+              "native": {
+                "item": {
+                  "text": "ready.",
+                  "type": "text"
+                },
+                "fingerprint": 7790244451924217344
+              }
             }
           ],
           "usage": {
@@ -155,12 +162,15 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_011CfLcbZqv7bCT9zUdJJYKm",
-          "response_id": null,
+          "origin": {
+            "api": "anthropic.messages",
+            "provider": "anthropic",
+            "model": "claude-sonnet-4-6",
+            "response_model": "claude-sonnet-4-6",
+            "response_id": "msg_011CfLcbZqv7bCT9zUdJJYKm"
+          },
           "provider_request_id": "req_011CfLcbZRMi2NgPFXjbxEJw",
           "finish_reason": "stop",
-          "provider": "anthropic",
-          "model": "claude-sonnet-4-6",
           "raw": {
             "container": null,
             "content": [
@@ -214,13 +224,27 @@
             },
             {
               "role": "assistant",
-              "id": "msg_011CfLcbZqv7bCT9zUdJJYKm",
               "content": [
                 {
                   "type": "text",
-                  "text": "ready."
+                  "text": "ready.",
+                  "native": {
+                    "item": {
+                      "text": "ready.",
+                      "type": "text"
+                    },
+                    "fingerprint": 7790244451924217344
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "anthropic.messages",
+                "provider": "anthropic",
+                "model": "claude-sonnet-4-6",
+                "response_model": "claude-sonnet-4-6",
+                "response_id": "msg_011CfLcbZqv7bCT9zUdJJYKm"
+              },
+              "stop": "stop"
             }
           ]
         }
@@ -260,13 +284,27 @@
             },
             {
               "role": "assistant",
-              "id": "msg_011CfLcbZqv7bCT9zUdJJYKm",
               "content": [
                 {
                   "type": "text",
-                  "text": "ready."
+                  "text": "ready.",
+                  "native": {
+                    "item": {
+                      "text": "ready.",
+                      "type": "text"
+                    },
+                    "fingerprint": 7790244451924217344
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "anthropic.messages",
+                "provider": "anthropic",
+                "model": "claude-sonnet-4-6",
+                "response_model": "claude-sonnet-4-6",
+                "response_id": "msg_011CfLcbZqv7bCT9zUdJJYKm"
+              },
+              "stop": "stop"
             }
           ]
         }
@@ -297,13 +335,27 @@
             },
             {
               "role": "assistant",
-              "id": "msg_011CfLcbZqv7bCT9zUdJJYKm",
               "content": [
                 {
                   "type": "text",
-                  "text": "ready."
+                  "text": "ready.",
+                  "native": {
+                    "item": {
+                      "text": "ready.",
+                      "type": "text"
+                    },
+                    "fingerprint": 7790244451924217344
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "anthropic.messages",
+                "provider": "anthropic",
+                "model": "claude-sonnet-4-6",
+                "response_model": "claude-sonnet-4-6",
+                "response_id": "msg_011CfLcbZqv7bCT9zUdJJYKm"
+              },
+              "stop": "stop"
             },
             {
               "role": "user",
@@ -331,7 +383,14 @@
           "choice": [
             {
               "type": "text",
-              "text": "again."
+              "text": "again.",
+              "native": {
+                "item": {
+                  "text": "again.",
+                  "type": "text"
+                },
+                "fingerprint": 7821551913352360261
+              }
             }
           ],
           "usage": {
@@ -341,12 +400,15 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_011CfLcbetmsgaEB3gLt6jTV",
-          "response_id": null,
+          "origin": {
+            "api": "anthropic.messages",
+            "provider": "anthropic",
+            "model": "claude-sonnet-4-6",
+            "response_model": "claude-sonnet-4-6",
+            "response_id": "msg_011CfLcbetmsgaEB3gLt6jTV"
+          },
           "provider_request_id": "req_011CfLcbeJJ84sMsg6vkh7Cw",
           "finish_reason": "stop",
-          "provider": "anthropic",
-          "model": "claude-sonnet-4-6",
           "raw": {
             "container": null,
             "content": [
@@ -400,13 +462,27 @@
             },
             {
               "role": "assistant",
-              "id": "msg_011CfLcbetmsgaEB3gLt6jTV",
               "content": [
                 {
                   "type": "text",
-                  "text": "again."
+                  "text": "again.",
+                  "native": {
+                    "item": {
+                      "text": "again.",
+                      "type": "text"
+                    },
+                    "fingerprint": 7821551913352360261
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "anthropic.messages",
+                "provider": "anthropic",
+                "model": "claude-sonnet-4-6",
+                "response_model": "claude-sonnet-4-6",
+                "response_id": "msg_011CfLcbetmsgaEB3gLt6jTV"
+              },
+              "stop": "stop"
             }
           ]
         }

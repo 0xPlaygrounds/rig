@@ -88,7 +88,13 @@
           "choice": [
             {
               "type": "text",
-              "text": "The lighthouse keeper lived a solitary life, tending the lamp and ensuring its light pierced through the darkest storms. He found a"
+              "text": "The lighthouse keeper lived a solitary life, tending the lamp and ensuring its light pierced through the darkest storms. He found a",
+              "native": {
+                "item": {
+                  "text": "The lighthouse keeper lived a solitary life, tending the lamp and ensuring its light pierced through the darkest storms. He found a"
+                },
+                "fingerprint": 15363482476555024248
+              }
             }
           ],
           "usage": {
@@ -96,11 +102,21 @@
             "output_tokens": 24,
             "total_tokens": 46
           },
-          "message_id": null,
-          "response_id": "p3izatO-GbjiqtsPytTWQA",
+          "origin": {
+            "api": "gemini.generate_content",
+            "provider": "gcp.gemini",
+            "model": "gemini-2.5-flash",
+            "response_model": "gemini-2.5-flash",
+            "response_id": "p3izatO-GbjiqtsPytTWQA"
+          },
+          "native": {
+            "item": {
+              "finishReason": "MAX_TOKENS",
+              "index": 0
+            },
+            "fingerprint": 533732010614973478
+          },
           "finish_reason": "length",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
           "raw": {
             "candidates": [
               {
@@ -180,7 +196,13 @@
           "choice": [
             {
               "type": "text",
-              "text": "The lighthouse keeper lived a solitary life, tending the lamp and ensuring its light pierced through the darkest storms. His days were filled with the rhythmic chores of maintenance, and his nights with the watchful gaze over the vast, unpredictable sea."
+              "text": "The lighthouse keeper lived a solitary life, tending the lamp and ensuring its light pierced through the darkest storms. His days were filled with the rhythmic chores of maintenance, and his nights with the watchful gaze over the vast, unpredictable sea.",
+              "native": {
+                "item": {
+                  "text": "The lighthouse keeper lived a solitary life, tending the lamp and ensuring its light pierced through the darkest storms. His days were filled with the rhythmic chores of maintenance, and his nights with the watchful gaze over the vast, unpredictable sea."
+                },
+                "fingerprint": 10138438554250293143
+              }
             }
           ],
           "usage": {
@@ -188,11 +210,21 @@
             "output_tokens": 46,
             "total_tokens": 68
           },
-          "message_id": null,
-          "response_id": "p3izaob7Ooi-qtsPpfaNwQQ",
+          "origin": {
+            "api": "gemini.generate_content",
+            "provider": "gcp.gemini",
+            "model": "gemini-2.5-flash",
+            "response_model": "gemini-2.5-flash",
+            "response_id": "p3izaob7Ooi-qtsPpfaNwQQ"
+          },
+          "native": {
+            "item": {
+              "finishReason": "STOP",
+              "index": 0
+            },
+            "fingerprint": 8232764620358424157
+          },
           "finish_reason": "stop",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
           "raw": {
             "candidates": [
               {

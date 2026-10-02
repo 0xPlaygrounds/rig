@@ -118,49 +118,91 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_669beb5b4c8f443b8807c14f"
-                }
+                "provider": "call_8f9569cc69534111aae34c34"
               },
               "function": {
                 "name": "lookup_harbor_label",
                 "arguments": {}
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{}",
+                    "name": "lookup_harbor_label"
+                  },
+                  "id": "call_8f9569cc69534111aae34c34",
+                  "type": "function"
+                },
+                "fingerprint": 14230407903713132716
+              }
             },
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_288cafa840594b2d9c9938d6"
-                }
+                "provider": "call_e5171fd02b044fa091311776"
               },
               "function": {
                 "name": "lookup_orchard_label",
                 "arguments": {}
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{}",
+                    "name": "lookup_orchard_label"
+                  },
+                  "id": "call_e5171fd02b044fa091311776",
+                  "type": "function"
+                },
+                "fingerprint": 18422540289945800133
+              }
             }
           ],
           "usage": {
             "input_tokens": 410,
-            "output_tokens": 36,
-            "total_tokens": 446,
+            "output_tokens": 35,
+            "total_tokens": 445,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": null,
-          "response_id": "gen-1790146075-rj293AAFKqO9ciCaZ7jA",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "doubleword",
+            "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+            "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
+            "response_id": "gen-1790914871-XLeNg4iaRhYvNqNx0JNL"
+          },
+          "native": {
+            "item": {
+              "role": "assistant",
+              "content": "",
+              "tool_calls": [
+                {
+                  "function": {
+                    "arguments": "{}",
+                    "name": "lookup_harbor_label"
+                  },
+                  "id": "call_8f9569cc69534111aae34c34",
+                  "type": "function"
+                },
+                {
+                  "function": {
+                    "arguments": "{}",
+                    "name": "lookup_orchard_label"
+                  },
+                  "id": "call_e5171fd02b044fa091311776",
+                  "type": "function"
+                }
+              ]
+            },
+            "fingerprint": 4580299842339188632
+          },
           "finish_reason": "tool_calls",
-          "provider": "doubleword",
-          "model": "Qwen/Qwen3.5-397B-A17B-FP8",
           "raw": {
             "usage": {
               "prompt_tokens": 410,
-              "completion_tokens": 36,
-              "total_tokens": 446,
+              "completion_tokens": 35,
+              "total_tokens": 445,
               "prompt_tokens_details": {
                 "cached_tokens": 0,
                 "cache_write_tokens": 0
@@ -177,7 +219,7 @@
               "cache_read_input_tokens": 0
             },
             "finish_reason": "tool_calls",
-            "response_id": "gen-1790146075-rj293AAFKqO9ciCaZ7jA",
+            "response_id": "gen-1790914871-XLeNg4iaRhYvNqNx0JNL",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "additional_params": {
               "created": 0,
@@ -259,37 +301,83 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_669beb5b4c8f443b8807c14f"
-                    }
+                    "provider": "call_8f9569cc69534111aae34c34"
                   },
                   "function": {
                     "name": "lookup_harbor_label",
                     "arguments": {}
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "lookup_harbor_label"
+                      },
+                      "id": "call_8f9569cc69534111aae34c34",
+                      "type": "function"
+                    },
+                    "fingerprint": 14230407903713132716
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_288cafa840594b2d9c9938d6"
-                    }
+                    "provider": "call_e5171fd02b044fa091311776"
                   },
                   "function": {
                     "name": "lookup_orchard_label",
                     "arguments": {}
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "lookup_orchard_label"
+                      },
+                      "id": "call_e5171fd02b044fa091311776",
+                      "type": "function"
+                    },
+                    "fingerprint": 18422540289945800133
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "doubleword",
+                "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+                "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
+                "response_id": "gen-1790914871-XLeNg4iaRhYvNqNx0JNL"
+              },
+              "stop": "tool_use",
+              "native": {
+                "item": {
+                  "role": "assistant",
+                  "content": "",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "lookup_harbor_label"
+                      },
+                      "id": "call_8f9569cc69534111aae34c34",
+                      "type": "function"
+                    },
+                    {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "lookup_orchard_label"
+                      },
+                      "id": "call_e5171fd02b044fa091311776",
+                      "type": "function"
+                    }
+                  ]
+                },
+                "fingerprint": 4580299842339188632
+              }
             },
             {
               "role": "user",
@@ -297,9 +385,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_669beb5b4c8f443b8807c14f"
-                    }
+                    "provider": "call_8f9569cc69534111aae34c34"
                   },
                   "name": "lookup_harbor_label",
                   "content": [
@@ -312,9 +398,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_288cafa840594b2d9c9938d6"
-                    }
+                    "provider": "call_e5171fd02b044fa091311776"
                   },
                   "name": "lookup_orchard_label",
                   "content": [
@@ -364,26 +448,42 @@
           "choice": [
             {
               "type": "text",
-              "text": "The signals are crimson-harbor and silver-orchard."
+              "text": "The outputs are crimson-harbor and silver-orchard.",
+              "native": {
+                "item": {
+                  "content": "The outputs are crimson-harbor and silver-orchard."
+                },
+                "fingerprint": 15054874749840242938
+              }
             }
           ],
           "usage": {
-            "input_tokens": 477,
-            "output_tokens": 14,
-            "total_tokens": 491,
+            "input_tokens": 473,
+            "output_tokens": 13,
+            "total_tokens": 486,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": null,
-          "response_id": "gen-1790146077-4U3xXkJPWxCC3IWztTGm",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "doubleword",
+            "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+            "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
+            "response_id": "gen-1790914883-vsiUI6ng98CJVfCLt6nN"
+          },
+          "native": {
+            "item": {
+              "content": "The outputs are crimson-harbor and silver-orchard.",
+              "role": "assistant"
+            },
+            "fingerprint": 776586052265281658
+          },
           "finish_reason": "stop",
-          "provider": "doubleword",
-          "model": "Qwen/Qwen3.5-397B-A17B-FP8",
           "raw": {
             "usage": {
-              "prompt_tokens": 477,
-              "completion_tokens": 14,
-              "total_tokens": 491,
+              "prompt_tokens": 473,
+              "completion_tokens": 13,
+              "total_tokens": 486,
               "prompt_tokens_details": {
                 "cached_tokens": 0,
                 "cache_write_tokens": 0
@@ -400,7 +500,7 @@
               "cache_read_input_tokens": 0
             },
             "finish_reason": "stop",
-            "response_id": "gen-1790146077-4U3xXkJPWxCC3IWztTGm",
+            "response_id": "gen-1790914883-vsiUI6ng98CJVfCLt6nN",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "additional_params": {
               "created": 0,

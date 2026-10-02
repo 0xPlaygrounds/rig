@@ -121,10 +121,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_N7Dt2vqsCPdNiJjipTjKRl23",
-                  "item_id": "fc_0c12eca9d4803290006ab3969b00e087d0a8c6558d65a54f7c"
-                }
+                "provider": "call_N7Dt2vqsCPdNiJjipTjKRl23"
               },
               "function": {
                 "name": "submit",
@@ -135,8 +132,17 @@
                   "zip_code": "62701"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "arguments": "{\"street\":\"123 Main St\",\"city\":\"Springfield\",\"state\":\"IL\",\"zip_code\":\"62701\"}",
+                  "call_id": "call_N7Dt2vqsCPdNiJjipTjKRl23",
+                  "id": "fc_0c12eca9d4803290006ab3969b00e087d0a8c6558d65a54f7c",
+                  "name": "submit",
+                  "status": "completed",
+                  "type": "function_call"
+                },
+                "fingerprint": 3494219504219032175
+              }
             }
           ],
           "usage": {
@@ -147,12 +153,15 @@
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
-          "response_id": "resp_0c12eca9d4803290006ab3969a45c887d0bd24e1fe5a96ad17",
+          "origin": {
+            "api": "openai.responses",
+            "provider": "openai",
+            "model": "gpt-4o-mini",
+            "response_model": "gpt-4o-mini-2024-07-18",
+            "response_id": "resp_0c12eca9d4803290006ab3969a45c887d0bd24e1fe5a96ad17"
+          },
           "provider_request_id": "req_41aecf622ded4ba588477ff8c7b5f6f5",
           "finish_reason": "tool_calls",
-          "provider": "openai",
-          "model": "gpt-4o-mini-2024-07-18",
           "raw": {
             "access_programs": null,
             "background": false,

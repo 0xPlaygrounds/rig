@@ -75,7 +75,14 @@
           "choice": [
             {
               "type": "text",
-              "text": "alpha\nbr"
+              "text": "alpha\nbr",
+              "native": {
+                "item": {
+                  "text": "alpha\nbr",
+                  "type": "text"
+                },
+                "fingerprint": 11198565648850881689
+              }
             }
           ],
           "usage": {
@@ -85,12 +92,15 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_011CfLcgN7MbVSQFEAJN1tLP",
-          "response_id": null,
+          "origin": {
+            "api": "anthropic.messages",
+            "provider": "anthropic",
+            "model": "claude-haiku-4-5",
+            "response_model": "claude-haiku-4-5-20251001",
+            "response_id": "msg_011CfLcgN7MbVSQFEAJN1tLP"
+          },
           "provider_request_id": "req_011CfLcgMg4UGkrkBtLr99sP",
           "finish_reason": "length",
-          "provider": "anthropic",
-          "model": "claude-haiku-4-5-20251001",
           "raw": {
             "container": null,
             "content": [

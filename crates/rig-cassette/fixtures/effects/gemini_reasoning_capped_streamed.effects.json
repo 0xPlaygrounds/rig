@@ -75,24 +75,24 @@
           "choice": [
             {
               "type": "reasoning",
-              "issuer": "gcp.gemini",
-              "id": null,
-              "content": [
-                {
-                  "type": "text",
-                  "content": {
-                    "text": "**Exploring Rust's Memory Model**\n\nOkay, I'm currently diving into Rust's memory model. I'm focusing on how its ownership and borrowing system enforces memory safety at compile time. It seems incredibly effective in preventing common memory errors like dangling pointers and data races, which is quite impressive. I'm now looking at the trade-offs in terms of development time and complexity.\n\n\n"
-                  }
-                }
-              ]
+              "text": "**Exploring Rust's Memory Model**\n\nOkay, I'm currently diving into Rust's memory model. I'm focusing on how its ownership and borrowing system enforces memory safety at compile time. It seems incredibly effective in preventing common memory errors like dangling pointers and data races, which is quite impressive. I'm now looking at the trade-offs in terms of development time and complexity.\n\n\n",
+              "native": {
+                "item": {
+                  "text": "**Exploring Rust's Memory Model**\n\nOkay, I'm currently diving into Rust's memory model. I'm focusing on how its ownership and borrowing system enforces memory safety at compile time. It seems incredibly effective in preventing common memory errors like dangling pointers and data races, which is quite impressive. I'm now looking at the trade-offs in terms of development time and complexity.\n\n\n",
+                  "thought": true
+                },
+                "fingerprint": 14810394326276320992
+              }
             },
             {
               "type": "text",
               "text": "",
-              "additional_params": {
-                "gemini": {
+              "native": {
+                "item": {
+                  "text": "",
                   "thoughtSignature": "ErMBCrABAWkUfRMynI70ZZnysfIfMorx06xbClI9Upjx1MJefLInOBtSyeHdJUPiKszUcAC1OHuitaWFzA2F8DUbYfQYHbU6Gpo3xvxUkApnzdYymmVwns7IJ9jSmpmel7jU5SWuMIleor7b8qhp+Un6s7AV6eQVD7VaUZOmfcUpqPzphlCXPAeCSdSAl3g5X3/hOyjYd/y3gQOoGDJJIEM1wEAVIEG+TMEZUjl1VxGRKeDy52Y="
-                }
+                },
+                "fingerprint": 357964132669974815
               }
             }
           ],
@@ -102,11 +102,21 @@
             "total_tokens": 42,
             "reasoning_tokens": 13
           },
-          "message_id": null,
-          "response_id": "0q-yaua_B6Cdz7IPi4_soQw",
+          "origin": {
+            "api": "gemini.generate_content",
+            "provider": "gcp.gemini",
+            "model": "gemini-3-flash-preview",
+            "response_model": "gemini-3-flash-preview",
+            "response_id": "0q-yaua_B6Cdz7IPi4_soQw"
+          },
+          "native": {
+            "item": {
+              "index": 0,
+              "finishReason": "MAX_TOKENS"
+            },
+            "fingerprint": 11746908335516192210
+          },
           "finish_reason": "length",
-          "provider": "gcp.gemini",
-          "model": "gemini-3-flash-preview",
           "raw": {
             "usage_metadata": {
               "promptTokenCount": 29,
@@ -145,6 +155,24 @@
         {
           "item": "event",
           "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "reasoning",
+              "text": "**Exploring Rust's Memory Model**\n\nOkay, I'm currently diving into Rust's memory model. I'm focusing on how its ownership and borrowing system enforces memory safety at compile time. It seems incredibly effective in preventing common memory errors like dangling pointers and data races, which is quite impressive. I'm now looking at the trade-offs in terms of development time and complexity.\n\n\n",
+              "native": {
+                "item": {
+                  "text": "**Exploring Rust's Memory Model**\n\nOkay, I'm currently diving into Rust's memory model. I'm focusing on how its ownership and borrowing system enforces memory safety at compile time. It seems incredibly effective in preventing common memory errors like dangling pointers and data races, which is quite impressive. I'm now looking at the trade-offs in terms of development time and complexity.\n\n\n",
+                  "thought": true
+                },
+                "fingerprint": 14810394326276320992
+              }
+            }
+          }
+        },
+        {
+          "item": "event",
+          "value": {
             "event": "start",
             "part": 1,
             "kind": "text"
@@ -158,31 +186,13 @@
             "content": {
               "type": "text",
               "text": "",
-              "additional_params": {
-                "gemini": {
+              "native": {
+                "item": {
+                  "text": "",
                   "thoughtSignature": "ErMBCrABAWkUfRMynI70ZZnysfIfMorx06xbClI9Upjx1MJefLInOBtSyeHdJUPiKszUcAC1OHuitaWFzA2F8DUbYfQYHbU6Gpo3xvxUkApnzdYymmVwns7IJ9jSmpmel7jU5SWuMIleor7b8qhp+Un6s7AV6eQVD7VaUZOmfcUpqPzphlCXPAeCSdSAl3g5X3/hOyjYd/y3gQOoGDJJIEM1wEAVIEG+TMEZUjl1VxGRKeDy52Y="
-                }
+                },
+                "fingerprint": 357964132669974815
               }
-            }
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "end",
-            "part": 0,
-            "content": {
-              "type": "reasoning",
-              "issuer": "gcp.gemini",
-              "id": null,
-              "content": [
-                {
-                  "type": "text",
-                  "content": {
-                    "text": "**Exploring Rust's Memory Model**\n\nOkay, I'm currently diving into Rust's memory model. I'm focusing on how its ownership and borrowing system enforces memory safety at compile time. It seems incredibly effective in preventing common memory errors like dangling pointers and data races, which is quite impressive. I'm now looking at the trade-offs in terms of development time and complexity.\n\n\n"
-                  }
-                }
-              ]
             }
           }
         }

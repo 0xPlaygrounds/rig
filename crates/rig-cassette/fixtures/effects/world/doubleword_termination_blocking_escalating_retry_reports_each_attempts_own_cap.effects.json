@@ -84,7 +84,14 @@
           "choice": [
             {
               "type": "text",
-              "text": "Maple trees are renowned for their distinctive palmate leaves that turn brilliant shades of"
+              "text": "Maple trees are renowned for their distinctive palmate leaves that turn brilliant shades of",
+              "native": {
+                "item": {
+                  "content": "Maple trees are renowned for their distinctive palmate leaves that turn brilliant shades of",
+                  "refusal": null
+                },
+                "fingerprint": 17075141236395229400
+              }
             }
           ],
           "usage": {
@@ -94,11 +101,22 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": null,
-          "response_id": "resp_de3a5f98-a09c-430a-9ead-f43b27ce1252",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "doubleword",
+            "model": "Qwen/Qwen3.5-9B",
+            "response_model": "Qwen/Qwen3.5-9B",
+            "response_id": "resp_de3a5f98-a09c-430a-9ead-f43b27ce1252"
+          },
+          "native": {
+            "item": {
+              "content": "Maple trees are renowned for their distinctive palmate leaves that turn brilliant shades of",
+              "refusal": null,
+              "role": "assistant"
+            },
+            "fingerprint": 12035101208924912814
+          },
           "finish_reason": "length",
-          "provider": "doubleword",
-          "model": "Qwen/Qwen3.5-9B",
           "raw": {
             "choices": [
               {
@@ -185,7 +203,14 @@
           "choice": [
             {
               "type": "text",
-              "text": "Maple trees are renowned for their distinctive palmate leaves that turn brilliant shades of red, orange, and yellow in the autumn. They are also a primary source of maple syrup, which is produced by tapping the trees and boiling their sap."
+              "text": "Maple trees are renowned for their distinctive palmate leaves that turn brilliant shades of red, orange, and yellow in the autumn. They are also a primary source of maple syrup, which is produced by tapping the trees and boiling their sap.",
+              "native": {
+                "item": {
+                  "content": "Maple trees are renowned for their distinctive palmate leaves that turn brilliant shades of red, orange, and yellow in the autumn. They are also a primary source of maple syrup, which is produced by tapping the trees and boiling their sap.",
+                  "refusal": null
+                },
+                "fingerprint": 8488619995666964028
+              }
             }
           ],
           "usage": {
@@ -195,11 +220,22 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": null,
-          "response_id": "resp_d9d633ea-6172-4135-a12b-9dcaacb2f834",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "doubleword",
+            "model": "Qwen/Qwen3.5-9B",
+            "response_model": "Qwen/Qwen3.5-9B",
+            "response_id": "resp_d9d633ea-6172-4135-a12b-9dcaacb2f834"
+          },
+          "native": {
+            "item": {
+              "content": "Maple trees are renowned for their distinctive palmate leaves that turn brilliant shades of red, orange, and yellow in the autumn. They are also a primary source of maple syrup, which is produced by tapping the trees and boiling their sap.",
+              "refusal": null,
+              "role": "assistant"
+            },
+            "fingerprint": 15558091430531574394
+          },
           "finish_reason": "stop",
-          "provider": "doubleword",
-          "model": "Qwen/Qwen3.5-9B",
           "raw": {
             "choices": [
               {

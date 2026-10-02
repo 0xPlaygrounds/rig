@@ -3199,7 +3199,24 @@
           "choice": [
             {
               "type": "text",
-              "text": "Ready."
+              "text": "Ready.",
+              "native": {
+                "item": {
+                  "content": [
+                    {
+                      "annotations": [],
+                      "logprobs": [],
+                      "text": "Ready.",
+                      "type": "output_text"
+                    }
+                  ],
+                  "id": "msg_01372c9d33b010e1006ab395fc45f487d0a1ead8d9cb4b215d",
+                  "role": "assistant",
+                  "status": "completed",
+                  "type": "message"
+                },
+                "fingerprint": 14469525620358765280
+              }
             }
           ],
           "usage": {
@@ -3210,12 +3227,15 @@
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": "msg_01372c9d33b010e1006ab395fc45f487d0a1ead8d9cb4b215d",
-          "response_id": "resp_01372c9d33b010e1006ab395fbc36087d09632754522963eb4",
+          "origin": {
+            "api": "openai.responses",
+            "provider": "openai",
+            "model": "gpt-4o",
+            "response_model": "gpt-4o-2024-08-06",
+            "response_id": "resp_01372c9d33b010e1006ab395fbc36087d09632754522963eb4"
+          },
           "provider_request_id": "req_850242aec5824de1af7b410deafb5f85",
           "finish_reason": "stop",
-          "provider": "openai",
-          "model": "gpt-4o-2024-08-06",
           "raw": {
             "access_programs": null,
             "background": false,

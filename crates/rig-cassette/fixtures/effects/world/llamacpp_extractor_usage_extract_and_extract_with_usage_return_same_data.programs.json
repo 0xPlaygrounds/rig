@@ -226,23 +226,18 @@
             "content": [
               {
                 "type": "reasoning",
-                "issuer": "llamacpp",
-                "id": null,
-                "content": [
-                  {
-                    "type": "text",
-                    "content": {
-                      "text": "Okay, let's see. The user provided a sentence: \"Bob Johnson is a 55 year old retired teacher.\" I need to extract the relevant information into the structured data using the submit function.\n\nFirst, the name is clearly Bob Johnson. The age is 55, so that's straightforward. The profession is retired teacher. Wait, the function requires the profession field. The sentence says \"retired teacher,\" so I should use that. The age is an integer, so 55 is valid. The name is a string. \n\nI need to make sure all required fields are present: name, age, profession. The age is 55, which is within the specified range (0-255). The profession is \"retired teacher.\" \n\nSo the structured data would have name: \"Bob Johnson\", age: 55, profession: \"retired teacher.\" \n\nI should call the submit function with these values. Let me double-check that there are no missing keys and that the values are correctly formatted. Yes, all required fields are there. The age is an integer, and the profession is a string. \n\nNo other information is needed here. The task is complete.\n"
-                    }
-                  }
-                ]
+                "text": "Okay, let's see. The user provided a sentence: \"Bob Johnson is a 55 year old retired teacher.\" I need to extract the relevant information into the structured data using the submit function.\n\nFirst, the name is clearly Bob Johnson. The age is 55, so that's straightforward. The profession is retired teacher. Wait, the function requires the profession field. The sentence says \"retired teacher,\" so I should use that. The age is an integer, so 55 is valid. The name is a string. \n\nI need to make sure all required fields are present: name, age, profession. The age is 55, which is within the specified range (0-255). The profession is \"retired teacher.\" \n\nSo the structured data would have name: \"Bob Johnson\", age: 55, profession: \"retired teacher.\" \n\nI should call the submit function with these values. Let me double-check that there are no missing keys and that the values are correctly formatted. Yes, all required fields are there. The age is an integer, and the profession is a string. \n\nNo other information is needed here. The task is complete.\n",
+                "native": {
+                  "item": {
+                    "reasoning_content": "Okay, let's see. The user provided a sentence: \"Bob Johnson is a 55 year old retired teacher.\" I need to extract the relevant information into the structured data using the submit function.\n\nFirst, the name is clearly Bob Johnson. The age is 55, so that's straightforward. The profession is retired teacher. Wait, the function requires the profession field. The sentence says \"retired teacher,\" so I should use that. The age is an integer, so 55 is valid. The name is a string. \n\nI need to make sure all required fields are present: name, age, profession. The age is 55, which is within the specified range (0-255). The profession is \"retired teacher.\" \n\nSo the structured data would have name: \"Bob Johnson\", age: 55, profession: \"retired teacher.\" \n\nI should call the submit function with these values. Let me double-check that there are no missing keys and that the values are correctly formatted. Yes, all required fields are there. The age is an integer, and the profession is a string. \n\nNo other information is needed here. The task is complete.\n"
+                  },
+                  "fingerprint": 12633101148318518426
+                }
               },
               {
                 "type": "toolcall",
                 "id": {
-                  "provider": {
-                    "call_id": "ACsSJZkwrbgXWPomYTjJ2Mc2PJfcyDst"
-                  }
+                  "provider": "ACsSJZkwrbgXWPomYTjJ2Mc2PJfcyDst"
                 },
                 "function": {
                   "name": "submit",
@@ -252,11 +247,47 @@
                     "profession": "retired teacher"
                   }
                 },
-                "signature": null,
-                "additional_params": null
+                "native": {
+                  "item": {
+                    "function": {
+                      "arguments": "{\"name\": \"Bob Johnson\", \"age\": 55, \"profession\": \"retired teacher\"}",
+                      "name": "submit"
+                    },
+                    "id": "ACsSJZkwrbgXWPomYTjJ2Mc2PJfcyDst",
+                    "type": "function"
+                  },
+                  "fingerprint": 15812361751013167287
+                }
               }
             ],
-            "message_id": null,
+            "head": {
+              "origin": {
+                "api": "openai.chat",
+                "provider": "llamacpp",
+                "model": "Qwen3-1.7B-Q4_K_M",
+                "response_model": "/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf",
+                "response_id": "chatcmpl-X459CqyV3eBCKmxel7cPnnix1H0wYIqX"
+              },
+              "stop": "tool_use",
+              "native": {
+                "item": {
+                  "content": "",
+                  "reasoning_content": "Okay, let's see. The user provided a sentence: \"Bob Johnson is a 55 year old retired teacher.\" I need to extract the relevant information into the structured data using the submit function.\n\nFirst, the name is clearly Bob Johnson. The age is 55, so that's straightforward. The profession is retired teacher. Wait, the function requires the profession field. The sentence says \"retired teacher,\" so I should use that. The age is an integer, so 55 is valid. The name is a string. \n\nI need to make sure all required fields are present: name, age, profession. The age is 55, which is within the specified range (0-255). The profession is \"retired teacher.\" \n\nSo the structured data would have name: \"Bob Johnson\", age: 55, profession: \"retired teacher.\" \n\nI should call the submit function with these values. Let me double-check that there are no missing keys and that the values are correctly formatted. Yes, all required fields are there. The age is an integer, and the profession is a string. \n\nNo other information is needed here. The task is complete.\n",
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{\"name\": \"Bob Johnson\", \"age\": 55, \"profession\": \"retired teacher\"}",
+                        "name": "submit"
+                      },
+                      "id": "ACsSJZkwrbgXWPomYTjJ2Mc2PJfcyDst",
+                      "type": "function"
+                    }
+                  ]
+                },
+                "fingerprint": 8761868573437673164
+              }
+            },
             "done": true,
             "usage_recorded": true,
             "stream_validated": 0
@@ -277,23 +308,18 @@
               "choice": [
                 {
                   "type": "reasoning",
-                  "issuer": "llamacpp",
-                  "id": null,
-                  "content": [
-                    {
-                      "type": "text",
-                      "content": {
-                        "text": "Okay, let's see. The user provided a sentence: \"Bob Johnson is a 55 year old retired teacher.\" I need to extract the relevant information into the structured data using the submit function.\n\nFirst, the name is clearly Bob Johnson. The age is 55, so that's straightforward. The profession is retired teacher. Wait, the function requires the profession field. The sentence says \"retired teacher,\" so I should use that. The age is an integer, so 55 is valid. The name is a string. \n\nI need to make sure all required fields are present: name, age, profession. The age is 55, which is within the specified range (0-255). The profession is \"retired teacher.\" \n\nSo the structured data would have name: \"Bob Johnson\", age: 55, profession: \"retired teacher.\" \n\nI should call the submit function with these values. Let me double-check that there are no missing keys and that the values are correctly formatted. Yes, all required fields are there. The age is an integer, and the profession is a string. \n\nNo other information is needed here. The task is complete.\n"
-                      }
-                    }
-                  ]
+                  "text": "Okay, let's see. The user provided a sentence: \"Bob Johnson is a 55 year old retired teacher.\" I need to extract the relevant information into the structured data using the submit function.\n\nFirst, the name is clearly Bob Johnson. The age is 55, so that's straightforward. The profession is retired teacher. Wait, the function requires the profession field. The sentence says \"retired teacher,\" so I should use that. The age is an integer, so 55 is valid. The name is a string. \n\nI need to make sure all required fields are present: name, age, profession. The age is 55, which is within the specified range (0-255). The profession is \"retired teacher.\" \n\nSo the structured data would have name: \"Bob Johnson\", age: 55, profession: \"retired teacher.\" \n\nI should call the submit function with these values. Let me double-check that there are no missing keys and that the values are correctly formatted. Yes, all required fields are there. The age is an integer, and the profession is a string. \n\nNo other information is needed here. The task is complete.\n",
+                  "native": {
+                    "item": {
+                      "reasoning_content": "Okay, let's see. The user provided a sentence: \"Bob Johnson is a 55 year old retired teacher.\" I need to extract the relevant information into the structured data using the submit function.\n\nFirst, the name is clearly Bob Johnson. The age is 55, so that's straightforward. The profession is retired teacher. Wait, the function requires the profession field. The sentence says \"retired teacher,\" so I should use that. The age is an integer, so 55 is valid. The name is a string. \n\nI need to make sure all required fields are present: name, age, profession. The age is 55, which is within the specified range (0-255). The profession is \"retired teacher.\" \n\nSo the structured data would have name: \"Bob Johnson\", age: 55, profession: \"retired teacher.\" \n\nI should call the submit function with these values. Let me double-check that there are no missing keys and that the values are correctly formatted. Yes, all required fields are there. The age is an integer, and the profession is a string. \n\nNo other information is needed here. The task is complete.\n"
+                    },
+                    "fingerprint": 12633101148318518426
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "ACsSJZkwrbgXWPomYTjJ2Mc2PJfcyDst"
-                    }
+                    "provider": "ACsSJZkwrbgXWPomYTjJ2Mc2PJfcyDst"
                   },
                   "function": {
                     "name": "submit",
@@ -303,8 +329,17 @@
                       "profession": "retired teacher"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"name\": \"Bob Johnson\", \"age\": 55, \"profession\": \"retired teacher\"}",
+                        "name": "submit"
+                      },
+                      "id": "ACsSJZkwrbgXWPomYTjJ2Mc2PJfcyDst",
+                      "type": "function"
+                    },
+                    "fingerprint": 15812361751013167287
+                  }
                 }
               ],
               "usage": {
@@ -313,11 +348,32 @@
                 "total_tokens": 633,
                 "cached_input_tokens": 79
               },
-              "message_id": null,
-              "response_id": "chatcmpl-X459CqyV3eBCKmxel7cPnnix1H0wYIqX",
+              "origin": {
+                "api": "openai.chat",
+                "provider": "llamacpp",
+                "model": "Qwen3-1.7B-Q4_K_M",
+                "response_model": "/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf",
+                "response_id": "chatcmpl-X459CqyV3eBCKmxel7cPnnix1H0wYIqX"
+              },
+              "native": {
+                "item": {
+                  "content": "",
+                  "reasoning_content": "Okay, let's see. The user provided a sentence: \"Bob Johnson is a 55 year old retired teacher.\" I need to extract the relevant information into the structured data using the submit function.\n\nFirst, the name is clearly Bob Johnson. The age is 55, so that's straightforward. The profession is retired teacher. Wait, the function requires the profession field. The sentence says \"retired teacher,\" so I should use that. The age is an integer, so 55 is valid. The name is a string. \n\nI need to make sure all required fields are present: name, age, profession. The age is 55, which is within the specified range (0-255). The profession is \"retired teacher.\" \n\nSo the structured data would have name: \"Bob Johnson\", age: 55, profession: \"retired teacher.\" \n\nI should call the submit function with these values. Let me double-check that there are no missing keys and that the values are correctly formatted. Yes, all required fields are there. The age is an integer, and the profession is a string. \n\nNo other information is needed here. The task is complete.\n",
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{\"name\": \"Bob Johnson\", \"age\": 55, \"profession\": \"retired teacher\"}",
+                        "name": "submit"
+                      },
+                      "id": "ACsSJZkwrbgXWPomYTjJ2Mc2PJfcyDst",
+                      "type": "function"
+                    }
+                  ]
+                },
+                "fingerprint": 8761868573437673164
+              },
               "finish_reason": "tool_calls",
-              "provider": "llamacpp",
-              "model": "/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf",
               "raw": {
                 "choices": [
                   {
@@ -368,29 +424,53 @@
             }
           },
           "rig_ecs::bus::effect::Issued": 0,
-          "rig_ecs::bus::handlers::ServedBy": 0,
-          "rig_ecs::bus::effect::Seq": 0
+          "rig_ecs::bus::effect::Seq": 0,
+          "rig_ecs::bus::handlers::ServedBy": 0
         },
         {
           "bevy_ecs::hierarchy::ChildOf": 2,
           "rig_ecs::agent::Role": "Assistant",
           "rig_ecs::agent::Utterance": {},
-          "rig_ecs::agent::content::parts::MessageId": null
+          "rig_ecs::agent::content::parts::AssistantHead": {
+            "origin": {
+              "api": "openai.chat",
+              "provider": "llamacpp",
+              "model": "Qwen3-1.7B-Q4_K_M",
+              "response_model": "/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf",
+              "response_id": "chatcmpl-X459CqyV3eBCKmxel7cPnnix1H0wYIqX"
+            },
+            "stop": "tool_use",
+            "native": {
+              "item": {
+                "content": "",
+                "reasoning_content": "Okay, let's see. The user provided a sentence: \"Bob Johnson is a 55 year old retired teacher.\" I need to extract the relevant information into the structured data using the submit function.\n\nFirst, the name is clearly Bob Johnson. The age is 55, so that's straightforward. The profession is retired teacher. Wait, the function requires the profession field. The sentence says \"retired teacher,\" so I should use that. The age is an integer, so 55 is valid. The name is a string. \n\nI need to make sure all required fields are present: name, age, profession. The age is 55, which is within the specified range (0-255). The profession is \"retired teacher.\" \n\nSo the structured data would have name: \"Bob Johnson\", age: 55, profession: \"retired teacher.\" \n\nI should call the submit function with these values. Let me double-check that there are no missing keys and that the values are correctly formatted. Yes, all required fields are there. The age is an integer, and the profession is a string. \n\nNo other information is needed here. The task is complete.\n",
+                "role": "assistant",
+                "tool_calls": [
+                  {
+                    "function": {
+                      "arguments": "{\"name\": \"Bob Johnson\", \"age\": 55, \"profession\": \"retired teacher\"}",
+                      "name": "submit"
+                    },
+                    "id": "ACsSJZkwrbgXWPomYTjJ2Mc2PJfcyDst",
+                    "type": "function"
+                  }
+                ]
+              },
+              "fingerprint": 8761868573437673164
+            }
+          }
         },
         {
           "bevy_ecs::hierarchy::ChildOf": 7,
           "rig_ecs::agent::content::parts::ContentPart": {
             "Reasoning": {
-              "issuer": "llamacpp",
-              "id": null,
-              "content": [
-                {
-                  "type": "text",
-                  "content": {
-                    "text": "Okay, let's see. The user provided a sentence: \"Bob Johnson is a 55 year old retired teacher.\" I need to extract the relevant information into the structured data using the submit function.\n\nFirst, the name is clearly Bob Johnson. The age is 55, so that's straightforward. The profession is retired teacher. Wait, the function requires the profession field. The sentence says \"retired teacher,\" so I should use that. The age is an integer, so 55 is valid. The name is a string. \n\nI need to make sure all required fields are present: name, age, profession. The age is 55, which is within the specified range (0-255). The profession is \"retired teacher.\" \n\nSo the structured data would have name: \"Bob Johnson\", age: 55, profession: \"retired teacher.\" \n\nI should call the submit function with these values. Let me double-check that there are no missing keys and that the values are correctly formatted. Yes, all required fields are there. The age is an integer, and the profession is a string. \n\nNo other information is needed here. The task is complete.\n"
-                  }
-                }
-              ]
+              "text": "Okay, let's see. The user provided a sentence: \"Bob Johnson is a 55 year old retired teacher.\" I need to extract the relevant information into the structured data using the submit function.\n\nFirst, the name is clearly Bob Johnson. The age is 55, so that's straightforward. The profession is retired teacher. Wait, the function requires the profession field. The sentence says \"retired teacher,\" so I should use that. The age is an integer, so 55 is valid. The name is a string. \n\nI need to make sure all required fields are present: name, age, profession. The age is 55, which is within the specified range (0-255). The profession is \"retired teacher.\" \n\nSo the structured data would have name: \"Bob Johnson\", age: 55, profession: \"retired teacher.\" \n\nI should call the submit function with these values. Let me double-check that there are no missing keys and that the values are correctly formatted. Yes, all required fields are there. The age is an integer, and the profession is a string. \n\nNo other information is needed here. The task is complete.\n",
+              "native": {
+                "item": {
+                  "reasoning_content": "Okay, let's see. The user provided a sentence: \"Bob Johnson is a 55 year old retired teacher.\" I need to extract the relevant information into the structured data using the submit function.\n\nFirst, the name is clearly Bob Johnson. The age is 55, so that's straightforward. The profession is retired teacher. Wait, the function requires the profession field. The sentence says \"retired teacher,\" so I should use that. The age is an integer, so 55 is valid. The name is a string. \n\nI need to make sure all required fields are present: name, age, profession. The age is 55, which is within the specified range (0-255). The profession is \"retired teacher.\" \n\nSo the structured data would have name: \"Bob Johnson\", age: 55, profession: \"retired teacher.\" \n\nI should call the submit function with these values. Let me double-check that there are no missing keys and that the values are correctly formatted. Yes, all required fields are there. The age is an integer, and the profession is a string. \n\nNo other information is needed here. The task is complete.\n"
+                },
+                "fingerprint": 12633101148318518426
+              }
             }
           }
         },

@@ -359,16 +359,23 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_OodHSAuE3XEjBGUXa0Ncd2i5"
-                }
+                "provider": "call_ahn3g99ijtSgm82YpNmFl2ku"
               },
               "function": {
                 "name": "ping_empty",
                 "arguments": {}
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{}",
+                    "name": "ping_empty"
+                  },
+                  "id": "call_ahn3g99ijtSgm82YpNmFl2ku",
+                  "type": "function"
+                },
+                "fingerprint": 8926778202970173482
+              }
             }
           ],
           "usage": {
@@ -379,11 +386,33 @@
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
-          "response_id": "gen-1790152483-X0RaA3bVSthhPp9Yommm",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "openrouter",
+            "model": "openai/gpt-4o",
+            "response_model": "openai/gpt-4o",
+            "response_id": "gen-1790925591-8W8GKBliVOuV0okBjdWZ"
+          },
+          "native": {
+            "item": {
+              "content": null,
+              "reasoning": null,
+              "refusal": null,
+              "role": "assistant",
+              "tool_calls": [
+                {
+                  "function": {
+                    "arguments": "{}",
+                    "name": "ping_empty"
+                  },
+                  "id": "call_ahn3g99ijtSgm82YpNmFl2ku",
+                  "type": "function"
+                }
+              ]
+            },
+            "fingerprint": 8856780409621048962
+          },
           "finish_reason": "tool_calls",
-          "provider": "openrouter",
-          "model": "openai/gpt-4o",
           "raw": {
             "choices": [
               {
@@ -401,7 +430,7 @@
                         "arguments": "{}",
                         "name": "ping_empty"
                       },
-                      "id": "call_OodHSAuE3XEjBGUXa0Ncd2i5",
+                      "id": "call_ahn3g99ijtSgm82YpNmFl2ku",
                       "index": 0,
                       "type": "function"
                     }
@@ -411,12 +440,12 @@
               }
             ],
             "created": 0,
-            "id": "gen-1790152483-X0RaA3bVSthhPp9Yommm",
+            "id": "gen-1790925591-8W8GKBliVOuV0okBjdWZ",
             "model": "openai/gpt-4o",
             "object": "chat.completion",
             "provider": "OpenAI",
-            "service_tier": null,
-            "system_fingerprint": "fp_38255cd5f6",
+            "service_tier": "default",
+            "system_fingerprint": "fp_ebb746cdfb",
             "usage": {
               "completion_tokens": 11,
               "completion_tokens_details": {
@@ -494,23 +523,56 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_OodHSAuE3XEjBGUXa0Ncd2i5"
-                    }
+                    "provider": "call_ahn3g99ijtSgm82YpNmFl2ku"
                   },
                   "function": {
                     "name": "ping_empty",
                     "arguments": {}
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "ping_empty"
+                      },
+                      "id": "call_ahn3g99ijtSgm82YpNmFl2ku",
+                      "type": "function"
+                    },
+                    "fingerprint": 8926778202970173482
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openrouter",
+                "model": "openai/gpt-4o",
+                "response_model": "openai/gpt-4o",
+                "response_id": "gen-1790925591-8W8GKBliVOuV0okBjdWZ"
+              },
+              "stop": "tool_use",
+              "native": {
+                "item": {
+                  "content": null,
+                  "reasoning": null,
+                  "refusal": null,
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "ping_empty"
+                      },
+                      "id": "call_ahn3g99ijtSgm82YpNmFl2ku",
+                      "type": "function"
+                    }
+                  ]
+                },
+                "fingerprint": 8856780409621048962
+              }
             },
             {
               "role": "user",
@@ -518,9 +580,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_OodHSAuE3XEjBGUXa0Ncd2i5"
-                    }
+                    "provider": "call_ahn3g99ijtSgm82YpNmFl2ku"
                   },
                   "name": "ping_empty",
                   "content": [
@@ -653,9 +713,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_WjBIpS8cb6V85xQdajiTm502"
-                }
+                "provider": "call_nxFkqXhcjOhV6HYoAg50kOq8"
               },
               "function": {
                 "name": "inspect_manifest",
@@ -678,8 +736,17 @@
                   "note": "line one; line two says \"hello\" and path C:\\rig\\openrouter"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"project\":\"rig-openrouter\",\"flags\":{\"critical\":true,\"retries\":2},\"steps\":[{\"name\":\"plan\",\"weight\":1},{\"name\":\"verify\",\"weight\":2}],\"note\":\"line one; line two says \\\"hello\\\" and path C:\\\\rig\\\\openrouter\"}",
+                    "name": "inspect_manifest"
+                  },
+                  "id": "call_nxFkqXhcjOhV6HYoAg50kOq8",
+                  "type": "function"
+                },
+                "fingerprint": 6188167410003475985
+              }
             }
           ],
           "usage": {
@@ -690,11 +757,33 @@
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
-          "response_id": "gen-1790152484-sjsNyy0LQgK9SBlT8DBL",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "openrouter",
+            "model": "openai/gpt-4o",
+            "response_model": "openai/gpt-4o",
+            "response_id": "gen-1790925592-W4OjwWmxm8jk52ge4pi2"
+          },
+          "native": {
+            "item": {
+              "content": null,
+              "reasoning": null,
+              "refusal": null,
+              "role": "assistant",
+              "tool_calls": [
+                {
+                  "function": {
+                    "arguments": "{\"project\":\"rig-openrouter\",\"flags\":{\"critical\":true,\"retries\":2},\"steps\":[{\"name\":\"plan\",\"weight\":1},{\"name\":\"verify\",\"weight\":2}],\"note\":\"line one; line two says \\\"hello\\\" and path C:\\\\rig\\\\openrouter\"}",
+                    "name": "inspect_manifest"
+                  },
+                  "id": "call_nxFkqXhcjOhV6HYoAg50kOq8",
+                  "type": "function"
+                }
+              ]
+            },
+            "fingerprint": 10883065473230869415
+          },
           "finish_reason": "tool_calls",
-          "provider": "openrouter",
-          "model": "openai/gpt-4o",
           "raw": {
             "choices": [
               {
@@ -712,7 +801,7 @@
                         "arguments": "{\"project\":\"rig-openrouter\",\"flags\":{\"critical\":true,\"retries\":2},\"steps\":[{\"name\":\"plan\",\"weight\":1},{\"name\":\"verify\",\"weight\":2}],\"note\":\"line one; line two says \\\"hello\\\" and path C:\\\\rig\\\\openrouter\"}",
                         "name": "inspect_manifest"
                       },
-                      "id": "call_WjBIpS8cb6V85xQdajiTm502",
+                      "id": "call_nxFkqXhcjOhV6HYoAg50kOq8",
                       "index": 0,
                       "type": "function"
                     }
@@ -722,12 +811,12 @@
               }
             ],
             "created": 0,
-            "id": "gen-1790152484-sjsNyy0LQgK9SBlT8DBL",
+            "id": "gen-1790925592-W4OjwWmxm8jk52ge4pi2",
             "model": "openai/gpt-4o",
             "object": "chat.completion",
             "provider": "OpenAI",
-            "service_tier": null,
-            "system_fingerprint": "fp_38255cd5f6",
+            "service_tier": "default",
+            "system_fingerprint": "fp_ebb746cdfb",
             "usage": {
               "completion_tokens": 67,
               "completion_tokens_details": {
@@ -805,23 +894,56 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_OodHSAuE3XEjBGUXa0Ncd2i5"
-                    }
+                    "provider": "call_ahn3g99ijtSgm82YpNmFl2ku"
                   },
                   "function": {
                     "name": "ping_empty",
                     "arguments": {}
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "ping_empty"
+                      },
+                      "id": "call_ahn3g99ijtSgm82YpNmFl2ku",
+                      "type": "function"
+                    },
+                    "fingerprint": 8926778202970173482
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openrouter",
+                "model": "openai/gpt-4o",
+                "response_model": "openai/gpt-4o",
+                "response_id": "gen-1790925591-8W8GKBliVOuV0okBjdWZ"
+              },
+              "stop": "tool_use",
+              "native": {
+                "item": {
+                  "content": null,
+                  "reasoning": null,
+                  "refusal": null,
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "ping_empty"
+                      },
+                      "id": "call_ahn3g99ijtSgm82YpNmFl2ku",
+                      "type": "function"
+                    }
+                  ]
+                },
+                "fingerprint": 8856780409621048962
+              }
             },
             {
               "role": "user",
@@ -829,9 +951,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_OodHSAuE3XEjBGUXa0Ncd2i5"
-                    }
+                    "provider": "call_ahn3g99ijtSgm82YpNmFl2ku"
                   },
                   "name": "ping_empty",
                   "content": [
@@ -845,14 +965,11 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_WjBIpS8cb6V85xQdajiTm502"
-                    }
+                    "provider": "call_nxFkqXhcjOhV6HYoAg50kOq8"
                   },
                   "function": {
                     "name": "inspect_manifest",
@@ -875,10 +992,46 @@
                       "note": "line one; line two says \"hello\" and path C:\\rig\\openrouter"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"project\":\"rig-openrouter\",\"flags\":{\"critical\":true,\"retries\":2},\"steps\":[{\"name\":\"plan\",\"weight\":1},{\"name\":\"verify\",\"weight\":2}],\"note\":\"line one; line two says \\\"hello\\\" and path C:\\\\rig\\\\openrouter\"}",
+                        "name": "inspect_manifest"
+                      },
+                      "id": "call_nxFkqXhcjOhV6HYoAg50kOq8",
+                      "type": "function"
+                    },
+                    "fingerprint": 6188167410003475985
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openrouter",
+                "model": "openai/gpt-4o",
+                "response_model": "openai/gpt-4o",
+                "response_id": "gen-1790925592-W4OjwWmxm8jk52ge4pi2"
+              },
+              "stop": "tool_use",
+              "native": {
+                "item": {
+                  "content": null,
+                  "reasoning": null,
+                  "refusal": null,
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{\"project\":\"rig-openrouter\",\"flags\":{\"critical\":true,\"retries\":2},\"steps\":[{\"name\":\"plan\",\"weight\":1},{\"name\":\"verify\",\"weight\":2}],\"note\":\"line one; line two says \\\"hello\\\" and path C:\\\\rig\\\\openrouter\"}",
+                        "name": "inspect_manifest"
+                      },
+                      "id": "call_nxFkqXhcjOhV6HYoAg50kOq8",
+                      "type": "function"
+                    }
+                  ]
+                },
+                "fingerprint": 10883065473230869415
+              }
             },
             {
               "role": "user",
@@ -886,9 +1039,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_WjBIpS8cb6V85xQdajiTm502"
-                    }
+                    "provider": "call_nxFkqXhcjOhV6HYoAg50kOq8"
                   },
                   "name": "inspect_manifest",
                   "content": [
@@ -1021,9 +1172,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_jGcVnNB5MuX16G2mNcEmhquG"
-                }
+                "provider": "call_eNVnODVUwepBTOEU0VAmbiX1"
               },
               "function": {
                 "name": "join_labels",
@@ -1037,8 +1186,17 @@
                   "separator": "|"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"labels\":[\"north\",\"beta gamma\",\"quote:\\\"delta\\\"\",\"slash\\\\path\"],\"separator\":\"|\"}",
+                    "name": "join_labels"
+                  },
+                  "id": "call_eNVnODVUwepBTOEU0VAmbiX1",
+                  "type": "function"
+                },
+                "fingerprint": 10116788674631974501
+              }
             }
           ],
           "usage": {
@@ -1049,11 +1207,33 @@
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
-          "response_id": "gen-1790152486-5vmOm1dZZxCH77Evla9L",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "openrouter",
+            "model": "openai/gpt-4o",
+            "response_model": "openai/gpt-4o",
+            "response_id": "gen-1790925593-bRldEEaLSxk76bhnULrt"
+          },
+          "native": {
+            "item": {
+              "content": null,
+              "reasoning": null,
+              "refusal": null,
+              "role": "assistant",
+              "tool_calls": [
+                {
+                  "function": {
+                    "arguments": "{\"labels\":[\"north\",\"beta gamma\",\"quote:\\\"delta\\\"\",\"slash\\\\path\"],\"separator\":\"|\"}",
+                    "name": "join_labels"
+                  },
+                  "id": "call_eNVnODVUwepBTOEU0VAmbiX1",
+                  "type": "function"
+                }
+              ]
+            },
+            "fingerprint": 14768722197843913655
+          },
           "finish_reason": "tool_calls",
-          "provider": "openrouter",
-          "model": "openai/gpt-4o",
           "raw": {
             "choices": [
               {
@@ -1071,7 +1251,7 @@
                         "arguments": "{\"labels\":[\"north\",\"beta gamma\",\"quote:\\\"delta\\\"\",\"slash\\\\path\"],\"separator\":\"|\"}",
                         "name": "join_labels"
                       },
-                      "id": "call_jGcVnNB5MuX16G2mNcEmhquG",
+                      "id": "call_eNVnODVUwepBTOEU0VAmbiX1",
                       "index": 0,
                       "type": "function"
                     }
@@ -1081,12 +1261,12 @@
               }
             ],
             "created": 0,
-            "id": "gen-1790152486-5vmOm1dZZxCH77Evla9L",
+            "id": "gen-1790925593-bRldEEaLSxk76bhnULrt",
             "model": "openai/gpt-4o",
             "object": "chat.completion",
             "provider": "OpenAI",
-            "service_tier": null,
-            "system_fingerprint": "fp_38255cd5f6",
+            "service_tier": "default",
+            "system_fingerprint": "fp_ebb746cdfb",
             "usage": {
               "completion_tokens": 31,
               "completion_tokens_details": {
@@ -1164,23 +1344,56 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_OodHSAuE3XEjBGUXa0Ncd2i5"
-                    }
+                    "provider": "call_ahn3g99ijtSgm82YpNmFl2ku"
                   },
                   "function": {
                     "name": "ping_empty",
                     "arguments": {}
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "ping_empty"
+                      },
+                      "id": "call_ahn3g99ijtSgm82YpNmFl2ku",
+                      "type": "function"
+                    },
+                    "fingerprint": 8926778202970173482
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openrouter",
+                "model": "openai/gpt-4o",
+                "response_model": "openai/gpt-4o",
+                "response_id": "gen-1790925591-8W8GKBliVOuV0okBjdWZ"
+              },
+              "stop": "tool_use",
+              "native": {
+                "item": {
+                  "content": null,
+                  "reasoning": null,
+                  "refusal": null,
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "ping_empty"
+                      },
+                      "id": "call_ahn3g99ijtSgm82YpNmFl2ku",
+                      "type": "function"
+                    }
+                  ]
+                },
+                "fingerprint": 8856780409621048962
+              }
             },
             {
               "role": "user",
@@ -1188,9 +1401,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_OodHSAuE3XEjBGUXa0Ncd2i5"
-                    }
+                    "provider": "call_ahn3g99ijtSgm82YpNmFl2ku"
                   },
                   "name": "ping_empty",
                   "content": [
@@ -1204,14 +1415,11 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_WjBIpS8cb6V85xQdajiTm502"
-                    }
+                    "provider": "call_nxFkqXhcjOhV6HYoAg50kOq8"
                   },
                   "function": {
                     "name": "inspect_manifest",
@@ -1234,10 +1442,46 @@
                       "note": "line one; line two says \"hello\" and path C:\\rig\\openrouter"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"project\":\"rig-openrouter\",\"flags\":{\"critical\":true,\"retries\":2},\"steps\":[{\"name\":\"plan\",\"weight\":1},{\"name\":\"verify\",\"weight\":2}],\"note\":\"line one; line two says \\\"hello\\\" and path C:\\\\rig\\\\openrouter\"}",
+                        "name": "inspect_manifest"
+                      },
+                      "id": "call_nxFkqXhcjOhV6HYoAg50kOq8",
+                      "type": "function"
+                    },
+                    "fingerprint": 6188167410003475985
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openrouter",
+                "model": "openai/gpt-4o",
+                "response_model": "openai/gpt-4o",
+                "response_id": "gen-1790925592-W4OjwWmxm8jk52ge4pi2"
+              },
+              "stop": "tool_use",
+              "native": {
+                "item": {
+                  "content": null,
+                  "reasoning": null,
+                  "refusal": null,
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{\"project\":\"rig-openrouter\",\"flags\":{\"critical\":true,\"retries\":2},\"steps\":[{\"name\":\"plan\",\"weight\":1},{\"name\":\"verify\",\"weight\":2}],\"note\":\"line one; line two says \\\"hello\\\" and path C:\\\\rig\\\\openrouter\"}",
+                        "name": "inspect_manifest"
+                      },
+                      "id": "call_nxFkqXhcjOhV6HYoAg50kOq8",
+                      "type": "function"
+                    }
+                  ]
+                },
+                "fingerprint": 10883065473230869415
+              }
             },
             {
               "role": "user",
@@ -1245,9 +1489,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_WjBIpS8cb6V85xQdajiTm502"
-                    }
+                    "provider": "call_nxFkqXhcjOhV6HYoAg50kOq8"
                   },
                   "name": "inspect_manifest",
                   "content": [
@@ -1261,14 +1503,11 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_jGcVnNB5MuX16G2mNcEmhquG"
-                    }
+                    "provider": "call_eNVnODVUwepBTOEU0VAmbiX1"
                   },
                   "function": {
                     "name": "join_labels",
@@ -1282,10 +1521,46 @@
                       "separator": "|"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"labels\":[\"north\",\"beta gamma\",\"quote:\\\"delta\\\"\",\"slash\\\\path\"],\"separator\":\"|\"}",
+                        "name": "join_labels"
+                      },
+                      "id": "call_eNVnODVUwepBTOEU0VAmbiX1",
+                      "type": "function"
+                    },
+                    "fingerprint": 10116788674631974501
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openrouter",
+                "model": "openai/gpt-4o",
+                "response_model": "openai/gpt-4o",
+                "response_id": "gen-1790925593-bRldEEaLSxk76bhnULrt"
+              },
+              "stop": "tool_use",
+              "native": {
+                "item": {
+                  "content": null,
+                  "reasoning": null,
+                  "refusal": null,
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{\"labels\":[\"north\",\"beta gamma\",\"quote:\\\"delta\\\"\",\"slash\\\\path\"],\"separator\":\"|\"}",
+                        "name": "join_labels"
+                      },
+                      "id": "call_eNVnODVUwepBTOEU0VAmbiX1",
+                      "type": "function"
+                    }
+                  ]
+                },
+                "fingerprint": 14768722197843913655
+              }
             },
             {
               "role": "user",
@@ -1293,9 +1568,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_jGcVnNB5MuX16G2mNcEmhquG"
-                    }
+                    "provider": "call_eNVnODVUwepBTOEU0VAmbiX1"
                   },
                   "name": "join_labels",
                   "content": [
@@ -1428,9 +1701,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_C6b8yTvrR6vo9pqiRomnds4Y"
-                }
+                "provider": "call_uep8urw3Iy0geNViQ6z3hwl9"
               },
               "function": {
                 "name": "escape_echo",
@@ -1438,8 +1709,17 @@
                   "text": "Line 1\nLine \"2\" with backslash \\ and unicode snowman ☃"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"text\":\"Line 1\\nLine \\\"2\\\" with backslash \\\\ and unicode snowman ☃\"}",
+                    "name": "escape_echo"
+                  },
+                  "id": "call_uep8urw3Iy0geNViQ6z3hwl9",
+                  "type": "function"
+                },
+                "fingerprint": 17371678809011819620
+              }
             }
           ],
           "usage": {
@@ -1450,11 +1730,33 @@
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
-          "response_id": "gen-1790152487-w7YQRbDCYaYesQr2dCJ9",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "openrouter",
+            "model": "openai/gpt-4o",
+            "response_model": "openai/gpt-4o",
+            "response_id": "gen-1790925594-CotnfsjUZSYzEOWsMBTc"
+          },
+          "native": {
+            "item": {
+              "content": null,
+              "reasoning": null,
+              "refusal": null,
+              "role": "assistant",
+              "tool_calls": [
+                {
+                  "function": {
+                    "arguments": "{\"text\":\"Line 1\\nLine \\\"2\\\" with backslash \\\\ and unicode snowman ☃\"}",
+                    "name": "escape_echo"
+                  },
+                  "id": "call_uep8urw3Iy0geNViQ6z3hwl9",
+                  "type": "function"
+                }
+              ]
+            },
+            "fingerprint": 245464976310118880
+          },
           "finish_reason": "tool_calls",
-          "provider": "openrouter",
-          "model": "openai/gpt-4o",
           "raw": {
             "choices": [
               {
@@ -1472,7 +1774,7 @@
                         "arguments": "{\"text\":\"Line 1\\nLine \\\"2\\\" with backslash \\\\ and unicode snowman ☃\"}",
                         "name": "escape_echo"
                       },
-                      "id": "call_C6b8yTvrR6vo9pqiRomnds4Y",
+                      "id": "call_uep8urw3Iy0geNViQ6z3hwl9",
                       "index": 0,
                       "type": "function"
                     }
@@ -1482,12 +1784,12 @@
               }
             ],
             "created": 0,
-            "id": "gen-1790152487-w7YQRbDCYaYesQr2dCJ9",
+            "id": "gen-1790925594-CotnfsjUZSYzEOWsMBTc",
             "model": "openai/gpt-4o",
             "object": "chat.completion",
             "provider": "OpenAI",
-            "service_tier": null,
-            "system_fingerprint": "fp_38255cd5f6",
+            "service_tier": "default",
+            "system_fingerprint": "fp_ebb746cdfb",
             "usage": {
               "completion_tokens": 31,
               "completion_tokens_details": {
@@ -1565,23 +1867,56 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_OodHSAuE3XEjBGUXa0Ncd2i5"
-                    }
+                    "provider": "call_ahn3g99ijtSgm82YpNmFl2ku"
                   },
                   "function": {
                     "name": "ping_empty",
                     "arguments": {}
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "ping_empty"
+                      },
+                      "id": "call_ahn3g99ijtSgm82YpNmFl2ku",
+                      "type": "function"
+                    },
+                    "fingerprint": 8926778202970173482
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openrouter",
+                "model": "openai/gpt-4o",
+                "response_model": "openai/gpt-4o",
+                "response_id": "gen-1790925591-8W8GKBliVOuV0okBjdWZ"
+              },
+              "stop": "tool_use",
+              "native": {
+                "item": {
+                  "content": null,
+                  "reasoning": null,
+                  "refusal": null,
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "ping_empty"
+                      },
+                      "id": "call_ahn3g99ijtSgm82YpNmFl2ku",
+                      "type": "function"
+                    }
+                  ]
+                },
+                "fingerprint": 8856780409621048962
+              }
             },
             {
               "role": "user",
@@ -1589,9 +1924,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_OodHSAuE3XEjBGUXa0Ncd2i5"
-                    }
+                    "provider": "call_ahn3g99ijtSgm82YpNmFl2ku"
                   },
                   "name": "ping_empty",
                   "content": [
@@ -1605,14 +1938,11 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_WjBIpS8cb6V85xQdajiTm502"
-                    }
+                    "provider": "call_nxFkqXhcjOhV6HYoAg50kOq8"
                   },
                   "function": {
                     "name": "inspect_manifest",
@@ -1635,10 +1965,46 @@
                       "note": "line one; line two says \"hello\" and path C:\\rig\\openrouter"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"project\":\"rig-openrouter\",\"flags\":{\"critical\":true,\"retries\":2},\"steps\":[{\"name\":\"plan\",\"weight\":1},{\"name\":\"verify\",\"weight\":2}],\"note\":\"line one; line two says \\\"hello\\\" and path C:\\\\rig\\\\openrouter\"}",
+                        "name": "inspect_manifest"
+                      },
+                      "id": "call_nxFkqXhcjOhV6HYoAg50kOq8",
+                      "type": "function"
+                    },
+                    "fingerprint": 6188167410003475985
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openrouter",
+                "model": "openai/gpt-4o",
+                "response_model": "openai/gpt-4o",
+                "response_id": "gen-1790925592-W4OjwWmxm8jk52ge4pi2"
+              },
+              "stop": "tool_use",
+              "native": {
+                "item": {
+                  "content": null,
+                  "reasoning": null,
+                  "refusal": null,
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{\"project\":\"rig-openrouter\",\"flags\":{\"critical\":true,\"retries\":2},\"steps\":[{\"name\":\"plan\",\"weight\":1},{\"name\":\"verify\",\"weight\":2}],\"note\":\"line one; line two says \\\"hello\\\" and path C:\\\\rig\\\\openrouter\"}",
+                        "name": "inspect_manifest"
+                      },
+                      "id": "call_nxFkqXhcjOhV6HYoAg50kOq8",
+                      "type": "function"
+                    }
+                  ]
+                },
+                "fingerprint": 10883065473230869415
+              }
             },
             {
               "role": "user",
@@ -1646,9 +2012,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_WjBIpS8cb6V85xQdajiTm502"
-                    }
+                    "provider": "call_nxFkqXhcjOhV6HYoAg50kOq8"
                   },
                   "name": "inspect_manifest",
                   "content": [
@@ -1662,14 +2026,11 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_jGcVnNB5MuX16G2mNcEmhquG"
-                    }
+                    "provider": "call_eNVnODVUwepBTOEU0VAmbiX1"
                   },
                   "function": {
                     "name": "join_labels",
@@ -1683,10 +2044,46 @@
                       "separator": "|"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"labels\":[\"north\",\"beta gamma\",\"quote:\\\"delta\\\"\",\"slash\\\\path\"],\"separator\":\"|\"}",
+                        "name": "join_labels"
+                      },
+                      "id": "call_eNVnODVUwepBTOEU0VAmbiX1",
+                      "type": "function"
+                    },
+                    "fingerprint": 10116788674631974501
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openrouter",
+                "model": "openai/gpt-4o",
+                "response_model": "openai/gpt-4o",
+                "response_id": "gen-1790925593-bRldEEaLSxk76bhnULrt"
+              },
+              "stop": "tool_use",
+              "native": {
+                "item": {
+                  "content": null,
+                  "reasoning": null,
+                  "refusal": null,
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{\"labels\":[\"north\",\"beta gamma\",\"quote:\\\"delta\\\"\",\"slash\\\\path\"],\"separator\":\"|\"}",
+                        "name": "join_labels"
+                      },
+                      "id": "call_eNVnODVUwepBTOEU0VAmbiX1",
+                      "type": "function"
+                    }
+                  ]
+                },
+                "fingerprint": 14768722197843913655
+              }
             },
             {
               "role": "user",
@@ -1694,9 +2091,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_jGcVnNB5MuX16G2mNcEmhquG"
-                    }
+                    "provider": "call_eNVnODVUwepBTOEU0VAmbiX1"
                   },
                   "name": "join_labels",
                   "content": [
@@ -1710,14 +2105,11 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_C6b8yTvrR6vo9pqiRomnds4Y"
-                    }
+                    "provider": "call_uep8urw3Iy0geNViQ6z3hwl9"
                   },
                   "function": {
                     "name": "escape_echo",
@@ -1725,10 +2117,46 @@
                       "text": "Line 1\nLine \"2\" with backslash \\ and unicode snowman ☃"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"text\":\"Line 1\\nLine \\\"2\\\" with backslash \\\\ and unicode snowman ☃\"}",
+                        "name": "escape_echo"
+                      },
+                      "id": "call_uep8urw3Iy0geNViQ6z3hwl9",
+                      "type": "function"
+                    },
+                    "fingerprint": 17371678809011819620
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openrouter",
+                "model": "openai/gpt-4o",
+                "response_model": "openai/gpt-4o",
+                "response_id": "gen-1790925594-CotnfsjUZSYzEOWsMBTc"
+              },
+              "stop": "tool_use",
+              "native": {
+                "item": {
+                  "content": null,
+                  "reasoning": null,
+                  "refusal": null,
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{\"text\":\"Line 1\\nLine \\\"2\\\" with backslash \\\\ and unicode snowman ☃\"}",
+                        "name": "escape_echo"
+                      },
+                      "id": "call_uep8urw3Iy0geNViQ6z3hwl9",
+                      "type": "function"
+                    }
+                  ]
+                },
+                "fingerprint": 245464976310118880
+              }
             },
             {
               "role": "user",
@@ -1736,9 +2164,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_C6b8yTvrR6vo9pqiRomnds4Y"
-                    }
+                    "provider": "call_uep8urw3Iy0geNViQ6z3hwl9"
                   },
                   "name": "escape_echo",
                   "content": [
@@ -1870,22 +2296,41 @@
           "choice": [
             {
               "type": "text",
-              "text": "The scenario resulted in EMPTY-OK, MANIFEST-OK, LABELS-OK, and ESCAPE-OK."
+              "text": "EMPTY-OK, MANIFEST-OK, LABELS-OK, and ESCAPE-OK indicate the successful execution of all tasks.",
+              "native": {
+                "item": {
+                  "content": "EMPTY-OK, MANIFEST-OK, LABELS-OK, and ESCAPE-OK indicate the successful execution of all tasks.",
+                  "refusal": null
+                },
+                "fingerprint": 13174632484692454668
+              }
             }
           ],
           "usage": {
             "input_tokens": 580,
-            "output_tokens": 25,
-            "total_tokens": 605,
+            "output_tokens": 28,
+            "total_tokens": 608,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
-          "response_id": "gen-1790152488-mvkVIFyUNw6SNnE0OdhX",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "openrouter",
+            "model": "openai/gpt-4o",
+            "response_model": "openai/gpt-4o",
+            "response_id": "gen-1790925595-AL2b4u38Ak8LV2wi3IAB"
+          },
+          "native": {
+            "item": {
+              "content": "EMPTY-OK, MANIFEST-OK, LABELS-OK, and ESCAPE-OK indicate the successful execution of all tasks.",
+              "reasoning": null,
+              "refusal": null,
+              "role": "assistant"
+            },
+            "fingerprint": 4170144969765563938
+          },
           "finish_reason": "stop",
-          "provider": "openrouter",
-          "model": "openai/gpt-4o",
           "raw": {
             "choices": [
               {
@@ -1893,7 +2338,7 @@
                 "index": 0,
                 "logprobs": null,
                 "message": {
-                  "content": "The scenario resulted in EMPTY-OK, MANIFEST-OK, LABELS-OK, and ESCAPE-OK.",
+                  "content": "EMPTY-OK, MANIFEST-OK, LABELS-OK, and ESCAPE-OK indicate the successful execution of all tasks.",
                   "reasoning": null,
                   "refusal": null,
                   "role": "assistant"
@@ -1902,23 +2347,23 @@
               }
             ],
             "created": 0,
-            "id": "gen-1790152488-mvkVIFyUNw6SNnE0OdhX",
+            "id": "gen-1790925595-AL2b4u38Ak8LV2wi3IAB",
             "model": "openai/gpt-4o",
             "object": "chat.completion",
             "provider": "OpenAI",
-            "service_tier": null,
-            "system_fingerprint": "fp_38255cd5f6",
+            "service_tier": "default",
+            "system_fingerprint": "fp_ebb746cdfb",
             "usage": {
-              "completion_tokens": 25,
+              "completion_tokens": 28,
               "completion_tokens_details": {
                 "audio_tokens": 0,
                 "image_tokens": 0,
                 "reasoning_tokens": 0
               },
-              "cost": 0.0017,
+              "cost": 0.00173,
               "cost_details": {
-                "upstream_inference_completions_cost": 0.00025,
-                "upstream_inference_cost": 0.0017,
+                "upstream_inference_completions_cost": 0.00028,
+                "upstream_inference_cost": 0.00173,
                 "upstream_inference_prompt_cost": 0.00145
               },
               "is_byok": false,
@@ -1929,7 +2374,7 @@
                 "cached_tokens": 0,
                 "video_tokens": 0
               },
-              "total_tokens": 605
+              "total_tokens": 608
             }
           }
         }

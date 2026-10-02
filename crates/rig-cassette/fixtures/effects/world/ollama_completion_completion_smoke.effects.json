@@ -77,20 +77,23 @@
           "choice": [
             {
               "type": "reasoning",
-              "issuer": "ollama",
-              "id": null,
-              "content": [
-                {
-                  "type": "text",
-                  "content": {
-                    "text": "We are to explain Rust in one or two sentences and why memory safety matters.\n Rust is a systems programming language focused on safety, speed, and concurrency. It ensures memory safety without a garbage collector by using ownership and borrowing concepts.\n Memory safety matters because it prevents common bugs like null pointer dereferences, buffer overflows, and data races that lead to crashes and security vulnerabilities.\n\n Let's write concisely:\n\n \"Rust is a systems programming language that guarantees memory safety and concurrency without a garbage collector, using ownership and borrowing. Memory safety matters because it prevents critical bugs such as buffer overflows and data races that cause crashes and security vulnerabilities.\""
-                  }
-                }
-              ]
+              "text": "We are to explain Rust in one or two sentences and why memory safety matters.\n Rust is a systems programming language focused on safety, speed, and concurrency. It ensures memory safety without a garbage collector by using ownership and borrowing concepts.\n Memory safety matters because it prevents common bugs like null pointer dereferences, buffer overflows, and data races that lead to crashes and security vulnerabilities.\n\n Let's write concisely:\n\n \"Rust is a systems programming language that guarantees memory safety and concurrency without a garbage collector, using ownership and borrowing. Memory safety matters because it prevents critical bugs such as buffer overflows and data races that cause crashes and security vulnerabilities.\"",
+              "native": {
+                "item": {
+                  "thinking": "We are to explain Rust in one or two sentences and why memory safety matters.\n Rust is a systems programming language focused on safety, speed, and concurrency. It ensures memory safety without a garbage collector by using ownership and borrowing concepts.\n Memory safety matters because it prevents common bugs like null pointer dereferences, buffer overflows, and data races that lead to crashes and security vulnerabilities.\n\n Let's write concisely:\n\n \"Rust is a systems programming language that guarantees memory safety and concurrency without a garbage collector, using ownership and borrowing. Memory safety matters because it prevents critical bugs such as buffer overflows and data races that cause crashes and security vulnerabilities.\""
+                },
+                "fingerprint": 12812347503678934559
+              }
             },
             {
               "type": "text",
-              "text": "Rust is a systems programming language that guarantees memory safety and concurrency without a garbage collector, using ownership and borrowing. Memory safety matters because it prevents critical bugs like buffer overflows and data races that cause crashes and security vulnerabilities."
+              "text": "Rust is a systems programming language that guarantees memory safety and concurrency without a garbage collector, using ownership and borrowing. Memory safety matters because it prevents critical bugs like buffer overflows and data races that cause crashes and security vulnerabilities.",
+              "native": {
+                "item": {
+                  "content": "Rust is a systems programming language that guarantees memory safety and concurrency without a garbage collector, using ownership and borrowing. Memory safety matters because it prevents critical bugs like buffer overflows and data races that cause crashes and security vulnerabilities."
+                },
+                "fingerprint": 14285219327118797214
+              }
             }
           ],
           "usage": {
@@ -98,11 +101,21 @@
             "output_tokens": 177,
             "total_tokens": 219
           },
-          "message_id": null,
-          "response_id": null,
+          "origin": {
+            "api": "ollama.chat",
+            "provider": "ollama",
+            "model": "qwen3:4b",
+            "response_model": "qwen3:4b"
+          },
+          "native": {
+            "item": {
+              "content": "Rust is a systems programming language that guarantees memory safety and concurrency without a garbage collector, using ownership and borrowing. Memory safety matters because it prevents critical bugs like buffer overflows and data races that cause crashes and security vulnerabilities.",
+              "role": "assistant",
+              "thinking": "We are to explain Rust in one or two sentences and why memory safety matters.\n Rust is a systems programming language focused on safety, speed, and concurrency. It ensures memory safety without a garbage collector by using ownership and borrowing concepts.\n Memory safety matters because it prevents common bugs like null pointer dereferences, buffer overflows, and data races that lead to crashes and security vulnerabilities.\n\n Let's write concisely:\n\n \"Rust is a systems programming language that guarantees memory safety and concurrency without a garbage collector, using ownership and borrowing. Memory safety matters because it prevents critical bugs such as buffer overflows and data races that cause crashes and security vulnerabilities.\""
+            },
+            "fingerprint": 2700245073734968160
+          },
           "finish_reason": "stop",
-          "provider": "ollama",
-          "model": "qwen3:4b",
           "raw": {
             "created_at": "1970-01-01T00:00:00Z",
             "done": true,

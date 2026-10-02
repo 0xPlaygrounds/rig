@@ -143,24 +143,20 @@
           "choice": [
             {
               "type": "reasoning",
-              "issuer": "anthropic",
-              "id": null,
-              "content": [
-                {
-                  "type": "text",
-                  "content": {
-                    "text": "The user wants me to use the add tool to add 17 and 25, and then reply with just the number (the result).\n\nLet me call the add function with x=17 and y=25.",
-                    "signature": "EpkDCpoBCBIYAipAzD+NXaWQzhxMNb7u0scOfIFvGs5BcqRbo1P71OZOob1SbKkXA7qEOVQKhQMCLvHdzbsBjw2NZAootMSx+TNsuzIZY2xhdWRlLWhhaWt1LTQtNS0yMDI1MTAwMTgAQgh0aGlua2luZ1okNzI4ZGNhYTktOGFmNi00M2EyLTkzOTctMjVkYTM3YjljMzlkqAHfmczVBhIMiZhqAYX6E18eobf2GgxF04zHjyunAlm1IyAiMAdZWDOLKZBsteP/2tzxILZtMPDTBfC9kED+s+p09ge6VVi1YP2TMZvii/AH9Q8xPSqrAR8haRjb1El33GwrPU0eIcDf2G8Zq5zV6thaOyziFSA/fCCraC4Onqw9aaXOTFonUa3bwp5ftbcaXYqSAtdcHSMTeAlYKbXDtulP3nopxBP1XKk84XJmc26F4PN6QmZOD7Q8CKFIFxpA0C8623Pc+fYmNii9J4pU5hH1jeadZNjDPRLDQKOckA8nth19FuQHff5b2C1JyNG0D6jMtbVxyeJNrY4CcyKAUU7K4hgB"
-                  }
-                }
-              ]
+              "text": "The user wants me to use the add tool to add 17 and 25, and then reply with just the number (the result).\n\nLet me call the add function with x=17 and y=25.",
+              "native": {
+                "item": {
+                  "signature": "ErcDCrgBCBIYAipAzD+NXaWQzhxMNb7u0scOfIFvGs5BcqRbo1P71OZOob1SbKkXA7qEOVQKhQMCLvHdzbsBjw2NZAootMSx+TNsuzIZY2xhdWRlLWhhaWt1LTQtNS0yMDI1MTAwMTgAQgh0aGlua2luZ1okNzI4ZGNhYTktOGFmNi00M2EyLTkzOTctMjVkYTM3YjljMzlkmgEbChljbGF1ZGUtaGFpa3UtNC01LTIwMjUxMDAxqAGqzfzVBhIMe4d8vrMb9bYqQQNNGgzc3ufLBP5qdnDNy3EiMKv7Djz/2vrpHqncNcQjSAVLMN7eVpQF+v3FyJrb7IHrTThZRnjLd0YzZeyzMI7pbSqrAVUMDcvy5xPNFGqp8qPKvLJnzsz6BGPiD5OwQtyD1iMI/kC52I/cqZKqWY/bMmYB1uVllFeIqI1WQYYuaNGDloHj8TmSPUrElgfpp7RlWzP7M01uWOoa6PPHS7PJLPQB+Ld1GvadEidVXwC8G4LQCR31suiNZoxOBe4aQkyMrXl5RBNXCm2cyNVnSDG7jYMteoswXMGKaNtCaMgukU/QvsHJpjAIfXWYGXDkJxgB",
+                  "thinking": "The user wants me to use the add tool to add 17 and 25, and then reply with just the number (the result).\n\nLet me call the add function with x=17 and y=25.",
+                  "type": "thinking"
+                },
+                "fingerprint": 4233208250215470214
+              }
             },
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "toolu_013oMgsNijtJH7Mpf3FY4pZ6"
-                }
+                "provider": "toolu_01AtkhM6FU5foxadpxBsmhah"
               },
               "function": {
                 "name": "add",
@@ -169,8 +165,21 @@
                   "y": 25
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "caller": {
+                    "type": "direct"
+                  },
+                  "id": "toolu_01AtkhM6FU5foxadpxBsmhah",
+                  "input": {
+                    "x": 17,
+                    "y": 25
+                  },
+                  "name": "add",
+                  "type": "tool_use"
+                },
+                "fingerprint": 12883656693083741136
+              }
             }
           ],
           "usage": {
@@ -181,17 +190,20 @@
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 51
           },
-          "message_id": "msg_011CfKLH5qJuErfdA3VUKWGF",
-          "response_id": null,
-          "provider_request_id": "req_011CfKLH4vyxqajAvWf5w93u",
+          "origin": {
+            "api": "anthropic.messages",
+            "provider": "anthropic",
+            "model": "claude-haiku-4-5",
+            "response_model": "claude-haiku-4-5-20251001",
+            "response_id": "msg_011CfciB6rHP5MViqrCmCndq"
+          },
+          "provider_request_id": "req_011CfciB6WD5oLQutSTLeobJ",
           "finish_reason": "tool_calls",
-          "provider": "anthropic",
-          "model": "claude-haiku-4-5-20251001",
           "raw": {
             "container": null,
             "content": [
               {
-                "signature": "EpkDCpoBCBIYAipAzD+NXaWQzhxMNb7u0scOfIFvGs5BcqRbo1P71OZOob1SbKkXA7qEOVQKhQMCLvHdzbsBjw2NZAootMSx+TNsuzIZY2xhdWRlLWhhaWt1LTQtNS0yMDI1MTAwMTgAQgh0aGlua2luZ1okNzI4ZGNhYTktOGFmNi00M2EyLTkzOTctMjVkYTM3YjljMzlkqAHfmczVBhIMiZhqAYX6E18eobf2GgxF04zHjyunAlm1IyAiMAdZWDOLKZBsteP/2tzxILZtMPDTBfC9kED+s+p09ge6VVi1YP2TMZvii/AH9Q8xPSqrAR8haRjb1El33GwrPU0eIcDf2G8Zq5zV6thaOyziFSA/fCCraC4Onqw9aaXOTFonUa3bwp5ftbcaXYqSAtdcHSMTeAlYKbXDtulP3nopxBP1XKk84XJmc26F4PN6QmZOD7Q8CKFIFxpA0C8623Pc+fYmNii9J4pU5hH1jeadZNjDPRLDQKOckA8nth19FuQHff5b2C1JyNG0D6jMtbVxyeJNrY4CcyKAUU7K4hgB",
+                "signature": "ErcDCrgBCBIYAipAzD+NXaWQzhxMNb7u0scOfIFvGs5BcqRbo1P71OZOob1SbKkXA7qEOVQKhQMCLvHdzbsBjw2NZAootMSx+TNsuzIZY2xhdWRlLWhhaWt1LTQtNS0yMDI1MTAwMTgAQgh0aGlua2luZ1okNzI4ZGNhYTktOGFmNi00M2EyLTkzOTctMjVkYTM3YjljMzlkmgEbChljbGF1ZGUtaGFpa3UtNC01LTIwMjUxMDAxqAGqzfzVBhIMe4d8vrMb9bYqQQNNGgzc3ufLBP5qdnDNy3EiMKv7Djz/2vrpHqncNcQjSAVLMN7eVpQF+v3FyJrb7IHrTThZRnjLd0YzZeyzMI7pbSqrAVUMDcvy5xPNFGqp8qPKvLJnzsz6BGPiD5OwQtyD1iMI/kC52I/cqZKqWY/bMmYB1uVllFeIqI1WQYYuaNGDloHj8TmSPUrElgfpp7RlWzP7M01uWOoa6PPHS7PJLPQB+Ld1GvadEidVXwC8G4LQCR31suiNZoxOBe4aQkyMrXl5RBNXCm2cyNVnSDG7jYMteoswXMGKaNtCaMgukU/QvsHJpjAIfXWYGXDkJxgB",
                 "thinking": "The user wants me to use the add tool to add 17 and 25, and then reply with just the number (the result).\n\nLet me call the add function with x=17 and y=25.",
                 "type": "thinking"
               },
@@ -199,7 +211,7 @@
                 "caller": {
                   "type": "direct"
                 },
-                "id": "toolu_013oMgsNijtJH7Mpf3FY4pZ6",
+                "id": "toolu_01AtkhM6FU5foxadpxBsmhah",
                 "input": {
                   "x": 17,
                   "y": 25
@@ -208,7 +220,8 @@
                 "type": "tool_use"
               }
             ],
-            "id": "msg_011CfKLH5qJuErfdA3VUKWGF",
+            "diagnostics": null,
+            "id": "msg_011CfciB6rHP5MViqrCmCndq",
             "model": "claude-haiku-4-5-20251001",
             "role": "assistant",
             "stop_details": null,
@@ -284,28 +297,23 @@
             },
             {
               "role": "assistant",
-              "id": "msg_011CfKLH5qJuErfdA3VUKWGF",
               "content": [
                 {
                   "type": "reasoning",
-                  "issuer": "anthropic",
-                  "id": null,
-                  "content": [
-                    {
-                      "type": "text",
-                      "content": {
-                        "text": "The user wants me to use the add tool to add 17 and 25, and then reply with just the number (the result).\n\nLet me call the add function with x=17 and y=25.",
-                        "signature": "EpkDCpoBCBIYAipAzD+NXaWQzhxMNb7u0scOfIFvGs5BcqRbo1P71OZOob1SbKkXA7qEOVQKhQMCLvHdzbsBjw2NZAootMSx+TNsuzIZY2xhdWRlLWhhaWt1LTQtNS0yMDI1MTAwMTgAQgh0aGlua2luZ1okNzI4ZGNhYTktOGFmNi00M2EyLTkzOTctMjVkYTM3YjljMzlkqAHfmczVBhIMiZhqAYX6E18eobf2GgxF04zHjyunAlm1IyAiMAdZWDOLKZBsteP/2tzxILZtMPDTBfC9kED+s+p09ge6VVi1YP2TMZvii/AH9Q8xPSqrAR8haRjb1El33GwrPU0eIcDf2G8Zq5zV6thaOyziFSA/fCCraC4Onqw9aaXOTFonUa3bwp5ftbcaXYqSAtdcHSMTeAlYKbXDtulP3nopxBP1XKk84XJmc26F4PN6QmZOD7Q8CKFIFxpA0C8623Pc+fYmNii9J4pU5hH1jeadZNjDPRLDQKOckA8nth19FuQHff5b2C1JyNG0D6jMtbVxyeJNrY4CcyKAUU7K4hgB"
-                      }
-                    }
-                  ]
+                  "text": "The user wants me to use the add tool to add 17 and 25, and then reply with just the number (the result).\n\nLet me call the add function with x=17 and y=25.",
+                  "native": {
+                    "item": {
+                      "signature": "ErcDCrgBCBIYAipAzD+NXaWQzhxMNb7u0scOfIFvGs5BcqRbo1P71OZOob1SbKkXA7qEOVQKhQMCLvHdzbsBjw2NZAootMSx+TNsuzIZY2xhdWRlLWhhaWt1LTQtNS0yMDI1MTAwMTgAQgh0aGlua2luZ1okNzI4ZGNhYTktOGFmNi00M2EyLTkzOTctMjVkYTM3YjljMzlkmgEbChljbGF1ZGUtaGFpa3UtNC01LTIwMjUxMDAxqAGqzfzVBhIMe4d8vrMb9bYqQQNNGgzc3ufLBP5qdnDNy3EiMKv7Djz/2vrpHqncNcQjSAVLMN7eVpQF+v3FyJrb7IHrTThZRnjLd0YzZeyzMI7pbSqrAVUMDcvy5xPNFGqp8qPKvLJnzsz6BGPiD5OwQtyD1iMI/kC52I/cqZKqWY/bMmYB1uVllFeIqI1WQYYuaNGDloHj8TmSPUrElgfpp7RlWzP7M01uWOoa6PPHS7PJLPQB+Ld1GvadEidVXwC8G4LQCR31suiNZoxOBe4aQkyMrXl5RBNXCm2cyNVnSDG7jYMteoswXMGKaNtCaMgukU/QvsHJpjAIfXWYGXDkJxgB",
+                      "thinking": "The user wants me to use the add tool to add 17 and 25, and then reply with just the number (the result).\n\nLet me call the add function with x=17 and y=25.",
+                      "type": "thinking"
+                    },
+                    "fingerprint": 4233208250215470214
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "toolu_013oMgsNijtJH7Mpf3FY4pZ6"
-                    }
+                    "provider": "toolu_01AtkhM6FU5foxadpxBsmhah"
                   },
                   "function": {
                     "name": "add",
@@ -314,10 +322,31 @@
                       "y": 25
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "caller": {
+                        "type": "direct"
+                      },
+                      "id": "toolu_01AtkhM6FU5foxadpxBsmhah",
+                      "input": {
+                        "x": 17,
+                        "y": 25
+                      },
+                      "name": "add",
+                      "type": "tool_use"
+                    },
+                    "fingerprint": 12883656693083741136
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "anthropic.messages",
+                "provider": "anthropic",
+                "model": "claude-haiku-4-5",
+                "response_model": "claude-haiku-4-5-20251001",
+                "response_id": "msg_011CfciB6rHP5MViqrCmCndq"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -325,9 +354,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "toolu_013oMgsNijtJH7Mpf3FY4pZ6"
-                    }
+                    "provider": "toolu_01AtkhM6FU5foxadpxBsmhah"
                   },
                   "name": "add",
                   "content": [
@@ -383,7 +410,14 @@
           "choice": [
             {
               "type": "text",
-              "text": "42"
+              "text": "42",
+              "native": {
+                "item": {
+                  "text": "42",
+                  "type": "text"
+                },
+                "fingerprint": 15903709825217441321
+              }
             }
           ],
           "usage": {
@@ -394,12 +428,15 @@
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": "msg_011CfKLHBPwBJ1CoLRJesyvy",
-          "response_id": null,
-          "provider_request_id": "req_011CfKLHAz7pb8YcePpxSJk7",
+          "origin": {
+            "api": "anthropic.messages",
+            "provider": "anthropic",
+            "model": "claude-haiku-4-5",
+            "response_model": "claude-haiku-4-5-20251001",
+            "response_id": "msg_011CfciBCVcXi3bPG1UX1HzA"
+          },
+          "provider_request_id": "req_011CfciBC83DLS1BLnkBTZiU",
           "finish_reason": "stop",
-          "provider": "anthropic",
-          "model": "claude-haiku-4-5-20251001",
           "raw": {
             "container": null,
             "content": [
@@ -408,7 +445,8 @@
                 "type": "text"
               }
             ],
-            "id": "msg_011CfKLHBPwBJ1CoLRJesyvy",
+            "diagnostics": null,
+            "id": "msg_011CfciBCVcXi3bPG1UX1HzA",
             "model": "claude-haiku-4-5-20251001",
             "role": "assistant",
             "stop_details": null,

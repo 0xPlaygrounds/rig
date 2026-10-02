@@ -2,14 +2,6 @@
   "header": {
     "deliveries": [
       {
-        "batch": 5,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
         "batch": 6,
         "id": 0,
         "kind": {
@@ -22,7 +14,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -30,7 +22,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -46,7 +38,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -62,7 +54,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 4
+          "items": 1
         }
       },
       {
@@ -78,7 +70,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -86,7 +78,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -102,7 +94,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -126,7 +118,15 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
+        }
+      },
+      {
+        "batch": 21,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
         }
       },
       {
@@ -142,7 +142,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -174,7 +174,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -210,7 +210,39 @@
         }
       },
       {
-        "batch": 37,
+        "batch": 32,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 33,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 34,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 35,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 36,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -219,6 +251,70 @@
       },
       {
         "batch": 37,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 38,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 39,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 40,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 41,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 42,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 43,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 46,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 46,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -291,7 +387,14 @@
           "choice": [
             {
               "type": "text",
-              "text": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Tech Meetup\",\"summary\":\"Monthly gathering for Rust developers in Seattle featuring talks, lightning demos, hands-on coding sessions, and networking; all levels welcome.\"}"
+              "text": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Tech Meetup\",\"summary\":\"Monthly gathering for Rust developers in Seattle featuring talks, lightning demos, hands-on coding sessions, and networking; all levels welcome.\"}",
+              "native": {
+                "item": {
+                  "content": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Tech Meetup\",\"summary\":\"Monthly gathering for Rust developers in Seattle featuring talks, lightning demos, hands-on coding sessions, and networking; all levels welcome.\"}",
+                  "refusal": null
+                },
+                "fingerprint": 4385500906060177369
+              }
             }
           ],
           "usage": {
@@ -301,12 +404,23 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 256
           },
-          "message_id": null,
-          "response_id": "chatcmpl-ERDCFI4kbTzszstLAXyykOMQ7u8Rx",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "openai",
+            "model": "gpt-5-mini",
+            "response_model": "gpt-5-mini-2025-08-07",
+            "response_id": "chatcmpl-ERDCFI4kbTzszstLAXyykOMQ7u8Rx"
+          },
+          "native": {
+            "item": {
+              "content": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Tech Meetup\",\"summary\":\"Monthly gathering for Rust developers in Seattle featuring talks, lightning demos, hands-on coding sessions, and networking; all levels welcome.\"}",
+              "refusal": null,
+              "role": "assistant"
+            },
+            "fingerprint": 1167055657805479433
+          },
           "provider_request_id": "req_d62f1d01fdb94d24a49437584dd99817",
           "finish_reason": "stop",
-          "provider": "openai",
-          "model": "gpt-5-mini-2025-08-07",
           "raw": {
             "usage": {
               "prompt_tokens": 96,
@@ -668,7 +782,14 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Tech Meetup\",\"summary\":\"Monthly gathering for Rust developers in Seattle featuring talks, lightning demos, hands-on coding sessions, and networking; all levels welcome.\"}"
+              "text": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Tech Meetup\",\"summary\":\"Monthly gathering for Rust developers in Seattle featuring talks, lightning demos, hands-on coding sessions, and networking; all levels welcome.\"}",
+              "native": {
+                "item": {
+                  "content": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Tech Meetup\",\"summary\":\"Monthly gathering for Rust developers in Seattle featuring talks, lightning demos, hands-on coding sessions, and networking; all levels welcome.\"}",
+                  "refusal": null
+                },
+                "fingerprint": 4385500906060177369
+              }
             }
           }
         }

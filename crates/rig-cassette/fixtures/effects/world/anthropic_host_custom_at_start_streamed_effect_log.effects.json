@@ -9,15 +9,23 @@
         }
       },
       {
-        "batch": 6,
+        "batch": 9,
         "id": 1,
         "kind": {
           "delivery": "stream",
-          "items": 4
+          "items": 3
         }
       },
       {
-        "batch": 6,
+        "batch": 10,
+        "id": 1,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 11,
         "id": 1,
         "kind": {
           "delivery": "outcome"
@@ -120,7 +128,14 @@
           "choice": [
             {
               "type": "text",
-              "text": "ready."
+              "text": "ready.",
+              "native": {
+                "item": {
+                  "text": "ready.",
+                  "type": "text"
+                },
+                "fingerprint": 7790244451924217344
+              }
             }
           ],
           "usage": {
@@ -130,12 +145,15 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_011CfLcYw9V5jZGSZLPkBUyZ",
-          "response_id": null,
+          "origin": {
+            "api": "anthropic.messages",
+            "provider": "anthropic",
+            "model": "claude-sonnet-4-6",
+            "response_model": "claude-sonnet-4-6",
+            "response_id": "msg_011CfLcYw9V5jZGSZLPkBUyZ"
+          },
           "provider_request_id": "req_011CfLcYvczAhCJi3xkyqG6P",
           "finish_reason": "stop",
-          "provider": "anthropic",
-          "model": "claude-sonnet-4-6",
           "raw": {
             "usage": {
               "output_tokens": 5,
@@ -185,7 +203,14 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "ready."
+              "text": "ready.",
+              "native": {
+                "item": {
+                  "text": "ready.",
+                  "type": "text"
+                },
+                "fingerprint": 7790244451924217344
+              }
             }
           }
         }

@@ -75,7 +75,14 @@
           "choice": [
             {
               "type": "text",
-              "text": "Maple trees are known for their vibrant fall foliage, which ranges from bright"
+              "text": "Maple trees are known for their vibrant fall foliage, which ranges from bright",
+              "native": {
+                "item": {
+                  "content": "Maple trees are known for their vibrant fall foliage, which ranges from bright",
+                  "name": null
+                },
+                "fingerprint": 12892780528691665044
+              }
             }
           ],
           "usage": {
@@ -83,11 +90,23 @@
             "output_tokens": 16,
             "total_tokens": 994
           },
-          "message_id": null,
-          "response_id": "chatcmpl-RJv9vNDrscugMYUeKh0NZ6T7",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "venice",
+            "model": "mistral-small-3-2-24b-instruct",
+            "response_model": "mistral-small-3-2-24b-instruct",
+            "response_id": "chatcmpl-RJv9vNDrscugMYUeKh0NZ6T7"
+          },
+          "native": {
+            "item": {
+              "content": "Maple trees are known for their vibrant fall foliage, which ranges from bright",
+              "name": null,
+              "reasoning_content": null,
+              "role": "assistant"
+            },
+            "fingerprint": 11943213407909128464
+          },
           "finish_reason": "length",
-          "provider": "venice",
-          "model": "mistral-small-3-2-24b-instruct",
           "raw": {
             "choices": [
               {

@@ -75,7 +75,24 @@
           "choice": [
             {
               "type": "text",
-              "text": "PINEAPPLE"
+              "text": "PINEAPPLE",
+              "native": {
+                "item": {
+                  "content": [
+                    {
+                      "annotations": [],
+                      "logprobs": [],
+                      "text": "PINEAPPLE",
+                      "type": "output_text"
+                    }
+                  ],
+                  "id": "msg_068ef937bf63528d006ab3969eb6e487d0830c7d18a7975c5a",
+                  "role": "assistant",
+                  "status": "completed",
+                  "type": "message"
+                },
+                "fingerprint": 4134350431190614909
+              }
             }
           ],
           "usage": {
@@ -86,12 +103,15 @@
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": "msg_068ef937bf63528d006ab3969eb6e487d0830c7d18a7975c5a",
-          "response_id": "resp_068ef937bf63528d006ab3969e554487d0a200987c435786ed",
+          "origin": {
+            "api": "openai.responses",
+            "provider": "openai",
+            "model": "gpt-4o",
+            "response_model": "gpt-4o-2024-08-06",
+            "response_id": "resp_068ef937bf63528d006ab3969e554487d0a200987c435786ed"
+          },
           "provider_request_id": "req_19f2b547d4f34417a6a9ee95d4ce6351",
           "finish_reason": "stop",
-          "provider": "openai",
-          "model": "gpt-4o-2024-08-06",
           "raw": {
             "access_programs": null,
             "background": false,

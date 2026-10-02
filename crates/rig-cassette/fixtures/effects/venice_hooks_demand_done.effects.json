@@ -68,7 +68,14 @@
           "choice": [
             {
               "type": "text",
-              "text": "Rust is a systems programming language focused on performance, reliability, and memory safety. Memory safety matters because it prevents common bugs like null pointer dereferences, buffer overflows, and data races, which can lead to crashes, security vulnerabilities, or undefined behavior."
+              "text": "Rust is a systems programming language focused on performance, reliability, and memory safety. Memory safety matters because it prevents common bugs like null pointer dereferences, buffer overflows, and data races, which can lead to crashes, security vulnerabilities, or undefined behavior.",
+              "native": {
+                "item": {
+                  "content": "Rust is a systems programming language focused on performance, reliability, and memory safety. Memory safety matters because it prevents common bugs like null pointer dereferences, buffer overflows, and data races, which can lead to crashes, security vulnerabilities, or undefined behavior.",
+                  "name": null
+                },
+                "fingerprint": 1088701498825489914
+              }
             }
           ],
           "usage": {
@@ -76,11 +83,23 @@
             "output_tokens": 53,
             "total_tokens": 1038
           },
-          "message_id": null,
-          "response_id": "chatcmpl-RHoUEzSUmXX5j29hRL5eRcnl",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "venice",
+            "model": "mistral-small-3-2-24b-instruct",
+            "response_model": "mistral-small-3-2-24b-instruct",
+            "response_id": "chatcmpl-R1nfm5fn7Il4MjcHp0JGRHVx"
+          },
+          "native": {
+            "item": {
+              "content": "Rust is a systems programming language focused on performance, reliability, and memory safety. Memory safety matters because it prevents common bugs like null pointer dereferences, buffer overflows, and data races, which can lead to crashes, security vulnerabilities, or undefined behavior.",
+              "name": null,
+              "reasoning_content": null,
+              "role": "assistant"
+            },
+            "fingerprint": 12914413219342325186
+          },
           "finish_reason": "stop",
-          "provider": "venice",
-          "model": "mistral-small-3-2-24b-instruct",
           "raw": {
             "choices": [
               {
@@ -101,7 +120,7 @@
               "usd": 0.00010559375
             },
             "created": 0,
-            "id": "chatcmpl-RHoUEzSUmXX5j29hRL5eRcnl",
+            "id": "chatcmpl-R1nfm5fn7Il4MjcHp0JGRHVx",
             "model": "mistral-small-3-2-24b-instruct",
             "object": "chat.completion",
             "service_tier": "default",
@@ -151,13 +170,36 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
-                  "text": "Rust is a systems programming language focused on performance, reliability, and memory safety. Memory safety matters because it prevents common bugs like null pointer dereferences, buffer overflows, and data races, which can lead to crashes, security vulnerabilities, or undefined behavior."
+                  "text": "Rust is a systems programming language focused on performance, reliability, and memory safety. Memory safety matters because it prevents common bugs like null pointer dereferences, buffer overflows, and data races, which can lead to crashes, security vulnerabilities, or undefined behavior.",
+                  "native": {
+                    "item": {
+                      "content": "Rust is a systems programming language focused on performance, reliability, and memory safety. Memory safety matters because it prevents common bugs like null pointer dereferences, buffer overflows, and data races, which can lead to crashes, security vulnerabilities, or undefined behavior.",
+                      "name": null
+                    },
+                    "fingerprint": 1088701498825489914
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "venice",
+                "model": "mistral-small-3-2-24b-instruct",
+                "response_model": "mistral-small-3-2-24b-instruct",
+                "response_id": "chatcmpl-R1nfm5fn7Il4MjcHp0JGRHVx"
+              },
+              "stop": "stop",
+              "native": {
+                "item": {
+                  "content": "Rust is a systems programming language focused on performance, reliability, and memory safety. Memory safety matters because it prevents common bugs like null pointer dereferences, buffer overflows, and data races, which can lead to crashes, security vulnerabilities, or undefined behavior.",
+                  "name": null,
+                  "reasoning_content": null,
+                  "role": "assistant"
+                },
+                "fingerprint": 12914413219342325186
+              }
             },
             {
               "role": "user",
@@ -185,7 +227,14 @@
           "choice": [
             {
               "type": "text",
-              "text": "Rust is a systems programming language focused on performance, reliability, and memory safety. Memory safety matters because it prevents common bugs like null pointer dereferences, buffer overflows, and data races, which can lead to crashes, security vulnerabilities, or undefined behavior. DONE"
+              "text": "Rust is a systems programming language focused on performance, reliability, and memory safety. Memory safety matters because it prevents common bugs like null pointer dereferences, buffer overflows, and data races, which can lead to crashes, security vulnerabilities, or undefined behavior. DONE",
+              "native": {
+                "item": {
+                  "content": "Rust is a systems programming language focused on performance, reliability, and memory safety. Memory safety matters because it prevents common bugs like null pointer dereferences, buffer overflows, and data races, which can lead to crashes, security vulnerabilities, or undefined behavior. DONE",
+                  "name": null
+                },
+                "fingerprint": 15163800517949696760
+              }
             }
           ],
           "usage": {
@@ -193,11 +242,23 @@
             "output_tokens": 55,
             "total_tokens": 1104
           },
-          "message_id": null,
-          "response_id": "chatcmpl-RquFJ3uiuZhGwbbCr7zpHnfl",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "venice",
+            "model": "mistral-small-3-2-24b-instruct",
+            "response_model": "mistral-small-3-2-24b-instruct",
+            "response_id": "chatcmpl-RWNkzctFXWBNh6A8li3tS1yf"
+          },
+          "native": {
+            "item": {
+              "content": "Rust is a systems programming language focused on performance, reliability, and memory safety. Memory safety matters because it prevents common bugs like null pointer dereferences, buffer overflows, and data races, which can lead to crashes, security vulnerabilities, or undefined behavior. DONE",
+              "name": null,
+              "reasoning_content": null,
+              "role": "assistant"
+            },
+            "fingerprint": 4710042587700095566
+          },
           "finish_reason": "stop",
-          "provider": "venice",
-          "model": "mistral-small-3-2-24b-instruct",
           "raw": {
             "choices": [
               {
@@ -218,7 +279,7 @@
               "usd": 0.00011209375
             },
             "created": 0,
-            "id": "chatcmpl-RquFJ3uiuZhGwbbCr7zpHnfl",
+            "id": "chatcmpl-RWNkzctFXWBNh6A8li3tS1yf",
             "model": "mistral-small-3-2-24b-instruct",
             "object": "chat.completion",
             "service_tier": "default",

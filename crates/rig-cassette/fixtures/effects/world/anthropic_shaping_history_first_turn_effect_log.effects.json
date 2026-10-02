@@ -60,7 +60,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -94,7 +93,14 @@
           "choice": [
             {
               "type": "text",
-              "text": "Ada"
+              "text": "Ada",
+              "native": {
+                "item": {
+                  "text": "Ada",
+                  "type": "text"
+                },
+                "fingerprint": 11689945161834907103
+              }
             }
           ],
           "usage": {
@@ -104,12 +110,15 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_011CfLceBgkTJkLTS9WLREGh",
-          "response_id": null,
+          "origin": {
+            "api": "anthropic.messages",
+            "provider": "anthropic",
+            "model": "claude-sonnet-4-6",
+            "response_model": "claude-sonnet-4-6",
+            "response_id": "msg_011CfLceBgkTJkLTS9WLREGh"
+          },
           "provider_request_id": "req_011CfLceBCDfgUjo22aE8Z5a",
           "finish_reason": "stop",
-          "provider": "anthropic",
-          "model": "claude-sonnet-4-6",
           "raw": {
             "container": null,
             "content": [

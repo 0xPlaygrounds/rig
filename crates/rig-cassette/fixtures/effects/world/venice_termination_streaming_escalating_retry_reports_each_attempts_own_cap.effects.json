@@ -42,7 +42,7 @@
         }
       },
       {
-        "batch": 14,
+        "batch": 15,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -66,7 +66,7 @@
         }
       },
       {
-        "batch": 18,
+        "batch": 19,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -74,7 +74,7 @@
         }
       },
       {
-        "batch": 19,
+        "batch": 20,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -98,14 +98,6 @@
         }
       },
       {
-        "batch": 23,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
         "batch": 24,
         "id": 0,
         "kind": {
@@ -122,6 +114,14 @@
         }
       },
       {
+        "batch": 26,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 27,
         "id": 0,
         "kind": {
@@ -130,7 +130,7 @@
         }
       },
       {
-        "batch": 28,
+        "batch": 29,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -138,18 +138,10 @@
         }
       },
       {
-        "batch": 28,
+        "batch": 29,
         "id": 0,
         "kind": {
           "delivery": "outcome"
-        }
-      },
-      {
-        "batch": 34,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
         }
       },
       {
@@ -157,11 +149,11 @@
         "id": 1,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
-        "batch": 37,
+        "batch": 36,
         "id": 1,
         "kind": {
           "delivery": "stream",
@@ -185,7 +177,7 @@
         }
       },
       {
-        "batch": 41,
+        "batch": 40,
         "id": 1,
         "kind": {
           "delivery": "stream",
@@ -209,7 +201,7 @@
         }
       },
       {
-        "batch": 45,
+        "batch": 44,
         "id": 1,
         "kind": {
           "delivery": "stream",
@@ -297,7 +289,7 @@
         }
       },
       {
-        "batch": 59,
+        "batch": 60,
         "id": 1,
         "kind": {
           "delivery": "stream",
@@ -305,7 +297,7 @@
         }
       },
       {
-        "batch": 60,
+        "batch": 61,
         "id": 1,
         "kind": {
           "delivery": "stream",
@@ -329,7 +321,7 @@
         }
       },
       {
-        "batch": 64,
+        "batch": 65,
         "id": 1,
         "kind": {
           "delivery": "stream",
@@ -345,7 +337,7 @@
         }
       },
       {
-        "batch": 67,
+        "batch": 68,
         "id": 1,
         "kind": {
           "delivery": "stream",
@@ -353,7 +345,7 @@
         }
       },
       {
-        "batch": 68,
+        "batch": 69,
         "id": 1,
         "kind": {
           "delivery": "stream",
@@ -369,14 +361,6 @@
         }
       },
       {
-        "batch": 71,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
         "batch": 72,
         "id": 1,
         "kind": {
@@ -385,7 +369,7 @@
         }
       },
       {
-        "batch": 74,
+        "batch": 73,
         "id": 1,
         "kind": {
           "delivery": "stream",
@@ -409,6 +393,14 @@
         }
       },
       {
+        "batch": 77,
+        "id": 1,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 78,
         "id": 1,
         "kind": {
@@ -417,7 +409,7 @@
         }
       },
       {
-        "batch": 79,
+        "batch": 80,
         "id": 1,
         "kind": {
           "delivery": "stream",
@@ -425,7 +417,7 @@
         }
       },
       {
-        "batch": 80,
+        "batch": 81,
         "id": 1,
         "kind": {
           "delivery": "stream",
@@ -449,7 +441,7 @@
         }
       },
       {
-        "batch": 84,
+        "batch": 85,
         "id": 1,
         "kind": {
           "delivery": "stream",
@@ -473,7 +465,7 @@
         }
       },
       {
-        "batch": 88,
+        "batch": 89,
         "id": 1,
         "kind": {
           "delivery": "stream",
@@ -489,7 +481,7 @@
         }
       },
       {
-        "batch": 92,
+        "batch": 91,
         "id": 1,
         "kind": {
           "delivery": "stream",
@@ -497,7 +489,15 @@
         }
       },
       {
-        "batch": 92,
+        "batch": 94,
+        "id": 1,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 94,
         "id": 1,
         "kind": {
           "delivery": "outcome"
@@ -570,7 +570,13 @@
           "choice": [
             {
               "type": "text",
-              "text": "Maple trees are known for their vibrant fall foliage, which ranges from bright"
+              "text": "Maple trees are known for their vibrant fall foliage, which ranges from bright",
+              "native": {
+                "item": {
+                  "content": "Maple trees are known for their vibrant fall foliage, which ranges from bright"
+                },
+                "fingerprint": 12892780528691665044
+              }
             }
           ],
           "usage": {
@@ -578,11 +584,22 @@
             "output_tokens": 16,
             "total_tokens": 994
           },
-          "message_id": null,
-          "response_id": "chatcmpl-RpyCQbTkIkBjHn2AbX1kMGNp",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "venice",
+            "model": "mistral-small-3-2-24b-instruct",
+            "response_model": "mistral-small-3-2-24b-instruct",
+            "response_id": "chatcmpl-RpyCQbTkIkBjHn2AbX1kMGNp"
+          },
+          "native": {
+            "item": {
+              "content": "Maple trees are known for their vibrant fall foliage, which ranges from bright",
+              "reasoning_content": null,
+              "role": "assistant"
+            },
+            "fingerprint": 11943213407909128464
+          },
           "finish_reason": "length",
-          "provider": "venice",
-          "model": "mistral-small-3-2-24b-instruct",
           "raw": {
             "usage": {
               "prompt_tokens": 978,
@@ -748,7 +765,13 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "Maple trees are known for their vibrant fall foliage, which ranges from bright"
+              "text": "Maple trees are known for their vibrant fall foliage, which ranges from bright",
+              "native": {
+                "item": {
+                  "content": "Maple trees are known for their vibrant fall foliage, which ranges from bright"
+                },
+                "fingerprint": 12892780528691665044
+              }
             }
           }
         }
@@ -794,7 +817,13 @@
           "choice": [
             {
               "type": "text",
-              "text": "Maple trees are known for their vibrant fall foliage, which can range from bright yellow to deep red. They are also the source of maple syrup, a popular sweetener made from the tree's sap."
+              "text": "Maple trees are known for their vibrant fall foliage, which can range from bright yellow to deep red. They are also the source of maple syrup, a popular sweetener made from the tree's sap.",
+              "native": {
+                "item": {
+                  "content": "Maple trees are known for their vibrant fall foliage, which can range from bright yellow to deep red. They are also the source of maple syrup, a popular sweetener made from the tree's sap."
+                },
+                "fingerprint": 12554885890915882161
+              }
             }
           ],
           "usage": {
@@ -802,11 +831,22 @@
             "output_tokens": 44,
             "total_tokens": 1022
           },
-          "message_id": null,
-          "response_id": "chatcmpl-RTH1FPzurqvSLVm4V8YR9Y4W",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "venice",
+            "model": "mistral-small-3-2-24b-instruct",
+            "response_model": "mistral-small-3-2-24b-instruct",
+            "response_id": "chatcmpl-RTH1FPzurqvSLVm4V8YR9Y4W"
+          },
+          "native": {
+            "item": {
+              "content": "Maple trees are known for their vibrant fall foliage, which can range from bright yellow to deep red. They are also the source of maple syrup, a popular sweetener made from the tree's sap.",
+              "reasoning_content": null,
+              "role": "assistant"
+            },
+            "fingerprint": 14657935593934698995
+          },
           "finish_reason": "stop",
-          "provider": "venice",
-          "model": "mistral-small-3-2-24b-instruct",
           "raw": {
             "usage": {
               "prompt_tokens": 978,
@@ -1188,7 +1228,13 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "Maple trees are known for their vibrant fall foliage, which can range from bright yellow to deep red. They are also the source of maple syrup, a popular sweetener made from the tree's sap."
+              "text": "Maple trees are known for their vibrant fall foliage, which can range from bright yellow to deep red. They are also the source of maple syrup, a popular sweetener made from the tree's sap.",
+              "native": {
+                "item": {
+                  "content": "Maple trees are known for their vibrant fall foliage, which can range from bright yellow to deep red. They are also the source of maple syrup, a popular sweetener made from the tree's sap."
+                },
+                "fingerprint": 12554885890915882161
+              }
             }
           }
         }

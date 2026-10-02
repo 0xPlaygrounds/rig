@@ -84,7 +84,13 @@
           "choice": [
             {
               "type": "text",
-              "text": "The passphrase for this session is OMEGA-7. I acknowledge and remember it."
+              "text": "The passphrase for this session is OMEGA-7. I acknowledge and remember it.",
+              "native": {
+                "item": {
+                  "text": "The passphrase for this session is OMEGA-7. I acknowledge and remember it."
+                },
+                "fingerprint": 3764943379696188280
+              }
             }
           ],
           "usage": {
@@ -93,11 +99,21 @@
             "total_tokens": 82,
             "reasoning_tokens": 24
           },
-          "message_id": null,
-          "response_id": "pnizavmDAtqgz7IPzKaO-QE",
+          "origin": {
+            "api": "gemini.generate_content",
+            "provider": "gcp.gemini",
+            "model": "gemini-2.5-flash",
+            "response_model": "gemini-2.5-flash",
+            "response_id": "pnizavmDAtqgz7IPzKaO-QE"
+          },
+          "native": {
+            "item": {
+              "finishReason": "STOP",
+              "index": 0
+            },
+            "fingerprint": 8845216623608752644
+          },
           "finish_reason": "stop",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
           "raw": {
             "candidates": [
               {

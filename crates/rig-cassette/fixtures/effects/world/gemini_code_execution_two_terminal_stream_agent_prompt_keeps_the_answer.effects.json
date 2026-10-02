@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 14,
+        "batch": 6,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,7 +10,7 @@
         }
       },
       {
-        "batch": 16,
+        "batch": 8,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -18,7 +18,39 @@
         }
       },
       {
-        "batch": 16,
+        "batch": 11,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 13,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 15,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 17,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 17,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -96,8 +128,54 @@
           "outcome": "completion",
           "choice": [
             {
+              "type": "opaque",
+              "item": {
+                "executableCode": {
+                  "code": "print(987654321 * 123456789)\n",
+                  "language": "PYTHON"
+                }
+              },
+              "replay": true
+            },
+            {
+              "type": "opaque",
+              "item": {
+                "codeExecutionResult": {
+                  "outcome": "OUTCOME_OK",
+                  "output": "121932631112635269\n"
+                }
+              },
+              "replay": true
+            },
+            {
+              "type": "opaque",
+              "item": {
+                "executableCode": {
+                  "code": "N = 121932631112635269\nprint(sum(int(d) for d in str(N)))\n",
+                  "language": "PYTHON"
+                }
+              },
+              "replay": true
+            },
+            {
+              "type": "opaque",
+              "item": {
+                "codeExecutionResult": {
+                  "outcome": "OUTCOME_OK",
+                  "output": "63\n"
+                }
+              },
+              "replay": true
+            },
+            {
               "type": "text",
-              "text": "The first number is 121932631112635269.\nThe second number is 63."
+              "text": "The first number is 121932631112635269.\nThe second number is 63.",
+              "native": {
+                "item": {
+                  "text": "The first number is 121932631112635269.\nThe second number is 63."
+                },
+                "fingerprint": 2812714962323137801
+              }
             }
           ],
           "usage": {
@@ -107,11 +185,21 @@
             "tool_use_prompt_tokens": 574,
             "reasoning_tokens": 211
           },
-          "message_id": null,
-          "response_id": "o3izaofSCeqb6dkP9J27sQk",
+          "origin": {
+            "api": "gemini.generate_content",
+            "provider": "gcp.gemini",
+            "model": "gemini-2.5-flash",
+            "response_model": "gemini-2.5-flash",
+            "response_id": "o3izaofSCeqb6dkP9J27sQk"
+          },
+          "native": {
+            "item": {
+              "index": 0,
+              "finishReason": "STOP"
+            },
+            "fingerprint": 9261435188803935139
+          },
           "finish_reason": "stop",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
           "raw": {
             "usage_metadata": {
               "promptTokenCount": 91,
@@ -144,23 +232,7 @@
           "value": {
             "event": "start",
             "part": 0,
-            "kind": "text"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": "The first number is 12193263"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": "1112635269.\nThe second number is 63."
+            "kind": "opaque"
           }
         },
         {
@@ -169,8 +241,130 @@
             "event": "end",
             "part": 0,
             "content": {
+              "type": "opaque",
+              "item": {
+                "executableCode": {
+                  "code": "print(987654321 * 123456789)\n",
+                  "language": "PYTHON"
+                }
+              },
+              "replay": true
+            }
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 1,
+            "kind": "opaque"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 1,
+            "content": {
+              "type": "opaque",
+              "item": {
+                "codeExecutionResult": {
+                  "outcome": "OUTCOME_OK",
+                  "output": "121932631112635269\n"
+                }
+              },
+              "replay": true
+            }
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 2,
+            "kind": "opaque"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 2,
+            "content": {
+              "type": "opaque",
+              "item": {
+                "executableCode": {
+                  "code": "N = 121932631112635269\nprint(sum(int(d) for d in str(N)))\n",
+                  "language": "PYTHON"
+                }
+              },
+              "replay": true
+            }
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 3,
+            "kind": "opaque"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 3,
+            "content": {
+              "type": "opaque",
+              "item": {
+                "codeExecutionResult": {
+                  "outcome": "OUTCOME_OK",
+                  "output": "63\n"
+                }
+              },
+              "replay": true
+            }
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 4,
+            "kind": "text"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 4,
+            "text": "The first number is 12193263"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 4,
+            "text": "1112635269.\nThe second number is 63."
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 4,
+            "content": {
               "type": "text",
-              "text": "The first number is 121932631112635269.\nThe second number is 63."
+              "text": "The first number is 121932631112635269.\nThe second number is 63.",
+              "native": {
+                "item": {
+                  "text": "The first number is 121932631112635269.\nThe second number is 63."
+                },
+                "fingerprint": 2812714962323137801
+              }
             }
           }
         }

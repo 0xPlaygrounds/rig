@@ -121,9 +121,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_273c91818ed44a4481da6548"
-                }
+                "provider": "call_273c91818ed44a4481da6548"
               },
               "function": {
                 "name": "add",
@@ -132,8 +130,17 @@
                   "y": 25
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"x\": 17, \"y\": 25}",
+                    "name": "add"
+                  },
+                  "id": "call_273c91818ed44a4481da6548",
+                  "type": "function"
+                },
+                "fingerprint": 5075983876293690719
+              }
             }
           ],
           "usage": {
@@ -143,11 +150,31 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": null,
-          "response_id": "gen-1790146006-0iGIDZccgI7nLUzj2CaX",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "doubleword",
+            "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+            "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
+            "response_id": "gen-1790146006-0iGIDZccgI7nLUzj2CaX"
+          },
+          "native": {
+            "item": {
+              "role": "assistant",
+              "content": "",
+              "tool_calls": [
+                {
+                  "function": {
+                    "arguments": "{\"x\": 17, \"y\": 25}",
+                    "name": "add"
+                  },
+                  "id": "call_273c91818ed44a4481da6548",
+                  "type": "function"
+                }
+              ]
+            },
+            "fingerprint": 17168297538378046749
+          },
           "finish_reason": "tool_calls",
-          "provider": "doubleword",
-          "model": "Qwen/Qwen3.5-397B-A17B-FP8",
           "raw": {
             "usage": {
               "prompt_tokens": 346,
@@ -203,9 +230,7 @@
             "content": {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_273c91818ed44a4481da6548"
-                }
+                "provider": "call_273c91818ed44a4481da6548"
               },
               "function": {
                 "name": "add",
@@ -214,8 +239,17 @@
                   "y": 25
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"x\": 17, \"y\": 25}",
+                    "name": "add"
+                  },
+                  "id": "call_273c91818ed44a4481da6548",
+                  "type": "function"
+                },
+                "fingerprint": 5075983876293690719
+              }
             }
           }
         }

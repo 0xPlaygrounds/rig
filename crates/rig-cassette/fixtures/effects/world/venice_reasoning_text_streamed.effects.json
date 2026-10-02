@@ -2,6 +2,14 @@
   "header": {
     "deliveries": [
       {
+        "batch": 4,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
         "batch": 5,
         "id": 0,
         "kind": {
@@ -14,7 +22,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 5
+          "items": 3
         }
       },
       {
@@ -22,7 +30,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 2
         }
       },
       {
@@ -30,7 +38,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 5
+          "items": 3
         }
       },
       {
@@ -38,7 +46,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 4
+          "items": 3
         }
       },
       {
@@ -46,7 +54,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 2
         }
       },
       {
@@ -54,7 +62,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 4
+          "items": 3
         }
       },
       {
@@ -62,7 +70,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 4
         }
       },
       {
@@ -70,7 +78,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 2
         }
       },
       {
@@ -94,7 +102,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 4
+          "items": 3
         }
       },
       {
@@ -110,7 +118,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 4
         }
       },
       {
@@ -118,7 +126,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 3
         }
       },
       {
@@ -126,7 +134,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 5
+          "items": 4
         }
       },
       {
@@ -134,7 +142,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 1
         }
       },
       {
@@ -158,7 +166,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -186,27 +194,11 @@
         }
       },
       {
-        "batch": 28,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
         "batch": 29,
         "id": 0,
         "kind": {
           "delivery": "stream",
           "items": 2
-        }
-      },
-      {
-        "batch": 30,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
         }
       },
       {
@@ -254,7 +246,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -270,7 +262,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 4
+          "items": 1
         }
       },
       {
@@ -278,7 +270,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 17
+          "items": 1
         }
       },
       {
@@ -286,7 +278,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 5
+          "items": 1
         }
       },
       {
@@ -294,7 +286,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 1
         }
       },
       {
@@ -318,7 +310,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 1
         }
       },
       {
@@ -326,7 +318,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -342,7 +334,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -358,7 +350,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -366,7 +358,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -374,7 +366,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -398,7 +390,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -406,7 +398,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -414,7 +406,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -422,7 +414,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -446,7 +438,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -486,7 +478,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -518,7 +510,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -526,7 +518,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -539,14 +531,6 @@
       },
       {
         "batch": 72,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 73,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -582,7 +566,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -590,7 +574,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -622,7 +606,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -638,7 +622,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -662,7 +646,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -678,7 +662,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -710,7 +694,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -731,14 +715,6 @@
       },
       {
         "batch": 96,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 97,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -782,7 +758,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -838,7 +814,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -846,7 +822,15 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
+        }
+      },
+      {
+        "batch": 111,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
         }
       },
       {
@@ -870,7 +854,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -886,7 +870,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -918,11 +902,19 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
         "batch": 121,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 122,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -950,7 +942,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -958,7 +950,15 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
+        }
+      },
+      {
+        "batch": 127,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
         }
       },
       {
@@ -1006,7 +1006,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -1026,31 +1026,7 @@
         }
       },
       {
-        "batch": 136,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
         "batch": 137,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 138,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 139,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -1058,7 +1034,23 @@
         }
       },
       {
+        "batch": 139,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 140,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 141,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -1086,7 +1078,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -1142,7 +1134,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -1162,11 +1154,27 @@
         }
       },
       {
+        "batch": 154,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 155,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
+        }
+      },
+      {
+        "batch": 156,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
         }
       },
       {
@@ -1222,7 +1230,15 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
+        }
+      },
+      {
+        "batch": 165,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
         }
       },
       {
@@ -1230,7 +1246,15 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
+        }
+      },
+      {
+        "batch": 167,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
         }
       },
       {
@@ -1246,7 +1270,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -1283,14 +1307,6 @@
       },
       {
         "batch": 174,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 175,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -1342,7 +1358,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -1354,11 +1370,19 @@
         }
       },
       {
+        "batch": 183,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 184,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -1374,7 +1398,15 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
+        }
+      },
+      {
+        "batch": 187,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
         }
       },
       {
@@ -1390,7 +1422,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -1414,7 +1446,15 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
+        }
+      },
+      {
+        "batch": 193,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
         }
       },
       {
@@ -1442,7 +1482,7 @@
         }
       },
       {
-        "batch": 198,
+        "batch": 197,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -1450,7 +1490,7 @@
         }
       },
       {
-        "batch": 199,
+        "batch": 198,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -1462,15 +1502,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 201,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -1518,11 +1550,19 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
         "batch": 208,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 209,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -1539,6 +1579,14 @@
       },
       {
         "batch": 211,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 212,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -1566,11 +1614,19 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
         "batch": 216,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 217,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -1602,7 +1658,7 @@
         }
       },
       {
-        "batch": 221,
+        "batch": 222,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -1610,11 +1666,35 @@
         }
       },
       {
-        "batch": 222,
+        "batch": 223,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
+        }
+      },
+      {
+        "batch": 224,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 225,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 226,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
         }
       },
       {
@@ -1654,7 +1734,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -1698,11 +1778,27 @@
         }
       },
       {
+        "batch": 237,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 238,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
+        }
+      },
+      {
+        "batch": 239,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
         }
       },
       {
@@ -1818,6 +1914,14 @@
         }
       },
       {
+        "batch": 254,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 255,
         "id": 0,
         "kind": {
@@ -1834,19 +1938,11 @@
         }
       },
       {
-        "batch": 257,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
         "batch": 258,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -1894,7 +1990,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -1907,14 +2003,6 @@
       },
       {
         "batch": 266,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 267,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -1974,7 +2062,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -1990,15 +2078,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 278,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -2058,6 +2138,14 @@
         }
       },
       {
+        "batch": 286,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 287,
         "id": 0,
         "kind": {
@@ -2070,7 +2158,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -2082,7 +2170,7 @@
         }
       },
       {
-        "batch": 290,
+        "batch": 291,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -2090,11 +2178,11 @@
         }
       },
       {
-        "batch": 291,
+        "batch": 292,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -2102,7 +2190,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -2218,7 +2306,7 @@
         }
       },
       {
-        "batch": 309,
+        "batch": 308,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -2238,19 +2326,11 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
         "batch": 312,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 313,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -2362,6 +2442,14 @@
         }
       },
       {
+        "batch": 327,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 328,
         "id": 0,
         "kind": {
@@ -2374,7 +2462,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -2387,6 +2475,14 @@
       },
       {
         "batch": 331,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 332,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -2450,7 +2546,7 @@
         }
       },
       {
-        "batch": 340,
+        "batch": 341,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -2458,7 +2554,7 @@
         }
       },
       {
-        "batch": 341,
+        "batch": 342,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -2482,6 +2578,14 @@
         }
       },
       {
+        "batch": 345,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 346,
         "id": 0,
         "kind": {
@@ -2491,6 +2595,14 @@
       },
       {
         "batch": 347,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 348,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -2538,6 +2650,14 @@
         }
       },
       {
+        "batch": 354,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 355,
         "id": 0,
         "kind": {
@@ -2559,14 +2679,6 @@
         "kind": {
           "delivery": "stream",
           "items": 1
-        }
-      },
-      {
-        "batch": 358,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
         }
       },
       {
@@ -2594,11 +2706,27 @@
         }
       },
       {
+        "batch": 362,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 363,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
+        }
+      },
+      {
+        "batch": 364,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
         }
       },
       {
@@ -2642,6 +2770,14 @@
         }
       },
       {
+        "batch": 370,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 371,
         "id": 0,
         "kind": {
@@ -2659,6 +2795,14 @@
       },
       {
         "batch": 373,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 374,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -2714,14 +2858,6 @@
         }
       },
       {
-        "batch": 381,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
         "batch": 382,
         "id": 0,
         "kind": {
@@ -2742,7 +2878,15 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
+        }
+      },
+      {
+        "batch": 385,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
         }
       },
       {
@@ -2750,7 +2894,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -2786,11 +2930,19 @@
         }
       },
       {
+        "batch": 391,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 392,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -2810,7 +2962,7 @@
         }
       },
       {
-        "batch": 396,
+        "batch": 395,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -2850,6 +3002,22 @@
         }
       },
       {
+        "batch": 401,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 402,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 403,
         "id": 0,
         "kind": {
@@ -2882,6 +3050,14 @@
         }
       },
       {
+        "batch": 407,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 408,
         "id": 0,
         "kind": {
@@ -2898,7 +3074,15 @@
         }
       },
       {
-        "batch": 410,
+        "batch": 411,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 412,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -2906,7 +3090,7 @@
         }
       },
       {
-        "batch": 412,
+        "batch": 413,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -2942,7 +3126,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -2954,7 +3138,23 @@
         }
       },
       {
+        "batch": 420,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 421,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 422,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -2978,7 +3178,23 @@
         }
       },
       {
+        "batch": 425,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 426,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 427,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -2990,7 +3206,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 6
+          "items": 1
         }
       },
       {
@@ -3003,14 +3219,6 @@
       },
       {
         "batch": 430,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 431,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -3042,7 +3250,191 @@
         }
       },
       {
+        "batch": 435,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 436,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 437,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 438,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 439,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 440,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 441,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 442,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 443,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 444,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 445,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 446,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 447,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 448,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 449,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 450,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 451,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 452,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 453,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 454,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 455,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 456,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 457,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 458,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -3058,6 +3450,14 @@
         }
       },
       {
+        "batch": 460,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 461,
         "id": 0,
         "kind": {
@@ -3066,7 +3466,23 @@
         }
       },
       {
+        "batch": 462,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 463,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 464,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -3122,7 +3538,7 @@
         }
       },
       {
-        "batch": 471,
+        "batch": 472,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -3147,6 +3563,14 @@
       },
       {
         "batch": 475,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 476,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -3194,6 +3618,14 @@
         }
       },
       {
+        "batch": 482,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 483,
         "id": 0,
         "kind": {
@@ -3219,6 +3651,14 @@
       },
       {
         "batch": 486,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 487,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -3259,6 +3699,14 @@
       },
       {
         "batch": 492,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 493,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -3314,6 +3762,14 @@
         }
       },
       {
+        "batch": 500,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 501,
         "id": 0,
         "kind": {
@@ -3347,6 +3803,14 @@
       },
       {
         "batch": 505,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 506,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -3482,14 +3946,6 @@
         }
       },
       {
-        "batch": 523,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
         "batch": 524,
         "id": 0,
         "kind": {
@@ -3618,6 +4074,14 @@
         }
       },
       {
+        "batch": 540,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 541,
         "id": 0,
         "kind": {
@@ -3698,7 +4162,71 @@
         }
       },
       {
+        "batch": 551,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 552,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 553,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 554,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 555,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 556,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 557,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 558,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 559,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -3718,7 +4246,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -3738,11 +4266,19 @@
         }
       },
       {
+        "batch": 564,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 565,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -3771,14 +4307,6 @@
       },
       {
         "batch": 569,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 570,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -3838,7 +4366,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -3862,11 +4390,19 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
         "batch": 581,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 582,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -3890,7 +4426,23 @@
         }
       },
       {
-        "batch": 585,
+        "batch": 586,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 587,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 588,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -3922,6 +4474,14 @@
         }
       },
       {
+        "batch": 592,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 593,
         "id": 0,
         "kind": {
@@ -3938,7 +4498,23 @@
         }
       },
       {
+        "batch": 595,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 596,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 597,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -3955,6 +4531,14 @@
       },
       {
         "batch": 599,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 600,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -3998,11 +4582,11 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
-        "batch": 606,
+        "batch": 607,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -4014,7 +4598,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -4102,7 +4686,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -4118,7 +4702,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -4234,31 +4818,15 @@
         }
       },
       {
-        "batch": 637,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
         "batch": 638,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
         "batch": 639,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 640,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -4278,7 +4846,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -4307,6 +4875,14 @@
       },
       {
         "batch": 646,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 647,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -4398,7 +4974,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -4418,19 +4994,11 @@
         }
       },
       {
-        "batch": 661,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
         "batch": 662,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -4442,11 +5010,43 @@
         }
       },
       {
+        "batch": 664,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 665,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 667,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 668,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 669,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 6
+          "items": 1
         }
       },
       {
@@ -4458,11 +5058,19 @@
         }
       },
       {
+        "batch": 671,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 672,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -4491,6 +5099,14 @@
       },
       {
         "batch": 676,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 677,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -4542,11 +5158,19 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
         "batch": 684,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 685,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -4586,19 +5210,11 @@
         }
       },
       {
-        "batch": 690,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
         "batch": 691,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -4610,7 +5226,191 @@
         }
       },
       {
+        "batch": 693,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 694,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 695,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 696,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 697,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 699,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 700,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 701,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 702,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 703,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 704,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 705,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 706,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 707,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 708,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 710,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 711,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 712,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 714,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 715,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 716,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 717,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 719,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 720,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -4670,7 +5470,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -4686,7 +5486,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -4742,7 +5542,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -4786,6 +5586,14 @@
         }
       },
       {
+        "batch": 742,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 743,
         "id": 0,
         "kind": {
@@ -4806,7 +5614,15 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
+        }
+      },
+      {
+        "batch": 746,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
         }
       },
       {
@@ -4819,14 +5635,6 @@
       },
       {
         "batch": 748,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 749,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -4890,6 +5698,14 @@
         }
       },
       {
+        "batch": 757,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 758,
         "id": 0,
         "kind": {
@@ -4926,7 +5742,15 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
+        }
+      },
+      {
+        "batch": 763,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
         }
       },
       {
@@ -5034,6 +5858,14 @@
         }
       },
       {
+        "batch": 777,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 778,
         "id": 0,
         "kind": {
@@ -5090,14 +5922,6 @@
         }
       },
       {
-        "batch": 785,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
         "batch": 786,
         "id": 0,
         "kind": {
@@ -5138,6 +5962,14 @@
         }
       },
       {
+        "batch": 791,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 792,
         "id": 0,
         "kind": {
@@ -5154,7 +5986,31 @@
         }
       },
       {
+        "batch": 794,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 795,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 796,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 797,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -5178,11 +6034,115 @@
         }
       },
       {
+        "batch": 800,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 801,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 802,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 803,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 804,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 805,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 806,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 807,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 808,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 809,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 810,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 811,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 812,
         "id": 0,
         "kind": {
           "delivery": "stream",
           "items": 1
+        }
+      },
+      {
+        "batch": 813,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
         }
       },
       {
@@ -5194,7 +6154,39 @@
         }
       },
       {
+        "batch": 815,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 816,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 817,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 818,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 819,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -5214,7 +6206,15 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
+        }
+      },
+      {
+        "batch": 822,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
         }
       },
       {
@@ -5266,15 +6266,15 @@
         }
       },
       {
-        "batch": 829,
+        "batch": 830,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
-        "batch": 830,
+        "batch": 831,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -5302,7 +6302,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -5314,19 +6314,11 @@
         }
       },
       {
-        "batch": 836,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
         "batch": 837,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -5350,7 +6342,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -5378,19 +6370,11 @@
         }
       },
       {
-        "batch": 844,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
         "batch": 845,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -5418,14 +6402,6 @@
         }
       },
       {
-        "batch": 849,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
         "batch": 850,
         "id": 0,
         "kind": {
@@ -5438,7 +6414,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -5502,7 +6478,15 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
+        }
+      },
+      {
+        "batch": 860,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
         }
       },
       {
@@ -5510,7 +6494,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -5562,6 +6546,14 @@
         }
       },
       {
+        "batch": 868,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 869,
         "id": 0,
         "kind": {
@@ -5590,19 +6582,11 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 874,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
           "items": 1
         }
       },
       {
-        "batch": 875,
+        "batch": 873,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -5614,163 +6598,11 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 877,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 878,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 879,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 880,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 881,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 882,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 883,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 884,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 885,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 886,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 887,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 888,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 889,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 890,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 891,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 892,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
           "items": 2
         }
       },
       {
-        "batch": 893,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 895,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 897,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 897,
+        "batch": 876,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -5847,20 +6679,23 @@
           "choice": [
             {
               "type": "reasoning",
-              "issuer": "venice",
-              "id": null,
-              "content": [
-                {
-                  "type": "text",
-                  "content": {
-                    "text": "Here's a thinking process:\n\n1.  **Analyze User Input:**\n   - **Question:** Explain what Rust programming language is and why memory safety matters.\n   - **Constraint:** One or two sentences.\n   - **Key Concepts to Cover:** What Rust is, why memory safety matters.\n\n2.  **Define Rust (Core Concept):**\n   - Rust is a systems programming language focused on performance, concurrency, and safety.\n   - It uses a unique ownership/borrowing system to guarantee memory safety without a garbage collector.\n\n3.  **Define Memory Safety (Core Concept):**\n   - Memory safety prevents bugs like buffer overflows, use-after-free, and data races.\n   - It matters because these bugs cause crashes, security vulnerabilities, and unpredictable behavior, especially in low-level/systems code.\n\n4.  **Draft - Sentence 1 (What Rust is):**\n   Rust is a systems programming language designed to deliver high performance and concurrency while guaranteeing memory safety through its innovative ownership and borrowing system, eliminating the need for a garbage collector.\n\n5.  **Draft - Sentence 2 (Why memory safety matters):**\n   Memory safety matters because it prevents critical bugs like buffer overflows and data races, which are common sources of software crashes, security vulnerabilities, and unpredictable behavior in low-level code.\n\n6.  **Check Constraints:**\n   - One or two sentences? Yes, exactly two.\n   - Explains what Rust is? Yes.\n   - Explains why memory safety matters? Yes.\n   - Concise? Yes.\n   - Matches language/rules? Yes.\n\n7.  **Refine (Self-Correction/Verification):**\n   Let's combine/adjust slightly to ensure it flows well and strictly meets the constraint.\n   \"Rust is a systems programming language that guarantees memory safety and high performance through its unique ownership model, eliminating the need for a garbage collector. Memory safety matters because it prevents critical bugs like buffer overflows and data races, which are common causes of software crashes, security vulnerabilities, and unpredictable behavior.\"\n   This is exactly two sentences. Covers both parts clearly. Meets all constraints.\n\n   Final check against rules: No URLs, direct answer, matches prompt language, concise. Ready.✅\n   Output matches the refined version. \n   Proceed. \n   Output generation. \n   [Output matches the refined version]✅\n   \"Rust is a systems programming language that guarantees memory safety and high performance through its unique ownership model, eliminating the need for a garbage collector. Memory safety matters because it prevents critical bugs like buffer overflows and data races, which are common causes of software crashes, security vulnerabilities, and unpredictable behavior.\" -> Exactly 2 sentences. Covers both points. Meets constraints. All good. \n   Output matches. \n   [Done.] \n   *Self-Correction/Verification during thought*: \n   Check constraint: \"In one or two sentences\". The draft is exactly two. Good.\n   Check content: Rust definition + memory safety importance. Good.\n   No extra fluff. Direct. Matches all rules.\n   Proceed. \n   Output generation. \n   [Output] Rust is a systems programming language that guarantees memory safety and high performance through its unique ownership model, eliminating the need for a garbage collector. Memory safety matters because it prevents critical bugs like buffer overflows and data races, which are common causes of software crashes, security vulnerabilities, and unpredictable behavior.✅\n   All steps verified. Output matches response. \n   [Final Check of the Prompt]: \"In one or two sentences, explain what Rust programming language is and why memory safety matters.\" -> Matches perfectly. \n   Proceeds. \n   [Output Generation] (matches the refined version)\n   \"Rust is a systems programming language that guarantees memory safety and high performance through its unique ownership model, eliminating the need for a garbage collector. Memory safety matters because it prevents critical bugs like buffer overflows and data races, which are common causes of software crashes, security vulnerabilities, and unpredictable behavior.\" -> 2 sentences. Covers both. Direct. Complies.✅\n   Done. \n   [Output Generation] (Proceeds)\n"
-                  }
-                }
-              ]
+              "text": "Here's a thinking process:\n\n1.  **Analyze User Input:**\n   - **Question:** Explain what Rust programming language is and why memory safety matters.\n   - **Constraint:** One or two sentences.\n   - **Key Concepts to Cover:** What Rust is, why memory safety matters.\n\n2.  **Define Rust (Core Concept):**\n   - Rust is a systems programming language focused on performance, concurrency, and safety.\n   - It uses a unique ownership/borrowing system to guarantee memory safety without a garbage collector.\n\n3.  **Define Memory Safety (Core Concept):**\n   - Memory safety prevents bugs like buffer overflows, use-after-free, and data races.\n   - It matters because these bugs cause crashes, security vulnerabilities, and unpredictable behavior, especially in low-level/systems code.\n\n4.  **Draft - Sentence 1 (What Rust is):**\n   Rust is a systems programming language designed to deliver high performance and concurrency while guaranteeing memory safety through its innovative ownership and borrowing system, eliminating the need for a garbage collector.\n\n5.  **Draft - Sentence 2 (Why memory safety matters):**\n   Memory safety matters because it prevents critical bugs like buffer overflows and data races, which are common sources of software crashes, security vulnerabilities, and unpredictable behavior in low-level code.\n\n6.  **Check Constraints:**\n   - One or two sentences? Yes, exactly two.\n   - Explains what Rust is? Yes.\n   - Explains why memory safety matters? Yes.\n   - Concise? Yes.\n   - Matches language/rules? Yes.\n\n7.  **Refine (Self-Correction/Verification):**\n   Let's combine/adjust slightly to ensure it flows well and strictly meets the constraint.\n   \"Rust is a systems programming language that guarantees memory safety and high performance through its unique ownership model, eliminating the need for a garbage collector. Memory safety matters because it prevents critical bugs like buffer overflows and data races, which are common causes of software crashes, security vulnerabilities, and unpredictable behavior.\"\n   This is exactly two sentences. Covers both parts clearly. Meets all constraints.\n\n   Final check against rules: No URLs, direct answer, matches prompt language, concise. Ready.✅\n   Output matches the refined version. \n   Proceed. \n   Output generation. \n   [Output matches the refined version]✅\n   \"Rust is a systems programming language that guarantees memory safety and high performance through its unique ownership model, eliminating the need for a garbage collector. Memory safety matters because it prevents critical bugs like buffer overflows and data races, which are common causes of software crashes, security vulnerabilities, and unpredictable behavior.\" -> Exactly 2 sentences. Covers both points. Meets constraints. All good. \n   Output matches. \n   [Done.] \n   *Self-Correction/Verification during thought*: \n   Check constraint: \"In one or two sentences\". The draft is exactly two. Good.\n   Check content: Rust definition + memory safety importance. Good.\n   No extra fluff. Direct. Matches all rules.\n   Proceed. \n   Output generation. \n   [Output] Rust is a systems programming language that guarantees memory safety and high performance through its unique ownership model, eliminating the need for a garbage collector. Memory safety matters because it prevents critical bugs like buffer overflows and data races, which are common causes of software crashes, security vulnerabilities, and unpredictable behavior.✅\n   All steps verified. Output matches response. \n   [Final Check of the Prompt]: \"In one or two sentences, explain what Rust programming language is and why memory safety matters.\" -> Matches perfectly. \n   Proceeds. \n   [Output Generation] (matches the refined version)\n   \"Rust is a systems programming language that guarantees memory safety and high performance through its unique ownership model, eliminating the need for a garbage collector. Memory safety matters because it prevents critical bugs like buffer overflows and data races, which are common causes of software crashes, security vulnerabilities, and unpredictable behavior.\" -> 2 sentences. Covers both. Direct. Complies.✅\n   Done. \n   [Output Generation] (Proceeds)\n",
+              "native": {
+                "item": {
+                  "reasoning_content": "Here's a thinking process:\n\n1.  **Analyze User Input:**\n   - **Question:** Explain what Rust programming language is and why memory safety matters.\n   - **Constraint:** One or two sentences.\n   - **Key Concepts to Cover:** What Rust is, why memory safety matters.\n\n2.  **Define Rust (Core Concept):**\n   - Rust is a systems programming language focused on performance, concurrency, and safety.\n   - It uses a unique ownership/borrowing system to guarantee memory safety without a garbage collector.\n\n3.  **Define Memory Safety (Core Concept):**\n   - Memory safety prevents bugs like buffer overflows, use-after-free, and data races.\n   - It matters because these bugs cause crashes, security vulnerabilities, and unpredictable behavior, especially in low-level/systems code.\n\n4.  **Draft - Sentence 1 (What Rust is):**\n   Rust is a systems programming language designed to deliver high performance and concurrency while guaranteeing memory safety through its innovative ownership and borrowing system, eliminating the need for a garbage collector.\n\n5.  **Draft - Sentence 2 (Why memory safety matters):**\n   Memory safety matters because it prevents critical bugs like buffer overflows and data races, which are common sources of software crashes, security vulnerabilities, and unpredictable behavior in low-level code.\n\n6.  **Check Constraints:**\n   - One or two sentences? Yes, exactly two.\n   - Explains what Rust is? Yes.\n   - Explains why memory safety matters? Yes.\n   - Concise? Yes.\n   - Matches language/rules? Yes.\n\n7.  **Refine (Self-Correction/Verification):**\n   Let's combine/adjust slightly to ensure it flows well and strictly meets the constraint.\n   \"Rust is a systems programming language that guarantees memory safety and high performance through its unique ownership model, eliminating the need for a garbage collector. Memory safety matters because it prevents critical bugs like buffer overflows and data races, which are common causes of software crashes, security vulnerabilities, and unpredictable behavior.\"\n   This is exactly two sentences. Covers both parts clearly. Meets all constraints.\n\n   Final check against rules: No URLs, direct answer, matches prompt language, concise. Ready.✅\n   Output matches the refined version. \n   Proceed. \n   Output generation. \n   [Output matches the refined version]✅\n   \"Rust is a systems programming language that guarantees memory safety and high performance through its unique ownership model, eliminating the need for a garbage collector. Memory safety matters because it prevents critical bugs like buffer overflows and data races, which are common causes of software crashes, security vulnerabilities, and unpredictable behavior.\" -> Exactly 2 sentences. Covers both points. Meets constraints. All good. \n   Output matches. \n   [Done.] \n   *Self-Correction/Verification during thought*: \n   Check constraint: \"In one or two sentences\". The draft is exactly two. Good.\n   Check content: Rust definition + memory safety importance. Good.\n   No extra fluff. Direct. Matches all rules.\n   Proceed. \n   Output generation. \n   [Output] Rust is a systems programming language that guarantees memory safety and high performance through its unique ownership model, eliminating the need for a garbage collector. Memory safety matters because it prevents critical bugs like buffer overflows and data races, which are common causes of software crashes, security vulnerabilities, and unpredictable behavior.✅\n   All steps verified. Output matches response. \n   [Final Check of the Prompt]: \"In one or two sentences, explain what Rust programming language is and why memory safety matters.\" -> Matches perfectly. \n   Proceeds. \n   [Output Generation] (matches the refined version)\n   \"Rust is a systems programming language that guarantees memory safety and high performance through its unique ownership model, eliminating the need for a garbage collector. Memory safety matters because it prevents critical bugs like buffer overflows and data races, which are common causes of software crashes, security vulnerabilities, and unpredictable behavior.\" -> 2 sentences. Covers both. Direct. Complies.✅\n   Done. \n   [Output Generation] (Proceeds)\n"
+                },
+                "fingerprint": 6391539751853797474
+              }
             },
             {
               "type": "text",
-              "text": "\n\nRust is a systems programming language that guarantees memory safety and high performance through its unique ownership and borrowing model, eliminating the need for a garbage collector. Memory safety matters because it prevents critical bugs like buffer overflows and data races, which are frequent causes of software crashes, security vulnerabilities, and unpredictable behavior in low-level code."
+              "text": "\n\nRust is a systems programming language that guarantees memory safety and high performance through its unique ownership and borrowing model, eliminating the need for a garbage collector. Memory safety matters because it prevents critical bugs like buffer overflows and data races, which are frequent causes of software crashes, security vulnerabilities, and unpredictable behavior in low-level code.",
+              "native": {
+                "item": {
+                  "content": "\n\nRust is a systems programming language that guarantees memory safety and high performance through its unique ownership and borrowing model, eliminating the need for a garbage collector. Memory safety matters because it prevents critical bugs like buffer overflows and data races, which are frequent causes of software crashes, security vulnerabilities, and unpredictable behavior in low-level code."
+                },
+                "fingerprint": 13599360546705150091
+              }
             }
           ],
           "usage": {
@@ -5868,11 +6703,22 @@
             "output_tokens": 938,
             "total_tokens": 1944
           },
-          "message_id": null,
-          "response_id": "chatcmpl-RR0NS98V91en94tElVzFWAdT",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "venice",
+            "model": "qwen3-235b-a22b-thinking-2507",
+            "response_model": "qwen3-235b-a22b-thinking-2507",
+            "response_id": "chatcmpl-RR0NS98V91en94tElVzFWAdT"
+          },
+          "native": {
+            "item": {
+              "content": "\n\nRust is a systems programming language that guarantees memory safety and high performance through its unique ownership and borrowing model, eliminating the need for a garbage collector. Memory safety matters because it prevents critical bugs like buffer overflows and data races, which are frequent causes of software crashes, security vulnerabilities, and unpredictable behavior in low-level code.",
+              "reasoning_content": "Here's a thinking process:\n\n1.  **Analyze User Input:**\n   - **Question:** Explain what Rust programming language is and why memory safety matters.\n   - **Constraint:** One or two sentences.\n   - **Key Concepts to Cover:** What Rust is, why memory safety matters.\n\n2.  **Define Rust (Core Concept):**\n   - Rust is a systems programming language focused on performance, concurrency, and safety.\n   - It uses a unique ownership/borrowing system to guarantee memory safety without a garbage collector.\n\n3.  **Define Memory Safety (Core Concept):**\n   - Memory safety prevents bugs like buffer overflows, use-after-free, and data races.\n   - It matters because these bugs cause crashes, security vulnerabilities, and unpredictable behavior, especially in low-level/systems code.\n\n4.  **Draft - Sentence 1 (What Rust is):**\n   Rust is a systems programming language designed to deliver high performance and concurrency while guaranteeing memory safety through its innovative ownership and borrowing system, eliminating the need for a garbage collector.\n\n5.  **Draft - Sentence 2 (Why memory safety matters):**\n   Memory safety matters because it prevents critical bugs like buffer overflows and data races, which are common sources of software crashes, security vulnerabilities, and unpredictable behavior in low-level code.\n\n6.  **Check Constraints:**\n   - One or two sentences? Yes, exactly two.\n   - Explains what Rust is? Yes.\n   - Explains why memory safety matters? Yes.\n   - Concise? Yes.\n   - Matches language/rules? Yes.\n\n7.  **Refine (Self-Correction/Verification):**\n   Let's combine/adjust slightly to ensure it flows well and strictly meets the constraint.\n   \"Rust is a systems programming language that guarantees memory safety and high performance through its unique ownership model, eliminating the need for a garbage collector. Memory safety matters because it prevents critical bugs like buffer overflows and data races, which are common causes of software crashes, security vulnerabilities, and unpredictable behavior.\"\n   This is exactly two sentences. Covers both parts clearly. Meets all constraints.\n\n   Final check against rules: No URLs, direct answer, matches prompt language, concise. Ready.✅\n   Output matches the refined version. \n   Proceed. \n   Output generation. \n   [Output matches the refined version]✅\n   \"Rust is a systems programming language that guarantees memory safety and high performance through its unique ownership model, eliminating the need for a garbage collector. Memory safety matters because it prevents critical bugs like buffer overflows and data races, which are common causes of software crashes, security vulnerabilities, and unpredictable behavior.\" -> Exactly 2 sentences. Covers both points. Meets constraints. All good. \n   Output matches. \n   [Done.] \n   *Self-Correction/Verification during thought*: \n   Check constraint: \"In one or two sentences\". The draft is exactly two. Good.\n   Check content: Rust definition + memory safety importance. Good.\n   No extra fluff. Direct. Matches all rules.\n   Proceed. \n   Output generation. \n   [Output] Rust is a systems programming language that guarantees memory safety and high performance through its unique ownership model, eliminating the need for a garbage collector. Memory safety matters because it prevents critical bugs like buffer overflows and data races, which are common causes of software crashes, security vulnerabilities, and unpredictable behavior.✅\n   All steps verified. Output matches response. \n   [Final Check of the Prompt]: \"In one or two sentences, explain what Rust programming language is and why memory safety matters.\" -> Matches perfectly. \n   Proceeds. \n   [Output Generation] (matches the refined version)\n   \"Rust is a systems programming language that guarantees memory safety and high performance through its unique ownership model, eliminating the need for a garbage collector. Memory safety matters because it prevents critical bugs like buffer overflows and data races, which are common causes of software crashes, security vulnerabilities, and unpredictable behavior.\" -> 2 sentences. Covers both. Direct. Complies.✅\n   Done. \n   [Output Generation] (Proceeds)\n",
+              "role": "assistant"
+            },
+            "fingerprint": 17319134255221908732
+          },
           "finish_reason": "stop",
-          "provider": "venice",
-          "model": "qwen3-235b-a22b-thinking-2507",
           "raw": {
             "usage": {
               "prompt_tokens": 1006,
@@ -12931,10 +13777,16 @@
           "item": "event",
           "value": {
             "event": "end",
-            "part": 1,
+            "part": 0,
             "content": {
-              "type": "text",
-              "text": "\n\nRust is a systems programming language that guarantees memory safety and high performance through its unique ownership and borrowing model, eliminating the need for a garbage collector. Memory safety matters because it prevents critical bugs like buffer overflows and data races, which are frequent causes of software crashes, security vulnerabilities, and unpredictable behavior in low-level code."
+              "type": "reasoning",
+              "text": "Here's a thinking process:\n\n1.  **Analyze User Input:**\n   - **Question:** Explain what Rust programming language is and why memory safety matters.\n   - **Constraint:** One or two sentences.\n   - **Key Concepts to Cover:** What Rust is, why memory safety matters.\n\n2.  **Define Rust (Core Concept):**\n   - Rust is a systems programming language focused on performance, concurrency, and safety.\n   - It uses a unique ownership/borrowing system to guarantee memory safety without a garbage collector.\n\n3.  **Define Memory Safety (Core Concept):**\n   - Memory safety prevents bugs like buffer overflows, use-after-free, and data races.\n   - It matters because these bugs cause crashes, security vulnerabilities, and unpredictable behavior, especially in low-level/systems code.\n\n4.  **Draft - Sentence 1 (What Rust is):**\n   Rust is a systems programming language designed to deliver high performance and concurrency while guaranteeing memory safety through its innovative ownership and borrowing system, eliminating the need for a garbage collector.\n\n5.  **Draft - Sentence 2 (Why memory safety matters):**\n   Memory safety matters because it prevents critical bugs like buffer overflows and data races, which are common sources of software crashes, security vulnerabilities, and unpredictable behavior in low-level code.\n\n6.  **Check Constraints:**\n   - One or two sentences? Yes, exactly two.\n   - Explains what Rust is? Yes.\n   - Explains why memory safety matters? Yes.\n   - Concise? Yes.\n   - Matches language/rules? Yes.\n\n7.  **Refine (Self-Correction/Verification):**\n   Let's combine/adjust slightly to ensure it flows well and strictly meets the constraint.\n   \"Rust is a systems programming language that guarantees memory safety and high performance through its unique ownership model, eliminating the need for a garbage collector. Memory safety matters because it prevents critical bugs like buffer overflows and data races, which are common causes of software crashes, security vulnerabilities, and unpredictable behavior.\"\n   This is exactly two sentences. Covers both parts clearly. Meets all constraints.\n\n   Final check against rules: No URLs, direct answer, matches prompt language, concise. Ready.✅\n   Output matches the refined version. \n   Proceed. \n   Output generation. \n   [Output matches the refined version]✅\n   \"Rust is a systems programming language that guarantees memory safety and high performance through its unique ownership model, eliminating the need for a garbage collector. Memory safety matters because it prevents critical bugs like buffer overflows and data races, which are common causes of software crashes, security vulnerabilities, and unpredictable behavior.\" -> Exactly 2 sentences. Covers both points. Meets constraints. All good. \n   Output matches. \n   [Done.] \n   *Self-Correction/Verification during thought*: \n   Check constraint: \"In one or two sentences\". The draft is exactly two. Good.\n   Check content: Rust definition + memory safety importance. Good.\n   No extra fluff. Direct. Matches all rules.\n   Proceed. \n   Output generation. \n   [Output] Rust is a systems programming language that guarantees memory safety and high performance through its unique ownership model, eliminating the need for a garbage collector. Memory safety matters because it prevents critical bugs like buffer overflows and data races, which are common causes of software crashes, security vulnerabilities, and unpredictable behavior.✅\n   All steps verified. Output matches response. \n   [Final Check of the Prompt]: \"In one or two sentences, explain what Rust programming language is and why memory safety matters.\" -> Matches perfectly. \n   Proceeds. \n   [Output Generation] (matches the refined version)\n   \"Rust is a systems programming language that guarantees memory safety and high performance through its unique ownership model, eliminating the need for a garbage collector. Memory safety matters because it prevents critical bugs like buffer overflows and data races, which are common causes of software crashes, security vulnerabilities, and unpredictable behavior.\" -> 2 sentences. Covers both. Direct. Complies.✅\n   Done. \n   [Output Generation] (Proceeds)\n",
+              "native": {
+                "item": {
+                  "reasoning_content": "Here's a thinking process:\n\n1.  **Analyze User Input:**\n   - **Question:** Explain what Rust programming language is and why memory safety matters.\n   - **Constraint:** One or two sentences.\n   - **Key Concepts to Cover:** What Rust is, why memory safety matters.\n\n2.  **Define Rust (Core Concept):**\n   - Rust is a systems programming language focused on performance, concurrency, and safety.\n   - It uses a unique ownership/borrowing system to guarantee memory safety without a garbage collector.\n\n3.  **Define Memory Safety (Core Concept):**\n   - Memory safety prevents bugs like buffer overflows, use-after-free, and data races.\n   - It matters because these bugs cause crashes, security vulnerabilities, and unpredictable behavior, especially in low-level/systems code.\n\n4.  **Draft - Sentence 1 (What Rust is):**\n   Rust is a systems programming language designed to deliver high performance and concurrency while guaranteeing memory safety through its innovative ownership and borrowing system, eliminating the need for a garbage collector.\n\n5.  **Draft - Sentence 2 (Why memory safety matters):**\n   Memory safety matters because it prevents critical bugs like buffer overflows and data races, which are common sources of software crashes, security vulnerabilities, and unpredictable behavior in low-level code.\n\n6.  **Check Constraints:**\n   - One or two sentences? Yes, exactly two.\n   - Explains what Rust is? Yes.\n   - Explains why memory safety matters? Yes.\n   - Concise? Yes.\n   - Matches language/rules? Yes.\n\n7.  **Refine (Self-Correction/Verification):**\n   Let's combine/adjust slightly to ensure it flows well and strictly meets the constraint.\n   \"Rust is a systems programming language that guarantees memory safety and high performance through its unique ownership model, eliminating the need for a garbage collector. Memory safety matters because it prevents critical bugs like buffer overflows and data races, which are common causes of software crashes, security vulnerabilities, and unpredictable behavior.\"\n   This is exactly two sentences. Covers both parts clearly. Meets all constraints.\n\n   Final check against rules: No URLs, direct answer, matches prompt language, concise. Ready.✅\n   Output matches the refined version. \n   Proceed. \n   Output generation. \n   [Output matches the refined version]✅\n   \"Rust is a systems programming language that guarantees memory safety and high performance through its unique ownership model, eliminating the need for a garbage collector. Memory safety matters because it prevents critical bugs like buffer overflows and data races, which are common causes of software crashes, security vulnerabilities, and unpredictable behavior.\" -> Exactly 2 sentences. Covers both points. Meets constraints. All good. \n   Output matches. \n   [Done.] \n   *Self-Correction/Verification during thought*: \n   Check constraint: \"In one or two sentences\". The draft is exactly two. Good.\n   Check content: Rust definition + memory safety importance. Good.\n   No extra fluff. Direct. Matches all rules.\n   Proceed. \n   Output generation. \n   [Output] Rust is a systems programming language that guarantees memory safety and high performance through its unique ownership model, eliminating the need for a garbage collector. Memory safety matters because it prevents critical bugs like buffer overflows and data races, which are common causes of software crashes, security vulnerabilities, and unpredictable behavior.✅\n   All steps verified. Output matches response. \n   [Final Check of the Prompt]: \"In one or two sentences, explain what Rust programming language is and why memory safety matters.\" -> Matches perfectly. \n   Proceeds. \n   [Output Generation] (matches the refined version)\n   \"Rust is a systems programming language that guarantees memory safety and high performance through its unique ownership model, eliminating the need for a garbage collector. Memory safety matters because it prevents critical bugs like buffer overflows and data races, which are common causes of software crashes, security vulnerabilities, and unpredictable behavior.\" -> 2 sentences. Covers both. Direct. Complies.✅\n   Done. \n   [Output Generation] (Proceeds)\n"
+                },
+                "fingerprint": 6391539751853797474
+              }
             }
           }
         },
@@ -12942,19 +13794,16 @@
           "item": "event",
           "value": {
             "event": "end",
-            "part": 0,
+            "part": 1,
             "content": {
-              "type": "reasoning",
-              "issuer": "venice",
-              "id": null,
-              "content": [
-                {
-                  "type": "text",
-                  "content": {
-                    "text": "Here's a thinking process:\n\n1.  **Analyze User Input:**\n   - **Question:** Explain what Rust programming language is and why memory safety matters.\n   - **Constraint:** One or two sentences.\n   - **Key Concepts to Cover:** What Rust is, why memory safety matters.\n\n2.  **Define Rust (Core Concept):**\n   - Rust is a systems programming language focused on performance, concurrency, and safety.\n   - It uses a unique ownership/borrowing system to guarantee memory safety without a garbage collector.\n\n3.  **Define Memory Safety (Core Concept):**\n   - Memory safety prevents bugs like buffer overflows, use-after-free, and data races.\n   - It matters because these bugs cause crashes, security vulnerabilities, and unpredictable behavior, especially in low-level/systems code.\n\n4.  **Draft - Sentence 1 (What Rust is):**\n   Rust is a systems programming language designed to deliver high performance and concurrency while guaranteeing memory safety through its innovative ownership and borrowing system, eliminating the need for a garbage collector.\n\n5.  **Draft - Sentence 2 (Why memory safety matters):**\n   Memory safety matters because it prevents critical bugs like buffer overflows and data races, which are common sources of software crashes, security vulnerabilities, and unpredictable behavior in low-level code.\n\n6.  **Check Constraints:**\n   - One or two sentences? Yes, exactly two.\n   - Explains what Rust is? Yes.\n   - Explains why memory safety matters? Yes.\n   - Concise? Yes.\n   - Matches language/rules? Yes.\n\n7.  **Refine (Self-Correction/Verification):**\n   Let's combine/adjust slightly to ensure it flows well and strictly meets the constraint.\n   \"Rust is a systems programming language that guarantees memory safety and high performance through its unique ownership model, eliminating the need for a garbage collector. Memory safety matters because it prevents critical bugs like buffer overflows and data races, which are common causes of software crashes, security vulnerabilities, and unpredictable behavior.\"\n   This is exactly two sentences. Covers both parts clearly. Meets all constraints.\n\n   Final check against rules: No URLs, direct answer, matches prompt language, concise. Ready.✅\n   Output matches the refined version. \n   Proceed. \n   Output generation. \n   [Output matches the refined version]✅\n   \"Rust is a systems programming language that guarantees memory safety and high performance through its unique ownership model, eliminating the need for a garbage collector. Memory safety matters because it prevents critical bugs like buffer overflows and data races, which are common causes of software crashes, security vulnerabilities, and unpredictable behavior.\" -> Exactly 2 sentences. Covers both points. Meets constraints. All good. \n   Output matches. \n   [Done.] \n   *Self-Correction/Verification during thought*: \n   Check constraint: \"In one or two sentences\". The draft is exactly two. Good.\n   Check content: Rust definition + memory safety importance. Good.\n   No extra fluff. Direct. Matches all rules.\n   Proceed. \n   Output generation. \n   [Output] Rust is a systems programming language that guarantees memory safety and high performance through its unique ownership model, eliminating the need for a garbage collector. Memory safety matters because it prevents critical bugs like buffer overflows and data races, which are common causes of software crashes, security vulnerabilities, and unpredictable behavior.✅\n   All steps verified. Output matches response. \n   [Final Check of the Prompt]: \"In one or two sentences, explain what Rust programming language is and why memory safety matters.\" -> Matches perfectly. \n   Proceeds. \n   [Output Generation] (matches the refined version)\n   \"Rust is a systems programming language that guarantees memory safety and high performance through its unique ownership model, eliminating the need for a garbage collector. Memory safety matters because it prevents critical bugs like buffer overflows and data races, which are common causes of software crashes, security vulnerabilities, and unpredictable behavior.\" -> 2 sentences. Covers both. Direct. Complies.✅\n   Done. \n   [Output Generation] (Proceeds)\n"
-                  }
-                }
-              ]
+              "type": "text",
+              "text": "\n\nRust is a systems programming language that guarantees memory safety and high performance through its unique ownership and borrowing model, eliminating the need for a garbage collector. Memory safety matters because it prevents critical bugs like buffer overflows and data races, which are frequent causes of software crashes, security vulnerabilities, and unpredictable behavior in low-level code.",
+              "native": {
+                "item": {
+                  "content": "\n\nRust is a systems programming language that guarantees memory safety and high performance through its unique ownership and borrowing model, eliminating the need for a garbage collector. Memory safety matters because it prevents critical bugs like buffer overflows and data races, which are frequent causes of software crashes, security vulnerabilities, and unpredictable behavior in low-level code."
+                },
+                "fingerprint": 13599360546705150091
+              }
             }
           }
         }

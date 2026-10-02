@@ -14,7 +14,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -66,7 +66,7 @@
         }
       },
       {
-        "batch": 30,
+        "batch": 31,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -74,7 +74,7 @@
         }
       },
       {
-        "batch": 31,
+        "batch": 32,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -90,7 +90,7 @@
         }
       },
       {
-        "batch": 39,
+        "batch": 46,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -98,7 +98,7 @@
         }
       },
       {
-        "batch": 43,
+        "batch": 50,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -106,57 +106,17 @@
         }
       },
       {
-        "batch": 54,
+        "batch": 68,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 55,
+        "batch": 69,
         "id": 1,
         "kind": {
           "delivery": "outcome"
-        }
-      },
-      {
-        "batch": 77,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 78,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 79,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 80,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 85,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
         }
       },
       {
@@ -164,25 +124,89 @@
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 2
+        }
+      },
+      {
+        "batch": 93,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 94,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 100,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
         }
       },
       {
         "batch": 107,
         "id": 2,
         "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 121,
+        "id": 2,
+        "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 109,
+        "batch": 123,
         "id": 3,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 134,
+        "batch": 145,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 146,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 147,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 154,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 159,
         "id": 4,
         "kind": {
           "delivery": "stream",
@@ -190,21 +214,29 @@
         }
       },
       {
-        "batch": 144,
+        "batch": 172,
         "id": 4,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 145,
+        "batch": 174,
         "id": 5,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 168,
+        "batch": 197,
+        "id": 6,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 203,
         "id": 6,
         "kind": {
           "delivery": "stream",
@@ -212,21 +244,21 @@
         }
       },
       {
-        "batch": 177,
+        "batch": 215,
         "id": 6,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 179,
+        "batch": 216,
         "id": 7,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 200,
+        "batch": 236,
         "id": 8,
         "kind": {
           "delivery": "stream",
@@ -234,23 +266,7 @@
         }
       },
       {
-        "batch": 201,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 202,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 203,
+        "batch": 239,
         "id": 8,
         "kind": {
           "delivery": "stream",
@@ -258,7 +274,7 @@
         }
       },
       {
-        "batch": 204,
+        "batch": 240,
         "id": 8,
         "kind": {
           "delivery": "stream",
@@ -266,7 +282,55 @@
         }
       },
       {
-        "batch": 205,
+        "batch": 241,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 242,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 243,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 244,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 245,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 246,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 247,
         "id": 8,
         "kind": {
           "delivery": "stream",
@@ -274,7 +338,7 @@
         }
       },
       {
-        "batch": 206,
+        "batch": 248,
         "id": 8,
         "kind": {
           "delivery": "stream",
@@ -282,7 +346,7 @@
         }
       },
       {
-        "batch": 207,
+        "batch": 249,
         "id": 8,
         "kind": {
           "delivery": "stream",
@@ -290,7 +354,7 @@
         }
       },
       {
-        "batch": 208,
+        "batch": 250,
         "id": 8,
         "kind": {
           "delivery": "stream",
@@ -298,7 +362,31 @@
         }
       },
       {
-        "batch": 209,
+        "batch": 251,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 252,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 253,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 254,
         "id": 8,
         "kind": {
           "delivery": "stream",
@@ -306,7 +394,7 @@
         }
       },
       {
-        "batch": 210,
+        "batch": 255,
         "id": 8,
         "kind": {
           "delivery": "stream",
@@ -314,7 +402,7 @@
         }
       },
       {
-        "batch": 211,
+        "batch": 256,
         "id": 8,
         "kind": {
           "delivery": "stream",
@@ -322,7 +410,7 @@
         }
       },
       {
-        "batch": 212,
+        "batch": 260,
         "id": 8,
         "kind": {
           "delivery": "stream",
@@ -330,39 +418,7 @@
         }
       },
       {
-        "batch": 213,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 214,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 215,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 227,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 228,
+        "batch": 272,
         "id": 8,
         "kind": {
           "delivery": "outcome"
@@ -515,7 +571,7 @@
           "parity/tool#2": "tool",
           "parity/tool#3": "tool"
         },
-        "policy": 16132150053142680601
+        "policy": 835733358049567151
       }
     }
   },
@@ -650,7 +706,8 @@
           "max_tokens": null,
           "tool_choice": null,
           "additional_params": {
-            "parallel_tool_calls": false
+            "parallel_tool_calls": false,
+            "store": false
           },
           "output_schema": null
         },
@@ -662,46 +719,63 @@
           "choice": [
             {
               "type": "reasoning",
-              "issuer": "xai",
-              "id": "rs_abf917ce-adad-9183-9e42-ec55cb27eb62",
-              "content": [
-                {
-                  "type": "summary",
-                  "content": "Running the production-readiness scenario.\n\nThe manifest note and escaped text are noted. The harness will call ping_empty with an empty JSON object first, then inspect_manifest for project rig-xai with critical=true, retries=2, plan weight=1, verify weight=2, and the exact note."
-                }
-              ]
+              "text": "Running the production-readiness scenario.\n\nThe scenario requires four sequential tool calls: ping_empty, inspect_manifest with the exact note and flags, join_labels with the specified labels and separator, and escape_echo with the exact escaped text.",
+              "native": {
+                "item": {
+                  "encrypted_content": "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",
+                  "id": "rs_70c3774e-a273-9a07-8c8b-f4a61f074043",
+                  "status": "completed",
+                  "summary": [
+                    {
+                      "text": "Running the production-readiness scenario.\n\nThe scenario requires four sequential tool calls: ping_empty, inspect_manifest with the exact note and flags, join_labels with the specified labels and separator, and escape_echo with the exact escaped text.",
+                      "type": "summary_text"
+                    }
+                  ],
+                  "type": "reasoning"
+                },
+                "fingerprint": 995873926103930295
+              }
             },
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call-6c3ed923-d119-47b7-a501-9dae090cc04f-0",
-                  "item_id": "fc_abf917ce-adad-9183-9e42-ec55cb27eb62_0"
-                }
+                "provider": "call-2d2983ce-88cc-489d-bccb-8c9cd0ff6044-0"
               },
               "function": {
                 "name": "ping_empty",
                 "arguments": {}
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "arguments": "{}",
+                  "call_id": "call-2d2983ce-88cc-489d-bccb-8c9cd0ff6044-0",
+                  "id": "fc_70c3774e-a273-9a07-8c8b-f4a61f074043_0",
+                  "name": "ping_empty",
+                  "status": "completed",
+                  "type": "function_call"
+                },
+                "fingerprint": 10893370864192360050
+              }
             }
           ],
           "usage": {
             "input_tokens": 743,
-            "output_tokens": 391,
-            "total_tokens": 1134,
+            "output_tokens": 367,
+            "total_tokens": 1110,
             "cached_input_tokens": 192,
-            "reasoning_tokens": 385
+            "reasoning_tokens": 361
           },
-          "message_id": null,
-          "response_id": "abf917ce-adad-9183-9e42-ec55cb27eb62",
-          "provider_request_id": "abf917ce-adad-9183-9e42-ec55cb27eb62",
+          "origin": {
+            "api": "openai.responses",
+            "provider": "xai",
+            "model": "grok-4.3",
+            "response_model": "grok-4.3",
+            "response_id": "70c3774e-a273-9a07-8c8b-f4a61f074043"
+          },
+          "provider_request_id": "70c3774e-a273-9a07-8c8b-f4a61f074043",
           "finish_reason": "tool_calls",
-          "provider": "xai",
-          "model": "grok-4.3",
           "raw": {
-            "id": "abf917ce-adad-9183-9e42-ec55cb27eb62",
+            "id": "70c3774e-a273-9a07-8c8b-f4a61f074043",
             "object": "response",
             "created_at": 0,
             "status": "completed",
@@ -719,29 +793,29 @@
               "input_tokens_details": {
                 "cached_tokens": 192
               },
-              "output_tokens": 391,
+              "output_tokens": 367,
               "output_tokens_details": {
-                "reasoning_tokens": 385
+                "reasoning_tokens": 361
               },
-              "total_tokens": 1134
+              "total_tokens": 1110
             },
             "output": [
               {
                 "type": "reasoning",
-                "id": "rs_abf917ce-adad-9183-9e42-ec55cb27eb62",
+                "id": "rs_70c3774e-a273-9a07-8c8b-f4a61f074043",
                 "summary": [
                   {
                     "type": "summary_text",
-                    "text": "Running the production-readiness scenario.\n\nThe manifest note and escaped text are noted. The harness will call ping_empty with an empty JSON object first, then inspect_manifest for project rig-xai with critical=true, retries=2, plan weight=1, verify weight=2, and the exact note."
+                    "text": "Running the production-readiness scenario.\n\nThe scenario requires four sequential tool calls: ping_empty, inspect_manifest with the exact note and flags, join_labels with the specified labels and separator, and escape_echo with the exact escaped text."
                   }
                 ],
-                "encrypted_content": null,
+                "encrypted_content": "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",
                 "status": "completed"
               },
               {
-                "id": "fc_abf917ce-adad-9183-9e42-ec55cb27eb62_0",
+                "id": "fc_70c3774e-a273-9a07-8c8b-f4a61f074043_0",
                 "arguments": "{}",
-                "call_id": "call-6c3ed923-d119-47b7-a501-9dae090cc04f-0",
+                "call_id": "call-2d2983ce-88cc-489d-bccb-8c9cd0ff6044-0",
                 "name": "ping_empty",
                 "status": "completed",
                 "type": "function_call"
@@ -870,7 +944,7 @@
             },
             "parallel_tool_calls": false,
             "service_tier": "default",
-            "store": true
+            "store": false
           }
         }
       },
@@ -904,7 +978,7 @@
           "value": {
             "event": "reasoning",
             "part": 0,
-            "text": "\n\nThe manifest note "
+            "text": "\n\nThe scenario requires"
           }
         },
         {
@@ -912,7 +986,7 @@
           "value": {
             "event": "reasoning",
             "part": 0,
-            "text": "and escaped text are"
+            "text": " four sequential tool"
           }
         },
         {
@@ -920,7 +994,7 @@
           "value": {
             "event": "reasoning",
             "part": 0,
-            "text": " noted. The harness "
+            "text": " calls: ping_empty, "
           }
         },
         {
@@ -928,7 +1002,7 @@
           "value": {
             "event": "reasoning",
             "part": 0,
-            "text": "will call ping_empty"
+            "text": "inspect_manifest with"
           }
         },
         {
@@ -936,7 +1010,7 @@
           "value": {
             "event": "reasoning",
             "part": 0,
-            "text": " with an empty JSON "
+            "text": " the exact note and "
           }
         },
         {
@@ -944,7 +1018,7 @@
           "value": {
             "event": "reasoning",
             "part": 0,
-            "text": "object first, then inspect_manifest"
+            "text": "flags, join_labels with"
           }
         },
         {
@@ -952,7 +1026,7 @@
           "value": {
             "event": "reasoning",
             "part": 0,
-            "text": " for project rig-xai"
+            "text": " the specified labels"
           }
         },
         {
@@ -960,7 +1034,7 @@
           "value": {
             "event": "reasoning",
             "part": 0,
-            "text": " with critical=true,"
+            "text": " and separator, and "
           }
         },
         {
@@ -968,7 +1042,15 @@
           "value": {
             "event": "reasoning",
             "part": 0,
-            "text": " retries=2, plan weight=1, verify weight=2, and the exact note."
+            "text": "escape_echo with the"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " exact escaped text."
           }
         },
         {
@@ -978,14 +1060,22 @@
             "part": 0,
             "content": {
               "type": "reasoning",
-              "issuer": "xai",
-              "id": "rs_abf917ce-adad-9183-9e42-ec55cb27eb62",
-              "content": [
-                {
-                  "type": "summary",
-                  "content": "Running the production-readiness scenario.\n\nThe manifest note and escaped text are noted. The harness will call ping_empty with an empty JSON object first, then inspect_manifest for project rig-xai with critical=true, retries=2, plan weight=1, verify weight=2, and the exact note."
-                }
-              ]
+              "text": "Running the production-readiness scenario.\n\nThe scenario requires four sequential tool calls: ping_empty, inspect_manifest with the exact note and flags, join_labels with the specified labels and separator, and escape_echo with the exact escaped text.",
+              "native": {
+                "item": {
+                  "encrypted_content": "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",
+                  "id": "rs_70c3774e-a273-9a07-8c8b-f4a61f074043",
+                  "status": "completed",
+                  "summary": [
+                    {
+                      "text": "Running the production-readiness scenario.\n\nThe scenario requires four sequential tool calls: ping_empty, inspect_manifest with the exact note and flags, join_labels with the specified labels and separator, and escape_echo with the exact escaped text.",
+                      "type": "summary_text"
+                    }
+                  ],
+                  "type": "reasoning"
+                },
+                "fingerprint": 995873926103930295
+              }
             }
           }
         },
@@ -1013,17 +1103,23 @@
             "content": {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call-6c3ed923-d119-47b7-a501-9dae090cc04f-0",
-                  "item_id": "fc_abf917ce-adad-9183-9e42-ec55cb27eb62_0"
-                }
+                "provider": "call-2d2983ce-88cc-489d-bccb-8c9cd0ff6044-0"
               },
               "function": {
                 "name": "ping_empty",
                 "arguments": {}
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "arguments": "{}",
+                  "call_id": "call-2d2983ce-88cc-489d-bccb-8c9cd0ff6044-0",
+                  "id": "fc_70c3774e-a273-9a07-8c8b-f4a61f074043_0",
+                  "name": "ping_empty",
+                  "status": "completed",
+                  "type": "function_call"
+                },
+                "fingerprint": 10893370864192360050
+              }
             }
           }
         }
@@ -1079,35 +1175,56 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "reasoning",
-                  "issuer": "xai",
-                  "id": "rs_abf917ce-adad-9183-9e42-ec55cb27eb62",
-                  "content": [
-                    {
-                      "type": "summary",
-                      "content": "Running the production-readiness scenario.\n\nThe manifest note and escaped text are noted. The harness will call ping_empty with an empty JSON object first, then inspect_manifest for project rig-xai with critical=true, retries=2, plan weight=1, verify weight=2, and the exact note."
-                    }
-                  ]
+                  "text": "Running the production-readiness scenario.\n\nThe scenario requires four sequential tool calls: ping_empty, inspect_manifest with the exact note and flags, join_labels with the specified labels and separator, and escape_echo with the exact escaped text.",
+                  "native": {
+                    "item": {
+                      "encrypted_content": "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",
+                      "id": "rs_70c3774e-a273-9a07-8c8b-f4a61f074043",
+                      "status": "completed",
+                      "summary": [
+                        {
+                          "text": "Running the production-readiness scenario.\n\nThe scenario requires four sequential tool calls: ping_empty, inspect_manifest with the exact note and flags, join_labels with the specified labels and separator, and escape_echo with the exact escaped text.",
+                          "type": "summary_text"
+                        }
+                      ],
+                      "type": "reasoning"
+                    },
+                    "fingerprint": 995873926103930295
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call-6c3ed923-d119-47b7-a501-9dae090cc04f-0",
-                      "item_id": "fc_abf917ce-adad-9183-9e42-ec55cb27eb62_0"
-                    }
+                    "provider": "call-2d2983ce-88cc-489d-bccb-8c9cd0ff6044-0"
                   },
                   "function": {
                     "name": "ping_empty",
                     "arguments": {}
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "arguments": "{}",
+                      "call_id": "call-2d2983ce-88cc-489d-bccb-8c9cd0ff6044-0",
+                      "id": "fc_70c3774e-a273-9a07-8c8b-f4a61f074043_0",
+                      "name": "ping_empty",
+                      "status": "completed",
+                      "type": "function_call"
+                    },
+                    "fingerprint": 10893370864192360050
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.responses",
+                "provider": "xai",
+                "model": "grok-4.3",
+                "response_model": "grok-4.3",
+                "response_id": "70c3774e-a273-9a07-8c8b-f4a61f074043"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -1115,10 +1232,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call-6c3ed923-d119-47b7-a501-9dae090cc04f-0",
-                      "item_id": "fc_abf917ce-adad-9183-9e42-ec55cb27eb62_0"
-                    }
+                    "provider": "call-2d2983ce-88cc-489d-bccb-8c9cd0ff6044-0"
                   },
                   "name": "ping_empty",
                   "content": [
@@ -1238,7 +1352,8 @@
           "max_tokens": null,
           "tool_choice": null,
           "additional_params": {
-            "parallel_tool_calls": false
+            "parallel_tool_calls": false,
+            "store": false
           },
           "output_schema": null
         },
@@ -1250,22 +1365,27 @@
           "choice": [
             {
               "type": "reasoning",
-              "issuer": "xai",
-              "id": "rs_4ac551d1-6cc0-9773-8ad6-11abae114707",
-              "content": [
-                {
-                  "type": "summary",
-                  "content": "The production-readiness scenario requires calling exactly one tool at a time in a specific order.\n\nping_empty returned EMPTY-OK. Now calling inspect_manifest."
-                }
-              ]
+              "text": "The first tool call returned an empty OK result.",
+              "native": {
+                "item": {
+                  "encrypted_content": "Po/SQWYLufBXWRfXb5NQgvLPBcSFZqGBzTfLiWBkr16G+1fR8EiXZIknBUzaJ0yUODe2XyZ7L4fA07SlTUHp2+sJ5dCpSvG+fu4W4DeBjPGrmbf+fBo4XPKpyRJxU+SfMaNpH0DkvCsaZ+FvEYDozAfUGhGqTMzjqEiqEQC/3igEFywuyLOBOM6yD2Y85Z5r5bNarLBCpHV8C7I+AdbmIHNeUJT6rphNcRdPRnFeoby/d19JEjsV4qIDSNGWb5AtXORxXCXwewe2kY0HvOlnu7N52PQkZ2YhfQJeloBih8xZHQd+WV/3z2nRFMKuf2gwtxSZZqwLC5BaLSBOAmk5p8IikQlC362ClTX9ippxzcysBBKgKLfPU1wLlWaE8vrdmVShjYUr4sMg6d8E+uawZ25W1m354ePBTCPabcDKfs+B4fMLYGWeeLDfs/g6z4YTpsNZ1Wzrvad/0z3kTCQbY72Efw/Xfj/fLjj6/TJrcZm8i9JS27h1Yl7wmSywE0aAOv0eVwXvf0Hlda/t9PilbyuCwhfvGpJkRIpoGcN/56G6wpXhJjxcAjHWVHlmzpguZTjagj5a0C2VMbRfNEeyq8xuKxqXEhi60pZ1fJ3HGF8CeUqvRw4X6TD4MA04M53hsy5rzTn/",
+                  "id": "rs_60e5f77f-0ac4-93db-9d34-c41e266c493f",
+                  "status": "completed",
+                  "summary": [
+                    {
+                      "text": "The first tool call returned an empty OK result.",
+                      "type": "summary_text"
+                    }
+                  ],
+                  "type": "reasoning"
+                },
+                "fingerprint": 16124421267036647775
+              }
             },
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call-cc3b5fc3-f003-46fa-8f5e-06b82ba8d788-1",
-                  "item_id": "fc_4ac551d1-6cc0-9773-8ad6-11abae114707_0"
-                }
+                "provider": "call-84a772a9-2d10-4524-8bcf-6e0a9ceb5c65-1"
               },
               "function": {
                 "name": "inspect_manifest",
@@ -1288,25 +1408,37 @@
                   "note": "line one; line two says \"hello\" and path C:\\rig\\xai"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "arguments": "{\"project\":\"rig-xai\",\"flags\":{\"critical\":true,\"retries\":2},\"steps\":[{\"name\":\"plan\",\"weight\":1},{\"name\":\"verify\",\"weight\":2}],\"note\":\"line one; line two says \\\"hello\\\" and path C:\\\\rig\\\\xai\"}",
+                  "call_id": "call-84a772a9-2d10-4524-8bcf-6e0a9ceb5c65-1",
+                  "id": "fc_60e5f77f-0ac4-93db-9d34-c41e266c493f_0",
+                  "name": "inspect_manifest",
+                  "status": "completed",
+                  "type": "function_call"
+                },
+                "fingerprint": 12651762188212728195
+              }
             }
           ],
           "usage": {
-            "input_tokens": 757,
-            "output_tokens": 364,
-            "total_tokens": 1121,
-            "cached_input_tokens": 192,
-            "reasoning_tokens": 291
+            "input_tokens": 1121,
+            "output_tokens": 196,
+            "total_tokens": 1317,
+            "cached_input_tokens": 704,
+            "reasoning_tokens": 123
           },
-          "message_id": null,
-          "response_id": "4ac551d1-6cc0-9773-8ad6-11abae114707",
-          "provider_request_id": "4ac551d1-6cc0-9773-8ad6-11abae114707",
+          "origin": {
+            "api": "openai.responses",
+            "provider": "xai",
+            "model": "grok-4.3",
+            "response_model": "grok-4.3",
+            "response_id": "60e5f77f-0ac4-93db-9d34-c41e266c493f"
+          },
+          "provider_request_id": "60e5f77f-0ac4-93db-9d34-c41e266c493f",
           "finish_reason": "tool_calls",
-          "provider": "xai",
-          "model": "grok-4.3",
           "raw": {
-            "id": "4ac551d1-6cc0-9773-8ad6-11abae114707",
+            "id": "60e5f77f-0ac4-93db-9d34-c41e266c493f",
             "object": "response",
             "created_at": 0,
             "status": "completed",
@@ -1320,33 +1452,33 @@
               "summary": null
             },
             "usage": {
-              "input_tokens": 757,
+              "input_tokens": 1121,
               "input_tokens_details": {
-                "cached_tokens": 192
+                "cached_tokens": 704
               },
-              "output_tokens": 364,
+              "output_tokens": 196,
               "output_tokens_details": {
-                "reasoning_tokens": 291
+                "reasoning_tokens": 123
               },
-              "total_tokens": 1121
+              "total_tokens": 1317
             },
             "output": [
               {
                 "type": "reasoning",
-                "id": "rs_4ac551d1-6cc0-9773-8ad6-11abae114707",
+                "id": "rs_60e5f77f-0ac4-93db-9d34-c41e266c493f",
                 "summary": [
                   {
                     "type": "summary_text",
-                    "text": "The production-readiness scenario requires calling exactly one tool at a time in a specific order.\n\nping_empty returned EMPTY-OK. Now calling inspect_manifest."
+                    "text": "The first tool call returned an empty OK result."
                   }
                 ],
-                "encrypted_content": null,
+                "encrypted_content": "Po/SQWYLufBXWRfXb5NQgvLPBcSFZqGBzTfLiWBkr16G+1fR8EiXZIknBUzaJ0yUODe2XyZ7L4fA07SlTUHp2+sJ5dCpSvG+fu4W4DeBjPGrmbf+fBo4XPKpyRJxU+SfMaNpH0DkvCsaZ+FvEYDozAfUGhGqTMzjqEiqEQC/3igEFywuyLOBOM6yD2Y85Z5r5bNarLBCpHV8C7I+AdbmIHNeUJT6rphNcRdPRnFeoby/d19JEjsV4qIDSNGWb5AtXORxXCXwewe2kY0HvOlnu7N52PQkZ2YhfQJeloBih8xZHQd+WV/3z2nRFMKuf2gwtxSZZqwLC5BaLSBOAmk5p8IikQlC362ClTX9ippxzcysBBKgKLfPU1wLlWaE8vrdmVShjYUr4sMg6d8E+uawZ25W1m354ePBTCPabcDKfs+B4fMLYGWeeLDfs/g6z4YTpsNZ1Wzrvad/0z3kTCQbY72Efw/Xfj/fLjj6/TJrcZm8i9JS27h1Yl7wmSywE0aAOv0eVwXvf0Hlda/t9PilbyuCwhfvGpJkRIpoGcN/56G6wpXhJjxcAjHWVHlmzpguZTjagj5a0C2VMbRfNEeyq8xuKxqXEhi60pZ1fJ3HGF8CeUqvRw4X6TD4MA04M53hsy5rzTn/",
                 "status": "completed"
               },
               {
-                "id": "fc_4ac551d1-6cc0-9773-8ad6-11abae114707_0",
+                "id": "fc_60e5f77f-0ac4-93db-9d34-c41e266c493f_0",
                 "arguments": "{\"project\":\"rig-xai\",\"flags\":{\"critical\":true,\"retries\":2},\"steps\":[{\"name\":\"plan\",\"weight\":1},{\"name\":\"verify\",\"weight\":2}],\"note\":\"line one; line two says \\\"hello\\\" and path C:\\\\rig\\\\xai\"}",
-                "call_id": "call-cc3b5fc3-f003-46fa-8f5e-06b82ba8d788-1",
+                "call_id": "call-84a772a9-2d10-4524-8bcf-6e0a9ceb5c65-1",
                 "name": "inspect_manifest",
                 "status": "completed",
                 "type": "function_call"
@@ -1475,7 +1607,7 @@
             },
             "parallel_tool_calls": false,
             "service_tier": "default",
-            "store": true
+            "store": false
           }
         }
       },
@@ -1493,7 +1625,7 @@
           "value": {
             "event": "reasoning",
             "part": 0,
-            "text": "The production-readiness"
+            "text": "The first tool call "
           }
         },
         {
@@ -1501,7 +1633,7 @@
           "value": {
             "event": "reasoning",
             "part": 0,
-            "text": " scenario requires calling"
+            "text": "returned an empty OK"
           }
         },
         {
@@ -1509,15 +1641,7 @@
           "value": {
             "event": "reasoning",
             "part": 0,
-            "text": " exactly one tool at"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "reasoning",
-            "part": 0,
-            "text": " a time in a specific order.\n\nping_empty returned EMPTY-OK. Now calling inspect_manifest."
+            "text": " result."
           }
         },
         {
@@ -1527,14 +1651,22 @@
             "part": 0,
             "content": {
               "type": "reasoning",
-              "issuer": "xai",
-              "id": "rs_4ac551d1-6cc0-9773-8ad6-11abae114707",
-              "content": [
-                {
-                  "type": "summary",
-                  "content": "The production-readiness scenario requires calling exactly one tool at a time in a specific order.\n\nping_empty returned EMPTY-OK. Now calling inspect_manifest."
-                }
-              ]
+              "text": "The first tool call returned an empty OK result.",
+              "native": {
+                "item": {
+                  "encrypted_content": "Po/SQWYLufBXWRfXb5NQgvLPBcSFZqGBzTfLiWBkr16G+1fR8EiXZIknBUzaJ0yUODe2XyZ7L4fA07SlTUHp2+sJ5dCpSvG+fu4W4DeBjPGrmbf+fBo4XPKpyRJxU+SfMaNpH0DkvCsaZ+FvEYDozAfUGhGqTMzjqEiqEQC/3igEFywuyLOBOM6yD2Y85Z5r5bNarLBCpHV8C7I+AdbmIHNeUJT6rphNcRdPRnFeoby/d19JEjsV4qIDSNGWb5AtXORxXCXwewe2kY0HvOlnu7N52PQkZ2YhfQJeloBih8xZHQd+WV/3z2nRFMKuf2gwtxSZZqwLC5BaLSBOAmk5p8IikQlC362ClTX9ippxzcysBBKgKLfPU1wLlWaE8vrdmVShjYUr4sMg6d8E+uawZ25W1m354ePBTCPabcDKfs+B4fMLYGWeeLDfs/g6z4YTpsNZ1Wzrvad/0z3kTCQbY72Efw/Xfj/fLjj6/TJrcZm8i9JS27h1Yl7wmSywE0aAOv0eVwXvf0Hlda/t9PilbyuCwhfvGpJkRIpoGcN/56G6wpXhJjxcAjHWVHlmzpguZTjagj5a0C2VMbRfNEeyq8xuKxqXEhi60pZ1fJ3HGF8CeUqvRw4X6TD4MA04M53hsy5rzTn/",
+                  "id": "rs_60e5f77f-0ac4-93db-9d34-c41e266c493f",
+                  "status": "completed",
+                  "summary": [
+                    {
+                      "text": "The first tool call returned an empty OK result.",
+                      "type": "summary_text"
+                    }
+                  ],
+                  "type": "reasoning"
+                },
+                "fingerprint": 16124421267036647775
+              }
             }
           }
         },
@@ -1562,10 +1694,7 @@
             "content": {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call-cc3b5fc3-f003-46fa-8f5e-06b82ba8d788-1",
-                  "item_id": "fc_4ac551d1-6cc0-9773-8ad6-11abae114707_0"
-                }
+                "provider": "call-84a772a9-2d10-4524-8bcf-6e0a9ceb5c65-1"
               },
               "function": {
                 "name": "inspect_manifest",
@@ -1588,8 +1717,17 @@
                   "note": "line one; line two says \"hello\" and path C:\\rig\\xai"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "arguments": "{\"project\":\"rig-xai\",\"flags\":{\"critical\":true,\"retries\":2},\"steps\":[{\"name\":\"plan\",\"weight\":1},{\"name\":\"verify\",\"weight\":2}],\"note\":\"line one; line two says \\\"hello\\\" and path C:\\\\rig\\\\xai\"}",
+                  "call_id": "call-84a772a9-2d10-4524-8bcf-6e0a9ceb5c65-1",
+                  "id": "fc_60e5f77f-0ac4-93db-9d34-c41e266c493f_0",
+                  "name": "inspect_manifest",
+                  "status": "completed",
+                  "type": "function_call"
+                },
+                "fingerprint": 12651762188212728195
+              }
             }
           }
         }
@@ -1645,35 +1783,56 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "reasoning",
-                  "issuer": "xai",
-                  "id": "rs_abf917ce-adad-9183-9e42-ec55cb27eb62",
-                  "content": [
-                    {
-                      "type": "summary",
-                      "content": "Running the production-readiness scenario.\n\nThe manifest note and escaped text are noted. The harness will call ping_empty with an empty JSON object first, then inspect_manifest for project rig-xai with critical=true, retries=2, plan weight=1, verify weight=2, and the exact note."
-                    }
-                  ]
+                  "text": "Running the production-readiness scenario.\n\nThe scenario requires four sequential tool calls: ping_empty, inspect_manifest with the exact note and flags, join_labels with the specified labels and separator, and escape_echo with the exact escaped text.",
+                  "native": {
+                    "item": {
+                      "encrypted_content": "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",
+                      "id": "rs_70c3774e-a273-9a07-8c8b-f4a61f074043",
+                      "status": "completed",
+                      "summary": [
+                        {
+                          "text": "Running the production-readiness scenario.\n\nThe scenario requires four sequential tool calls: ping_empty, inspect_manifest with the exact note and flags, join_labels with the specified labels and separator, and escape_echo with the exact escaped text.",
+                          "type": "summary_text"
+                        }
+                      ],
+                      "type": "reasoning"
+                    },
+                    "fingerprint": 995873926103930295
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call-6c3ed923-d119-47b7-a501-9dae090cc04f-0",
-                      "item_id": "fc_abf917ce-adad-9183-9e42-ec55cb27eb62_0"
-                    }
+                    "provider": "call-2d2983ce-88cc-489d-bccb-8c9cd0ff6044-0"
                   },
                   "function": {
                     "name": "ping_empty",
                     "arguments": {}
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "arguments": "{}",
+                      "call_id": "call-2d2983ce-88cc-489d-bccb-8c9cd0ff6044-0",
+                      "id": "fc_70c3774e-a273-9a07-8c8b-f4a61f074043_0",
+                      "name": "ping_empty",
+                      "status": "completed",
+                      "type": "function_call"
+                    },
+                    "fingerprint": 10893370864192360050
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.responses",
+                "provider": "xai",
+                "model": "grok-4.3",
+                "response_model": "grok-4.3",
+                "response_id": "70c3774e-a273-9a07-8c8b-f4a61f074043"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -1681,10 +1840,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call-6c3ed923-d119-47b7-a501-9dae090cc04f-0",
-                      "item_id": "fc_abf917ce-adad-9183-9e42-ec55cb27eb62_0"
-                    }
+                    "provider": "call-2d2983ce-88cc-489d-bccb-8c9cd0ff6044-0"
                   },
                   "name": "ping_empty",
                   "content": [
@@ -1698,26 +1854,30 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "reasoning",
-                  "issuer": "xai",
-                  "id": "rs_4ac551d1-6cc0-9773-8ad6-11abae114707",
-                  "content": [
-                    {
-                      "type": "summary",
-                      "content": "The production-readiness scenario requires calling exactly one tool at a time in a specific order.\n\nping_empty returned EMPTY-OK. Now calling inspect_manifest."
-                    }
-                  ]
+                  "text": "The first tool call returned an empty OK result.",
+                  "native": {
+                    "item": {
+                      "encrypted_content": "Po/SQWYLufBXWRfXb5NQgvLPBcSFZqGBzTfLiWBkr16G+1fR8EiXZIknBUzaJ0yUODe2XyZ7L4fA07SlTUHp2+sJ5dCpSvG+fu4W4DeBjPGrmbf+fBo4XPKpyRJxU+SfMaNpH0DkvCsaZ+FvEYDozAfUGhGqTMzjqEiqEQC/3igEFywuyLOBOM6yD2Y85Z5r5bNarLBCpHV8C7I+AdbmIHNeUJT6rphNcRdPRnFeoby/d19JEjsV4qIDSNGWb5AtXORxXCXwewe2kY0HvOlnu7N52PQkZ2YhfQJeloBih8xZHQd+WV/3z2nRFMKuf2gwtxSZZqwLC5BaLSBOAmk5p8IikQlC362ClTX9ippxzcysBBKgKLfPU1wLlWaE8vrdmVShjYUr4sMg6d8E+uawZ25W1m354ePBTCPabcDKfs+B4fMLYGWeeLDfs/g6z4YTpsNZ1Wzrvad/0z3kTCQbY72Efw/Xfj/fLjj6/TJrcZm8i9JS27h1Yl7wmSywE0aAOv0eVwXvf0Hlda/t9PilbyuCwhfvGpJkRIpoGcN/56G6wpXhJjxcAjHWVHlmzpguZTjagj5a0C2VMbRfNEeyq8xuKxqXEhi60pZ1fJ3HGF8CeUqvRw4X6TD4MA04M53hsy5rzTn/",
+                      "id": "rs_60e5f77f-0ac4-93db-9d34-c41e266c493f",
+                      "status": "completed",
+                      "summary": [
+                        {
+                          "text": "The first tool call returned an empty OK result.",
+                          "type": "summary_text"
+                        }
+                      ],
+                      "type": "reasoning"
+                    },
+                    "fingerprint": 16124421267036647775
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call-cc3b5fc3-f003-46fa-8f5e-06b82ba8d788-1",
-                      "item_id": "fc_4ac551d1-6cc0-9773-8ad6-11abae114707_0"
-                    }
+                    "provider": "call-84a772a9-2d10-4524-8bcf-6e0a9ceb5c65-1"
                   },
                   "function": {
                     "name": "inspect_manifest",
@@ -1740,10 +1900,27 @@
                       "note": "line one; line two says \"hello\" and path C:\\rig\\xai"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "arguments": "{\"project\":\"rig-xai\",\"flags\":{\"critical\":true,\"retries\":2},\"steps\":[{\"name\":\"plan\",\"weight\":1},{\"name\":\"verify\",\"weight\":2}],\"note\":\"line one; line two says \\\"hello\\\" and path C:\\\\rig\\\\xai\"}",
+                      "call_id": "call-84a772a9-2d10-4524-8bcf-6e0a9ceb5c65-1",
+                      "id": "fc_60e5f77f-0ac4-93db-9d34-c41e266c493f_0",
+                      "name": "inspect_manifest",
+                      "status": "completed",
+                      "type": "function_call"
+                    },
+                    "fingerprint": 12651762188212728195
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.responses",
+                "provider": "xai",
+                "model": "grok-4.3",
+                "response_model": "grok-4.3",
+                "response_id": "60e5f77f-0ac4-93db-9d34-c41e266c493f"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -1751,10 +1928,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call-cc3b5fc3-f003-46fa-8f5e-06b82ba8d788-1",
-                      "item_id": "fc_4ac551d1-6cc0-9773-8ad6-11abae114707_0"
-                    }
+                    "provider": "call-84a772a9-2d10-4524-8bcf-6e0a9ceb5c65-1"
                   },
                   "name": "inspect_manifest",
                   "content": [
@@ -1874,7 +2048,8 @@
           "max_tokens": null,
           "tool_choice": null,
           "additional_params": {
-            "parallel_tool_calls": false
+            "parallel_tool_calls": false,
+            "store": false
           },
           "output_schema": null
         },
@@ -1885,12 +2060,28 @@
           "outcome": "completion",
           "choice": [
             {
+              "type": "reasoning",
+              "text": "The second tool completed successfully. The manifest check returned MANIFEST-OK.",
+              "native": {
+                "item": {
+                  "encrypted_content": "6dQXHOB04Yvsx96kj4kofL2vriqLJgFYVRjdJWzIETgD/dCXuz/yqX5HrdRApF+q1SPKtsHJAQk8FbVdDwKCMxGHwR+d0hA0anKp9UlKxKFQZly0DZ92b+7ZBpX7Gkt45Ajq5+m/hhmTvMz67DslAhtabinPQ/q/EAo0PZDMlGYblz3Kb4l3LhBThBu2vJh/YdOTz0c/pmbOWAH6OvisoPLO9mJpk8FJCe8wyn2Il/92WwLxEofbjrHWB13lfHEgCyh+L5IdPpl1RdzFIUElERCc/AT2GhZzBV6wJLFD1hVB8iu9Qb7D/WhNmSdsQkOuVP+GH5osjx4AQ8MDjc70EYoMsqn+uM4T5gxtiNWK4H3PRRrWOhI7q37YZksnLLuRMDeUDtIDMYVfTCUfw3yZtuwsurlonpLWC88Ak1AXj+/8KLmE4KFdo0pP+0V6+fwQn4+yZv5DlxtoaQ1S7UWW5mP68x7zcl9rZHt9V8f4dg+HrOY7fUR+xaXJMiClx3+0QwjhtCvh4dTGuQhQbKJCf9GBZosyniHr7+6psFNj9P8/yjNkvfsRJzQFUdO1qSspSOUdyrpSv97cN5p8x1B/A6TRrDHc2PSE/XS+v4nNupSyBpgfKDQvu1mIEadPjgtSIE/VXxWdBjciyONfs4qxnubizO1YMkrNZdeRE1ygtSBSbdljpN3FG0ZIOH0qyr+f1zCDOV2heqROYe8GxfjE",
+                  "id": "rs_a19f3b34-122d-9747-93fc-06fca2407c5e",
+                  "status": "completed",
+                  "summary": [
+                    {
+                      "text": "The second tool completed successfully. The manifest check returned MANIFEST-OK.",
+                      "type": "summary_text"
+                    }
+                  ],
+                  "type": "reasoning"
+                },
+                "fingerprint": 16979434181988051414
+              }
+            },
+            {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call-c463f29d-580c-4878-9e8f-c0994284225e-2",
-                  "item_id": "fc_642b692e-5f38-94ea-baf9-e65f6317e3a6_0"
-                }
+                "provider": "call-81f363d6-0303-45ec-9709-80fdda00de7c-2"
               },
               "function": {
                 "name": "join_labels",
@@ -1904,25 +2095,37 @@
                   "separator": "|"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "arguments": "{\"labels\":[\"north\",\"beta gamma\",\"quote:\\\"delta\\\"\",\"slash\\\\path\"],\"separator\":\"|\"}",
+                  "call_id": "call-81f363d6-0303-45ec-9709-80fdda00de7c-2",
+                  "id": "fc_a19f3b34-122d-9747-93fc-06fca2407c5e_0",
+                  "name": "join_labels",
+                  "status": "completed",
+                  "type": "function_call"
+                },
+                "fingerprint": 1774883752759615433
+              }
             }
           ],
           "usage": {
-            "input_tokens": 841,
-            "output_tokens": 55,
-            "total_tokens": 896,
-            "cached_input_tokens": 704,
-            "reasoning_tokens": 25
+            "input_tokens": 1331,
+            "output_tokens": 166,
+            "total_tokens": 1497,
+            "cached_input_tokens": 1088,
+            "reasoning_tokens": 138
           },
-          "message_id": null,
-          "response_id": "642b692e-5f38-94ea-baf9-e65f6317e3a6",
-          "provider_request_id": "642b692e-5f38-94ea-baf9-e65f6317e3a6",
+          "origin": {
+            "api": "openai.responses",
+            "provider": "xai",
+            "model": "grok-4.3",
+            "response_model": "grok-4.3",
+            "response_id": "a19f3b34-122d-9747-93fc-06fca2407c5e"
+          },
+          "provider_request_id": "a19f3b34-122d-9747-93fc-06fca2407c5e",
           "finish_reason": "tool_calls",
-          "provider": "xai",
-          "model": "grok-4.3",
           "raw": {
-            "id": "642b692e-5f38-94ea-baf9-e65f6317e3a6",
+            "id": "a19f3b34-122d-9747-93fc-06fca2407c5e",
             "object": "response",
             "created_at": 0,
             "status": "completed",
@@ -1936,21 +2139,33 @@
               "summary": null
             },
             "usage": {
-              "input_tokens": 841,
+              "input_tokens": 1331,
               "input_tokens_details": {
-                "cached_tokens": 704
+                "cached_tokens": 1088
               },
-              "output_tokens": 55,
+              "output_tokens": 166,
               "output_tokens_details": {
-                "reasoning_tokens": 25
+                "reasoning_tokens": 138
               },
-              "total_tokens": 896
+              "total_tokens": 1497
             },
             "output": [
               {
-                "id": "fc_642b692e-5f38-94ea-baf9-e65f6317e3a6_0",
+                "type": "reasoning",
+                "id": "rs_a19f3b34-122d-9747-93fc-06fca2407c5e",
+                "summary": [
+                  {
+                    "type": "summary_text",
+                    "text": "The second tool completed successfully. The manifest check returned MANIFEST-OK."
+                  }
+                ],
+                "encrypted_content": "6dQXHOB04Yvsx96kj4kofL2vriqLJgFYVRjdJWzIETgD/dCXuz/yqX5HrdRApF+q1SPKtsHJAQk8FbVdDwKCMxGHwR+d0hA0anKp9UlKxKFQZly0DZ92b+7ZBpX7Gkt45Ajq5+m/hhmTvMz67DslAhtabinPQ/q/EAo0PZDMlGYblz3Kb4l3LhBThBu2vJh/YdOTz0c/pmbOWAH6OvisoPLO9mJpk8FJCe8wyn2Il/92WwLxEofbjrHWB13lfHEgCyh+L5IdPpl1RdzFIUElERCc/AT2GhZzBV6wJLFD1hVB8iu9Qb7D/WhNmSdsQkOuVP+GH5osjx4AQ8MDjc70EYoMsqn+uM4T5gxtiNWK4H3PRRrWOhI7q37YZksnLLuRMDeUDtIDMYVfTCUfw3yZtuwsurlonpLWC88Ak1AXj+/8KLmE4KFdo0pP+0V6+fwQn4+yZv5DlxtoaQ1S7UWW5mP68x7zcl9rZHt9V8f4dg+HrOY7fUR+xaXJMiClx3+0QwjhtCvh4dTGuQhQbKJCf9GBZosyniHr7+6psFNj9P8/yjNkvfsRJzQFUdO1qSspSOUdyrpSv97cN5p8x1B/A6TRrDHc2PSE/XS+v4nNupSyBpgfKDQvu1mIEadPjgtSIE/VXxWdBjciyONfs4qxnubizO1YMkrNZdeRE1ygtSBSbdljpN3FG0ZIOH0qyr+f1zCDOV2heqROYe8GxfjE",
+                "status": "completed"
+              },
+              {
+                "id": "fc_a19f3b34-122d-9747-93fc-06fca2407c5e_0",
                 "arguments": "{\"labels\":[\"north\",\"beta gamma\",\"quote:\\\"delta\\\"\",\"slash\\\\path\"],\"separator\":\"|\"}",
-                "call_id": "call-c463f29d-580c-4878-9e8f-c0994284225e-2",
+                "call_id": "call-81f363d6-0303-45ec-9709-80fdda00de7c-2",
                 "name": "join_labels",
                 "status": "completed",
                 "type": "function_call"
@@ -2079,7 +2294,7 @@
             },
             "parallel_tool_calls": false,
             "service_tier": "default",
-            "store": true
+            "store": false
           }
         }
       },
@@ -2089,15 +2304,31 @@
           "value": {
             "event": "start",
             "part": 0,
-            "kind": "tool_call"
+            "kind": "reasoning"
           }
         },
         {
           "item": "event",
           "value": {
-            "event": "arguments",
+            "event": "reasoning",
             "part": 0,
-            "json": "{\"labels\":[\"north\",\"beta gamma\",\"quote:\\\"delta\\\"\",\"slash\\\\path\"],\"separator\":\"|\"}"
+            "text": "The second tool completed"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " successfully. The manifest"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " check returned MANIFEST-OK."
           }
         },
         {
@@ -2106,12 +2337,51 @@
             "event": "end",
             "part": 0,
             "content": {
+              "type": "reasoning",
+              "text": "The second tool completed successfully. The manifest check returned MANIFEST-OK.",
+              "native": {
+                "item": {
+                  "encrypted_content": "6dQXHOB04Yvsx96kj4kofL2vriqLJgFYVRjdJWzIETgD/dCXuz/yqX5HrdRApF+q1SPKtsHJAQk8FbVdDwKCMxGHwR+d0hA0anKp9UlKxKFQZly0DZ92b+7ZBpX7Gkt45Ajq5+m/hhmTvMz67DslAhtabinPQ/q/EAo0PZDMlGYblz3Kb4l3LhBThBu2vJh/YdOTz0c/pmbOWAH6OvisoPLO9mJpk8FJCe8wyn2Il/92WwLxEofbjrHWB13lfHEgCyh+L5IdPpl1RdzFIUElERCc/AT2GhZzBV6wJLFD1hVB8iu9Qb7D/WhNmSdsQkOuVP+GH5osjx4AQ8MDjc70EYoMsqn+uM4T5gxtiNWK4H3PRRrWOhI7q37YZksnLLuRMDeUDtIDMYVfTCUfw3yZtuwsurlonpLWC88Ak1AXj+/8KLmE4KFdo0pP+0V6+fwQn4+yZv5DlxtoaQ1S7UWW5mP68x7zcl9rZHt9V8f4dg+HrOY7fUR+xaXJMiClx3+0QwjhtCvh4dTGuQhQbKJCf9GBZosyniHr7+6psFNj9P8/yjNkvfsRJzQFUdO1qSspSOUdyrpSv97cN5p8x1B/A6TRrDHc2PSE/XS+v4nNupSyBpgfKDQvu1mIEadPjgtSIE/VXxWdBjciyONfs4qxnubizO1YMkrNZdeRE1ygtSBSbdljpN3FG0ZIOH0qyr+f1zCDOV2heqROYe8GxfjE",
+                  "id": "rs_a19f3b34-122d-9747-93fc-06fca2407c5e",
+                  "status": "completed",
+                  "summary": [
+                    {
+                      "text": "The second tool completed successfully. The manifest check returned MANIFEST-OK.",
+                      "type": "summary_text"
+                    }
+                  ],
+                  "type": "reasoning"
+                },
+                "fingerprint": 16979434181988051414
+              }
+            }
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 1,
+            "kind": "tool_call"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 1,
+            "json": "{\"labels\":[\"north\",\"beta gamma\",\"quote:\\\"delta\\\"\",\"slash\\\\path\"],\"separator\":\"|\"}"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 1,
+            "content": {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call-c463f29d-580c-4878-9e8f-c0994284225e-2",
-                  "item_id": "fc_642b692e-5f38-94ea-baf9-e65f6317e3a6_0"
-                }
+                "provider": "call-81f363d6-0303-45ec-9709-80fdda00de7c-2"
               },
               "function": {
                 "name": "join_labels",
@@ -2125,8 +2395,17 @@
                   "separator": "|"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "arguments": "{\"labels\":[\"north\",\"beta gamma\",\"quote:\\\"delta\\\"\",\"slash\\\\path\"],\"separator\":\"|\"}",
+                  "call_id": "call-81f363d6-0303-45ec-9709-80fdda00de7c-2",
+                  "id": "fc_a19f3b34-122d-9747-93fc-06fca2407c5e_0",
+                  "name": "join_labels",
+                  "status": "completed",
+                  "type": "function_call"
+                },
+                "fingerprint": 1774883752759615433
+              }
             }
           }
         }
@@ -2182,35 +2461,56 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "reasoning",
-                  "issuer": "xai",
-                  "id": "rs_abf917ce-adad-9183-9e42-ec55cb27eb62",
-                  "content": [
-                    {
-                      "type": "summary",
-                      "content": "Running the production-readiness scenario.\n\nThe manifest note and escaped text are noted. The harness will call ping_empty with an empty JSON object first, then inspect_manifest for project rig-xai with critical=true, retries=2, plan weight=1, verify weight=2, and the exact note."
-                    }
-                  ]
+                  "text": "Running the production-readiness scenario.\n\nThe scenario requires four sequential tool calls: ping_empty, inspect_manifest with the exact note and flags, join_labels with the specified labels and separator, and escape_echo with the exact escaped text.",
+                  "native": {
+                    "item": {
+                      "encrypted_content": "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",
+                      "id": "rs_70c3774e-a273-9a07-8c8b-f4a61f074043",
+                      "status": "completed",
+                      "summary": [
+                        {
+                          "text": "Running the production-readiness scenario.\n\nThe scenario requires four sequential tool calls: ping_empty, inspect_manifest with the exact note and flags, join_labels with the specified labels and separator, and escape_echo with the exact escaped text.",
+                          "type": "summary_text"
+                        }
+                      ],
+                      "type": "reasoning"
+                    },
+                    "fingerprint": 995873926103930295
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call-6c3ed923-d119-47b7-a501-9dae090cc04f-0",
-                      "item_id": "fc_abf917ce-adad-9183-9e42-ec55cb27eb62_0"
-                    }
+                    "provider": "call-2d2983ce-88cc-489d-bccb-8c9cd0ff6044-0"
                   },
                   "function": {
                     "name": "ping_empty",
                     "arguments": {}
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "arguments": "{}",
+                      "call_id": "call-2d2983ce-88cc-489d-bccb-8c9cd0ff6044-0",
+                      "id": "fc_70c3774e-a273-9a07-8c8b-f4a61f074043_0",
+                      "name": "ping_empty",
+                      "status": "completed",
+                      "type": "function_call"
+                    },
+                    "fingerprint": 10893370864192360050
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.responses",
+                "provider": "xai",
+                "model": "grok-4.3",
+                "response_model": "grok-4.3",
+                "response_id": "70c3774e-a273-9a07-8c8b-f4a61f074043"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -2218,10 +2518,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call-6c3ed923-d119-47b7-a501-9dae090cc04f-0",
-                      "item_id": "fc_abf917ce-adad-9183-9e42-ec55cb27eb62_0"
-                    }
+                    "provider": "call-2d2983ce-88cc-489d-bccb-8c9cd0ff6044-0"
                   },
                   "name": "ping_empty",
                   "content": [
@@ -2235,26 +2532,30 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "reasoning",
-                  "issuer": "xai",
-                  "id": "rs_4ac551d1-6cc0-9773-8ad6-11abae114707",
-                  "content": [
-                    {
-                      "type": "summary",
-                      "content": "The production-readiness scenario requires calling exactly one tool at a time in a specific order.\n\nping_empty returned EMPTY-OK. Now calling inspect_manifest."
-                    }
-                  ]
+                  "text": "The first tool call returned an empty OK result.",
+                  "native": {
+                    "item": {
+                      "encrypted_content": "Po/SQWYLufBXWRfXb5NQgvLPBcSFZqGBzTfLiWBkr16G+1fR8EiXZIknBUzaJ0yUODe2XyZ7L4fA07SlTUHp2+sJ5dCpSvG+fu4W4DeBjPGrmbf+fBo4XPKpyRJxU+SfMaNpH0DkvCsaZ+FvEYDozAfUGhGqTMzjqEiqEQC/3igEFywuyLOBOM6yD2Y85Z5r5bNarLBCpHV8C7I+AdbmIHNeUJT6rphNcRdPRnFeoby/d19JEjsV4qIDSNGWb5AtXORxXCXwewe2kY0HvOlnu7N52PQkZ2YhfQJeloBih8xZHQd+WV/3z2nRFMKuf2gwtxSZZqwLC5BaLSBOAmk5p8IikQlC362ClTX9ippxzcysBBKgKLfPU1wLlWaE8vrdmVShjYUr4sMg6d8E+uawZ25W1m354ePBTCPabcDKfs+B4fMLYGWeeLDfs/g6z4YTpsNZ1Wzrvad/0z3kTCQbY72Efw/Xfj/fLjj6/TJrcZm8i9JS27h1Yl7wmSywE0aAOv0eVwXvf0Hlda/t9PilbyuCwhfvGpJkRIpoGcN/56G6wpXhJjxcAjHWVHlmzpguZTjagj5a0C2VMbRfNEeyq8xuKxqXEhi60pZ1fJ3HGF8CeUqvRw4X6TD4MA04M53hsy5rzTn/",
+                      "id": "rs_60e5f77f-0ac4-93db-9d34-c41e266c493f",
+                      "status": "completed",
+                      "summary": [
+                        {
+                          "text": "The first tool call returned an empty OK result.",
+                          "type": "summary_text"
+                        }
+                      ],
+                      "type": "reasoning"
+                    },
+                    "fingerprint": 16124421267036647775
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call-cc3b5fc3-f003-46fa-8f5e-06b82ba8d788-1",
-                      "item_id": "fc_4ac551d1-6cc0-9773-8ad6-11abae114707_0"
-                    }
+                    "provider": "call-84a772a9-2d10-4524-8bcf-6e0a9ceb5c65-1"
                   },
                   "function": {
                     "name": "inspect_manifest",
@@ -2277,10 +2578,27 @@
                       "note": "line one; line two says \"hello\" and path C:\\rig\\xai"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "arguments": "{\"project\":\"rig-xai\",\"flags\":{\"critical\":true,\"retries\":2},\"steps\":[{\"name\":\"plan\",\"weight\":1},{\"name\":\"verify\",\"weight\":2}],\"note\":\"line one; line two says \\\"hello\\\" and path C:\\\\rig\\\\xai\"}",
+                      "call_id": "call-84a772a9-2d10-4524-8bcf-6e0a9ceb5c65-1",
+                      "id": "fc_60e5f77f-0ac4-93db-9d34-c41e266c493f_0",
+                      "name": "inspect_manifest",
+                      "status": "completed",
+                      "type": "function_call"
+                    },
+                    "fingerprint": 12651762188212728195
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.responses",
+                "provider": "xai",
+                "model": "grok-4.3",
+                "response_model": "grok-4.3",
+                "response_id": "60e5f77f-0ac4-93db-9d34-c41e266c493f"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -2288,10 +2606,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call-cc3b5fc3-f003-46fa-8f5e-06b82ba8d788-1",
-                      "item_id": "fc_4ac551d1-6cc0-9773-8ad6-11abae114707_0"
-                    }
+                    "provider": "call-84a772a9-2d10-4524-8bcf-6e0a9ceb5c65-1"
                   },
                   "name": "inspect_manifest",
                   "content": [
@@ -2305,15 +2620,30 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
+                {
+                  "type": "reasoning",
+                  "text": "The second tool completed successfully. The manifest check returned MANIFEST-OK.",
+                  "native": {
+                    "item": {
+                      "encrypted_content": "6dQXHOB04Yvsx96kj4kofL2vriqLJgFYVRjdJWzIETgD/dCXuz/yqX5HrdRApF+q1SPKtsHJAQk8FbVdDwKCMxGHwR+d0hA0anKp9UlKxKFQZly0DZ92b+7ZBpX7Gkt45Ajq5+m/hhmTvMz67DslAhtabinPQ/q/EAo0PZDMlGYblz3Kb4l3LhBThBu2vJh/YdOTz0c/pmbOWAH6OvisoPLO9mJpk8FJCe8wyn2Il/92WwLxEofbjrHWB13lfHEgCyh+L5IdPpl1RdzFIUElERCc/AT2GhZzBV6wJLFD1hVB8iu9Qb7D/WhNmSdsQkOuVP+GH5osjx4AQ8MDjc70EYoMsqn+uM4T5gxtiNWK4H3PRRrWOhI7q37YZksnLLuRMDeUDtIDMYVfTCUfw3yZtuwsurlonpLWC88Ak1AXj+/8KLmE4KFdo0pP+0V6+fwQn4+yZv5DlxtoaQ1S7UWW5mP68x7zcl9rZHt9V8f4dg+HrOY7fUR+xaXJMiClx3+0QwjhtCvh4dTGuQhQbKJCf9GBZosyniHr7+6psFNj9P8/yjNkvfsRJzQFUdO1qSspSOUdyrpSv97cN5p8x1B/A6TRrDHc2PSE/XS+v4nNupSyBpgfKDQvu1mIEadPjgtSIE/VXxWdBjciyONfs4qxnubizO1YMkrNZdeRE1ygtSBSbdljpN3FG0ZIOH0qyr+f1zCDOV2heqROYe8GxfjE",
+                      "id": "rs_a19f3b34-122d-9747-93fc-06fca2407c5e",
+                      "status": "completed",
+                      "summary": [
+                        {
+                          "text": "The second tool completed successfully. The manifest check returned MANIFEST-OK.",
+                          "type": "summary_text"
+                        }
+                      ],
+                      "type": "reasoning"
+                    },
+                    "fingerprint": 16979434181988051414
+                  }
+                },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call-c463f29d-580c-4878-9e8f-c0994284225e-2",
-                      "item_id": "fc_642b692e-5f38-94ea-baf9-e65f6317e3a6_0"
-                    }
+                    "provider": "call-81f363d6-0303-45ec-9709-80fdda00de7c-2"
                   },
                   "function": {
                     "name": "join_labels",
@@ -2327,10 +2657,27 @@
                       "separator": "|"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "arguments": "{\"labels\":[\"north\",\"beta gamma\",\"quote:\\\"delta\\\"\",\"slash\\\\path\"],\"separator\":\"|\"}",
+                      "call_id": "call-81f363d6-0303-45ec-9709-80fdda00de7c-2",
+                      "id": "fc_a19f3b34-122d-9747-93fc-06fca2407c5e_0",
+                      "name": "join_labels",
+                      "status": "completed",
+                      "type": "function_call"
+                    },
+                    "fingerprint": 1774883752759615433
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.responses",
+                "provider": "xai",
+                "model": "grok-4.3",
+                "response_model": "grok-4.3",
+                "response_id": "a19f3b34-122d-9747-93fc-06fca2407c5e"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -2338,10 +2685,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call-c463f29d-580c-4878-9e8f-c0994284225e-2",
-                      "item_id": "fc_642b692e-5f38-94ea-baf9-e65f6317e3a6_0"
-                    }
+                    "provider": "call-81f363d6-0303-45ec-9709-80fdda00de7c-2"
                   },
                   "name": "join_labels",
                   "content": [
@@ -2461,7 +2805,8 @@
           "max_tokens": null,
           "tool_choice": null,
           "additional_params": {
-            "parallel_tool_calls": false
+            "parallel_tool_calls": false,
+            "store": false
           },
           "output_schema": null
         },
@@ -2472,12 +2817,23 @@
           "outcome": "completion",
           "choice": [
             {
+              "type": "reasoning",
+              "text": "",
+              "native": {
+                "item": {
+                  "encrypted_content": "OEFHrv2VQDrN8yRbIQLYajIvIxjprqr+Lzj0vR0wcvQtFbWg96B5Yp940JBKB2AZZmjxWyXzsIsA8KK7hcM/Wew8+icaqA3+j6CoibWTr1mjxe/6PYH79zYvQSbsZagwe67UyXotz/ZwIWhynbE51kJfY9NNz6jYDBBxXkKnwjpZojTfy/00hiA56G7rZs6H0RORWfivJ0jqg+cBceslCILZYPrWZL3KRMnpW5VsZQr/uSytMzgEXmowiYrv1DUa7FMoi7fReJQjhG5jM87wYbXQEscca3X/chX1oYlOA8/UDotmQLR63d+P4RVEq/L3SFMoCnXo2t7OURUcWHWWbJkDt6gbO4AuwQXfcKcmT4wfUaaYHXDOHvdE",
+                  "id": "rs_7e619926-07a2-95ad-b099-4ee143dbf7dd",
+                  "status": "completed",
+                  "summary": [],
+                  "type": "reasoning"
+                },
+                "fingerprint": 17796600549832473228
+              }
+            },
+            {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call-ed7cdb07-668e-4992-89c6-1cd04fcaebea-3",
-                  "item_id": "fc_88072a89-fca1-93f5-8620-e986d0bdaa2b_0"
-                }
+                "provider": "call-dbb890b9-e175-4214-9a9d-b25245e009db-3"
               },
               "function": {
                 "name": "escape_echo",
@@ -2485,25 +2841,37 @@
                   "text": "Line 1\nLine \"2\" with backslash \\ and unicode snowman ☃"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "arguments": "{\"text\":\"Line 1\\nLine \\\"2\\\" with backslash \\\\ and unicode snowman ☃\"}",
+                  "call_id": "call-dbb890b9-e175-4214-9a9d-b25245e009db-3",
+                  "id": "fc_7e619926-07a2-95ad-b099-4ee143dbf7dd_0",
+                  "name": "escape_echo",
+                  "status": "completed",
+                  "type": "function_call"
+                },
+                "fingerprint": 5848518932379350254
+              }
             }
           ],
           "usage": {
-            "input_tokens": 890,
-            "output_tokens": 124,
-            "total_tokens": 1014,
-            "cached_input_tokens": 832,
-            "reasoning_tokens": 97
+            "input_tokens": 1521,
+            "output_tokens": 100,
+            "total_tokens": 1621,
+            "cached_input_tokens": 1280,
+            "reasoning_tokens": 73
           },
-          "message_id": null,
-          "response_id": "88072a89-fca1-93f5-8620-e986d0bdaa2b",
-          "provider_request_id": "88072a89-fca1-93f5-8620-e986d0bdaa2b",
+          "origin": {
+            "api": "openai.responses",
+            "provider": "xai",
+            "model": "grok-4.3",
+            "response_model": "grok-4.3",
+            "response_id": "7e619926-07a2-95ad-b099-4ee143dbf7dd"
+          },
+          "provider_request_id": "7e619926-07a2-95ad-b099-4ee143dbf7dd",
           "finish_reason": "tool_calls",
-          "provider": "xai",
-          "model": "grok-4.3",
           "raw": {
-            "id": "88072a89-fca1-93f5-8620-e986d0bdaa2b",
+            "id": "7e619926-07a2-95ad-b099-4ee143dbf7dd",
             "object": "response",
             "created_at": 0,
             "status": "completed",
@@ -2517,21 +2885,28 @@
               "summary": null
             },
             "usage": {
-              "input_tokens": 890,
+              "input_tokens": 1521,
               "input_tokens_details": {
-                "cached_tokens": 832
+                "cached_tokens": 1280
               },
-              "output_tokens": 124,
+              "output_tokens": 100,
               "output_tokens_details": {
-                "reasoning_tokens": 97
+                "reasoning_tokens": 73
               },
-              "total_tokens": 1014
+              "total_tokens": 1621
             },
             "output": [
               {
-                "id": "fc_88072a89-fca1-93f5-8620-e986d0bdaa2b_0",
+                "type": "reasoning",
+                "id": "rs_7e619926-07a2-95ad-b099-4ee143dbf7dd",
+                "summary": [],
+                "encrypted_content": "OEFHrv2VQDrN8yRbIQLYajIvIxjprqr+Lzj0vR0wcvQtFbWg96B5Yp940JBKB2AZZmjxWyXzsIsA8KK7hcM/Wew8+icaqA3+j6CoibWTr1mjxe/6PYH79zYvQSbsZagwe67UyXotz/ZwIWhynbE51kJfY9NNz6jYDBBxXkKnwjpZojTfy/00hiA56G7rZs6H0RORWfivJ0jqg+cBceslCILZYPrWZL3KRMnpW5VsZQr/uSytMzgEXmowiYrv1DUa7FMoi7fReJQjhG5jM87wYbXQEscca3X/chX1oYlOA8/UDotmQLR63d+P4RVEq/L3SFMoCnXo2t7OURUcWHWWbJkDt6gbO4AuwQXfcKcmT4wfUaaYHXDOHvdE",
+                "status": "completed"
+              },
+              {
+                "id": "fc_7e619926-07a2-95ad-b099-4ee143dbf7dd_0",
                 "arguments": "{\"text\":\"Line 1\\nLine \\\"2\\\" with backslash \\\\ and unicode snowman ☃\"}",
-                "call_id": "call-ed7cdb07-668e-4992-89c6-1cd04fcaebea-3",
+                "call_id": "call-dbb890b9-e175-4214-9a9d-b25245e009db-3",
                 "name": "escape_echo",
                 "status": "completed",
                 "type": "function_call"
@@ -2660,7 +3035,7 @@
             },
             "parallel_tool_calls": false,
             "service_tier": "default",
-            "store": true
+            "store": false
           }
         }
       },
@@ -2670,15 +3045,7 @@
           "value": {
             "event": "start",
             "part": 0,
-            "kind": "tool_call"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "arguments",
-            "part": 0,
-            "json": "{\"text\":\"Line 1\\nLine \\\"2\\\" with backslash \\\\ and unicode snowman ☃\"}"
+            "kind": "reasoning"
           }
         },
         {
@@ -2687,12 +3054,46 @@
             "event": "end",
             "part": 0,
             "content": {
+              "type": "reasoning",
+              "text": "",
+              "native": {
+                "item": {
+                  "encrypted_content": "OEFHrv2VQDrN8yRbIQLYajIvIxjprqr+Lzj0vR0wcvQtFbWg96B5Yp940JBKB2AZZmjxWyXzsIsA8KK7hcM/Wew8+icaqA3+j6CoibWTr1mjxe/6PYH79zYvQSbsZagwe67UyXotz/ZwIWhynbE51kJfY9NNz6jYDBBxXkKnwjpZojTfy/00hiA56G7rZs6H0RORWfivJ0jqg+cBceslCILZYPrWZL3KRMnpW5VsZQr/uSytMzgEXmowiYrv1DUa7FMoi7fReJQjhG5jM87wYbXQEscca3X/chX1oYlOA8/UDotmQLR63d+P4RVEq/L3SFMoCnXo2t7OURUcWHWWbJkDt6gbO4AuwQXfcKcmT4wfUaaYHXDOHvdE",
+                  "id": "rs_7e619926-07a2-95ad-b099-4ee143dbf7dd",
+                  "status": "completed",
+                  "summary": [],
+                  "type": "reasoning"
+                },
+                "fingerprint": 17796600549832473228
+              }
+            }
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 1,
+            "kind": "tool_call"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 1,
+            "json": "{\"text\":\"Line 1\\nLine \\\"2\\\" with backslash \\\\ and unicode snowman ☃\"}"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 1,
+            "content": {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call-ed7cdb07-668e-4992-89c6-1cd04fcaebea-3",
-                  "item_id": "fc_88072a89-fca1-93f5-8620-e986d0bdaa2b_0"
-                }
+                "provider": "call-dbb890b9-e175-4214-9a9d-b25245e009db-3"
               },
               "function": {
                 "name": "escape_echo",
@@ -2700,8 +3101,17 @@
                   "text": "Line 1\nLine \"2\" with backslash \\ and unicode snowman ☃"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "arguments": "{\"text\":\"Line 1\\nLine \\\"2\\\" with backslash \\\\ and unicode snowman ☃\"}",
+                  "call_id": "call-dbb890b9-e175-4214-9a9d-b25245e009db-3",
+                  "id": "fc_7e619926-07a2-95ad-b099-4ee143dbf7dd_0",
+                  "name": "escape_echo",
+                  "status": "completed",
+                  "type": "function_call"
+                },
+                "fingerprint": 5848518932379350254
+              }
             }
           }
         }
@@ -2757,35 +3167,56 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "reasoning",
-                  "issuer": "xai",
-                  "id": "rs_abf917ce-adad-9183-9e42-ec55cb27eb62",
-                  "content": [
-                    {
-                      "type": "summary",
-                      "content": "Running the production-readiness scenario.\n\nThe manifest note and escaped text are noted. The harness will call ping_empty with an empty JSON object first, then inspect_manifest for project rig-xai with critical=true, retries=2, plan weight=1, verify weight=2, and the exact note."
-                    }
-                  ]
+                  "text": "Running the production-readiness scenario.\n\nThe scenario requires four sequential tool calls: ping_empty, inspect_manifest with the exact note and flags, join_labels with the specified labels and separator, and escape_echo with the exact escaped text.",
+                  "native": {
+                    "item": {
+                      "encrypted_content": "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",
+                      "id": "rs_70c3774e-a273-9a07-8c8b-f4a61f074043",
+                      "status": "completed",
+                      "summary": [
+                        {
+                          "text": "Running the production-readiness scenario.\n\nThe scenario requires four sequential tool calls: ping_empty, inspect_manifest with the exact note and flags, join_labels with the specified labels and separator, and escape_echo with the exact escaped text.",
+                          "type": "summary_text"
+                        }
+                      ],
+                      "type": "reasoning"
+                    },
+                    "fingerprint": 995873926103930295
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call-6c3ed923-d119-47b7-a501-9dae090cc04f-0",
-                      "item_id": "fc_abf917ce-adad-9183-9e42-ec55cb27eb62_0"
-                    }
+                    "provider": "call-2d2983ce-88cc-489d-bccb-8c9cd0ff6044-0"
                   },
                   "function": {
                     "name": "ping_empty",
                     "arguments": {}
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "arguments": "{}",
+                      "call_id": "call-2d2983ce-88cc-489d-bccb-8c9cd0ff6044-0",
+                      "id": "fc_70c3774e-a273-9a07-8c8b-f4a61f074043_0",
+                      "name": "ping_empty",
+                      "status": "completed",
+                      "type": "function_call"
+                    },
+                    "fingerprint": 10893370864192360050
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.responses",
+                "provider": "xai",
+                "model": "grok-4.3",
+                "response_model": "grok-4.3",
+                "response_id": "70c3774e-a273-9a07-8c8b-f4a61f074043"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -2793,10 +3224,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call-6c3ed923-d119-47b7-a501-9dae090cc04f-0",
-                      "item_id": "fc_abf917ce-adad-9183-9e42-ec55cb27eb62_0"
-                    }
+                    "provider": "call-2d2983ce-88cc-489d-bccb-8c9cd0ff6044-0"
                   },
                   "name": "ping_empty",
                   "content": [
@@ -2810,26 +3238,30 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "reasoning",
-                  "issuer": "xai",
-                  "id": "rs_4ac551d1-6cc0-9773-8ad6-11abae114707",
-                  "content": [
-                    {
-                      "type": "summary",
-                      "content": "The production-readiness scenario requires calling exactly one tool at a time in a specific order.\n\nping_empty returned EMPTY-OK. Now calling inspect_manifest."
-                    }
-                  ]
+                  "text": "The first tool call returned an empty OK result.",
+                  "native": {
+                    "item": {
+                      "encrypted_content": "Po/SQWYLufBXWRfXb5NQgvLPBcSFZqGBzTfLiWBkr16G+1fR8EiXZIknBUzaJ0yUODe2XyZ7L4fA07SlTUHp2+sJ5dCpSvG+fu4W4DeBjPGrmbf+fBo4XPKpyRJxU+SfMaNpH0DkvCsaZ+FvEYDozAfUGhGqTMzjqEiqEQC/3igEFywuyLOBOM6yD2Y85Z5r5bNarLBCpHV8C7I+AdbmIHNeUJT6rphNcRdPRnFeoby/d19JEjsV4qIDSNGWb5AtXORxXCXwewe2kY0HvOlnu7N52PQkZ2YhfQJeloBih8xZHQd+WV/3z2nRFMKuf2gwtxSZZqwLC5BaLSBOAmk5p8IikQlC362ClTX9ippxzcysBBKgKLfPU1wLlWaE8vrdmVShjYUr4sMg6d8E+uawZ25W1m354ePBTCPabcDKfs+B4fMLYGWeeLDfs/g6z4YTpsNZ1Wzrvad/0z3kTCQbY72Efw/Xfj/fLjj6/TJrcZm8i9JS27h1Yl7wmSywE0aAOv0eVwXvf0Hlda/t9PilbyuCwhfvGpJkRIpoGcN/56G6wpXhJjxcAjHWVHlmzpguZTjagj5a0C2VMbRfNEeyq8xuKxqXEhi60pZ1fJ3HGF8CeUqvRw4X6TD4MA04M53hsy5rzTn/",
+                      "id": "rs_60e5f77f-0ac4-93db-9d34-c41e266c493f",
+                      "status": "completed",
+                      "summary": [
+                        {
+                          "text": "The first tool call returned an empty OK result.",
+                          "type": "summary_text"
+                        }
+                      ],
+                      "type": "reasoning"
+                    },
+                    "fingerprint": 16124421267036647775
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call-cc3b5fc3-f003-46fa-8f5e-06b82ba8d788-1",
-                      "item_id": "fc_4ac551d1-6cc0-9773-8ad6-11abae114707_0"
-                    }
+                    "provider": "call-84a772a9-2d10-4524-8bcf-6e0a9ceb5c65-1"
                   },
                   "function": {
                     "name": "inspect_manifest",
@@ -2852,10 +3284,27 @@
                       "note": "line one; line two says \"hello\" and path C:\\rig\\xai"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "arguments": "{\"project\":\"rig-xai\",\"flags\":{\"critical\":true,\"retries\":2},\"steps\":[{\"name\":\"plan\",\"weight\":1},{\"name\":\"verify\",\"weight\":2}],\"note\":\"line one; line two says \\\"hello\\\" and path C:\\\\rig\\\\xai\"}",
+                      "call_id": "call-84a772a9-2d10-4524-8bcf-6e0a9ceb5c65-1",
+                      "id": "fc_60e5f77f-0ac4-93db-9d34-c41e266c493f_0",
+                      "name": "inspect_manifest",
+                      "status": "completed",
+                      "type": "function_call"
+                    },
+                    "fingerprint": 12651762188212728195
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.responses",
+                "provider": "xai",
+                "model": "grok-4.3",
+                "response_model": "grok-4.3",
+                "response_id": "60e5f77f-0ac4-93db-9d34-c41e266c493f"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -2863,10 +3312,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call-cc3b5fc3-f003-46fa-8f5e-06b82ba8d788-1",
-                      "item_id": "fc_4ac551d1-6cc0-9773-8ad6-11abae114707_0"
-                    }
+                    "provider": "call-84a772a9-2d10-4524-8bcf-6e0a9ceb5c65-1"
                   },
                   "name": "inspect_manifest",
                   "content": [
@@ -2880,15 +3326,30 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
+                {
+                  "type": "reasoning",
+                  "text": "The second tool completed successfully. The manifest check returned MANIFEST-OK.",
+                  "native": {
+                    "item": {
+                      "encrypted_content": "6dQXHOB04Yvsx96kj4kofL2vriqLJgFYVRjdJWzIETgD/dCXuz/yqX5HrdRApF+q1SPKtsHJAQk8FbVdDwKCMxGHwR+d0hA0anKp9UlKxKFQZly0DZ92b+7ZBpX7Gkt45Ajq5+m/hhmTvMz67DslAhtabinPQ/q/EAo0PZDMlGYblz3Kb4l3LhBThBu2vJh/YdOTz0c/pmbOWAH6OvisoPLO9mJpk8FJCe8wyn2Il/92WwLxEofbjrHWB13lfHEgCyh+L5IdPpl1RdzFIUElERCc/AT2GhZzBV6wJLFD1hVB8iu9Qb7D/WhNmSdsQkOuVP+GH5osjx4AQ8MDjc70EYoMsqn+uM4T5gxtiNWK4H3PRRrWOhI7q37YZksnLLuRMDeUDtIDMYVfTCUfw3yZtuwsurlonpLWC88Ak1AXj+/8KLmE4KFdo0pP+0V6+fwQn4+yZv5DlxtoaQ1S7UWW5mP68x7zcl9rZHt9V8f4dg+HrOY7fUR+xaXJMiClx3+0QwjhtCvh4dTGuQhQbKJCf9GBZosyniHr7+6psFNj9P8/yjNkvfsRJzQFUdO1qSspSOUdyrpSv97cN5p8x1B/A6TRrDHc2PSE/XS+v4nNupSyBpgfKDQvu1mIEadPjgtSIE/VXxWdBjciyONfs4qxnubizO1YMkrNZdeRE1ygtSBSbdljpN3FG0ZIOH0qyr+f1zCDOV2heqROYe8GxfjE",
+                      "id": "rs_a19f3b34-122d-9747-93fc-06fca2407c5e",
+                      "status": "completed",
+                      "summary": [
+                        {
+                          "text": "The second tool completed successfully. The manifest check returned MANIFEST-OK.",
+                          "type": "summary_text"
+                        }
+                      ],
+                      "type": "reasoning"
+                    },
+                    "fingerprint": 16979434181988051414
+                  }
+                },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call-c463f29d-580c-4878-9e8f-c0994284225e-2",
-                      "item_id": "fc_642b692e-5f38-94ea-baf9-e65f6317e3a6_0"
-                    }
+                    "provider": "call-81f363d6-0303-45ec-9709-80fdda00de7c-2"
                   },
                   "function": {
                     "name": "join_labels",
@@ -2902,10 +3363,27 @@
                       "separator": "|"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "arguments": "{\"labels\":[\"north\",\"beta gamma\",\"quote:\\\"delta\\\"\",\"slash\\\\path\"],\"separator\":\"|\"}",
+                      "call_id": "call-81f363d6-0303-45ec-9709-80fdda00de7c-2",
+                      "id": "fc_a19f3b34-122d-9747-93fc-06fca2407c5e_0",
+                      "name": "join_labels",
+                      "status": "completed",
+                      "type": "function_call"
+                    },
+                    "fingerprint": 1774883752759615433
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.responses",
+                "provider": "xai",
+                "model": "grok-4.3",
+                "response_model": "grok-4.3",
+                "response_id": "a19f3b34-122d-9747-93fc-06fca2407c5e"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -2913,10 +3391,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call-c463f29d-580c-4878-9e8f-c0994284225e-2",
-                      "item_id": "fc_642b692e-5f38-94ea-baf9-e65f6317e3a6_0"
-                    }
+                    "provider": "call-81f363d6-0303-45ec-9709-80fdda00de7c-2"
                   },
                   "name": "join_labels",
                   "content": [
@@ -2930,15 +3405,25 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
+                {
+                  "type": "reasoning",
+                  "text": "",
+                  "native": {
+                    "item": {
+                      "encrypted_content": "OEFHrv2VQDrN8yRbIQLYajIvIxjprqr+Lzj0vR0wcvQtFbWg96B5Yp940JBKB2AZZmjxWyXzsIsA8KK7hcM/Wew8+icaqA3+j6CoibWTr1mjxe/6PYH79zYvQSbsZagwe67UyXotz/ZwIWhynbE51kJfY9NNz6jYDBBxXkKnwjpZojTfy/00hiA56G7rZs6H0RORWfivJ0jqg+cBceslCILZYPrWZL3KRMnpW5VsZQr/uSytMzgEXmowiYrv1DUa7FMoi7fReJQjhG5jM87wYbXQEscca3X/chX1oYlOA8/UDotmQLR63d+P4RVEq/L3SFMoCnXo2t7OURUcWHWWbJkDt6gbO4AuwQXfcKcmT4wfUaaYHXDOHvdE",
+                      "id": "rs_7e619926-07a2-95ad-b099-4ee143dbf7dd",
+                      "status": "completed",
+                      "summary": [],
+                      "type": "reasoning"
+                    },
+                    "fingerprint": 17796600549832473228
+                  }
+                },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call-ed7cdb07-668e-4992-89c6-1cd04fcaebea-3",
-                      "item_id": "fc_88072a89-fca1-93f5-8620-e986d0bdaa2b_0"
-                    }
+                    "provider": "call-dbb890b9-e175-4214-9a9d-b25245e009db-3"
                   },
                   "function": {
                     "name": "escape_echo",
@@ -2946,10 +3431,27 @@
                       "text": "Line 1\nLine \"2\" with backslash \\ and unicode snowman ☃"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "arguments": "{\"text\":\"Line 1\\nLine \\\"2\\\" with backslash \\\\ and unicode snowman ☃\"}",
+                      "call_id": "call-dbb890b9-e175-4214-9a9d-b25245e009db-3",
+                      "id": "fc_7e619926-07a2-95ad-b099-4ee143dbf7dd_0",
+                      "name": "escape_echo",
+                      "status": "completed",
+                      "type": "function_call"
+                    },
+                    "fingerprint": 5848518932379350254
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.responses",
+                "provider": "xai",
+                "model": "grok-4.3",
+                "response_model": "grok-4.3",
+                "response_id": "7e619926-07a2-95ad-b099-4ee143dbf7dd"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -2957,10 +3459,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call-ed7cdb07-668e-4992-89c6-1cd04fcaebea-3",
-                      "item_id": "fc_88072a89-fca1-93f5-8620-e986d0bdaa2b_0"
-                    }
+                    "provider": "call-dbb890b9-e175-4214-9a9d-b25245e009db-3"
                   },
                   "name": "escape_echo",
                   "content": [
@@ -3080,7 +3579,8 @@
           "max_tokens": null,
           "tool_choice": null,
           "additional_params": {
-            "parallel_tool_calls": false
+            "parallel_tool_calls": false,
+            "store": false
           },
           "output_schema": null
         },
@@ -3091,25 +3591,59 @@
           "outcome": "completion",
           "choice": [
             {
+              "type": "reasoning",
+              "text": "",
+              "native": {
+                "item": {
+                  "encrypted_content": "DhMyEysUazeAV26cJsUPojmdHaA8Q44cppinQkn1A5Jwg6DviG1Civ68B9UywnW1zOY4xEUZxjrvKQX0O9RIe984fYtlubF/zWIOExqTuGU0PnJSkzSAyL0Pia7mkWuAEaZwiy20N6e470C+t8fMq+j1uzfgIXQo7FcBfsEdhUYZb6aQStyCW8Caick",
+                  "id": "rs_ec67783a-e3de-9f07-b74c-be0908503aae",
+                  "status": "completed",
+                  "summary": [],
+                  "type": "reasoning"
+                },
+                "fingerprint": 17796600549832473228
+              }
+            },
+            {
               "type": "text",
-              "text": "Production readiness complete: EMPTY-OK MANIFEST-OK LABELS-OK ESCAPE-OK."
+              "text": "Production readiness complete: EMPTY-OK MANIFEST-OK LABELS-OK ESCAPE-OK.",
+              "native": {
+                "item": {
+                  "content": [
+                    {
+                      "annotations": [],
+                      "logprobs": [],
+                      "text": "Production readiness complete: EMPTY-OK MANIFEST-OK LABELS-OK ESCAPE-OK.",
+                      "type": "output_text"
+                    }
+                  ],
+                  "id": "msg_ec67783a-e3de-9f07-b74c-be0908503aae",
+                  "role": "assistant",
+                  "status": "completed",
+                  "type": "message"
+                },
+                "fingerprint": 10198683419951598249
+              }
             }
           ],
           "usage": {
-            "input_tokens": 944,
-            "output_tokens": 279,
-            "total_tokens": 1223,
+            "input_tokens": 1651,
+            "output_tokens": 53,
+            "total_tokens": 1704,
             "cached_input_tokens": 192,
-            "reasoning_tokens": 259
+            "reasoning_tokens": 33
           },
-          "message_id": "msg_02c3b20b-920e-9b19-b525-25cc4643076c",
-          "response_id": "02c3b20b-920e-9b19-b525-25cc4643076c",
-          "provider_request_id": "02c3b20b-920e-9b19-b525-25cc4643076c",
+          "origin": {
+            "api": "openai.responses",
+            "provider": "xai",
+            "model": "grok-4.3",
+            "response_model": "grok-4.3",
+            "response_id": "ec67783a-e3de-9f07-b74c-be0908503aae"
+          },
+          "provider_request_id": "ec67783a-e3de-9f07-b74c-be0908503aae",
           "finish_reason": "stop",
-          "provider": "xai",
-          "model": "grok-4.3",
           "raw": {
-            "id": "02c3b20b-920e-9b19-b525-25cc4643076c",
+            "id": "ec67783a-e3de-9f07-b74c-be0908503aae",
             "object": "response",
             "created_at": 0,
             "status": "completed",
@@ -3123,19 +3657,26 @@
               "summary": null
             },
             "usage": {
-              "input_tokens": 944,
+              "input_tokens": 1651,
               "input_tokens_details": {
                 "cached_tokens": 192
               },
-              "output_tokens": 279,
+              "output_tokens": 53,
               "output_tokens_details": {
-                "reasoning_tokens": 259
+                "reasoning_tokens": 33
               },
-              "total_tokens": 1223
+              "total_tokens": 1704
             },
             "output": [
               {
-                "id": "msg_02c3b20b-920e-9b19-b525-25cc4643076c",
+                "type": "reasoning",
+                "id": "rs_ec67783a-e3de-9f07-b74c-be0908503aae",
+                "summary": [],
+                "encrypted_content": "DhMyEysUazeAV26cJsUPojmdHaA8Q44cppinQkn1A5Jwg6DviG1Civ68B9UywnW1zOY4xEUZxjrvKQX0O9RIe984fYtlubF/zWIOExqTuGU0PnJSkzSAyL0Pia7mkWuAEaZwiy20N6e470C+t8fMq+j1uzfgIXQo7FcBfsEdhUYZb6aQStyCW8Caick",
+                "status": "completed"
+              },
+              {
+                "id": "msg_ec67783a-e3de-9f07-b74c-be0908503aae",
                 "role": "assistant",
                 "status": "completed",
                 "content": [
@@ -3272,7 +3813,7 @@
             },
             "parallel_tool_calls": false,
             "service_tier": "default",
-            "store": true
+            "store": false
           }
         }
       },
@@ -3282,167 +3823,7 @@
           "value": {
             "event": "start",
             "part": 0,
-            "kind": "text"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": "Production"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " readiness"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " complete"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": ":"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " EMPTY"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": "-"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": "OK"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " MAN"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": "IFEST"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": "-"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": "OK"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " LABEL"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": "S"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": "-"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": "OK"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " ESC"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": "APE"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": "-"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": "OK"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": "."
+            "kind": "reasoning"
           }
         },
         {
@@ -3451,8 +3832,214 @@
             "event": "end",
             "part": 0,
             "content": {
+              "type": "reasoning",
+              "text": "",
+              "native": {
+                "item": {
+                  "encrypted_content": "DhMyEysUazeAV26cJsUPojmdHaA8Q44cppinQkn1A5Jwg6DviG1Civ68B9UywnW1zOY4xEUZxjrvKQX0O9RIe984fYtlubF/zWIOExqTuGU0PnJSkzSAyL0Pia7mkWuAEaZwiy20N6e470C+t8fMq+j1uzfgIXQo7FcBfsEdhUYZb6aQStyCW8Caick",
+                  "id": "rs_ec67783a-e3de-9f07-b74c-be0908503aae",
+                  "status": "completed",
+                  "summary": [],
+                  "type": "reasoning"
+                },
+                "fingerprint": 17796600549832473228
+              }
+            }
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 1,
+            "kind": "text"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
+            "text": "Production"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
+            "text": " readiness"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
+            "text": " complete"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
+            "text": ":"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
+            "text": " EMPTY"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
+            "text": "-"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
+            "text": "OK"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
+            "text": " MAN"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
+            "text": "IFEST"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
+            "text": "-"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
+            "text": "OK"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
+            "text": " LABEL"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
+            "text": "S"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
+            "text": "-"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
+            "text": "OK"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
+            "text": " ESC"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
+            "text": "APE"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
+            "text": "-"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
+            "text": "OK"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
+            "text": "."
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 1,
+            "content": {
               "type": "text",
-              "text": "Production readiness complete: EMPTY-OK MANIFEST-OK LABELS-OK ESCAPE-OK."
+              "text": "Production readiness complete: EMPTY-OK MANIFEST-OK LABELS-OK ESCAPE-OK.",
+              "native": {
+                "item": {
+                  "content": [
+                    {
+                      "annotations": [],
+                      "logprobs": [],
+                      "text": "Production readiness complete: EMPTY-OK MANIFEST-OK LABELS-OK ESCAPE-OK.",
+                      "type": "output_text"
+                    }
+                  ],
+                  "id": "msg_ec67783a-e3de-9f07-b74c-be0908503aae",
+                  "role": "assistant",
+                  "status": "completed",
+                  "type": "message"
+                },
+                "fingerprint": 10198683419951598249
+              }
             }
           }
         }

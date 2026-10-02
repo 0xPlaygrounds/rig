@@ -232,10 +232,7 @@
               {
                 "type": "toolcall",
                 "id": {
-                  "provider": {
-                    "call_id": "call-be1e3c34-0593-4956-a937-9ee00fcc0243-0",
-                    "item_id": "fc_f50c8816-705b-9c83-ab74-c57003e2b58e_0"
-                  }
+                  "provider": "call-be1e3c34-0593-4956-a937-9ee00fcc0243-0"
                 },
                 "function": {
                   "name": "submit",
@@ -245,11 +242,30 @@
                     "profession": "retired teacher"
                   }
                 },
-                "signature": null,
-                "additional_params": null
+                "native": {
+                  "item": {
+                    "arguments": "{\"name\":\"Bob Johnson\",\"age\":55,\"profession\":\"retired teacher\"}",
+                    "call_id": "call-be1e3c34-0593-4956-a937-9ee00fcc0243-0",
+                    "id": "fc_f50c8816-705b-9c83-ab74-c57003e2b58e_0",
+                    "name": "submit",
+                    "status": "completed",
+                    "type": "function_call"
+                  },
+                  "fingerprint": 2552971096238891128
+                }
               }
             ],
-            "message_id": null,
+            "head": {
+              "origin": {
+                "api": "openai.responses",
+                "provider": "xai",
+                "model": "grok-3-mini",
+                "response_model": "grok-4.3",
+                "response_id": "f50c8816-705b-9c83-ab74-c57003e2b58e"
+              },
+              "stop": "tool_use",
+              "native": null
+            },
             "done": true,
             "usage_recorded": true,
             "stream_validated": 0
@@ -271,10 +287,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call-be1e3c34-0593-4956-a937-9ee00fcc0243-0",
-                      "item_id": "fc_f50c8816-705b-9c83-ab74-c57003e2b58e_0"
-                    }
+                    "provider": "call-be1e3c34-0593-4956-a937-9ee00fcc0243-0"
                   },
                   "function": {
                     "name": "submit",
@@ -284,8 +297,17 @@
                       "profession": "retired teacher"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "arguments": "{\"name\":\"Bob Johnson\",\"age\":55,\"profession\":\"retired teacher\"}",
+                      "call_id": "call-be1e3c34-0593-4956-a937-9ee00fcc0243-0",
+                      "id": "fc_f50c8816-705b-9c83-ab74-c57003e2b58e_0",
+                      "name": "submit",
+                      "status": "completed",
+                      "type": "function_call"
+                    },
+                    "fingerprint": 2552971096238891128
+                  }
                 }
               ],
               "usage": {
@@ -295,12 +317,15 @@
                 "cached_input_tokens": 192,
                 "reasoning_tokens": 157
               },
-              "message_id": null,
-              "response_id": "f50c8816-705b-9c83-ab74-c57003e2b58e",
+              "origin": {
+                "api": "openai.responses",
+                "provider": "xai",
+                "model": "grok-3-mini",
+                "response_model": "grok-4.3",
+                "response_id": "f50c8816-705b-9c83-ab74-c57003e2b58e"
+              },
               "provider_request_id": "f50c8816-705b-9c83-ab74-c57003e2b58e",
               "finish_reason": "tool_calls",
-              "provider": "xai",
-              "model": "grok-4.3",
               "raw": {
                 "background": false,
                 "completed_at": 0,
@@ -408,14 +433,24 @@
             }
           },
           "rig_ecs::bus::effect::Issued": 0,
-          "rig_ecs::bus::handlers::ServedBy": 0,
-          "rig_ecs::bus::effect::Seq": 0
+          "rig_ecs::bus::effect::Seq": 0,
+          "rig_ecs::bus::handlers::ServedBy": 0
         },
         {
           "bevy_ecs::hierarchy::ChildOf": 2,
           "rig_ecs::agent::Role": "Assistant",
           "rig_ecs::agent::Utterance": {},
-          "rig_ecs::agent::content::parts::MessageId": null
+          "rig_ecs::agent::content::parts::AssistantHead": {
+            "origin": {
+              "api": "openai.responses",
+              "provider": "xai",
+              "model": "grok-3-mini",
+              "response_model": "grok-4.3",
+              "response_id": "f50c8816-705b-9c83-ab74-c57003e2b58e"
+            },
+            "stop": "tool_use",
+            "native": null
+          }
         },
         {
           "bevy_ecs::hierarchy::ChildOf": 7,

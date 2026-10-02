@@ -6,11 +6,19 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 19
+          "items": 18
         }
       },
       {
-        "batch": 2,
+        "batch": 3,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 3,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -83,7 +91,14 @@
           "choice": [
             {
               "type": "text",
-              "text": "A glarb-glarb is an ancient farming tool from the planet Jiro."
+              "text": "A glarb-glarb is an ancient farming tool from the planet Jiro.",
+              "native": {
+                "item": {
+                  "content": "A glarb-glarb is an ancient farming tool from the planet Jiro.",
+                  "refusal": null
+                },
+                "fingerprint": 9658890132495485441
+              }
             }
           ],
           "usage": {
@@ -93,11 +108,22 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 128
           },
-          "message_id": null,
-          "response_id": "chatcmpl-ERDCqAduS7M5R4b3x76EXwTLCIg3B",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "openai",
+            "model": "gpt-5-mini",
+            "response_model": "gpt-5-mini-2025-08-07",
+            "response_id": "chatcmpl-ERDCqAduS7M5R4b3x76EXwTLCIg3B"
+          },
+          "native": {
+            "item": {
+              "content": "A glarb-glarb is an ancient farming tool from the planet Jiro.",
+              "refusal": null,
+              "role": "assistant"
+            },
+            "fingerprint": 8549421029602975643
+          },
           "finish_reason": "content_filter",
-          "provider": "openai",
-          "model": "gpt-5-mini-2025-08-07",
           "raw": {
             "usage": {
               "prompt_tokens": 65,
@@ -275,7 +301,14 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "A glarb-glarb is an ancient farming tool from the planet Jiro."
+              "text": "A glarb-glarb is an ancient farming tool from the planet Jiro.",
+              "native": {
+                "item": {
+                  "content": "A glarb-glarb is an ancient farming tool from the planet Jiro.",
+                  "refusal": null
+                },
+                "fingerprint": 9658890132495485441
+              }
             }
           }
         }

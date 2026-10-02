@@ -2,6 +2,54 @@
   "header": {
     "deliveries": [
       {
+        "batch": 15,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 16,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 17,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 18,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 19,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 20,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 21,
         "id": 0,
         "kind": {
@@ -54,7 +102,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -62,7 +110,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -86,7 +134,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -94,7 +142,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -118,7 +166,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -126,7 +174,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -158,7 +206,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -166,7 +214,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -174,7 +222,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -198,7 +246,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -206,7 +254,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -230,7 +278,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -278,7 +326,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -310,7 +358,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -318,7 +366,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -386,6 +434,126 @@
         }
       },
       {
+        "batch": 70,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 71,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 72,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 73,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 74,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 75,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 76,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 77,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 78,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 79,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 80,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 81,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 82,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 83,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 84,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
         "batch": 85,
         "id": 0,
         "kind": {
@@ -394,7 +562,495 @@
         }
       },
       {
-        "batch": 85,
+        "batch": 86,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 87,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 100,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 102,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 103,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 104,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 105,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 106,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 107,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 108,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 109,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 110,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 111,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 112,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 113,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 114,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 115,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 116,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 117,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 118,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 119,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 120,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 121,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 122,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 123,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 124,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 125,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 126,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 127,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 128,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 129,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 130,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 131,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 132,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 133,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 134,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 135,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 136,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 137,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 138,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 139,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 140,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 141,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 142,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 143,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 144,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 145,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 146,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 147,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 148,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 149,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 150,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 151,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 152,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 153,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 154,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 155,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 156,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 157,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 158,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 164,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 177,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -423,7 +1079,7 @@
         "required": {
           "golden/model:default": "completion"
         },
-        "policy": 4378781729358404571
+        "policy": 13015707367879523881
       }
     }
   },
@@ -463,7 +1119,8 @@
             },
             "include": [
               "reasoning.encrypted_content"
-            ]
+            ],
+            "store": false
           },
           "output_schema": null
         },
@@ -475,36 +1132,64 @@
           "choice": [
             {
               "type": "reasoning",
-              "issuer": "openai",
-              "id": "rs_0f8a29a984eb7c8b006ab2b480467487d086d05eda0e6c86f0",
-              "content": [
-                {
-                  "type": "encrypted",
-                  "content": "gAAAAABqsrSBrB4PW4cT2FbqP1VMQQLVVB-dto2IYstKxGB60JpLjNYB2oMRYp-j9tWe1Hzdcd48eZasYirM91DfZ14JMopjtCjAcyo-jlmcXPc20KYSY349Xg4kcyS6apCxP1ZmmB46N6P15qYE4td5_JQS0wuiG3RcnkAzmR2kOiI6XzinBugJC7YkvWqto585FfP3Op4oxTUT2jSeFswEO3PRbAcr2tWvDbHVQUefouFOO6cYqQDj1fHKxk8UaFpDcuhgIaT1RnpA2r9Kq3cQmrDymJo__12EfV9T4LTKwwxOkXC79ywdtUPM0FtM_Jo40QdNs3kNzE_1qqIbuIWDLu1V_soqjC6iwsuBkxE-xc--JVsIQBX8fS1EITSXDcW1cYKr5uFscGq70Fwv9deaRWBgekdnwty1VaggX1ydkAMStqFcvzoaQZGxCJwtDfYgWhpF_aCTWO0LthMJap1mtOsgcBuUZu3Ay7ALQo3SaBly-4RIwSqowmLTt15YC7VOW-XwDBIXQ6Xy98oltamLkZ4KygkT02R3u7lHwDcCt3SNkPAo-Tc3obXwMePDXusT3hzyWHFEx--xcEi5iX4owbAwr8w79b14J9oxS5jjNOeWVXII_xkd0fke04Dlzhwdpsn3w7Vr3Gk6__ZIcYSLzwto-7FibIzq8fiN0daMRqye64C2bN68ITlM_JzrEG7Esx84qSBSQR9AEtXQkRYCU9Un6gNnLVt_QiZsYWDT4uDMKmEP12T2nJkMg3wmEL8XlX-h60d5jIz6RhFTdN5YCsckQGjRxg-I9QkHFDPduUGgb0Ja5rsZ6fcaOIDBcQm2YcbxdPV77l9_gMTel8WXrzRWXmW_mz_onTYOziy5lmViGeENhuF1Mmzwu8qy0B02t1bo39qv5k1c5qjyDiduMwOxSr19WninIDl-C--oZtWk2ggHTmywGhLOb9dfZook5SkALyNIquIvPvgE4RLE0PXpbMybR_anFbxN2EXcgLuswu7EVVvtqRiLxZqPELv_NK6IB3ik9JRhidR2vRzu-bmQJswe0ZcPPaP6YfBTdtGt1Z38ffvhVTQuigM7tIpHi9BLtV7qxj0uH4RoQgM-nK_-kzGkMF8AdkDJUB0MxzRl5FdU3tjFdFkXNZ1U4blSfOumr6mHZcZ9r_uohlGOQH0ViJp2cNL8NX5swLoRuU-x9cHiTVb4uzwhlkD8Q0BD7GUAtAzTxvqnIdsvW4uT_vpDoE--IRhJr-vGsNK1dtcYSLDnobQUh45JShSpxdqSKn7LbotKMrXQfjZTD0G2qa0BGelg-PwzjtWNxzMp7_TVIxid-esZ7_q3Mp3yxuFIl_0UYCfc_dfvF_f8ipuqdx_RJ3JBj-jlF6mqqod-XXpvSuQAL6tn_FiAfDeylC3AW5DMeLCWc73xcg9F61_EFGNSlmRLsfdLM_O-D8WNOjJ8ZZV99uNjHRx7POzazHi_h3sb5hBn9pAuu9r0L1UrvUb14NTdXJAgeGDbxNtLbRQoNHEkLeOmbEhWuE5cMxNRq4jAIXSY9tKmSVZxSSqGCI6_icb4hh9E0-PcBCpZuh5KkYAmDTAdZ8JpNnukRKu_1MyLG_X_4YpF5OGjvOc9OZ06MYn-nWtpE2CZhvAX-s06rn-Jdo8="
-                }
-              ]
+              "text": "**Explaining Rust and Memory Safety**\n\nI need to craft a concise explanation of Rust and the importance of memory safety in just one or two sentences. First, I'll define Rust as a systems programming language that emphasizes safety, concurrency, performance, and uses concepts like a borrow checker. Then, I’ll note that memory safety is crucial because it helps prevent bugs, undefined behavior, security vulnerabilities, and crashes, which all contribute to improved reliability and concurrency. I'll keep it brief!",
+              "native": {
+                "item": {
+                  "content": [],
+                  "encrypted_content": "gAAAAABqv0sGR6MbKzKO9_Lk-IvnXd5T3bchFyYnRRSS8JX5LqSuE4N5CL8yiiQxXVtFRFwU6uOyeD0ZiUvnSGabsW6yTDtY5tMZpQaZnvxvKW3gw0AEpUu2NB6vIChW3da171NLo54yzTmQmI4C8oMZ3lGaiqnrTjYOt4zss8aGU2McCO4Wxa7ZGi324UJhF0OgVIygBNg4b4uqsgBtz1ieb739dx7DlMQkkh1cben8vi4D9dBL8sFbd-ZBUZTa28w6qJc5f94Yh1QpIFAJtT2rFVTJDnnEtcKJHeFDhYLVcZnqqe3qFwhaP6IeXeVGtBenFAftfalgT9coH_2IP__t7Qno6f0ZBOjBZMxf4MH_rGcEjonKxK7uAoA4IAKB5Djw1v4S9sHhdPtZCnhRlJ3Elyosegu5oITr5VfJ9oUpJeNjSUtNYJk-vdnjQgm6978EiXDMKaTSokjdwUvIkPIDm2LlLB9NtPEE3nIUJ95Zz3nagNjoOvFw0iKF9y7NOKsRK8lW-L76pKWZtzvKMrRbgQ6jLYokyyuaFW6y5Ywiv8v7-RKWxhTuJdtIBbuuL4mMqfePHVms_jB48YnoEM0j2m2T_Y1LFuoJgs7jlJRUQafglXWU7QHSeRs-U9rSJDuN6-HnwAvlju5cxQ0cNv38_81ko1VmLmoIfoRX-Ie9kPgMhg37_irPCQiVBfnzoj3tUKrsig8mEp-oKav-rrZw-su41lsqIW30iIl7r6qmbVdXv4xkzY8Z0JCaddWlZP8ffRJc-jDIKoPuYVPMEbjK4v74uQrVhqLJa-AqcL-E_yvnxqsxEArPOmDnrGNjdZCllgF_U6Ow8tcFLmuD9chjWof5OtUG3qBMhkcZulQrsTpJQ71xhh1UiLUHcdOlqR4NVQkcaysCIybPrk-8qxgUgYUIEc6UsVbMSu4bseI72qGfKdzx82aigSt8ndMiBxqSaiDU3tdmIsLwzj1qawoG7rLgn4agVc1jwrQaCyrfyJDfvE8WBfORDAm2TLEc-hvsLLow3-2CwG49ELCtcL5yV-wiBNkUObwzJMHwncwZ8NdE1rFUe34stkXiVFRrSfVyx8-wiF2oJaJJY-u_ZJKn6qOYWn38iS7xWzHdV2o9C-JJQEOf-ruQXCYVdTQlQs1McZOF674BIV3cGtowYCSj8s65IjC7XhBhfQK_tCCsORl8bWSJFayfiYVWZl917t2jRxXMQebdctw3dil_LDDNU3-dzc5OyasuIf-trIcxAxRVCBKwVdwHh7S-K0lBlF1Q3NRtS7twADAQUQnyxHqKO73Q4BKPuocfzjaVXSC3wLyCHxQXlFMh3ny6rch0khwQBGru-c9wUWMg7kpJBp_TP8PWTyaUn30pLEjW74iACsHHY2zCvvr7LjHu1Arund669Oe6kNKUPJ4_QfJv7cBj2untFPXdG5Wx4BI0ujJhKkMMpNXX8RScTMFiKfCIRJ6LfqA-tM18HfJyz6Ci32KqHO8AdhOAT4Bt2xDkhf55zfOaYlvp28X5lg-fN0pyBSXbLqOg-Z2agxzFP1MFVZM_Jj8Jw0UWBRyGlXall4iKFuyVuGYczmDA1D6kOwZdQgBU48q2UC6V5s9AjhtdCyoo2s7iWTsh9VBBKITTeA7EkSpJqBy1plLIbvGWV-gcVgNnQGrMDQ_1YQI9DPOpEgG3rKva5QCCfp9SZ0pfy0nzoma_D7uYDzsIWETeuHvO8pGAIxgQCp9ELCSfyWrLxjWLtBkx8q4tgG7_lVY9a1bV1xH7RlRH-ArLorafL38ZjKA49BA-shDJ0-X_Ah5FYwtxURbeQ4SRzi2vg_3EQhh36D2FsJ22sUE=",
+                  "id": "rs_02770ddde224ac2c016abf4b04cd8087d0b85f6cdb45c17506",
+                  "summary": [
+                    {
+                      "text": "**Explaining Rust and Memory Safety**\n\nI need to craft a concise explanation of Rust and the importance of memory safety in just one or two sentences. First, I'll define Rust as a systems programming language that emphasizes safety, concurrency, performance, and uses concepts like a borrow checker. Then, I’ll note that memory safety is crucial because it helps prevent bugs, undefined behavior, security vulnerabilities, and crashes, which all contribute to improved reliability and concurrency. I'll keep it brief!",
+                      "type": "summary_text"
+                    }
+                  ],
+                  "type": "reasoning"
+                },
+                "fingerprint": 7185787293196106791
+              }
             },
             {
               "type": "text",
-              "text": "Rust is a modern systems programming language that provides performance like C/C++ while enforcing strong compile-time guarantees for memory safety and safe concurrency without a garbage collector. Memory safety matters because it prevents bugs such as use-after-free, buffer overflows, and data races that cause crashes and security vulnerabilities."
+              "text": "Rust is a modern systems programming language that provides performance like C/C++ while enforcing memory- and thread-safety through its ownership and borrow-checker model and zero-cost abstractions. Memory safety matters because it prevents bugs, crashes, and security vulnerabilities (use-after-free, buffer overflows, data races), leading to more reliable and secure software.",
+              "native": {
+                "item": {
+                  "content": [
+                    {
+                      "annotations": [],
+                      "logprobs": [],
+                      "text": "Rust is a modern systems programming language that provides performance like C/C++ while enforcing memory- and thread-safety through its ownership and borrow-checker model and zero-cost abstractions. Memory safety matters because it prevents bugs, crashes, and security vulnerabilities (use-after-free, buffer overflows, data races), leading to more reliable and secure software.",
+                      "type": "output_text"
+                    }
+                  ],
+                  "id": "msg_02770ddde224ac2c016abf4b068f8087d09a313b663e535018",
+                  "role": "assistant",
+                  "status": "completed",
+                  "type": "message"
+                },
+                "fingerprint": 11260497644021905078
+              }
             }
           ],
           "usage": {
             "input_tokens": 37,
-            "output_tokens": 134,
-            "total_tokens": 171,
+            "output_tokens": 161,
+            "total_tokens": 198,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 64
           },
-          "message_id": "msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
-          "response_id": "resp_0f8a29a984eb7c8b006ab2b47fb03c87d08368425381fd8c8b",
-          "provider_request_id": "req_ef25c3cf2746490994dc4cf80b4f34cf",
+          "origin": {
+            "api": "openai.responses",
+            "provider": "openai",
+            "model": "gpt-5-mini",
+            "response_model": "gpt-5-mini-2025-08-07",
+            "response_id": "resp_02770ddde224ac2c016abf4b0469ec87d0ab25520a25f7364c"
+          },
+          "provider_request_id": "req_04f46cb31baf41dea7417afadb9433ab",
           "finish_reason": "stop",
-          "provider": "openai",
-          "model": "gpt-5-mini-2025-08-07",
           "raw": {
-            "id": "resp_0f8a29a984eb7c8b006ab2b47fb03c87d08368425381fd8c8b",
+            "id": "resp_02770ddde224ac2c016abf4b0469ec87d0ab25520a25f7364c",
             "object": "response",
             "created_at": 0,
             "status": "completed",
@@ -525,28 +1210,33 @@
                 "cached_tokens": 0,
                 "cache_write_tokens": 0
               },
-              "output_tokens": 134,
+              "output_tokens": 161,
               "output_tokens_details": {
                 "reasoning_tokens": 64
               },
-              "total_tokens": 171
+              "total_tokens": 198
             },
             "output": [
               {
                 "type": "reasoning",
-                "id": "rs_0f8a29a984eb7c8b006ab2b480467487d086d05eda0e6c86f0",
-                "summary": [],
-                "encrypted_content": "gAAAAABqsrSCTU6YPL2R_FBOX2rbGPrwzFHbqNDsw-4brOAc7_G_QdP9Morhe7DDknsZ2ysgpvvRJqjaXXx-kSBYIvlBAp9w1NnyIBo9BWXYGPKWRvX5keuUahIIg3Tf06aA-nt-6YWVPasX2HTTx7CkVJ-ho68PWYV_NOp4MgvGe7suzgnWhvFT9NGPP1K6V0OGc63pso8xvTg9vHbWU8ez-78dwEcy3EIplVASjE3Qdyx1FM5kQM2-EdrcJG_7yjpb-IaPEZiLNlT47x-G4eIkLuKicP4YWmRF756VdhmtgwcbGPzlU-RsPG0ur_zKIxPiOWMk2T-oifZCXSE1dr-lCnB_DRGc1x6nucqTCu3x4QKoH-3qHNnxYIMHfE50OWterQZyMYzhJ_EyshuAErYmYyfH2wC1_ArBO6hf-nYc_lcfrT9Nk1k5HfI1S2OsdoIjXpGGz7JM1bXXxUAMCRdZGxsXyXc6cO165FpL-v-B0_VnDi0kU7UkqSU0LAwMTO6agzkUC-IsWKYDxRTdjRLq2e0qpmiSfHssOYjF5oJ5jL2WmHXN-CelvOtcCULz7KqYDRTSRJKva-YZ_93PcFcDk_D3GSQuJ5ss8XfC6nYYe8WwjMz77WDCHdcnd6dJEWK1EAYjrN8JsfPXzj_SxISvuWXsF2lcg2DjgGHc2jPKHjCgHwey_iC1EX3VOMDd5SyA5qrEuZfHR7yfywvH6uNVOIgn7KeWbziill0aPyCpk53l4H1WoVRHH_u-ene0Dg5HvtGZhZ7Fh5M34nHegrWnOeuB74VGfynljIZaZbDZtG6xz3E65NYXyPAJnIiVJhR1uZEnmCse9mepql4JI_F1R1X6prwBNkGGqaxZi09KgMjNQHoeTqYW3VEyu4RS6r_JiEDlALt2zYOm9afqBP-njUFMmmtDdqncXL56Lvtp4WiUJC2HTIdKEn2b37jKwji834qMdkoNPwIwaLkH7LrggzbpQwVMfVwCDLTEgEAAC0p2x6lkANJkxa_j6EqYl_AvUbydI1u7JWtyxotNKBOFCG2EMB7H5qgPu82DMv-ELc8c0YcLTkBCz3sp9rL5r6L27DUcxoz-oKAspjyVKXAhhQivLt0ec0z-034TC0equJ7Se1RFv_oBLJfz29ETo4QcI-ygyNdu9KPVo7UpFoj-3cz1nmKo6FIj-QxCv76wFpuuUrd55yERzEgUNqqpVQ4P0qU2RyjzasPTQG9KCTd-mO-YynZ8QLzgNjruXMlYZKrQIiu_JVIRw8PcipOdphE9MHt38h-AJ1Gw-_I2Q8_RmztnDpjKUEUXGfcWnD__E8nM2J7bQId8ZWd6GmLdxYkrZrzVDSvILmJHuzyQI10rT7Or3fl36txgsWbKy4UD6Msh9GGuBNPRitywVokFz396YVxy0DTwppvYmkGSlo52NQ4f4h300HNkwyOfnXnSTZ0wOOysMIWl20ZJ2oY-zvloLVCiLN0KpWPf550IMhOfy67GgqEa1xSiC-O6JPSAh062sbdeoVWZUZ09dKpUYBFjgipRoryDLvbmhHkTbIU6op4rkOw71kq0lVfa2oy28NfKxhrLKEbsm6MLZuct8ZDLy630KJzQfWXbdCUKgV_TDWeAo4F6TNMVIkSIkwqH4si5-eTGgIY=",
+                "id": "rs_02770ddde224ac2c016abf4b04cd8087d0b85f6cdb45c17506",
+                "summary": [
+                  {
+                    "type": "summary_text",
+                    "text": "**Explaining Rust and Memory Safety**\n\nI need to craft a concise explanation of Rust and the importance of memory safety in just one or two sentences. First, I'll define Rust as a systems programming language that emphasizes safety, concurrency, performance, and uses concepts like a borrow checker. Then, I’ll note that memory safety is crucial because it helps prevent bugs, undefined behavior, security vulnerabilities, and crashes, which all contribute to improved reliability and concurrency. I'll keep it brief!"
+                  }
+                ],
+                "encrypted_content": "gAAAAABqv0sGpI2DARGPSTUS8eMrZoDyNUdMMq8cb5pjgLamuFYI8oiC0waCJbSy008rlDcMADDHx9NBcmuNR9KC1TY2D7u2vY85e-MzVV1APS9GcjAnV242v1TWUrvxgl5-BXz87jQNtEzDL4I5TEBVSNdUQUNGhfd5fVlS5_bRpoQNTZsMOuKfndk3UdLYlmg7bcfYjezKMJIWPSuBMKNFiSmLEo8NSOT09aFLf3duOa4-8M0OqmQf7H-Ca9OXasJlaxL5OQWINuGiKT-KXFcMOh79IvEkWzWH1Eshb70II2Cxe6amXDLT5kJbA_HMXPvyvGACLhH5kNJV8ZaDWe8lp5zLjRSeidARlLUSYhxB3Ud7Ac20XhLJBuQugnCDFu3-yNRMQU1pYtEjWlhsQ4-5Ek3063FfdV1lVU0oBQhDawkvhioP88TnZZK90ip8QiGjzxrgM4LNap-iauL0PtWpkWvu-ur2DNxJfCKXImKFXm9IImojUqQeBrRNSmw7SeebWHXj4unIQM_7U4eauvJlND_Qip2d8SunxySywl7fFBYZHRSnUdphTcXPCkVBPRvnNMTgqQcZFIiVp-wvV-KYo4rBey5CHwMYJ0fK0fnCUj1fxQtgSrgLwgJUGVZK7K_fX7w6BFMQxXmjHGi6_fjYZNmFQ5lFM_uEuZ-a5LG576AwSQnGMsem0gAv9Y7l7LYTtT7MxKkFz0xrvyF7ywHY5ntjC70D-epbYo8NWm85OWk4u5-KEehaYuv0KvB5MHhtTYIWTjtOn_46nZl6aF48OKXcuQg-N3FOpIywUPqhnVhz8Z0aNsbeiAG_z3ZgLGpg2VzXAJoQmVk2qj99DDD3s1tQxaPCYClsZGEUOorcNIt6EM5u32ADNnfMQBeOy9oDMSR_1ULht3HEjOdf1hJ-tOIwqck-pESx9LVQY8QT07SwymrdWi7_UQ-dws-kyeKAfx0MIpm3eePEAk_U7qKsnHNGCjrXfH4BTH5JnS26O_XvFGh8bzTd5FSBKjFRVHyu1oUZ_cVZqDa0TZDiAcw49pIVKex2aXCJW9luDDuGW4X9zuyEZLEMB5JDfPZhgeyM0sdZ338jZwmwDdQ4VLaVVANAKBfttZ0QrGNsG8aaGuCwgNszy6zD_3PlmXSBS8DMCgqUzFhaTNRDCddL4Dna0ysfnp7DNZ5bDST5Ipa7--lfFnx6SV9WcqOsULI13MCUWHbdjtTfZM7Gc0mVs6gdm0zYjMb6DzvoBGOU5HT9jvoOase98nidIRpxZd6OU4SwolS5TxLedxVHkGd5efG4CJO4_WbxK55oOob0QoVGC8nssrw987_oNiSHEo0IfKP1zc6u2fAtIjLLJSjBTivqPEAB6rLpksDF-ORS1_cWDED-pBOf503TiJGdw3iwR4e4VGpoiklqEFwuSwtbzKrhwvpedX4nHq76W7tNCrsWPd-xA49aLvmZYJ57LI5iqraC9cczHYhN8ZYWbzA5igrHLYTMYqOFk3s5lIkfzKRac4_q2VU_HMHuG-EhCPk0p-oAPgnMogS9deFTFEh3D4NJhJ9ZGuUMNTTIQnDaz78VXOwkxOk8BMIks23DRWCiVHTqg5G5DzbH_q0xVF_lJcZXQHESa17dGgynZRNuMb_lA6Afcoxp_9vdRdvj0EkENTfd1OjhSH8lwWaXCMG1HUwWUyZDx1RobwcXCNGZ1za2C9Q4WFvvhxAQD_htKz-iAQk9e9ZcN-KqhddVWiAY87HiMuxlhPaaDIm2cr0OQSN6SvxmJ_E5MBRi9BrKf4fXY3Nv2ncy1GKcT1-bwLokcDowYSYmv3FNUc8cnS6ECMmaOc1yYyRvtjU=",
                 "status": null
               },
               {
-                "id": "msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
+                "id": "msg_02770ddde224ac2c016abf4b068f8087d09a313b663e535018",
                 "role": "assistant",
                 "status": "completed",
                 "content": [
                   {
                     "type": "output_text",
-                    "text": "Rust is a modern systems programming language that provides performance like C/C++ while enforcing strong compile-time guarantees for memory safety and safe concurrency without a garbage collector. Memory safety matters because it prevents bugs such as use-after-free, buffer overflows, and data races that cause crashes and security vulnerabilities.",
+                    "text": "Rust is a modern systems programming language that provides performance like C/C++ while enforcing memory- and thread-safety through its ownership and borrow-checker model and zero-cost abstractions. Memory safety matters because it prevents bugs, crashes, and security vulnerabilities (use-after-free, buffer overflows, data races), leading to more reliable and secure software.",
                     "annotations": [],
                     "logprobs": []
                   }
@@ -566,7 +1256,7 @@
             "prompt_cache_retention": "in_memory",
             "parallel_tool_calls": true,
             "service_tier": "default",
-            "store": true
+            "store": false
           }
         }
       },
@@ -582,18 +1272,722 @@
         {
           "item": "event",
           "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": "**Explaining Rust and Memory Safety**\n\nI"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " need"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " to"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " craft"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " a"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " concise"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " explanation"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " of"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " Rust"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " and"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " the"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " importance"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " of"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " memory"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " safety"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " in"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " just"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " one"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " or"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " two"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " sentences"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": "."
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " First"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": ","
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " I'll"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " define"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " Rust"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " as"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " a"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " systems"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " programming"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " language"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " that"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " emphasizes"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " safety"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": ","
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " concurrency"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": ","
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " performance"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": ","
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " and"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " uses"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " concepts"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " like"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " a"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " borrow"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " checker"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": "."
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " Then"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": ","
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " I"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": "’ll"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " note"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " that"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " memory"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " safety"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " is"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " crucial"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " because"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " it"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " helps"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " prevent"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " bugs"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": ","
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " undefined"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " behavior"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": ","
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " security"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " vulnerabilities"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": ","
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " and"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " crashes"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": ","
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " which"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " all"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " contribute"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " to"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " improved"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " reliability"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " and"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " concurrency"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": "."
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " I'll"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " keep"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " it"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " brief"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": "!"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
             "event": "end",
             "part": 0,
             "content": {
               "type": "reasoning",
-              "issuer": "openai",
-              "id": "rs_0f8a29a984eb7c8b006ab2b480467487d086d05eda0e6c86f0",
-              "content": [
-                {
-                  "type": "encrypted",
-                  "content": "gAAAAABqsrSBrB4PW4cT2FbqP1VMQQLVVB-dto2IYstKxGB60JpLjNYB2oMRYp-j9tWe1Hzdcd48eZasYirM91DfZ14JMopjtCjAcyo-jlmcXPc20KYSY349Xg4kcyS6apCxP1ZmmB46N6P15qYE4td5_JQS0wuiG3RcnkAzmR2kOiI6XzinBugJC7YkvWqto585FfP3Op4oxTUT2jSeFswEO3PRbAcr2tWvDbHVQUefouFOO6cYqQDj1fHKxk8UaFpDcuhgIaT1RnpA2r9Kq3cQmrDymJo__12EfV9T4LTKwwxOkXC79ywdtUPM0FtM_Jo40QdNs3kNzE_1qqIbuIWDLu1V_soqjC6iwsuBkxE-xc--JVsIQBX8fS1EITSXDcW1cYKr5uFscGq70Fwv9deaRWBgekdnwty1VaggX1ydkAMStqFcvzoaQZGxCJwtDfYgWhpF_aCTWO0LthMJap1mtOsgcBuUZu3Ay7ALQo3SaBly-4RIwSqowmLTt15YC7VOW-XwDBIXQ6Xy98oltamLkZ4KygkT02R3u7lHwDcCt3SNkPAo-Tc3obXwMePDXusT3hzyWHFEx--xcEi5iX4owbAwr8w79b14J9oxS5jjNOeWVXII_xkd0fke04Dlzhwdpsn3w7Vr3Gk6__ZIcYSLzwto-7FibIzq8fiN0daMRqye64C2bN68ITlM_JzrEG7Esx84qSBSQR9AEtXQkRYCU9Un6gNnLVt_QiZsYWDT4uDMKmEP12T2nJkMg3wmEL8XlX-h60d5jIz6RhFTdN5YCsckQGjRxg-I9QkHFDPduUGgb0Ja5rsZ6fcaOIDBcQm2YcbxdPV77l9_gMTel8WXrzRWXmW_mz_onTYOziy5lmViGeENhuF1Mmzwu8qy0B02t1bo39qv5k1c5qjyDiduMwOxSr19WninIDl-C--oZtWk2ggHTmywGhLOb9dfZook5SkALyNIquIvPvgE4RLE0PXpbMybR_anFbxN2EXcgLuswu7EVVvtqRiLxZqPELv_NK6IB3ik9JRhidR2vRzu-bmQJswe0ZcPPaP6YfBTdtGt1Z38ffvhVTQuigM7tIpHi9BLtV7qxj0uH4RoQgM-nK_-kzGkMF8AdkDJUB0MxzRl5FdU3tjFdFkXNZ1U4blSfOumr6mHZcZ9r_uohlGOQH0ViJp2cNL8NX5swLoRuU-x9cHiTVb4uzwhlkD8Q0BD7GUAtAzTxvqnIdsvW4uT_vpDoE--IRhJr-vGsNK1dtcYSLDnobQUh45JShSpxdqSKn7LbotKMrXQfjZTD0G2qa0BGelg-PwzjtWNxzMp7_TVIxid-esZ7_q3Mp3yxuFIl_0UYCfc_dfvF_f8ipuqdx_RJ3JBj-jlF6mqqod-XXpvSuQAL6tn_FiAfDeylC3AW5DMeLCWc73xcg9F61_EFGNSlmRLsfdLM_O-D8WNOjJ8ZZV99uNjHRx7POzazHi_h3sb5hBn9pAuu9r0L1UrvUb14NTdXJAgeGDbxNtLbRQoNHEkLeOmbEhWuE5cMxNRq4jAIXSY9tKmSVZxSSqGCI6_icb4hh9E0-PcBCpZuh5KkYAmDTAdZ8JpNnukRKu_1MyLG_X_4YpF5OGjvOc9OZ06MYn-nWtpE2CZhvAX-s06rn-Jdo8="
-                }
-              ]
+              "text": "**Explaining Rust and Memory Safety**\n\nI need to craft a concise explanation of Rust and the importance of memory safety in just one or two sentences. First, I'll define Rust as a systems programming language that emphasizes safety, concurrency, performance, and uses concepts like a borrow checker. Then, I’ll note that memory safety is crucial because it helps prevent bugs, undefined behavior, security vulnerabilities, and crashes, which all contribute to improved reliability and concurrency. I'll keep it brief!",
+              "native": {
+                "item": {
+                  "content": [],
+                  "encrypted_content": "gAAAAABqv0sGR6MbKzKO9_Lk-IvnXd5T3bchFyYnRRSS8JX5LqSuE4N5CL8yiiQxXVtFRFwU6uOyeD0ZiUvnSGabsW6yTDtY5tMZpQaZnvxvKW3gw0AEpUu2NB6vIChW3da171NLo54yzTmQmI4C8oMZ3lGaiqnrTjYOt4zss8aGU2McCO4Wxa7ZGi324UJhF0OgVIygBNg4b4uqsgBtz1ieb739dx7DlMQkkh1cben8vi4D9dBL8sFbd-ZBUZTa28w6qJc5f94Yh1QpIFAJtT2rFVTJDnnEtcKJHeFDhYLVcZnqqe3qFwhaP6IeXeVGtBenFAftfalgT9coH_2IP__t7Qno6f0ZBOjBZMxf4MH_rGcEjonKxK7uAoA4IAKB5Djw1v4S9sHhdPtZCnhRlJ3Elyosegu5oITr5VfJ9oUpJeNjSUtNYJk-vdnjQgm6978EiXDMKaTSokjdwUvIkPIDm2LlLB9NtPEE3nIUJ95Zz3nagNjoOvFw0iKF9y7NOKsRK8lW-L76pKWZtzvKMrRbgQ6jLYokyyuaFW6y5Ywiv8v7-RKWxhTuJdtIBbuuL4mMqfePHVms_jB48YnoEM0j2m2T_Y1LFuoJgs7jlJRUQafglXWU7QHSeRs-U9rSJDuN6-HnwAvlju5cxQ0cNv38_81ko1VmLmoIfoRX-Ie9kPgMhg37_irPCQiVBfnzoj3tUKrsig8mEp-oKav-rrZw-su41lsqIW30iIl7r6qmbVdXv4xkzY8Z0JCaddWlZP8ffRJc-jDIKoPuYVPMEbjK4v74uQrVhqLJa-AqcL-E_yvnxqsxEArPOmDnrGNjdZCllgF_U6Ow8tcFLmuD9chjWof5OtUG3qBMhkcZulQrsTpJQ71xhh1UiLUHcdOlqR4NVQkcaysCIybPrk-8qxgUgYUIEc6UsVbMSu4bseI72qGfKdzx82aigSt8ndMiBxqSaiDU3tdmIsLwzj1qawoG7rLgn4agVc1jwrQaCyrfyJDfvE8WBfORDAm2TLEc-hvsLLow3-2CwG49ELCtcL5yV-wiBNkUObwzJMHwncwZ8NdE1rFUe34stkXiVFRrSfVyx8-wiF2oJaJJY-u_ZJKn6qOYWn38iS7xWzHdV2o9C-JJQEOf-ruQXCYVdTQlQs1McZOF674BIV3cGtowYCSj8s65IjC7XhBhfQK_tCCsORl8bWSJFayfiYVWZl917t2jRxXMQebdctw3dil_LDDNU3-dzc5OyasuIf-trIcxAxRVCBKwVdwHh7S-K0lBlF1Q3NRtS7twADAQUQnyxHqKO73Q4BKPuocfzjaVXSC3wLyCHxQXlFMh3ny6rch0khwQBGru-c9wUWMg7kpJBp_TP8PWTyaUn30pLEjW74iACsHHY2zCvvr7LjHu1Arund669Oe6kNKUPJ4_QfJv7cBj2untFPXdG5Wx4BI0ujJhKkMMpNXX8RScTMFiKfCIRJ6LfqA-tM18HfJyz6Ci32KqHO8AdhOAT4Bt2xDkhf55zfOaYlvp28X5lg-fN0pyBSXbLqOg-Z2agxzFP1MFVZM_Jj8Jw0UWBRyGlXall4iKFuyVuGYczmDA1D6kOwZdQgBU48q2UC6V5s9AjhtdCyoo2s7iWTsh9VBBKITTeA7EkSpJqBy1plLIbvGWV-gcVgNnQGrMDQ_1YQI9DPOpEgG3rKva5QCCfp9SZ0pfy0nzoma_D7uYDzsIWETeuHvO8pGAIxgQCp9ELCSfyWrLxjWLtBkx8q4tgG7_lVY9a1bV1xH7RlRH-ArLorafL38ZjKA49BA-shDJ0-X_Ah5FYwtxURbeQ4SRzi2vg_3EQhh36D2FsJ22sUE=",
+                  "id": "rs_02770ddde224ac2c016abf4b04cd8087d0b85f6cdb45c17506",
+                  "summary": [
+                    {
+                      "text": "**Explaining Rust and Memory Safety**\n\nI need to craft a concise explanation of Rust and the importance of memory safety in just one or two sentences. First, I'll define Rust as a systems programming language that emphasizes safety, concurrency, performance, and uses concepts like a borrow checker. Then, I’ll note that memory safety is crucial because it helps prevent bugs, undefined behavior, security vulnerabilities, and crashes, which all contribute to improved reliability and concurrency. I'll keep it brief!",
+                      "type": "summary_text"
+                    }
+                  ],
+                  "type": "reasoning"
+                },
+                "fingerprint": 7185787293196106791
+              }
             }
           }
         },
@@ -738,46 +2132,6 @@
           "value": {
             "event": "text",
             "part": 1,
-            "text": " strong"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 1,
-            "text": " compile"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 1,
-            "text": "-time"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 1,
-            "text": " guarantees"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 1,
-            "text": " for"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 1,
             "text": " memory"
           }
         },
@@ -786,7 +2140,7 @@
           "value": {
             "event": "text",
             "part": 1,
-            "text": " safety"
+            "text": "-"
           }
         },
         {
@@ -802,7 +2156,7 @@
           "value": {
             "event": "text",
             "part": 1,
-            "text": " safe"
+            "text": " thread"
           }
         },
         {
@@ -810,7 +2164,7 @@
           "value": {
             "event": "text",
             "part": 1,
-            "text": " concurrency"
+            "text": "-s"
           }
         },
         {
@@ -818,7 +2172,7 @@
           "value": {
             "event": "text",
             "part": 1,
-            "text": " without"
+            "text": "afety"
           }
         },
         {
@@ -826,7 +2180,7 @@
           "value": {
             "event": "text",
             "part": 1,
-            "text": " a"
+            "text": " through"
           }
         },
         {
@@ -834,7 +2188,7 @@
           "value": {
             "event": "text",
             "part": 1,
-            "text": " garbage"
+            "text": " its"
           }
         },
         {
@@ -842,7 +2196,87 @@
           "value": {
             "event": "text",
             "part": 1,
-            "text": " collector"
+            "text": " ownership"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
+            "text": " and"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
+            "text": " borrow"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
+            "text": "-check"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
+            "text": "er"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
+            "text": " model"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
+            "text": " and"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
+            "text": " zero"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
+            "text": "-cost"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
+            "text": " abstra"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
+            "text": "ctions"
           }
         },
         {
@@ -914,7 +2348,7 @@
           "value": {
             "event": "text",
             "part": 1,
-            "text": " such"
+            "text": ","
           }
         },
         {
@@ -922,7 +2356,7 @@
           "value": {
             "event": "text",
             "part": 1,
-            "text": " as"
+            "text": " crashes"
           }
         },
         {
@@ -930,7 +2364,47 @@
           "value": {
             "event": "text",
             "part": 1,
-            "text": " use"
+            "text": ","
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
+            "text": " and"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
+            "text": " security"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
+            "text": " vulnerabilities"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
+            "text": " ("
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
+            "text": "use"
           }
         },
         {
@@ -994,14 +2468,6 @@
           "value": {
             "event": "text",
             "part": 1,
-            "text": " and"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 1,
             "text": " data"
           }
         },
@@ -1018,7 +2484,7 @@
           "value": {
             "event": "text",
             "part": 1,
-            "text": " that"
+            "text": "),"
           }
         },
         {
@@ -1026,7 +2492,7 @@
           "value": {
             "event": "text",
             "part": 1,
-            "text": " cause"
+            "text": " leading"
           }
         },
         {
@@ -1034,7 +2500,23 @@
           "value": {
             "event": "text",
             "part": 1,
-            "text": " crashes"
+            "text": " to"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
+            "text": " more"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
+            "text": " reliable"
           }
         },
         {
@@ -1050,7 +2532,7 @@
           "value": {
             "event": "text",
             "part": 1,
-            "text": " security"
+            "text": " secure"
           }
         },
         {
@@ -1058,7 +2540,7 @@
           "value": {
             "event": "text",
             "part": 1,
-            "text": " vulnerabilities"
+            "text": " software"
           }
         },
         {
@@ -1076,7 +2558,24 @@
             "part": 1,
             "content": {
               "type": "text",
-              "text": "Rust is a modern systems programming language that provides performance like C/C++ while enforcing strong compile-time guarantees for memory safety and safe concurrency without a garbage collector. Memory safety matters because it prevents bugs such as use-after-free, buffer overflows, and data races that cause crashes and security vulnerabilities."
+              "text": "Rust is a modern systems programming language that provides performance like C/C++ while enforcing memory- and thread-safety through its ownership and borrow-checker model and zero-cost abstractions. Memory safety matters because it prevents bugs, crashes, and security vulnerabilities (use-after-free, buffer overflows, data races), leading to more reliable and secure software.",
+              "native": {
+                "item": {
+                  "content": [
+                    {
+                      "annotations": [],
+                      "logprobs": [],
+                      "text": "Rust is a modern systems programming language that provides performance like C/C++ while enforcing memory- and thread-safety through its ownership and borrow-checker model and zero-cost abstractions. Memory safety matters because it prevents bugs, crashes, and security vulnerabilities (use-after-free, buffer overflows, data races), leading to more reliable and secure software.",
+                      "type": "output_text"
+                    }
+                  ],
+                  "id": "msg_02770ddde224ac2c016abf4b068f8087d09a313b663e535018",
+                  "role": "assistant",
+                  "status": "completed",
+                  "type": "message"
+                },
+                "fingerprint": 11260497644021905078
+              }
             }
           }
         }

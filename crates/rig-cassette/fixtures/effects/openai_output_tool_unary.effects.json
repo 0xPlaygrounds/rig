@@ -91,10 +91,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_3ZTEQUxCkcujJ2deuvPVC75n",
-                  "item_id": "fc_0bb0da40ca78b3a0006ab3968d295887d08b2f25282afe30a2"
-                }
+                "provider": "call_3ZTEQUxCkcujJ2deuvPVC75n"
               },
               "function": {
                 "name": "final_result",
@@ -104,8 +101,17 @@
                   "summary": "Join fellow Rust enthusiasts in Seattle for an evening of networking, discussions, and presentations on Rust programming. Whether you're a seasoned developer or new to Rust, this meetup offers a great opportunity to learn and connect with the community."
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "arguments": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Technology\",\"summary\":\"Join fellow Rust enthusiasts in Seattle for an evening of networking, discussions, and presentations on Rust programming. Whether you're a seasoned developer or new to Rust, this meetup offers a great opportunity to learn and connect with the community.\"}",
+                  "call_id": "call_3ZTEQUxCkcujJ2deuvPVC75n",
+                  "id": "fc_0bb0da40ca78b3a0006ab3968d295887d08b2f25282afe30a2",
+                  "name": "final_result",
+                  "status": "completed",
+                  "type": "function_call"
+                },
+                "fingerprint": 12540611412069262132
+              }
             }
           ],
           "usage": {
@@ -116,12 +122,15 @@
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
-          "response_id": "resp_0bb0da40ca78b3a0006ab3968c63b087d0b5caa90f8a44db7b",
+          "origin": {
+            "api": "openai.responses",
+            "provider": "openai",
+            "model": "gpt-4o",
+            "response_model": "gpt-4o-2024-08-06",
+            "response_id": "resp_0bb0da40ca78b3a0006ab3968c63b087d0b5caa90f8a44db7b"
+          },
           "provider_request_id": "req_c7527a793efb433a9cec6ba1aa2f5df4",
           "finish_reason": "tool_calls",
-          "provider": "openai",
-          "model": "gpt-4o-2024-08-06",
           "raw": {
             "access_programs": null,
             "background": false,

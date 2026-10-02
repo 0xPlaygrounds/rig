@@ -209,8 +209,8 @@
             }
           },
           "rig_ecs::bus::effect::Issued": 0,
-          "rig_ecs::bus::handlers::ServedBy": 0,
-          "rig_ecs::bus::effect::Seq": 0
+          "rig_ecs::bus::effect::Seq": 0,
+          "rig_ecs::bus::handlers::ServedBy": 0
         },
         {
           "bevy_ecs::hierarchy::ChildOf": 3,
@@ -218,10 +218,32 @@
             "content": [
               {
                 "type": "text",
-                "text": "ready"
+                "text": "ready",
+                "native": {
+                  "item": {
+                    "content": "ready"
+                  },
+                  "fingerprint": 815434921069355996
+                }
               }
             ],
-            "message_id": null,
+            "head": {
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-chat",
+                "response_model": "deepseek-flash",
+                "response_id": "73363676-fd63-4a7d-83aa-df4c46d86127"
+              },
+              "stop": "stop",
+              "native": {
+                "item": {
+                  "content": "ready",
+                  "role": "assistant"
+                },
+                "fingerprint": 16268972914252074274
+              }
+            },
             "done": true,
             "usage_recorded": true,
             "stream_validated": 0
@@ -242,7 +264,13 @@
               "choice": [
                 {
                   "type": "text",
-                  "text": "ready"
+                  "text": "ready",
+                  "native": {
+                    "item": {
+                      "content": "ready"
+                    },
+                    "fingerprint": 815434921069355996
+                  }
                 }
               ],
               "usage": {
@@ -251,11 +279,21 @@
                 "total_tokens": 23,
                 "cached_input_tokens": 0
               },
-              "message_id": null,
-              "response_id": "73363676-fd63-4a7d-83aa-df4c46d86127",
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-chat",
+                "response_model": "deepseek-flash",
+                "response_id": "73363676-fd63-4a7d-83aa-df4c46d86127"
+              },
+              "native": {
+                "item": {
+                  "content": "ready",
+                  "role": "assistant"
+                },
+                "fingerprint": 16268972914252074274
+              },
               "finish_reason": "stop",
-              "provider": "deepseek",
-              "model": "deepseek-flash",
               "raw": {
                 "choices": [
                   {
@@ -287,20 +325,42 @@
             }
           },
           "rig_ecs::bus::effect::Issued": 1,
-          "rig_ecs::bus::handlers::ServedBy": 1,
-          "rig_ecs::bus::effect::Seq": 1
+          "rig_ecs::bus::effect::Seq": 1,
+          "rig_ecs::bus::handlers::ServedBy": 1
         },
         {
           "bevy_ecs::hierarchy::ChildOf": 3,
           "rig_ecs::agent::Role": "Assistant",
           "rig_ecs::agent::Utterance": {},
-          "rig_ecs::agent::content::parts::MessageId": null
+          "rig_ecs::agent::content::parts::AssistantHead": {
+            "origin": {
+              "api": "openai.chat",
+              "provider": "deepseek",
+              "model": "deepseek-chat",
+              "response_model": "deepseek-flash",
+              "response_id": "73363676-fd63-4a7d-83aa-df4c46d86127"
+            },
+            "stop": "stop",
+            "native": {
+              "item": {
+                "content": "ready",
+                "role": "assistant"
+              },
+              "fingerprint": 16268972914252074274
+            }
+          }
         },
         {
           "bevy_ecs::hierarchy::ChildOf": 9,
           "rig_ecs::agent::content::parts::ContentPart": {
             "Text": {
-              "text": "ready"
+              "text": "ready",
+              "native": {
+                "item": {
+                  "content": "ready"
+                },
+                "fingerprint": 815434921069355996
+              }
             }
           }
         },
@@ -313,8 +373,8 @@
             }
           },
           "rig_ecs::bus::effect::Issued": 2,
-          "rig_ecs::bus::handlers::ServedBy": 0,
-          "rig_ecs::bus::effect::Seq": 2
+          "rig_ecs::bus::effect::Seq": 2,
+          "rig_ecs::bus::handlers::ServedBy": 0
         },
         {
           "bevy_ecs::hierarchy::ChildOf": 3,
@@ -325,8 +385,8 @@
             }
           },
           "rig_ecs::bus::effect::Issued": 3,
-          "rig_ecs::bus::handlers::ServedBy": 0,
-          "rig_ecs::bus::effect::Seq": 3
+          "rig_ecs::bus::effect::Seq": 3,
+          "rig_ecs::bus::handlers::ServedBy": 0
         },
         {
           "rig_ecs::agent::Conversation": "golden-conversation",

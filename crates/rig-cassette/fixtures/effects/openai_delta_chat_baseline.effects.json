@@ -116,9 +116,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_4S28UlyrmSCjWFCOoEfZgs68"
-                }
+                "provider": "call_6J92ioDwt7ZeRftQ1e6fFqcR"
               },
               "function": {
                 "name": "add",
@@ -127,8 +125,17 @@
                   "y": 25
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"x\":17,\"y\":25}",
+                    "name": "add"
+                  },
+                  "id": "call_6J92ioDwt7ZeRftQ1e6fFqcR",
+                  "type": "function"
+                },
+                "fingerprint": 10164486875563037913
+              }
             }
           ],
           "usage": {
@@ -138,12 +145,33 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
-          "response_id": "chatcmpl-ERDBEJUDzqyU3zhwoBqunwPa31S59",
-          "provider_request_id": "req_f1e4725546e54c50a901663c38838422",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "openai",
+            "model": "gpt-4o",
+            "response_model": "gpt-4o-2024-08-06",
+            "response_id": "chatcmpl-EUSHbiJJYMBpBuQqbkCvbib58G14Z"
+          },
+          "native": {
+            "item": {
+              "content": null,
+              "refusal": null,
+              "role": "assistant",
+              "tool_calls": [
+                {
+                  "function": {
+                    "arguments": "{\"x\":17,\"y\":25}",
+                    "name": "add"
+                  },
+                  "id": "call_6J92ioDwt7ZeRftQ1e6fFqcR",
+                  "type": "function"
+                }
+              ]
+            },
+            "fingerprint": 17299309585266067407
+          },
+          "provider_request_id": "req_2495e953acd447f4b530ee3e11331c20",
           "finish_reason": "tool_calls",
-          "provider": "openai",
-          "model": "gpt-4o-2024-08-06",
           "raw": {
             "usage": {
               "prompt_tokens": 101,
@@ -157,14 +185,14 @@
               }
             },
             "finish_reason": "tool_calls",
-            "response_id": "chatcmpl-ERDBEJUDzqyU3zhwoBqunwPa31S59",
+            "response_id": "chatcmpl-EUSHbiJJYMBpBuQqbkCvbib58G14Z",
             "model": "gpt-4o-2024-08-06",
             "additional_params": {
               "created": 0,
-              "obfuscation": "X3U2zsiSKQld4",
+              "obfuscation": "e1QkWk67yPcwt",
               "object": "chat.completion.chunk",
               "service_tier": "default",
-              "system_fingerprint": "fp_636eed499b"
+              "system_fingerprint": "fp_5749441603"
             }
           }
         }
@@ -194,9 +222,7 @@
             "content": {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_4S28UlyrmSCjWFCOoEfZgs68"
-                }
+                "provider": "call_6J92ioDwt7ZeRftQ1e6fFqcR"
               },
               "function": {
                 "name": "add",
@@ -205,8 +231,17 @@
                   "y": 25
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"x\":17,\"y\":25}",
+                    "name": "add"
+                  },
+                  "id": "call_6J92ioDwt7ZeRftQ1e6fFqcR",
+                  "type": "function"
+                },
+                "fingerprint": 10164486875563037913
+              }
             }
           }
         }
@@ -260,14 +295,11 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_4S28UlyrmSCjWFCOoEfZgs68"
-                    }
+                    "provider": "call_6J92ioDwt7ZeRftQ1e6fFqcR"
                   },
                   "function": {
                     "name": "add",
@@ -276,10 +308,45 @@
                       "y": 25
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"x\":17,\"y\":25}",
+                        "name": "add"
+                      },
+                      "id": "call_6J92ioDwt7ZeRftQ1e6fFqcR",
+                      "type": "function"
+                    },
+                    "fingerprint": 10164486875563037913
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openai",
+                "model": "gpt-4o",
+                "response_model": "gpt-4o-2024-08-06",
+                "response_id": "chatcmpl-EUSHbiJJYMBpBuQqbkCvbib58G14Z"
+              },
+              "stop": "tool_use",
+              "native": {
+                "item": {
+                  "content": null,
+                  "refusal": null,
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{\"x\":17,\"y\":25}",
+                        "name": "add"
+                      },
+                      "id": "call_6J92ioDwt7ZeRftQ1e6fFqcR",
+                      "type": "function"
+                    }
+                  ]
+                },
+                "fingerprint": 17299309585266067407
+              }
             },
             {
               "role": "user",
@@ -287,9 +354,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_4S28UlyrmSCjWFCOoEfZgs68"
-                    }
+                    "provider": "call_6J92ioDwt7ZeRftQ1e6fFqcR"
                   },
                   "name": "add",
                   "content": [
@@ -340,7 +405,14 @@
           "choice": [
             {
               "type": "text",
-              "text": "42"
+              "text": "42",
+              "native": {
+                "item": {
+                  "content": "42",
+                  "refusal": null
+                },
+                "fingerprint": 15903709825217441321
+              }
             }
           ],
           "usage": {
@@ -350,12 +422,23 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
-          "response_id": "chatcmpl-ERDBFfNKD9l0ETwxoeBPV1guwuH93",
-          "provider_request_id": "req_2e0d1669a9b54f12b91701c6ff5cf446",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "openai",
+            "model": "gpt-4o",
+            "response_model": "gpt-4o-2024-08-06",
+            "response_id": "chatcmpl-EUSHcDA8c0gFjiyB8R8hSRGaS73fK"
+          },
+          "native": {
+            "item": {
+              "content": "42",
+              "refusal": null,
+              "role": "assistant"
+            },
+            "fingerprint": 5372475738331673531
+          },
+          "provider_request_id": "req_255c0195489f406494bd56a304f8bbba",
           "finish_reason": "stop",
-          "provider": "openai",
-          "model": "gpt-4o-2024-08-06",
           "raw": {
             "usage": {
               "prompt_tokens": 126,
@@ -369,14 +452,14 @@
               }
             },
             "finish_reason": "stop",
-            "response_id": "chatcmpl-ERDBFfNKD9l0ETwxoeBPV1guwuH93",
+            "response_id": "chatcmpl-EUSHcDA8c0gFjiyB8R8hSRGaS73fK",
             "model": "gpt-4o-2024-08-06",
             "additional_params": {
               "created": 0,
-              "obfuscation": "An6xd3aS5fvqdU",
+              "obfuscation": "2KR6Hu49xybfS8",
               "object": "chat.completion.chunk",
               "service_tier": "default",
-              "system_fingerprint": "fp_636eed499b"
+              "system_fingerprint": "fp_5749441603"
             }
           }
         }
@@ -405,7 +488,14 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "42"
+              "text": "42",
+              "native": {
+                "item": {
+                  "content": "42",
+                  "refusal": null
+                },
+                "fingerprint": 15903709825217441321
+              }
             }
           }
         }

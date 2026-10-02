@@ -75,7 +75,13 @@
           "choice": [
             {
               "type": "text",
-              "text": "A glarb-glarb is an ancient farming tool from the planet Jiro."
+              "text": "A glarb-glarb is an ancient farming tool from the planet Jiro.",
+              "native": {
+                "item": {
+                  "content": "A glarb-glarb is an ancient farming tool from the planet Jiro."
+                },
+                "fingerprint": 9658890132495485441
+              }
             }
           ],
           "usage": {
@@ -85,11 +91,21 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": null,
-          "response_id": "gen-1790146078-pa0UeobUYbYFE284Dq4c",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "doubleword",
+            "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+            "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
+            "response_id": "gen-1790146078-pa0UeobUYbYFE284Dq4c"
+          },
+          "native": {
+            "item": {
+              "content": "A glarb-glarb is an ancient farming tool from the planet Jiro.",
+              "role": "assistant"
+            },
+            "fingerprint": 8549421029602975643
+          },
           "finish_reason": "stop",
-          "provider": "doubleword",
-          "model": "Qwen/Qwen3.5-397B-A17B-FP8",
           "raw": {
             "usage": {
               "prompt_tokens": 75,
@@ -272,7 +288,13 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "A glarb-glarb is an ancient farming tool from the planet Jiro."
+              "text": "A glarb-glarb is an ancient farming tool from the planet Jiro.",
+              "native": {
+                "item": {
+                  "content": "A glarb-glarb is an ancient farming tool from the planet Jiro."
+                },
+                "fingerprint": 9658890132495485441
+              }
             }
           }
         }

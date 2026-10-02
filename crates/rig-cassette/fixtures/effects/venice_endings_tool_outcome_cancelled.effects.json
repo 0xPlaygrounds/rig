@@ -119,9 +119,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "9C7RdXWf3"
-                }
+                "provider": "9C7RdXWf3"
               },
               "function": {
                 "name": "add",
@@ -130,8 +128,17 @@
                   "y": 25
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"x\": 17, \"y\": 25}",
+                    "name": "add"
+                  },
+                  "id": "9C7RdXWf3",
+                  "type": "function"
+                },
+                "fingerprint": 17004601343433805440
+              }
             }
           ],
           "usage": {
@@ -139,11 +146,33 @@
             "output_tokens": 18,
             "total_tokens": 1111
           },
-          "message_id": null,
-          "response_id": "chatcmpl-RVd0fV2jsKt7i32Szfb9A0ob",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "venice",
+            "model": "mistral-small-3-2-24b-instruct",
+            "response_model": "mistral-small-3-2-24b-instruct",
+            "response_id": "chatcmpl-RVd0fV2jsKt7i32Szfb9A0ob"
+          },
+          "native": {
+            "item": {
+              "content": "",
+              "name": null,
+              "reasoning_content": null,
+              "role": "assistant",
+              "tool_calls": [
+                {
+                  "function": {
+                    "arguments": "{\"x\": 17, \"y\": 25}",
+                    "name": "add"
+                  },
+                  "id": "9C7RdXWf3",
+                  "type": "function"
+                }
+              ]
+            },
+            "fingerprint": 1856030287073401040
+          },
           "finish_reason": "tool_calls",
-          "provider": "venice",
-          "model": "mistral-small-3-2-24b-instruct",
           "raw": {
             "choices": [
               {

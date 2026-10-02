@@ -144,9 +144,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "g0vd5hLmo"
-                }
+                "provider": "zNTCpiM4y"
               },
               "function": {
                 "name": "lookup",
@@ -154,8 +152,17 @@
                   "q": "What is the capital of France?"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"q\": \"What is the capital of France?\"}",
+                    "name": "lookup"
+                  },
+                  "id": "zNTCpiM4y",
+                  "type": "function"
+                },
+                "fingerprint": 9172231568291586103
+              }
             }
           ],
           "usage": {
@@ -163,11 +170,33 @@
             "output_tokens": 16,
             "total_tokens": 1099
           },
-          "message_id": null,
-          "response_id": "chatcmpl-Rt5jMENKGQhEVds5cXM5QVtC",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "venice",
+            "model": "mistral-small-3-2-24b-instruct",
+            "response_model": "mistral-small-3-2-24b-instruct",
+            "response_id": "chatcmpl-RPMSpEg94Yrd57s4vvSJk6Gs"
+          },
+          "native": {
+            "item": {
+              "content": "",
+              "name": null,
+              "reasoning_content": null,
+              "role": "assistant",
+              "tool_calls": [
+                {
+                  "function": {
+                    "arguments": "{\"q\": \"What is the capital of France?\"}",
+                    "name": "lookup"
+                  },
+                  "id": "zNTCpiM4y",
+                  "type": "function"
+                }
+              ]
+            },
+            "fingerprint": 15421976515632294981
+          },
           "finish_reason": "tool_calls",
-          "provider": "venice",
-          "model": "mistral-small-3-2-24b-instruct",
           "raw": {
             "choices": [
               {
@@ -185,7 +214,7 @@
                         "arguments": "{\"q\": \"What is the capital of France?\"}",
                         "name": "lookup"
                       },
-                      "id": "g0vd5hLmo",
+                      "id": "zNTCpiM4y",
                       "type": "function"
                     }
                   ]
@@ -197,7 +226,7 @@
               "usd": 0.00010553125000000001
             },
             "created": 0,
-            "id": "chatcmpl-Rt5jMENKGQhEVds5cXM5QVtC",
+            "id": "chatcmpl-RPMSpEg94Yrd57s4vvSJk6Gs",
             "model": "mistral-small-3-2-24b-instruct",
             "object": "chat.completion",
             "service_tier": "default",
@@ -288,7 +317,14 @@
           "choice": [
             {
               "type": "text",
-              "text": "Paris"
+              "text": "Paris",
+              "native": {
+                "item": {
+                  "content": "Paris",
+                  "name": null
+                },
+                "fingerprint": 10014039168603989904
+              }
             }
           ],
           "usage": {
@@ -296,11 +332,23 @@
             "output_tokens": 2,
             "total_tokens": 972
           },
-          "message_id": null,
-          "response_id": "chatcmpl-RB1Y7vbHEPeQVtVneuoGVTCl",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "venice",
+            "model": "mistral-small-3-2-24b-instruct",
+            "response_model": "mistral-small-3-2-24b-instruct",
+            "response_id": "chatcmpl-RNyLXjnUPyvCgbqm2Aw1xzzb"
+          },
+          "native": {
+            "item": {
+              "content": "Paris",
+              "name": null,
+              "reasoning_content": null,
+              "role": "assistant"
+            },
+            "fingerprint": 5839064992978596122
+          },
           "finish_reason": "stop",
-          "provider": "venice",
-          "model": "mistral-small-3-2-24b-instruct",
           "raw": {
             "choices": [
               {
@@ -321,7 +369,7 @@
               "usd": 0.00009143749999999999
             },
             "created": 0,
-            "id": "chatcmpl-RB1Y7vbHEPeQVtVneuoGVTCl",
+            "id": "chatcmpl-RNyLXjnUPyvCgbqm2Aw1xzzb",
             "model": "mistral-small-3-2-24b-instruct",
             "object": "chat.completion",
             "service_tier": "default",
@@ -373,14 +421,11 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "g0vd5hLmo"
-                    }
+                    "provider": "zNTCpiM4y"
                   },
                   "function": {
                     "name": "lookup",
@@ -388,10 +433,46 @@
                       "q": "What is the capital of France?"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"q\": \"What is the capital of France?\"}",
+                        "name": "lookup"
+                      },
+                      "id": "zNTCpiM4y",
+                      "type": "function"
+                    },
+                    "fingerprint": 9172231568291586103
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "venice",
+                "model": "mistral-small-3-2-24b-instruct",
+                "response_model": "mistral-small-3-2-24b-instruct",
+                "response_id": "chatcmpl-RPMSpEg94Yrd57s4vvSJk6Gs"
+              },
+              "stop": "tool_use",
+              "native": {
+                "item": {
+                  "content": "",
+                  "name": null,
+                  "reasoning_content": null,
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{\"q\": \"What is the capital of France?\"}",
+                        "name": "lookup"
+                      },
+                      "id": "zNTCpiM4y",
+                      "type": "function"
+                    }
+                  ]
+                },
+                "fingerprint": 15421976515632294981
+              }
             },
             {
               "role": "user",
@@ -399,9 +480,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "g0vd5hLmo"
-                    }
+                    "provider": "zNTCpiM4y"
                   },
                   "name": "lookup",
                   "content": [
@@ -451,7 +530,14 @@
           "choice": [
             {
               "type": "text",
-              "text": "Paris"
+              "text": "Paris",
+              "native": {
+                "item": {
+                  "content": "Paris",
+                  "name": null
+                },
+                "fingerprint": 10014039168603989904
+              }
             }
           ],
           "usage": {
@@ -459,11 +545,23 @@
             "output_tokens": 2,
             "total_tokens": 1120
           },
-          "message_id": null,
-          "response_id": "chatcmpl-RGOrUJY1A9LFZKFDD4VGddAZ",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "venice",
+            "model": "mistral-small-3-2-24b-instruct",
+            "response_model": "mistral-small-3-2-24b-instruct",
+            "response_id": "chatcmpl-RQPqwYyDONeiuVciLxcmUyqw"
+          },
+          "native": {
+            "item": {
+              "content": "Paris",
+              "name": null,
+              "reasoning_content": null,
+              "role": "assistant"
+            },
+            "fingerprint": 5839064992978596122
+          },
           "finish_reason": "stop",
-          "provider": "venice",
-          "model": "mistral-small-3-2-24b-instruct",
           "raw": {
             "choices": [
               {
@@ -484,7 +582,7 @@
               "usd": 0.0001053125
             },
             "created": 0,
-            "id": "chatcmpl-RGOrUJY1A9LFZKFDD4VGddAZ",
+            "id": "chatcmpl-RQPqwYyDONeiuVciLxcmUyqw",
             "model": "mistral-small-3-2-24b-instruct",
             "object": "chat.completion",
             "service_tier": "default",

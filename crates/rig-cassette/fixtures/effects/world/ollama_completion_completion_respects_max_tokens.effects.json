@@ -77,7 +77,13 @@
           "choice": [
             {
               "type": "text",
-              "text": "Hmm, the user wants a concise explanation of Rust and why memory safety matters. They specifically asked for one or two sentences"
+              "text": "Hmm, the user wants a concise explanation of Rust and why memory safety matters. They specifically asked for one or two sentences",
+              "native": {
+                "item": {
+                  "content": "Hmm, the user wants a concise explanation of Rust and why memory safety matters. They specifically asked for one or two sentences"
+                },
+                "fingerprint": 6847093931200498153
+              }
             }
           ],
           "usage": {
@@ -85,11 +91,20 @@
             "output_tokens": 24,
             "total_tokens": 66
           },
-          "message_id": null,
-          "response_id": null,
+          "origin": {
+            "api": "ollama.chat",
+            "provider": "ollama",
+            "model": "qwen3:4b",
+            "response_model": "qwen3:4b"
+          },
+          "native": {
+            "item": {
+              "content": "Hmm, the user wants a concise explanation of Rust and why memory safety matters. They specifically asked for one or two sentences",
+              "role": "assistant"
+            },
+            "fingerprint": 2858682494129410557
+          },
           "finish_reason": "length",
-          "provider": "ollama",
-          "model": "qwen3:4b",
           "raw": {
             "created_at": "1970-01-01T00:00:00Z",
             "done": true,

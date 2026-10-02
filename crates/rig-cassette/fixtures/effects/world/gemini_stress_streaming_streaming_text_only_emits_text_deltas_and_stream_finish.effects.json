@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 5,
+        "batch": 7,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,7 +10,7 @@
         }
       },
       {
-        "batch": 5,
+        "batch": 7,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -83,7 +83,13 @@
           "choice": [
             {
               "type": "text",
-              "text": "The sky is blue."
+              "text": "The sky is blue.",
+              "native": {
+                "item": {
+                  "text": "The sky is blue."
+                },
+                "fingerprint": 13066144118535952107
+              }
             }
           ],
           "usage": {
@@ -92,11 +98,21 @@
             "total_tokens": 59,
             "reasoning_tokens": 26
           },
-          "message_id": null,
-          "response_id": "pnizasvyNpusqtsPsf3xkAY",
+          "origin": {
+            "api": "gemini.generate_content",
+            "provider": "gcp.gemini",
+            "model": "gemini-2.5-flash",
+            "response_model": "gemini-2.5-flash",
+            "response_id": "pnizasvyNpusqtsPsf3xkAY"
+          },
+          "native": {
+            "item": {
+              "finishReason": "STOP",
+              "index": 0
+            },
+            "fingerprint": 3979446710163865833
+          },
           "finish_reason": "stop",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
           "raw": {
             "usage_metadata": {
               "promptTokenCount": 28,
@@ -140,7 +156,13 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "The sky is blue."
+              "text": "The sky is blue.",
+              "native": {
+                "item": {
+                  "text": "The sky is blue."
+                },
+                "fingerprint": 13066144118535952107
+              }
             }
           }
         }

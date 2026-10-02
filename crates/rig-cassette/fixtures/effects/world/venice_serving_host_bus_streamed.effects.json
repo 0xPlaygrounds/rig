@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 24,
+        "batch": 26,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,21 +10,21 @@
         }
       },
       {
-        "batch": 25,
+        "batch": 27,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 26,
+        "batch": 28,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 33,
+        "batch": 35,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -32,14 +32,6 @@
         }
       },
       {
-        "batch": 34,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
         "batch": 36,
         "id": 2,
         "kind": {
@@ -48,7 +40,15 @@
         }
       },
       {
-        "batch": 36,
+        "batch": 38,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 38,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -171,9 +171,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "a1XLn6pcM"
-                }
+                "provider": "9PZUnLF9a"
               },
               "function": {
                 "name": "add",
@@ -182,8 +180,17 @@
                   "y": 25
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"x\": 17, \"y\": 25}",
+                    "name": "add"
+                  },
+                  "id": "9PZUnLF9a",
+                  "type": "function"
+                },
+                "fingerprint": 17981026996495694965
+              }
             }
           ],
           "usage": {
@@ -191,11 +198,32 @@
             "output_tokens": 18,
             "total_tokens": 1111
           },
-          "message_id": null,
-          "response_id": "chatcmpl-Rv8FZQM2WSTHv6j0Z009a390",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "venice",
+            "model": "mistral-small-3-2-24b-instruct",
+            "response_model": "mistral-small-3-2-24b-instruct",
+            "response_id": "chatcmpl-R5u0whcN32uWXyq5qZGBaDVG"
+          },
+          "native": {
+            "item": {
+              "content": "",
+              "reasoning_content": null,
+              "role": "assistant",
+              "tool_calls": [
+                {
+                  "function": {
+                    "arguments": "{\"x\": 17, \"y\": 25}",
+                    "name": "add"
+                  },
+                  "id": "9PZUnLF9a",
+                  "type": "function"
+                }
+              ]
+            },
+            "fingerprint": 15030147385733774463
+          },
           "finish_reason": "tool_calls",
-          "provider": "venice",
-          "model": "mistral-small-3-2-24b-instruct",
           "raw": {
             "usage": {
               "prompt_tokens": 1093,
@@ -203,7 +231,7 @@
               "total_tokens": 1111
             },
             "finish_reason": "tool_calls",
-            "response_id": "chatcmpl-Rv8FZQM2WSTHv6j0Z009a390",
+            "response_id": "chatcmpl-R5u0whcN32uWXyq5qZGBaDVG",
             "model": "mistral-small-3-2-24b-instruct",
             "additional_params": {
               "created": 0,
@@ -242,9 +270,7 @@
             "content": {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "a1XLn6pcM"
-                }
+                "provider": "9PZUnLF9a"
               },
               "function": {
                 "name": "add",
@@ -253,8 +279,17 @@
                   "y": 25
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"x\": 17, \"y\": 25}",
+                    "name": "add"
+                  },
+                  "id": "9PZUnLF9a",
+                  "type": "function"
+                },
+                "fingerprint": 17981026996495694965
+              }
             }
           }
         }
@@ -310,14 +345,11 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "a1XLn6pcM"
-                    }
+                    "provider": "9PZUnLF9a"
                   },
                   "function": {
                     "name": "add",
@@ -326,10 +358,45 @@
                       "y": 25
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"x\": 17, \"y\": 25}",
+                        "name": "add"
+                      },
+                      "id": "9PZUnLF9a",
+                      "type": "function"
+                    },
+                    "fingerprint": 17981026996495694965
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "venice",
+                "model": "mistral-small-3-2-24b-instruct",
+                "response_model": "mistral-small-3-2-24b-instruct",
+                "response_id": "chatcmpl-R5u0whcN32uWXyq5qZGBaDVG"
+              },
+              "stop": "tool_use",
+              "native": {
+                "item": {
+                  "content": "",
+                  "reasoning_content": null,
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{\"x\": 17, \"y\": 25}",
+                        "name": "add"
+                      },
+                      "id": "9PZUnLF9a",
+                      "type": "function"
+                    }
+                  ]
+                },
+                "fingerprint": 15030147385733774463
+              }
             },
             {
               "role": "user",
@@ -337,9 +404,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "a1XLn6pcM"
-                    }
+                    "provider": "9PZUnLF9a"
                   },
                   "name": "add",
                   "content": [
@@ -390,7 +455,13 @@
           "choice": [
             {
               "type": "text",
-              "text": "42"
+              "text": "42",
+              "native": {
+                "item": {
+                  "content": "42"
+                },
+                "fingerprint": 15903709825217441321
+              }
             }
           ],
           "usage": {
@@ -398,11 +469,22 @@
             "output_tokens": 3,
             "total_tokens": 1134
           },
-          "message_id": null,
-          "response_id": "chatcmpl-RSLz6EEvG80ckME3EcDkixZK",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "venice",
+            "model": "mistral-small-3-2-24b-instruct",
+            "response_model": "mistral-small-3-2-24b-instruct",
+            "response_id": "chatcmpl-ROXvn77f3sR32FQHP4OlEhp6"
+          },
+          "native": {
+            "item": {
+              "content": "42",
+              "reasoning_content": null,
+              "role": "assistant"
+            },
+            "fingerprint": 5372475738331673531
+          },
           "finish_reason": "stop",
-          "provider": "venice",
-          "model": "mistral-small-3-2-24b-instruct",
           "raw": {
             "usage": {
               "prompt_tokens": 1131,
@@ -410,7 +492,7 @@
               "total_tokens": 1134
             },
             "finish_reason": "stop",
-            "response_id": "chatcmpl-RSLz6EEvG80ckME3EcDkixZK",
+            "response_id": "chatcmpl-ROXvn77f3sR32FQHP4OlEhp6",
             "model": "mistral-small-3-2-24b-instruct",
             "additional_params": {
               "created": 0,
@@ -456,7 +538,13 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "42"
+              "text": "42",
+              "native": {
+                "item": {
+                  "content": "42"
+                },
+                "fingerprint": 15903709825217441321
+              }
             }
           }
         }

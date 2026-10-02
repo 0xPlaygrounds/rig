@@ -109,38 +109,67 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_HlbL3YvzHa4aHg3rpP0AXmZz"
-                }
+                "provider": "call_rFy2wBDArQQICy0HI2Ge75x6"
               },
               "function": {
                 "name": "lookup",
                 "arguments": {
-                  "q": "What is the capital of France?"
+                  "q": "What is the capital of France?",
+                  "leaf": false
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"q\":\"What is the capital of France?\",\"leaf\":false}",
+                    "name": "lookup"
+                  },
+                  "id": "call_rFy2wBDArQQICy0HI2Ge75x6",
+                  "type": "function"
+                },
+                "fingerprint": 6485832204715343316
+              }
             }
           ],
           "usage": {
             "input_tokens": 181,
-            "output_tokens": 92,
-            "total_tokens": 273,
+            "output_tokens": 96,
+            "total_tokens": 277,
             "cached_input_tokens": 0,
             "reasoning_tokens": 64
           },
-          "message_id": null,
-          "response_id": "chatcmpl-ERDBNoY9gsPtxo1AejsMEHB9waJP9",
-          "provider_request_id": "req_cd774cd9eb4c4a348e76e168672d1038",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "openai",
+            "model": "gpt-5-mini",
+            "response_model": "gpt-5-mini-2025-08-07",
+            "response_id": "chatcmpl-EUPXJc4wqoYDu37pME3OmpMYBKuww"
+          },
+          "native": {
+            "item": {
+              "content": null,
+              "refusal": null,
+              "role": "assistant",
+              "tool_calls": [
+                {
+                  "function": {
+                    "arguments": "{\"q\":\"What is the capital of France?\",\"leaf\":false}",
+                    "name": "lookup"
+                  },
+                  "id": "call_rFy2wBDArQQICy0HI2Ge75x6",
+                  "type": "function"
+                }
+              ]
+            },
+            "fingerprint": 13470261865979103462
+          },
+          "provider_request_id": "req_b257613beb844df3bde724a2fc575154",
           "finish_reason": "tool_calls",
-          "provider": "openai",
-          "model": "gpt-5-mini-2025-08-07",
           "raw": {
             "usage": {
               "prompt_tokens": 181,
-              "completion_tokens": 92,
-              "total_tokens": 273,
+              "completion_tokens": 96,
+              "total_tokens": 277,
               "prompt_tokens_details": {
                 "cached_tokens": 0
               },
@@ -149,11 +178,11 @@
               }
             },
             "finish_reason": "tool_calls",
-            "response_id": "chatcmpl-ERDBNoY9gsPtxo1AejsMEHB9waJP9",
+            "response_id": "chatcmpl-EUPXJc4wqoYDu37pME3OmpMYBKuww",
             "model": "gpt-5-mini-2025-08-07",
             "additional_params": {
               "created": 0,
-              "obfuscation": "YSQ",
+              "obfuscation": "FBb",
               "object": "chat.completion.chunk",
               "service_tier": "default",
               "system_fingerprint": null
@@ -175,7 +204,7 @@
           "value": {
             "event": "arguments",
             "part": 0,
-            "json": "{\"q\":\"What is the capital of France?\"}"
+            "json": "{\"q\":\"What is the capital of France?\",\"leaf\":false}"
           }
         },
         {
@@ -186,18 +215,26 @@
             "content": {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_HlbL3YvzHa4aHg3rpP0AXmZz"
-                }
+                "provider": "call_rFy2wBDArQQICy0HI2Ge75x6"
               },
               "function": {
                 "name": "lookup",
                 "arguments": {
-                  "q": "What is the capital of France?"
+                  "q": "What is the capital of France?",
+                  "leaf": false
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"q\":\"What is the capital of France?\",\"leaf\":false}",
+                    "name": "lookup"
+                  },
+                  "id": "call_rFy2wBDArQQICy0HI2Ge75x6",
+                  "type": "function"
+                },
+                "fingerprint": 6485832204715343316
+              }
             }
           }
         }
@@ -210,7 +247,7 @@
       "kind": {
         "effect": "tool_call",
         "name": "lookup",
-        "args": "{\"q\":\"What is the capital of France?\"}"
+        "args": "{\"q\":\"What is the capital of France?\",\"leaf\":false}"
       },
       "outcome": {
         "Ok": {
@@ -266,7 +303,15 @@
           "choice": [
             {
               "type": "text",
-              "text": "Paris"
+              "text": "Paris",
+              "native": {
+                "item": {
+                  "annotations": [],
+                  "content": "Paris",
+                  "refusal": null
+                },
+                "fingerprint": 10014039168603989904
+              }
             }
           ],
           "usage": {
@@ -276,12 +321,24 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
-          "response_id": "chatcmpl-ERDBOCQ1U2DRPLH7Wick6YR7AQzBM",
-          "provider_request_id": "req_07fdbba156ee43a8a4ee0cd082c818b4",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "openai",
+            "model": "gpt-5-mini",
+            "response_model": "gpt-5-mini-2025-08-07",
+            "response_id": "chatcmpl-EUPXKtIf3SziJ3VSGHxZPak6Dq312"
+          },
+          "native": {
+            "item": {
+              "annotations": [],
+              "content": "Paris",
+              "refusal": null,
+              "role": "assistant"
+            },
+            "fingerprint": 5839064992978596122
+          },
+          "provider_request_id": "req_09d66cae853c480ca028ab90dc15dab5",
           "finish_reason": "stop",
-          "provider": "openai",
-          "model": "gpt-5-mini-2025-08-07",
           "raw": {
             "choices": [
               {
@@ -296,7 +353,7 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-ERDBOCQ1U2DRPLH7Wick6YR7AQzBM",
+            "id": "chatcmpl-EUPXKtIf3SziJ3VSGHxZPak6Dq312",
             "model": "gpt-5-mini-2025-08-07",
             "object": "chat.completion",
             "service_tier": "default",
@@ -345,25 +402,58 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_HlbL3YvzHa4aHg3rpP0AXmZz"
-                    }
+                    "provider": "call_rFy2wBDArQQICy0HI2Ge75x6"
                   },
                   "function": {
                     "name": "lookup",
                     "arguments": {
-                      "q": "What is the capital of France?"
+                      "q": "What is the capital of France?",
+                      "leaf": false
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"q\":\"What is the capital of France?\",\"leaf\":false}",
+                        "name": "lookup"
+                      },
+                      "id": "call_rFy2wBDArQQICy0HI2Ge75x6",
+                      "type": "function"
+                    },
+                    "fingerprint": 6485832204715343316
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openai",
+                "model": "gpt-5-mini",
+                "response_model": "gpt-5-mini-2025-08-07",
+                "response_id": "chatcmpl-EUPXJc4wqoYDu37pME3OmpMYBKuww"
+              },
+              "stop": "tool_use",
+              "native": {
+                "item": {
+                  "content": null,
+                  "refusal": null,
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{\"q\":\"What is the capital of France?\",\"leaf\":false}",
+                        "name": "lookup"
+                      },
+                      "id": "call_rFy2wBDArQQICy0HI2Ge75x6",
+                      "type": "function"
+                    }
+                  ]
+                },
+                "fingerprint": 13470261865979103462
+              }
             },
             {
               "role": "user",
@@ -371,9 +461,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_HlbL3YvzHa4aHg3rpP0AXmZz"
-                    }
+                    "provider": "call_rFy2wBDArQQICy0HI2Ge75x6"
                   },
                   "name": "lookup",
                   "content": [
@@ -423,27 +511,45 @@
           "choice": [
             {
               "type": "text",
-              "text": "Paris"
+              "text": "Paris",
+              "native": {
+                "item": {
+                  "content": "Paris",
+                  "refusal": null
+                },
+                "fingerprint": 10014039168603989904
+              }
             }
           ],
           "usage": {
-            "input_tokens": 214,
+            "input_tokens": 218,
             "output_tokens": 4,
-            "total_tokens": 218,
+            "total_tokens": 222,
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
-          "response_id": "chatcmpl-ERDBPAfRvA5FEAHe9a6QNzzffZoWI",
-          "provider_request_id": "req_b828ad43cc3747afad6c10222056d270",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "openai",
+            "model": "gpt-5-mini",
+            "response_model": "gpt-5-mini-2025-08-07",
+            "response_id": "chatcmpl-EUPXLjK1s1fBFbAhFv5eniODHVHfd"
+          },
+          "native": {
+            "item": {
+              "content": "Paris",
+              "refusal": null,
+              "role": "assistant"
+            },
+            "fingerprint": 5839064992978596122
+          },
+          "provider_request_id": "req_6b77cc0dbe614e3a93c251b13a76d402",
           "finish_reason": "stop",
-          "provider": "openai",
-          "model": "gpt-5-mini-2025-08-07",
           "raw": {
             "usage": {
-              "prompt_tokens": 214,
+              "prompt_tokens": 218,
               "completion_tokens": 4,
-              "total_tokens": 218,
+              "total_tokens": 222,
               "prompt_tokens_details": {
                 "cached_tokens": 0
               },
@@ -452,11 +558,11 @@
               }
             },
             "finish_reason": "stop",
-            "response_id": "chatcmpl-ERDBPAfRvA5FEAHe9a6QNzzffZoWI",
+            "response_id": "chatcmpl-EUPXLjK1s1fBFbAhFv5eniODHVHfd",
             "model": "gpt-5-mini-2025-08-07",
             "additional_params": {
               "created": 0,
-              "obfuscation": "rYDAv",
+              "obfuscation": "16pAM",
               "object": "chat.completion.chunk",
               "service_tier": "default",
               "system_fingerprint": null
@@ -488,7 +594,14 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "Paris"
+              "text": "Paris",
+              "native": {
+                "item": {
+                  "content": "Paris",
+                  "refusal": null
+                },
+                "fingerprint": 10014039168603989904
+              }
             }
           }
         }

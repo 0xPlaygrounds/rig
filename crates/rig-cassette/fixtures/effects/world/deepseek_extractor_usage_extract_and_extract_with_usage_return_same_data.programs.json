@@ -231,23 +231,18 @@
             "content": [
               {
                 "type": "reasoning",
-                "issuer": "deepseek",
-                "id": null,
-                "content": [
-                  {
-                    "type": "text",
-                    "content": {
-                      "text": "Extract: name Bob Johnson, age 55, profession retired teacher."
-                    }
-                  }
-                ]
+                "text": "Extract: name Bob Johnson, age 55, profession retired teacher.",
+                "native": {
+                  "item": {
+                    "reasoning_content": "Extract: name Bob Johnson, age 55, profession retired teacher."
+                  },
+                  "fingerprint": 2332199788432952788
+                }
               },
               {
                 "type": "toolcall",
                 "id": {
-                  "provider": {
-                    "call_id": "call_00_XBVPxYePeGjQsBWmwIFL4951"
-                  }
+                  "provider": "call_00_XBVPxYePeGjQsBWmwIFL4951"
                 },
                 "function": {
                   "name": "submit",
@@ -257,11 +252,47 @@
                     "profession": "retired teacher"
                   }
                 },
-                "signature": null,
-                "additional_params": null
+                "native": {
+                  "item": {
+                    "function": {
+                      "arguments": "{\"name\": \"Bob Johnson\", \"age\": 55, \"profession\": \"retired teacher\"}",
+                      "name": "submit"
+                    },
+                    "id": "call_00_XBVPxYePeGjQsBWmwIFL4951",
+                    "type": "function"
+                  },
+                  "fingerprint": 16654775606242995704
+                }
               }
             ],
-            "message_id": null,
+            "head": {
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-v4-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "8100a836-9559-4369-9daa-854fa1e366ec"
+              },
+              "stop": "tool_use",
+              "native": {
+                "item": {
+                  "content": "",
+                  "reasoning_content": "Extract: name Bob Johnson, age 55, profession retired teacher.",
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{\"name\": \"Bob Johnson\", \"age\": 55, \"profession\": \"retired teacher\"}",
+                        "name": "submit"
+                      },
+                      "id": "call_00_XBVPxYePeGjQsBWmwIFL4951",
+                      "type": "function"
+                    }
+                  ]
+                },
+                "fingerprint": 11139697437575175159
+              }
+            },
             "done": true,
             "usage_recorded": true,
             "stream_validated": 0
@@ -282,23 +313,18 @@
               "choice": [
                 {
                   "type": "reasoning",
-                  "issuer": "deepseek",
-                  "id": null,
-                  "content": [
-                    {
-                      "type": "text",
-                      "content": {
-                        "text": "Extract: name Bob Johnson, age 55, profession retired teacher."
-                      }
-                    }
-                  ]
+                  "text": "Extract: name Bob Johnson, age 55, profession retired teacher.",
+                  "native": {
+                    "item": {
+                      "reasoning_content": "Extract: name Bob Johnson, age 55, profession retired teacher."
+                    },
+                    "fingerprint": 2332199788432952788
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_00_XBVPxYePeGjQsBWmwIFL4951"
-                    }
+                    "provider": "call_00_XBVPxYePeGjQsBWmwIFL4951"
                   },
                   "function": {
                     "name": "submit",
@@ -308,8 +334,17 @@
                       "profession": "retired teacher"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"name\": \"Bob Johnson\", \"age\": 55, \"profession\": \"retired teacher\"}",
+                        "name": "submit"
+                      },
+                      "id": "call_00_XBVPxYePeGjQsBWmwIFL4951",
+                      "type": "function"
+                    },
+                    "fingerprint": 16654775606242995704
+                  }
                 }
               ],
               "usage": {
@@ -319,11 +354,32 @@
                 "cached_input_tokens": 0,
                 "reasoning_tokens": 15
               },
-              "message_id": null,
-              "response_id": "8100a836-9559-4369-9daa-854fa1e366ec",
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-v4-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "8100a836-9559-4369-9daa-854fa1e366ec"
+              },
+              "native": {
+                "item": {
+                  "content": "",
+                  "reasoning_content": "Extract: name Bob Johnson, age 55, profession retired teacher.",
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{\"name\": \"Bob Johnson\", \"age\": 55, \"profession\": \"retired teacher\"}",
+                        "name": "submit"
+                      },
+                      "id": "call_00_XBVPxYePeGjQsBWmwIFL4951",
+                      "type": "function"
+                    }
+                  ]
+                },
+                "fingerprint": 11139697437575175159
+              },
               "finish_reason": "tool_calls",
-              "provider": "deepseek",
-              "model": "deepseek-flash",
               "raw": {
                 "choices": [
                   {
@@ -370,29 +426,53 @@
             }
           },
           "rig_ecs::bus::effect::Issued": 0,
-          "rig_ecs::bus::handlers::ServedBy": 0,
-          "rig_ecs::bus::effect::Seq": 0
+          "rig_ecs::bus::effect::Seq": 0,
+          "rig_ecs::bus::handlers::ServedBy": 0
         },
         {
           "bevy_ecs::hierarchy::ChildOf": 2,
           "rig_ecs::agent::Role": "Assistant",
           "rig_ecs::agent::Utterance": {},
-          "rig_ecs::agent::content::parts::MessageId": null
+          "rig_ecs::agent::content::parts::AssistantHead": {
+            "origin": {
+              "api": "openai.chat",
+              "provider": "deepseek",
+              "model": "deepseek-v4-flash",
+              "response_model": "deepseek-flash",
+              "response_id": "8100a836-9559-4369-9daa-854fa1e366ec"
+            },
+            "stop": "tool_use",
+            "native": {
+              "item": {
+                "content": "",
+                "reasoning_content": "Extract: name Bob Johnson, age 55, profession retired teacher.",
+                "role": "assistant",
+                "tool_calls": [
+                  {
+                    "function": {
+                      "arguments": "{\"name\": \"Bob Johnson\", \"age\": 55, \"profession\": \"retired teacher\"}",
+                      "name": "submit"
+                    },
+                    "id": "call_00_XBVPxYePeGjQsBWmwIFL4951",
+                    "type": "function"
+                  }
+                ]
+              },
+              "fingerprint": 11139697437575175159
+            }
+          }
         },
         {
           "bevy_ecs::hierarchy::ChildOf": 7,
           "rig_ecs::agent::content::parts::ContentPart": {
             "Reasoning": {
-              "issuer": "deepseek",
-              "id": null,
-              "content": [
-                {
-                  "type": "text",
-                  "content": {
-                    "text": "Extract: name Bob Johnson, age 55, profession retired teacher."
-                  }
-                }
-              ]
+              "text": "Extract: name Bob Johnson, age 55, profession retired teacher.",
+              "native": {
+                "item": {
+                  "reasoning_content": "Extract: name Bob Johnson, age 55, profession retired teacher."
+                },
+                "fingerprint": 2332199788432952788
+              }
             }
           }
         },

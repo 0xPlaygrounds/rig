@@ -109,9 +109,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "toolu_01SPgxpjTY3oRQGp8rp3TUkw"
-                }
+                "provider": "toolu_01RSgvARo1AhSANdsufgh8Nc"
               },
               "function": {
                 "name": "lookup",
@@ -119,8 +117,20 @@
                   "q": "What is the capital of France?"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "caller": {
+                    "type": "direct"
+                  },
+                  "id": "toolu_01RSgvARo1AhSANdsufgh8Nc",
+                  "input": {
+                    "q": "What is the capital of France?"
+                  },
+                  "name": "lookup",
+                  "type": "tool_use"
+                },
+                "fingerprint": 10036541437451478574
+              }
             }
           ],
           "usage": {
@@ -130,12 +140,15 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_011CfLcVosqqKqEJRDXpbRkx",
-          "response_id": null,
-          "provider_request_id": "req_011CfLcVoQKLKAwBUme7RG5S",
+          "origin": {
+            "api": "anthropic.messages",
+            "provider": "anthropic",
+            "model": "claude-sonnet-4-6",
+            "response_model": "claude-sonnet-4-6",
+            "response_id": "msg_011CfchdsvJ6bmwdDLbP33KG"
+          },
+          "provider_request_id": "req_011Cfchdsai8pmz1v1tCmGJo",
           "finish_reason": "tool_calls",
-          "provider": "anthropic",
-          "model": "claude-sonnet-4-6",
           "raw": {
             "usage": {
               "output_tokens": 58,
@@ -148,7 +161,7 @@
               "cache_read_input_tokens": 0
             },
             "stop_reason": "tool_use",
-            "message_id": "msg_011CfLcVosqqKqEJRDXpbRkx",
+            "message_id": "msg_011CfchdsvJ6bmwdDLbP33KG",
             "model": "claude-sonnet-4-6"
           }
         }
@@ -178,9 +191,7 @@
             "content": {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "toolu_01SPgxpjTY3oRQGp8rp3TUkw"
-                }
+                "provider": "toolu_01RSgvARo1AhSANdsufgh8Nc"
               },
               "function": {
                 "name": "lookup",
@@ -188,8 +199,20 @@
                   "q": "What is the capital of France?"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "caller": {
+                    "type": "direct"
+                  },
+                  "id": "toolu_01RSgvARo1AhSANdsufgh8Nc",
+                  "input": {
+                    "q": "What is the capital of France?"
+                  },
+                  "name": "lookup",
+                  "type": "tool_use"
+                },
+                "fingerprint": 10036541437451478574
+              }
             }
           }
         }
@@ -258,7 +281,14 @@
           "choice": [
             {
               "type": "text",
-              "text": "Paris"
+              "text": "Paris",
+              "native": {
+                "item": {
+                  "text": "Paris",
+                  "type": "text"
+                },
+                "fingerprint": 10014039168603989904
+              }
             }
           ],
           "usage": {
@@ -268,12 +298,15 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_011CfLcVvnKfWfGwQPeidZB1",
-          "response_id": null,
-          "provider_request_id": "req_011CfLcVvLnJXfm7fXZ2kbsF",
+          "origin": {
+            "api": "anthropic.messages",
+            "provider": "anthropic",
+            "model": "claude-sonnet-4-6",
+            "response_model": "claude-sonnet-4-6",
+            "response_id": "msg_011CfchdxvvSqat6sXR3FPZj"
+          },
+          "provider_request_id": "req_011CfchdxbLwQ8UryczmuLEV",
           "finish_reason": "stop",
-          "provider": "anthropic",
-          "model": "claude-sonnet-4-6",
           "raw": {
             "container": null,
             "content": [
@@ -282,7 +315,8 @@
                 "type": "text"
               }
             ],
-            "id": "msg_011CfLcVvnKfWfGwQPeidZB1",
+            "diagnostics": null,
+            "id": "msg_011CfchdxvvSqat6sXR3FPZj",
             "model": "claude-sonnet-4-6",
             "role": "assistant",
             "stop_details": null,
@@ -330,14 +364,11 @@
             },
             {
               "role": "assistant",
-              "id": "msg_011CfLcVosqqKqEJRDXpbRkx",
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "toolu_01SPgxpjTY3oRQGp8rp3TUkw"
-                    }
+                    "provider": "toolu_01RSgvARo1AhSANdsufgh8Nc"
                   },
                   "function": {
                     "name": "lookup",
@@ -345,10 +376,30 @@
                       "q": "What is the capital of France?"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "caller": {
+                        "type": "direct"
+                      },
+                      "id": "toolu_01RSgvARo1AhSANdsufgh8Nc",
+                      "input": {
+                        "q": "What is the capital of France?"
+                      },
+                      "name": "lookup",
+                      "type": "tool_use"
+                    },
+                    "fingerprint": 10036541437451478574
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "anthropic.messages",
+                "provider": "anthropic",
+                "model": "claude-sonnet-4-6",
+                "response_model": "claude-sonnet-4-6",
+                "response_id": "msg_011CfchdsvJ6bmwdDLbP33KG"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -356,9 +407,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "toolu_01SPgxpjTY3oRQGp8rp3TUkw"
-                    }
+                    "provider": "toolu_01RSgvARo1AhSANdsufgh8Nc"
                   },
                   "name": "lookup",
                   "content": [
@@ -408,7 +457,14 @@
           "choice": [
             {
               "type": "text",
-              "text": "Paris"
+              "text": "Paris",
+              "native": {
+                "item": {
+                  "text": "Paris",
+                  "type": "text"
+                },
+                "fingerprint": 10014039168603989904
+              }
             }
           ],
           "usage": {
@@ -418,12 +474,15 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_011CfLcWD6M3aaNfbpDzpN8F",
-          "response_id": null,
-          "provider_request_id": "req_011CfLcWCdKMMoTXzZp2m89E",
+          "origin": {
+            "api": "anthropic.messages",
+            "provider": "anthropic",
+            "model": "claude-sonnet-4-6",
+            "response_model": "claude-sonnet-4-6",
+            "response_id": "msg_011Cfche1mLWhYTwQzfVqQ4P"
+          },
+          "provider_request_id": "req_011Cfche1PWsDw5uzhTFbg4c",
           "finish_reason": "stop",
-          "provider": "anthropic",
-          "model": "claude-sonnet-4-6",
           "raw": {
             "usage": {
               "output_tokens": 4,
@@ -436,7 +495,7 @@
               "cache_read_input_tokens": 0
             },
             "stop_reason": "end_turn",
-            "message_id": "msg_011CfLcWD6M3aaNfbpDzpN8F",
+            "message_id": "msg_011Cfche1mLWhYTwQzfVqQ4P",
             "model": "claude-sonnet-4-6"
           }
         }
@@ -465,7 +524,14 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "Paris"
+              "text": "Paris",
+              "native": {
+                "item": {
+                  "text": "Paris",
+                  "type": "text"
+                },
+                "fingerprint": 10014039168603989904
+              }
             }
           }
         }

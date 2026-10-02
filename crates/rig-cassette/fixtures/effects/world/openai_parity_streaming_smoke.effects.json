@@ -2,11 +2,19 @@
   "header": {
     "deliveries": [
       {
-        "batch": 15,
+        "batch": 14,
         "id": 0,
         "kind": {
           "delivery": "stream",
           "items": 2
+        }
+      },
+      {
+        "batch": 15,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
         }
       },
       {
@@ -59,14 +67,6 @@
       },
       {
         "batch": 22,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 23,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -186,14 +186,6 @@
         }
       },
       {
-        "batch": 39,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
         "batch": 40,
         "id": 0,
         "kind": {
@@ -242,7 +234,7 @@
         }
       },
       {
-        "batch": 46,
+        "batch": 47,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -362,7 +354,7 @@
         }
       },
       {
-        "batch": 63,
+        "batch": 64,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -370,7 +362,7 @@
         }
       },
       {
-        "batch": 64,
+        "batch": 65,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -411,14 +403,6 @@
       },
       {
         "batch": 70,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 71,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -474,6 +458,14 @@
         }
       },
       {
+        "batch": 78,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 79,
         "id": 0,
         "kind": {
@@ -483,14 +475,6 @@
       },
       {
         "batch": 80,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 81,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -546,14 +530,6 @@
         }
       },
       {
-        "batch": 88,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
         "batch": 89,
         "id": 0,
         "kind": {
@@ -602,14 +578,6 @@
         }
       },
       {
-        "batch": 95,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
         "batch": 96,
         "id": 0,
         "kind": {
@@ -650,6 +618,14 @@
         }
       },
       {
+        "batch": 101,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 102,
         "id": 0,
         "kind": {
@@ -667,14 +643,6 @@
       },
       {
         "batch": 104,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 105,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -706,7 +674,7 @@
         }
       },
       {
-        "batch": 125,
+        "batch": 109,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -714,7 +682,39 @@
         }
       },
       {
-        "batch": 126,
+        "batch": 110,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 111,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 112,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 121,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 129,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -787,7 +787,24 @@
           "choice": [
             {
               "type": "text",
-              "text": "A solar eclipse occurs when the moon passes between the Earth and the sun, blocking all or part of the sun's light. This alignment causes the moon to cast a shadow on Earth, creating phenomena such as a partial, total, or annular eclipse, depending on the observer's location and the distances between the Earth, moon, and sun. During a total solar eclipse, the sun's corona becomes visible, offering a unique astronomical event."
+              "text": "A solar eclipse occurs when the moon passes between the Earth and the sun, blocking all or part of the sun's light. This alignment causes the moon to cast a shadow on Earth, creating phenomena such as a partial, total, or annular eclipse, depending on the observer's location and the distances between the Earth, moon, and sun. During a total solar eclipse, the sun's corona becomes visible, offering a unique astronomical event.",
+              "native": {
+                "item": {
+                  "content": [
+                    {
+                      "annotations": [],
+                      "logprobs": [],
+                      "text": "A solar eclipse occurs when the moon passes between the Earth and the sun, blocking all or part of the sun's light. This alignment causes the moon to cast a shadow on Earth, creating phenomena such as a partial, total, or annular eclipse, depending on the observer's location and the distances between the Earth, moon, and sun. During a total solar eclipse, the sun's corona becomes visible, offering a unique astronomical event.",
+                      "type": "output_text"
+                    }
+                  ],
+                  "id": "msg_077dacab6f1410f2006ab394cc4b8c87d0b5da6a8ca116afc5",
+                  "role": "assistant",
+                  "status": "completed",
+                  "type": "message"
+                },
+                "fingerprint": 14636787287143093855
+              }
             }
           ],
           "usage": {
@@ -798,12 +815,15 @@
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": "msg_077dacab6f1410f2006ab394cc4b8c87d0b5da6a8ca116afc5",
-          "response_id": "resp_077dacab6f1410f2006ab394caaa6c87d0a283f932c1b97099",
+          "origin": {
+            "api": "openai.responses",
+            "provider": "openai",
+            "model": "gpt-4o",
+            "response_model": "gpt-4o-2024-08-06",
+            "response_id": "resp_077dacab6f1410f2006ab394caaa6c87d0a283f932c1b97099"
+          },
           "provider_request_id": "req_c7a029136dae4abc829d09118d5cfdaf",
           "finish_reason": "stop",
-          "provider": "openai",
-          "model": "gpt-4o-2024-08-06",
           "raw": {
             "id": "resp_077dacab6f1410f2006ab394caaa6c87d0a283f932c1b97099",
             "object": "response",
@@ -1583,7 +1603,24 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "A solar eclipse occurs when the moon passes between the Earth and the sun, blocking all or part of the sun's light. This alignment causes the moon to cast a shadow on Earth, creating phenomena such as a partial, total, or annular eclipse, depending on the observer's location and the distances between the Earth, moon, and sun. During a total solar eclipse, the sun's corona becomes visible, offering a unique astronomical event."
+              "text": "A solar eclipse occurs when the moon passes between the Earth and the sun, blocking all or part of the sun's light. This alignment causes the moon to cast a shadow on Earth, creating phenomena such as a partial, total, or annular eclipse, depending on the observer's location and the distances between the Earth, moon, and sun. During a total solar eclipse, the sun's corona becomes visible, offering a unique astronomical event.",
+              "native": {
+                "item": {
+                  "content": [
+                    {
+                      "annotations": [],
+                      "logprobs": [],
+                      "text": "A solar eclipse occurs when the moon passes between the Earth and the sun, blocking all or part of the sun's light. This alignment causes the moon to cast a shadow on Earth, creating phenomena such as a partial, total, or annular eclipse, depending on the observer's location and the distances between the Earth, moon, and sun. During a total solar eclipse, the sun's corona becomes visible, offering a unique astronomical event.",
+                      "type": "output_text"
+                    }
+                  ],
+                  "id": "msg_077dacab6f1410f2006ab394cc4b8c87d0b5da6a8ca116afc5",
+                  "role": "assistant",
+                  "status": "completed",
+                  "type": "message"
+                },
+                "fingerprint": 14636787287143093855
+              }
             }
           }
         }

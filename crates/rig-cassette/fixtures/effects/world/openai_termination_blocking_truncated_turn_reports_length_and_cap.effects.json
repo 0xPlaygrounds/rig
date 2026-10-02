@@ -75,7 +75,15 @@
           "choice": [
             {
               "type": "text",
-              "text": "Maple trees are known for their vibrant fall foliage, displaying brilliant shades of red"
+              "text": "Maple trees are known for their vibrant fall foliage, displaying brilliant shades of red",
+              "native": {
+                "item": {
+                  "annotations": [],
+                  "content": "Maple trees are known for their vibrant fall foliage, displaying brilliant shades of red",
+                  "refusal": null
+                },
+                "fingerprint": 16171626019599134392
+              }
             }
           ],
           "usage": {
@@ -85,12 +93,24 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
-          "response_id": "chatcmpl-ERDE3vuv8SFfJ2Oqg3wURNbsgOnHF",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "openai",
+            "model": "gpt-4o-mini",
+            "response_model": "gpt-4o-mini-2024-07-18",
+            "response_id": "chatcmpl-ERDE3vuv8SFfJ2Oqg3wURNbsgOnHF"
+          },
+          "native": {
+            "item": {
+              "annotations": [],
+              "content": "Maple trees are known for their vibrant fall foliage, displaying brilliant shades of red",
+              "refusal": null,
+              "role": "assistant"
+            },
+            "fingerprint": 9902477179914569264
+          },
           "provider_request_id": "req_bdc32dce42a04d2e9f69f8c6512f6048",
           "finish_reason": "length",
-          "provider": "openai",
-          "model": "gpt-4o-mini-2024-07-18",
           "raw": {
             "choices": [
               {

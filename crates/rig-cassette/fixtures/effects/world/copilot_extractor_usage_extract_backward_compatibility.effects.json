@@ -109,9 +109,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_REDACTED_1"
-                }
+                "provider": "call_REDACTED_1"
               },
               "function": {
                 "name": "submit",
@@ -121,8 +119,17 @@
                   "profession": "software engineer"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"age\":30,\"name\":\"John Doe\",\"profession\":\"software engineer\"}",
+                    "name": "submit"
+                  },
+                  "id": "call_REDACTED_1",
+                  "type": "function"
+                },
+                "fingerprint": 16153260419015349715
+              }
             }
           ],
           "usage": {
@@ -132,11 +139,31 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "copilot",
+            "model": "gpt-4o-mini",
+            "response_model": "gpt-4o-mini-2024-07-18",
+            "response_id": "chatcmpl-REDACTED_1"
+          },
+          "native": {
+            "item": {
+              "padding": "abcdefghijklmn",
+              "role": "assistant",
+              "tool_calls": [
+                {
+                  "function": {
+                    "arguments": "{\"age\":30,\"name\":\"John Doe\",\"profession\":\"software engineer\"}",
+                    "name": "submit"
+                  },
+                  "id": "call_REDACTED_1",
+                  "type": "function"
+                }
+              ]
+            },
+            "fingerprint": 6568443414789626151
+          },
           "finish_reason": "tool_calls",
-          "provider": "copilot",
-          "model": "gpt-4o-mini-2024-07-18",
           "raw": {
             "choices": [
               {

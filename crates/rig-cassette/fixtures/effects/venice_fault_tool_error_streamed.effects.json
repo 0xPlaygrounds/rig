@@ -112,9 +112,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "lF1k4i4gW"
-                }
+                "provider": "cF7AK8CLy"
               },
               "function": {
                 "name": "add",
@@ -123,8 +121,17 @@
                   "y": 25
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"x\": 17, \"y\": 25}",
+                    "name": "add"
+                  },
+                  "id": "cF7AK8CLy",
+                  "type": "function"
+                },
+                "fingerprint": 9868156623584090323
+              }
             }
           ],
           "usage": {
@@ -132,11 +139,32 @@
             "output_tokens": 18,
             "total_tokens": 1104
           },
-          "message_id": null,
-          "response_id": "chatcmpl-RyHtbNcRsOD4glITBzQ4HGE1",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "venice",
+            "model": "mistral-small-3-2-24b-instruct",
+            "response_model": "mistral-small-3-2-24b-instruct",
+            "response_id": "chatcmpl-R45WFotVmR1PX1rmtesLsV7o"
+          },
+          "native": {
+            "item": {
+              "content": "",
+              "reasoning_content": null,
+              "role": "assistant",
+              "tool_calls": [
+                {
+                  "function": {
+                    "arguments": "{\"x\": 17, \"y\": 25}",
+                    "name": "add"
+                  },
+                  "id": "cF7AK8CLy",
+                  "type": "function"
+                }
+              ]
+            },
+            "fingerprint": 16722234447620079833
+          },
           "finish_reason": "tool_calls",
-          "provider": "venice",
-          "model": "mistral-small-3-2-24b-instruct",
           "raw": {
             "usage": {
               "prompt_tokens": 1086,
@@ -144,7 +172,7 @@
               "total_tokens": 1104
             },
             "finish_reason": "tool_calls",
-            "response_id": "chatcmpl-RyHtbNcRsOD4glITBzQ4HGE1",
+            "response_id": "chatcmpl-R45WFotVmR1PX1rmtesLsV7o",
             "model": "mistral-small-3-2-24b-instruct",
             "additional_params": {
               "created": 0,
@@ -183,9 +211,7 @@
             "content": {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "lF1k4i4gW"
-                }
+                "provider": "cF7AK8CLy"
               },
               "function": {
                 "name": "add",
@@ -194,8 +220,17 @@
                   "y": 25
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"x\": 17, \"y\": 25}",
+                    "name": "add"
+                  },
+                  "id": "cF7AK8CLy",
+                  "type": "function"
+                },
+                "fingerprint": 9868156623584090323
+              }
             }
           }
         }
@@ -257,14 +292,11 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "lF1k4i4gW"
-                    }
+                    "provider": "cF7AK8CLy"
                   },
                   "function": {
                     "name": "add",
@@ -273,10 +305,45 @@
                       "y": 25
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"x\": 17, \"y\": 25}",
+                        "name": "add"
+                      },
+                      "id": "cF7AK8CLy",
+                      "type": "function"
+                    },
+                    "fingerprint": 9868156623584090323
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "venice",
+                "model": "mistral-small-3-2-24b-instruct",
+                "response_model": "mistral-small-3-2-24b-instruct",
+                "response_id": "chatcmpl-R45WFotVmR1PX1rmtesLsV7o"
+              },
+              "stop": "tool_use",
+              "native": {
+                "item": {
+                  "content": "",
+                  "reasoning_content": null,
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{\"x\": 17, \"y\": 25}",
+                        "name": "add"
+                      },
+                      "id": "cF7AK8CLy",
+                      "type": "function"
+                    }
+                  ]
+                },
+                "fingerprint": 16722234447620079833
+              }
             },
             {
               "role": "user",
@@ -284,9 +351,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "lF1k4i4gW"
-                    }
+                    "provider": "cF7AK8CLy"
                   },
                   "name": "add",
                   "content": [
@@ -335,27 +400,44 @@
           "choice": [
             {
               "type": "text",
-              "text": "the adder is broken"
+              "text": "the adder is broken",
+              "native": {
+                "item": {
+                  "content": "the adder is broken"
+                },
+                "fingerprint": 4501334444821699225
+              }
             }
           ],
           "usage": {
-            "input_tokens": 1131,
+            "input_tokens": 1127,
             "output_tokens": 6,
-            "total_tokens": 1137
+            "total_tokens": 1133
           },
-          "message_id": null,
-          "response_id": "chatcmpl-REc2Aq6uoWxUVDveyNmccMRC",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "venice",
+            "model": "mistral-small-3-2-24b-instruct",
+            "response_model": "mistral-small-3-2-24b-instruct",
+            "response_id": "chatcmpl-RhwwOIvoQPStjWc9f182IfmX"
+          },
+          "native": {
+            "item": {
+              "content": "the adder is broken",
+              "reasoning_content": null,
+              "role": "assistant"
+            },
+            "fingerprint": 5492550412203618301
+          },
           "finish_reason": "stop",
-          "provider": "venice",
-          "model": "mistral-small-3-2-24b-instruct",
           "raw": {
             "usage": {
-              "prompt_tokens": 1131,
+              "prompt_tokens": 1127,
               "completion_tokens": 6,
-              "total_tokens": 1137
+              "total_tokens": 1133
             },
             "finish_reason": "stop",
-            "response_id": "chatcmpl-REc2Aq6uoWxUVDveyNmccMRC",
+            "response_id": "chatcmpl-RhwwOIvoQPStjWc9f182IfmX",
             "model": "mistral-small-3-2-24b-instruct",
             "additional_params": {
               "created": 0,
@@ -363,7 +445,7 @@
               "service_tier": "default",
               "cost": {
                 "diem": 0,
-                "usd": 0.00010753125
+                "usd": 0.00010715624999999999
               }
             }
           }
@@ -425,7 +507,13 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "the adder is broken"
+              "text": "the adder is broken",
+              "native": {
+                "item": {
+                  "content": "the adder is broken"
+                },
+                "fingerprint": 4501334444821699225
+              }
             }
           }
         }

@@ -141,9 +141,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_242dd7cefafc4421b2ed396a"
-                }
+                "provider": "call_86ca2705b78448d1a21cc125"
               },
               "function": {
                 "name": "add",
@@ -152,22 +150,51 @@
                   "y": 25
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"x\": 17, \"y\": 25}",
+                    "name": "add"
+                  },
+                  "id": "call_86ca2705b78448d1a21cc125",
+                  "type": "function"
+                },
+                "fingerprint": 16231035600626437920
+              }
             }
           ],
           "usage": {
             "input_tokens": 505,
-            "output_tokens": 37,
-            "total_tokens": 542,
+            "output_tokens": 36,
+            "total_tokens": 541,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": null,
-          "response_id": "resp_7d556ffb-4822-46d8-85ef-52294a844579",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "doubleword",
+            "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+            "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
+            "response_id": "resp_822b949c-817d-4f4b-826b-cb10ff9718d8"
+          },
+          "native": {
+            "item": {
+              "refusal": null,
+              "role": "assistant",
+              "tool_calls": [
+                {
+                  "function": {
+                    "arguments": "{\"x\": 17, \"y\": 25}",
+                    "name": "add"
+                  },
+                  "id": "call_86ca2705b78448d1a21cc125",
+                  "type": "function"
+                }
+              ]
+            },
+            "fingerprint": 8411524433216773240
+          },
           "finish_reason": "tool_calls",
-          "provider": "doubleword",
-          "model": "Qwen/Qwen3.5-397B-A17B-FP8",
           "raw": {
             "choices": [
               {
@@ -182,7 +209,7 @@
                         "arguments": "{\"x\": 17, \"y\": 25}",
                         "name": "add"
                       },
-                      "id": "call_242dd7cefafc4421b2ed396a",
+                      "id": "call_86ca2705b78448d1a21cc125",
                       "type": "function"
                     }
                   ]
@@ -190,7 +217,7 @@
               }
             ],
             "created": 0,
-            "id": "resp_7d556ffb-4822-46d8-85ef-52294a844579",
+            "id": "resp_822b949c-817d-4f4b-826b-cb10ff9718d8",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "object": "chat.completion",
             "usage": {
@@ -201,7 +228,7 @@
               },
               "cache_creation_input_tokens": 0,
               "cache_read_input_tokens": 0,
-              "completion_tokens": 37,
+              "completion_tokens": 36,
               "completion_tokens_details": {
                 "audio_tokens": 0,
                 "image_tokens": 0,
@@ -214,7 +241,7 @@
                 "cached_tokens": 0,
                 "video_tokens": 0
               },
-              "total_tokens": 542
+              "total_tokens": 541
             }
           }
         }
@@ -268,14 +295,11 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_242dd7cefafc4421b2ed396a"
-                    }
+                    "provider": "call_86ca2705b78448d1a21cc125"
                   },
                   "function": {
                     "name": "add",
@@ -284,10 +308,44 @@
                       "y": 25
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"x\": 17, \"y\": 25}",
+                        "name": "add"
+                      },
+                      "id": "call_86ca2705b78448d1a21cc125",
+                      "type": "function"
+                    },
+                    "fingerprint": 16231035600626437920
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "doubleword",
+                "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+                "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
+                "response_id": "resp_822b949c-817d-4f4b-826b-cb10ff9718d8"
+              },
+              "stop": "tool_use",
+              "native": {
+                "item": {
+                  "refusal": null,
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{\"x\": 17, \"y\": 25}",
+                        "name": "add"
+                      },
+                      "id": "call_86ca2705b78448d1a21cc125",
+                      "type": "function"
+                    }
+                  ]
+                },
+                "fingerprint": 8411524433216773240
+              }
             },
             {
               "role": "user",
@@ -295,9 +353,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_242dd7cefafc4421b2ed396a"
-                    }
+                    "provider": "call_86ca2705b78448d1a21cc125"
                   },
                   "name": "add",
                   "content": [
@@ -374,34 +430,61 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_8a911ab7dd8944c8b972c1cb"
-                }
+                "provider": "call_f6f6d0b1d35e4dfca3f1aeca"
               },
               "function": {
                 "name": "final_result",
                 "arguments": {
                   "title": "Rust Meetup Seattle",
-                  "category": "Event",
-                  "summary": "Rust meetup in Seattle with 42 attendees."
+                  "category": "Technology",
+                  "summary": "Join us for a Rust meetup in Seattle where we will discuss the sum of 17 and 25, which is 42."
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"title\": \"Rust Meetup Seattle\", \"category\": \"Technology\", \"summary\": \"Join us for a Rust meetup in Seattle where we will discuss the sum of 17 and 25, which is 42.\"}",
+                    "name": "final_result"
+                  },
+                  "id": "call_f6f6d0b1d35e4dfca3f1aeca",
+                  "type": "function"
+                },
+                "fingerprint": 7923383672153052647
+              }
             }
           ],
           "usage": {
             "input_tokens": 561,
-            "output_tokens": 64,
-            "total_tokens": 625,
+            "output_tokens": 81,
+            "total_tokens": 642,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": null,
-          "response_id": "resp_9463fb8b-f72c-4a15-a85c-61459e01df81",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "doubleword",
+            "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+            "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
+            "response_id": "resp_704ce8fe-5659-45a2-a761-e338fcb6d4ae"
+          },
+          "native": {
+            "item": {
+              "refusal": null,
+              "role": "assistant",
+              "tool_calls": [
+                {
+                  "function": {
+                    "arguments": "{\"title\": \"Rust Meetup Seattle\", \"category\": \"Technology\", \"summary\": \"Join us for a Rust meetup in Seattle where we will discuss the sum of 17 and 25, which is 42.\"}",
+                    "name": "final_result"
+                  },
+                  "id": "call_f6f6d0b1d35e4dfca3f1aeca",
+                  "type": "function"
+                }
+              ]
+            },
+            "fingerprint": 7827349759867527927
+          },
           "finish_reason": "tool_calls",
-          "provider": "doubleword",
-          "model": "Qwen/Qwen3.5-397B-A17B-FP8",
           "raw": {
             "choices": [
               {
@@ -413,10 +496,10 @@
                   "tool_calls": [
                     {
                       "function": {
-                        "arguments": "{\"title\": \"Rust Meetup Seattle\", \"category\": \"Event\", \"summary\": \"Rust meetup in Seattle with 42 attendees.\"}",
+                        "arguments": "{\"title\": \"Rust Meetup Seattle\", \"category\": \"Technology\", \"summary\": \"Join us for a Rust meetup in Seattle where we will discuss the sum of 17 and 25, which is 42.\"}",
                         "name": "final_result"
                       },
-                      "id": "call_8a911ab7dd8944c8b972c1cb",
+                      "id": "call_f6f6d0b1d35e4dfca3f1aeca",
                       "type": "function"
                     }
                   ]
@@ -424,7 +507,7 @@
               }
             ],
             "created": 0,
-            "id": "resp_9463fb8b-f72c-4a15-a85c-61459e01df81",
+            "id": "resp_704ce8fe-5659-45a2-a761-e338fcb6d4ae",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "object": "chat.completion",
             "usage": {
@@ -435,7 +518,7 @@
               },
               "cache_creation_input_tokens": 0,
               "cache_read_input_tokens": 0,
-              "completion_tokens": 64,
+              "completion_tokens": 81,
               "completion_tokens_details": {
                 "audio_tokens": 0,
                 "image_tokens": 0,
@@ -448,7 +531,7 @@
                 "cached_tokens": 0,
                 "video_tokens": 0
               },
-              "total_tokens": 625
+              "total_tokens": 642
             }
           }
         }

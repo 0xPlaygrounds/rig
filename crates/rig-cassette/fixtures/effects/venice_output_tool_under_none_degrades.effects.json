@@ -84,7 +84,14 @@
           "choice": [
             {
               "type": "text",
-              "text": "{\n  \"title\": \"Seattle Rust Meetup\",\n  \"category\": \"Tech\",\n  \"summary\": \"Monthly gathering for Rust enthusiasts in Seattle to discuss projects, learn, and network. All skill levels welcome. Pizza and drinks provided. Bring a laptop if you want to code along. Topics may include Rust 2026 updates, async programming, and web assembly. Organized by local Rustaceans. Free to attend, but RSVP required for headcount. Held at a local tech co-working space in downtown Seattle. Occurs on the fourth Tuesday of every month, 6:30 PM to 9:00 PM. Check Meetup.com for exact dates and location details. Follow @SeattleRust on Twitter for updates.\"\n}"
+              "text": "{\n  \"title\": \"Seattle Rust Meetup\",\n  \"category\": \"Tech\",\n  \"summary\": \"Monthly gathering for Rust enthusiasts in Seattle to discuss projects, learn, and network. All skill levels welcome. Pizza and drinks provided. Bring a laptop if you want to code along. Topics may include Rust 2026 updates, async programming, and web assembly. Organized by local Rustaceans. Free to attend, but RSVP required for headcount. Held at a local tech co-working space in downtown Seattle. Occurs on the fourth Tuesday of every month, 6:30 PM to 9:00 PM. Check Meetup.com for exact dates and location details. Follow @SeattleRust on Twitter for updates.\"\n}",
+              "native": {
+                "item": {
+                  "content": "{\n  \"title\": \"Seattle Rust Meetup\",\n  \"category\": \"Tech\",\n  \"summary\": \"Monthly gathering for Rust enthusiasts in Seattle to discuss projects, learn, and network. All skill levels welcome. Pizza and drinks provided. Bring a laptop if you want to code along. Topics may include Rust 2026 updates, async programming, and web assembly. Organized by local Rustaceans. Free to attend, but RSVP required for headcount. Held at a local tech co-working space in downtown Seattle. Occurs on the fourth Tuesday of every month, 6:30 PM to 9:00 PM. Check Meetup.com for exact dates and location details. Follow @SeattleRust on Twitter for updates.\"\n}",
+                  "name": null
+                },
+                "fingerprint": 1986222404487229219
+              }
             }
           ],
           "usage": {
@@ -92,11 +99,23 @@
             "output_tokens": 161,
             "total_tokens": 1142
           },
-          "message_id": null,
-          "response_id": "chatcmpl-R4Pi3ODcWRQhy51IEVvtXaEB",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "venice",
+            "model": "mistral-small-3-2-24b-instruct",
+            "response_model": "mistral-small-3-2-24b-instruct",
+            "response_id": "chatcmpl-R4Pi3ODcWRQhy51IEVvtXaEB"
+          },
+          "native": {
+            "item": {
+              "content": "{\n  \"title\": \"Seattle Rust Meetup\",\n  \"category\": \"Tech\",\n  \"summary\": \"Monthly gathering for Rust enthusiasts in Seattle to discuss projects, learn, and network. All skill levels welcome. Pizza and drinks provided. Bring a laptop if you want to code along. Topics may include Rust 2026 updates, async programming, and web assembly. Organized by local Rustaceans. Free to attend, but RSVP required for headcount. Held at a local tech co-working space in downtown Seattle. Occurs on the fourth Tuesday of every month, 6:30 PM to 9:00 PM. Check Meetup.com for exact dates and location details. Follow @SeattleRust on Twitter for updates.\"\n}",
+              "name": null,
+              "reasoning_content": null,
+              "role": "assistant"
+            },
+            "fingerprint": 15259283379282582841
+          },
           "finish_reason": "stop",
-          "provider": "venice",
-          "model": "mistral-small-3-2-24b-instruct",
           "raw": {
             "choices": [
               {

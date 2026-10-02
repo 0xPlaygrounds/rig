@@ -75,11 +75,12 @@
             }
           ],
           "usage": {},
-          "message_id": null,
-          "response_id": null,
+          "origin": {
+            "api": "mock.script",
+            "provider": "mock",
+            "model": ""
+          },
           "finish_reason": null,
-          "provider": "mock",
-          "model": null,
           "raw": {
             "choice": [
               {
@@ -88,7 +89,6 @@
               }
             ],
             "usage": {},
-            "message_id": null,
             "response_id": null,
             "provider_request_id": null,
             "finish_reason": null

@@ -209,8 +209,8 @@
             }
           },
           "rig_ecs::bus::effect::Issued": 0,
-          "rig_ecs::bus::handlers::ServedBy": 0,
-          "rig_ecs::bus::effect::Seq": 0
+          "rig_ecs::bus::effect::Seq": 0,
+          "rig_ecs::bus::handlers::ServedBy": 0
         },
         {
           "bevy_ecs::hierarchy::ChildOf": 3,
@@ -219,14 +219,32 @@
               {
                 "type": "text",
                 "text": "ready.",
-                "additional_params": {
-                  "gemini": {
+                "native": {
+                  "item": {
+                    "text": "ready.",
                     "thoughtSignature": "EoACCv0BAWkUfRO+OroQK38fwYEsDm/Z8eYceq9t0g8l0LX9+WunvYycOCHfv52Mipk6cNOELeIDu0/T0ovXs7iak1jCQTSxt1fI0wMWi6Kd4RgNkxdzeLX2Lmg5kiMMzyzJj0pt4kzSmwnrGVpJM3Roe/we3vQdhcyXFcMH+isGRK2MtfRrQIVQldJDBvSGOkscBbhnZ4yXVqGLFY5T7BVipUCc+GtIiQfL21mPIh4Mmx49jch2+VXUqDNK60hxOTuYeBbS4v/4+7m4WYrwaXXxCEGBZQlKe7UWaxzBfmwFJg91Z9OzgGSycsW4lWxvGlG+mm0wd4XS5I+UepjnBLWfoA=="
-                  }
+                  },
+                  "fingerprint": 7790244451924217344
                 }
               }
             ],
-            "message_id": null,
+            "head": {
+              "origin": {
+                "api": "gemini.generate_content",
+                "provider": "gcp.gemini",
+                "model": "gemini-3-flash-preview",
+                "response_model": "gemini-3-flash-preview",
+                "response_id": "ea2yar2uAbOLmtkPhf6S6Qg"
+              },
+              "stop": "stop",
+              "native": {
+                "item": {
+                  "finishReason": "STOP",
+                  "index": 0
+                },
+                "fingerprint": 546811913261009092
+              }
+            },
             "done": true,
             "usage_recorded": true,
             "stream_validated": 0
@@ -248,10 +266,12 @@
                 {
                   "type": "text",
                   "text": "ready.",
-                  "additional_params": {
-                    "gemini": {
+                  "native": {
+                    "item": {
+                      "text": "ready.",
                       "thoughtSignature": "EoACCv0BAWkUfRO+OroQK38fwYEsDm/Z8eYceq9t0g8l0LX9+WunvYycOCHfv52Mipk6cNOELeIDu0/T0ovXs7iak1jCQTSxt1fI0wMWi6Kd4RgNkxdzeLX2Lmg5kiMMzyzJj0pt4kzSmwnrGVpJM3Roe/we3vQdhcyXFcMH+isGRK2MtfRrQIVQldJDBvSGOkscBbhnZ4yXVqGLFY5T7BVipUCc+GtIiQfL21mPIh4Mmx49jch2+VXUqDNK60hxOTuYeBbS4v/4+7m4WYrwaXXxCEGBZQlKe7UWaxzBfmwFJg91Z9OzgGSycsW4lWxvGlG+mm0wd4XS5I+UepjnBLWfoA=="
-                    }
+                    },
+                    "fingerprint": 7790244451924217344
                   }
                 }
               ],
@@ -261,11 +281,21 @@
                 "total_tokens": 58,
                 "reasoning_tokens": 37
               },
-              "message_id": null,
-              "response_id": "ea2yar2uAbOLmtkPhf6S6Qg",
+              "origin": {
+                "api": "gemini.generate_content",
+                "provider": "gcp.gemini",
+                "model": "gemini-3-flash-preview",
+                "response_model": "gemini-3-flash-preview",
+                "response_id": "ea2yar2uAbOLmtkPhf6S6Qg"
+              },
+              "native": {
+                "item": {
+                  "finishReason": "STOP",
+                  "index": 0
+                },
+                "fingerprint": 546811913261009092
+              },
               "finish_reason": "stop",
-              "provider": "gcp.gemini",
-              "model": "gemini-3-flash-preview",
               "raw": {
                 "candidates": [
                   {
@@ -301,24 +331,42 @@
             }
           },
           "rig_ecs::bus::effect::Issued": 1,
-          "rig_ecs::bus::handlers::ServedBy": 1,
-          "rig_ecs::bus::effect::Seq": 1
+          "rig_ecs::bus::effect::Seq": 1,
+          "rig_ecs::bus::handlers::ServedBy": 1
         },
         {
           "bevy_ecs::hierarchy::ChildOf": 3,
           "rig_ecs::agent::Role": "Assistant",
           "rig_ecs::agent::Utterance": {},
-          "rig_ecs::agent::content::parts::MessageId": null
+          "rig_ecs::agent::content::parts::AssistantHead": {
+            "origin": {
+              "api": "gemini.generate_content",
+              "provider": "gcp.gemini",
+              "model": "gemini-3-flash-preview",
+              "response_model": "gemini-3-flash-preview",
+              "response_id": "ea2yar2uAbOLmtkPhf6S6Qg"
+            },
+            "stop": "stop",
+            "native": {
+              "item": {
+                "finishReason": "STOP",
+                "index": 0
+              },
+              "fingerprint": 546811913261009092
+            }
+          }
         },
         {
           "bevy_ecs::hierarchy::ChildOf": 9,
           "rig_ecs::agent::content::parts::ContentPart": {
             "Text": {
               "text": "ready.",
-              "additional_params": {
-                "gemini": {
+              "native": {
+                "item": {
+                  "text": "ready.",
                   "thoughtSignature": "EoACCv0BAWkUfRO+OroQK38fwYEsDm/Z8eYceq9t0g8l0LX9+WunvYycOCHfv52Mipk6cNOELeIDu0/T0ovXs7iak1jCQTSxt1fI0wMWi6Kd4RgNkxdzeLX2Lmg5kiMMzyzJj0pt4kzSmwnrGVpJM3Roe/we3vQdhcyXFcMH+isGRK2MtfRrQIVQldJDBvSGOkscBbhnZ4yXVqGLFY5T7BVipUCc+GtIiQfL21mPIh4Mmx49jch2+VXUqDNK60hxOTuYeBbS4v/4+7m4WYrwaXXxCEGBZQlKe7UWaxzBfmwFJg91Z9OzgGSycsW4lWxvGlG+mm0wd4XS5I+UepjnBLWfoA=="
-                }
+                },
+                "fingerprint": 7790244451924217344
               }
             }
           }
@@ -332,8 +380,8 @@
             }
           },
           "rig_ecs::bus::effect::Issued": 2,
-          "rig_ecs::bus::handlers::ServedBy": 0,
-          "rig_ecs::bus::effect::Seq": 2
+          "rig_ecs::bus::effect::Seq": 2,
+          "rig_ecs::bus::handlers::ServedBy": 0
         },
         {
           "bevy_ecs::hierarchy::ChildOf": 3,
@@ -344,8 +392,8 @@
             }
           },
           "rig_ecs::bus::effect::Issued": 3,
-          "rig_ecs::bus::handlers::ServedBy": 0,
-          "rig_ecs::bus::effect::Seq": 3
+          "rig_ecs::bus::effect::Seq": 3,
+          "rig_ecs::bus::handlers::ServedBy": 0
         },
         {
           "rig_ecs::agent::Conversation": "golden-conversation",

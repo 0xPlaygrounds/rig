@@ -2,11 +2,19 @@
   "header": {
     "deliveries": [
       {
+        "batch": 6,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
         "batch": 7,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 1
         }
       },
       {
@@ -89,7 +97,13 @@
           "choice": [
             {
               "type": "text",
-              "text": "cedar"
+              "text": "cedar",
+              "native": {
+                "item": {
+                  "text": "cedar"
+                },
+                "fingerprint": 1019647121729191188
+              }
             }
           ],
           "usage": {
@@ -97,11 +111,21 @@
             "output_tokens": 2,
             "total_tokens": 24
           },
-          "message_id": null,
-          "response_id": "qHizaqv4Ldv_qtsPvqG5mA0",
+          "origin": {
+            "api": "gemini.generate_content",
+            "provider": "gcp.gemini",
+            "model": "gemini-2.5-flash",
+            "response_model": "gemini-2.5-flash",
+            "response_id": "qHizaqv4Ldv_qtsPvqG5mA0"
+          },
+          "native": {
+            "item": {
+              "finishReason": "STOP",
+              "index": 0
+            },
+            "fingerprint": 452362687342519526
+          },
           "finish_reason": "stop",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
           "raw": {
             "usage_metadata": {
               "promptTokenCount": 22,
@@ -144,7 +168,13 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "cedar"
+              "text": "cedar",
+              "native": {
+                "item": {
+                  "text": "cedar"
+                },
+                "fingerprint": 1019647121729191188
+              }
             }
           }
         }

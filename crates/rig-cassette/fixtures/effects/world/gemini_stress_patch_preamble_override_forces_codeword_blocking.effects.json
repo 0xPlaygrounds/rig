@@ -75,7 +75,13 @@
           "choice": [
             {
               "type": "text",
-              "text": "Hello. ZULU-99"
+              "text": "Hello. ZULU-99",
+              "native": {
+                "item": {
+                  "text": "Hello. ZULU-99"
+                },
+                "fingerprint": 17173693766800375446
+              }
             }
           ],
           "usage": {
@@ -84,11 +90,21 @@
             "total_tokens": 63,
             "reasoning_tokens": 23
           },
-          "message_id": null,
-          "response_id": "pnizaue8HMLRz7IPnO6ciA0",
+          "origin": {
+            "api": "gemini.generate_content",
+            "provider": "gcp.gemini",
+            "model": "gemini-2.5-flash",
+            "response_model": "gemini-2.5-flash",
+            "response_id": "pnizaue8HMLRz7IPnO6ciA0"
+          },
+          "native": {
+            "item": {
+              "finishReason": "STOP",
+              "index": 0
+            },
+            "fingerprint": 3613789542631056370
+          },
           "finish_reason": "stop",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
           "raw": {
             "candidates": [
               {

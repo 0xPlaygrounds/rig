@@ -141,9 +141,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_dc4b9345cd8d48718944d70c"
-                }
+                "provider": "call_1126d671408b421498a59996"
               },
               "function": {
                 "name": "add",
@@ -152,8 +150,17 @@
                   "y": 25
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"x\": 17, \"y\": 25}",
+                    "name": "add"
+                  },
+                  "id": "call_1126d671408b421498a59996",
+                  "type": "function"
+                },
+                "fingerprint": 9266439560076815541
+              }
             }
           ],
           "usage": {
@@ -163,11 +170,31 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": null,
-          "response_id": "resp_38a32ad3-e0d4-4d7e-aff8-33eff0e47160",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "doubleword",
+            "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+            "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
+            "response_id": "resp_f4ed9cac-8905-43b4-825d-9b60a713da78"
+          },
+          "native": {
+            "item": {
+              "refusal": null,
+              "role": "assistant",
+              "tool_calls": [
+                {
+                  "function": {
+                    "arguments": "{\"x\": 17, \"y\": 25}",
+                    "name": "add"
+                  },
+                  "id": "call_1126d671408b421498a59996",
+                  "type": "function"
+                }
+              ]
+            },
+            "fingerprint": 3766601509506755079
+          },
           "finish_reason": "tool_calls",
-          "provider": "doubleword",
-          "model": "Qwen/Qwen3.5-397B-A17B-FP8",
           "raw": {
             "choices": [
               {
@@ -182,7 +209,7 @@
                         "arguments": "{\"x\": 17, \"y\": 25}",
                         "name": "add"
                       },
-                      "id": "call_dc4b9345cd8d48718944d70c",
+                      "id": "call_1126d671408b421498a59996",
                       "type": "function"
                     }
                   ]
@@ -190,9 +217,10 @@
               }
             ],
             "created": 0,
-            "id": "resp_38a32ad3-e0d4-4d7e-aff8-33eff0e47160",
+            "id": "resp_f4ed9cac-8905-43b4-825d-9b60a713da78",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "object": "chat.completion",
+            "service_tier": "default",
             "usage": {
               "cache_creation": {
                 "ephemeral_1h_input_tokens": 0,
@@ -270,14 +298,11 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_dc4b9345cd8d48718944d70c"
-                    }
+                    "provider": "call_1126d671408b421498a59996"
                   },
                   "function": {
                     "name": "add",
@@ -286,10 +311,44 @@
                       "y": 25
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"x\": 17, \"y\": 25}",
+                        "name": "add"
+                      },
+                      "id": "call_1126d671408b421498a59996",
+                      "type": "function"
+                    },
+                    "fingerprint": 9266439560076815541
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "doubleword",
+                "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+                "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
+                "response_id": "resp_f4ed9cac-8905-43b4-825d-9b60a713da78"
+              },
+              "stop": "tool_use",
+              "native": {
+                "item": {
+                  "refusal": null,
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{\"x\": 17, \"y\": 25}",
+                        "name": "add"
+                      },
+                      "id": "call_1126d671408b421498a59996",
+                      "type": "function"
+                    }
+                  ]
+                },
+                "fingerprint": 3766601509506755079
+              }
             },
             {
               "role": "user",
@@ -297,9 +356,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_dc4b9345cd8d48718944d70c"
-                    }
+                    "provider": "call_1126d671408b421498a59996"
                   },
                   "name": "add",
                   "content": [
@@ -352,35 +409,53 @@
           "choice": [
             {
               "type": "text",
-              "text": "{\"title\":\"Rust Meetup Seattle\",\"category\":\"Technology\",\"summary\":\"Join us for the Rust meetup in Seattle where we will discuss the significance of the number 42.\"}"
+              "text": "{\"title\":\"Rust Meetup Seattle\",\"category\":\"Technology\",\"summary\":\"Join us for the Rust meetup in Seattle where we will discuss the sum of 17 and 25, which is 42.\"}",
+              "native": {
+                "item": {
+                  "content": "{\"title\":\"Rust Meetup Seattle\",\"category\":\"Technology\",\"summary\":\"Join us for the Rust meetup in Seattle where we will discuss the sum of 17 and 25, which is 42.\"}",
+                  "refusal": null
+                },
+                "fingerprint": 12421374732015082825
+              }
             }
           ],
           "usage": {
             "input_tokens": 476,
-            "output_tokens": 38,
-            "total_tokens": 514,
+            "output_tokens": 45,
+            "total_tokens": 521,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": null,
-          "response_id": "resp_f159d8d8-c67d-48ee-ab6b-cb122ebbab85",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "doubleword",
+            "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+            "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
+            "response_id": "resp_96aced42-b5bb-4304-8453-41bd18ecabd6"
+          },
+          "native": {
+            "item": {
+              "content": "{\"title\":\"Rust Meetup Seattle\",\"category\":\"Technology\",\"summary\":\"Join us for the Rust meetup in Seattle where we will discuss the sum of 17 and 25, which is 42.\"}",
+              "refusal": null,
+              "role": "assistant"
+            },
+            "fingerprint": 18015850689627422913
+          },
           "finish_reason": "stop",
-          "provider": "doubleword",
-          "model": "Qwen/Qwen3.5-397B-A17B-FP8",
           "raw": {
             "choices": [
               {
                 "finish_reason": "stop",
                 "index": 0,
                 "message": {
-                  "content": "{\"title\":\"Rust Meetup Seattle\",\"category\":\"Technology\",\"summary\":\"Join us for the Rust meetup in Seattle where we will discuss the significance of the number 42.\"}",
+                  "content": "{\"title\":\"Rust Meetup Seattle\",\"category\":\"Technology\",\"summary\":\"Join us for the Rust meetup in Seattle where we will discuss the sum of 17 and 25, which is 42.\"}",
                   "refusal": null,
                   "role": "assistant"
                 }
               }
             ],
             "created": 0,
-            "id": "resp_f159d8d8-c67d-48ee-ab6b-cb122ebbab85",
+            "id": "resp_96aced42-b5bb-4304-8453-41bd18ecabd6",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "object": "chat.completion",
             "usage": {
@@ -391,7 +466,7 @@
               },
               "cache_creation_input_tokens": 0,
               "cache_read_input_tokens": 0,
-              "completion_tokens": 38,
+              "completion_tokens": 45,
               "completion_tokens_details": {
                 "audio_tokens": 0,
                 "image_tokens": 0,
@@ -404,7 +479,7 @@
                 "cached_tokens": 0,
                 "video_tokens": 0
               },
-              "total_tokens": 514
+              "total_tokens": 521
             }
           }
         }

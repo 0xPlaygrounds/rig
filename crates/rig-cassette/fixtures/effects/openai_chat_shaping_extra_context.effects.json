@@ -73,7 +73,15 @@
           "choice": [
             {
               "type": "text",
-              "text": "A glarb-glarb is an ancient farming tool from planet Jiro."
+              "text": "A glarb-glarb is an ancient farming tool from planet Jiro.",
+              "native": {
+                "item": {
+                  "annotations": [],
+                  "content": "A glarb-glarb is an ancient farming tool from planet Jiro.",
+                  "refusal": null
+                },
+                "fingerprint": 2343949720793021308
+              }
             }
           ],
           "usage": {
@@ -83,12 +91,24 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 64
           },
-          "message_id": null,
-          "response_id": "chatcmpl-ERDCo927uTBLnd8cDhs9zrBlPB4cj",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "openai",
+            "model": "gpt-5-mini",
+            "response_model": "gpt-5-mini-2025-08-07",
+            "response_id": "chatcmpl-ERDCo927uTBLnd8cDhs9zrBlPB4cj"
+          },
+          "native": {
+            "item": {
+              "annotations": [],
+              "content": "A glarb-glarb is an ancient farming tool from planet Jiro.",
+              "refusal": null,
+              "role": "assistant"
+            },
+            "fingerprint": 9647852483769939468
+          },
           "provider_request_id": "req_5de6de1e353243f29274ac5448845679",
           "finish_reason": "stop",
-          "provider": "openai",
-          "model": "gpt-5-mini-2025-08-07",
           "raw": {
             "choices": [
               {

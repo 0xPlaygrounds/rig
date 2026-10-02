@@ -93,9 +93,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_zOwX3x5mRVPog78UHmVStKPq"
-                }
+                "provider": "call_zOwX3x5mRVPog78UHmVStKPq"
               },
               "function": {
                 "name": "final_result",
@@ -105,8 +103,17 @@
                   "summary": "Monthly Rust meetup for Seattle developers. Happens first Tuesday of each month, 6:30–8:30 PM at Impact Hub Seattle (220 2nd Ave S). Agenda: lightning talks, demo/project show-and-tell, networking. Open to all experience levels; bring a laptop. RSVP via meetup.com/seattle-rust or email seattle.rust@example.org."
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Tech Meetup\",\"summary\":\"Monthly Rust meetup for Seattle developers. Happens first Tuesday of each month, 6:30–8:30 PM at Impact Hub Seattle (220 2nd Ave S). Agenda: lightning talks, demo/project show-and-tell, networking. Open to all experience levels; bring a laptop. RSVP via meetup.com/seattle-rust or email seattle.rust@example.org.\"}",
+                    "name": "final_result"
+                  },
+                  "id": "call_zOwX3x5mRVPog78UHmVStKPq",
+                  "type": "function"
+                },
+                "fingerprint": 5650866646741283986
+              }
             }
           ],
           "usage": {
@@ -116,12 +123,34 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 64
           },
-          "message_id": null,
-          "response_id": "chatcmpl-ERDCMhSAMj85rHwQgnl1v8Bjlti4g",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "openai",
+            "model": "gpt-5-mini",
+            "response_model": "gpt-5-mini-2025-08-07",
+            "response_id": "chatcmpl-ERDCMhSAMj85rHwQgnl1v8Bjlti4g"
+          },
+          "native": {
+            "item": {
+              "annotations": [],
+              "content": null,
+              "refusal": null,
+              "role": "assistant",
+              "tool_calls": [
+                {
+                  "function": {
+                    "arguments": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Tech Meetup\",\"summary\":\"Monthly Rust meetup for Seattle developers. Happens first Tuesday of each month, 6:30–8:30 PM at Impact Hub Seattle (220 2nd Ave S). Agenda: lightning talks, demo/project show-and-tell, networking. Open to all experience levels; bring a laptop. RSVP via meetup.com/seattle-rust or email seattle.rust@example.org.\"}",
+                    "name": "final_result"
+                  },
+                  "id": "call_zOwX3x5mRVPog78UHmVStKPq",
+                  "type": "function"
+                }
+              ]
+            },
+            "fingerprint": 13977575722913086472
+          },
           "provider_request_id": "req_53ad1d758afc4ce895cecc3bf99dc171",
           "finish_reason": "tool_calls",
-          "provider": "openai",
-          "model": "gpt-5-mini-2025-08-07",
           "raw": {
             "choices": [
               {

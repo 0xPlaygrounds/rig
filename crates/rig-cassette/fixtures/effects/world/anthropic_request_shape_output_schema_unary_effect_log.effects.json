@@ -93,7 +93,14 @@
           "choice": [
             {
               "type": "text",
-              "text": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Technology\",\"summary\":\"A local gathering for Rust programming language enthusiasts in Seattle to share projects, discuss best practices, and network with fellow developers.\"}"
+              "text": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Technology\",\"summary\":\"A local gathering for Rust programming language enthusiasts in Seattle to share projects, discuss best practices, and network with fellow developers.\"}",
+              "native": {
+                "item": {
+                  "text": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Technology\",\"summary\":\"A local gathering for Rust programming language enthusiasts in Seattle to share projects, discuss best practices, and network with fellow developers.\"}",
+                  "type": "text"
+                },
+                "fingerprint": 8852174664572854497
+              }
             }
           ],
           "usage": {
@@ -103,12 +110,15 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_011CfLcdKdCbP6KxVw6vLKgH",
-          "response_id": null,
+          "origin": {
+            "api": "anthropic.messages",
+            "provider": "anthropic",
+            "model": "claude-sonnet-4-6",
+            "response_model": "claude-sonnet-4-6",
+            "response_id": "msg_011CfLcdKdCbP6KxVw6vLKgH"
+          },
           "provider_request_id": "req_011CfLcdKKLxr4RgzQmjcDoL",
           "finish_reason": "stop",
-          "provider": "anthropic",
-          "model": "claude-sonnet-4-6",
           "raw": {
             "container": null,
             "content": [

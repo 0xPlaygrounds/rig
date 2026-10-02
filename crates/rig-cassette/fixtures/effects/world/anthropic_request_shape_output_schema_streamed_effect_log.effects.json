@@ -2,27 +2,11 @@
   "header": {
     "deliveries": [
       {
-        "batch": 6,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 4
-        }
-      },
-      {
-        "batch": 7,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 4
-        }
-      },
-      {
         "batch": 8,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 2
         }
       },
       {
@@ -30,7 +14,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 4
+          "items": 2
         }
       },
       {
@@ -38,11 +22,67 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 2
         }
       },
       {
         "batch": 11,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 12,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 13,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 14,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 15,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 16,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 17,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 18,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -133,7 +173,14 @@
           "choice": [
             {
               "type": "text",
-              "text": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Technology\",\"summary\":\"A local gathering for Rust programming language enthusiasts in Seattle to share projects, discuss best practices, and network with fellow developers.\"}"
+              "text": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Technology\",\"summary\":\"A local gathering for Rust programming language enthusiasts in Seattle to share projects, discuss best practices, and network with fellow developers.\"}",
+              "native": {
+                "item": {
+                  "text": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Technology\",\"summary\":\"A local gathering for Rust programming language enthusiasts in Seattle to share projects, discuss best practices, and network with fellow developers.\"}",
+                  "type": "text"
+                },
+                "fingerprint": 8852174664572854497
+              }
             }
           ],
           "usage": {
@@ -143,12 +190,15 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_011CfLcdFb7y2XxNwVAHTuGx",
-          "response_id": null,
+          "origin": {
+            "api": "anthropic.messages",
+            "provider": "anthropic",
+            "model": "claude-sonnet-4-6",
+            "response_model": "claude-sonnet-4-6",
+            "response_id": "msg_011CfLcdFb7y2XxNwVAHTuGx"
+          },
           "provider_request_id": "req_011CfLcdFJ13joZcm6seNBkn",
           "finish_reason": "stop",
-          "provider": "anthropic",
-          "model": "claude-sonnet-4-6",
           "raw": {
             "usage": {
               "output_tokens": 46,
@@ -310,7 +360,14 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Technology\",\"summary\":\"A local gathering for Rust programming language enthusiasts in Seattle to share projects, discuss best practices, and network with fellow developers.\"}"
+              "text": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Technology\",\"summary\":\"A local gathering for Rust programming language enthusiasts in Seattle to share projects, discuss best practices, and network with fellow developers.\"}",
+              "native": {
+                "item": {
+                  "text": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Technology\",\"summary\":\"A local gathering for Rust programming language enthusiasts in Seattle to share projects, discuss best practices, and network with fellow developers.\"}",
+                  "type": "text"
+                },
+                "fingerprint": 8852174664572854497
+              }
             }
           }
         }

@@ -135,23 +135,18 @@
           "choice": [
             {
               "type": "reasoning",
-              "issuer": "venice",
-              "id": null,
-              "content": [
-                {
-                  "type": "text",
-                  "content": {
-                    "text": "The user is asking me to look up cache policies for two topics: 'prefix' and 'breakpoint'. They want me to call the lookup_cache_policy tool once for each topic, one after the other. Then they want me to reply with exactly \"cache probe ready\".\n\nLet me make the two tool calls as requested.\n"
-                  }
-                }
-              ]
+              "text": "The user is asking me to look up cache policies for two topics: 'prefix' and 'breakpoint'. They want me to call the lookup_cache_policy tool once for each topic, one after the other. Then they want me to reply with exactly \"cache probe ready\".\n\nLet me make the two tool calls as requested.\n",
+              "native": {
+                "item": {
+                  "reasoning_content": "The user is asking me to look up cache policies for two topics: 'prefix' and 'breakpoint'. They want me to call the lookup_cache_policy tool once for each topic, one after the other. Then they want me to reply with exactly \"cache probe ready\".\n\nLet me make the two tool calls as requested.\n"
+                },
+                "fingerprint": 12135092814039953640
+              }
             },
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "chatcmpl-tool-a9818439d95dcc14"
-                }
+                "provider": "chatcmpl-tool-89a8f84ddef49f40"
               },
               "function": {
                 "name": "lookup_cache_policy",
@@ -159,15 +154,22 @@
                   "topic": "prefix"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"topic\": \"prefix\"}",
+                    "name": "lookup_cache_policy"
+                  },
+                  "id": "chatcmpl-tool-89a8f84ddef49f40",
+                  "type": "function"
+                },
+                "fingerprint": 5426142074431531237
+              }
             },
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "chatcmpl-tool-b8c6dc5573232886"
-                }
+                "provider": "chatcmpl-tool-86f160754765d107"
               },
               "function": {
                 "name": "lookup_cache_policy",
@@ -175,8 +177,17 @@
                   "topic": "breakpoint"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"topic\": \"breakpoint\"}",
+                    "name": "lookup_cache_policy"
+                  },
+                  "id": "chatcmpl-tool-86f160754765d107",
+                  "type": "function"
+                },
+                "fingerprint": 390136568439546395
+              }
             }
           ],
           "usage": {
@@ -186,11 +197,44 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 67
           },
-          "message_id": null,
-          "response_id": "chatcmpl-2d74dc6ccfdef743a4d17f0f22702ce3",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "venice",
+            "model": "qwen3-5-9b",
+            "response_model": "qwen3-5-9b",
+            "response_id": "chatcmpl-1365a093f4e5f6eb8496a0d0df54d27b"
+          },
+          "native": {
+            "item": {
+              "annotations": null,
+              "audio": null,
+              "content": "",
+              "function_call": null,
+              "reasoning_content": "The user is asking me to look up cache policies for two topics: 'prefix' and 'breakpoint'. They want me to call the lookup_cache_policy tool once for each topic, one after the other. Then they want me to reply with exactly \"cache probe ready\".\n\nLet me make the two tool calls as requested.\n",
+              "refusal": null,
+              "role": "assistant",
+              "tool_calls": [
+                {
+                  "function": {
+                    "arguments": "{\"topic\": \"prefix\"}",
+                    "name": "lookup_cache_policy"
+                  },
+                  "id": "chatcmpl-tool-89a8f84ddef49f40",
+                  "type": "function"
+                },
+                {
+                  "function": {
+                    "arguments": "{\"topic\": \"breakpoint\"}",
+                    "name": "lookup_cache_policy"
+                  },
+                  "id": "chatcmpl-tool-86f160754765d107",
+                  "type": "function"
+                }
+              ]
+            },
+            "fingerprint": 14005137360833684034
+          },
           "finish_reason": "tool_calls",
-          "provider": "venice",
-          "model": "qwen3-5-9b",
           "raw": {
             "choices": [
               {
@@ -211,7 +255,7 @@
                         "arguments": "{\"topic\": \"prefix\"}",
                         "name": "lookup_cache_policy"
                       },
-                      "id": "chatcmpl-tool-a9818439d95dcc14",
+                      "id": "chatcmpl-tool-89a8f84ddef49f40",
                       "type": "function"
                     },
                     {
@@ -219,7 +263,7 @@
                         "arguments": "{\"topic\": \"breakpoint\"}",
                         "name": "lookup_cache_policy"
                       },
-                      "id": "chatcmpl-tool-b8c6dc5573232886",
+                      "id": "chatcmpl-tool-86f160754765d107",
                       "type": "function"
                     }
                   ]
@@ -235,7 +279,7 @@
             },
             "created": 0,
             "ec_transfer_params": null,
-            "id": "chatcmpl-2d74dc6ccfdef743a4d17f0f22702ce3",
+            "id": "chatcmpl-1365a093f4e5f6eb8496a0d0df54d27b",
             "kv_transfer_params": null,
             "metrics": null,
             "model": "qwen3-5-9b",
@@ -347,27 +391,21 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "reasoning",
-                  "issuer": "venice",
-                  "id": null,
-                  "content": [
-                    {
-                      "type": "text",
-                      "content": {
-                        "text": "The user is asking me to look up cache policies for two topics: 'prefix' and 'breakpoint'. They want me to call the lookup_cache_policy tool once for each topic, one after the other. Then they want me to reply with exactly \"cache probe ready\".\n\nLet me make the two tool calls as requested.\n"
-                      }
-                    }
-                  ]
+                  "text": "The user is asking me to look up cache policies for two topics: 'prefix' and 'breakpoint'. They want me to call the lookup_cache_policy tool once for each topic, one after the other. Then they want me to reply with exactly \"cache probe ready\".\n\nLet me make the two tool calls as requested.\n",
+                  "native": {
+                    "item": {
+                      "reasoning_content": "The user is asking me to look up cache policies for two topics: 'prefix' and 'breakpoint'. They want me to call the lookup_cache_policy tool once for each topic, one after the other. Then they want me to reply with exactly \"cache probe ready\".\n\nLet me make the two tool calls as requested.\n"
+                    },
+                    "fingerprint": 12135092814039953640
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "chatcmpl-tool-a9818439d95dcc14"
-                    }
+                    "provider": "chatcmpl-tool-89a8f84ddef49f40"
                   },
                   "function": {
                     "name": "lookup_cache_policy",
@@ -375,15 +413,22 @@
                       "topic": "prefix"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"topic\": \"prefix\"}",
+                        "name": "lookup_cache_policy"
+                      },
+                      "id": "chatcmpl-tool-89a8f84ddef49f40",
+                      "type": "function"
+                    },
+                    "fingerprint": 5426142074431531237
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "chatcmpl-tool-b8c6dc5573232886"
-                    }
+                    "provider": "chatcmpl-tool-86f160754765d107"
                   },
                   "function": {
                     "name": "lookup_cache_policy",
@@ -391,10 +436,57 @@
                       "topic": "breakpoint"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"topic\": \"breakpoint\"}",
+                        "name": "lookup_cache_policy"
+                      },
+                      "id": "chatcmpl-tool-86f160754765d107",
+                      "type": "function"
+                    },
+                    "fingerprint": 390136568439546395
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "venice",
+                "model": "qwen3-5-9b",
+                "response_model": "qwen3-5-9b",
+                "response_id": "chatcmpl-1365a093f4e5f6eb8496a0d0df54d27b"
+              },
+              "stop": "tool_use",
+              "native": {
+                "item": {
+                  "annotations": null,
+                  "audio": null,
+                  "content": "",
+                  "function_call": null,
+                  "reasoning_content": "The user is asking me to look up cache policies for two topics: 'prefix' and 'breakpoint'. They want me to call the lookup_cache_policy tool once for each topic, one after the other. Then they want me to reply with exactly \"cache probe ready\".\n\nLet me make the two tool calls as requested.\n",
+                  "refusal": null,
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{\"topic\": \"prefix\"}",
+                        "name": "lookup_cache_policy"
+                      },
+                      "id": "chatcmpl-tool-89a8f84ddef49f40",
+                      "type": "function"
+                    },
+                    {
+                      "function": {
+                        "arguments": "{\"topic\": \"breakpoint\"}",
+                        "name": "lookup_cache_policy"
+                      },
+                      "id": "chatcmpl-tool-86f160754765d107",
+                      "type": "function"
+                    }
+                  ]
+                },
+                "fingerprint": 14005137360833684034
+              }
             },
             {
               "role": "user",
@@ -402,9 +494,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "chatcmpl-tool-a9818439d95dcc14"
-                    }
+                    "provider": "chatcmpl-tool-89a8f84ddef49f40"
                   },
                   "name": "lookup_cache_policy",
                   "content": [
@@ -417,9 +507,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "chatcmpl-tool-b8c6dc5573232886"
-                    }
+                    "provider": "chatcmpl-tool-86f160754765d107"
                   },
                   "name": "lookup_cache_policy",
                   "content": [
@@ -465,20 +553,27 @@
           "choice": [
             {
               "type": "reasoning",
-              "issuer": "venice",
-              "id": null,
-              "content": [
-                {
-                  "type": "text",
-                  "content": {
-                    "text": "Both tool calls completed successfully. Now I need to reply with exactly \"cache probe ready\" as requested.\n"
-                  }
-                }
-              ]
+              "text": "Both tool calls completed successfully. Now I need to reply with exactly \"cache probe ready\" as requested.\n",
+              "native": {
+                "item": {
+                  "reasoning_content": "Both tool calls completed successfully. Now I need to reply with exactly \"cache probe ready\" as requested.\n"
+                },
+                "fingerprint": 9762390491959102383
+              }
             },
             {
               "type": "text",
-              "text": "\n\ncache probe ready"
+              "text": "\n\ncache probe ready",
+              "native": {
+                "item": {
+                  "annotations": null,
+                  "audio": null,
+                  "content": "\n\ncache probe ready",
+                  "function_call": null,
+                  "refusal": null
+                },
+                "fingerprint": 349109704908432160
+              }
             }
           ],
           "usage": {
@@ -488,11 +583,26 @@
             "cached_input_tokens": 5280,
             "reasoning_tokens": 22
           },
-          "message_id": null,
-          "response_id": "chatcmpl-411fed5c884d7b9684fa94a863e9d615",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "venice",
+            "model": "qwen3-5-9b",
+            "response_model": "qwen3-5-9b",
+            "response_id": "chatcmpl-cb704af513e7c7072ffd3a79deb58320"
+          },
+          "native": {
+            "item": {
+              "annotations": null,
+              "audio": null,
+              "content": "\n\ncache probe ready",
+              "function_call": null,
+              "reasoning_content": "Both tool calls completed successfully. Now I need to reply with exactly \"cache probe ready\" as requested.\n",
+              "refusal": null,
+              "role": "assistant"
+            },
+            "fingerprint": 10073649382849598124
+          },
           "finish_reason": "stop",
-          "provider": "venice",
-          "model": "qwen3-5-9b",
           "raw": {
             "choices": [
               {
@@ -519,7 +629,7 @@
             },
             "created": 0,
             "ec_transfer_params": null,
-            "id": "chatcmpl-411fed5c884d7b9684fa94a863e9d615",
+            "id": "chatcmpl-cb704af513e7c7072ffd3a79deb58320",
             "kv_transfer_params": null,
             "metrics": null,
             "model": "qwen3-5-9b",

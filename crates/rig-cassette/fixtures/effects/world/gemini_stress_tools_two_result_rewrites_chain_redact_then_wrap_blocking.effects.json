@@ -148,8 +148,19 @@
                   "y": 2
                 }
               },
-              "signature": "Cr0BAWkUfRNM5NdAAg6Mna48M3T65S/TVR1E6Axt9FvQtQMtNlj/TYZVvPToGi8sXjKbPMnSwv0Du8fD63V2TcyvzAv2i+uKv0LWnsgF5fm8vhSpnoEOV6cl4hE9V2CnNfRBcmhajwXy1Hm6Vu9JK2v4JKo//KZtBPUyf53FMdyqyvDjJbZwsw/RGoR/KLCSAX5Vw56JgoJybKn2tF0OP/nt3gCDtB0NajFVOvboDrnseh28V7+qwF19yurMON2a",
-              "additional_params": null
+              "native": {
+                "item": {
+                  "functionCall": {
+                    "args": {
+                      "x": 2,
+                      "y": 2
+                    },
+                    "name": "add"
+                  },
+                  "thoughtSignature": "Cr0BAWkUfRP29NXIRCTqGAA4COhHEHRNVDo7H01++c4gck2QsPxfw0WTQql2qJagg2+PA1e1QIdwoggERBbERpXwV8PZyx2ApvdifPftlkMtw/StjwQ+970xovlUKZmjwa4vdJdiwnAfDLtHUFFSlTYdsCAGMoTabwwKxuJ1a99Yxwk8grbMzQUHoq85T42Gz41XkQ3vWz1eaphxrkOwHcnCEXMd7hkJKJjV743DrZ3EgeP4lF5KPpDA5BKs9cin"
+                },
+                "fingerprint": 17561453909888681250
+              }
             }
           ],
           "usage": {
@@ -158,11 +169,22 @@
             "total_tokens": 158,
             "reasoning_tokens": 49
           },
-          "message_id": null,
-          "response_id": "oK6yaqyEKfOHqtsPlvHI6Ag",
+          "origin": {
+            "api": "gemini.generate_content",
+            "provider": "gcp.gemini",
+            "model": "gemini-2.5-flash",
+            "response_model": "gemini-2.5-flash",
+            "response_id": "ni2_auzkNJfuqtsPvqCXiAk"
+          },
+          "native": {
+            "item": {
+              "finishMessage": "Model generated function call(s).",
+              "finishReason": "STOP",
+              "index": 0
+            },
+            "fingerprint": 10066273393038639674
+          },
           "finish_reason": "tool_calls",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
           "raw": {
             "candidates": [
               {
@@ -176,7 +198,7 @@
                         },
                         "name": "add"
                       },
-                      "thoughtSignature": "Cr0BAWkUfRNM5NdAAg6Mna48M3T65S/TVR1E6Axt9FvQtQMtNlj/TYZVvPToGi8sXjKbPMnSwv0Du8fD63V2TcyvzAv2i+uKv0LWnsgF5fm8vhSpnoEOV6cl4hE9V2CnNfRBcmhajwXy1Hm6Vu9JK2v4JKo//KZtBPUyf53FMdyqyvDjJbZwsw/RGoR/KLCSAX5Vw56JgoJybKn2tF0OP/nt3gCDtB0NajFVOvboDrnseh28V7+qwF19yurMON2a"
+                      "thoughtSignature": "Cr0BAWkUfRP29NXIRCTqGAA4COhHEHRNVDo7H01++c4gck2QsPxfw0WTQql2qJagg2+PA1e1QIdwoggERBbERpXwV8PZyx2ApvdifPftlkMtw/StjwQ+970xovlUKZmjwa4vdJdiwnAfDLtHUFFSlTYdsCAGMoTabwwKxuJ1a99Yxwk8grbMzQUHoq85T42Gz41XkQ3vWz1eaphxrkOwHcnCEXMd7hkJKJjV743DrZ3EgeP4lF5KPpDA5BKs9cin"
                     }
                   ],
                   "role": "model"
@@ -187,7 +209,7 @@
               }
             ],
             "modelVersion": "gemini-2.5-flash",
-            "responseId": "oK6yaqyEKfOHqtsPlvHI6Ag",
+            "responseId": "ni2_auzkNJfuqtsPvqCXiAk",
             "usageMetadata": {
               "candidatesTokenCount": 18,
               "promptTokenCount": 91,
@@ -255,7 +277,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -269,10 +290,37 @@
                       "y": 2
                     }
                   },
-                  "signature": "Cr0BAWkUfRNM5NdAAg6Mna48M3T65S/TVR1E6Axt9FvQtQMtNlj/TYZVvPToGi8sXjKbPMnSwv0Du8fD63V2TcyvzAv2i+uKv0LWnsgF5fm8vhSpnoEOV6cl4hE9V2CnNfRBcmhajwXy1Hm6Vu9JK2v4JKo//KZtBPUyf53FMdyqyvDjJbZwsw/RGoR/KLCSAX5Vw56JgoJybKn2tF0OP/nt3gCDtB0NajFVOvboDrnseh28V7+qwF19yurMON2a",
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "functionCall": {
+                        "args": {
+                          "x": 2,
+                          "y": 2
+                        },
+                        "name": "add"
+                      },
+                      "thoughtSignature": "Cr0BAWkUfRP29NXIRCTqGAA4COhHEHRNVDo7H01++c4gck2QsPxfw0WTQql2qJagg2+PA1e1QIdwoggERBbERpXwV8PZyx2ApvdifPftlkMtw/StjwQ+970xovlUKZmjwa4vdJdiwnAfDLtHUFFSlTYdsCAGMoTabwwKxuJ1a99Yxwk8grbMzQUHoq85T42Gz41XkQ3vWz1eaphxrkOwHcnCEXMd7hkJKJjV743DrZ3EgeP4lF5KPpDA5BKs9cin"
+                    },
+                    "fingerprint": 17561453909888681250
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "gemini.generate_content",
+                "provider": "gcp.gemini",
+                "model": "gemini-2.5-flash",
+                "response_model": "gemini-2.5-flash",
+                "response_id": "ni2_auzkNJfuqtsPvqCXiAk"
+              },
+              "stop": "tool_use",
+              "native": {
+                "item": {
+                  "finishMessage": "Model generated function call(s).",
+                  "finishReason": "STOP",
+                  "index": 0
+                },
+                "fingerprint": 10066273393038639674
+              }
             },
             {
               "role": "user",
@@ -331,7 +379,13 @@
           "choice": [
             {
               "type": "text",
-              "text": "The exact tool result is: {\"add_response\": {\"result\": \"[SECRET]\"}}"
+              "text": "The exact tool result is: {\"add_response\": {\"result\": \"[SECRET]\"}}",
+              "native": {
+                "item": {
+                  "text": "The exact tool result is: {\"add_response\": {\"result\": \"[SECRET]\"}}"
+                },
+                "fingerprint": 397634569297067376
+              }
             }
           ],
           "usage": {
@@ -339,11 +393,21 @@
             "output_tokens": 18,
             "total_tokens": 141
           },
-          "message_id": null,
-          "response_id": "oa6yavLxG4OVmtkPituHuQk",
+          "origin": {
+            "api": "gemini.generate_content",
+            "provider": "gcp.gemini",
+            "model": "gemini-2.5-flash",
+            "response_model": "gemini-2.5-flash",
+            "response_id": "ny2_arOyIvX_qtsPubSO2Ao"
+          },
+          "native": {
+            "item": {
+              "finishReason": "STOP",
+              "index": 0
+            },
+            "fingerprint": 3255030778969140624
+          },
           "finish_reason": "stop",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
           "raw": {
             "candidates": [
               {
@@ -360,7 +424,7 @@
               }
             ],
             "modelVersion": "gemini-2.5-flash",
-            "responseId": "oa6yavLxG4OVmtkPituHuQk",
+            "responseId": "ny2_arOyIvX_qtsPubSO2Ao",
             "usageMetadata": {
               "candidatesTokenCount": 18,
               "promptTokenCount": 123,

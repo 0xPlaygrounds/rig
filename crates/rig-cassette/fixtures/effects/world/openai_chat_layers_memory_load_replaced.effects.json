@@ -105,7 +105,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -139,7 +138,15 @@
           "choice": [
             {
               "type": "text",
-              "text": "Ada"
+              "text": "Ada",
+              "native": {
+                "item": {
+                  "annotations": [],
+                  "content": "Ada",
+                  "refusal": null
+                },
+                "fingerprint": 11689945161834907103
+              }
             }
           ],
           "usage": {
@@ -149,12 +156,24 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
-          "response_id": "chatcmpl-ERDBxaFkJKXmSlaGfL4lV5ISgSk4I",
-          "provider_request_id": "req_5b7cf8e95c654b5db438c53f8b741888",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "openai",
+            "model": "gpt-5-mini",
+            "response_model": "gpt-5-mini-2025-08-07",
+            "response_id": "chatcmpl-EUPYONn6uAe8qN7urmJ17IP2ZCtdS"
+          },
+          "native": {
+            "item": {
+              "annotations": [],
+              "content": "Ada",
+              "refusal": null,
+              "role": "assistant"
+            },
+            "fingerprint": 8448737388283586131
+          },
+          "provider_request_id": "req_19e829228e46458ebf544ef6403affe7",
           "finish_reason": "stop",
-          "provider": "openai",
-          "model": "gpt-5-mini-2025-08-07",
           "raw": {
             "choices": [
               {
@@ -169,7 +188,7 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-ERDBxaFkJKXmSlaGfL4lV5ISgSk4I",
+            "id": "chatcmpl-EUPYONn6uAe8qN7urmJ17IP2ZCtdS",
             "model": "gpt-5-mini-2025-08-07",
             "object": "chat.completion",
             "service_tier": "default",
@@ -215,13 +234,37 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
-                  "text": "Ada"
+                  "text": "Ada",
+                  "native": {
+                    "item": {
+                      "annotations": [],
+                      "content": "Ada",
+                      "refusal": null
+                    },
+                    "fingerprint": 11689945161834907103
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openai",
+                "model": "gpt-5-mini",
+                "response_model": "gpt-5-mini-2025-08-07",
+                "response_id": "chatcmpl-EUPYONn6uAe8qN7urmJ17IP2ZCtdS"
+              },
+              "stop": "stop",
+              "native": {
+                "item": {
+                  "annotations": [],
+                  "content": "Ada",
+                  "refusal": null,
+                  "role": "assistant"
+                },
+                "fingerprint": 8448737388283586131
+              }
             }
           ]
         }

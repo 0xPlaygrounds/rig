@@ -91,9 +91,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "toolu_01XFZcXvPmjr2KnzE9K4WJV5"
-                }
+                "provider": "toolu_01XFZcXvPmjr2KnzE9K4WJV5"
               },
               "function": {
                 "name": "final_result",
@@ -103,8 +101,22 @@
                   "title": "Seattle Rust Meetup"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "caller": {
+                    "type": "direct"
+                  },
+                  "id": "toolu_01XFZcXvPmjr2KnzE9K4WJV5",
+                  "input": {
+                    "category": "Technology / Programming",
+                    "summary": "A local gathering for Rust programming language enthusiasts in Seattle. Attendees share projects, discuss best practices, explore new features of the Rust ecosystem, and network with fellow developers of all experience levels.",
+                    "title": "Seattle Rust Meetup"
+                  },
+                  "name": "final_result",
+                  "type": "tool_use"
+                },
+                "fingerprint": 1351040608154980570
+              }
             }
           ],
           "usage": {
@@ -114,12 +126,15 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_011CfLccsBEBjXCfbAMWy17g",
-          "response_id": null,
+          "origin": {
+            "api": "anthropic.messages",
+            "provider": "anthropic",
+            "model": "claude-sonnet-4-6",
+            "response_model": "claude-sonnet-4-6",
+            "response_id": "msg_011CfLccsBEBjXCfbAMWy17g"
+          },
           "provider_request_id": "req_011CfLccrjw8GZ2C5tqEvMXD",
           "finish_reason": "tool_calls",
-          "provider": "anthropic",
-          "model": "claude-sonnet-4-6",
           "raw": {
             "container": null,
             "content": [

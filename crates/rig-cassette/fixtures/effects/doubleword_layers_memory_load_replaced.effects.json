@@ -84,7 +84,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -120,21 +119,39 @@
           "choice": [
             {
               "type": "text",
-              "text": "Ada"
+              "text": "Ada",
+              "native": {
+                "item": {
+                  "content": "Ada",
+                  "refusal": null
+                },
+                "fingerprint": 11689945161834907103
+              }
             }
           ],
           "usage": {
             "input_tokens": 56,
-            "output_tokens": 2,
-            "total_tokens": 58,
+            "output_tokens": 1,
+            "total_tokens": 57,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": null,
-          "response_id": "resp_12b41d44-9d65-4105-8839-665d126e6386",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "doubleword",
+            "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+            "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
+            "response_id": "resp_b6c7cb61-3577-4ca8-ae2d-a1919350f349"
+          },
+          "native": {
+            "item": {
+              "content": "Ada",
+              "refusal": null,
+              "role": "assistant"
+            },
+            "fingerprint": 8448737388283586131
+          },
           "finish_reason": "stop",
-          "provider": "doubleword",
-          "model": "Qwen/Qwen3.5-397B-A17B-FP8",
           "raw": {
             "choices": [
               {
@@ -148,7 +165,7 @@
               }
             ],
             "created": 0,
-            "id": "resp_12b41d44-9d65-4105-8839-665d126e6386",
+            "id": "resp_b6c7cb61-3577-4ca8-ae2d-a1919350f349",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "object": "chat.completion",
             "usage": {
@@ -159,7 +176,7 @@
               },
               "cache_creation_input_tokens": 0,
               "cache_read_input_tokens": 0,
-              "completion_tokens": 2,
+              "completion_tokens": 1,
               "completion_tokens_details": {
                 "audio_tokens": 0,
                 "image_tokens": 0,
@@ -172,7 +189,7 @@
                 "cached_tokens": 0,
                 "video_tokens": 0
               },
-              "total_tokens": 58
+              "total_tokens": 57
             }
           }
         }
@@ -199,13 +216,35 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
-                  "text": "Ada"
+                  "text": "Ada",
+                  "native": {
+                    "item": {
+                      "content": "Ada",
+                      "refusal": null
+                    },
+                    "fingerprint": 11689945161834907103
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "doubleword",
+                "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+                "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
+                "response_id": "resp_b6c7cb61-3577-4ca8-ae2d-a1919350f349"
+              },
+              "stop": "stop",
+              "native": {
+                "item": {
+                  "content": "Ada",
+                  "refusal": null,
+                  "role": "assistant"
+                },
+                "fingerprint": 8448737388283586131
+              }
             }
           ]
         }

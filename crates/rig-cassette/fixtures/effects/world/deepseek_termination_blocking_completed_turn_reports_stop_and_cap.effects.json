@@ -75,7 +75,13 @@
           "choice": [
             {
               "type": "text",
-              "text": "cedar"
+              "text": "cedar",
+              "native": {
+                "item": {
+                  "content": "cedar"
+                },
+                "fingerprint": 1019647121729191188
+              }
             }
           ],
           "usage": {
@@ -84,11 +90,21 @@
             "total_tokens": 27,
             "cached_input_tokens": 0
           },
-          "message_id": null,
-          "response_id": "ba379a03-ea47-4d10-9e8d-dec9f9f76290",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "deepseek",
+            "model": "deepseek-chat",
+            "response_model": "deepseek-flash",
+            "response_id": "ba379a03-ea47-4d10-9e8d-dec9f9f76290"
+          },
+          "native": {
+            "item": {
+              "content": "cedar",
+              "role": "assistant"
+            },
+            "fingerprint": 452362687342519526
+          },
           "finish_reason": "stop",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
           "raw": {
             "choices": [
               {

@@ -70,16 +70,21 @@
           "choice": [
             {
               "type": "reasoning",
-              "issuer": "doubleword",
-              "id": null,
-              "content": [
-                {
-                  "type": "text",
-                  "content": {
-                    "text": "Thinking Process:\n\n1.  **Analyze the Request:**\n    *"
-                  }
-                }
-              ]
+              "text": "Thinking Process:\n\n1.  **Analyze the Request:**\n    *",
+              "native": {
+                "item": {
+                  "reasoning_details": [
+                    {
+                      "format": "unknown",
+                      "index": 0,
+                      "text": "Thinking Process:\n\n1.  **Analyze the Request:**\n    *",
+                      "type": "reasoning.text"
+                    }
+                  ],
+                  "reasoning_content": "Thinking Process:\n\n1.  **Analyze the Request:**\n    *"
+                },
+                "fingerprint": 13779281817960623678
+              }
             }
           ],
           "usage": {
@@ -89,11 +94,30 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": null,
-          "response_id": "resp_d29bda03-c489-4c62-95e5-6ee0b9b8e1c2",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "doubleword",
+            "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+            "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
+            "response_id": "resp_d29bda03-c489-4c62-95e5-6ee0b9b8e1c2"
+          },
+          "native": {
+            "item": {
+              "reasoning_details": [
+                {
+                  "format": "unknown",
+                  "index": 0,
+                  "text": "Thinking Process:\n\n1.  **Analyze the Request:**\n    *",
+                  "type": "reasoning.text"
+                }
+              ],
+              "reasoning_content": "Thinking Process:\n\n1.  **Analyze the Request:**\n    *",
+              "refusal": null,
+              "role": "assistant"
+            },
+            "fingerprint": 14725531762298226224
+          },
           "finish_reason": "length",
-          "provider": "doubleword",
-          "model": "Qwen/Qwen3.5-397B-A17B-FP8",
           "raw": {
             "choices": [
               {

@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 10,
+        "batch": 7,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,7 +10,23 @@
         }
       },
       {
-        "batch": 12,
+        "batch": 9,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 11,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 13,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -18,7 +34,7 @@
         }
       },
       {
-        "batch": 14,
+        "batch": 15,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -26,7 +42,7 @@
         }
       },
       {
-        "batch": 14,
+        "batch": 15,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -104,8 +120,34 @@
           "outcome": "completion",
           "choice": [
             {
+              "type": "opaque",
+              "item": {
+                "executableCode": {
+                  "code": "print(2**20)\n",
+                  "language": "PYTHON"
+                }
+              },
+              "replay": true
+            },
+            {
+              "type": "opaque",
+              "item": {
+                "codeExecutionResult": {
+                  "outcome": "OUTCOME_OK",
+                  "output": "1048576\n"
+                }
+              },
+              "replay": true
+            },
+            {
               "type": "text",
-              "text": "The number 2 to the power of 20 is 1,048,576."
+              "text": "The number 2 to the power of 20 is 1,048,576.",
+              "native": {
+                "item": {
+                  "text": "The number 2 to the power of 20 is 1,048,576."
+                },
+                "fingerprint": 1588156661630724766
+              }
             }
           ],
           "usage": {
@@ -115,11 +157,21 @@
             "tool_use_prompt_tokens": 75,
             "reasoning_tokens": 34
           },
-          "message_id": null,
-          "response_id": "lnizarrwCKOez7IPveCJ8QQ",
+          "origin": {
+            "api": "gemini.generate_content",
+            "provider": "gcp.gemini",
+            "model": "gemini-2.5-flash",
+            "response_model": "gemini-2.5-flash",
+            "response_id": "lnizarrwCKOez7IPveCJ8QQ"
+          },
+          "native": {
+            "item": {
+              "index": 0,
+              "finishReason": "STOP"
+            },
+            "fingerprint": 10401143185743423689
+          },
           "finish_reason": "stop",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
           "raw": {
             "usage_metadata": {
               "promptTokenCount": 25,
@@ -152,31 +204,7 @@
           "value": {
             "event": "start",
             "part": 0,
-            "kind": "text"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": "The number 2"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " to the power of 20 is 1,048,5"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": "76."
+            "kind": "opaque"
           }
         },
         {
@@ -185,8 +213,88 @@
             "event": "end",
             "part": 0,
             "content": {
+              "type": "opaque",
+              "item": {
+                "executableCode": {
+                  "code": "print(2**20)\n",
+                  "language": "PYTHON"
+                }
+              },
+              "replay": true
+            }
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 1,
+            "kind": "opaque"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 1,
+            "content": {
+              "type": "opaque",
+              "item": {
+                "codeExecutionResult": {
+                  "outcome": "OUTCOME_OK",
+                  "output": "1048576\n"
+                }
+              },
+              "replay": true
+            }
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 2,
+            "kind": "text"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 2,
+            "text": "The number 2"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 2,
+            "text": " to the power of 20 is 1,048,5"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 2,
+            "text": "76."
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 2,
+            "content": {
               "type": "text",
-              "text": "The number 2 to the power of 20 is 1,048,576."
+              "text": "The number 2 to the power of 20 is 1,048,576.",
+              "native": {
+                "item": {
+                  "text": "The number 2 to the power of 20 is 1,048,576."
+                },
+                "fingerprint": 1588156661630724766
+              }
             }
           }
         }

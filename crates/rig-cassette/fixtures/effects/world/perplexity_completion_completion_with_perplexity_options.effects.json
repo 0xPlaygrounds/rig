@@ -78,7 +78,13 @@
           "choice": [
             {
               "type": "text",
-              "text": "One notable recent development is **RustRover 2026.2**, which added endpoint discovery and route-to-handler navigation for **axum** projects, along with support for the **Ferrocene** qualified Rust toolchain.[12]"
+              "text": "One notable recent development is **RustRover 2026.2**, which added endpoint discovery and route-to-handler navigation for **axum** projects, along with support for the **Ferrocene** qualified Rust toolchain.[12]",
+              "native": {
+                "item": {
+                  "content": "One notable recent development is **RustRover 2026.2**, which added endpoint discovery and route-to-handler navigation for **axum** projects, along with support for the **Ferrocene** qualified Rust toolchain.[12]"
+                },
+                "fingerprint": 10260108212768679106
+              }
             }
           ],
           "usage": {
@@ -86,11 +92,21 @@
             "output_tokens": 51,
             "total_tokens": 75
           },
-          "message_id": null,
-          "response_id": "fe890bf0-70c0-4b3c-80b4-3e6a33b6b207",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "perplexity",
+            "model": "sonar",
+            "response_model": "sonar",
+            "response_id": "fe890bf0-70c0-4b3c-80b4-3e6a33b6b207"
+          },
+          "native": {
+            "item": {
+              "content": "One notable recent development is **RustRover 2026.2**, which added endpoint discovery and route-to-handler navigation for **axum** projects, along with support for the **Ferrocene** qualified Rust toolchain.[12]",
+              "role": "assistant"
+            },
+            "fingerprint": 5600434507514494858
+          },
           "finish_reason": "stop",
-          "provider": "perplexity",
-          "model": "sonar",
           "raw": {
             "choices": [
               {

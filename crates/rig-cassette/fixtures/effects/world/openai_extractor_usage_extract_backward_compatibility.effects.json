@@ -109,10 +109,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_Ti6INlpy9iTI0KR5QlWEt8mQ",
-                  "item_id": "fc_076b61d5619c3514006ab3969a971087d0a1534cdaa0d354e5"
-                }
+                "provider": "call_Ti6INlpy9iTI0KR5QlWEt8mQ"
               },
               "function": {
                 "name": "submit",
@@ -122,8 +119,17 @@
                   "profession": "software engineer"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "arguments": "{\"name\":\"John Doe\",\"age\":30,\"profession\":\"software engineer\"}",
+                  "call_id": "call_Ti6INlpy9iTI0KR5QlWEt8mQ",
+                  "id": "fc_076b61d5619c3514006ab3969a971087d0a1534cdaa0d354e5",
+                  "name": "submit",
+                  "status": "completed",
+                  "type": "function_call"
+                },
+                "fingerprint": 15696473774277712722
+              }
             }
           ],
           "usage": {
@@ -134,12 +140,15 @@
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
-          "response_id": "resp_076b61d5619c3514006ab39699d80c87d09ad03c0b40880cca",
+          "origin": {
+            "api": "openai.responses",
+            "provider": "openai",
+            "model": "gpt-4o-mini",
+            "response_model": "gpt-4o-mini-2024-07-18",
+            "response_id": "resp_076b61d5619c3514006ab39699d80c87d09ad03c0b40880cca"
+          },
           "provider_request_id": "req_cef4e96a739442f787079894b76fff1f",
           "finish_reason": "tool_calls",
-          "provider": "openai",
-          "model": "gpt-4o-mini-2024-07-18",
           "raw": {
             "access_programs": null,
             "background": false,

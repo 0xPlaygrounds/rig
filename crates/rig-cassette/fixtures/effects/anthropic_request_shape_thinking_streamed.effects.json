@@ -71,21 +71,26 @@
           "choice": [
             {
               "type": "reasoning",
-              "issuer": "anthropic",
-              "id": null,
-              "content": [
-                {
-                  "type": "text",
-                  "content": {
-                    "text": "144",
-                    "signature": "EvgBCpIBCBIYAipAKnhWKgywsbqL0MYDI+1O3EbQArywSbA2RBMYp2bC5iEBOECZAZED/MotYTqfAhV1bAXeNOJkfATZBc9LzD0LqzIRY2xhdWRlLXNvbm5ldC00LTY4AEIIdGhpbmtpbmdaJDcyOGRjYWE5LThhZjYtNDNhMi05Mzk3LTI1ZGEzN2I5YzM5ZKgB1+rK1QYSDLQye0zlfY1zHIj2rhoMXsXWz4lKsMp1KptTIjDYWvLD3YfvGTvI+A3P7t/o4HG2ajW8tjIUc+KHM68Gf+ITg0mEHs17o0JrVewaifUqE0l40tnm9uIMyloMbMr3BQykVdEYAQ=="
-                  }
-                }
-              ]
+              "text": "144",
+              "native": {
+                "item": {
+                  "signature": "EvgBCpIBCBIYAipAKnhWKgywsbqL0MYDI+1O3EbQArywSbA2RBMYp2bC5iEBOECZAZED/MotYTqfAhV1bAXeNOJkfATZBc9LzD0LqzIRY2xhdWRlLXNvbm5ldC00LTY4AEIIdGhpbmtpbmdaJDcyOGRjYWE5LThhZjYtNDNhMi05Mzk3LTI1ZGEzN2I5YzM5ZKgB1+rK1QYSDLQye0zlfY1zHIj2rhoMXsXWz4lKsMp1KptTIjDYWvLD3YfvGTvI+A3P7t/o4HG2ajW8tjIUc+KHM68Gf+ITg0mEHs17o0JrVewaifUqE0l40tnm9uIMyloMbMr3BQykVdEYAQ==",
+                  "thinking": "144",
+                  "type": "thinking"
+                },
+                "fingerprint": 17341113157632060793
+              }
             },
             {
               "type": "text",
-              "text": "144"
+              "text": "144",
+              "native": {
+                "item": {
+                  "text": "144",
+                  "type": "text"
+                },
+                "fingerprint": 14351458450206542828
+              }
             }
           ],
           "usage": {
@@ -96,12 +101,15 @@
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 7
           },
-          "message_id": "msg_011CfJqoK5Fq18pRo7CBRERV",
-          "response_id": null,
+          "origin": {
+            "api": "anthropic.messages",
+            "provider": "anthropic",
+            "model": "claude-sonnet-4-6",
+            "response_model": "claude-sonnet-4-6",
+            "response_id": "msg_011CfJqoK5Fq18pRo7CBRERV"
+          },
           "provider_request_id": "req_011CfJqoJXWGhTJZASriFRN5",
           "finish_reason": "stop",
-          "provider": "anthropic",
-          "model": "claude-sonnet-4-6",
           "raw": {
             "usage": {
               "output_tokens": 13,
@@ -146,17 +154,15 @@
             "part": 0,
             "content": {
               "type": "reasoning",
-              "issuer": "anthropic",
-              "id": null,
-              "content": [
-                {
-                  "type": "text",
-                  "content": {
-                    "text": "144",
-                    "signature": "EvgBCpIBCBIYAipAKnhWKgywsbqL0MYDI+1O3EbQArywSbA2RBMYp2bC5iEBOECZAZED/MotYTqfAhV1bAXeNOJkfATZBc9LzD0LqzIRY2xhdWRlLXNvbm5ldC00LTY4AEIIdGhpbmtpbmdaJDcyOGRjYWE5LThhZjYtNDNhMi05Mzk3LTI1ZGEzN2I5YzM5ZKgB1+rK1QYSDLQye0zlfY1zHIj2rhoMXsXWz4lKsMp1KptTIjDYWvLD3YfvGTvI+A3P7t/o4HG2ajW8tjIUc+KHM68Gf+ITg0mEHs17o0JrVewaifUqE0l40tnm9uIMyloMbMr3BQykVdEYAQ=="
-                  }
-                }
-              ]
+              "text": "144",
+              "native": {
+                "item": {
+                  "signature": "EvgBCpIBCBIYAipAKnhWKgywsbqL0MYDI+1O3EbQArywSbA2RBMYp2bC5iEBOECZAZED/MotYTqfAhV1bAXeNOJkfATZBc9LzD0LqzIRY2xhdWRlLXNvbm5ldC00LTY4AEIIdGhpbmtpbmdaJDcyOGRjYWE5LThhZjYtNDNhMi05Mzk3LTI1ZGEzN2I5YzM5ZKgB1+rK1QYSDLQye0zlfY1zHIj2rhoMXsXWz4lKsMp1KptTIjDYWvLD3YfvGTvI+A3P7t/o4HG2ajW8tjIUc+KHM68Gf+ITg0mEHs17o0JrVewaifUqE0l40tnm9uIMyloMbMr3BQykVdEYAQ==",
+                  "thinking": "144",
+                  "type": "thinking"
+                },
+                "fingerprint": 17341113157632060793
+              }
             }
           }
         },
@@ -183,7 +189,14 @@
             "part": 1,
             "content": {
               "type": "text",
-              "text": "144"
+              "text": "144",
+              "native": {
+                "item": {
+                  "text": "144",
+                  "type": "text"
+                },
+                "fingerprint": 14351458450206542828
+              }
             }
           }
         }

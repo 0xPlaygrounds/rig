@@ -94,23 +94,18 @@
           "choice": [
             {
               "type": "reasoning",
-              "issuer": "deepseek",
-              "id": null,
-              "content": [
-                {
-                  "type": "text",
-                  "content": {
-                    "text": "The user wants a concise event object for a local Rust meetup in Seattle. I should call final_result with title, category, summary.\n\nCategories: \"meetup\" maybe. Let's produce."
-                  }
-                }
-              ]
+              "text": "The user wants a concise event object for a local Rust meetup in Seattle. I should call final_result with title, category, summary.\n\nCategories: \"meetup\" maybe. Let's produce.",
+              "native": {
+                "item": {
+                  "reasoning_content": "The user wants a concise event object for a local Rust meetup in Seattle. I should call final_result with title, category, summary.\n\nCategories: \"meetup\" maybe. Let's produce."
+                },
+                "fingerprint": 6705365897175899896
+              }
             },
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_00_2g1OMQFZ41XFC1VlfRAA2168"
-                }
+                "provider": "call_00_2g1OMQFZ41XFC1VlfRAA2168"
               },
               "function": {
                 "name": "final_result",
@@ -120,8 +115,17 @@
                   "summary": "A local gathering of Rust developers and enthusiasts in Seattle. Expect lightning talks, a show-and-tell of side projects, and open networking for beginners and experienced systems programmers alike. Free to attend; bring a laptop if you'd like to pair on code."
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"title\": \"Seattle Rust Meetup\", \"category\": \"Meetup\", \"summary\": \"A local gathering of Rust developers and enthusiasts in Seattle. Expect lightning talks, a show-and-tell of side projects, and open networking for beginners and experienced systems programmers alike. Free to attend; bring a laptop if you'd like to pair on code.\"}",
+                    "name": "final_result"
+                  },
+                  "id": "call_00_2g1OMQFZ41XFC1VlfRAA2168",
+                  "type": "function"
+                },
+                "fingerprint": 13707394247067660778
+              }
             }
           ],
           "usage": {
@@ -131,11 +135,32 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 41
           },
-          "message_id": null,
-          "response_id": "f95f4256-70cd-4efc-bf3a-3e38d30a6a91",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "deepseek",
+            "model": "deepseek-flash",
+            "response_model": "deepseek-flash",
+            "response_id": "f95f4256-70cd-4efc-bf3a-3e38d30a6a91"
+          },
+          "native": {
+            "item": {
+              "content": "",
+              "reasoning_content": "The user wants a concise event object for a local Rust meetup in Seattle. I should call final_result with title, category, summary.\n\nCategories: \"meetup\" maybe. Let's produce.",
+              "role": "assistant",
+              "tool_calls": [
+                {
+                  "function": {
+                    "arguments": "{\"title\": \"Seattle Rust Meetup\", \"category\": \"Meetup\", \"summary\": \"A local gathering of Rust developers and enthusiasts in Seattle. Expect lightning talks, a show-and-tell of side projects, and open networking for beginners and experienced systems programmers alike. Free to attend; bring a laptop if you'd like to pair on code.\"}",
+                    "name": "final_result"
+                  },
+                  "id": "call_00_2g1OMQFZ41XFC1VlfRAA2168",
+                  "type": "function"
+                }
+              ]
+            },
+            "fingerprint": 1096553043685639963
+          },
           "finish_reason": "tool_calls",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
           "raw": {
             "choices": [
               {

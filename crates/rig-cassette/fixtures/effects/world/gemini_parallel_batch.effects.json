@@ -161,8 +161,17 @@
                   "slot": 0
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "functionCall": {
+                    "args": {
+                      "slot": 0
+                    },
+                    "name": "checkpoint_batch"
+                  }
+                },
+                "fingerprint": 6696243602900481982
+              }
             },
             {
               "type": "toolcall",
@@ -175,8 +184,17 @@
                   "slot": 1
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "functionCall": {
+                    "args": {
+                      "slot": 1
+                    },
+                    "name": "checkpoint_batch"
+                  }
+                },
+                "fingerprint": 6707549896086821140
+              }
             },
             {
               "type": "toolcall",
@@ -189,8 +207,17 @@
                   "slot": 2
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "functionCall": {
+                    "args": {
+                      "slot": 2
+                    },
+                    "name": "checkpoint_batch"
+                  }
+                },
+                "fingerprint": 2856691676868334086
+              }
             }
           ],
           "usage": {
@@ -198,11 +225,22 @@
             "output_tokens": 45,
             "total_tokens": 189
           },
-          "message_id": null,
-          "response_id": "n3izaqH-JeSi6dkPv4mNmQk",
+          "origin": {
+            "api": "gemini.generate_content",
+            "provider": "gcp.gemini",
+            "model": "gemini-2.5-flash-lite",
+            "response_model": "gemini-2.5-flash-lite",
+            "response_id": "jCy_aqzQKausz7IPg6Ht8AI"
+          },
+          "native": {
+            "item": {
+              "finishMessage": "Model generated function call(s).",
+              "finishReason": "STOP",
+              "index": 0
+            },
+            "fingerprint": 1008301548829944732
+          },
           "finish_reason": "tool_calls",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash-lite",
           "raw": {
             "candidates": [
               {
@@ -241,7 +279,7 @@
               }
             ],
             "modelVersion": "gemini-2.5-flash-lite",
-            "responseId": "n3izaqH-JeSi6dkPv4mNmQk",
+            "responseId": "jCy_aqzQKausz7IPg6Ht8AI",
             "usageMetadata": {
               "candidatesTokenCount": 45,
               "promptTokenCount": 144,
@@ -366,7 +404,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -379,8 +416,17 @@
                       "slot": 0
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "functionCall": {
+                        "args": {
+                          "slot": 0
+                        },
+                        "name": "checkpoint_batch"
+                      }
+                    },
+                    "fingerprint": 6696243602900481982
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -393,8 +439,17 @@
                       "slot": 1
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "functionCall": {
+                        "args": {
+                          "slot": 1
+                        },
+                        "name": "checkpoint_batch"
+                      }
+                    },
+                    "fingerprint": 6707549896086821140
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -407,10 +462,35 @@
                       "slot": 2
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "functionCall": {
+                        "args": {
+                          "slot": 2
+                        },
+                        "name": "checkpoint_batch"
+                      }
+                    },
+                    "fingerprint": 2856691676868334086
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "gemini.generate_content",
+                "provider": "gcp.gemini",
+                "model": "gemini-2.5-flash-lite",
+                "response_model": "gemini-2.5-flash-lite",
+                "response_id": "jCy_aqzQKausz7IPg6Ht8AI"
+              },
+              "stop": "tool_use",
+              "native": {
+                "item": {
+                  "finishMessage": "Model generated function call(s).",
+                  "finishReason": "STOP",
+                  "index": 0
+                },
+                "fingerprint": 1008301548829944732
+              }
             },
             {
               "role": "user",
@@ -495,7 +575,13 @@
           "choice": [
             {
               "type": "text",
-              "text": "checkpoint-complete"
+              "text": "checkpoint-complete",
+              "native": {
+                "item": {
+                  "text": "checkpoint-complete"
+                },
+                "fingerprint": 11231240767045752081
+              }
             }
           ],
           "usage": {
@@ -503,11 +589,21 @@
             "output_tokens": 3,
             "total_tokens": 243
           },
-          "message_id": null,
-          "response_id": "n3izat_IO__jqtsP0Yzr8AY",
+          "origin": {
+            "api": "gemini.generate_content",
+            "provider": "gcp.gemini",
+            "model": "gemini-2.5-flash-lite",
+            "response_model": "gemini-2.5-flash-lite",
+            "response_id": "jSy_aqzVEtCEz7IPiqmZ8Qg"
+          },
+          "native": {
+            "item": {
+              "finishReason": "STOP",
+              "index": 0
+            },
+            "fingerprint": 6231790669279808033
+          },
           "finish_reason": "stop",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash-lite",
           "raw": {
             "candidates": [
               {
@@ -524,7 +620,7 @@
               }
             ],
             "modelVersion": "gemini-2.5-flash-lite",
-            "responseId": "n3izat_IO__jqtsP0Yzr8AY",
+            "responseId": "jSy_aqzVEtCEz7IPiqmZ8Qg",
             "usageMetadata": {
               "candidatesTokenCount": 3,
               "promptTokenCount": 240,

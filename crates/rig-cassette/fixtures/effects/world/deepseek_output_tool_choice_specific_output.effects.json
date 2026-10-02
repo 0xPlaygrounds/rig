@@ -106,9 +106,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_00_wf07vfvKnM3cr9STe6yJ8155"
-                }
+                "provider": "call_00_wf07vfvKnM3cr9STe6yJ8155"
               },
               "function": {
                 "name": "final_result",
@@ -118,8 +116,17 @@
                   "summary": "A local gathering in Seattle for Rust developers and enthusiasts to share projects, discuss the language, and network."
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"title\": \"Seattle Rust Meetup\", \"category\": \"Local Tech Meetup\", \"summary\": \"A local gathering in Seattle for Rust developers and enthusiasts to share projects, discuss the language, and network.\"}",
+                    "name": "final_result"
+                  },
+                  "id": "call_00_wf07vfvKnM3cr9STe6yJ8155",
+                  "type": "function"
+                },
+                "fingerprint": 8914680230396286514
+              }
             }
           ],
           "usage": {
@@ -128,11 +135,31 @@
             "total_tokens": 471,
             "cached_input_tokens": 0
           },
-          "message_id": null,
-          "response_id": "4aee34b1-6ad5-4221-a05b-6cb4f35a9f57",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "deepseek",
+            "model": "deepseek-chat",
+            "response_model": "deepseek-flash",
+            "response_id": "4aee34b1-6ad5-4221-a05b-6cb4f35a9f57"
+          },
+          "native": {
+            "item": {
+              "content": "",
+              "role": "assistant",
+              "tool_calls": [
+                {
+                  "function": {
+                    "arguments": "{\"title\": \"Seattle Rust Meetup\", \"category\": \"Local Tech Meetup\", \"summary\": \"A local gathering in Seattle for Rust developers and enthusiasts to share projects, discuss the language, and network.\"}",
+                    "name": "final_result"
+                  },
+                  "id": "call_00_wf07vfvKnM3cr9STe6yJ8155",
+                  "type": "function"
+                }
+              ]
+            },
+            "fingerprint": 13619545410944664818
+          },
           "finish_reason": "tool_calls",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
           "raw": {
             "choices": [
               {

@@ -361,34 +361,67 @@
           "choice": [
             {
               "type": "text",
-              "text": "I'll run the scenario step by step, one tool at a time.\n\n**Step 1: ping_empty**"
+              "text": "I'll run the tools in the specified order, one at a time.",
+              "native": {
+                "item": {
+                  "content": "I'll run the tools in the specified order, one at a time."
+                },
+                "fingerprint": 15126351204711021709
+              }
             },
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_00_iF1nLiHq9rZZ16mKWVdU3836"
-                }
+                "provider": "call_00_OIZ8zZF4RqUm0ZuU6zeW7519"
               },
               "function": {
                 "name": "ping_empty",
                 "arguments": {}
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{}",
+                    "name": "ping_empty"
+                  },
+                  "id": "call_00_OIZ8zZF4RqUm0ZuU6zeW7519",
+                  "type": "function"
+                },
+                "fingerprint": 5158368326946231043
+              }
             }
           ],
           "usage": {
             "input_tokens": 762,
-            "output_tokens": 43,
-            "total_tokens": 805,
-            "cached_input_tokens": 0
+            "output_tokens": 35,
+            "total_tokens": 797,
+            "cached_input_tokens": 512
           },
-          "message_id": null,
-          "response_id": "bcdaf1ea-a9aa-43be-9644-ad1b90f306a5",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "deepseek",
+            "model": "deepseek-v4-flash",
+            "response_model": "deepseek-flash",
+            "response_id": "0c195e30-4e43-4562-b39a-61558057b922"
+          },
+          "native": {
+            "item": {
+              "content": "I'll run the tools in the specified order, one at a time.",
+              "role": "assistant",
+              "tool_calls": [
+                {
+                  "function": {
+                    "arguments": "{}",
+                    "name": "ping_empty"
+                  },
+                  "id": "call_00_OIZ8zZF4RqUm0ZuU6zeW7519",
+                  "type": "function"
+                }
+              ]
+            },
+            "fingerprint": 4158536213097215703
+          },
           "finish_reason": "tool_calls",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
           "raw": {
             "choices": [
               {
@@ -396,7 +429,7 @@
                 "index": 0,
                 "logprobs": null,
                 "message": {
-                  "content": "I'll run the scenario step by step, one tool at a time.\n\n**Step 1: ping_empty**",
+                  "content": "I'll run the tools in the specified order, one at a time.",
                   "role": "assistant",
                   "tool_calls": [
                     {
@@ -404,7 +437,7 @@
                         "arguments": "{}",
                         "name": "ping_empty"
                       },
-                      "id": "call_00_iF1nLiHq9rZZ16mKWVdU3836",
+                      "id": "call_00_OIZ8zZF4RqUm0ZuU6zeW7519",
                       "index": 0,
                       "type": "function"
                     }
@@ -413,19 +446,19 @@
               }
             ],
             "created": 0,
-            "id": "bcdaf1ea-a9aa-43be-9644-ad1b90f306a5",
+            "id": "0c195e30-4e43-4562-b39a-61558057b922",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
             "usage": {
-              "completion_tokens": 43,
-              "prompt_cache_hit_tokens": 0,
-              "prompt_cache_miss_tokens": 762,
+              "completion_tokens": 35,
+              "prompt_cache_hit_tokens": 512,
+              "prompt_cache_miss_tokens": 250,
               "prompt_tokens": 762,
               "prompt_tokens_details": {
-                "cached_tokens": 0
+                "cached_tokens": 512
               },
-              "total_tokens": 805
+              "total_tokens": 797
             }
           }
         }
@@ -481,27 +514,64 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
-                  "text": "I'll run the scenario step by step, one tool at a time.\n\n**Step 1: ping_empty**"
+                  "text": "I'll run the tools in the specified order, one at a time.",
+                  "native": {
+                    "item": {
+                      "content": "I'll run the tools in the specified order, one at a time."
+                    },
+                    "fingerprint": 15126351204711021709
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_00_iF1nLiHq9rZZ16mKWVdU3836"
-                    }
+                    "provider": "call_00_OIZ8zZF4RqUm0ZuU6zeW7519"
                   },
                   "function": {
                     "name": "ping_empty",
                     "arguments": {}
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "ping_empty"
+                      },
+                      "id": "call_00_OIZ8zZF4RqUm0ZuU6zeW7519",
+                      "type": "function"
+                    },
+                    "fingerprint": 5158368326946231043
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-v4-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "0c195e30-4e43-4562-b39a-61558057b922"
+              },
+              "stop": "tool_use",
+              "native": {
+                "item": {
+                  "content": "I'll run the tools in the specified order, one at a time.",
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "ping_empty"
+                      },
+                      "id": "call_00_OIZ8zZF4RqUm0ZuU6zeW7519",
+                      "type": "function"
+                    }
+                  ]
+                },
+                "fingerprint": 4158536213097215703
+              }
             },
             {
               "role": "user",
@@ -509,9 +579,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_00_iF1nLiHq9rZZ16mKWVdU3836"
-                    }
+                    "provider": "call_00_OIZ8zZF4RqUm0ZuU6zeW7519"
                   },
                   "name": "ping_empty",
                   "content": [
@@ -645,15 +713,9 @@
           "outcome": "completion",
           "choice": [
             {
-              "type": "text",
-              "text": "**Step 2: inspect_manifest**"
-            },
-            {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_00_YsNjCpJakpFiG7aOuLvc1775"
-                }
+                "provider": "call_00_Ty6najyo3ewE6qAAjbTy7987"
               },
               "function": {
                 "name": "inspect_manifest",
@@ -676,21 +738,50 @@
                   "note": "line one; line two says \"hello\" and path C:\\rig\\deepseek"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"project\": \"rig-deepseek\", \"flags\": {\"critical\": true, \"retries\": 2}, \"steps\": [{\"name\": \"plan\", \"weight\": 1}, {\"name\": \"verify\", \"weight\": 2}], \"note\": \"line one; line two says \\\"hello\\\" and path C:\\\\rig\\\\deepseek\"}",
+                    "name": "inspect_manifest"
+                  },
+                  "id": "call_00_Ty6najyo3ewE6qAAjbTy7987",
+                  "type": "function"
+                },
+                "fingerprint": 10117095200521123045
+              }
             }
           ],
           "usage": {
-            "input_tokens": 822,
-            "output_tokens": 148,
-            "total_tokens": 970,
+            "input_tokens": 814,
+            "output_tokens": 140,
+            "total_tokens": 954,
             "cached_input_tokens": 640
           },
-          "message_id": null,
-          "response_id": "5c3177f0-6f7d-43fd-9409-9366c98505f6",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "deepseek",
+            "model": "deepseek-v4-flash",
+            "response_model": "deepseek-flash",
+            "response_id": "12840573-9dda-4335-9190-d3fbac1a7067"
+          },
+          "native": {
+            "item": {
+              "content": "",
+              "role": "assistant",
+              "tool_calls": [
+                {
+                  "function": {
+                    "arguments": "{\"project\": \"rig-deepseek\", \"flags\": {\"critical\": true, \"retries\": 2}, \"steps\": [{\"name\": \"plan\", \"weight\": 1}, {\"name\": \"verify\", \"weight\": 2}], \"note\": \"line one; line two says \\\"hello\\\" and path C:\\\\rig\\\\deepseek\"}",
+                    "name": "inspect_manifest"
+                  },
+                  "id": "call_00_Ty6najyo3ewE6qAAjbTy7987",
+                  "type": "function"
+                }
+              ]
+            },
+            "fingerprint": 5937305236803220645
+          },
           "finish_reason": "tool_calls",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
           "raw": {
             "choices": [
               {
@@ -698,7 +789,7 @@
                 "index": 0,
                 "logprobs": null,
                 "message": {
-                  "content": "**Step 2: inspect_manifest**",
+                  "content": "",
                   "role": "assistant",
                   "tool_calls": [
                     {
@@ -706,7 +797,7 @@
                         "arguments": "{\"project\": \"rig-deepseek\", \"flags\": {\"critical\": true, \"retries\": 2}, \"steps\": [{\"name\": \"plan\", \"weight\": 1}, {\"name\": \"verify\", \"weight\": 2}], \"note\": \"line one; line two says \\\"hello\\\" and path C:\\\\rig\\\\deepseek\"}",
                         "name": "inspect_manifest"
                       },
-                      "id": "call_00_YsNjCpJakpFiG7aOuLvc1775",
+                      "id": "call_00_Ty6najyo3ewE6qAAjbTy7987",
                       "index": 0,
                       "type": "function"
                     }
@@ -715,19 +806,19 @@
               }
             ],
             "created": 0,
-            "id": "5c3177f0-6f7d-43fd-9409-9366c98505f6",
+            "id": "12840573-9dda-4335-9190-d3fbac1a7067",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
             "usage": {
-              "completion_tokens": 148,
+              "completion_tokens": 140,
               "prompt_cache_hit_tokens": 640,
-              "prompt_cache_miss_tokens": 182,
-              "prompt_tokens": 822,
+              "prompt_cache_miss_tokens": 174,
+              "prompt_tokens": 814,
               "prompt_tokens_details": {
                 "cached_tokens": 640
               },
-              "total_tokens": 970
+              "total_tokens": 954
             }
           }
         }
@@ -783,27 +874,64 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
-                  "text": "I'll run the scenario step by step, one tool at a time.\n\n**Step 1: ping_empty**"
+                  "text": "I'll run the tools in the specified order, one at a time.",
+                  "native": {
+                    "item": {
+                      "content": "I'll run the tools in the specified order, one at a time."
+                    },
+                    "fingerprint": 15126351204711021709
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_00_iF1nLiHq9rZZ16mKWVdU3836"
-                    }
+                    "provider": "call_00_OIZ8zZF4RqUm0ZuU6zeW7519"
                   },
                   "function": {
                     "name": "ping_empty",
                     "arguments": {}
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "ping_empty"
+                      },
+                      "id": "call_00_OIZ8zZF4RqUm0ZuU6zeW7519",
+                      "type": "function"
+                    },
+                    "fingerprint": 5158368326946231043
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-v4-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "0c195e30-4e43-4562-b39a-61558057b922"
+              },
+              "stop": "tool_use",
+              "native": {
+                "item": {
+                  "content": "I'll run the tools in the specified order, one at a time.",
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "ping_empty"
+                      },
+                      "id": "call_00_OIZ8zZF4RqUm0ZuU6zeW7519",
+                      "type": "function"
+                    }
+                  ]
+                },
+                "fingerprint": 4158536213097215703
+              }
             },
             {
               "role": "user",
@@ -811,9 +939,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_00_iF1nLiHq9rZZ16mKWVdU3836"
-                    }
+                    "provider": "call_00_OIZ8zZF4RqUm0ZuU6zeW7519"
                   },
                   "name": "ping_empty",
                   "content": [
@@ -827,18 +953,11 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
-                {
-                  "type": "text",
-                  "text": "**Step 2: inspect_manifest**"
-                },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_00_YsNjCpJakpFiG7aOuLvc1775"
-                    }
+                    "provider": "call_00_Ty6najyo3ewE6qAAjbTy7987"
                   },
                   "function": {
                     "name": "inspect_manifest",
@@ -861,10 +980,44 @@
                       "note": "line one; line two says \"hello\" and path C:\\rig\\deepseek"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"project\": \"rig-deepseek\", \"flags\": {\"critical\": true, \"retries\": 2}, \"steps\": [{\"name\": \"plan\", \"weight\": 1}, {\"name\": \"verify\", \"weight\": 2}], \"note\": \"line one; line two says \\\"hello\\\" and path C:\\\\rig\\\\deepseek\"}",
+                        "name": "inspect_manifest"
+                      },
+                      "id": "call_00_Ty6najyo3ewE6qAAjbTy7987",
+                      "type": "function"
+                    },
+                    "fingerprint": 10117095200521123045
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-v4-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "12840573-9dda-4335-9190-d3fbac1a7067"
+              },
+              "stop": "tool_use",
+              "native": {
+                "item": {
+                  "content": "",
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{\"project\": \"rig-deepseek\", \"flags\": {\"critical\": true, \"retries\": 2}, \"steps\": [{\"name\": \"plan\", \"weight\": 1}, {\"name\": \"verify\", \"weight\": 2}], \"note\": \"line one; line two says \\\"hello\\\" and path C:\\\\rig\\\\deepseek\"}",
+                        "name": "inspect_manifest"
+                      },
+                      "id": "call_00_Ty6najyo3ewE6qAAjbTy7987",
+                      "type": "function"
+                    }
+                  ]
+                },
+                "fingerprint": 5937305236803220645
+              }
             },
             {
               "role": "user",
@@ -872,9 +1025,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_00_YsNjCpJakpFiG7aOuLvc1775"
-                    }
+                    "provider": "call_00_Ty6najyo3ewE6qAAjbTy7987"
                   },
                   "name": "inspect_manifest",
                   "content": [
@@ -1008,15 +1159,9 @@
           "outcome": "completion",
           "choice": [
             {
-              "type": "text",
-              "text": "**Step 3: join_labels**"
-            },
-            {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_00_6lLBcwmtIjxlTP3wPxCs3878"
-                }
+                "provider": "call_00_nxmuL1gDltUZ9MufUGuY8550"
               },
               "function": {
                 "name": "join_labels",
@@ -1030,21 +1175,50 @@
                   "separator": "|"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"labels\": [\"north\", \"beta gamma\", \"quote:\\\"delta\\\"\", \"slash\\\\path\"], \"separator\": \"|\"}",
+                    "name": "join_labels"
+                  },
+                  "id": "call_00_nxmuL1gDltUZ9MufUGuY8550",
+                  "type": "function"
+                },
+                "fingerprint": 6211711853535013870
+              }
             }
           ],
           "usage": {
-            "input_tokens": 1000,
-            "output_tokens": 80,
-            "total_tokens": 1080,
+            "input_tokens": 984,
+            "output_tokens": 73,
+            "total_tokens": 1057,
             "cached_input_tokens": 768
           },
-          "message_id": null,
-          "response_id": "4290c972-c894-4512-ba88-0c03aa8061cd",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "deepseek",
+            "model": "deepseek-v4-flash",
+            "response_model": "deepseek-flash",
+            "response_id": "e36ac5b2-7ced-4747-909a-09421c027a40"
+          },
+          "native": {
+            "item": {
+              "content": "",
+              "role": "assistant",
+              "tool_calls": [
+                {
+                  "function": {
+                    "arguments": "{\"labels\": [\"north\", \"beta gamma\", \"quote:\\\"delta\\\"\", \"slash\\\\path\"], \"separator\": \"|\"}",
+                    "name": "join_labels"
+                  },
+                  "id": "call_00_nxmuL1gDltUZ9MufUGuY8550",
+                  "type": "function"
+                }
+              ]
+            },
+            "fingerprint": 4474289691874531400
+          },
           "finish_reason": "tool_calls",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
           "raw": {
             "choices": [
               {
@@ -1052,7 +1226,7 @@
                 "index": 0,
                 "logprobs": null,
                 "message": {
-                  "content": "**Step 3: join_labels**",
+                  "content": "",
                   "role": "assistant",
                   "tool_calls": [
                     {
@@ -1060,7 +1234,7 @@
                         "arguments": "{\"labels\": [\"north\", \"beta gamma\", \"quote:\\\"delta\\\"\", \"slash\\\\path\"], \"separator\": \"|\"}",
                         "name": "join_labels"
                       },
-                      "id": "call_00_6lLBcwmtIjxlTP3wPxCs3878",
+                      "id": "call_00_nxmuL1gDltUZ9MufUGuY8550",
                       "index": 0,
                       "type": "function"
                     }
@@ -1069,19 +1243,19 @@
               }
             ],
             "created": 0,
-            "id": "4290c972-c894-4512-ba88-0c03aa8061cd",
+            "id": "e36ac5b2-7ced-4747-909a-09421c027a40",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
             "usage": {
-              "completion_tokens": 80,
+              "completion_tokens": 73,
               "prompt_cache_hit_tokens": 768,
-              "prompt_cache_miss_tokens": 232,
-              "prompt_tokens": 1000,
+              "prompt_cache_miss_tokens": 216,
+              "prompt_tokens": 984,
               "prompt_tokens_details": {
                 "cached_tokens": 768
               },
-              "total_tokens": 1080
+              "total_tokens": 1057
             }
           }
         }
@@ -1137,27 +1311,64 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
-                  "text": "I'll run the scenario step by step, one tool at a time.\n\n**Step 1: ping_empty**"
+                  "text": "I'll run the tools in the specified order, one at a time.",
+                  "native": {
+                    "item": {
+                      "content": "I'll run the tools in the specified order, one at a time."
+                    },
+                    "fingerprint": 15126351204711021709
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_00_iF1nLiHq9rZZ16mKWVdU3836"
-                    }
+                    "provider": "call_00_OIZ8zZF4RqUm0ZuU6zeW7519"
                   },
                   "function": {
                     "name": "ping_empty",
                     "arguments": {}
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "ping_empty"
+                      },
+                      "id": "call_00_OIZ8zZF4RqUm0ZuU6zeW7519",
+                      "type": "function"
+                    },
+                    "fingerprint": 5158368326946231043
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-v4-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "0c195e30-4e43-4562-b39a-61558057b922"
+              },
+              "stop": "tool_use",
+              "native": {
+                "item": {
+                  "content": "I'll run the tools in the specified order, one at a time.",
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "ping_empty"
+                      },
+                      "id": "call_00_OIZ8zZF4RqUm0ZuU6zeW7519",
+                      "type": "function"
+                    }
+                  ]
+                },
+                "fingerprint": 4158536213097215703
+              }
             },
             {
               "role": "user",
@@ -1165,9 +1376,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_00_iF1nLiHq9rZZ16mKWVdU3836"
-                    }
+                    "provider": "call_00_OIZ8zZF4RqUm0ZuU6zeW7519"
                   },
                   "name": "ping_empty",
                   "content": [
@@ -1181,18 +1390,11 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
-                {
-                  "type": "text",
-                  "text": "**Step 2: inspect_manifest**"
-                },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_00_YsNjCpJakpFiG7aOuLvc1775"
-                    }
+                    "provider": "call_00_Ty6najyo3ewE6qAAjbTy7987"
                   },
                   "function": {
                     "name": "inspect_manifest",
@@ -1215,10 +1417,44 @@
                       "note": "line one; line two says \"hello\" and path C:\\rig\\deepseek"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"project\": \"rig-deepseek\", \"flags\": {\"critical\": true, \"retries\": 2}, \"steps\": [{\"name\": \"plan\", \"weight\": 1}, {\"name\": \"verify\", \"weight\": 2}], \"note\": \"line one; line two says \\\"hello\\\" and path C:\\\\rig\\\\deepseek\"}",
+                        "name": "inspect_manifest"
+                      },
+                      "id": "call_00_Ty6najyo3ewE6qAAjbTy7987",
+                      "type": "function"
+                    },
+                    "fingerprint": 10117095200521123045
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-v4-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "12840573-9dda-4335-9190-d3fbac1a7067"
+              },
+              "stop": "tool_use",
+              "native": {
+                "item": {
+                  "content": "",
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{\"project\": \"rig-deepseek\", \"flags\": {\"critical\": true, \"retries\": 2}, \"steps\": [{\"name\": \"plan\", \"weight\": 1}, {\"name\": \"verify\", \"weight\": 2}], \"note\": \"line one; line two says \\\"hello\\\" and path C:\\\\rig\\\\deepseek\"}",
+                        "name": "inspect_manifest"
+                      },
+                      "id": "call_00_Ty6najyo3ewE6qAAjbTy7987",
+                      "type": "function"
+                    }
+                  ]
+                },
+                "fingerprint": 5937305236803220645
+              }
             },
             {
               "role": "user",
@@ -1226,9 +1462,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_00_YsNjCpJakpFiG7aOuLvc1775"
-                    }
+                    "provider": "call_00_Ty6najyo3ewE6qAAjbTy7987"
                   },
                   "name": "inspect_manifest",
                   "content": [
@@ -1242,18 +1476,11 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
-                {
-                  "type": "text",
-                  "text": "**Step 3: join_labels**"
-                },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_00_6lLBcwmtIjxlTP3wPxCs3878"
-                    }
+                    "provider": "call_00_nxmuL1gDltUZ9MufUGuY8550"
                   },
                   "function": {
                     "name": "join_labels",
@@ -1267,10 +1494,44 @@
                       "separator": "|"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"labels\": [\"north\", \"beta gamma\", \"quote:\\\"delta\\\"\", \"slash\\\\path\"], \"separator\": \"|\"}",
+                        "name": "join_labels"
+                      },
+                      "id": "call_00_nxmuL1gDltUZ9MufUGuY8550",
+                      "type": "function"
+                    },
+                    "fingerprint": 6211711853535013870
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-v4-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "e36ac5b2-7ced-4747-909a-09421c027a40"
+              },
+              "stop": "tool_use",
+              "native": {
+                "item": {
+                  "content": "",
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{\"labels\": [\"north\", \"beta gamma\", \"quote:\\\"delta\\\"\", \"slash\\\\path\"], \"separator\": \"|\"}",
+                        "name": "join_labels"
+                      },
+                      "id": "call_00_nxmuL1gDltUZ9MufUGuY8550",
+                      "type": "function"
+                    }
+                  ]
+                },
+                "fingerprint": 4474289691874531400
+              }
             },
             {
               "role": "user",
@@ -1278,9 +1539,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_00_6lLBcwmtIjxlTP3wPxCs3878"
-                    }
+                    "provider": "call_00_nxmuL1gDltUZ9MufUGuY8550"
                   },
                   "name": "join_labels",
                   "content": [
@@ -1414,15 +1673,9 @@
           "outcome": "completion",
           "choice": [
             {
-              "type": "text",
-              "text": "**Step 4: escape_echo**"
-            },
-            {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_00_Ft8AgicjfZRAxAC68BDu7542"
-                }
+                "provider": "call_00_ffUavbK9fjCGSBgbacoP2306"
               },
               "function": {
                 "name": "escape_echo",
@@ -1430,21 +1683,50 @@
                   "text": "Line 1\nLine \"2\" with backslash \\ and unicode snowman ☃"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"text\": \"Line 1\\nLine \\\"2\\\" with backslash \\\\ and unicode snowman ☃\"}",
+                    "name": "escape_echo"
+                  },
+                  "id": "call_00_ffUavbK9fjCGSBgbacoP2306",
+                  "type": "function"
+                },
+                "fingerprint": 18389650175971579929
+              }
             }
           ],
           "usage": {
-            "input_tokens": 1109,
-            "output_tokens": 64,
-            "total_tokens": 1173,
+            "input_tokens": 1086,
+            "output_tokens": 56,
+            "total_tokens": 1142,
             "cached_input_tokens": 896
           },
-          "message_id": null,
-          "response_id": "3766153e-5c05-4716-84a9-97182779ae3d",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "deepseek",
+            "model": "deepseek-v4-flash",
+            "response_model": "deepseek-flash",
+            "response_id": "2dfae88a-a040-4f8b-9a91-ab9cfda98015"
+          },
+          "native": {
+            "item": {
+              "content": "",
+              "role": "assistant",
+              "tool_calls": [
+                {
+                  "function": {
+                    "arguments": "{\"text\": \"Line 1\\nLine \\\"2\\\" with backslash \\\\ and unicode snowman ☃\"}",
+                    "name": "escape_echo"
+                  },
+                  "id": "call_00_ffUavbK9fjCGSBgbacoP2306",
+                  "type": "function"
+                }
+              ]
+            },
+            "fingerprint": 1255626795443033961
+          },
           "finish_reason": "tool_calls",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
           "raw": {
             "choices": [
               {
@@ -1452,7 +1734,7 @@
                 "index": 0,
                 "logprobs": null,
                 "message": {
-                  "content": "**Step 4: escape_echo**",
+                  "content": "",
                   "role": "assistant",
                   "tool_calls": [
                     {
@@ -1460,7 +1742,7 @@
                         "arguments": "{\"text\": \"Line 1\\nLine \\\"2\\\" with backslash \\\\ and unicode snowman ☃\"}",
                         "name": "escape_echo"
                       },
-                      "id": "call_00_Ft8AgicjfZRAxAC68BDu7542",
+                      "id": "call_00_ffUavbK9fjCGSBgbacoP2306",
                       "index": 0,
                       "type": "function"
                     }
@@ -1469,19 +1751,19 @@
               }
             ],
             "created": 0,
-            "id": "3766153e-5c05-4716-84a9-97182779ae3d",
+            "id": "2dfae88a-a040-4f8b-9a91-ab9cfda98015",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
             "usage": {
-              "completion_tokens": 64,
+              "completion_tokens": 56,
               "prompt_cache_hit_tokens": 896,
-              "prompt_cache_miss_tokens": 213,
-              "prompt_tokens": 1109,
+              "prompt_cache_miss_tokens": 190,
+              "prompt_tokens": 1086,
               "prompt_tokens_details": {
                 "cached_tokens": 896
               },
-              "total_tokens": 1173
+              "total_tokens": 1142
             }
           }
         }
@@ -1537,27 +1819,64 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
-                  "text": "I'll run the scenario step by step, one tool at a time.\n\n**Step 1: ping_empty**"
+                  "text": "I'll run the tools in the specified order, one at a time.",
+                  "native": {
+                    "item": {
+                      "content": "I'll run the tools in the specified order, one at a time."
+                    },
+                    "fingerprint": 15126351204711021709
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_00_iF1nLiHq9rZZ16mKWVdU3836"
-                    }
+                    "provider": "call_00_OIZ8zZF4RqUm0ZuU6zeW7519"
                   },
                   "function": {
                     "name": "ping_empty",
                     "arguments": {}
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "ping_empty"
+                      },
+                      "id": "call_00_OIZ8zZF4RqUm0ZuU6zeW7519",
+                      "type": "function"
+                    },
+                    "fingerprint": 5158368326946231043
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-v4-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "0c195e30-4e43-4562-b39a-61558057b922"
+              },
+              "stop": "tool_use",
+              "native": {
+                "item": {
+                  "content": "I'll run the tools in the specified order, one at a time.",
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "ping_empty"
+                      },
+                      "id": "call_00_OIZ8zZF4RqUm0ZuU6zeW7519",
+                      "type": "function"
+                    }
+                  ]
+                },
+                "fingerprint": 4158536213097215703
+              }
             },
             {
               "role": "user",
@@ -1565,9 +1884,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_00_iF1nLiHq9rZZ16mKWVdU3836"
-                    }
+                    "provider": "call_00_OIZ8zZF4RqUm0ZuU6zeW7519"
                   },
                   "name": "ping_empty",
                   "content": [
@@ -1581,18 +1898,11 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
-                {
-                  "type": "text",
-                  "text": "**Step 2: inspect_manifest**"
-                },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_00_YsNjCpJakpFiG7aOuLvc1775"
-                    }
+                    "provider": "call_00_Ty6najyo3ewE6qAAjbTy7987"
                   },
                   "function": {
                     "name": "inspect_manifest",
@@ -1615,10 +1925,44 @@
                       "note": "line one; line two says \"hello\" and path C:\\rig\\deepseek"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"project\": \"rig-deepseek\", \"flags\": {\"critical\": true, \"retries\": 2}, \"steps\": [{\"name\": \"plan\", \"weight\": 1}, {\"name\": \"verify\", \"weight\": 2}], \"note\": \"line one; line two says \\\"hello\\\" and path C:\\\\rig\\\\deepseek\"}",
+                        "name": "inspect_manifest"
+                      },
+                      "id": "call_00_Ty6najyo3ewE6qAAjbTy7987",
+                      "type": "function"
+                    },
+                    "fingerprint": 10117095200521123045
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-v4-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "12840573-9dda-4335-9190-d3fbac1a7067"
+              },
+              "stop": "tool_use",
+              "native": {
+                "item": {
+                  "content": "",
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{\"project\": \"rig-deepseek\", \"flags\": {\"critical\": true, \"retries\": 2}, \"steps\": [{\"name\": \"plan\", \"weight\": 1}, {\"name\": \"verify\", \"weight\": 2}], \"note\": \"line one; line two says \\\"hello\\\" and path C:\\\\rig\\\\deepseek\"}",
+                        "name": "inspect_manifest"
+                      },
+                      "id": "call_00_Ty6najyo3ewE6qAAjbTy7987",
+                      "type": "function"
+                    }
+                  ]
+                },
+                "fingerprint": 5937305236803220645
+              }
             },
             {
               "role": "user",
@@ -1626,9 +1970,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_00_YsNjCpJakpFiG7aOuLvc1775"
-                    }
+                    "provider": "call_00_Ty6najyo3ewE6qAAjbTy7987"
                   },
                   "name": "inspect_manifest",
                   "content": [
@@ -1642,18 +1984,11 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
-                {
-                  "type": "text",
-                  "text": "**Step 3: join_labels**"
-                },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_00_6lLBcwmtIjxlTP3wPxCs3878"
-                    }
+                    "provider": "call_00_nxmuL1gDltUZ9MufUGuY8550"
                   },
                   "function": {
                     "name": "join_labels",
@@ -1667,10 +2002,44 @@
                       "separator": "|"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"labels\": [\"north\", \"beta gamma\", \"quote:\\\"delta\\\"\", \"slash\\\\path\"], \"separator\": \"|\"}",
+                        "name": "join_labels"
+                      },
+                      "id": "call_00_nxmuL1gDltUZ9MufUGuY8550",
+                      "type": "function"
+                    },
+                    "fingerprint": 6211711853535013870
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-v4-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "e36ac5b2-7ced-4747-909a-09421c027a40"
+              },
+              "stop": "tool_use",
+              "native": {
+                "item": {
+                  "content": "",
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{\"labels\": [\"north\", \"beta gamma\", \"quote:\\\"delta\\\"\", \"slash\\\\path\"], \"separator\": \"|\"}",
+                        "name": "join_labels"
+                      },
+                      "id": "call_00_nxmuL1gDltUZ9MufUGuY8550",
+                      "type": "function"
+                    }
+                  ]
+                },
+                "fingerprint": 4474289691874531400
+              }
             },
             {
               "role": "user",
@@ -1678,9 +2047,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_00_6lLBcwmtIjxlTP3wPxCs3878"
-                    }
+                    "provider": "call_00_nxmuL1gDltUZ9MufUGuY8550"
                   },
                   "name": "join_labels",
                   "content": [
@@ -1694,18 +2061,11 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
-                {
-                  "type": "text",
-                  "text": "**Step 4: escape_echo**"
-                },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_00_Ft8AgicjfZRAxAC68BDu7542"
-                    }
+                    "provider": "call_00_ffUavbK9fjCGSBgbacoP2306"
                   },
                   "function": {
                     "name": "escape_echo",
@@ -1713,10 +2073,44 @@
                       "text": "Line 1\nLine \"2\" with backslash \\ and unicode snowman ☃"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"text\": \"Line 1\\nLine \\\"2\\\" with backslash \\\\ and unicode snowman ☃\"}",
+                        "name": "escape_echo"
+                      },
+                      "id": "call_00_ffUavbK9fjCGSBgbacoP2306",
+                      "type": "function"
+                    },
+                    "fingerprint": 18389650175971579929
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-v4-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "2dfae88a-a040-4f8b-9a91-ab9cfda98015"
+              },
+              "stop": "tool_use",
+              "native": {
+                "item": {
+                  "content": "",
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{\"text\": \"Line 1\\nLine \\\"2\\\" with backslash \\\\ and unicode snowman ☃\"}",
+                        "name": "escape_echo"
+                      },
+                      "id": "call_00_ffUavbK9fjCGSBgbacoP2306",
+                      "type": "function"
+                    }
+                  ]
+                },
+                "fingerprint": 1255626795443033961
+              }
             },
             {
               "role": "user",
@@ -1724,9 +2118,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_00_Ft8AgicjfZRAxAC68BDu7542"
-                    }
+                    "provider": "call_00_ffUavbK9fjCGSBgbacoP2306"
                   },
                   "name": "escape_echo",
                   "content": [
@@ -1861,20 +2253,36 @@
           "choice": [
             {
               "type": "text",
-              "text": "All four tools succeeded: EMPTY-OK, MANIFEST-OK, LABELS-OK, and ESCAPE-OK."
+              "text": "EMPTY-OK, MANIFEST-OK (rig-deepseek, 2 steps, 2 retries), LABELS-OK (north|beta gamma|quote:\"delta\"|slash\\path), and ESCAPE-OK all passed.",
+              "native": {
+                "item": {
+                  "content": "EMPTY-OK, MANIFEST-OK (rig-deepseek, 2 steps, 2 retries), LABELS-OK (north|beta gamma|quote:\"delta\"|slash\\path), and ESCAPE-OK all passed."
+                },
+                "fingerprint": 16903082508724167843
+              }
             }
           ],
           "usage": {
-            "input_tokens": 1209,
-            "output_tokens": 27,
-            "total_tokens": 1236,
+            "input_tokens": 1178,
+            "output_tokens": 54,
+            "total_tokens": 1232,
             "cached_input_tokens": 1024
           },
-          "message_id": null,
-          "response_id": "12fecbaf-3093-4660-b4d1-09bed8017755",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "deepseek",
+            "model": "deepseek-v4-flash",
+            "response_model": "deepseek-flash",
+            "response_id": "9aa66693-847d-41c0-93ab-1fc8b8235e97"
+          },
+          "native": {
+            "item": {
+              "content": "EMPTY-OK, MANIFEST-OK (rig-deepseek, 2 steps, 2 retries), LABELS-OK (north|beta gamma|quote:\"delta\"|slash\\path), and ESCAPE-OK all passed.",
+              "role": "assistant"
+            },
+            "fingerprint": 17082591131143953719
+          },
           "finish_reason": "stop",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
           "raw": {
             "choices": [
               {
@@ -1882,25 +2290,25 @@
                 "index": 0,
                 "logprobs": null,
                 "message": {
-                  "content": "All four tools succeeded: EMPTY-OK, MANIFEST-OK, LABELS-OK, and ESCAPE-OK.",
+                  "content": "EMPTY-OK, MANIFEST-OK (rig-deepseek, 2 steps, 2 retries), LABELS-OK (north|beta gamma|quote:\"delta\"|slash\\path), and ESCAPE-OK all passed.",
                   "role": "assistant"
                 }
               }
             ],
             "created": 0,
-            "id": "12fecbaf-3093-4660-b4d1-09bed8017755",
+            "id": "9aa66693-847d-41c0-93ab-1fc8b8235e97",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
             "usage": {
-              "completion_tokens": 27,
+              "completion_tokens": 54,
               "prompt_cache_hit_tokens": 1024,
-              "prompt_cache_miss_tokens": 185,
-              "prompt_tokens": 1209,
+              "prompt_cache_miss_tokens": 154,
+              "prompt_tokens": 1178,
               "prompt_tokens_details": {
                 "cached_tokens": 1024
               },
-              "total_tokens": 1236
+              "total_tokens": 1232
             }
           }
         }

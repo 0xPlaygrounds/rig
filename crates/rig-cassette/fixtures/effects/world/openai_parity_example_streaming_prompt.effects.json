@@ -2,11 +2,19 @@
   "header": {
     "deliveries": [
       {
-        "batch": 18,
+        "batch": 17,
         "id": 0,
         "kind": {
           "delivery": "stream",
           "items": 2
+        }
+      },
+      {
+        "batch": 18,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
         }
       },
       {
@@ -58,7 +66,7 @@
         }
       },
       {
-        "batch": 25,
+        "batch": 26,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -86,7 +94,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -118,15 +126,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 34,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -134,7 +134,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -142,7 +142,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -166,11 +166,51 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
-        "batch": 40,
+        "batch": 41,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 42,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 43,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 44,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 45,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 47,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -186,7 +226,15 @@
         }
       },
       {
-        "batch": 48,
+        "batch": 53,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 61,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -259,7 +307,24 @@
           "choice": [
             {
               "type": "text",
-              "text": "The next solar eclipse is a partial solar eclipse on October 14, 2023. It will be visible in parts of the Americas."
+              "text": "The next solar eclipse is a partial solar eclipse on October 14, 2023. It will be visible in parts of the Americas.",
+              "native": {
+                "item": {
+                  "content": [
+                    {
+                      "annotations": [],
+                      "logprobs": [],
+                      "text": "The next solar eclipse is a partial solar eclipse on October 14, 2023. It will be visible in parts of the Americas.",
+                      "type": "output_text"
+                    }
+                  ],
+                  "id": "msg_078c61b87dcc50cb006ab396a050bc87d0bfddb10e5df4c9b1",
+                  "role": "assistant",
+                  "status": "completed",
+                  "type": "message"
+                },
+                "fingerprint": 10061977653500454514
+              }
             }
           ],
           "usage": {
@@ -270,12 +335,15 @@
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": "msg_078c61b87dcc50cb006ab396a050bc87d0bfddb10e5df4c9b1",
-          "response_id": "resp_078c61b87dcc50cb006ab3969fba7487d08371f6bf93261757",
+          "origin": {
+            "api": "openai.responses",
+            "provider": "openai",
+            "model": "gpt-4o",
+            "response_model": "gpt-4o-2024-08-06",
+            "response_id": "resp_078c61b87dcc50cb006ab3969fba7487d08371f6bf93261757"
+          },
           "provider_request_id": "req_7bc3ba5616cf4f76924c005708acd637",
           "finish_reason": "stop",
-          "provider": "openai",
-          "model": "gpt-4o-2024-08-06",
           "raw": {
             "id": "resp_078c61b87dcc50cb006ab3969fba7487d08371f6bf93261757",
             "object": "response",
@@ -575,7 +643,24 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "The next solar eclipse is a partial solar eclipse on October 14, 2023. It will be visible in parts of the Americas."
+              "text": "The next solar eclipse is a partial solar eclipse on October 14, 2023. It will be visible in parts of the Americas.",
+              "native": {
+                "item": {
+                  "content": [
+                    {
+                      "annotations": [],
+                      "logprobs": [],
+                      "text": "The next solar eclipse is a partial solar eclipse on October 14, 2023. It will be visible in parts of the Americas.",
+                      "type": "output_text"
+                    }
+                  ],
+                  "id": "msg_078c61b87dcc50cb006ab396a050bc87d0bfddb10e5df4c9b1",
+                  "role": "assistant",
+                  "status": "completed",
+                  "type": "message"
+                },
+                "fingerprint": 10061977653500454514
+              }
             }
           }
         }

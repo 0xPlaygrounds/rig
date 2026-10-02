@@ -322,14 +322,18 @@
           "choice": [
             {
               "type": "text",
-              "text": "I'll start by reading the four files in parallel."
+              "text": "I'll start by reading the four files in parallel.",
+              "native": {
+                "item": {
+                  "content": "I'll start by reading the four files in parallel."
+                },
+                "fingerprint": 1038010106985901212
+              }
             },
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_00_8U8ljHyawn1xiZ4XaKW52460"
-                }
+                "provider": "call_00_qJt9qQJc7J3xvhLUY4ZR9005"
               },
               "function": {
                 "name": "read_file",
@@ -337,15 +341,22 @@
                   "path": "tests/basic.rs"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"path\": \"tests/basic.rs\"}",
+                    "name": "read_file"
+                  },
+                  "id": "call_00_qJt9qQJc7J3xvhLUY4ZR9005",
+                  "type": "function"
+                },
+                "fingerprint": 6860615297968424660
+              }
             },
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_01_ibxkRf4IZuCjVSUTye5w4600"
-                }
+                "provider": "call_01_CndMqHylQCmeTVkr8cvc8109"
               },
               "function": {
                 "name": "read_file",
@@ -353,15 +364,22 @@
                   "path": "src/lib.rs"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"path\": \"src/lib.rs\"}",
+                    "name": "read_file"
+                  },
+                  "id": "call_01_CndMqHylQCmeTVkr8cvc8109",
+                  "type": "function"
+                },
+                "fingerprint": 11487160635864784965
+              }
             },
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_02_PGmRbCTF60uggO8HlXef9707"
-                }
+                "provider": "call_02_wbWhwbPKH3mjLRgIixQ88917"
               },
               "function": {
                 "name": "read_file",
@@ -369,15 +387,22 @@
                   "path": "src/calendar.rs"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"path\": \"src/calendar.rs\"}",
+                    "name": "read_file"
+                  },
+                  "id": "call_02_wbWhwbPKH3mjLRgIixQ88917",
+                  "type": "function"
+                },
+                "fingerprint": 8315944298439696057
+              }
             },
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_03_dZhp3QIIkC2cH7zuTLQZ3197"
-                }
+                "provider": "call_03_MAmFC2LkHb5eawFuCkjx5866"
               },
               "function": {
                 "name": "read_file",
@@ -385,21 +410,74 @@
                   "path": "docs/DESIGN.md"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"path\": \"docs/DESIGN.md\"}",
+                    "name": "read_file"
+                  },
+                  "id": "call_03_MAmFC2LkHb5eawFuCkjx5866",
+                  "type": "function"
+                },
+                "fingerprint": 7218479817981713485
+              }
             }
           ],
           "usage": {
             "input_tokens": 732,
             "output_tokens": 143,
             "total_tokens": 875,
-            "cached_input_tokens": 384
+            "cached_input_tokens": 512
           },
-          "message_id": null,
-          "response_id": "877c6720-ccf0-4d90-827b-ea89ba4aeab8",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "deepseek",
+            "model": "deepseek-flash",
+            "response_model": "deepseek-flash",
+            "response_id": "6509a3ab-73b4-475d-8072-73e2f86c7b63"
+          },
+          "native": {
+            "item": {
+              "content": "I'll start by reading the four files in parallel.",
+              "role": "assistant",
+              "tool_calls": [
+                {
+                  "function": {
+                    "arguments": "{\"path\": \"tests/basic.rs\"}",
+                    "name": "read_file"
+                  },
+                  "id": "call_00_qJt9qQJc7J3xvhLUY4ZR9005",
+                  "type": "function"
+                },
+                {
+                  "function": {
+                    "arguments": "{\"path\": \"src/lib.rs\"}",
+                    "name": "read_file"
+                  },
+                  "id": "call_01_CndMqHylQCmeTVkr8cvc8109",
+                  "type": "function"
+                },
+                {
+                  "function": {
+                    "arguments": "{\"path\": \"src/calendar.rs\"}",
+                    "name": "read_file"
+                  },
+                  "id": "call_02_wbWhwbPKH3mjLRgIixQ88917",
+                  "type": "function"
+                },
+                {
+                  "function": {
+                    "arguments": "{\"path\": \"docs/DESIGN.md\"}",
+                    "name": "read_file"
+                  },
+                  "id": "call_03_MAmFC2LkHb5eawFuCkjx5866",
+                  "type": "function"
+                }
+              ]
+            },
+            "fingerprint": 9099097259660700709
+          },
           "finish_reason": "tool_calls",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
           "raw": {
             "choices": [
               {
@@ -415,7 +493,7 @@
                         "arguments": "{\"path\": \"tests/basic.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_8U8ljHyawn1xiZ4XaKW52460",
+                      "id": "call_00_qJt9qQJc7J3xvhLUY4ZR9005",
                       "index": 0,
                       "type": "function"
                     },
@@ -424,7 +502,7 @@
                         "arguments": "{\"path\": \"src/lib.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_01_ibxkRf4IZuCjVSUTye5w4600",
+                      "id": "call_01_CndMqHylQCmeTVkr8cvc8109",
                       "index": 1,
                       "type": "function"
                     },
@@ -433,7 +511,7 @@
                         "arguments": "{\"path\": \"src/calendar.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_02_PGmRbCTF60uggO8HlXef9707",
+                      "id": "call_02_wbWhwbPKH3mjLRgIixQ88917",
                       "index": 2,
                       "type": "function"
                     },
@@ -442,7 +520,7 @@
                         "arguments": "{\"path\": \"docs/DESIGN.md\"}",
                         "name": "read_file"
                       },
-                      "id": "call_03_dZhp3QIIkC2cH7zuTLQZ3197",
+                      "id": "call_03_MAmFC2LkHb5eawFuCkjx5866",
                       "index": 3,
                       "type": "function"
                     }
@@ -451,17 +529,17 @@
               }
             ],
             "created": 0,
-            "id": "877c6720-ccf0-4d90-827b-ea89ba4aeab8",
+            "id": "6509a3ab-73b4-475d-8072-73e2f86c7b63",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
             "usage": {
               "completion_tokens": 143,
-              "prompt_cache_hit_tokens": 384,
-              "prompt_cache_miss_tokens": 348,
+              "prompt_cache_hit_tokens": 512,
+              "prompt_cache_miss_tokens": 220,
               "prompt_tokens": 732,
               "prompt_tokens_details": {
-                "cached_tokens": 384
+                "cached_tokens": 512
               },
               "total_tokens": 875
             }
@@ -602,18 +680,21 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
-                  "text": "I'll start by reading the four files in parallel."
+                  "text": "I'll start by reading the four files in parallel.",
+                  "native": {
+                    "item": {
+                      "content": "I'll start by reading the four files in parallel."
+                    },
+                    "fingerprint": 1038010106985901212
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_00_8U8ljHyawn1xiZ4XaKW52460"
-                    }
+                    "provider": "call_00_qJt9qQJc7J3xvhLUY4ZR9005"
                   },
                   "function": {
                     "name": "read_file",
@@ -621,15 +702,22 @@
                       "path": "tests/basic.rs"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"path\": \"tests/basic.rs\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_00_qJt9qQJc7J3xvhLUY4ZR9005",
+                      "type": "function"
+                    },
+                    "fingerprint": 6860615297968424660
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_01_ibxkRf4IZuCjVSUTye5w4600"
-                    }
+                    "provider": "call_01_CndMqHylQCmeTVkr8cvc8109"
                   },
                   "function": {
                     "name": "read_file",
@@ -637,15 +725,22 @@
                       "path": "src/lib.rs"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"path\": \"src/lib.rs\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_01_CndMqHylQCmeTVkr8cvc8109",
+                      "type": "function"
+                    },
+                    "fingerprint": 11487160635864784965
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_02_PGmRbCTF60uggO8HlXef9707"
-                    }
+                    "provider": "call_02_wbWhwbPKH3mjLRgIixQ88917"
                   },
                   "function": {
                     "name": "read_file",
@@ -653,15 +748,22 @@
                       "path": "src/calendar.rs"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"path\": \"src/calendar.rs\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_02_wbWhwbPKH3mjLRgIixQ88917",
+                      "type": "function"
+                    },
+                    "fingerprint": 8315944298439696057
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_03_dZhp3QIIkC2cH7zuTLQZ3197"
-                    }
+                    "provider": "call_03_MAmFC2LkHb5eawFuCkjx5866"
                   },
                   "function": {
                     "name": "read_file",
@@ -669,10 +771,68 @@
                       "path": "docs/DESIGN.md"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"path\": \"docs/DESIGN.md\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_03_MAmFC2LkHb5eawFuCkjx5866",
+                      "type": "function"
+                    },
+                    "fingerprint": 7218479817981713485
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "6509a3ab-73b4-475d-8072-73e2f86c7b63"
+              },
+              "stop": "tool_use",
+              "native": {
+                "item": {
+                  "content": "I'll start by reading the four files in parallel.",
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{\"path\": \"tests/basic.rs\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_00_qJt9qQJc7J3xvhLUY4ZR9005",
+                      "type": "function"
+                    },
+                    {
+                      "function": {
+                        "arguments": "{\"path\": \"src/lib.rs\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_01_CndMqHylQCmeTVkr8cvc8109",
+                      "type": "function"
+                    },
+                    {
+                      "function": {
+                        "arguments": "{\"path\": \"src/calendar.rs\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_02_wbWhwbPKH3mjLRgIixQ88917",
+                      "type": "function"
+                    },
+                    {
+                      "function": {
+                        "arguments": "{\"path\": \"docs/DESIGN.md\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_03_MAmFC2LkHb5eawFuCkjx5866",
+                      "type": "function"
+                    }
+                  ]
+                },
+                "fingerprint": 9099097259660700709
+              }
             },
             {
               "role": "user",
@@ -680,9 +840,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_00_8U8ljHyawn1xiZ4XaKW52460"
-                    }
+                    "provider": "call_00_qJt9qQJc7J3xvhLUY4ZR9005"
                   },
                   "name": "read_file",
                   "content": [
@@ -695,9 +853,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_01_ibxkRf4IZuCjVSUTye5w4600"
-                    }
+                    "provider": "call_01_CndMqHylQCmeTVkr8cvc8109"
                   },
                   "name": "read_file",
                   "content": [
@@ -710,9 +866,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_02_PGmRbCTF60uggO8HlXef9707"
-                    }
+                    "provider": "call_02_wbWhwbPKH3mjLRgIixQ88917"
                   },
                   "name": "read_file",
                   "content": [
@@ -725,9 +879,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_03_dZhp3QIIkC2cH7zuTLQZ3197"
-                    }
+                    "provider": "call_03_MAmFC2LkHb5eawFuCkjx5866"
                   },
                   "name": "read_file",
                   "content": [
@@ -819,29 +971,56 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_00_RFHcJrHGiJ4ChSZZgRdM5791"
-                }
+                "provider": "call_00_oRVzcpYRheVxtjUvBCXU9154"
               },
               "function": {
                 "name": "run_tests",
                 "arguments": {}
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{}",
+                    "name": "run_tests"
+                  },
+                  "id": "call_00_oRVzcpYRheVxtjUvBCXU9154",
+                  "type": "function"
+                },
+                "fingerprint": 778079932883458175
+              }
             }
           ],
           "usage": {
             "input_tokens": 1056,
             "output_tokens": 22,
             "total_tokens": 1078,
-            "cached_input_tokens": 768
+            "cached_input_tokens": 896
           },
-          "message_id": null,
-          "response_id": "8ce05b81-668b-47e5-badc-71b3c161db21",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "deepseek",
+            "model": "deepseek-flash",
+            "response_model": "deepseek-flash",
+            "response_id": "4830a6d3-49be-4309-b37d-7b603ecb0c99"
+          },
+          "native": {
+            "item": {
+              "content": "",
+              "role": "assistant",
+              "tool_calls": [
+                {
+                  "function": {
+                    "arguments": "{}",
+                    "name": "run_tests"
+                  },
+                  "id": "call_00_oRVzcpYRheVxtjUvBCXU9154",
+                  "type": "function"
+                }
+              ]
+            },
+            "fingerprint": 8239694176259427817
+          },
           "finish_reason": "tool_calls",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
           "raw": {
             "choices": [
               {
@@ -857,7 +1036,7 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_00_RFHcJrHGiJ4ChSZZgRdM5791",
+                      "id": "call_00_oRVzcpYRheVxtjUvBCXU9154",
                       "index": 0,
                       "type": "function"
                     }
@@ -866,17 +1045,17 @@
               }
             ],
             "created": 0,
-            "id": "8ce05b81-668b-47e5-badc-71b3c161db21",
+            "id": "4830a6d3-49be-4309-b37d-7b603ecb0c99",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
             "usage": {
               "completion_tokens": 22,
-              "prompt_cache_hit_tokens": 768,
-              "prompt_cache_miss_tokens": 288,
+              "prompt_cache_hit_tokens": 896,
+              "prompt_cache_miss_tokens": 160,
               "prompt_tokens": 1056,
               "prompt_tokens_details": {
-                "cached_tokens": 768
+                "cached_tokens": 896
               },
               "total_tokens": 1078
             }
@@ -934,18 +1113,21 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
-                  "text": "I'll start by reading the four files in parallel."
+                  "text": "I'll start by reading the four files in parallel.",
+                  "native": {
+                    "item": {
+                      "content": "I'll start by reading the four files in parallel."
+                    },
+                    "fingerprint": 1038010106985901212
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_00_8U8ljHyawn1xiZ4XaKW52460"
-                    }
+                    "provider": "call_00_qJt9qQJc7J3xvhLUY4ZR9005"
                   },
                   "function": {
                     "name": "read_file",
@@ -953,15 +1135,22 @@
                       "path": "tests/basic.rs"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"path\": \"tests/basic.rs\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_00_qJt9qQJc7J3xvhLUY4ZR9005",
+                      "type": "function"
+                    },
+                    "fingerprint": 6860615297968424660
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_01_ibxkRf4IZuCjVSUTye5w4600"
-                    }
+                    "provider": "call_01_CndMqHylQCmeTVkr8cvc8109"
                   },
                   "function": {
                     "name": "read_file",
@@ -969,15 +1158,22 @@
                       "path": "src/lib.rs"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"path\": \"src/lib.rs\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_01_CndMqHylQCmeTVkr8cvc8109",
+                      "type": "function"
+                    },
+                    "fingerprint": 11487160635864784965
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_02_PGmRbCTF60uggO8HlXef9707"
-                    }
+                    "provider": "call_02_wbWhwbPKH3mjLRgIixQ88917"
                   },
                   "function": {
                     "name": "read_file",
@@ -985,15 +1181,22 @@
                       "path": "src/calendar.rs"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"path\": \"src/calendar.rs\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_02_wbWhwbPKH3mjLRgIixQ88917",
+                      "type": "function"
+                    },
+                    "fingerprint": 8315944298439696057
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_03_dZhp3QIIkC2cH7zuTLQZ3197"
-                    }
+                    "provider": "call_03_MAmFC2LkHb5eawFuCkjx5866"
                   },
                   "function": {
                     "name": "read_file",
@@ -1001,10 +1204,68 @@
                       "path": "docs/DESIGN.md"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"path\": \"docs/DESIGN.md\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_03_MAmFC2LkHb5eawFuCkjx5866",
+                      "type": "function"
+                    },
+                    "fingerprint": 7218479817981713485
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "6509a3ab-73b4-475d-8072-73e2f86c7b63"
+              },
+              "stop": "tool_use",
+              "native": {
+                "item": {
+                  "content": "I'll start by reading the four files in parallel.",
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{\"path\": \"tests/basic.rs\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_00_qJt9qQJc7J3xvhLUY4ZR9005",
+                      "type": "function"
+                    },
+                    {
+                      "function": {
+                        "arguments": "{\"path\": \"src/lib.rs\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_01_CndMqHylQCmeTVkr8cvc8109",
+                      "type": "function"
+                    },
+                    {
+                      "function": {
+                        "arguments": "{\"path\": \"src/calendar.rs\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_02_wbWhwbPKH3mjLRgIixQ88917",
+                      "type": "function"
+                    },
+                    {
+                      "function": {
+                        "arguments": "{\"path\": \"docs/DESIGN.md\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_03_MAmFC2LkHb5eawFuCkjx5866",
+                      "type": "function"
+                    }
+                  ]
+                },
+                "fingerprint": 9099097259660700709
+              }
             },
             {
               "role": "user",
@@ -1012,9 +1273,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_00_8U8ljHyawn1xiZ4XaKW52460"
-                    }
+                    "provider": "call_00_qJt9qQJc7J3xvhLUY4ZR9005"
                   },
                   "name": "read_file",
                   "content": [
@@ -1027,9 +1286,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_01_ibxkRf4IZuCjVSUTye5w4600"
-                    }
+                    "provider": "call_01_CndMqHylQCmeTVkr8cvc8109"
                   },
                   "name": "read_file",
                   "content": [
@@ -1042,9 +1299,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_02_PGmRbCTF60uggO8HlXef9707"
-                    }
+                    "provider": "call_02_wbWhwbPKH3mjLRgIixQ88917"
                   },
                   "name": "read_file",
                   "content": [
@@ -1057,9 +1312,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_03_dZhp3QIIkC2cH7zuTLQZ3197"
-                    }
+                    "provider": "call_03_MAmFC2LkHb5eawFuCkjx5866"
                   },
                   "name": "read_file",
                   "content": [
@@ -1073,23 +1326,54 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_00_RFHcJrHGiJ4ChSZZgRdM5791"
-                    }
+                    "provider": "call_00_oRVzcpYRheVxtjUvBCXU9154"
                   },
                   "function": {
                     "name": "run_tests",
                     "arguments": {}
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "run_tests"
+                      },
+                      "id": "call_00_oRVzcpYRheVxtjUvBCXU9154",
+                      "type": "function"
+                    },
+                    "fingerprint": 778079932883458175
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "4830a6d3-49be-4309-b37d-7b603ecb0c99"
+              },
+              "stop": "tool_use",
+              "native": {
+                "item": {
+                  "content": "",
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "run_tests"
+                      },
+                      "id": "call_00_oRVzcpYRheVxtjUvBCXU9154",
+                      "type": "function"
+                    }
+                  ]
+                },
+                "fingerprint": 8239694176259427817
+              }
             },
             {
               "role": "user",
@@ -1097,9 +1381,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_00_RFHcJrHGiJ4ChSZZgRdM5791"
-                    }
+                    "provider": "call_00_oRVzcpYRheVxtjUvBCXU9154"
                   },
                   "name": "run_tests",
                   "content": [
@@ -1190,14 +1472,18 @@
           "choice": [
             {
               "type": "text",
-              "text": "The failing assertion points at `days_in_year` in src/lib.rs."
+              "text": "The failing assertion points at `days_in_year` in src/lib.rs.",
+              "native": {
+                "item": {
+                  "content": "The failing assertion points at `days_in_year` in src/lib.rs."
+                },
+                "fingerprint": 17004573609289117985
+              }
             },
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_00_KLZdgIm3j8X5tWM3HDu70397"
-                }
+                "provider": "call_00_0DGGarOhFRgY4bzwMgU89462"
               },
               "function": {
                 "name": "write_file",
@@ -1206,8 +1492,17 @@
                   "content": "pub mod calendar;\n\n/// The number of days in a common (non-leap) year.\npub fn days_in_year() -> u32 {\n    365\n}\n"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"path\": \"src/lib.rs\", \"content\": \"pub mod calendar;\\n\\n/// The number of days in a common (non-leap) year.\\npub fn days_in_year() -> u32 {\\n    365\\n}\\n\"}",
+                    "name": "write_file"
+                  },
+                  "id": "call_00_0DGGarOhFRgY4bzwMgU89462",
+                  "type": "function"
+                },
+                "fingerprint": 7289083428762458814
+              }
             }
           ],
           "usage": {
@@ -1216,11 +1511,31 @@
             "total_tokens": 1335,
             "cached_input_tokens": 1024
           },
-          "message_id": null,
-          "response_id": "ded92806-19aa-4046-aaaa-6c9a51bd6d81",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "deepseek",
+            "model": "deepseek-flash",
+            "response_model": "deepseek-flash",
+            "response_id": "654ea0d7-8879-4591-b653-dc5ba191bc86"
+          },
+          "native": {
+            "item": {
+              "content": "The failing assertion points at `days_in_year` in src/lib.rs.",
+              "role": "assistant",
+              "tool_calls": [
+                {
+                  "function": {
+                    "arguments": "{\"path\": \"src/lib.rs\", \"content\": \"pub mod calendar;\\n\\n/// The number of days in a common (non-leap) year.\\npub fn days_in_year() -> u32 {\\n    365\\n}\\n\"}",
+                    "name": "write_file"
+                  },
+                  "id": "call_00_0DGGarOhFRgY4bzwMgU89462",
+                  "type": "function"
+                }
+              ]
+            },
+            "fingerprint": 17121961348121850768
+          },
           "finish_reason": "tool_calls",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
           "raw": {
             "choices": [
               {
@@ -1236,7 +1551,7 @@
                         "arguments": "{\"path\": \"src/lib.rs\", \"content\": \"pub mod calendar;\\n\\n/// The number of days in a common (non-leap) year.\\npub fn days_in_year() -> u32 {\\n    365\\n}\\n\"}",
                         "name": "write_file"
                       },
-                      "id": "call_00_KLZdgIm3j8X5tWM3HDu70397",
+                      "id": "call_00_0DGGarOhFRgY4bzwMgU89462",
                       "index": 0,
                       "type": "function"
                     }
@@ -1245,7 +1560,7 @@
               }
             ],
             "created": 0,
-            "id": "ded92806-19aa-4046-aaaa-6c9a51bd6d81",
+            "id": "654ea0d7-8879-4591-b653-dc5ba191bc86",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
@@ -1313,18 +1628,21 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
-                  "text": "I'll start by reading the four files in parallel."
+                  "text": "I'll start by reading the four files in parallel.",
+                  "native": {
+                    "item": {
+                      "content": "I'll start by reading the four files in parallel."
+                    },
+                    "fingerprint": 1038010106985901212
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_00_8U8ljHyawn1xiZ4XaKW52460"
-                    }
+                    "provider": "call_00_qJt9qQJc7J3xvhLUY4ZR9005"
                   },
                   "function": {
                     "name": "read_file",
@@ -1332,15 +1650,22 @@
                       "path": "tests/basic.rs"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"path\": \"tests/basic.rs\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_00_qJt9qQJc7J3xvhLUY4ZR9005",
+                      "type": "function"
+                    },
+                    "fingerprint": 6860615297968424660
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_01_ibxkRf4IZuCjVSUTye5w4600"
-                    }
+                    "provider": "call_01_CndMqHylQCmeTVkr8cvc8109"
                   },
                   "function": {
                     "name": "read_file",
@@ -1348,15 +1673,22 @@
                       "path": "src/lib.rs"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"path\": \"src/lib.rs\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_01_CndMqHylQCmeTVkr8cvc8109",
+                      "type": "function"
+                    },
+                    "fingerprint": 11487160635864784965
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_02_PGmRbCTF60uggO8HlXef9707"
-                    }
+                    "provider": "call_02_wbWhwbPKH3mjLRgIixQ88917"
                   },
                   "function": {
                     "name": "read_file",
@@ -1364,15 +1696,22 @@
                       "path": "src/calendar.rs"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"path\": \"src/calendar.rs\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_02_wbWhwbPKH3mjLRgIixQ88917",
+                      "type": "function"
+                    },
+                    "fingerprint": 8315944298439696057
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_03_dZhp3QIIkC2cH7zuTLQZ3197"
-                    }
+                    "provider": "call_03_MAmFC2LkHb5eawFuCkjx5866"
                   },
                   "function": {
                     "name": "read_file",
@@ -1380,10 +1719,68 @@
                       "path": "docs/DESIGN.md"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"path\": \"docs/DESIGN.md\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_03_MAmFC2LkHb5eawFuCkjx5866",
+                      "type": "function"
+                    },
+                    "fingerprint": 7218479817981713485
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "6509a3ab-73b4-475d-8072-73e2f86c7b63"
+              },
+              "stop": "tool_use",
+              "native": {
+                "item": {
+                  "content": "I'll start by reading the four files in parallel.",
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{\"path\": \"tests/basic.rs\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_00_qJt9qQJc7J3xvhLUY4ZR9005",
+                      "type": "function"
+                    },
+                    {
+                      "function": {
+                        "arguments": "{\"path\": \"src/lib.rs\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_01_CndMqHylQCmeTVkr8cvc8109",
+                      "type": "function"
+                    },
+                    {
+                      "function": {
+                        "arguments": "{\"path\": \"src/calendar.rs\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_02_wbWhwbPKH3mjLRgIixQ88917",
+                      "type": "function"
+                    },
+                    {
+                      "function": {
+                        "arguments": "{\"path\": \"docs/DESIGN.md\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_03_MAmFC2LkHb5eawFuCkjx5866",
+                      "type": "function"
+                    }
+                  ]
+                },
+                "fingerprint": 9099097259660700709
+              }
             },
             {
               "role": "user",
@@ -1391,9 +1788,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_00_8U8ljHyawn1xiZ4XaKW52460"
-                    }
+                    "provider": "call_00_qJt9qQJc7J3xvhLUY4ZR9005"
                   },
                   "name": "read_file",
                   "content": [
@@ -1406,9 +1801,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_01_ibxkRf4IZuCjVSUTye5w4600"
-                    }
+                    "provider": "call_01_CndMqHylQCmeTVkr8cvc8109"
                   },
                   "name": "read_file",
                   "content": [
@@ -1421,9 +1814,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_02_PGmRbCTF60uggO8HlXef9707"
-                    }
+                    "provider": "call_02_wbWhwbPKH3mjLRgIixQ88917"
                   },
                   "name": "read_file",
                   "content": [
@@ -1436,9 +1827,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_03_dZhp3QIIkC2cH7zuTLQZ3197"
-                    }
+                    "provider": "call_03_MAmFC2LkHb5eawFuCkjx5866"
                   },
                   "name": "read_file",
                   "content": [
@@ -1452,23 +1841,54 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_00_RFHcJrHGiJ4ChSZZgRdM5791"
-                    }
+                    "provider": "call_00_oRVzcpYRheVxtjUvBCXU9154"
                   },
                   "function": {
                     "name": "run_tests",
                     "arguments": {}
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "run_tests"
+                      },
+                      "id": "call_00_oRVzcpYRheVxtjUvBCXU9154",
+                      "type": "function"
+                    },
+                    "fingerprint": 778079932883458175
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "4830a6d3-49be-4309-b37d-7b603ecb0c99"
+              },
+              "stop": "tool_use",
+              "native": {
+                "item": {
+                  "content": "",
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "run_tests"
+                      },
+                      "id": "call_00_oRVzcpYRheVxtjUvBCXU9154",
+                      "type": "function"
+                    }
+                  ]
+                },
+                "fingerprint": 8239694176259427817
+              }
             },
             {
               "role": "user",
@@ -1476,9 +1896,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_00_RFHcJrHGiJ4ChSZZgRdM5791"
-                    }
+                    "provider": "call_00_oRVzcpYRheVxtjUvBCXU9154"
                   },
                   "name": "run_tests",
                   "content": [
@@ -1492,18 +1910,21 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
-                  "text": "The failing assertion points at `days_in_year` in src/lib.rs."
+                  "text": "The failing assertion points at `days_in_year` in src/lib.rs.",
+                  "native": {
+                    "item": {
+                      "content": "The failing assertion points at `days_in_year` in src/lib.rs."
+                    },
+                    "fingerprint": 17004573609289117985
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_00_KLZdgIm3j8X5tWM3HDu70397"
-                    }
+                    "provider": "call_00_0DGGarOhFRgY4bzwMgU89462"
                   },
                   "function": {
                     "name": "write_file",
@@ -1512,10 +1933,44 @@
                       "content": "pub mod calendar;\n\n/// The number of days in a common (non-leap) year.\npub fn days_in_year() -> u32 {\n    365\n}\n"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"path\": \"src/lib.rs\", \"content\": \"pub mod calendar;\\n\\n/// The number of days in a common (non-leap) year.\\npub fn days_in_year() -> u32 {\\n    365\\n}\\n\"}",
+                        "name": "write_file"
+                      },
+                      "id": "call_00_0DGGarOhFRgY4bzwMgU89462",
+                      "type": "function"
+                    },
+                    "fingerprint": 7289083428762458814
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "654ea0d7-8879-4591-b653-dc5ba191bc86"
+              },
+              "stop": "tool_use",
+              "native": {
+                "item": {
+                  "content": "The failing assertion points at `days_in_year` in src/lib.rs.",
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{\"path\": \"src/lib.rs\", \"content\": \"pub mod calendar;\\n\\n/// The number of days in a common (non-leap) year.\\npub fn days_in_year() -> u32 {\\n    365\\n}\\n\"}",
+                        "name": "write_file"
+                      },
+                      "id": "call_00_0DGGarOhFRgY4bzwMgU89462",
+                      "type": "function"
+                    }
+                  ]
+                },
+                "fingerprint": 17121961348121850768
+              }
             },
             {
               "role": "user",
@@ -1523,9 +1978,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_00_KLZdgIm3j8X5tWM3HDu70397"
-                    }
+                    "provider": "call_00_0DGGarOhFRgY4bzwMgU89462"
                   },
                   "name": "write_file",
                   "content": [
@@ -1617,16 +2070,23 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_00_h0zKTCfw0MLrcz9fmvLg7021"
-                }
+                "provider": "call_00_mrWq9myd6UQ2Aa6g17GQ6447"
               },
               "function": {
                 "name": "run_tests",
                 "arguments": {}
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{}",
+                    "name": "run_tests"
+                  },
+                  "id": "call_00_mrWq9myd6UQ2Aa6g17GQ6447",
+                  "type": "function"
+                },
+                "fingerprint": 18356410132321457765
+              }
             }
           ],
           "usage": {
@@ -1635,11 +2095,31 @@
             "total_tokens": 1378,
             "cached_input_tokens": 1152
           },
-          "message_id": null,
-          "response_id": "d239b79b-adba-457e-82a9-eecc03288840",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "deepseek",
+            "model": "deepseek-flash",
+            "response_model": "deepseek-flash",
+            "response_id": "db271fec-0253-499b-9e12-004e8ad05e9f"
+          },
+          "native": {
+            "item": {
+              "content": "",
+              "role": "assistant",
+              "tool_calls": [
+                {
+                  "function": {
+                    "arguments": "{}",
+                    "name": "run_tests"
+                  },
+                  "id": "call_00_mrWq9myd6UQ2Aa6g17GQ6447",
+                  "type": "function"
+                }
+              ]
+            },
+            "fingerprint": 1684094568669590543
+          },
           "finish_reason": "tool_calls",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
           "raw": {
             "choices": [
               {
@@ -1655,7 +2135,7 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_00_h0zKTCfw0MLrcz9fmvLg7021",
+                      "id": "call_00_mrWq9myd6UQ2Aa6g17GQ6447",
                       "index": 0,
                       "type": "function"
                     }
@@ -1664,7 +2144,7 @@
               }
             ],
             "created": 0,
-            "id": "d239b79b-adba-457e-82a9-eecc03288840",
+            "id": "db271fec-0253-499b-9e12-004e8ad05e9f",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
@@ -1732,18 +2212,21 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
-                  "text": "I'll start by reading the four files in parallel."
+                  "text": "I'll start by reading the four files in parallel.",
+                  "native": {
+                    "item": {
+                      "content": "I'll start by reading the four files in parallel."
+                    },
+                    "fingerprint": 1038010106985901212
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_00_8U8ljHyawn1xiZ4XaKW52460"
-                    }
+                    "provider": "call_00_qJt9qQJc7J3xvhLUY4ZR9005"
                   },
                   "function": {
                     "name": "read_file",
@@ -1751,15 +2234,22 @@
                       "path": "tests/basic.rs"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"path\": \"tests/basic.rs\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_00_qJt9qQJc7J3xvhLUY4ZR9005",
+                      "type": "function"
+                    },
+                    "fingerprint": 6860615297968424660
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_01_ibxkRf4IZuCjVSUTye5w4600"
-                    }
+                    "provider": "call_01_CndMqHylQCmeTVkr8cvc8109"
                   },
                   "function": {
                     "name": "read_file",
@@ -1767,15 +2257,22 @@
                       "path": "src/lib.rs"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"path\": \"src/lib.rs\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_01_CndMqHylQCmeTVkr8cvc8109",
+                      "type": "function"
+                    },
+                    "fingerprint": 11487160635864784965
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_02_PGmRbCTF60uggO8HlXef9707"
-                    }
+                    "provider": "call_02_wbWhwbPKH3mjLRgIixQ88917"
                   },
                   "function": {
                     "name": "read_file",
@@ -1783,15 +2280,22 @@
                       "path": "src/calendar.rs"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"path\": \"src/calendar.rs\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_02_wbWhwbPKH3mjLRgIixQ88917",
+                      "type": "function"
+                    },
+                    "fingerprint": 8315944298439696057
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_03_dZhp3QIIkC2cH7zuTLQZ3197"
-                    }
+                    "provider": "call_03_MAmFC2LkHb5eawFuCkjx5866"
                   },
                   "function": {
                     "name": "read_file",
@@ -1799,10 +2303,68 @@
                       "path": "docs/DESIGN.md"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"path\": \"docs/DESIGN.md\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_03_MAmFC2LkHb5eawFuCkjx5866",
+                      "type": "function"
+                    },
+                    "fingerprint": 7218479817981713485
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "6509a3ab-73b4-475d-8072-73e2f86c7b63"
+              },
+              "stop": "tool_use",
+              "native": {
+                "item": {
+                  "content": "I'll start by reading the four files in parallel.",
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{\"path\": \"tests/basic.rs\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_00_qJt9qQJc7J3xvhLUY4ZR9005",
+                      "type": "function"
+                    },
+                    {
+                      "function": {
+                        "arguments": "{\"path\": \"src/lib.rs\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_01_CndMqHylQCmeTVkr8cvc8109",
+                      "type": "function"
+                    },
+                    {
+                      "function": {
+                        "arguments": "{\"path\": \"src/calendar.rs\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_02_wbWhwbPKH3mjLRgIixQ88917",
+                      "type": "function"
+                    },
+                    {
+                      "function": {
+                        "arguments": "{\"path\": \"docs/DESIGN.md\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_03_MAmFC2LkHb5eawFuCkjx5866",
+                      "type": "function"
+                    }
+                  ]
+                },
+                "fingerprint": 9099097259660700709
+              }
             },
             {
               "role": "user",
@@ -1810,9 +2372,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_00_8U8ljHyawn1xiZ4XaKW52460"
-                    }
+                    "provider": "call_00_qJt9qQJc7J3xvhLUY4ZR9005"
                   },
                   "name": "read_file",
                   "content": [
@@ -1825,9 +2385,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_01_ibxkRf4IZuCjVSUTye5w4600"
-                    }
+                    "provider": "call_01_CndMqHylQCmeTVkr8cvc8109"
                   },
                   "name": "read_file",
                   "content": [
@@ -1840,9 +2398,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_02_PGmRbCTF60uggO8HlXef9707"
-                    }
+                    "provider": "call_02_wbWhwbPKH3mjLRgIixQ88917"
                   },
                   "name": "read_file",
                   "content": [
@@ -1855,9 +2411,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_03_dZhp3QIIkC2cH7zuTLQZ3197"
-                    }
+                    "provider": "call_03_MAmFC2LkHb5eawFuCkjx5866"
                   },
                   "name": "read_file",
                   "content": [
@@ -1871,23 +2425,54 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_00_RFHcJrHGiJ4ChSZZgRdM5791"
-                    }
+                    "provider": "call_00_oRVzcpYRheVxtjUvBCXU9154"
                   },
                   "function": {
                     "name": "run_tests",
                     "arguments": {}
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "run_tests"
+                      },
+                      "id": "call_00_oRVzcpYRheVxtjUvBCXU9154",
+                      "type": "function"
+                    },
+                    "fingerprint": 778079932883458175
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "4830a6d3-49be-4309-b37d-7b603ecb0c99"
+              },
+              "stop": "tool_use",
+              "native": {
+                "item": {
+                  "content": "",
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "run_tests"
+                      },
+                      "id": "call_00_oRVzcpYRheVxtjUvBCXU9154",
+                      "type": "function"
+                    }
+                  ]
+                },
+                "fingerprint": 8239694176259427817
+              }
             },
             {
               "role": "user",
@@ -1895,9 +2480,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_00_RFHcJrHGiJ4ChSZZgRdM5791"
-                    }
+                    "provider": "call_00_oRVzcpYRheVxtjUvBCXU9154"
                   },
                   "name": "run_tests",
                   "content": [
@@ -1911,18 +2494,21 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
-                  "text": "The failing assertion points at `days_in_year` in src/lib.rs."
+                  "text": "The failing assertion points at `days_in_year` in src/lib.rs.",
+                  "native": {
+                    "item": {
+                      "content": "The failing assertion points at `days_in_year` in src/lib.rs."
+                    },
+                    "fingerprint": 17004573609289117985
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_00_KLZdgIm3j8X5tWM3HDu70397"
-                    }
+                    "provider": "call_00_0DGGarOhFRgY4bzwMgU89462"
                   },
                   "function": {
                     "name": "write_file",
@@ -1931,10 +2517,44 @@
                       "content": "pub mod calendar;\n\n/// The number of days in a common (non-leap) year.\npub fn days_in_year() -> u32 {\n    365\n}\n"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"path\": \"src/lib.rs\", \"content\": \"pub mod calendar;\\n\\n/// The number of days in a common (non-leap) year.\\npub fn days_in_year() -> u32 {\\n    365\\n}\\n\"}",
+                        "name": "write_file"
+                      },
+                      "id": "call_00_0DGGarOhFRgY4bzwMgU89462",
+                      "type": "function"
+                    },
+                    "fingerprint": 7289083428762458814
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "654ea0d7-8879-4591-b653-dc5ba191bc86"
+              },
+              "stop": "tool_use",
+              "native": {
+                "item": {
+                  "content": "The failing assertion points at `days_in_year` in src/lib.rs.",
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{\"path\": \"src/lib.rs\", \"content\": \"pub mod calendar;\\n\\n/// The number of days in a common (non-leap) year.\\npub fn days_in_year() -> u32 {\\n    365\\n}\\n\"}",
+                        "name": "write_file"
+                      },
+                      "id": "call_00_0DGGarOhFRgY4bzwMgU89462",
+                      "type": "function"
+                    }
+                  ]
+                },
+                "fingerprint": 17121961348121850768
+              }
             },
             {
               "role": "user",
@@ -1942,9 +2562,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_00_KLZdgIm3j8X5tWM3HDu70397"
-                    }
+                    "provider": "call_00_0DGGarOhFRgY4bzwMgU89462"
                   },
                   "name": "write_file",
                   "content": [
@@ -1958,23 +2576,54 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_00_h0zKTCfw0MLrcz9fmvLg7021"
-                    }
+                    "provider": "call_00_mrWq9myd6UQ2Aa6g17GQ6447"
                   },
                   "function": {
                     "name": "run_tests",
                     "arguments": {}
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "run_tests"
+                      },
+                      "id": "call_00_mrWq9myd6UQ2Aa6g17GQ6447",
+                      "type": "function"
+                    },
+                    "fingerprint": 18356410132321457765
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "db271fec-0253-499b-9e12-004e8ad05e9f"
+              },
+              "stop": "tool_use",
+              "native": {
+                "item": {
+                  "content": "",
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "run_tests"
+                      },
+                      "id": "call_00_mrWq9myd6UQ2Aa6g17GQ6447",
+                      "type": "function"
+                    }
+                  ]
+                },
+                "fingerprint": 1684094568669590543
+              }
             },
             {
               "role": "user",
@@ -1982,9 +2631,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_00_h0zKTCfw0MLrcz9fmvLg7021"
-                    }
+                    "provider": "call_00_mrWq9myd6UQ2Aa6g17GQ6447"
                   },
                   "name": "run_tests",
                   "content": [
@@ -2074,11 +2721,19 @@
           "outcome": "completion",
           "choice": [
             {
+              "type": "text",
+              "text": "The failing assertion now points at `days_in_week` in src/calendar.rs.",
+              "native": {
+                "item": {
+                  "content": "The failing assertion now points at `days_in_week` in src/calendar.rs."
+                },
+                "fingerprint": 7122418070739337171
+              }
+            },
+            {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_00_4DHb9ZW5btDHjlwtwSzj8374"
-                }
+                "provider": "call_00_OgfzROE3Pfl4IxR7hP5o6964"
               },
               "function": {
                 "name": "write_file",
@@ -2087,21 +2742,50 @@
                   "content": "/// The number of days in a week.\npub fn days_in_week() -> u32 {\n    7\n}\n"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"path\": \"src/calendar.rs\", \"content\": \"/// The number of days in a week.\\npub fn days_in_week() -> u32 {\\n    7\\n}\\n\"}",
+                    "name": "write_file"
+                  },
+                  "id": "call_00_OgfzROE3Pfl4IxR7hP5o6964",
+                  "type": "function"
+                },
+                "fingerprint": 2317941772428296107
+              }
             }
           ],
           "usage": {
             "input_tokens": 1547,
-            "output_tokens": 79,
-            "total_tokens": 1626,
-            "cached_input_tokens": 1280
+            "output_tokens": 96,
+            "total_tokens": 1643,
+            "cached_input_tokens": 1408
           },
-          "message_id": null,
-          "response_id": "1b227431-5cd8-4ad2-af3d-c6dc4c7022bd",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "deepseek",
+            "model": "deepseek-flash",
+            "response_model": "deepseek-flash",
+            "response_id": "d1515511-8916-4bb8-acf2-1c6c34f69cc2"
+          },
+          "native": {
+            "item": {
+              "content": "The failing assertion now points at `days_in_week` in src/calendar.rs.",
+              "role": "assistant",
+              "tool_calls": [
+                {
+                  "function": {
+                    "arguments": "{\"path\": \"src/calendar.rs\", \"content\": \"/// The number of days in a week.\\npub fn days_in_week() -> u32 {\\n    7\\n}\\n\"}",
+                    "name": "write_file"
+                  },
+                  "id": "call_00_OgfzROE3Pfl4IxR7hP5o6964",
+                  "type": "function"
+                }
+              ]
+            },
+            "fingerprint": 6742012612787177259
+          },
           "finish_reason": "tool_calls",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
           "raw": {
             "choices": [
               {
@@ -2109,7 +2793,7 @@
                 "index": 0,
                 "logprobs": null,
                 "message": {
-                  "content": "",
+                  "content": "The failing assertion now points at `days_in_week` in src/calendar.rs.",
                   "role": "assistant",
                   "tool_calls": [
                     {
@@ -2117,7 +2801,7 @@
                         "arguments": "{\"path\": \"src/calendar.rs\", \"content\": \"/// The number of days in a week.\\npub fn days_in_week() -> u32 {\\n    7\\n}\\n\"}",
                         "name": "write_file"
                       },
-                      "id": "call_00_4DHb9ZW5btDHjlwtwSzj8374",
+                      "id": "call_00_OgfzROE3Pfl4IxR7hP5o6964",
                       "index": 0,
                       "type": "function"
                     }
@@ -2126,19 +2810,19 @@
               }
             ],
             "created": 0,
-            "id": "1b227431-5cd8-4ad2-af3d-c6dc4c7022bd",
+            "id": "d1515511-8916-4bb8-acf2-1c6c34f69cc2",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
             "usage": {
-              "completion_tokens": 79,
-              "prompt_cache_hit_tokens": 1280,
-              "prompt_cache_miss_tokens": 267,
+              "completion_tokens": 96,
+              "prompt_cache_hit_tokens": 1408,
+              "prompt_cache_miss_tokens": 139,
               "prompt_tokens": 1547,
               "prompt_tokens_details": {
-                "cached_tokens": 1280
+                "cached_tokens": 1408
               },
-              "total_tokens": 1626
+              "total_tokens": 1643
             }
           }
         }
@@ -2194,18 +2878,21 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
-                  "text": "I'll start by reading the four files in parallel."
+                  "text": "I'll start by reading the four files in parallel.",
+                  "native": {
+                    "item": {
+                      "content": "I'll start by reading the four files in parallel."
+                    },
+                    "fingerprint": 1038010106985901212
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_00_8U8ljHyawn1xiZ4XaKW52460"
-                    }
+                    "provider": "call_00_qJt9qQJc7J3xvhLUY4ZR9005"
                   },
                   "function": {
                     "name": "read_file",
@@ -2213,15 +2900,22 @@
                       "path": "tests/basic.rs"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"path\": \"tests/basic.rs\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_00_qJt9qQJc7J3xvhLUY4ZR9005",
+                      "type": "function"
+                    },
+                    "fingerprint": 6860615297968424660
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_01_ibxkRf4IZuCjVSUTye5w4600"
-                    }
+                    "provider": "call_01_CndMqHylQCmeTVkr8cvc8109"
                   },
                   "function": {
                     "name": "read_file",
@@ -2229,15 +2923,22 @@
                       "path": "src/lib.rs"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"path\": \"src/lib.rs\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_01_CndMqHylQCmeTVkr8cvc8109",
+                      "type": "function"
+                    },
+                    "fingerprint": 11487160635864784965
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_02_PGmRbCTF60uggO8HlXef9707"
-                    }
+                    "provider": "call_02_wbWhwbPKH3mjLRgIixQ88917"
                   },
                   "function": {
                     "name": "read_file",
@@ -2245,15 +2946,22 @@
                       "path": "src/calendar.rs"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"path\": \"src/calendar.rs\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_02_wbWhwbPKH3mjLRgIixQ88917",
+                      "type": "function"
+                    },
+                    "fingerprint": 8315944298439696057
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_03_dZhp3QIIkC2cH7zuTLQZ3197"
-                    }
+                    "provider": "call_03_MAmFC2LkHb5eawFuCkjx5866"
                   },
                   "function": {
                     "name": "read_file",
@@ -2261,10 +2969,68 @@
                       "path": "docs/DESIGN.md"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"path\": \"docs/DESIGN.md\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_03_MAmFC2LkHb5eawFuCkjx5866",
+                      "type": "function"
+                    },
+                    "fingerprint": 7218479817981713485
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "6509a3ab-73b4-475d-8072-73e2f86c7b63"
+              },
+              "stop": "tool_use",
+              "native": {
+                "item": {
+                  "content": "I'll start by reading the four files in parallel.",
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{\"path\": \"tests/basic.rs\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_00_qJt9qQJc7J3xvhLUY4ZR9005",
+                      "type": "function"
+                    },
+                    {
+                      "function": {
+                        "arguments": "{\"path\": \"src/lib.rs\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_01_CndMqHylQCmeTVkr8cvc8109",
+                      "type": "function"
+                    },
+                    {
+                      "function": {
+                        "arguments": "{\"path\": \"src/calendar.rs\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_02_wbWhwbPKH3mjLRgIixQ88917",
+                      "type": "function"
+                    },
+                    {
+                      "function": {
+                        "arguments": "{\"path\": \"docs/DESIGN.md\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_03_MAmFC2LkHb5eawFuCkjx5866",
+                      "type": "function"
+                    }
+                  ]
+                },
+                "fingerprint": 9099097259660700709
+              }
             },
             {
               "role": "user",
@@ -2272,9 +3038,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_00_8U8ljHyawn1xiZ4XaKW52460"
-                    }
+                    "provider": "call_00_qJt9qQJc7J3xvhLUY4ZR9005"
                   },
                   "name": "read_file",
                   "content": [
@@ -2287,9 +3051,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_01_ibxkRf4IZuCjVSUTye5w4600"
-                    }
+                    "provider": "call_01_CndMqHylQCmeTVkr8cvc8109"
                   },
                   "name": "read_file",
                   "content": [
@@ -2302,9 +3064,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_02_PGmRbCTF60uggO8HlXef9707"
-                    }
+                    "provider": "call_02_wbWhwbPKH3mjLRgIixQ88917"
                   },
                   "name": "read_file",
                   "content": [
@@ -2317,9 +3077,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_03_dZhp3QIIkC2cH7zuTLQZ3197"
-                    }
+                    "provider": "call_03_MAmFC2LkHb5eawFuCkjx5866"
                   },
                   "name": "read_file",
                   "content": [
@@ -2333,23 +3091,54 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_00_RFHcJrHGiJ4ChSZZgRdM5791"
-                    }
+                    "provider": "call_00_oRVzcpYRheVxtjUvBCXU9154"
                   },
                   "function": {
                     "name": "run_tests",
                     "arguments": {}
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "run_tests"
+                      },
+                      "id": "call_00_oRVzcpYRheVxtjUvBCXU9154",
+                      "type": "function"
+                    },
+                    "fingerprint": 778079932883458175
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "4830a6d3-49be-4309-b37d-7b603ecb0c99"
+              },
+              "stop": "tool_use",
+              "native": {
+                "item": {
+                  "content": "",
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "run_tests"
+                      },
+                      "id": "call_00_oRVzcpYRheVxtjUvBCXU9154",
+                      "type": "function"
+                    }
+                  ]
+                },
+                "fingerprint": 8239694176259427817
+              }
             },
             {
               "role": "user",
@@ -2357,9 +3146,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_00_RFHcJrHGiJ4ChSZZgRdM5791"
-                    }
+                    "provider": "call_00_oRVzcpYRheVxtjUvBCXU9154"
                   },
                   "name": "run_tests",
                   "content": [
@@ -2373,18 +3160,21 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
-                  "text": "The failing assertion points at `days_in_year` in src/lib.rs."
+                  "text": "The failing assertion points at `days_in_year` in src/lib.rs.",
+                  "native": {
+                    "item": {
+                      "content": "The failing assertion points at `days_in_year` in src/lib.rs."
+                    },
+                    "fingerprint": 17004573609289117985
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_00_KLZdgIm3j8X5tWM3HDu70397"
-                    }
+                    "provider": "call_00_0DGGarOhFRgY4bzwMgU89462"
                   },
                   "function": {
                     "name": "write_file",
@@ -2393,10 +3183,44 @@
                       "content": "pub mod calendar;\n\n/// The number of days in a common (non-leap) year.\npub fn days_in_year() -> u32 {\n    365\n}\n"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"path\": \"src/lib.rs\", \"content\": \"pub mod calendar;\\n\\n/// The number of days in a common (non-leap) year.\\npub fn days_in_year() -> u32 {\\n    365\\n}\\n\"}",
+                        "name": "write_file"
+                      },
+                      "id": "call_00_0DGGarOhFRgY4bzwMgU89462",
+                      "type": "function"
+                    },
+                    "fingerprint": 7289083428762458814
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "654ea0d7-8879-4591-b653-dc5ba191bc86"
+              },
+              "stop": "tool_use",
+              "native": {
+                "item": {
+                  "content": "The failing assertion points at `days_in_year` in src/lib.rs.",
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{\"path\": \"src/lib.rs\", \"content\": \"pub mod calendar;\\n\\n/// The number of days in a common (non-leap) year.\\npub fn days_in_year() -> u32 {\\n    365\\n}\\n\"}",
+                        "name": "write_file"
+                      },
+                      "id": "call_00_0DGGarOhFRgY4bzwMgU89462",
+                      "type": "function"
+                    }
+                  ]
+                },
+                "fingerprint": 17121961348121850768
+              }
             },
             {
               "role": "user",
@@ -2404,9 +3228,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_00_KLZdgIm3j8X5tWM3HDu70397"
-                    }
+                    "provider": "call_00_0DGGarOhFRgY4bzwMgU89462"
                   },
                   "name": "write_file",
                   "content": [
@@ -2420,23 +3242,54 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_00_h0zKTCfw0MLrcz9fmvLg7021"
-                    }
+                    "provider": "call_00_mrWq9myd6UQ2Aa6g17GQ6447"
                   },
                   "function": {
                     "name": "run_tests",
                     "arguments": {}
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "run_tests"
+                      },
+                      "id": "call_00_mrWq9myd6UQ2Aa6g17GQ6447",
+                      "type": "function"
+                    },
+                    "fingerprint": 18356410132321457765
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "db271fec-0253-499b-9e12-004e8ad05e9f"
+              },
+              "stop": "tool_use",
+              "native": {
+                "item": {
+                  "content": "",
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "run_tests"
+                      },
+                      "id": "call_00_mrWq9myd6UQ2Aa6g17GQ6447",
+                      "type": "function"
+                    }
+                  ]
+                },
+                "fingerprint": 1684094568669590543
+              }
             },
             {
               "role": "user",
@@ -2444,9 +3297,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_00_h0zKTCfw0MLrcz9fmvLg7021"
-                    }
+                    "provider": "call_00_mrWq9myd6UQ2Aa6g17GQ6447"
                   },
                   "name": "run_tests",
                   "content": [
@@ -2460,14 +3311,21 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
+                {
+                  "type": "text",
+                  "text": "The failing assertion now points at `days_in_week` in src/calendar.rs.",
+                  "native": {
+                    "item": {
+                      "content": "The failing assertion now points at `days_in_week` in src/calendar.rs."
+                    },
+                    "fingerprint": 7122418070739337171
+                  }
+                },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_00_4DHb9ZW5btDHjlwtwSzj8374"
-                    }
+                    "provider": "call_00_OgfzROE3Pfl4IxR7hP5o6964"
                   },
                   "function": {
                     "name": "write_file",
@@ -2476,10 +3334,44 @@
                       "content": "/// The number of days in a week.\npub fn days_in_week() -> u32 {\n    7\n}\n"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"path\": \"src/calendar.rs\", \"content\": \"/// The number of days in a week.\\npub fn days_in_week() -> u32 {\\n    7\\n}\\n\"}",
+                        "name": "write_file"
+                      },
+                      "id": "call_00_OgfzROE3Pfl4IxR7hP5o6964",
+                      "type": "function"
+                    },
+                    "fingerprint": 2317941772428296107
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "d1515511-8916-4bb8-acf2-1c6c34f69cc2"
+              },
+              "stop": "tool_use",
+              "native": {
+                "item": {
+                  "content": "The failing assertion now points at `days_in_week` in src/calendar.rs.",
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{\"path\": \"src/calendar.rs\", \"content\": \"/// The number of days in a week.\\npub fn days_in_week() -> u32 {\\n    7\\n}\\n\"}",
+                        "name": "write_file"
+                      },
+                      "id": "call_00_OgfzROE3Pfl4IxR7hP5o6964",
+                      "type": "function"
+                    }
+                  ]
+                },
+                "fingerprint": 6742012612787177259
+              }
             },
             {
               "role": "user",
@@ -2487,9 +3379,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_00_4DHb9ZW5btDHjlwtwSzj8374"
-                    }
+                    "provider": "call_00_OgfzROE3Pfl4IxR7hP5o6964"
                   },
                   "name": "write_file",
                   "content": [
@@ -2581,29 +3471,56 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_00_IITNdbn0uDkNiSxumVSH8703"
-                }
+                "provider": "call_00_kmoGsYWUtsxXfj22olKO7512"
               },
               "function": {
                 "name": "run_tests",
                 "arguments": {}
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{}",
+                    "name": "run_tests"
+                  },
+                  "id": "call_00_kmoGsYWUtsxXfj22olKO7512",
+                  "type": "function"
+                },
+                "fingerprint": 16153589900329325204
+              }
             }
           ],
           "usage": {
-            "input_tokens": 1648,
+            "input_tokens": 1665,
             "output_tokens": 22,
-            "total_tokens": 1670,
+            "total_tokens": 1687,
             "cached_input_tokens": 1408
           },
-          "message_id": null,
-          "response_id": "add642de-6900-4953-9d5c-277e015602f6",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "deepseek",
+            "model": "deepseek-flash",
+            "response_model": "deepseek-flash",
+            "response_id": "c8ffc1cb-bd5d-42c5-98ce-babf52aa675b"
+          },
+          "native": {
+            "item": {
+              "content": "",
+              "role": "assistant",
+              "tool_calls": [
+                {
+                  "function": {
+                    "arguments": "{}",
+                    "name": "run_tests"
+                  },
+                  "id": "call_00_kmoGsYWUtsxXfj22olKO7512",
+                  "type": "function"
+                }
+              ]
+            },
+            "fingerprint": 7373571457757454764
+          },
           "finish_reason": "tool_calls",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
           "raw": {
             "choices": [
               {
@@ -2619,7 +3536,7 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_00_IITNdbn0uDkNiSxumVSH8703",
+                      "id": "call_00_kmoGsYWUtsxXfj22olKO7512",
                       "index": 0,
                       "type": "function"
                     }
@@ -2628,19 +3545,19 @@
               }
             ],
             "created": 0,
-            "id": "add642de-6900-4953-9d5c-277e015602f6",
+            "id": "c8ffc1cb-bd5d-42c5-98ce-babf52aa675b",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
             "usage": {
               "completion_tokens": 22,
               "prompt_cache_hit_tokens": 1408,
-              "prompt_cache_miss_tokens": 240,
-              "prompt_tokens": 1648,
+              "prompt_cache_miss_tokens": 257,
+              "prompt_tokens": 1665,
               "prompt_tokens_details": {
                 "cached_tokens": 1408
               },
-              "total_tokens": 1670
+              "total_tokens": 1687
             }
           }
         }
@@ -2696,18 +3613,21 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
-                  "text": "I'll start by reading the four files in parallel."
+                  "text": "I'll start by reading the four files in parallel.",
+                  "native": {
+                    "item": {
+                      "content": "I'll start by reading the four files in parallel."
+                    },
+                    "fingerprint": 1038010106985901212
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_00_8U8ljHyawn1xiZ4XaKW52460"
-                    }
+                    "provider": "call_00_qJt9qQJc7J3xvhLUY4ZR9005"
                   },
                   "function": {
                     "name": "read_file",
@@ -2715,15 +3635,22 @@
                       "path": "tests/basic.rs"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"path\": \"tests/basic.rs\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_00_qJt9qQJc7J3xvhLUY4ZR9005",
+                      "type": "function"
+                    },
+                    "fingerprint": 6860615297968424660
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_01_ibxkRf4IZuCjVSUTye5w4600"
-                    }
+                    "provider": "call_01_CndMqHylQCmeTVkr8cvc8109"
                   },
                   "function": {
                     "name": "read_file",
@@ -2731,15 +3658,22 @@
                       "path": "src/lib.rs"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"path\": \"src/lib.rs\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_01_CndMqHylQCmeTVkr8cvc8109",
+                      "type": "function"
+                    },
+                    "fingerprint": 11487160635864784965
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_02_PGmRbCTF60uggO8HlXef9707"
-                    }
+                    "provider": "call_02_wbWhwbPKH3mjLRgIixQ88917"
                   },
                   "function": {
                     "name": "read_file",
@@ -2747,15 +3681,22 @@
                       "path": "src/calendar.rs"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"path\": \"src/calendar.rs\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_02_wbWhwbPKH3mjLRgIixQ88917",
+                      "type": "function"
+                    },
+                    "fingerprint": 8315944298439696057
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_03_dZhp3QIIkC2cH7zuTLQZ3197"
-                    }
+                    "provider": "call_03_MAmFC2LkHb5eawFuCkjx5866"
                   },
                   "function": {
                     "name": "read_file",
@@ -2763,10 +3704,68 @@
                       "path": "docs/DESIGN.md"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"path\": \"docs/DESIGN.md\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_03_MAmFC2LkHb5eawFuCkjx5866",
+                      "type": "function"
+                    },
+                    "fingerprint": 7218479817981713485
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "6509a3ab-73b4-475d-8072-73e2f86c7b63"
+              },
+              "stop": "tool_use",
+              "native": {
+                "item": {
+                  "content": "I'll start by reading the four files in parallel.",
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{\"path\": \"tests/basic.rs\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_00_qJt9qQJc7J3xvhLUY4ZR9005",
+                      "type": "function"
+                    },
+                    {
+                      "function": {
+                        "arguments": "{\"path\": \"src/lib.rs\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_01_CndMqHylQCmeTVkr8cvc8109",
+                      "type": "function"
+                    },
+                    {
+                      "function": {
+                        "arguments": "{\"path\": \"src/calendar.rs\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_02_wbWhwbPKH3mjLRgIixQ88917",
+                      "type": "function"
+                    },
+                    {
+                      "function": {
+                        "arguments": "{\"path\": \"docs/DESIGN.md\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_03_MAmFC2LkHb5eawFuCkjx5866",
+                      "type": "function"
+                    }
+                  ]
+                },
+                "fingerprint": 9099097259660700709
+              }
             },
             {
               "role": "user",
@@ -2774,9 +3773,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_00_8U8ljHyawn1xiZ4XaKW52460"
-                    }
+                    "provider": "call_00_qJt9qQJc7J3xvhLUY4ZR9005"
                   },
                   "name": "read_file",
                   "content": [
@@ -2789,9 +3786,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_01_ibxkRf4IZuCjVSUTye5w4600"
-                    }
+                    "provider": "call_01_CndMqHylQCmeTVkr8cvc8109"
                   },
                   "name": "read_file",
                   "content": [
@@ -2804,9 +3799,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_02_PGmRbCTF60uggO8HlXef9707"
-                    }
+                    "provider": "call_02_wbWhwbPKH3mjLRgIixQ88917"
                   },
                   "name": "read_file",
                   "content": [
@@ -2819,9 +3812,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_03_dZhp3QIIkC2cH7zuTLQZ3197"
-                    }
+                    "provider": "call_03_MAmFC2LkHb5eawFuCkjx5866"
                   },
                   "name": "read_file",
                   "content": [
@@ -2835,23 +3826,54 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_00_RFHcJrHGiJ4ChSZZgRdM5791"
-                    }
+                    "provider": "call_00_oRVzcpYRheVxtjUvBCXU9154"
                   },
                   "function": {
                     "name": "run_tests",
                     "arguments": {}
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "run_tests"
+                      },
+                      "id": "call_00_oRVzcpYRheVxtjUvBCXU9154",
+                      "type": "function"
+                    },
+                    "fingerprint": 778079932883458175
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "4830a6d3-49be-4309-b37d-7b603ecb0c99"
+              },
+              "stop": "tool_use",
+              "native": {
+                "item": {
+                  "content": "",
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "run_tests"
+                      },
+                      "id": "call_00_oRVzcpYRheVxtjUvBCXU9154",
+                      "type": "function"
+                    }
+                  ]
+                },
+                "fingerprint": 8239694176259427817
+              }
             },
             {
               "role": "user",
@@ -2859,9 +3881,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_00_RFHcJrHGiJ4ChSZZgRdM5791"
-                    }
+                    "provider": "call_00_oRVzcpYRheVxtjUvBCXU9154"
                   },
                   "name": "run_tests",
                   "content": [
@@ -2875,18 +3895,21 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
-                  "text": "The failing assertion points at `days_in_year` in src/lib.rs."
+                  "text": "The failing assertion points at `days_in_year` in src/lib.rs.",
+                  "native": {
+                    "item": {
+                      "content": "The failing assertion points at `days_in_year` in src/lib.rs."
+                    },
+                    "fingerprint": 17004573609289117985
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_00_KLZdgIm3j8X5tWM3HDu70397"
-                    }
+                    "provider": "call_00_0DGGarOhFRgY4bzwMgU89462"
                   },
                   "function": {
                     "name": "write_file",
@@ -2895,10 +3918,44 @@
                       "content": "pub mod calendar;\n\n/// The number of days in a common (non-leap) year.\npub fn days_in_year() -> u32 {\n    365\n}\n"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"path\": \"src/lib.rs\", \"content\": \"pub mod calendar;\\n\\n/// The number of days in a common (non-leap) year.\\npub fn days_in_year() -> u32 {\\n    365\\n}\\n\"}",
+                        "name": "write_file"
+                      },
+                      "id": "call_00_0DGGarOhFRgY4bzwMgU89462",
+                      "type": "function"
+                    },
+                    "fingerprint": 7289083428762458814
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "654ea0d7-8879-4591-b653-dc5ba191bc86"
+              },
+              "stop": "tool_use",
+              "native": {
+                "item": {
+                  "content": "The failing assertion points at `days_in_year` in src/lib.rs.",
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{\"path\": \"src/lib.rs\", \"content\": \"pub mod calendar;\\n\\n/// The number of days in a common (non-leap) year.\\npub fn days_in_year() -> u32 {\\n    365\\n}\\n\"}",
+                        "name": "write_file"
+                      },
+                      "id": "call_00_0DGGarOhFRgY4bzwMgU89462",
+                      "type": "function"
+                    }
+                  ]
+                },
+                "fingerprint": 17121961348121850768
+              }
             },
             {
               "role": "user",
@@ -2906,9 +3963,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_00_KLZdgIm3j8X5tWM3HDu70397"
-                    }
+                    "provider": "call_00_0DGGarOhFRgY4bzwMgU89462"
                   },
                   "name": "write_file",
                   "content": [
@@ -2922,23 +3977,54 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_00_h0zKTCfw0MLrcz9fmvLg7021"
-                    }
+                    "provider": "call_00_mrWq9myd6UQ2Aa6g17GQ6447"
                   },
                   "function": {
                     "name": "run_tests",
                     "arguments": {}
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "run_tests"
+                      },
+                      "id": "call_00_mrWq9myd6UQ2Aa6g17GQ6447",
+                      "type": "function"
+                    },
+                    "fingerprint": 18356410132321457765
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "db271fec-0253-499b-9e12-004e8ad05e9f"
+              },
+              "stop": "tool_use",
+              "native": {
+                "item": {
+                  "content": "",
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "run_tests"
+                      },
+                      "id": "call_00_mrWq9myd6UQ2Aa6g17GQ6447",
+                      "type": "function"
+                    }
+                  ]
+                },
+                "fingerprint": 1684094568669590543
+              }
             },
             {
               "role": "user",
@@ -2946,9 +4032,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_00_h0zKTCfw0MLrcz9fmvLg7021"
-                    }
+                    "provider": "call_00_mrWq9myd6UQ2Aa6g17GQ6447"
                   },
                   "name": "run_tests",
                   "content": [
@@ -2962,14 +4046,21 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
+                {
+                  "type": "text",
+                  "text": "The failing assertion now points at `days_in_week` in src/calendar.rs.",
+                  "native": {
+                    "item": {
+                      "content": "The failing assertion now points at `days_in_week` in src/calendar.rs."
+                    },
+                    "fingerprint": 7122418070739337171
+                  }
+                },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_00_4DHb9ZW5btDHjlwtwSzj8374"
-                    }
+                    "provider": "call_00_OgfzROE3Pfl4IxR7hP5o6964"
                   },
                   "function": {
                     "name": "write_file",
@@ -2978,10 +4069,44 @@
                       "content": "/// The number of days in a week.\npub fn days_in_week() -> u32 {\n    7\n}\n"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"path\": \"src/calendar.rs\", \"content\": \"/// The number of days in a week.\\npub fn days_in_week() -> u32 {\\n    7\\n}\\n\"}",
+                        "name": "write_file"
+                      },
+                      "id": "call_00_OgfzROE3Pfl4IxR7hP5o6964",
+                      "type": "function"
+                    },
+                    "fingerprint": 2317941772428296107
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "d1515511-8916-4bb8-acf2-1c6c34f69cc2"
+              },
+              "stop": "tool_use",
+              "native": {
+                "item": {
+                  "content": "The failing assertion now points at `days_in_week` in src/calendar.rs.",
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{\"path\": \"src/calendar.rs\", \"content\": \"/// The number of days in a week.\\npub fn days_in_week() -> u32 {\\n    7\\n}\\n\"}",
+                        "name": "write_file"
+                      },
+                      "id": "call_00_OgfzROE3Pfl4IxR7hP5o6964",
+                      "type": "function"
+                    }
+                  ]
+                },
+                "fingerprint": 6742012612787177259
+              }
             },
             {
               "role": "user",
@@ -2989,9 +4114,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_00_4DHb9ZW5btDHjlwtwSzj8374"
-                    }
+                    "provider": "call_00_OgfzROE3Pfl4IxR7hP5o6964"
                   },
                   "name": "write_file",
                   "content": [
@@ -3005,23 +4128,54 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_00_IITNdbn0uDkNiSxumVSH8703"
-                    }
+                    "provider": "call_00_kmoGsYWUtsxXfj22olKO7512"
                   },
                   "function": {
                     "name": "run_tests",
                     "arguments": {}
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "run_tests"
+                      },
+                      "id": "call_00_kmoGsYWUtsxXfj22olKO7512",
+                      "type": "function"
+                    },
+                    "fingerprint": 16153589900329325204
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "c8ffc1cb-bd5d-42c5-98ce-babf52aa675b"
+              },
+              "stop": "tool_use",
+              "native": {
+                "item": {
+                  "content": "",
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "run_tests"
+                      },
+                      "id": "call_00_kmoGsYWUtsxXfj22olKO7512",
+                      "type": "function"
+                    }
+                  ]
+                },
+                "fingerprint": 7373571457757454764
+              }
             },
             {
               "role": "user",
@@ -3029,9 +4183,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_00_IITNdbn0uDkNiSxumVSH8703"
-                    }
+                    "provider": "call_00_kmoGsYWUtsxXfj22olKO7512"
                   },
                   "name": "run_tests",
                   "content": [
@@ -3122,20 +4274,36 @@
           "choice": [
             {
               "type": "text",
-              "text": "done"
+              "text": "done",
+              "native": {
+                "item": {
+                  "content": "done"
+                },
+                "fingerprint": 16950038988497426807
+              }
             }
           ],
           "usage": {
-            "input_tokens": 1737,
+            "input_tokens": 1754,
             "output_tokens": 1,
-            "total_tokens": 1738,
+            "total_tokens": 1755,
             "cached_input_tokens": 1536
           },
-          "message_id": null,
-          "response_id": "179a2286-91f8-4d35-945b-5d46437d6cda",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "deepseek",
+            "model": "deepseek-flash",
+            "response_model": "deepseek-flash",
+            "response_id": "44c04b29-2aff-4ab7-9b8c-833b8d781024"
+          },
+          "native": {
+            "item": {
+              "content": "done",
+              "role": "assistant"
+            },
+            "fingerprint": 18014957589545053405
+          },
           "finish_reason": "stop",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
           "raw": {
             "choices": [
               {
@@ -3149,19 +4317,19 @@
               }
             ],
             "created": 0,
-            "id": "179a2286-91f8-4d35-945b-5d46437d6cda",
+            "id": "44c04b29-2aff-4ab7-9b8c-833b8d781024",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
             "usage": {
               "completion_tokens": 1,
               "prompt_cache_hit_tokens": 1536,
-              "prompt_cache_miss_tokens": 201,
-              "prompt_tokens": 1737,
+              "prompt_cache_miss_tokens": 218,
+              "prompt_tokens": 1754,
               "prompt_tokens_details": {
                 "cached_tokens": 1536
               },
-              "total_tokens": 1738
+              "total_tokens": 1755
             }
           }
         }

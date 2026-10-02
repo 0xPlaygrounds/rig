@@ -108,7 +108,7 @@
                 "Url": "https://raw.githubusercontent.com/0xPlaygrounds/rig/b06bf77efa015ee5637b46bbdbcab07cfe57d4e0/tests/data/red_square.png"
               },
               "media_type": "png",
-              "additional_params": null,
+              "native": null,
               "detail": null
             }
           }

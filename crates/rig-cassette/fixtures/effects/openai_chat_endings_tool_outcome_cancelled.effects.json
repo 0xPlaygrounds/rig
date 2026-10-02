@@ -119,9 +119,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_gy5MLW9nh6aQMIkxVA3lhEs2"
-                }
+                "provider": "call_gy5MLW9nh6aQMIkxVA3lhEs2"
               },
               "function": {
                 "name": "add",
@@ -130,8 +128,17 @@
                   "y": 25
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"x\":17,\"y\":25}",
+                    "name": "add"
+                  },
+                  "id": "call_gy5MLW9nh6aQMIkxVA3lhEs2",
+                  "type": "function"
+                },
+                "fingerprint": 2741985111119962883
+              }
             }
           ],
           "usage": {
@@ -141,12 +148,34 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 64
           },
-          "message_id": null,
-          "response_id": "chatcmpl-ERDBTIYPxJh13ZwLryBDjQZ0mwgUH",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "openai",
+            "model": "gpt-5-mini",
+            "response_model": "gpt-5-mini-2025-08-07",
+            "response_id": "chatcmpl-ERDBTIYPxJh13ZwLryBDjQZ0mwgUH"
+          },
+          "native": {
+            "item": {
+              "annotations": [],
+              "content": null,
+              "refusal": null,
+              "role": "assistant",
+              "tool_calls": [
+                {
+                  "function": {
+                    "arguments": "{\"x\":17,\"y\":25}",
+                    "name": "add"
+                  },
+                  "id": "call_gy5MLW9nh6aQMIkxVA3lhEs2",
+                  "type": "function"
+                }
+              ]
+            },
+            "fingerprint": 12962322808754146241
+          },
           "provider_request_id": "req_d24e86144e5542858a689ff4c30b07d2",
           "finish_reason": "tool_calls",
-          "provider": "openai",
-          "model": "gpt-5-mini-2025-08-07",
           "raw": {
             "choices": [
               {

@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 22,
+        "batch": 28,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,21 +10,21 @@
         }
       },
       {
-        "batch": 27,
+        "batch": 35,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 28,
+        "batch": 36,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 44,
+        "batch": 54,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -32,7 +32,7 @@
         }
       },
       {
-        "batch": 52,
+        "batch": 57,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -40,7 +40,7 @@
         }
       },
       {
-        "batch": 52,
+        "batch": 65,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -163,10 +163,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_Zp38uddUnG24W519w6jMn4CB",
-                  "item_id": "fc_0ae556d915a54b9c006ab3969c713487d092294d701873c537"
-                }
+                "provider": "call_Zp38uddUnG24W519w6jMn4CB"
               },
               "function": {
                 "name": "add",
@@ -175,8 +172,17 @@
                   "y": 16
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "arguments": "{\"x\":9,\"y\":16}",
+                  "call_id": "call_Zp38uddUnG24W519w6jMn4CB",
+                  "id": "fc_0ae556d915a54b9c006ab3969c713487d092294d701873c537",
+                  "name": "add",
+                  "status": "completed",
+                  "type": "function_call"
+                },
+                "fingerprint": 14369788745670957948
+              }
             }
           ],
           "usage": {
@@ -187,12 +193,15 @@
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
-          "response_id": "resp_0ae556d915a54b9c006ab3969b9d1c87d09395efb8a3a6b3fc",
+          "origin": {
+            "api": "openai.responses",
+            "provider": "openai",
+            "model": "gpt-4o",
+            "response_model": "gpt-4o-2024-08-06",
+            "response_id": "resp_0ae556d915a54b9c006ab3969b9d1c87d09395efb8a3a6b3fc"
+          },
           "provider_request_id": "req_6c5028d7d7a24813ba8619ebd8b7406c",
           "finish_reason": "tool_calls",
-          "provider": "openai",
-          "model": "gpt-4o-2024-08-06",
           "raw": {
             "id": "resp_0ae556d915a54b9c006ab3969b9d1c87d09395efb8a3a6b3fc",
             "object": "response",
@@ -296,10 +305,7 @@
             "content": {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_Zp38uddUnG24W519w6jMn4CB",
-                  "item_id": "fc_0ae556d915a54b9c006ab3969c713487d092294d701873c537"
-                }
+                "provider": "call_Zp38uddUnG24W519w6jMn4CB"
               },
               "function": {
                 "name": "add",
@@ -308,8 +314,17 @@
                   "y": 16
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "arguments": "{\"x\":9,\"y\":16}",
+                  "call_id": "call_Zp38uddUnG24W519w6jMn4CB",
+                  "id": "fc_0ae556d915a54b9c006ab3969c713487d092294d701873c537",
+                  "name": "add",
+                  "status": "completed",
+                  "type": "function_call"
+                },
+                "fingerprint": 14369788745670957948
+              }
             }
           }
         }
@@ -365,15 +380,11 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_Zp38uddUnG24W519w6jMn4CB",
-                      "item_id": "fc_0ae556d915a54b9c006ab3969c713487d092294d701873c537"
-                    }
+                    "provider": "call_Zp38uddUnG24W519w6jMn4CB"
                   },
                   "function": {
                     "name": "add",
@@ -382,10 +393,27 @@
                       "y": 16
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "arguments": "{\"x\":9,\"y\":16}",
+                      "call_id": "call_Zp38uddUnG24W519w6jMn4CB",
+                      "id": "fc_0ae556d915a54b9c006ab3969c713487d092294d701873c537",
+                      "name": "add",
+                      "status": "completed",
+                      "type": "function_call"
+                    },
+                    "fingerprint": 14369788745670957948
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.responses",
+                "provider": "openai",
+                "model": "gpt-4o",
+                "response_model": "gpt-4o-2024-08-06",
+                "response_id": "resp_0ae556d915a54b9c006ab3969b9d1c87d09395efb8a3a6b3fc"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -393,10 +421,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_Zp38uddUnG24W519w6jMn4CB",
-                      "item_id": "fc_0ae556d915a54b9c006ab3969c713487d092294d701873c537"
-                    }
+                    "provider": "call_Zp38uddUnG24W519w6jMn4CB"
                   },
                   "name": "add",
                   "content": [
@@ -447,7 +472,24 @@
           "choice": [
             {
               "type": "text",
-              "text": "25"
+              "text": "25",
+              "native": {
+                "item": {
+                  "content": [
+                    {
+                      "annotations": [],
+                      "logprobs": [],
+                      "text": "25",
+                      "type": "output_text"
+                    }
+                  ],
+                  "id": "msg_0ae556d915a54b9c006ab3969d9ef487d09a105a4c94de2d8d",
+                  "role": "assistant",
+                  "status": "completed",
+                  "type": "message"
+                },
+                "fingerprint": 10961425742714017190
+              }
             }
           ],
           "usage": {
@@ -458,12 +500,15 @@
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": "msg_0ae556d915a54b9c006ab3969d9ef487d09a105a4c94de2d8d",
-          "response_id": "resp_0ae556d915a54b9c006ab3969d17b487d09082c801dc685536",
+          "origin": {
+            "api": "openai.responses",
+            "provider": "openai",
+            "model": "gpt-4o",
+            "response_model": "gpt-4o-2024-08-06",
+            "response_id": "resp_0ae556d915a54b9c006ab3969d17b487d09082c801dc685536"
+          },
           "provider_request_id": "req_4a7d63ae58114738845b9df64df92779",
           "finish_reason": "stop",
-          "provider": "openai",
-          "model": "gpt-4o-2024-08-06",
           "raw": {
             "id": "resp_0ae556d915a54b9c006ab3969d17b487d09082c801dc685536",
             "object": "response",
@@ -572,7 +617,24 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "25"
+              "text": "25",
+              "native": {
+                "item": {
+                  "content": [
+                    {
+                      "annotations": [],
+                      "logprobs": [],
+                      "text": "25",
+                      "type": "output_text"
+                    }
+                  ],
+                  "id": "msg_0ae556d915a54b9c006ab3969d9ef487d09a105a4c94de2d8d",
+                  "role": "assistant",
+                  "status": "completed",
+                  "type": "message"
+                },
+                "fingerprint": 10961425742714017190
+              }
             }
           }
         }

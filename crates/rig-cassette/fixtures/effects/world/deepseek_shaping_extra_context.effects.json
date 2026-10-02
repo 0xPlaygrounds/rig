@@ -80,7 +80,13 @@
           "choice": [
             {
               "type": "text",
-              "text": "A glarb-glarb is an ancient farming tool from planet Jiro."
+              "text": "A glarb-glarb is an ancient farming tool from planet Jiro.",
+              "native": {
+                "item": {
+                  "content": "A glarb-glarb is an ancient farming tool from planet Jiro."
+                },
+                "fingerprint": 2343949720793021308
+              }
             }
           ],
           "usage": {
@@ -89,11 +95,21 @@
             "total_tokens": 70,
             "cached_input_tokens": 0
           },
-          "message_id": null,
-          "response_id": "aa8b5ec7-4221-48cb-b25f-4402fb30c38a",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "deepseek",
+            "model": "deepseek-chat",
+            "response_model": "deepseek-flash",
+            "response_id": "aa8b5ec7-4221-48cb-b25f-4402fb30c38a"
+          },
+          "native": {
+            "item": {
+              "content": "A glarb-glarb is an ancient farming tool from planet Jiro.",
+              "role": "assistant"
+            },
+            "fingerprint": 9647852483769939468
+          },
           "finish_reason": "stop",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
           "raw": {
             "choices": [
               {

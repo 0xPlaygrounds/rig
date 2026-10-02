@@ -121,9 +121,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_8gSZ1K5CfWiupNnInaJ0FuqP"
-                }
+                "provider": "call_8gSZ1K5CfWiupNnInaJ0FuqP"
               },
               "function": {
                 "name": "submit",
@@ -134,8 +132,17 @@
                   "zip_code": "62701"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"street\":\"123 Main St\",\"city\":\"Springfield\",\"state\":\"IL\",\"zip_code\":\"62701\"}",
+                    "name": "submit"
+                  },
+                  "id": "call_8gSZ1K5CfWiupNnInaJ0FuqP",
+                  "type": "function"
+                },
+                "fingerprint": 15731142296917001696
+              }
             }
           ],
           "usage": {
@@ -146,11 +153,33 @@
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
-          "response_id": "gen-1790152493-CLDwLia4jDlCMobHlqgl",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "openrouter",
+            "model": "openai/gpt-4o-mini",
+            "response_model": "openai/gpt-4o-mini",
+            "response_id": "gen-1790152493-CLDwLia4jDlCMobHlqgl"
+          },
+          "native": {
+            "item": {
+              "content": null,
+              "reasoning": null,
+              "refusal": null,
+              "role": "assistant",
+              "tool_calls": [
+                {
+                  "function": {
+                    "arguments": "{\"street\":\"123 Main St\",\"city\":\"Springfield\",\"state\":\"IL\",\"zip_code\":\"62701\"}",
+                    "name": "submit"
+                  },
+                  "id": "call_8gSZ1K5CfWiupNnInaJ0FuqP",
+                  "type": "function"
+                }
+              ]
+            },
+            "fingerprint": 10893541263835704790
+          },
           "finish_reason": "tool_calls",
-          "provider": "openrouter",
-          "model": "openai/gpt-4o-mini",
           "raw": {
             "choices": [
               {

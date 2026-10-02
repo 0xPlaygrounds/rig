@@ -93,9 +93,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_0dcdf27c536a4959ad977e09"
-                }
+                "provider": "call_0dcdf27c536a4959ad977e09"
               },
               "function": {
                 "name": "final_result",
@@ -105,8 +103,17 @@
                   "summary": "A monthly gathering for Rust developers and enthusiasts in Seattle to discuss projects, share knowledge, and network."
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"title\": \"Seattle Rust Meetup\", \"category\": \"Technology\", \"summary\": \"A monthly gathering for Rust developers and enthusiasts in Seattle to discuss projects, share knowledge, and network.\"}",
+                    "name": "final_result"
+                  },
+                  "id": "call_0dcdf27c536a4959ad977e09",
+                  "type": "function"
+                },
+                "fingerprint": 5768689269975613351
+              }
             }
           ],
           "usage": {
@@ -116,11 +123,31 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": null,
-          "response_id": "resp_9df48e69-a297-4e8d-8db3-e63dd7c79239",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "doubleword",
+            "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+            "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
+            "response_id": "resp_9df48e69-a297-4e8d-8db3-e63dd7c79239"
+          },
+          "native": {
+            "item": {
+              "refusal": null,
+              "role": "assistant",
+              "tool_calls": [
+                {
+                  "function": {
+                    "arguments": "{\"title\": \"Seattle Rust Meetup\", \"category\": \"Technology\", \"summary\": \"A monthly gathering for Rust developers and enthusiasts in Seattle to discuss projects, share knowledge, and network.\"}",
+                    "name": "final_result"
+                  },
+                  "id": "call_0dcdf27c536a4959ad977e09",
+                  "type": "function"
+                }
+              ]
+            },
+            "fingerprint": 872632529612617287
+          },
           "finish_reason": "tool_calls",
-          "provider": "doubleword",
-          "model": "Qwen/Qwen3.5-397B-A17B-FP8",
           "raw": {
             "choices": [
               {

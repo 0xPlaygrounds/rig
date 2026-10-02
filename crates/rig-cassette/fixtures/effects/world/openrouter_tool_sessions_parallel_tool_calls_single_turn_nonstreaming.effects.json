@@ -146,30 +146,44 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_iQcZJOsBb7eb834rq0hyuJEI"
-                }
+                "provider": "call_Xc3UcNgMjYYouunedi5aKj0u"
               },
               "function": {
                 "name": "lookup_harbor_label",
                 "arguments": {}
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{}",
+                    "name": "lookup_harbor_label"
+                  },
+                  "id": "call_Xc3UcNgMjYYouunedi5aKj0u",
+                  "type": "function"
+                },
+                "fingerprint": 15265050511659671474
+              }
             },
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_B2tEwlopa4FIVqJtadPwpzQL"
-                }
+                "provider": "call_0xoXrDVVR2zRfsJ1S7OaKxw8"
               },
               "function": {
                 "name": "lookup_orchard_label",
                 "arguments": {}
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{}",
+                    "name": "lookup_orchard_label"
+                  },
+                  "id": "call_0xoXrDVVR2zRfsJ1S7OaKxw8",
+                  "type": "function"
+                },
+                "fingerprint": 11553470084743583181
+              }
             }
           ],
           "usage": {
@@ -180,11 +194,41 @@
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
-          "response_id": "gen-1790152479-zU8yd87mbrqTdcQv3r0e",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "openrouter",
+            "model": "openai/gpt-4o",
+            "response_model": "openai/gpt-4o",
+            "response_id": "gen-1790925578-MCLRwuI1LuYJUZUdASKx"
+          },
+          "native": {
+            "item": {
+              "content": null,
+              "reasoning": null,
+              "refusal": null,
+              "role": "assistant",
+              "tool_calls": [
+                {
+                  "function": {
+                    "arguments": "{}",
+                    "name": "lookup_harbor_label"
+                  },
+                  "id": "call_Xc3UcNgMjYYouunedi5aKj0u",
+                  "type": "function"
+                },
+                {
+                  "function": {
+                    "arguments": "{}",
+                    "name": "lookup_orchard_label"
+                  },
+                  "id": "call_0xoXrDVVR2zRfsJ1S7OaKxw8",
+                  "type": "function"
+                }
+              ]
+            },
+            "fingerprint": 9707299751148474542
+          },
           "finish_reason": "tool_calls",
-          "provider": "openrouter",
-          "model": "openai/gpt-4o",
           "raw": {
             "choices": [
               {
@@ -202,7 +246,7 @@
                         "arguments": "{}",
                         "name": "lookup_harbor_label"
                       },
-                      "id": "call_iQcZJOsBb7eb834rq0hyuJEI",
+                      "id": "call_Xc3UcNgMjYYouunedi5aKj0u",
                       "index": 0,
                       "type": "function"
                     },
@@ -211,7 +255,7 @@
                         "arguments": "{}",
                         "name": "lookup_orchard_label"
                       },
-                      "id": "call_B2tEwlopa4FIVqJtadPwpzQL",
+                      "id": "call_0xoXrDVVR2zRfsJ1S7OaKxw8",
                       "index": 1,
                       "type": "function"
                     }
@@ -221,12 +265,12 @@
               }
             ],
             "created": 0,
-            "id": "gen-1790152479-zU8yd87mbrqTdcQv3r0e",
+            "id": "gen-1790925578-MCLRwuI1LuYJUZUdASKx",
             "model": "openai/gpt-4o",
             "object": "chat.completion",
             "provider": "OpenAI",
-            "service_tier": null,
-            "system_fingerprint": "fp_24e955c341",
+            "service_tier": "default",
+            "system_fingerprint": "fp_3172c6e1cc",
             "usage": {
               "completion_tokens": 45,
               "completion_tokens_details": {
@@ -329,37 +373,85 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_iQcZJOsBb7eb834rq0hyuJEI"
-                    }
+                    "provider": "call_Xc3UcNgMjYYouunedi5aKj0u"
                   },
                   "function": {
                     "name": "lookup_harbor_label",
                     "arguments": {}
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "lookup_harbor_label"
+                      },
+                      "id": "call_Xc3UcNgMjYYouunedi5aKj0u",
+                      "type": "function"
+                    },
+                    "fingerprint": 15265050511659671474
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_B2tEwlopa4FIVqJtadPwpzQL"
-                    }
+                    "provider": "call_0xoXrDVVR2zRfsJ1S7OaKxw8"
                   },
                   "function": {
                     "name": "lookup_orchard_label",
                     "arguments": {}
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "lookup_orchard_label"
+                      },
+                      "id": "call_0xoXrDVVR2zRfsJ1S7OaKxw8",
+                      "type": "function"
+                    },
+                    "fingerprint": 11553470084743583181
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openrouter",
+                "model": "openai/gpt-4o",
+                "response_model": "openai/gpt-4o",
+                "response_id": "gen-1790925578-MCLRwuI1LuYJUZUdASKx"
+              },
+              "stop": "tool_use",
+              "native": {
+                "item": {
+                  "content": null,
+                  "reasoning": null,
+                  "refusal": null,
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "lookup_harbor_label"
+                      },
+                      "id": "call_Xc3UcNgMjYYouunedi5aKj0u",
+                      "type": "function"
+                    },
+                    {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "lookup_orchard_label"
+                      },
+                      "id": "call_0xoXrDVVR2zRfsJ1S7OaKxw8",
+                      "type": "function"
+                    }
+                  ]
+                },
+                "fingerprint": 9707299751148474542
+              }
             },
             {
               "role": "user",
@@ -367,9 +459,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_iQcZJOsBb7eb834rq0hyuJEI"
-                    }
+                    "provider": "call_Xc3UcNgMjYYouunedi5aKj0u"
                   },
                   "name": "lookup_harbor_label",
                   "content": [
@@ -382,9 +472,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_B2tEwlopa4FIVqJtadPwpzQL"
-                    }
+                    "provider": "call_0xoXrDVVR2zRfsJ1S7OaKxw8"
                   },
                   "name": "lookup_orchard_label",
                   "content": [
@@ -432,22 +520,41 @@
           "choice": [
             {
               "type": "text",
-              "text": "The harbor label is \"crimson-harbor\" and the orchard label is \"silver-orchard\"."
+              "text": "The alpha signal marker is \"crimson-harbor\" and the beta signal marker is \"silver-orchard\".",
+              "native": {
+                "item": {
+                  "content": "The alpha signal marker is \"crimson-harbor\" and the beta signal marker is \"silver-orchard\".",
+                  "refusal": null
+                },
+                "fingerprint": 8453353300682549933
+              }
             }
           ],
           "usage": {
             "input_tokens": 225,
-            "output_tokens": 23,
-            "total_tokens": 248,
+            "output_tokens": 25,
+            "total_tokens": 250,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
-          "response_id": "gen-1790152482-8EEbqE82yyQKoUjfF3Iv",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "openrouter",
+            "model": "openai/gpt-4o",
+            "response_model": "openai/gpt-4o",
+            "response_id": "gen-1790925578-h5dGOBen3XPoKyWUd59z"
+          },
+          "native": {
+            "item": {
+              "content": "The alpha signal marker is \"crimson-harbor\" and the beta signal marker is \"silver-orchard\".",
+              "reasoning": null,
+              "refusal": null,
+              "role": "assistant"
+            },
+            "fingerprint": 7567524005599120889
+          },
           "finish_reason": "stop",
-          "provider": "openrouter",
-          "model": "openai/gpt-4o",
           "raw": {
             "choices": [
               {
@@ -455,7 +562,7 @@
                 "index": 0,
                 "logprobs": null,
                 "message": {
-                  "content": "The harbor label is \"crimson-harbor\" and the orchard label is \"silver-orchard\".",
+                  "content": "The alpha signal marker is \"crimson-harbor\" and the beta signal marker is \"silver-orchard\".",
                   "reasoning": null,
                   "refusal": null,
                   "role": "assistant"
@@ -464,23 +571,23 @@
               }
             ],
             "created": 0,
-            "id": "gen-1790152482-8EEbqE82yyQKoUjfF3Iv",
+            "id": "gen-1790925578-h5dGOBen3XPoKyWUd59z",
             "model": "openai/gpt-4o",
             "object": "chat.completion",
             "provider": "OpenAI",
-            "service_tier": null,
-            "system_fingerprint": "fp_24e955c341",
+            "service_tier": "default",
+            "system_fingerprint": "fp_3172c6e1cc",
             "usage": {
-              "completion_tokens": 23,
+              "completion_tokens": 25,
               "completion_tokens_details": {
                 "audio_tokens": 0,
                 "image_tokens": 0,
                 "reasoning_tokens": 0
               },
-              "cost": 0.0007925,
+              "cost": 0.0008125,
               "cost_details": {
-                "upstream_inference_completions_cost": 0.00023,
-                "upstream_inference_cost": 0.0007925,
+                "upstream_inference_completions_cost": 0.00025,
+                "upstream_inference_cost": 0.0008125,
                 "upstream_inference_prompt_cost": 0.0005625
               },
               "is_byok": false,
@@ -491,7 +598,7 @@
                 "cached_tokens": 0,
                 "video_tokens": 0
               },
-              "total_tokens": 248
+              "total_tokens": 250
             }
           }
         }

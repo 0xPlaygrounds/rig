@@ -118,9 +118,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_00_sgSlx446Ly8SCdOXTvCf3693"
-                }
+                "provider": "call_00_sgSlx446Ly8SCdOXTvCf3693"
               },
               "function": {
                 "name": "add",
@@ -129,8 +127,17 @@
                   "y": 25
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"x\": 17, \"y\": 25}",
+                    "name": "add"
+                  },
+                  "id": "call_00_sgSlx446Ly8SCdOXTvCf3693",
+                  "type": "function"
+                },
+                "fingerprint": 5706987286760866914
+              }
             }
           ],
           "usage": {
@@ -139,11 +146,31 @@
             "total_tokens": 388,
             "cached_input_tokens": 128
           },
-          "message_id": null,
-          "response_id": "4d0e3452-79f8-4c85-98f2-ff8b33800bdb",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "deepseek",
+            "model": "deepseek-chat",
+            "response_model": "deepseek-flash",
+            "response_id": "4d0e3452-79f8-4c85-98f2-ff8b33800bdb"
+          },
+          "native": {
+            "item": {
+              "content": "",
+              "role": "assistant",
+              "tool_calls": [
+                {
+                  "function": {
+                    "arguments": "{\"x\": 17, \"y\": 25}",
+                    "name": "add"
+                  },
+                  "id": "call_00_sgSlx446Ly8SCdOXTvCf3693",
+                  "type": "function"
+                }
+              ]
+            },
+            "fingerprint": 2975967766809540540
+          },
           "finish_reason": "tool_calls",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
           "raw": {
             "usage": {
               "prompt_tokens": 336,
@@ -191,9 +218,7 @@
             "content": {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_00_sgSlx446Ly8SCdOXTvCf3693"
-                }
+                "provider": "call_00_sgSlx446Ly8SCdOXTvCf3693"
               },
               "function": {
                 "name": "add",
@@ -202,8 +227,17 @@
                   "y": 25
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"x\": 17, \"y\": 25}",
+                    "name": "add"
+                  },
+                  "id": "call_00_sgSlx446Ly8SCdOXTvCf3693",
+                  "type": "function"
+                },
+                "fingerprint": 5706987286760866914
+              }
             }
           }
         }

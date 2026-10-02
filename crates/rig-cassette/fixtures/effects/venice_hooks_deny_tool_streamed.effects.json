@@ -117,9 +117,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "m8kZaPsdW"
-                }
+                "provider": "8Fg1RDxOu"
               },
               "function": {
                 "name": "add",
@@ -128,8 +126,17 @@
                   "y": 25
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"x\": 17, \"y\": 25}",
+                    "name": "add"
+                  },
+                  "id": "8Fg1RDxOu",
+                  "type": "function"
+                },
+                "fingerprint": 17484702116729506487
+              }
             }
           ],
           "usage": {
@@ -137,11 +144,32 @@
             "output_tokens": 18,
             "total_tokens": 1111
           },
-          "message_id": null,
-          "response_id": "chatcmpl-Ria51My0VKBOLgdGVJpbzM4c",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "venice",
+            "model": "mistral-small-3-2-24b-instruct",
+            "response_model": "mistral-small-3-2-24b-instruct",
+            "response_id": "chatcmpl-RlwdjKCXyvC4wlaxUHUAinBO"
+          },
+          "native": {
+            "item": {
+              "content": "",
+              "reasoning_content": null,
+              "role": "assistant",
+              "tool_calls": [
+                {
+                  "function": {
+                    "arguments": "{\"x\": 17, \"y\": 25}",
+                    "name": "add"
+                  },
+                  "id": "8Fg1RDxOu",
+                  "type": "function"
+                }
+              ]
+            },
+            "fingerprint": 14417917877953157565
+          },
           "finish_reason": "tool_calls",
-          "provider": "venice",
-          "model": "mistral-small-3-2-24b-instruct",
           "raw": {
             "usage": {
               "prompt_tokens": 1093,
@@ -149,7 +177,7 @@
               "total_tokens": 1111
             },
             "finish_reason": "tool_calls",
-            "response_id": "chatcmpl-Ria51My0VKBOLgdGVJpbzM4c",
+            "response_id": "chatcmpl-RlwdjKCXyvC4wlaxUHUAinBO",
             "model": "mistral-small-3-2-24b-instruct",
             "additional_params": {
               "created": 0,
@@ -188,9 +216,7 @@
             "content": {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "m8kZaPsdW"
-                }
+                "provider": "8Fg1RDxOu"
               },
               "function": {
                 "name": "add",
@@ -199,8 +225,17 @@
                   "y": 25
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"x\": 17, \"y\": 25}",
+                    "name": "add"
+                  },
+                  "id": "8Fg1RDxOu",
+                  "type": "function"
+                },
+                "fingerprint": 17484702116729506487
+              }
             }
           }
         }
@@ -230,14 +265,11 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "m8kZaPsdW"
-                    }
+                    "provider": "8Fg1RDxOu"
                   },
                   "function": {
                     "name": "add",
@@ -246,10 +278,45 @@
                       "y": 25
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"x\": 17, \"y\": 25}",
+                        "name": "add"
+                      },
+                      "id": "8Fg1RDxOu",
+                      "type": "function"
+                    },
+                    "fingerprint": 17484702116729506487
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "venice",
+                "model": "mistral-small-3-2-24b-instruct",
+                "response_model": "mistral-small-3-2-24b-instruct",
+                "response_id": "chatcmpl-RlwdjKCXyvC4wlaxUHUAinBO"
+              },
+              "stop": "tool_use",
+              "native": {
+                "item": {
+                  "content": "",
+                  "reasoning_content": null,
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{\"x\": 17, \"y\": 25}",
+                        "name": "add"
+                      },
+                      "id": "8Fg1RDxOu",
+                      "type": "function"
+                    }
+                  ]
+                },
+                "fingerprint": 14417917877953157565
+              }
             },
             {
               "role": "user",
@@ -257,9 +324,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "m8kZaPsdW"
-                    }
+                    "provider": "8Fg1RDxOu"
                   },
                   "name": "add",
                   "content": [
@@ -310,27 +375,44 @@
           "choice": [
             {
               "type": "text",
-              "text": "I'm unable to assist with that specific request at the moment, as the necessary tools are not available. However, I can guide you through the process if you'd like! Would you be interested in that?"
+              "text": "I'm unable to assist with that specific request as the add tool is currently unavailable. However, I can help guide you through the addition process yourself.\n\nTo add 17 and 25, you can follow these simple steps:\n\n1. Start with the first number, which is 17.\n2. Add the second number, 25, to it.\n3. 17 + 25 equals 42.\n\nSo, the sum of 17 and 25 is 42.",
+              "native": {
+                "item": {
+                  "content": "I'm unable to assist with that specific request as the add tool is currently unavailable. However, I can help guide you through the addition process yourself.\n\nTo add 17 and 25, you can follow these simple steps:\n\n1. Start with the first number, which is 17.\n2. Add the second number, 25, to it.\n3. 17 + 25 equals 42.\n\nSo, the sum of 17 and 25 is 42."
+                },
+                "fingerprint": 15236060875056964933
+              }
             }
           ],
           "usage": {
             "input_tokens": 1135,
-            "output_tokens": 43,
-            "total_tokens": 1178
+            "output_tokens": 107,
+            "total_tokens": 1242
           },
-          "message_id": null,
-          "response_id": "chatcmpl-RokNKxlaiHGY0XTNUBo83HiP",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "venice",
+            "model": "mistral-small-3-2-24b-instruct",
+            "response_model": "mistral-small-3-2-24b-instruct",
+            "response_id": "chatcmpl-RM8JkDxapUySfjjLMnxdVovM"
+          },
+          "native": {
+            "item": {
+              "content": "I'm unable to assist with that specific request as the add tool is currently unavailable. However, I can help guide you through the addition process yourself.\n\nTo add 17 and 25, you can follow these simple steps:\n\n1. Start with the first number, which is 17.\n2. Add the second number, 25, to it.\n3. 17 + 25 equals 42.\n\nSo, the sum of 17 and 25 is 42.",
+              "reasoning_content": null,
+              "role": "assistant"
+            },
+            "fingerprint": 11905453493860401679
+          },
           "finish_reason": "stop",
-          "provider": "venice",
-          "model": "mistral-small-3-2-24b-instruct",
           "raw": {
             "usage": {
               "prompt_tokens": 1135,
-              "completion_tokens": 43,
-              "total_tokens": 1178
+              "completion_tokens": 107,
+              "total_tokens": 1242
             },
             "finish_reason": "stop",
-            "response_id": "chatcmpl-RokNKxlaiHGY0XTNUBo83HiP",
+            "response_id": "chatcmpl-RM8JkDxapUySfjjLMnxdVovM",
             "model": "mistral-small-3-2-24b-instruct",
             "additional_params": {
               "created": 0,
@@ -338,7 +420,7 @@
               "service_tier": "default",
               "cost": {
                 "diem": 0,
-                "usd": 0.00011715625
+                "usd": 0.00013315625
               }
             }
           }
@@ -430,38 +512,6 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": " at"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " the"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " moment"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": ","
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
             "text": " as"
           }
         },
@@ -478,7 +528,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": " necessary"
+            "text": " add"
           }
         },
         {
@@ -486,7 +536,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": " tools"
+            "text": " tool"
           }
         },
         {
@@ -494,7 +544,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": " are"
+            "text": " is"
           }
         },
         {
@@ -502,7 +552,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": " not"
+            "text": " currently"
           }
         },
         {
@@ -510,7 +560,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": " available"
+            "text": " unavailable"
           }
         },
         {
@@ -558,6 +608,14 @@
           "value": {
             "event": "text",
             "part": 0,
+            "text": " help"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " guide"
           }
         },
@@ -590,6 +648,14 @@
           "value": {
             "event": "text",
             "part": 0,
+            "text": " addition"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " process"
           }
         },
@@ -598,7 +664,95 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": " if"
+            "text": " yourself"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": ".\n\n"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": "To"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": " add"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": " "
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": "1"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": "7"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": " and"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": " "
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": "2"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": "5"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": ","
           }
         },
         {
@@ -614,7 +768,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": "'d"
+            "text": " can"
           }
         },
         {
@@ -622,7 +776,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": " like"
+            "text": " follow"
           }
         },
         {
@@ -630,7 +784,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": "!"
+            "text": " these"
           }
         },
         {
@@ -638,7 +792,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": " Would"
+            "text": " simple"
           }
         },
         {
@@ -646,7 +800,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": " you"
+            "text": " steps"
           }
         },
         {
@@ -654,7 +808,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": " be"
+            "text": ":\n\n"
           }
         },
         {
@@ -662,7 +816,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": " interested"
+            "text": "1"
           }
         },
         {
@@ -670,7 +824,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": " in"
+            "text": "."
           }
         },
         {
@@ -678,7 +832,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": " that"
+            "text": " Start"
           }
         },
         {
@@ -686,7 +840,447 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": "?"
+            "text": " with"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": " the"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": " first"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": " number"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": ","
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": " which"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": " is"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": " "
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": "1"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": "7"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": ".\n"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": "2"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": "."
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": " Add"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": " the"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": " second"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": " number"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": ","
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": " "
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": "2"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": "5"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": ","
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": " to"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": " it"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": ".\n"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": "3"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": "."
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": " "
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": "1"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": "7"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": " +"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": " "
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": "2"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": "5"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": " equals"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": " "
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": "4"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": "2"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": ".\n\n"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": "So"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": ","
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": " the"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": " sum"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": " of"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": " "
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": "1"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": "7"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": " and"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": " "
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": "2"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": "5"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": " is"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": " "
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": "4"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": "2"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": "."
           }
         },
         {
@@ -696,7 +1290,13 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "I'm unable to assist with that specific request at the moment, as the necessary tools are not available. However, I can guide you through the process if you'd like! Would you be interested in that?"
+              "text": "I'm unable to assist with that specific request as the add tool is currently unavailable. However, I can help guide you through the addition process yourself.\n\nTo add 17 and 25, you can follow these simple steps:\n\n1. Start with the first number, which is 17.\n2. Add the second number, 25, to it.\n3. 17 + 25 equals 42.\n\nSo, the sum of 17 and 25 is 42.",
+              "native": {
+                "item": {
+                  "content": "I'm unable to assist with that specific request as the add tool is currently unavailable. However, I can help guide you through the addition process yourself.\n\nTo add 17 and 25, you can follow these simple steps:\n\n1. Start with the first number, which is 17.\n2. Add the second number, 25, to it.\n3. 17 + 25 equals 42.\n\nSo, the sum of 17 and 25 is 42."
+                },
+                "fingerprint": 15236060875056964933
+              }
             }
           }
         }

@@ -32,7 +32,7 @@
         }
       },
       {
-        "batch": 32,
+        "batch": 31,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -40,7 +40,7 @@
         }
       },
       {
-        "batch": 33,
+        "batch": 32,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -64,7 +64,7 @@
         }
       },
       {
-        "batch": 37,
+        "batch": 36,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -80,7 +80,7 @@
         }
       },
       {
-        "batch": 40,
+        "batch": 39,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -88,7 +88,7 @@
         }
       },
       {
-        "batch": 41,
+        "batch": 40,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -160,7 +160,7 @@
         }
       },
       {
-        "batch": 54,
+        "batch": 55,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -168,7 +168,7 @@
         }
       },
       {
-        "batch": 54,
+        "batch": 55,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -291,9 +291,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_4Z8F3Ncc6ODFUp1CqlEQYVwQ"
-                }
+                "provider": "call_91rN4Iv8Dn9nKxZZNpDv16kU"
               },
               "function": {
                 "name": "add",
@@ -302,8 +300,17 @@
                   "y": 3
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"x\":2,\"y\":3}",
+                    "name": "add"
+                  },
+                  "id": "call_91rN4Iv8Dn9nKxZZNpDv16kU",
+                  "type": "function"
+                },
+                "fingerprint": 13357031265389293142
+              }
             }
           ],
           "usage": {
@@ -313,12 +320,33 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
-          "response_id": "chatcmpl-ERDE4UiOFBwfq8ZnvADSRXBpmUyZX",
-          "provider_request_id": "req_ecea63c8c1dc428a8848eb57ce698a0c",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "openai",
+            "model": "gpt-4o-mini",
+            "response_model": "gpt-4o-mini-2024-07-18",
+            "response_id": "chatcmpl-EUSIiZ8XxD1LhEpo4DWzN0Gkyw8rB"
+          },
+          "native": {
+            "item": {
+              "content": null,
+              "refusal": null,
+              "role": "assistant",
+              "tool_calls": [
+                {
+                  "function": {
+                    "arguments": "{\"x\":2,\"y\":3}",
+                    "name": "add"
+                  },
+                  "id": "call_91rN4Iv8Dn9nKxZZNpDv16kU",
+                  "type": "function"
+                }
+              ]
+            },
+            "fingerprint": 15061073227268979998
+          },
+          "provider_request_id": "req_920d0d2b4abf4ab7b51b8a283be8c68d",
           "finish_reason": "tool_calls",
-          "provider": "openai",
-          "model": "gpt-4o-mini-2024-07-18",
           "raw": {
             "usage": {
               "prompt_tokens": 75,
@@ -332,14 +360,14 @@
               }
             },
             "finish_reason": "tool_calls",
-            "response_id": "chatcmpl-ERDE4UiOFBwfq8ZnvADSRXBpmUyZX",
+            "response_id": "chatcmpl-EUSIiZ8XxD1LhEpo4DWzN0Gkyw8rB",
             "model": "gpt-4o-mini-2024-07-18",
             "additional_params": {
               "created": 0,
-              "obfuscation": "dNpkVRMj5H",
+              "obfuscation": "RtzyZWkdcs",
               "object": "chat.completion.chunk",
               "service_tier": "default",
-              "system_fingerprint": "fp_6a65994342"
+              "system_fingerprint": "fp_f58acc6047"
             }
           }
         }
@@ -369,9 +397,7 @@
             "content": {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_4Z8F3Ncc6ODFUp1CqlEQYVwQ"
-                }
+                "provider": "call_91rN4Iv8Dn9nKxZZNpDv16kU"
               },
               "function": {
                 "name": "add",
@@ -380,8 +406,17 @@
                   "y": 3
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"x\":2,\"y\":3}",
+                    "name": "add"
+                  },
+                  "id": "call_91rN4Iv8Dn9nKxZZNpDv16kU",
+                  "type": "function"
+                },
+                "fingerprint": 13357031265389293142
+              }
             }
           }
         }
@@ -437,14 +472,11 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_4Z8F3Ncc6ODFUp1CqlEQYVwQ"
-                    }
+                    "provider": "call_91rN4Iv8Dn9nKxZZNpDv16kU"
                   },
                   "function": {
                     "name": "add",
@@ -453,10 +485,45 @@
                       "y": 3
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"x\":2,\"y\":3}",
+                        "name": "add"
+                      },
+                      "id": "call_91rN4Iv8Dn9nKxZZNpDv16kU",
+                      "type": "function"
+                    },
+                    "fingerprint": 13357031265389293142
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openai",
+                "model": "gpt-4o-mini",
+                "response_model": "gpt-4o-mini-2024-07-18",
+                "response_id": "chatcmpl-EUSIiZ8XxD1LhEpo4DWzN0Gkyw8rB"
+              },
+              "stop": "tool_use",
+              "native": {
+                "item": {
+                  "content": null,
+                  "refusal": null,
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{\"x\":2,\"y\":3}",
+                        "name": "add"
+                      },
+                      "id": "call_91rN4Iv8Dn9nKxZZNpDv16kU",
+                      "type": "function"
+                    }
+                  ]
+                },
+                "fingerprint": 15061073227268979998
+              }
             },
             {
               "role": "user",
@@ -464,9 +531,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_4Z8F3Ncc6ODFUp1CqlEQYVwQ"
-                    }
+                    "provider": "call_91rN4Iv8Dn9nKxZZNpDv16kU"
                   },
                   "name": "add",
                   "content": [
@@ -517,7 +582,14 @@
           "choice": [
             {
               "type": "text",
-              "text": "The result of \\( 2 + 3 \\) is \\( 5 \\)."
+              "text": "The result of \\( 2 + 3 \\) is \\( 5 \\).",
+              "native": {
+                "item": {
+                  "content": "The result of \\( 2 + 3 \\) is \\( 5 \\).",
+                  "refusal": null
+                },
+                "fingerprint": 15036286955483941321
+              }
             }
           ],
           "usage": {
@@ -527,12 +599,23 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
-          "response_id": "chatcmpl-ERDE4JrGLkWJLQGMdY2iABNNkzIDy",
-          "provider_request_id": "req_f4156f81536c4dfd832a57a8eb430de7",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "openai",
+            "model": "gpt-4o-mini",
+            "response_model": "gpt-4o-mini-2024-07-18",
+            "response_id": "chatcmpl-EUSIi1CLzGoxZ7Mgc93vV6yuWB4R5"
+          },
+          "native": {
+            "item": {
+              "content": "The result of \\( 2 + 3 \\) is \\( 5 \\).",
+              "refusal": null,
+              "role": "assistant"
+            },
+            "fingerprint": 9604994960849604265
+          },
+          "provider_request_id": "req_5a5d33da3a9d47f8a0dddb3cfddb998c",
           "finish_reason": "stop",
-          "provider": "openai",
-          "model": "gpt-4o-mini-2024-07-18",
           "raw": {
             "usage": {
               "prompt_tokens": 100,
@@ -546,14 +629,14 @@
               }
             },
             "finish_reason": "stop",
-            "response_id": "chatcmpl-ERDE4JrGLkWJLQGMdY2iABNNkzIDy",
+            "response_id": "chatcmpl-EUSIi1CLzGoxZ7Mgc93vV6yuWB4R5",
             "model": "gpt-4o-mini-2024-07-18",
             "additional_params": {
               "created": 0,
-              "obfuscation": "iJkF5FLJ",
+              "obfuscation": "urr0nyUB",
               "object": "chat.completion.chunk",
               "service_tier": "default",
-              "system_fingerprint": "fp_6a65994342"
+              "system_fingerprint": "fp_f58acc6047"
             }
           }
         }
@@ -710,7 +793,14 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "The result of \\( 2 + 3 \\) is \\( 5 \\)."
+              "text": "The result of \\( 2 + 3 \\) is \\( 5 \\).",
+              "native": {
+                "item": {
+                  "content": "The result of \\( 2 + 3 \\) is \\( 5 \\).",
+                  "refusal": null
+                },
+                "fingerprint": 15036286955483941321
+              }
             }
           }
         }

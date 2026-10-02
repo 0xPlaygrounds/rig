@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 2,
+        "batch": 3,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,19 +10,11 @@
         }
       },
       {
-        "batch": 4,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 5
-        }
-      },
-      {
         "batch": 5,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 5
+          "items": 3
         }
       },
       {
@@ -30,7 +22,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 7
+          "items": 2
         }
       },
       {
@@ -38,7 +30,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 5
+          "items": 3
         }
       },
       {
@@ -54,7 +46,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 5
+          "items": 3
         }
       },
       {
@@ -62,7 +54,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 5
+          "items": 3
         }
       },
       {
@@ -78,7 +70,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 6
+          "items": 3
         }
       },
       {
@@ -86,7 +78,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 21
+          "items": 3
         }
       },
       {
@@ -94,7 +86,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 10
+          "items": 3
         }
       },
       {
@@ -102,7 +94,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 4
+          "items": 3
         }
       },
       {
@@ -142,7 +134,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -150,7 +142,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -158,7 +150,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -190,7 +182,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -206,7 +198,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -238,7 +230,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -246,7 +238,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -254,7 +246,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 1
         }
       },
       {
@@ -262,7 +254,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -278,7 +270,15 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
+        }
+      },
+      {
+        "batch": 38,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
         }
       },
       {
@@ -314,14 +314,6 @@
         }
       },
       {
-        "batch": 43,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
         "batch": 44,
         "id": 0,
         "kind": {
@@ -350,7 +342,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -382,7 +374,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -398,7 +390,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -414,7 +406,15 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
+        }
+      },
+      {
+        "batch": 56,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
         }
       },
       {
@@ -422,7 +422,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -446,7 +446,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -494,7 +494,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -550,7 +550,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -574,7 +574,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -606,7 +606,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -670,7 +670,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -694,7 +694,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -718,7 +718,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -782,7 +782,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -846,7 +846,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -866,7 +866,15 @@
         }
       },
       {
-        "batch": 114,
+        "batch": 113,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 115,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -878,7 +886,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -898,7 +906,23 @@
         }
       },
       {
+        "batch": 119,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 120,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 121,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -914,7 +938,55 @@
         }
       },
       {
+        "batch": 123,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 124,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 125,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 126,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 127,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 128,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 129,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -930,7 +1002,23 @@
         }
       },
       {
+        "batch": 131,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 132,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 133,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -946,7 +1034,23 @@
         }
       },
       {
+        "batch": 135,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 136,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 137,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -962,6 +1066,14 @@
         }
       },
       {
+        "batch": 139,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 140,
         "id": 0,
         "kind": {
@@ -970,7 +1082,63 @@
         }
       },
       {
+        "batch": 141,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 142,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 143,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 144,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 145,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 146,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 147,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 148,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -994,7 +1162,23 @@
         }
       },
       {
+        "batch": 151,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 152,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 153,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -1014,11 +1198,27 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 156,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
           "items": 1
         }
       },
       {
         "batch": 157,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 158,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -1034,11 +1234,43 @@
         }
       },
       {
+        "batch": 160,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 161,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 162,
         "id": 0,
         "kind": {
           "delivery": "stream",
           "items": 1
+        }
+      },
+      {
+        "batch": 163,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 164,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
         }
       },
       {
@@ -1050,7 +1282,39 @@
         }
       },
       {
+        "batch": 166,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 167,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 168,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 169,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 170,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -1102,7 +1366,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -1150,7 +1414,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -1238,7 +1502,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -1286,7 +1550,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -1310,7 +1574,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -1358,7 +1622,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -1382,7 +1646,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -1390,7 +1654,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -1406,7 +1670,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -1454,7 +1718,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -1510,7 +1774,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -1542,7 +1806,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -1586,19 +1850,11 @@
         }
       },
       {
-        "batch": 237,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
         "batch": 238,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -1630,7 +1886,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -1670,7 +1926,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -1686,7 +1942,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -1702,7 +1958,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -1758,7 +2014,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -1806,7 +2062,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -1822,7 +2078,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -1846,7 +2102,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -1902,7 +2158,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -1950,7 +2206,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -1982,7 +2238,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -1998,7 +2254,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -2062,7 +2318,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -2086,7 +2342,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -2134,7 +2390,15 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
+        }
+      },
+      {
+        "batch": 306,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
         }
       },
       {
@@ -2142,7 +2406,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -2222,7 +2486,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -2282,19 +2546,11 @@
         }
       },
       {
-        "batch": 325,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
         "batch": 326,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -2318,7 +2574,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -2350,7 +2606,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -2398,7 +2654,15 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
+        }
+      },
+      {
+        "batch": 340,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
         }
       },
       {
@@ -2406,7 +2670,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -2486,7 +2750,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -2502,7 +2766,15 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
+        }
+      },
+      {
+        "batch": 354,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
         }
       },
       {
@@ -2518,7 +2790,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -2574,7 +2846,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -2718,7 +2990,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -2830,7 +3102,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -2838,7 +3110,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -2910,7 +3182,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -2942,7 +3214,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -3066,27 +3338,11 @@
         }
       },
       {
-        "batch": 425,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
         "batch": 426,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 427,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -3126,7 +3382,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -3174,7 +3430,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -3214,7 +3470,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -3246,7 +3502,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -3294,7 +3550,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -3366,7 +3622,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -3406,7 +3662,15 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
+        }
+      },
+      {
+        "batch": 468,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
         }
       },
       {
@@ -3414,7 +3678,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -3486,7 +3750,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -3510,7 +3774,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -3534,7 +3798,15 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
+        }
+      },
+      {
+        "batch": 485,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
         }
       },
       {
@@ -3598,7 +3870,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -3646,7 +3918,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -3662,7 +3934,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -3690,14 +3962,6 @@
         }
       },
       {
-        "batch": 505,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
         "batch": 506,
         "id": 0,
         "kind": {
@@ -3710,7 +3974,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -3774,7 +4038,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -3798,7 +4062,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -3854,7 +4118,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -3870,7 +4134,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -3958,7 +4222,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -3990,7 +4254,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -4038,7 +4302,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -4070,7 +4334,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -4078,7 +4342,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -4122,7 +4386,23 @@
         }
       },
       {
+        "batch": 559,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 560,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 561,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -4138,7 +4418,111 @@
         }
       },
       {
+        "batch": 563,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 564,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 565,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 566,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 567,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 568,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 569,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 570,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 571,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 572,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 573,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 574,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 575,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 576,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -4162,6 +4546,14 @@
         }
       },
       {
+        "batch": 579,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 580,
         "id": 0,
         "kind": {
@@ -4171,6 +4563,14 @@
       },
       {
         "batch": 581,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 582,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -4194,7 +4594,23 @@
         }
       },
       {
+        "batch": 585,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 586,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 587,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -4210,7 +4626,23 @@
         }
       },
       {
+        "batch": 589,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 590,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 591,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -4227,6 +4659,14 @@
       },
       {
         "batch": 593,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 594,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -4274,7 +4714,23 @@
         }
       },
       {
+        "batch": 600,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
         "batch": 602,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 603,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -4290,7 +4746,31 @@
         }
       },
       {
+        "batch": 605,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 606,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 607,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 608,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -4354,6 +4834,14 @@
         }
       },
       {
+        "batch": 616,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 617,
         "id": 0,
         "kind": {
@@ -4363,6 +4851,14 @@
       },
       {
         "batch": 618,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 619,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -4390,7 +4886,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -4406,7 +4902,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -4454,15 +4950,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 631,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -4550,7 +5038,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -4566,7 +5054,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -4598,7 +5086,15 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
+        }
+      },
+      {
+        "batch": 649,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
         }
       },
       {
@@ -4614,7 +5110,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -4662,7 +5158,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -4710,7 +5206,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -4734,7 +5230,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -4774,7 +5270,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -4846,7 +5342,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -4926,7 +5422,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -4962,7 +5458,15 @@
         }
       },
       {
-        "batch": 697,
+        "batch": 695,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 696,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -4971,6 +5475,166 @@
       },
       {
         "batch": 697,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 698,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 699,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 700,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 701,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 702,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 703,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 704,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 705,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 706,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 708,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 709,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 710,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 711,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 712,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 713,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 714,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 715,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 716,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 718,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 719,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -5043,7 +5707,14 @@
           "choice": [
             {
               "type": "text",
-              "text": "Rust began as a personal project by Graydon Hoare in 2006 while he worked at Mozilla. Hoare aimed to create a systems programming language that paired the performance and control of C and C++ with strong safety guarantees and modern concurrency support. Mozilla began sponsoring the project in 2009, and Rust was publicly announced in 2010. Early efforts focused on experimental language design, building a practical compiler, and assembling an open-source community.\n\nOne of Rust’s defining innovations is its ownership and borrowing system, introduced to enforce memory safety at compile time without a garbage collector. The borrow checker enforces rules about mutable and immutable references and lifetime relationships, eliminating entire classes of bugs—use-after-free, double-free, and many data races—while preserving deterministic performance. This model required careful language evolution and significant effort from compiler developers to make ergonomics acceptable to users.\n\nRust’s development accelerated with a series of milestones. Version 1.0 was released in May 2015, signifying language stability and a commitment to long-term compatibility. The same year saw the stabilization of Cargo, the package manager and build system that became central to Rust’s ecosystem. Cargo, along with crates.io (the package registry) and rustfmt (the formatter), helped create a productive developer experience that attracted hobbyists and industry adopters alike.\n\nGovernance and community practices evolved as the user base grew. In 2016 the Rust Project adopted a code of conduct and formalized a governance model with a core team and working groups to manage language design, libraries, and tooling. RFCs (Requests for Comments) provide an open process for proposing language changes, and the Rust blog, forums, and an active IRC/Discord presence maintain transparent discussion. These structures balanced innovation with careful stewardship of stability guarantees.\n\nIndustry adoption grew steadily. Companies such as Dropbox, Cloudflare, Microsoft, Amazon Web Services, and others began using Rust for performance-critical components, safety-sensitive code, and tooling. Mozilla used Rust in projects like the Servo browser engine experiment and parts of Firefox. The language’s combination of speed, safety, and cross-platform support made it attractive for systems software, networking, embedded devices, and command-line tools.\n\nRust’s tooling and compiler continued to improve. The Rust compiler (rustc) leverages LLVM for code generation, and efforts like Clippy (lints), rust-analyzer (IDE support), and improvements in incremental compilation have enhanced developer productivity. Editions — language update mechanisms introduced in 2018 — allowed nonbreaking, coordinated changes across the ecosystem. Editions helped maintain stability while permitting evolution in syntax and idioms.\n\nThe ecosystem matured with a rich set of libraries and frameworks. Tokio and async/await support enabled high-performance asynchronous programming for networking services. WebAssembly support made Rust popular for safe, fast code in browsers and serverless environments. Embedded development benefited from the no_std ecosystem and hardware abstraction layers. Academic interest and community-created learning resources also broadened Rust’s reach to new audiences.\n\nChallenges remain: the learning curve associated with ownership semantics can be steep, and compile times and tooling complexity have periodically frustrated developers. The project has addressed many issues through improved diagnostics, education, and incremental compiler work. The governance community also continues to wrestle with inclusivity, contributor burnout, and coordinating rapid growth while preserving the language’s core safety promises.\n\nToday Rust is a mature, influential language with a vibrant community and a record of steady growth. It is frequently ranked highly in developer surveys for “most loved” languages. Looking ahead, Rust’s future includes performance optimizations, improved compile-time ergonomics, expanding library support, and continued adoption in systems, cloud, embedded, and WebAssembly contexts. Its history shows a deliberate path from experimental research to practical, widely used systems programming. Its trajectory reflects thoughtful design, pragmatic governance, active community-driven innovation, and expanding worldwide industry adoption."
+              "text": "Rust began as a personal project by Graydon Hoare in 2006 while he worked at Mozilla. Hoare aimed to create a systems programming language that paired the performance and control of C and C++ with strong safety guarantees and modern concurrency support. Mozilla began sponsoring the project in 2009, and Rust was publicly announced in 2010. Early efforts focused on experimental language design, building a practical compiler, and assembling an open-source community.\n\nOne of Rust’s defining innovations is its ownership and borrowing system, introduced to enforce memory safety at compile time without a garbage collector. The borrow checker enforces rules about mutable and immutable references and lifetime relationships, eliminating entire classes of bugs—use-after-free, double-free, and many data races—while preserving deterministic performance. This model required careful language evolution and significant effort from compiler developers to make ergonomics acceptable to users.\n\nRust’s development accelerated with a series of milestones. Version 1.0 was released in May 2015, signifying language stability and a commitment to long-term compatibility. The same year saw the stabilization of Cargo, the package manager and build system that became central to Rust’s ecosystem. Cargo, along with crates.io (the package registry) and rustfmt (the formatter), helped create a productive developer experience that attracted hobbyists and industry adopters alike.\n\nGovernance and community practices evolved as the user base grew. In 2016 the Rust Project adopted a code of conduct and formalized a governance model with a core team and working groups to manage language design, libraries, and tooling. RFCs (Requests for Comments) provide an open process for proposing language changes, and the Rust blog, forums, and an active IRC/Discord presence maintain transparent discussion. These structures balanced innovation with careful stewardship of stability guarantees.\n\nIndustry adoption grew steadily. Companies such as Dropbox, Cloudflare, Microsoft, Amazon Web Services, and others began using Rust for performance-critical components, safety-sensitive code, and tooling. Mozilla used Rust in projects like the Servo browser engine experiment and parts of Firefox. The language’s combination of speed, safety, and cross-platform support made it attractive for systems software, networking, embedded devices, and command-line tools.\n\nRust’s tooling and compiler continued to improve. The Rust compiler (rustc) leverages LLVM for code generation, and efforts like Clippy (lints), rust-analyzer (IDE support), and improvements in incremental compilation have enhanced developer productivity. Editions — language update mechanisms introduced in 2018 — allowed nonbreaking, coordinated changes across the ecosystem. Editions helped maintain stability while permitting evolution in syntax and idioms.\n\nThe ecosystem matured with a rich set of libraries and frameworks. Tokio and async/await support enabled high-performance asynchronous programming for networking services. WebAssembly support made Rust popular for safe, fast code in browsers and serverless environments. Embedded development benefited from the no_std ecosystem and hardware abstraction layers. Academic interest and community-created learning resources also broadened Rust’s reach to new audiences.\n\nChallenges remain: the learning curve associated with ownership semantics can be steep, and compile times and tooling complexity have periodically frustrated developers. The project has addressed many issues through improved diagnostics, education, and incremental compiler work. The governance community also continues to wrestle with inclusivity, contributor burnout, and coordinating rapid growth while preserving the language’s core safety promises.\n\nToday Rust is a mature, influential language with a vibrant community and a record of steady growth. It is frequently ranked highly in developer surveys for “most loved” languages. Looking ahead, Rust’s future includes performance optimizations, improved compile-time ergonomics, expanding library support, and continued adoption in systems, cloud, embedded, and WebAssembly contexts. Its history shows a deliberate path from experimental research to practical, widely used systems programming. Its trajectory reflects thoughtful design, pragmatic governance, active community-driven innovation, and expanding worldwide industry adoption.",
+              "native": {
+                "item": {
+                  "content": "Rust began as a personal project by Graydon Hoare in 2006 while he worked at Mozilla. Hoare aimed to create a systems programming language that paired the performance and control of C and C++ with strong safety guarantees and modern concurrency support. Mozilla began sponsoring the project in 2009, and Rust was publicly announced in 2010. Early efforts focused on experimental language design, building a practical compiler, and assembling an open-source community.\n\nOne of Rust’s defining innovations is its ownership and borrowing system, introduced to enforce memory safety at compile time without a garbage collector. The borrow checker enforces rules about mutable and immutable references and lifetime relationships, eliminating entire classes of bugs—use-after-free, double-free, and many data races—while preserving deterministic performance. This model required careful language evolution and significant effort from compiler developers to make ergonomics acceptable to users.\n\nRust’s development accelerated with a series of milestones. Version 1.0 was released in May 2015, signifying language stability and a commitment to long-term compatibility. The same year saw the stabilization of Cargo, the package manager and build system that became central to Rust’s ecosystem. Cargo, along with crates.io (the package registry) and rustfmt (the formatter), helped create a productive developer experience that attracted hobbyists and industry adopters alike.\n\nGovernance and community practices evolved as the user base grew. In 2016 the Rust Project adopted a code of conduct and formalized a governance model with a core team and working groups to manage language design, libraries, and tooling. RFCs (Requests for Comments) provide an open process for proposing language changes, and the Rust blog, forums, and an active IRC/Discord presence maintain transparent discussion. These structures balanced innovation with careful stewardship of stability guarantees.\n\nIndustry adoption grew steadily. Companies such as Dropbox, Cloudflare, Microsoft, Amazon Web Services, and others began using Rust for performance-critical components, safety-sensitive code, and tooling. Mozilla used Rust in projects like the Servo browser engine experiment and parts of Firefox. The language’s combination of speed, safety, and cross-platform support made it attractive for systems software, networking, embedded devices, and command-line tools.\n\nRust’s tooling and compiler continued to improve. The Rust compiler (rustc) leverages LLVM for code generation, and efforts like Clippy (lints), rust-analyzer (IDE support), and improvements in incremental compilation have enhanced developer productivity. Editions — language update mechanisms introduced in 2018 — allowed nonbreaking, coordinated changes across the ecosystem. Editions helped maintain stability while permitting evolution in syntax and idioms.\n\nThe ecosystem matured with a rich set of libraries and frameworks. Tokio and async/await support enabled high-performance asynchronous programming for networking services. WebAssembly support made Rust popular for safe, fast code in browsers and serverless environments. Embedded development benefited from the no_std ecosystem and hardware abstraction layers. Academic interest and community-created learning resources also broadened Rust’s reach to new audiences.\n\nChallenges remain: the learning curve associated with ownership semantics can be steep, and compile times and tooling complexity have periodically frustrated developers. The project has addressed many issues through improved diagnostics, education, and incremental compiler work. The governance community also continues to wrestle with inclusivity, contributor burnout, and coordinating rapid growth while preserving the language’s core safety promises.\n\nToday Rust is a mature, influential language with a vibrant community and a record of steady growth. It is frequently ranked highly in developer surveys for “most loved” languages. Looking ahead, Rust’s future includes performance optimizations, improved compile-time ergonomics, expanding library support, and continued adoption in systems, cloud, embedded, and WebAssembly contexts. Its history shows a deliberate path from experimental research to practical, widely used systems programming. Its trajectory reflects thoughtful design, pragmatic governance, active community-driven innovation, and expanding worldwide industry adoption.",
+                  "refusal": null
+                },
+                "fingerprint": 4266540926169606189
+              }
             }
           ],
           "usage": {
@@ -5053,12 +5724,23 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 3008
           },
-          "message_id": null,
-          "response_id": "chatcmpl-ERDBQLhiNs1xQevVE0uReopznIGXa",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "openai",
+            "model": "gpt-5-mini",
+            "response_model": "gpt-5-mini-2025-08-07",
+            "response_id": "chatcmpl-ERDBQLhiNs1xQevVE0uReopznIGXa"
+          },
+          "native": {
+            "item": {
+              "content": "Rust began as a personal project by Graydon Hoare in 2006 while he worked at Mozilla. Hoare aimed to create a systems programming language that paired the performance and control of C and C++ with strong safety guarantees and modern concurrency support. Mozilla began sponsoring the project in 2009, and Rust was publicly announced in 2010. Early efforts focused on experimental language design, building a practical compiler, and assembling an open-source community.\n\nOne of Rust’s defining innovations is its ownership and borrowing system, introduced to enforce memory safety at compile time without a garbage collector. The borrow checker enforces rules about mutable and immutable references and lifetime relationships, eliminating entire classes of bugs—use-after-free, double-free, and many data races—while preserving deterministic performance. This model required careful language evolution and significant effort from compiler developers to make ergonomics acceptable to users.\n\nRust’s development accelerated with a series of milestones. Version 1.0 was released in May 2015, signifying language stability and a commitment to long-term compatibility. The same year saw the stabilization of Cargo, the package manager and build system that became central to Rust’s ecosystem. Cargo, along with crates.io (the package registry) and rustfmt (the formatter), helped create a productive developer experience that attracted hobbyists and industry adopters alike.\n\nGovernance and community practices evolved as the user base grew. In 2016 the Rust Project adopted a code of conduct and formalized a governance model with a core team and working groups to manage language design, libraries, and tooling. RFCs (Requests for Comments) provide an open process for proposing language changes, and the Rust blog, forums, and an active IRC/Discord presence maintain transparent discussion. These structures balanced innovation with careful stewardship of stability guarantees.\n\nIndustry adoption grew steadily. Companies such as Dropbox, Cloudflare, Microsoft, Amazon Web Services, and others began using Rust for performance-critical components, safety-sensitive code, and tooling. Mozilla used Rust in projects like the Servo browser engine experiment and parts of Firefox. The language’s combination of speed, safety, and cross-platform support made it attractive for systems software, networking, embedded devices, and command-line tools.\n\nRust’s tooling and compiler continued to improve. The Rust compiler (rustc) leverages LLVM for code generation, and efforts like Clippy (lints), rust-analyzer (IDE support), and improvements in incremental compilation have enhanced developer productivity. Editions — language update mechanisms introduced in 2018 — allowed nonbreaking, coordinated changes across the ecosystem. Editions helped maintain stability while permitting evolution in syntax and idioms.\n\nThe ecosystem matured with a rich set of libraries and frameworks. Tokio and async/await support enabled high-performance asynchronous programming for networking services. WebAssembly support made Rust popular for safe, fast code in browsers and serverless environments. Embedded development benefited from the no_std ecosystem and hardware abstraction layers. Academic interest and community-created learning resources also broadened Rust’s reach to new audiences.\n\nChallenges remain: the learning curve associated with ownership semantics can be steep, and compile times and tooling complexity have periodically frustrated developers. The project has addressed many issues through improved diagnostics, education, and incremental compiler work. The governance community also continues to wrestle with inclusivity, contributor burnout, and coordinating rapid growth while preserving the language’s core safety promises.\n\nToday Rust is a mature, influential language with a vibrant community and a record of steady growth. It is frequently ranked highly in developer surveys for “most loved” languages. Looking ahead, Rust’s future includes performance optimizations, improved compile-time ergonomics, expanding library support, and continued adoption in systems, cloud, embedded, and WebAssembly contexts. Its history shows a deliberate path from experimental research to practical, widely used systems programming. Its trajectory reflects thoughtful design, pragmatic governance, active community-driven innovation, and expanding worldwide industry adoption.",
+              "refusal": null,
+              "role": "assistant"
+            },
+            "fingerprint": 16034357819654110767
+          },
           "provider_request_id": "req_caee837b006241b3b7c0c6a101ce7317",
           "finish_reason": "stop",
-          "provider": "openai",
-          "model": "gpt-5-mini-2025-08-07",
           "raw": {
             "usage": {
               "prompt_tokens": 34,
@@ -11300,7 +11982,14 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "Rust began as a personal project by Graydon Hoare in 2006 while he worked at Mozilla. Hoare aimed to create a systems programming language that paired the performance and control of C and C++ with strong safety guarantees and modern concurrency support. Mozilla began sponsoring the project in 2009, and Rust was publicly announced in 2010. Early efforts focused on experimental language design, building a practical compiler, and assembling an open-source community.\n\nOne of Rust’s defining innovations is its ownership and borrowing system, introduced to enforce memory safety at compile time without a garbage collector. The borrow checker enforces rules about mutable and immutable references and lifetime relationships, eliminating entire classes of bugs—use-after-free, double-free, and many data races—while preserving deterministic performance. This model required careful language evolution and significant effort from compiler developers to make ergonomics acceptable to users.\n\nRust’s development accelerated with a series of milestones. Version 1.0 was released in May 2015, signifying language stability and a commitment to long-term compatibility. The same year saw the stabilization of Cargo, the package manager and build system that became central to Rust’s ecosystem. Cargo, along with crates.io (the package registry) and rustfmt (the formatter), helped create a productive developer experience that attracted hobbyists and industry adopters alike.\n\nGovernance and community practices evolved as the user base grew. In 2016 the Rust Project adopted a code of conduct and formalized a governance model with a core team and working groups to manage language design, libraries, and tooling. RFCs (Requests for Comments) provide an open process for proposing language changes, and the Rust blog, forums, and an active IRC/Discord presence maintain transparent discussion. These structures balanced innovation with careful stewardship of stability guarantees.\n\nIndustry adoption grew steadily. Companies such as Dropbox, Cloudflare, Microsoft, Amazon Web Services, and others began using Rust for performance-critical components, safety-sensitive code, and tooling. Mozilla used Rust in projects like the Servo browser engine experiment and parts of Firefox. The language’s combination of speed, safety, and cross-platform support made it attractive for systems software, networking, embedded devices, and command-line tools.\n\nRust’s tooling and compiler continued to improve. The Rust compiler (rustc) leverages LLVM for code generation, and efforts like Clippy (lints), rust-analyzer (IDE support), and improvements in incremental compilation have enhanced developer productivity. Editions — language update mechanisms introduced in 2018 — allowed nonbreaking, coordinated changes across the ecosystem. Editions helped maintain stability while permitting evolution in syntax and idioms.\n\nThe ecosystem matured with a rich set of libraries and frameworks. Tokio and async/await support enabled high-performance asynchronous programming for networking services. WebAssembly support made Rust popular for safe, fast code in browsers and serverless environments. Embedded development benefited from the no_std ecosystem and hardware abstraction layers. Academic interest and community-created learning resources also broadened Rust’s reach to new audiences.\n\nChallenges remain: the learning curve associated with ownership semantics can be steep, and compile times and tooling complexity have periodically frustrated developers. The project has addressed many issues through improved diagnostics, education, and incremental compiler work. The governance community also continues to wrestle with inclusivity, contributor burnout, and coordinating rapid growth while preserving the language’s core safety promises.\n\nToday Rust is a mature, influential language with a vibrant community and a record of steady growth. It is frequently ranked highly in developer surveys for “most loved” languages. Looking ahead, Rust’s future includes performance optimizations, improved compile-time ergonomics, expanding library support, and continued adoption in systems, cloud, embedded, and WebAssembly contexts. Its history shows a deliberate path from experimental research to practical, widely used systems programming. Its trajectory reflects thoughtful design, pragmatic governance, active community-driven innovation, and expanding worldwide industry adoption."
+              "text": "Rust began as a personal project by Graydon Hoare in 2006 while he worked at Mozilla. Hoare aimed to create a systems programming language that paired the performance and control of C and C++ with strong safety guarantees and modern concurrency support. Mozilla began sponsoring the project in 2009, and Rust was publicly announced in 2010. Early efforts focused on experimental language design, building a practical compiler, and assembling an open-source community.\n\nOne of Rust’s defining innovations is its ownership and borrowing system, introduced to enforce memory safety at compile time without a garbage collector. The borrow checker enforces rules about mutable and immutable references and lifetime relationships, eliminating entire classes of bugs—use-after-free, double-free, and many data races—while preserving deterministic performance. This model required careful language evolution and significant effort from compiler developers to make ergonomics acceptable to users.\n\nRust’s development accelerated with a series of milestones. Version 1.0 was released in May 2015, signifying language stability and a commitment to long-term compatibility. The same year saw the stabilization of Cargo, the package manager and build system that became central to Rust’s ecosystem. Cargo, along with crates.io (the package registry) and rustfmt (the formatter), helped create a productive developer experience that attracted hobbyists and industry adopters alike.\n\nGovernance and community practices evolved as the user base grew. In 2016 the Rust Project adopted a code of conduct and formalized a governance model with a core team and working groups to manage language design, libraries, and tooling. RFCs (Requests for Comments) provide an open process for proposing language changes, and the Rust blog, forums, and an active IRC/Discord presence maintain transparent discussion. These structures balanced innovation with careful stewardship of stability guarantees.\n\nIndustry adoption grew steadily. Companies such as Dropbox, Cloudflare, Microsoft, Amazon Web Services, and others began using Rust for performance-critical components, safety-sensitive code, and tooling. Mozilla used Rust in projects like the Servo browser engine experiment and parts of Firefox. The language’s combination of speed, safety, and cross-platform support made it attractive for systems software, networking, embedded devices, and command-line tools.\n\nRust’s tooling and compiler continued to improve. The Rust compiler (rustc) leverages LLVM for code generation, and efforts like Clippy (lints), rust-analyzer (IDE support), and improvements in incremental compilation have enhanced developer productivity. Editions — language update mechanisms introduced in 2018 — allowed nonbreaking, coordinated changes across the ecosystem. Editions helped maintain stability while permitting evolution in syntax and idioms.\n\nThe ecosystem matured with a rich set of libraries and frameworks. Tokio and async/await support enabled high-performance asynchronous programming for networking services. WebAssembly support made Rust popular for safe, fast code in browsers and serverless environments. Embedded development benefited from the no_std ecosystem and hardware abstraction layers. Academic interest and community-created learning resources also broadened Rust’s reach to new audiences.\n\nChallenges remain: the learning curve associated with ownership semantics can be steep, and compile times and tooling complexity have periodically frustrated developers. The project has addressed many issues through improved diagnostics, education, and incremental compiler work. The governance community also continues to wrestle with inclusivity, contributor burnout, and coordinating rapid growth while preserving the language’s core safety promises.\n\nToday Rust is a mature, influential language with a vibrant community and a record of steady growth. It is frequently ranked highly in developer surveys for “most loved” languages. Looking ahead, Rust’s future includes performance optimizations, improved compile-time ergonomics, expanding library support, and continued adoption in systems, cloud, embedded, and WebAssembly contexts. Its history shows a deliberate path from experimental research to practical, widely used systems programming. Its trajectory reflects thoughtful design, pragmatic governance, active community-driven innovation, and expanding worldwide industry adoption.",
+              "native": {
+                "item": {
+                  "content": "Rust began as a personal project by Graydon Hoare in 2006 while he worked at Mozilla. Hoare aimed to create a systems programming language that paired the performance and control of C and C++ with strong safety guarantees and modern concurrency support. Mozilla began sponsoring the project in 2009, and Rust was publicly announced in 2010. Early efforts focused on experimental language design, building a practical compiler, and assembling an open-source community.\n\nOne of Rust’s defining innovations is its ownership and borrowing system, introduced to enforce memory safety at compile time without a garbage collector. The borrow checker enforces rules about mutable and immutable references and lifetime relationships, eliminating entire classes of bugs—use-after-free, double-free, and many data races—while preserving deterministic performance. This model required careful language evolution and significant effort from compiler developers to make ergonomics acceptable to users.\n\nRust’s development accelerated with a series of milestones. Version 1.0 was released in May 2015, signifying language stability and a commitment to long-term compatibility. The same year saw the stabilization of Cargo, the package manager and build system that became central to Rust’s ecosystem. Cargo, along with crates.io (the package registry) and rustfmt (the formatter), helped create a productive developer experience that attracted hobbyists and industry adopters alike.\n\nGovernance and community practices evolved as the user base grew. In 2016 the Rust Project adopted a code of conduct and formalized a governance model with a core team and working groups to manage language design, libraries, and tooling. RFCs (Requests for Comments) provide an open process for proposing language changes, and the Rust blog, forums, and an active IRC/Discord presence maintain transparent discussion. These structures balanced innovation with careful stewardship of stability guarantees.\n\nIndustry adoption grew steadily. Companies such as Dropbox, Cloudflare, Microsoft, Amazon Web Services, and others began using Rust for performance-critical components, safety-sensitive code, and tooling. Mozilla used Rust in projects like the Servo browser engine experiment and parts of Firefox. The language’s combination of speed, safety, and cross-platform support made it attractive for systems software, networking, embedded devices, and command-line tools.\n\nRust’s tooling and compiler continued to improve. The Rust compiler (rustc) leverages LLVM for code generation, and efforts like Clippy (lints), rust-analyzer (IDE support), and improvements in incremental compilation have enhanced developer productivity. Editions — language update mechanisms introduced in 2018 — allowed nonbreaking, coordinated changes across the ecosystem. Editions helped maintain stability while permitting evolution in syntax and idioms.\n\nThe ecosystem matured with a rich set of libraries and frameworks. Tokio and async/await support enabled high-performance asynchronous programming for networking services. WebAssembly support made Rust popular for safe, fast code in browsers and serverless environments. Embedded development benefited from the no_std ecosystem and hardware abstraction layers. Academic interest and community-created learning resources also broadened Rust’s reach to new audiences.\n\nChallenges remain: the learning curve associated with ownership semantics can be steep, and compile times and tooling complexity have periodically frustrated developers. The project has addressed many issues through improved diagnostics, education, and incremental compiler work. The governance community also continues to wrestle with inclusivity, contributor burnout, and coordinating rapid growth while preserving the language’s core safety promises.\n\nToday Rust is a mature, influential language with a vibrant community and a record of steady growth. It is frequently ranked highly in developer surveys for “most loved” languages. Looking ahead, Rust’s future includes performance optimizations, improved compile-time ergonomics, expanding library support, and continued adoption in systems, cloud, embedded, and WebAssembly contexts. Its history shows a deliberate path from experimental research to practical, widely used systems programming. Its trajectory reflects thoughtful design, pragmatic governance, active community-driven innovation, and expanding worldwide industry adoption.",
+                  "refusal": null
+                },
+                "fingerprint": 4266540926169606189
+              }
             }
           }
         }

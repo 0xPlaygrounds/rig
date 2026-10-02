@@ -127,9 +127,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_baXBSXH3CxGzN7jdjim7gGO9"
-                }
+                "provider": "call_Lj8FIce5Haprl8gkdK4GdaIQ"
               },
               "function": {
                 "name": "add",
@@ -138,8 +136,17 @@
                   "y": 25
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"x\":17,\"y\":25}",
+                    "name": "add"
+                  },
+                  "id": "call_Lj8FIce5Haprl8gkdK4GdaIQ",
+                  "type": "function"
+                },
+                "fingerprint": 2762914222028833352
+              }
             }
           ],
           "usage": {
@@ -149,12 +156,34 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 128
           },
-          "message_id": null,
-          "response_id": "chatcmpl-ERDCl74zbcz9gUNUio7cqtM4kVcVM",
-          "provider_request_id": "req_f778ceee55ef4f108256cab6c5f7344f",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "openai",
+            "model": "gpt-5-mini",
+            "response_model": "gpt-5-mini-2025-08-07",
+            "response_id": "chatcmpl-EUPZYoGvQITPkOkGFzd01WUTJZpNn"
+          },
+          "native": {
+            "item": {
+              "annotations": [],
+              "content": null,
+              "refusal": null,
+              "role": "assistant",
+              "tool_calls": [
+                {
+                  "function": {
+                    "arguments": "{\"x\":17,\"y\":25}",
+                    "name": "add"
+                  },
+                  "id": "call_Lj8FIce5Haprl8gkdK4GdaIQ",
+                  "type": "function"
+                }
+              ]
+            },
+            "fingerprint": 1639965764412169856
+          },
+          "provider_request_id": "req_ff1a8775a25d4560bde21916feb4f84d",
           "finish_reason": "tool_calls",
-          "provider": "openai",
-          "model": "gpt-5-mini-2025-08-07",
           "raw": {
             "choices": [
               {
@@ -171,7 +200,7 @@
                         "arguments": "{\"x\":17,\"y\":25}",
                         "name": "add"
                       },
-                      "id": "call_baXBSXH3CxGzN7jdjim7gGO9",
+                      "id": "call_Lj8FIce5Haprl8gkdK4GdaIQ",
                       "type": "function"
                     }
                   ]
@@ -179,7 +208,7 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-ERDCl74zbcz9gUNUio7cqtM4kVcVM",
+            "id": "chatcmpl-EUPZYoGvQITPkOkGFzd01WUTJZpNn",
             "model": "gpt-5-mini-2025-08-07",
             "object": "chat.completion",
             "service_tier": "default",
@@ -251,14 +280,11 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_baXBSXH3CxGzN7jdjim7gGO9"
-                    }
+                    "provider": "call_Lj8FIce5Haprl8gkdK4GdaIQ"
                   },
                   "function": {
                     "name": "add",
@@ -267,10 +293,46 @@
                       "y": 25
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"x\":17,\"y\":25}",
+                        "name": "add"
+                      },
+                      "id": "call_Lj8FIce5Haprl8gkdK4GdaIQ",
+                      "type": "function"
+                    },
+                    "fingerprint": 2762914222028833352
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openai",
+                "model": "gpt-5-mini",
+                "response_model": "gpt-5-mini-2025-08-07",
+                "response_id": "chatcmpl-EUPZYoGvQITPkOkGFzd01WUTJZpNn"
+              },
+              "stop": "tool_use",
+              "native": {
+                "item": {
+                  "annotations": [],
+                  "content": null,
+                  "refusal": null,
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{\"x\":17,\"y\":25}",
+                        "name": "add"
+                      },
+                      "id": "call_Lj8FIce5Haprl8gkdK4GdaIQ",
+                      "type": "function"
+                    }
+                  ]
+                },
+                "fingerprint": 1639965764412169856
+              }
             },
             {
               "role": "user",
@@ -278,9 +340,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_baXBSXH3CxGzN7jdjim7gGO9"
-                    }
+                    "provider": "call_Lj8FIce5Haprl8gkdK4GdaIQ"
                   },
                   "name": "add",
                   "content": [
@@ -331,7 +391,15 @@
           "choice": [
             {
               "type": "text",
-              "text": "42"
+              "text": "42",
+              "native": {
+                "item": {
+                  "annotations": [],
+                  "content": "42",
+                  "refusal": null
+                },
+                "fingerprint": 15903709825217441321
+              }
             }
           ],
           "usage": {
@@ -341,12 +409,24 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
-          "response_id": "chatcmpl-ERDCn5f2I3RI8vR6D893BJm16VfDm",
-          "provider_request_id": "req_aa87f7941f6a406b81d05a32f0040506",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "openai",
+            "model": "gpt-5-mini",
+            "response_model": "gpt-5-mini-2025-08-07",
+            "response_id": "chatcmpl-EUPZarFNBb1iImNbUfY3JiblSNRhI"
+          },
+          "native": {
+            "item": {
+              "annotations": [],
+              "content": "42",
+              "refusal": null,
+              "role": "assistant"
+            },
+            "fingerprint": 5372475738331673531
+          },
+          "provider_request_id": "req_eedd91cd94b24f2795b4475e177d526e",
           "finish_reason": "stop",
-          "provider": "openai",
-          "model": "gpt-5-mini-2025-08-07",
           "raw": {
             "choices": [
               {
@@ -361,7 +441,7 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-ERDCn5f2I3RI8vR6D893BJm16VfDm",
+            "id": "chatcmpl-EUPZarFNBb1iImNbUfY3JiblSNRhI",
             "model": "gpt-5-mini-2025-08-07",
             "object": "chat.completion",
             "service_tier": "default",

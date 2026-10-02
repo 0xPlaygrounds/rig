@@ -124,9 +124,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_00_7r7vcRrdAytPyTC7LPAd9810"
-                }
+                "provider": "call_00_7r7vcRrdAytPyTC7LPAd9810"
               },
               "function": {
                 "name": "add",
@@ -135,8 +133,17 @@
                   "y": 25
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"x\": 17, \"y\": 25}",
+                    "name": "add"
+                  },
+                  "id": "call_00_7r7vcRrdAytPyTC7LPAd9810",
+                  "type": "function"
+                },
+                "fingerprint": 11474548549521347842
+              }
             }
           ],
           "usage": {
@@ -145,11 +152,31 @@
             "total_tokens": 388,
             "cached_input_tokens": 128
           },
-          "message_id": null,
-          "response_id": "d265fa5b-8873-4bf0-a8e7-0ab6f3009356",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "deepseek",
+            "model": "deepseek-chat",
+            "response_model": "deepseek-flash",
+            "response_id": "d265fa5b-8873-4bf0-a8e7-0ab6f3009356"
+          },
+          "native": {
+            "item": {
+              "content": "",
+              "role": "assistant",
+              "tool_calls": [
+                {
+                  "function": {
+                    "arguments": "{\"x\": 17, \"y\": 25}",
+                    "name": "add"
+                  },
+                  "id": "call_00_7r7vcRrdAytPyTC7LPAd9810",
+                  "type": "function"
+                }
+              ]
+            },
+            "fingerprint": 6976254080984859184
+          },
           "finish_reason": "tool_calls",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
           "raw": {
             "choices": [
               {

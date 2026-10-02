@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 6,
+        "batch": 7,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,7 +10,7 @@
         }
       },
       {
-        "batch": 8,
+        "batch": 9,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -18,7 +18,7 @@
         }
       },
       {
-        "batch": 8,
+        "batch": 9,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -91,7 +91,13 @@
           "choice": [
             {
               "type": "text",
-              "text": "A solar eclipse occurs when the Moon passes directly between the Sun and Earth, casting a shadow on Earth and blocking the Sun's light either partially or entirely. This alignment causes the Moon to obscure the Sun from an Earthly perspective."
+              "text": "A solar eclipse occurs when the Moon passes directly between the Sun and Earth, casting a shadow on Earth and blocking the Sun's light either partially or entirely. This alignment causes the Moon to obscure the Sun from an Earthly perspective.",
+              "native": {
+                "item": {
+                  "text": "A solar eclipse occurs when the Moon passes directly between the Sun and Earth, casting a shadow on Earth and blocking the Sun's light either partially or entirely. This alignment causes the Moon to obscure the Sun from an Earthly perspective."
+                },
+                "fingerprint": 11641959940433259842
+              }
             }
           ],
           "usage": {
@@ -100,11 +106,21 @@
             "total_tokens": 102,
             "reasoning_tokens": 29
           },
-          "message_id": null,
-          "response_id": "pHizaqGHG8zzz7IP5ci3qQI",
+          "origin": {
+            "api": "gemini.generate_content",
+            "provider": "gcp.gemini",
+            "model": "gemini-2.5-flash",
+            "response_model": "gemini-2.5-flash",
+            "response_id": "pHizaqGHG8zzz7IP5ci3qQI"
+          },
+          "native": {
+            "item": {
+              "index": 0,
+              "finishReason": "STOP"
+            },
+            "fingerprint": 15079928143371213584
+          },
           "finish_reason": "stop",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
           "raw": {
             "usage_metadata": {
               "promptTokenCount": 26,
@@ -156,7 +172,13 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "A solar eclipse occurs when the Moon passes directly between the Sun and Earth, casting a shadow on Earth and blocking the Sun's light either partially or entirely. This alignment causes the Moon to obscure the Sun from an Earthly perspective."
+              "text": "A solar eclipse occurs when the Moon passes directly between the Sun and Earth, casting a shadow on Earth and blocking the Sun's light either partially or entirely. This alignment causes the Moon to obscure the Sun from an Earthly perspective.",
+              "native": {
+                "item": {
+                  "text": "A solar eclipse occurs when the Moon passes directly between the Sun and Earth, casting a shadow on Earth and blocking the Sun's light either partially or entirely. This alignment causes the Moon to obscure the Sun from an Earthly perspective."
+                },
+                "fingerprint": 11641959940433259842
+              }
             }
           }
         }

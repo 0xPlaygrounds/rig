@@ -101,23 +101,18 @@
           "choice": [
             {
               "type": "reasoning",
-              "issuer": "deepseek",
-              "id": null,
-              "content": [
-                {
-                  "type": "text",
-                  "content": {
-                    "text": "The user wants me to extract structured data. Name: Ada Lovelace, job: mathematician. First name Ada, last name Lovelace."
-                  }
-                }
-              ]
+              "text": "The user wants me to extract structured data. Name: Ada Lovelace, job: mathematician. First name Ada, last name Lovelace.",
+              "native": {
+                "item": {
+                  "reasoning_content": "The user wants me to extract structured data. Name: Ada Lovelace, job: mathematician. First name Ada, last name Lovelace."
+                },
+                "fingerprint": 1264718677367950229
+              }
             },
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_00_b8tQ0HkeE0vMo0tZ9wa26381"
-                }
+                "provider": "call_00_b8tQ0HkeE0vMo0tZ9wa26381"
               },
               "function": {
                 "name": "submit",
@@ -127,8 +122,17 @@
                   "job": "mathematician"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"first_name\": \"Ada\", \"last_name\": \"Lovelace\", \"job\": \"mathematician\"}",
+                    "name": "submit"
+                  },
+                  "id": "call_00_b8tQ0HkeE0vMo0tZ9wa26381",
+                  "type": "function"
+                },
+                "fingerprint": 17005894645400276812
+              }
             }
           ],
           "usage": {
@@ -138,11 +142,32 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 30
           },
-          "message_id": null,
-          "response_id": "c555e587-01bd-4b21-b545-020000c68065",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "deepseek",
+            "model": "deepseek-v4-flash",
+            "response_model": "deepseek-flash",
+            "response_id": "c555e587-01bd-4b21-b545-020000c68065"
+          },
+          "native": {
+            "item": {
+              "content": "",
+              "reasoning_content": "The user wants me to extract structured data. Name: Ada Lovelace, job: mathematician. First name Ada, last name Lovelace.",
+              "role": "assistant",
+              "tool_calls": [
+                {
+                  "function": {
+                    "arguments": "{\"first_name\": \"Ada\", \"last_name\": \"Lovelace\", \"job\": \"mathematician\"}",
+                    "name": "submit"
+                  },
+                  "id": "call_00_b8tQ0HkeE0vMo0tZ9wa26381",
+                  "type": "function"
+                }
+              ]
+            },
+            "fingerprint": 4048840895822048742
+          },
           "finish_reason": "tool_calls",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
           "raw": {
             "choices": [
               {

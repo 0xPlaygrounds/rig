@@ -101,23 +101,18 @@
           "choice": [
             {
               "type": "reasoning",
-              "issuer": "llamacpp",
-              "id": null,
-              "content": [
-                {
-                  "type": "text",
-                  "content": {
-                    "text": "Okay, let's see. The user provided their name and job. They mentioned their name is Ada Lovelace and they work as a mathematician. The task is to extract this information and submit it using the submit function.\n\nFirst, I need to identify the required fields: first_name, last_name, and job. The user's name is Ada Lovelace, so first_name is Ada and last_name is Lovelace. The job is mathematician. \n\nI should check if there's any additional information needed, but the user only provided their name and job. No middle name or other details mentioned. So the submit function requires all three fields, but the user only provided two. Wait, the required fields are first_name, last_name, and job. The user's name is Ada Lovelace, which is two names. So first_name is Ada, last_name is Lovelace, and job is mathematician. \n\nI need to make sure that all required fields are filled. The user didn't mention a middle name, so maybe the last_name is Lovelace. The job is clearly stated as mathematician. So the submission should include all three. Even if the user's name is two names, the first_name is Ada, last_name is Lovelace, and job is mathematician. \n\nSo the JSON should have first_name: \"Ada\", last_name: \"Lovelace\", job: \"mathematician\". Then call the submit function with that data.\n"
-                  }
-                }
-              ]
+              "text": "Okay, let's see. The user provided their name and job. They mentioned their name is Ada Lovelace and they work as a mathematician. The task is to extract this information and submit it using the submit function.\n\nFirst, I need to identify the required fields: first_name, last_name, and job. The user's name is Ada Lovelace, so first_name is Ada and last_name is Lovelace. The job is mathematician. \n\nI should check if there's any additional information needed, but the user only provided their name and job. No middle name or other details mentioned. So the submit function requires all three fields, but the user only provided two. Wait, the required fields are first_name, last_name, and job. The user's name is Ada Lovelace, which is two names. So first_name is Ada, last_name is Lovelace, and job is mathematician. \n\nI need to make sure that all required fields are filled. The user didn't mention a middle name, so maybe the last_name is Lovelace. The job is clearly stated as mathematician. So the submission should include all three. Even if the user's name is two names, the first_name is Ada, last_name is Lovelace, and job is mathematician. \n\nSo the JSON should have first_name: \"Ada\", last_name: \"Lovelace\", job: \"mathematician\". Then call the submit function with that data.\n",
+              "native": {
+                "item": {
+                  "reasoning_content": "Okay, let's see. The user provided their name and job. They mentioned their name is Ada Lovelace and they work as a mathematician. The task is to extract this information and submit it using the submit function.\n\nFirst, I need to identify the required fields: first_name, last_name, and job. The user's name is Ada Lovelace, so first_name is Ada and last_name is Lovelace. The job is mathematician. \n\nI should check if there's any additional information needed, but the user only provided their name and job. No middle name or other details mentioned. So the submit function requires all three fields, but the user only provided two. Wait, the required fields are first_name, last_name, and job. The user's name is Ada Lovelace, which is two names. So first_name is Ada, last_name is Lovelace, and job is mathematician. \n\nI need to make sure that all required fields are filled. The user didn't mention a middle name, so maybe the last_name is Lovelace. The job is clearly stated as mathematician. So the submission should include all three. Even if the user's name is two names, the first_name is Ada, last_name is Lovelace, and job is mathematician. \n\nSo the JSON should have first_name: \"Ada\", last_name: \"Lovelace\", job: \"mathematician\". Then call the submit function with that data.\n"
+                },
+                "fingerprint": 4031943315479935237
+              }
             },
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "3jMGCwuYjQ0u3LsUWPWvSaiJJJcqzS2i"
-                }
+                "provider": "3jMGCwuYjQ0u3LsUWPWvSaiJJJcqzS2i"
               },
               "function": {
                 "name": "submit",
@@ -127,8 +122,17 @@
                   "job": "mathematician"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"first_name\": \"Ada\", \"last_name\": \"Lovelace\", \"job\": \"mathematician\"}",
+                    "name": "submit"
+                  },
+                  "id": "3jMGCwuYjQ0u3LsUWPWvSaiJJJcqzS2i",
+                  "type": "function"
+                },
+                "fingerprint": 7005473645452718922
+              }
             }
           ],
           "usage": {
@@ -137,11 +141,32 @@
             "total_tokens": 642,
             "cached_input_tokens": 0
           },
-          "message_id": null,
-          "response_id": "chatcmpl-DlJeeHan88vya1EgD79KkRyVSDy0NiAp",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "llamacpp",
+            "model": "Qwen3-1.7B-Q4_K_M",
+            "response_model": "/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf",
+            "response_id": "chatcmpl-DlJeeHan88vya1EgD79KkRyVSDy0NiAp"
+          },
+          "native": {
+            "item": {
+              "content": "",
+              "reasoning_content": "Okay, let's see. The user provided their name and job. They mentioned their name is Ada Lovelace and they work as a mathematician. The task is to extract this information and submit it using the submit function.\n\nFirst, I need to identify the required fields: first_name, last_name, and job. The user's name is Ada Lovelace, so first_name is Ada and last_name is Lovelace. The job is mathematician. \n\nI should check if there's any additional information needed, but the user only provided their name and job. No middle name or other details mentioned. So the submit function requires all three fields, but the user only provided two. Wait, the required fields are first_name, last_name, and job. The user's name is Ada Lovelace, which is two names. So first_name is Ada, last_name is Lovelace, and job is mathematician. \n\nI need to make sure that all required fields are filled. The user didn't mention a middle name, so maybe the last_name is Lovelace. The job is clearly stated as mathematician. So the submission should include all three. Even if the user's name is two names, the first_name is Ada, last_name is Lovelace, and job is mathematician. \n\nSo the JSON should have first_name: \"Ada\", last_name: \"Lovelace\", job: \"mathematician\". Then call the submit function with that data.\n",
+              "role": "assistant",
+              "tool_calls": [
+                {
+                  "function": {
+                    "arguments": "{\"first_name\": \"Ada\", \"last_name\": \"Lovelace\", \"job\": \"mathematician\"}",
+                    "name": "submit"
+                  },
+                  "id": "3jMGCwuYjQ0u3LsUWPWvSaiJJJcqzS2i",
+                  "type": "function"
+                }
+              ]
+            },
+            "fingerprint": 5309359049097538972
+          },
           "finish_reason": "tool_calls",
-          "provider": "llamacpp",
-          "model": "/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf",
           "raw": {
             "choices": [
               {

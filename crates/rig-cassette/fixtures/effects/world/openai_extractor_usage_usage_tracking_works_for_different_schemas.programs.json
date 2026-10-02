@@ -236,10 +236,7 @@
               {
                 "type": "toolcall",
                 "id": {
-                  "provider": {
-                    "call_id": "call_3ymAR8TCfsol4GJniEYlL0OV",
-                    "item_id": "fc_0b7fd47ba2f409b2006ab3969d151087d08d857ffbce26f660"
-                  }
+                  "provider": "call_3ymAR8TCfsol4GJniEYlL0OV"
                 },
                 "function": {
                   "name": "submit",
@@ -249,11 +246,30 @@
                     "profession": "developer"
                   }
                 },
-                "signature": null,
-                "additional_params": null
+                "native": {
+                  "item": {
+                    "arguments": "{\"name\":\"Alice\",\"age\":25,\"profession\":\"developer\"}",
+                    "call_id": "call_3ymAR8TCfsol4GJniEYlL0OV",
+                    "id": "fc_0b7fd47ba2f409b2006ab3969d151087d08d857ffbce26f660",
+                    "name": "submit",
+                    "status": "completed",
+                    "type": "function_call"
+                  },
+                  "fingerprint": 748057967216160276
+                }
               }
             ],
-            "message_id": null,
+            "head": {
+              "origin": {
+                "api": "openai.responses",
+                "provider": "openai",
+                "model": "gpt-4o-mini",
+                "response_model": "gpt-4o-mini-2024-07-18",
+                "response_id": "resp_0b7fd47ba2f409b2006ab3969b6b0887d0b2205749f2b1d2e5"
+              },
+              "stop": "tool_use",
+              "native": null
+            },
             "done": true,
             "usage_recorded": true,
             "stream_validated": 0
@@ -275,10 +291,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_3ymAR8TCfsol4GJniEYlL0OV",
-                      "item_id": "fc_0b7fd47ba2f409b2006ab3969d151087d08d857ffbce26f660"
-                    }
+                    "provider": "call_3ymAR8TCfsol4GJniEYlL0OV"
                   },
                   "function": {
                     "name": "submit",
@@ -288,8 +301,17 @@
                       "profession": "developer"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "arguments": "{\"name\":\"Alice\",\"age\":25,\"profession\":\"developer\"}",
+                      "call_id": "call_3ymAR8TCfsol4GJniEYlL0OV",
+                      "id": "fc_0b7fd47ba2f409b2006ab3969d151087d08d857ffbce26f660",
+                      "name": "submit",
+                      "status": "completed",
+                      "type": "function_call"
+                    },
+                    "fingerprint": 748057967216160276
+                  }
                 }
               ],
               "usage": {
@@ -300,12 +322,15 @@
                 "cache_creation_input_tokens": 0,
                 "reasoning_tokens": 0
               },
-              "message_id": null,
-              "response_id": "resp_0b7fd47ba2f409b2006ab3969b6b0887d0b2205749f2b1d2e5",
+              "origin": {
+                "api": "openai.responses",
+                "provider": "openai",
+                "model": "gpt-4o-mini",
+                "response_model": "gpt-4o-mini-2024-07-18",
+                "response_id": "resp_0b7fd47ba2f409b2006ab3969b6b0887d0b2205749f2b1d2e5"
+              },
               "provider_request_id": "req_0cd2d5104915470eab5bdbfa009d0e30",
               "finish_reason": "tool_calls",
-              "provider": "openai",
-              "model": "gpt-4o-mini-2024-07-18",
               "raw": {
                 "access_programs": null,
                 "background": false,
@@ -432,14 +457,24 @@
             }
           },
           "rig_ecs::bus::effect::Issued": 0,
-          "rig_ecs::bus::handlers::ServedBy": 0,
-          "rig_ecs::bus::effect::Seq": 0
+          "rig_ecs::bus::effect::Seq": 0,
+          "rig_ecs::bus::handlers::ServedBy": 0
         },
         {
           "bevy_ecs::hierarchy::ChildOf": 2,
           "rig_ecs::agent::Role": "Assistant",
           "rig_ecs::agent::Utterance": {},
-          "rig_ecs::agent::content::parts::MessageId": null
+          "rig_ecs::agent::content::parts::AssistantHead": {
+            "origin": {
+              "api": "openai.responses",
+              "provider": "openai",
+              "model": "gpt-4o-mini",
+              "response_model": "gpt-4o-mini-2024-07-18",
+              "response_id": "resp_0b7fd47ba2f409b2006ab3969b6b0887d0b2205749f2b1d2e5"
+            },
+            "stop": "tool_use",
+            "native": null
+          }
         },
         {
           "bevy_ecs::hierarchy::ChildOf": 7,

@@ -22,7 +22,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 3
         }
       },
       {
@@ -38,11 +38,11 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 1
         }
       },
       {
-        "batch": 513,
+        "batch": 530,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -268,17 +268,6 @@
             "event": "text",
             "part": 0,
             "text": "."
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "end",
-            "part": 0,
-            "content": {
-              "type": "text",
-              "text": "I'll write the essay and save it as a note."
-            }
           }
         },
         {

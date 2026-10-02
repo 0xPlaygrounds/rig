@@ -25,7 +25,8 @@
         },
         {
           "rig_ecs::agent::AdditionalParams": {
-            "parallel_tool_calls": true
+            "parallel_tool_calls": true,
+            "store": false
           },
           "rig_ecs::agent::DefaultMaxTurns": null,
           "rig_ecs::agent::MaxTurns": 1,

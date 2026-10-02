@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 9,
+        "batch": 8,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,17 +10,25 @@
         }
       },
       {
-        "batch": 9,
+        "batch": 8,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 10,
+        "batch": 9,
         "id": 1,
         "kind": {
           "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 15,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
         }
       },
       {
@@ -32,15 +40,7 @@
         }
       },
       {
-        "batch": 17,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 17,
+        "batch": 16,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -147,27 +147,46 @@
                 "name": "lookup_harbor_label",
                 "arguments": {}
               },
-              "signature": "CiQBaRR9E0AKF3616Trvv2SyGZhPfFRv4Rw9MffORos4lLsUzswKXAFpFH0TvQk/boLrwTsNIEX2ZlwACW07QsW8AVTSH1UESvP1WSFM5S5IGcIYi+DLkXj0QZnduzLn9tuMMo5wcfwOXSsWxjIUT+bPU+zlhSBqzxEzww9y8T1X3c/ACnYBaRR9E3f8xOO0WyQwJGes8EZddS6dYK/Un5H2iGQ9vR5q5iDw6AsyrKZxKgxAWy1Dqv0gaWmBT4zWkN9ZGwKZLSBS4WPiYDBZU5yMtMjMgw9A8nh++yNIjzNrLUP/ZZPE62lPo9nyNZn2GTMo4FdnYKN4r3No",
-              "additional_params": null
+              "native": {
+                "item": {
+                  "functionCall": {
+                    "args": {},
+                    "name": "lookup_harbor_label"
+                  },
+                  "thoughtSignature": "CiQBaRR9E9FUr8sYnytVZlpqDQgxHGGzq9iKOMqkHX1GQfGB1ncKXwFpFH0T+CWKFbjbAYG7UOb/32Q9lmNtH46799XVuuODyNoXBOD27z7UBU09vdUPY9OBW/FbBHuIYRULU2Jqcjmsb06piLNrp4Jzq/ShR6grLo2AmiHHn09xiAh+wuOfCmgBaRR9E5tVOYcA5d5LeGyUqWMbdHA66mjoKuv5QqlyDNa2Ukv+w3bgnZcy+WbzAwtfyFjZ8ECGILjMJD3DDE/cNGlIzp32SfFxyCshUewuNwjQvnv2oc8q5n++bI8gSpdP7PzclWgdLQ=="
+                },
+                "fingerprint": 7886758139541543310
+              }
             }
           ],
           "usage": {
             "input_tokens": 103,
-            "output_tokens": 49,
-            "total_tokens": 152,
-            "reasoning_tokens": 36
+            "output_tokens": 45,
+            "total_tokens": 148,
+            "reasoning_tokens": 32
           },
-          "message_id": null,
-          "response_id": "iLCyavyRItP6qtsPpamtkAQ",
+          "origin": {
+            "api": "gemini.generate_content",
+            "provider": "gcp.gemini",
+            "model": "gemini-2.5-flash",
+            "response_model": "gemini-2.5-flash",
+            "response_id": "5y-_avX5HJ_-qtsPpcym4Qo"
+          },
+          "native": {
+            "item": {
+              "finishMessage": "Model generated function call(s).",
+              "finishReason": "STOP",
+              "index": 0
+            },
+            "fingerprint": 15135277674259541656
+          },
           "finish_reason": "tool_calls",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
           "raw": {
             "usage_metadata": {
               "promptTokenCount": 103,
               "candidatesTokenCount": 13,
-              "totalTokenCount": 152,
-              "thoughtsTokenCount": 36,
+              "totalTokenCount": 148,
+              "thoughtsTokenCount": 32,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
@@ -178,7 +197,7 @@
             "finish_reason": "STOP",
             "finish_message": "Model generated function call(s).",
             "model_version": "gemini-2.5-flash",
-            "response_id": "iLCyavyRItP6qtsPpamtkAQ"
+            "response_id": "5y-_avX5HJ_-qtsPpcym4Qo"
           }
         }
       },
@@ -213,8 +232,16 @@
                 "name": "lookup_harbor_label",
                 "arguments": {}
               },
-              "signature": "CiQBaRR9E0AKF3616Trvv2SyGZhPfFRv4Rw9MffORos4lLsUzswKXAFpFH0TvQk/boLrwTsNIEX2ZlwACW07QsW8AVTSH1UESvP1WSFM5S5IGcIYi+DLkXj0QZnduzLn9tuMMo5wcfwOXSsWxjIUT+bPU+zlhSBqzxEzww9y8T1X3c/ACnYBaRR9E3f8xOO0WyQwJGes8EZddS6dYK/Un5H2iGQ9vR5q5iDw6AsyrKZxKgxAWy1Dqv0gaWmBT4zWkN9ZGwKZLSBS4WPiYDBZU5yMtMjMgw9A8nh++yNIjzNrLUP/ZZPE62lPo9nyNZn2GTMo4FdnYKN4r3No",
-              "additional_params": null
+              "native": {
+                "item": {
+                  "functionCall": {
+                    "args": {},
+                    "name": "lookup_harbor_label"
+                  },
+                  "thoughtSignature": "CiQBaRR9E9FUr8sYnytVZlpqDQgxHGGzq9iKOMqkHX1GQfGB1ncKXwFpFH0T+CWKFbjbAYG7UOb/32Q9lmNtH46799XVuuODyNoXBOD27z7UBU09vdUPY9OBW/FbBHuIYRULU2Jqcjmsb06piLNrp4Jzq/ShR6grLo2AmiHHn09xiAh+wuOfCmgBaRR9E5tVOYcA5d5LeGyUqWMbdHA66mjoKuv5QqlyDNa2Ukv+w3bgnZcy+WbzAwtfyFjZ8ECGILjMJD3DDE/cNGlIzp32SfFxyCshUewuNwjQvnv2oc8q5n++bI8gSpdP7PzclWgdLQ=="
+                },
+                "fingerprint": 7886758139541543310
+              }
             }
           }
         }
@@ -270,7 +297,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -281,10 +307,34 @@
                     "name": "lookup_harbor_label",
                     "arguments": {}
                   },
-                  "signature": "CiQBaRR9E0AKF3616Trvv2SyGZhPfFRv4Rw9MffORos4lLsUzswKXAFpFH0TvQk/boLrwTsNIEX2ZlwACW07QsW8AVTSH1UESvP1WSFM5S5IGcIYi+DLkXj0QZnduzLn9tuMMo5wcfwOXSsWxjIUT+bPU+zlhSBqzxEzww9y8T1X3c/ACnYBaRR9E3f8xOO0WyQwJGes8EZddS6dYK/Un5H2iGQ9vR5q5iDw6AsyrKZxKgxAWy1Dqv0gaWmBT4zWkN9ZGwKZLSBS4WPiYDBZU5yMtMjMgw9A8nh++yNIjzNrLUP/ZZPE62lPo9nyNZn2GTMo4FdnYKN4r3No",
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "functionCall": {
+                        "args": {},
+                        "name": "lookup_harbor_label"
+                      },
+                      "thoughtSignature": "CiQBaRR9E9FUr8sYnytVZlpqDQgxHGGzq9iKOMqkHX1GQfGB1ncKXwFpFH0T+CWKFbjbAYG7UOb/32Q9lmNtH46799XVuuODyNoXBOD27z7UBU09vdUPY9OBW/FbBHuIYRULU2Jqcjmsb06piLNrp4Jzq/ShR6grLo2AmiHHn09xiAh+wuOfCmgBaRR9E5tVOYcA5d5LeGyUqWMbdHA66mjoKuv5QqlyDNa2Ukv+w3bgnZcy+WbzAwtfyFjZ8ECGILjMJD3DDE/cNGlIzp32SfFxyCshUewuNwjQvnv2oc8q5n++bI8gSpdP7PzclWgdLQ=="
+                    },
+                    "fingerprint": 7886758139541543310
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "gemini.generate_content",
+                "provider": "gcp.gemini",
+                "model": "gemini-2.5-flash",
+                "response_model": "gemini-2.5-flash",
+                "response_id": "5y-_avX5HJ_-qtsPpcym4Qo"
+              },
+              "stop": "tool_use",
+              "native": {
+                "item": {
+                  "finishMessage": "Model generated function call(s).",
+                  "finishReason": "STOP",
+                  "index": 0
+                },
+                "fingerprint": 15135277674259541656
+              }
             },
             {
               "role": "user",
@@ -333,34 +383,50 @@
           "choice": [
             {
               "type": "text",
-              "text": "The result of the harbor label lookup is crimson-harbor."
+              "text": "The alpha signal marker is crimson-harbor.",
+              "native": {
+                "item": {
+                  "text": "The alpha signal marker is crimson-harbor."
+                },
+                "fingerprint": 12992094253898145196
+              }
             }
           ],
           "usage": {
-            "input_tokens": 174,
-            "output_tokens": 14,
-            "total_tokens": 188
+            "input_tokens": 170,
+            "output_tokens": 10,
+            "total_tokens": 180
           },
-          "message_id": null,
-          "response_id": "ibCyatzRC4OVmtkPituHuQk",
+          "origin": {
+            "api": "gemini.generate_content",
+            "provider": "gcp.gemini",
+            "model": "gemini-2.5-flash",
+            "response_model": "gemini-2.5-flash",
+            "response_id": "6C-_atbNBe3vqtsP2ofk4Qc"
+          },
+          "native": {
+            "item": {
+              "index": 0,
+              "finishReason": "STOP"
+            },
+            "fingerprint": 9093928206104755916
+          },
           "finish_reason": "stop",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
           "raw": {
             "usage_metadata": {
-              "promptTokenCount": 174,
-              "candidatesTokenCount": 14,
-              "totalTokenCount": 188,
+              "promptTokenCount": 170,
+              "candidatesTokenCount": 10,
+              "totalTokenCount": 180,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
-                  "tokenCount": 174
+                  "tokenCount": 170
                 }
               ]
             },
             "finish_reason": "STOP",
             "model_version": "gemini-2.5-flash",
-            "response_id": "ibCyatzRC4OVmtkPituHuQk"
+            "response_id": "6C-_atbNBe3vqtsP2ofk4Qc"
           }
         }
       },
@@ -378,7 +444,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": "The result of the"
+            "text": "The alpha signal marker"
           }
         },
         {
@@ -386,7 +452,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": " harbor label lookup is crimson-harbor."
+            "text": " is crimson-harbor."
           }
         },
         {
@@ -396,7 +462,13 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "The result of the harbor label lookup is crimson-harbor."
+              "text": "The alpha signal marker is crimson-harbor.",
+              "native": {
+                "item": {
+                  "text": "The alpha signal marker is crimson-harbor."
+                },
+                "fingerprint": 12992094253898145196
+              }
             }
           }
         }

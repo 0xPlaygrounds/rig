@@ -74,7 +74,14 @@
           "choice": [
             {
               "type": "text",
-              "text": "The dominant non-background color is bright red."
+              "text": "The dominant non-background color is bright red.",
+              "native": {
+                "item": {
+                  "content": "The dominant non-background color is bright red.",
+                  "refusal": null
+                },
+                "fingerprint": 17672256777754227434
+              }
             }
           ],
           "usage": {
@@ -84,12 +91,23 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 64
           },
-          "message_id": null,
-          "response_id": "chatcmpl-ERDDDON0mcxFYggiKluoYPeIbfMab",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "openai",
+            "model": "gpt-5-mini",
+            "response_model": "gpt-5-mini-2025-08-07",
+            "response_id": "chatcmpl-ERDDDON0mcxFYggiKluoYPeIbfMab"
+          },
+          "native": {
+            "item": {
+              "content": "The dominant non-background color is bright red.",
+              "refusal": null,
+              "role": "assistant"
+            },
+            "fingerprint": 11073571618283544370
+          },
           "provider_request_id": "req_480e7af02d1241f391852cceb57e1ead",
           "finish_reason": "stop",
-          "provider": "openai",
-          "model": "gpt-5-mini-2025-08-07",
           "raw": {
             "usage": {
               "prompt_tokens": 37,
@@ -203,7 +221,14 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "The dominant non-background color is bright red."
+              "text": "The dominant non-background color is bright red.",
+              "native": {
+                "item": {
+                  "content": "The dominant non-background color is bright red.",
+                  "refusal": null
+                },
+                "fingerprint": 17672256777754227434
+              }
             }
           }
         }

@@ -119,23 +119,18 @@
           "choice": [
             {
               "type": "reasoning",
-              "issuer": "venice",
-              "id": null,
-              "content": [
-                {
-                  "type": "text",
-                  "content": {
-                    "text": "The user wants me to add 17 and 25 using the `add` tool and then reply with just the resulting number.\n\n1.  **Identify the tool**: `add`\n2.  **Identify the arguments**: `x = 17`, `y = 25`\n3.  **Execute the tool**: Call `add(x=17, y=25)`.\n4.  **Process the result**: The tool should return 42.\n5.  **Format the output**: The user requested \"just the number\".\n\nPlan:\n1. Call `add` with 17 and 25.\n2. Return the result.\n\nLet's do it.\n"
-                  }
-                }
-              ]
+              "text": "The user wants me to add 17 and 25 using the `add` tool and then reply with just the resulting number.\n\n1.  **Identify the tool**: `add`\n2.  **Identify the arguments**: `x = 17`, `y = 25`\n3.  **Execute the tool**: Call `add(x=17, y=25)`.\n4.  **Process the result**: The tool should return 42.\n5.  **Format the output**: The user requested \"just the number\".\n\nLet's call the tool.\n",
+              "native": {
+                "item": {
+                  "reasoning_content": "The user wants me to add 17 and 25 using the `add` tool and then reply with just the resulting number.\n\n1.  **Identify the tool**: `add`\n2.  **Identify the arguments**: `x = 17`, `y = 25`\n3.  **Execute the tool**: Call `add(x=17, y=25)`.\n4.  **Process the result**: The tool should return 42.\n5.  **Format the output**: The user requested \"just the number\".\n\nLet's call the tool.\n"
+                },
+                "fingerprint": 14440619231072131480
+              }
             },
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "chatcmpl-tool-b08eb180bbf6f33b"
-                }
+                "provider": "chatcmpl-tool-aa05da396a353589"
               },
               "function": {
                 "name": "add",
@@ -144,20 +139,51 @@
                   "y": 25
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"x\": 17, \"y\": 25}",
+                    "name": "add"
+                  },
+                  "id": "chatcmpl-tool-aa05da396a353589",
+                  "type": "function"
+                },
+                "fingerprint": 5807472896804483427
+              }
             }
           ],
           "usage": {
             "input_tokens": 1308,
-            "output_tokens": 194,
-            "total_tokens": 1502
+            "output_tokens": 169,
+            "total_tokens": 1477
           },
-          "message_id": null,
-          "response_id": "chatcmpl-RYOU9cpOV2XWe4Bz8UvkiaIB",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "venice",
+            "model": "qwen3-235b-a22b-thinking-2507",
+            "response_model": "qwen3-235b-a22b-thinking-2507",
+            "response_id": "chatcmpl-RpVdOakLVDvIclJj6dFOVPBl"
+          },
+          "native": {
+            "item": {
+              "content": "",
+              "name": null,
+              "reasoning_content": "The user wants me to add 17 and 25 using the `add` tool and then reply with just the resulting number.\n\n1.  **Identify the tool**: `add`\n2.  **Identify the arguments**: `x = 17`, `y = 25`\n3.  **Execute the tool**: Call `add(x=17, y=25)`.\n4.  **Process the result**: The tool should return 42.\n5.  **Format the output**: The user requested \"just the number\".\n\nLet's call the tool.\n",
+              "role": "assistant",
+              "tool_calls": [
+                {
+                  "function": {
+                    "arguments": "{\"x\": 17, \"y\": 25}",
+                    "name": "add"
+                  },
+                  "id": "chatcmpl-tool-aa05da396a353589",
+                  "type": "function"
+                }
+              ]
+            },
+            "fingerprint": 12383138828423862472
+          },
           "finish_reason": "tool_calls",
-          "provider": "venice",
-          "model": "qwen3-235b-a22b-thinking-2507",
           "raw": {
             "choices": [
               {
@@ -167,7 +193,7 @@
                 "message": {
                   "content": "",
                   "name": null,
-                  "reasoning_content": "The user wants me to add 17 and 25 using the `add` tool and then reply with just the resulting number.\n\n1.  **Identify the tool**: `add`\n2.  **Identify the arguments**: `x = 17`, `y = 25`\n3.  **Execute the tool**: Call `add(x=17, y=25)`.\n4.  **Process the result**: The tool should return 42.\n5.  **Format the output**: The user requested \"just the number\".\n\nPlan:\n1. Call `add` with 17 and 25.\n2. Return the result.\n\nLet's do it.\n",
+                  "reasoning_content": "The user wants me to add 17 and 25 using the `add` tool and then reply with just the resulting number.\n\n1.  **Identify the tool**: `add`\n2.  **Identify the arguments**: `x = 17`, `y = 25`\n3.  **Execute the tool**: Call `add(x=17, y=25)`.\n4.  **Process the result**: The tool should return 42.\n5.  **Format the output**: The user requested \"just the number\".\n\nLet's call the tool.\n",
                   "role": "assistant",
                   "tool_calls": [
                     {
@@ -175,7 +201,7 @@
                         "arguments": "{\"x\": 17, \"y\": 25}",
                         "name": "add"
                       },
-                      "id": "chatcmpl-tool-b08eb180bbf6f33b",
+                      "id": "chatcmpl-tool-aa05da396a353589",
                       "type": "function"
                     }
                   ]
@@ -184,17 +210,17 @@
             ],
             "cost": {
               "diem": 0,
-              "usd": 0.0012676
+              "usd": 0.0011801
             },
             "created": 0,
-            "id": "chatcmpl-RYOU9cpOV2XWe4Bz8UvkiaIB",
+            "id": "chatcmpl-RpVdOakLVDvIclJj6dFOVPBl",
             "model": "qwen3-235b-a22b-thinking-2507",
             "object": "chat.completion",
             "service_tier": "default",
             "usage": {
-              "completion_tokens": 194,
+              "completion_tokens": 169,
               "prompt_tokens": 1308,
-              "total_tokens": 1502
+              "total_tokens": 1477
             },
             "venice_parameters": {
               "disable_thinking": false,
@@ -261,27 +287,21 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "reasoning",
-                  "issuer": "venice",
-                  "id": null,
-                  "content": [
-                    {
-                      "type": "text",
-                      "content": {
-                        "text": "The user wants me to add 17 and 25 using the `add` tool and then reply with just the resulting number.\n\n1.  **Identify the tool**: `add`\n2.  **Identify the arguments**: `x = 17`, `y = 25`\n3.  **Execute the tool**: Call `add(x=17, y=25)`.\n4.  **Process the result**: The tool should return 42.\n5.  **Format the output**: The user requested \"just the number\".\n\nPlan:\n1. Call `add` with 17 and 25.\n2. Return the result.\n\nLet's do it.\n"
-                      }
-                    }
-                  ]
+                  "text": "The user wants me to add 17 and 25 using the `add` tool and then reply with just the resulting number.\n\n1.  **Identify the tool**: `add`\n2.  **Identify the arguments**: `x = 17`, `y = 25`\n3.  **Execute the tool**: Call `add(x=17, y=25)`.\n4.  **Process the result**: The tool should return 42.\n5.  **Format the output**: The user requested \"just the number\".\n\nLet's call the tool.\n",
+                  "native": {
+                    "item": {
+                      "reasoning_content": "The user wants me to add 17 and 25 using the `add` tool and then reply with just the resulting number.\n\n1.  **Identify the tool**: `add`\n2.  **Identify the arguments**: `x = 17`, `y = 25`\n3.  **Execute the tool**: Call `add(x=17, y=25)`.\n4.  **Process the result**: The tool should return 42.\n5.  **Format the output**: The user requested \"just the number\".\n\nLet's call the tool.\n"
+                    },
+                    "fingerprint": 14440619231072131480
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "chatcmpl-tool-b08eb180bbf6f33b"
-                    }
+                    "provider": "chatcmpl-tool-aa05da396a353589"
                   },
                   "function": {
                     "name": "add",
@@ -290,10 +310,46 @@
                       "y": 25
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"x\": 17, \"y\": 25}",
+                        "name": "add"
+                      },
+                      "id": "chatcmpl-tool-aa05da396a353589",
+                      "type": "function"
+                    },
+                    "fingerprint": 5807472896804483427
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "venice",
+                "model": "qwen3-235b-a22b-thinking-2507",
+                "response_model": "qwen3-235b-a22b-thinking-2507",
+                "response_id": "chatcmpl-RpVdOakLVDvIclJj6dFOVPBl"
+              },
+              "stop": "tool_use",
+              "native": {
+                "item": {
+                  "content": "",
+                  "name": null,
+                  "reasoning_content": "The user wants me to add 17 and 25 using the `add` tool and then reply with just the resulting number.\n\n1.  **Identify the tool**: `add`\n2.  **Identify the arguments**: `x = 17`, `y = 25`\n3.  **Execute the tool**: Call `add(x=17, y=25)`.\n4.  **Process the result**: The tool should return 42.\n5.  **Format the output**: The user requested \"just the number\".\n\nLet's call the tool.\n",
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{\"x\": 17, \"y\": 25}",
+                        "name": "add"
+                      },
+                      "id": "chatcmpl-tool-aa05da396a353589",
+                      "type": "function"
+                    }
+                  ]
+                },
+                "fingerprint": 12383138828423862472
+              }
             },
             {
               "role": "user",
@@ -301,9 +357,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "chatcmpl-tool-b08eb180bbf6f33b"
-                    }
+                    "provider": "chatcmpl-tool-aa05da396a353589"
                   },
                   "name": "add",
                   "content": [
@@ -358,32 +412,48 @@
           "choice": [
             {
               "type": "reasoning",
-              "issuer": "venice",
-              "id": null,
-              "content": [
-                {
-                  "type": "text",
-                  "content": {
-                    "text": "The tool returned 42. The user requested \"just the number\". I will output \"42\".\n"
-                  }
-                }
-              ]
+              "text": "The tool returned 42. The user requested \"just the number\".\n",
+              "native": {
+                "item": {
+                  "reasoning_content": "The tool returned 42. The user requested \"just the number\".\n"
+                },
+                "fingerprint": 13648884088511773696
+              }
             },
             {
               "type": "text",
-              "text": "\n\n42"
+              "text": "\n\n42",
+              "native": {
+                "item": {
+                  "content": "\n\n42",
+                  "name": null
+                },
+                "fingerprint": 7313475253113603169
+              }
             }
           ],
           "usage": {
-            "input_tokens": 1519,
-            "output_tokens": 28,
-            "total_tokens": 1547
+            "input_tokens": 1494,
+            "output_tokens": 21,
+            "total_tokens": 1515
           },
-          "message_id": null,
-          "response_id": "chatcmpl-RqrRlv8GQWjKFcu5FgyGReix",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "venice",
+            "model": "qwen3-235b-a22b-thinking-2507",
+            "response_model": "qwen3-235b-a22b-thinking-2507",
+            "response_id": "chatcmpl-Rp57lTqCCawREmxVjn4SCPS9"
+          },
+          "native": {
+            "item": {
+              "content": "\n\n42",
+              "name": null,
+              "reasoning_content": "The tool returned 42. The user requested \"just the number\".\n",
+              "role": "assistant"
+            },
+            "fingerprint": 8148024439832216194
+          },
           "finish_reason": "stop",
-          "provider": "venice",
-          "model": "qwen3-235b-a22b-thinking-2507",
           "raw": {
             "choices": [
               {
@@ -393,7 +463,7 @@
                 "message": {
                   "content": "\n\n42",
                   "name": null,
-                  "reasoning_content": "The tool returned 42. The user requested \"just the number\". I will output \"42\".\n",
+                  "reasoning_content": "The tool returned 42. The user requested \"just the number\".\n",
                   "role": "assistant",
                   "tool_calls": null
                 }
@@ -401,17 +471,17 @@
             ],
             "cost": {
               "diem": 0,
-              "usd": 0.00078155
+              "usd": 0.0007458
             },
             "created": 0,
-            "id": "chatcmpl-RqrRlv8GQWjKFcu5FgyGReix",
+            "id": "chatcmpl-Rp57lTqCCawREmxVjn4SCPS9",
             "model": "qwen3-235b-a22b-thinking-2507",
             "object": "chat.completion",
             "service_tier": "default",
             "usage": {
-              "completion_tokens": 28,
-              "prompt_tokens": 1519,
-              "total_tokens": 1547
+              "completion_tokens": 21,
+              "prompt_tokens": 1494,
+              "total_tokens": 1515
             },
             "venice_parameters": {
               "disable_thinking": false,

@@ -140,9 +140,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_MSWAJxTAnOcMqVUm9wUjMHMi"
-                }
+                "provider": "call_MwYQaBRBs5vU0df9F8JWeFEH"
               },
               "function": {
                 "name": "add",
@@ -151,40 +149,70 @@
                   "y": 25
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"x\":17,\"y\":25}",
+                    "name": "add"
+                  },
+                  "id": "call_MwYQaBRBs5vU0df9F8JWeFEH",
+                  "type": "function"
+                },
+                "fingerprint": 14052597279904661666
+              }
             }
           ],
           "usage": {
             "input_tokens": 185,
-            "output_tokens": 90,
-            "total_tokens": 275,
+            "output_tokens": 154,
+            "total_tokens": 339,
             "cached_input_tokens": 0,
-            "reasoning_tokens": 64
+            "reasoning_tokens": 128
           },
-          "message_id": null,
-          "response_id": "chatcmpl-ERDBhPe9mMDNIbQewk3mnq6SeFvKh",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "openai",
+            "model": "gpt-5-mini",
+            "response_model": "gpt-5-mini-2025-08-07",
+            "response_id": "chatcmpl-EUPXs8ExtQ22gGzQwoqd0Ql73jdlF"
+          },
+          "native": {
+            "item": {
+              "content": null,
+              "refusal": null,
+              "role": "assistant",
+              "tool_calls": [
+                {
+                  "function": {
+                    "arguments": "{\"x\":17,\"y\":25}",
+                    "name": "add"
+                  },
+                  "id": "call_MwYQaBRBs5vU0df9F8JWeFEH",
+                  "type": "function"
+                }
+              ]
+            },
+            "fingerprint": 2069768047105191154
+          },
           "finish_reason": "tool_calls",
-          "provider": "openai",
-          "model": "gpt-5-mini-2025-08-07",
           "raw": {
             "usage": {
               "prompt_tokens": 185,
-              "completion_tokens": 90,
-              "total_tokens": 275,
+              "completion_tokens": 154,
+              "total_tokens": 339,
               "prompt_tokens_details": {
                 "cached_tokens": 0
               },
               "completion_tokens_details": {
-                "reasoning_tokens": 64
+                "reasoning_tokens": 128
               }
             },
             "finish_reason": "tool_calls",
-            "response_id": "chatcmpl-ERDBhPe9mMDNIbQewk3mnq6SeFvKh",
+            "response_id": "chatcmpl-EUPXs8ExtQ22gGzQwoqd0Ql73jdlF",
             "model": "gpt-5-mini-2025-08-07",
             "additional_params": {
               "created": 0,
-              "obfuscation": "Wqf",
+              "obfuscation": "a",
               "object": "chat.completion.chunk",
               "service_tier": "default",
               "system_fingerprint": null
@@ -217,9 +245,7 @@
             "content": {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_MSWAJxTAnOcMqVUm9wUjMHMi"
-                }
+                "provider": "call_MwYQaBRBs5vU0df9F8JWeFEH"
               },
               "function": {
                 "name": "add",
@@ -228,8 +254,17 @@
                   "y": 25
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"x\":17,\"y\":25}",
+                    "name": "add"
+                  },
+                  "id": "call_MwYQaBRBs5vU0df9F8JWeFEH",
+                  "type": "function"
+                },
+                "fingerprint": 14052597279904661666
+              }
             }
           }
         }

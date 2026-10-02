@@ -31,7 +31,7 @@
         "required": {
           "golden/model:default": "completion"
         },
-        "policy": 8374376050861464345
+        "policy": 7494925143709327144
       }
     }
   },
@@ -64,7 +64,9 @@
           "temperature": null,
           "max_tokens": null,
           "tool_choice": null,
-          "additional_params": null,
+          "additional_params": {
+            "store": false
+          },
           "output_schema": null
         },
         "stream": false
@@ -75,35 +77,59 @@
           "choice": [
             {
               "type": "reasoning",
-              "issuer": "openai",
-              "id": "rs_0098948a08cb4b90006ab2b28fdaa487d0b207cfa473c976ab",
-              "content": [
-                {
-                  "type": "encrypted",
-                  "content": "gAAAAABqsrKTsXLsZXKJ6AwPHZy-XztjZggJ-oz65IzUn_6mYLAo4oQLFM44Y-eEqoiJo645L_GVMt5_TFHyaAJCFXOJXh4JkAi2QsSQqxc3QlIK5-7EITI0a_mmh5mbz-3Gs1gBYOwSRHcOn6NaDMdX9tvvO2KEy7FrmzmYqiT5FAoxDeZ4R6qAo5ucfKX8hctB7tW_3-qPDCTH9qyWn_NqFrlHqthMCztmvV02cJsdgR3ZuIQxYvh85p5vUd9bndndrdK49PK1emmrp2JevjPGDOWEnm8R4NfurP8JlOTP5adA_xT6zTOH7Opk_pgVko2Iapxxkw85vximXD-bkemrh0rJUldXT1xtk0d6n3Ngtd8RcWLROxbpFCYcwN6N0J9pO0S0Z5n3JUnz8gU3Nkof7MZtBZAfQ27k6Q4VZi6IM1ky60GemQj8Dsj4428cooHalkf6vFshxiorvcKwWg1ctzy2QUa-kQnRf7PhSkAMxoUPEVQ7xvPa3c7QK8MDOD1duTMTR7wOh9vsTVz3aFzxkIhwP8oXqsa8R1ecnRR3zyJG8UwSS5aOB5kz1eHRn4U7Xa8F19_P844BB5oIe7CSlvlXjPgLzRKZfhpVV7k48fij50rcLcgu3p37817oc92kbmj-k_XL2qcJAN-Bkc-sXZUnXK7eDveWKZJ6hCBc-46YhtrptD-u0eKx5k_JK0heglTgJY2BLbchGSufo4BxriWQdy5bBJjObBVO0FkU-fo8GHuLk-dNEXqAwSzve6iZMjhUtGfLz-LIE8x8i5fSJIuTs59k4wAt6B-vH6g0DFwcU1ZyInTTvZUsXXVNxpQer3U4Au7eS7wTlnPg1Odi3WKaPJZw2MXqDxz2EaLB5hacROawxZyWtz178imHG8_S39ey2fu_1iAShY-be3hiI4kV1vazANfygTiC0XfSGAkxRq_NXW4EKR4IE_-6pVwWpIav7nzrTbLbwODZGnL48hRws3rucJOCCswiv6MwGN2InX2xXY56QAqfqs1-NVb4ejQInbPRpvkJ2ad4fapXNdRlI3dz-2Mtbxr9cR5UdVy38WarjFDt4bboTQp6UOd1TJy2slpA70HGXm8roWteww_RhJ0I3mPem4qTQX9D-s9o2mbbVWHwOb3A3vgmzbdeZIpbHyMi4HqO65SzzSImsyEsfCEn1U1S4PF1n0XHpuNffA23v_7NO2W5nRWTfxs0UQj53lLQhj3gkiQB5ssIfjOBTqIoMAlrkEl5p-5LEwd6Y3cIkYfrlxw3LhNeqvCrFyczgPAN6-MGTJO6lW-ZGlWYCKdgJo2ZFpHh06OWuLsDgy5whjgpOlgVIMDc1nj38G4kgG6fHjhlmjWtgQ_ADYBcJcYDucFHE--psUQ3tDSimGFMVbV7y5IQLtfVEAbCWY70Fu1K3aMcuT4EQAnTm79QYYmOD3hgnUGi_aEQbvrG0jWTPafW7vWOdBT63SkWftB_f-Bb9tWXTJkhOYSmdn2kgaKALe4vqG1Bv8UMASvrtLF1oQW1LhD4fUhH_ZTnVN6qYg09ZOUtE8P3P57eWOGSciltI0Zgu_S7nGMhMu3EUJpUjjuF8K_jvyzs__zFA0M5846-0RrraXOoHsPlxk9XYpOZmblEPNbIKBKic2nlrlhK78l-G-aSI_t5U86DqovDhBgzW1KLJcTaxxVSAZ1SThgld06lqTLrpgIYjAdO0jxZDX-tgOl_R-j-fxVz5ADMgDKejx1rpEiQxHwFLkxM8lL5_wpJ3nrGBco2zqbd1ITohFs92ZuDwtZwmljY-jkHavW-XOw8ok3feUDU11Oc3BWrcCOkJHGo_XSuY7uBafc5lyDkSDye_uOLRPCjCrBmj25h7wtFF39zZ94wRXBV02OrAICSTkDfmBkLAHTqkaJyJVO-cUyIeGuWuoQp2s5G1gBI1hT-4InOVlsOgTw4J2m-zvVnudFNyEf2Ox7aFHehy0Ym9WWuTAz4-U-O6YpYX1oJGROVfNEx1mcDJTkKShZxQs2TkOp6pMlrAgf_L3yBtNHvHLqEkytn--uLUkG5XokEyo8A6E4vxTxBxk4wVuISHbBzphdEyvRybbG0GQxbH8S_bg9MJsyqkq4Wd0JMTCATZGNRi01vQDH0RDRRCyDV1TWdV32pGH_eVphCIVFVeXOjtIVHFcQMYGY4DugGiRrKC4mxYqT-R0Er1ZUwLE7vEBudSKG6JOxEedEtx_58pR8poQbQzo0UEk1QYTudlppQikoc6oQJ5Aa4np18xCQ1QXViWPAXnontcc9prJGWAii9lQWHJG2NDoglG3qfWrj23p3c16aouMseEYZH-_4F8KI1q06FwMZdgytCQvj61ou9qXhqP1a-yD56cpSHAmTsXGixW5kAPBRH8kUU2evBt7XzO1pbbm6GLJLLm6SxHWs="
-                }
-              ]
+              "text": "",
+              "native": {
+                "item": {
+                  "content": [],
+                  "encrypted_content": "gAAAAABqv0nS6KEL9WQQGgUmDUqR3tcPZtE-W30DZdq4jvJnQ8UsLTqTKXLC12DxlXUbccLxU0aiiqos8YQbfc7VtmlojMD_9nPFUCs7uXBsl4GpeoElKLE6C-AdIpsAlvICxNIC7HVWkXUvxF2CW3umATFzmvdYg58cZzgNLJtwwgKUMYvrEqnMLJzTA5pmNU-zWZiRce1fbUj792SdoOkUm1FJomN3VfMU3-1a-fUCLzqPAM7BwXaAZ8kEBHS5_9wWw26yOhHwZi5t0CcKNXeatAh_JusuZuC3WurcBVypWNUeBSm0zS-7q-8MCRFVsqEGN25mFEwMQH0zDKpmrzYU84Jc6xXJdsCA7cOvSQFurpFwi2tADd1NVz1Wdsp-8nO7Bcl7Y243nFrpCSqY92v_EnXohC9rYpa3Fr9W0kzDa9bHsRDoMF92qWWHZak2idi-kYwDNIbQp5TdSWlgUV-X7E1jluKqNMWYF3eIMaUFsl-Nm-p9mSakfxfTBriJ1kZgupquZmCTfZueEtLQA_G9XTefGhk8qrWSeDmS9GrVEY_CNQMmRdAgu6CHP1ebX0XkZ1aS54GirJVEwtEdx5pTSYsnkbtnQQi0e2N_TeGkM0ZkQOIPUYji03YT-NvWLR-uDvqYNnkKyHguXCe1L7JZFYimluTLcjE9PB14UPCG7s-ZveMjTfaoKgEHDkcqVayDcRHQ91psb7Vj89y5Wt4p0m3RxPXu0z0ZLlzjraR7FBRnDIPHttHNxhkliSe8o0ncGlpx9GJWBzVPdcYDsWK2wiiBHGizWzgvcbxPMCbWriv1qFvmrtO6DwX3bxJqz_8WMq5P_L0NK4cxje4-PjmbhttPAdJNdAnnqId0Hf3cIohx1XQt-OfsoiuPNDLrOHD5Xrp6YHLqA54dJJt9F5VAfy6ggC_9UGQ6ZmZsPYIOCqnShGKGF5i94fCSYWWXC6zISnWZLLND7NYBWAYK0ndyF_5tzOy7q5ScfNAESskYhvFyGHXe3zkyMvFMKi-n5_Z4m01nieHcvQqGvbhBe2VjyueJdGVF1RVQXoMrzJ1RmKXggsHO8jIpnlvcoTeLLaJu5hjJIjQN2ZvUDSm4OsJgeVnlFoCacV6B1FZdULZ9s6KKIadZLAyqzrsVQtQvDDjGwvB3zA7DGnPysWiPYzfeWoTuFmfLt9vkbiQ46G1xzbhBNvPe19MxO0TH5CH00QUXuVwhKIBtkgnZtYHP2xlfwQyMOMromtWmxlFRmNiPRY4O-Y7EeQfgqKpFX5ILullmUXEwDBcDHyx3i6jH-V1qGtIj0YCuJoXroZrumqFhT5AtNksZkWcSXu1qw2x5YwSHWyehnkGYq7ddGGsMNhTfau996XunDHlDZiP1FD2mPnusWO1aD6g2-A4s60dosfcrml2rSFziJEmu_o1A_2RzyH8vUuxaSrG097rpiZ65LKXAJiOJshFPqfAYBtLH9-BA_sbvdJVDMQ3rbRZ6us_XYkEqpiaV4P8g_4dC5s49mRb2M5My0ZIljxMsZblTE_ROycdwNUiQ8un5w6TaqefMsrij5KQEr-bOJs4UKOkRrjkZv6fT3Gum4nuVuBA_CS0CAW-NX36w6gYh9cap3nszXd6u6Wgf_xttKuESnKZAx9G1Rd3xDTZUSX5oO6T0hOUpp4HsCegNbaB5SK0YbnSArdTTNVL54UsE6-ZB8UY47wHsXbMFcwZIJ2RzVPJdTHtMMQPGkiHNNJYnTgqXcCz7HmNPKqyNhSaMz_QWfCvcSHhJFMNTHhbqvDkbRfEZ4xK33gbTKJsOOkK8GLm0DzDBJdpvsml9zFzsPtaTYQ8TDTdr3ZimsdnZHHmJmxdD9sObXZZnstnTBLAxLaR2wvezHgvTuxY6kVbCca8_nHyx13nHEK4L0ERJ2ESbNfTRxQrnEg-PjEmGqsSJL5X4P9ERvPMoiqptuUoizswLG-dEnjpEo8dUQyB98aaRcQ40OTXO5S2ldllk",
+                  "id": "rs_0c9d66c901f172fa016abf49d1010087d0a42eb811c075850f",
+                  "summary": [],
+                  "type": "reasoning"
+                },
+                "fingerprint": 17796600549832473228
+              }
             },
             {
               "type": "text",
-              "text": "Rust is a systems programming language that provides performance comparable to C/C++ while enforcing memory- and thread-safety via its ownership, borrowing, and lifetime rules checked at compile time. Memory safety matters because it prevents crashes, undefined behavior, and security vulnerabilities (e.g., buffer overflows, use-after-free, data races), making software more reliable and secure."
+              "text": "Rust is a systems programming language that offers C/C++-level performance and control with modern features like ownership, borrowing, and zero-cost abstractions to eliminate whole classes of runtime errors. Memory safety matters because it prevents bugs such as use-after-free, buffer overflows, and data races, improving program correctness, reliability, and security.",
+              "native": {
+                "item": {
+                  "content": [
+                    {
+                      "annotations": [],
+                      "logprobs": [],
+                      "text": "Rust is a systems programming language that offers C/C++-level performance and control with modern features like ownership, borrowing, and zero-cost abstractions to eliminate whole classes of runtime errors. Memory safety matters because it prevents bugs such as use-after-free, buffer overflows, and data races, improving program correctness, reliability, and security.",
+                      "type": "output_text"
+                    }
+                  ],
+                  "id": "msg_0c9d66c901f172fa016abf49d1b30487d095d281aa8c52aeab",
+                  "role": "assistant",
+                  "status": "completed",
+                  "type": "message"
+                },
+                "fingerprint": 8185443743925783133
+              }
             }
           ],
           "usage": {
             "input_tokens": 37,
-            "output_tokens": 240,
-            "total_tokens": 277,
+            "output_tokens": 198,
+            "total_tokens": 235,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0,
-            "reasoning_tokens": 128
+            "reasoning_tokens": 64
           },
-          "message_id": "msg_0098948a08cb4b90006ab2b291fc2087d09627a94adcf08c02",
-          "response_id": "resp_0098948a08cb4b90006ab2b28f304087d09410c6118548a63f",
-          "provider_request_id": "req_8fb5e2d401a048c18ba3c4ac0d3356ab",
+          "origin": {
+            "api": "openai.responses",
+            "provider": "openai",
+            "model": "gpt-5-mini",
+            "response_model": "gpt-5-mini-2025-08-07",
+            "response_id": "resp_0c9d66c901f172fa016abf49d0455887d099e1dcdfd3c53b86"
+          },
+          "provider_request_id": "req_e746e91c8d6940219c713afe57f0f87d",
           "finish_reason": "stop",
-          "provider": "openai",
-          "model": "gpt-5-mini-2025-08-07",
           "raw": {
+            "access_programs": null,
             "background": false,
             "billing": {
               "payer": "developer"
@@ -112,7 +138,7 @@
             "created_at": 0,
             "error": null,
             "frequency_penalty": 0.0,
-            "id": "resp_0098948a08cb4b90006ab2b28f304087d09410c6118548a63f",
+            "id": "resp_0c9d66c901f172fa016abf49d0455887d099e1dcdfd3c53b86",
             "incomplete_details": null,
             "instructions": "You are a concise assistant. Answer directly.",
             "max_output_tokens": null,
@@ -124,8 +150,8 @@
             "output": [
               {
                 "content": [],
-                "encrypted_content": "gAAAAABqsrKTsXLsZXKJ6AwPHZy-XztjZggJ-oz65IzUn_6mYLAo4oQLFM44Y-eEqoiJo645L_GVMt5_TFHyaAJCFXOJXh4JkAi2QsSQqxc3QlIK5-7EITI0a_mmh5mbz-3Gs1gBYOwSRHcOn6NaDMdX9tvvO2KEy7FrmzmYqiT5FAoxDeZ4R6qAo5ucfKX8hctB7tW_3-qPDCTH9qyWn_NqFrlHqthMCztmvV02cJsdgR3ZuIQxYvh85p5vUd9bndndrdK49PK1emmrp2JevjPGDOWEnm8R4NfurP8JlOTP5adA_xT6zTOH7Opk_pgVko2Iapxxkw85vximXD-bkemrh0rJUldXT1xtk0d6n3Ngtd8RcWLROxbpFCYcwN6N0J9pO0S0Z5n3JUnz8gU3Nkof7MZtBZAfQ27k6Q4VZi6IM1ky60GemQj8Dsj4428cooHalkf6vFshxiorvcKwWg1ctzy2QUa-kQnRf7PhSkAMxoUPEVQ7xvPa3c7QK8MDOD1duTMTR7wOh9vsTVz3aFzxkIhwP8oXqsa8R1ecnRR3zyJG8UwSS5aOB5kz1eHRn4U7Xa8F19_P844BB5oIe7CSlvlXjPgLzRKZfhpVV7k48fij50rcLcgu3p37817oc92kbmj-k_XL2qcJAN-Bkc-sXZUnXK7eDveWKZJ6hCBc-46YhtrptD-u0eKx5k_JK0heglTgJY2BLbchGSufo4BxriWQdy5bBJjObBVO0FkU-fo8GHuLk-dNEXqAwSzve6iZMjhUtGfLz-LIE8x8i5fSJIuTs59k4wAt6B-vH6g0DFwcU1ZyInTTvZUsXXVNxpQer3U4Au7eS7wTlnPg1Odi3WKaPJZw2MXqDxz2EaLB5hacROawxZyWtz178imHG8_S39ey2fu_1iAShY-be3hiI4kV1vazANfygTiC0XfSGAkxRq_NXW4EKR4IE_-6pVwWpIav7nzrTbLbwODZGnL48hRws3rucJOCCswiv6MwGN2InX2xXY56QAqfqs1-NVb4ejQInbPRpvkJ2ad4fapXNdRlI3dz-2Mtbxr9cR5UdVy38WarjFDt4bboTQp6UOd1TJy2slpA70HGXm8roWteww_RhJ0I3mPem4qTQX9D-s9o2mbbVWHwOb3A3vgmzbdeZIpbHyMi4HqO65SzzSImsyEsfCEn1U1S4PF1n0XHpuNffA23v_7NO2W5nRWTfxs0UQj53lLQhj3gkiQB5ssIfjOBTqIoMAlrkEl5p-5LEwd6Y3cIkYfrlxw3LhNeqvCrFyczgPAN6-MGTJO6lW-ZGlWYCKdgJo2ZFpHh06OWuLsDgy5whjgpOlgVIMDc1nj38G4kgG6fHjhlmjWtgQ_ADYBcJcYDucFHE--psUQ3tDSimGFMVbV7y5IQLtfVEAbCWY70Fu1K3aMcuT4EQAnTm79QYYmOD3hgnUGi_aEQbvrG0jWTPafW7vWOdBT63SkWftB_f-Bb9tWXTJkhOYSmdn2kgaKALe4vqG1Bv8UMASvrtLF1oQW1LhD4fUhH_ZTnVN6qYg09ZOUtE8P3P57eWOGSciltI0Zgu_S7nGMhMu3EUJpUjjuF8K_jvyzs__zFA0M5846-0RrraXOoHsPlxk9XYpOZmblEPNbIKBKic2nlrlhK78l-G-aSI_t5U86DqovDhBgzW1KLJcTaxxVSAZ1SThgld06lqTLrpgIYjAdO0jxZDX-tgOl_R-j-fxVz5ADMgDKejx1rpEiQxHwFLkxM8lL5_wpJ3nrGBco2zqbd1ITohFs92ZuDwtZwmljY-jkHavW-XOw8ok3feUDU11Oc3BWrcCOkJHGo_XSuY7uBafc5lyDkSDye_uOLRPCjCrBmj25h7wtFF39zZ94wRXBV02OrAICSTkDfmBkLAHTqkaJyJVO-cUyIeGuWuoQp2s5G1gBI1hT-4InOVlsOgTw4J2m-zvVnudFNyEf2Ox7aFHehy0Ym9WWuTAz4-U-O6YpYX1oJGROVfNEx1mcDJTkKShZxQs2TkOp6pMlrAgf_L3yBtNHvHLqEkytn--uLUkG5XokEyo8A6E4vxTxBxk4wVuISHbBzphdEyvRybbG0GQxbH8S_bg9MJsyqkq4Wd0JMTCATZGNRi01vQDH0RDRRCyDV1TWdV32pGH_eVphCIVFVeXOjtIVHFcQMYGY4DugGiRrKC4mxYqT-R0Er1ZUwLE7vEBudSKG6JOxEedEtx_58pR8poQbQzo0UEk1QYTudlppQikoc6oQJ5Aa4np18xCQ1QXViWPAXnontcc9prJGWAii9lQWHJG2NDoglG3qfWrj23p3c16aouMseEYZH-_4F8KI1q06FwMZdgytCQvj61ou9qXhqP1a-yD56cpSHAmTsXGixW5kAPBRH8kUU2evBt7XzO1pbbm6GLJLLm6SxHWs=",
-                "id": "rs_0098948a08cb4b90006ab2b28fdaa487d0b207cfa473c976ab",
+                "encrypted_content": "gAAAAABqv0nS6KEL9WQQGgUmDUqR3tcPZtE-W30DZdq4jvJnQ8UsLTqTKXLC12DxlXUbccLxU0aiiqos8YQbfc7VtmlojMD_9nPFUCs7uXBsl4GpeoElKLE6C-AdIpsAlvICxNIC7HVWkXUvxF2CW3umATFzmvdYg58cZzgNLJtwwgKUMYvrEqnMLJzTA5pmNU-zWZiRce1fbUj792SdoOkUm1FJomN3VfMU3-1a-fUCLzqPAM7BwXaAZ8kEBHS5_9wWw26yOhHwZi5t0CcKNXeatAh_JusuZuC3WurcBVypWNUeBSm0zS-7q-8MCRFVsqEGN25mFEwMQH0zDKpmrzYU84Jc6xXJdsCA7cOvSQFurpFwi2tADd1NVz1Wdsp-8nO7Bcl7Y243nFrpCSqY92v_EnXohC9rYpa3Fr9W0kzDa9bHsRDoMF92qWWHZak2idi-kYwDNIbQp5TdSWlgUV-X7E1jluKqNMWYF3eIMaUFsl-Nm-p9mSakfxfTBriJ1kZgupquZmCTfZueEtLQA_G9XTefGhk8qrWSeDmS9GrVEY_CNQMmRdAgu6CHP1ebX0XkZ1aS54GirJVEwtEdx5pTSYsnkbtnQQi0e2N_TeGkM0ZkQOIPUYji03YT-NvWLR-uDvqYNnkKyHguXCe1L7JZFYimluTLcjE9PB14UPCG7s-ZveMjTfaoKgEHDkcqVayDcRHQ91psb7Vj89y5Wt4p0m3RxPXu0z0ZLlzjraR7FBRnDIPHttHNxhkliSe8o0ncGlpx9GJWBzVPdcYDsWK2wiiBHGizWzgvcbxPMCbWriv1qFvmrtO6DwX3bxJqz_8WMq5P_L0NK4cxje4-PjmbhttPAdJNdAnnqId0Hf3cIohx1XQt-OfsoiuPNDLrOHD5Xrp6YHLqA54dJJt9F5VAfy6ggC_9UGQ6ZmZsPYIOCqnShGKGF5i94fCSYWWXC6zISnWZLLND7NYBWAYK0ndyF_5tzOy7q5ScfNAESskYhvFyGHXe3zkyMvFMKi-n5_Z4m01nieHcvQqGvbhBe2VjyueJdGVF1RVQXoMrzJ1RmKXggsHO8jIpnlvcoTeLLaJu5hjJIjQN2ZvUDSm4OsJgeVnlFoCacV6B1FZdULZ9s6KKIadZLAyqzrsVQtQvDDjGwvB3zA7DGnPysWiPYzfeWoTuFmfLt9vkbiQ46G1xzbhBNvPe19MxO0TH5CH00QUXuVwhKIBtkgnZtYHP2xlfwQyMOMromtWmxlFRmNiPRY4O-Y7EeQfgqKpFX5ILullmUXEwDBcDHyx3i6jH-V1qGtIj0YCuJoXroZrumqFhT5AtNksZkWcSXu1qw2x5YwSHWyehnkGYq7ddGGsMNhTfau996XunDHlDZiP1FD2mPnusWO1aD6g2-A4s60dosfcrml2rSFziJEmu_o1A_2RzyH8vUuxaSrG097rpiZ65LKXAJiOJshFPqfAYBtLH9-BA_sbvdJVDMQ3rbRZ6us_XYkEqpiaV4P8g_4dC5s49mRb2M5My0ZIljxMsZblTE_ROycdwNUiQ8un5w6TaqefMsrij5KQEr-bOJs4UKOkRrjkZv6fT3Gum4nuVuBA_CS0CAW-NX36w6gYh9cap3nszXd6u6Wgf_xttKuESnKZAx9G1Rd3xDTZUSX5oO6T0hOUpp4HsCegNbaB5SK0YbnSArdTTNVL54UsE6-ZB8UY47wHsXbMFcwZIJ2RzVPJdTHtMMQPGkiHNNJYnTgqXcCz7HmNPKqyNhSaMz_QWfCvcSHhJFMNTHhbqvDkbRfEZ4xK33gbTKJsOOkK8GLm0DzDBJdpvsml9zFzsPtaTYQ8TDTdr3ZimsdnZHHmJmxdD9sObXZZnstnTBLAxLaR2wvezHgvTuxY6kVbCca8_nHyx13nHEK4L0ERJ2ESbNfTRxQrnEg-PjEmGqsSJL5X4P9ERvPMoiqptuUoizswLG-dEnjpEo8dUQyB98aaRcQ40OTXO5S2ldllk",
+                "id": "rs_0c9d66c901f172fa016abf49d1010087d0a42eb811c075850f",
                 "summary": [],
                 "type": "reasoning"
               },
@@ -134,11 +160,11 @@
                   {
                     "annotations": [],
                     "logprobs": [],
-                    "text": "Rust is a systems programming language that provides performance comparable to C/C++ while enforcing memory- and thread-safety via its ownership, borrowing, and lifetime rules checked at compile time. Memory safety matters because it prevents crashes, undefined behavior, and security vulnerabilities (e.g., buffer overflows, use-after-free, data races), making software more reliable and secure.",
+                    "text": "Rust is a systems programming language that offers C/C++-level performance and control with modern features like ownership, borrowing, and zero-cost abstractions to eliminate whole classes of runtime errors. Memory safety matters because it prevents bugs such as use-after-free, buffer overflows, and data races, improving program correctness, reliability, and security.",
                     "type": "output_text"
                   }
                 ],
-                "id": "msg_0098948a08cb4b90006ab2b291fc2087d09627a94adcf08c02",
+                "id": "msg_0c9d66c901f172fa016abf49d1b30487d095d281aa8c52aeab",
                 "role": "assistant",
                 "status": "completed",
                 "type": "message"
@@ -158,7 +184,7 @@
             "safety_identifier": null,
             "service_tier": "default",
             "status": "completed",
-            "store": true,
+            "store": false,
             "temperature": 1.0,
             "text": {
               "format": {
@@ -195,11 +221,11 @@
                 "cache_write_tokens": 0,
                 "cached_tokens": 0
               },
-              "output_tokens": 240,
+              "output_tokens": 198,
               "output_tokens_details": {
-                "reasoning_tokens": 128
+                "reasoning_tokens": 64
               },
-              "total_tokens": 277
+              "total_tokens": 235
             },
             "user": null
           }

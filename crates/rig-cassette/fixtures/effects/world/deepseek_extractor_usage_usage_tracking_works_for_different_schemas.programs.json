@@ -234,23 +234,18 @@
             "content": [
               {
                 "type": "reasoning",
-                "issuer": "deepseek",
-                "id": null,
-                "content": [
-                  {
-                    "type": "text",
-                    "content": {
-                      "text": "The user provided a text: \"Alice is a 25 year old developer.\" I need to extract structured data: name, age, profession.\n\nName: Alice\nAge: 25\nProfession: developer\n\nSubmit."
-                    }
-                  }
-                ]
+                "text": "The user provided a text: \"Alice is a 25 year old developer.\" I need to extract structured data: name, age, profession.\n\nName: Alice\nAge: 25\nProfession: developer\n\nSubmit.",
+                "native": {
+                  "item": {
+                    "reasoning_content": "The user provided a text: \"Alice is a 25 year old developer.\" I need to extract structured data: name, age, profession.\n\nName: Alice\nAge: 25\nProfession: developer\n\nSubmit."
+                  },
+                  "fingerprint": 6969616469263934968
+                }
               },
               {
                 "type": "toolcall",
                 "id": {
-                  "provider": {
-                    "call_id": "call_00_hnAM2ynSS6NSzW7jorYZ1678"
-                  }
+                  "provider": "call_00_hnAM2ynSS6NSzW7jorYZ1678"
                 },
                 "function": {
                   "name": "submit",
@@ -260,11 +255,47 @@
                     "profession": "developer"
                   }
                 },
-                "signature": null,
-                "additional_params": null
+                "native": {
+                  "item": {
+                    "function": {
+                      "arguments": "{\"name\": \"Alice\", \"age\": 25, \"profession\": \"developer\"}",
+                      "name": "submit"
+                    },
+                    "id": "call_00_hnAM2ynSS6NSzW7jorYZ1678",
+                    "type": "function"
+                  },
+                  "fingerprint": 15901733177064101633
+                }
               }
             ],
-            "message_id": null,
+            "head": {
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-v4-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "d2e55f9c-c65a-4fbe-955e-31d6d56bb49e"
+              },
+              "stop": "tool_use",
+              "native": {
+                "item": {
+                  "content": "",
+                  "reasoning_content": "The user provided a text: \"Alice is a 25 year old developer.\" I need to extract structured data: name, age, profession.\n\nName: Alice\nAge: 25\nProfession: developer\n\nSubmit.",
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{\"name\": \"Alice\", \"age\": 25, \"profession\": \"developer\"}",
+                        "name": "submit"
+                      },
+                      "id": "call_00_hnAM2ynSS6NSzW7jorYZ1678",
+                      "type": "function"
+                    }
+                  ]
+                },
+                "fingerprint": 40030546454504198
+              }
+            },
             "done": true,
             "usage_recorded": true,
             "stream_validated": 0
@@ -285,23 +316,18 @@
               "choice": [
                 {
                   "type": "reasoning",
-                  "issuer": "deepseek",
-                  "id": null,
-                  "content": [
-                    {
-                      "type": "text",
-                      "content": {
-                        "text": "The user provided a text: \"Alice is a 25 year old developer.\" I need to extract structured data: name, age, profession.\n\nName: Alice\nAge: 25\nProfession: developer\n\nSubmit."
-                      }
-                    }
-                  ]
+                  "text": "The user provided a text: \"Alice is a 25 year old developer.\" I need to extract structured data: name, age, profession.\n\nName: Alice\nAge: 25\nProfession: developer\n\nSubmit.",
+                  "native": {
+                    "item": {
+                      "reasoning_content": "The user provided a text: \"Alice is a 25 year old developer.\" I need to extract structured data: name, age, profession.\n\nName: Alice\nAge: 25\nProfession: developer\n\nSubmit."
+                    },
+                    "fingerprint": 6969616469263934968
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_00_hnAM2ynSS6NSzW7jorYZ1678"
-                    }
+                    "provider": "call_00_hnAM2ynSS6NSzW7jorYZ1678"
                   },
                   "function": {
                     "name": "submit",
@@ -311,8 +337,17 @@
                       "profession": "developer"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"name\": \"Alice\", \"age\": 25, \"profession\": \"developer\"}",
+                        "name": "submit"
+                      },
+                      "id": "call_00_hnAM2ynSS6NSzW7jorYZ1678",
+                      "type": "function"
+                    },
+                    "fingerprint": 15901733177064101633
+                  }
                 }
               ],
               "usage": {
@@ -322,11 +357,32 @@
                 "cached_input_tokens": 256,
                 "reasoning_tokens": 45
               },
-              "message_id": null,
-              "response_id": "d2e55f9c-c65a-4fbe-955e-31d6d56bb49e",
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-v4-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "d2e55f9c-c65a-4fbe-955e-31d6d56bb49e"
+              },
+              "native": {
+                "item": {
+                  "content": "",
+                  "reasoning_content": "The user provided a text: \"Alice is a 25 year old developer.\" I need to extract structured data: name, age, profession.\n\nName: Alice\nAge: 25\nProfession: developer\n\nSubmit.",
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{\"name\": \"Alice\", \"age\": 25, \"profession\": \"developer\"}",
+                        "name": "submit"
+                      },
+                      "id": "call_00_hnAM2ynSS6NSzW7jorYZ1678",
+                      "type": "function"
+                    }
+                  ]
+                },
+                "fingerprint": 40030546454504198
+              },
               "finish_reason": "tool_calls",
-              "provider": "deepseek",
-              "model": "deepseek-flash",
               "raw": {
                 "choices": [
                   {
@@ -373,29 +429,53 @@
             }
           },
           "rig_ecs::bus::effect::Issued": 0,
-          "rig_ecs::bus::handlers::ServedBy": 0,
-          "rig_ecs::bus::effect::Seq": 0
+          "rig_ecs::bus::effect::Seq": 0,
+          "rig_ecs::bus::handlers::ServedBy": 0
         },
         {
           "bevy_ecs::hierarchy::ChildOf": 2,
           "rig_ecs::agent::Role": "Assistant",
           "rig_ecs::agent::Utterance": {},
-          "rig_ecs::agent::content::parts::MessageId": null
+          "rig_ecs::agent::content::parts::AssistantHead": {
+            "origin": {
+              "api": "openai.chat",
+              "provider": "deepseek",
+              "model": "deepseek-v4-flash",
+              "response_model": "deepseek-flash",
+              "response_id": "d2e55f9c-c65a-4fbe-955e-31d6d56bb49e"
+            },
+            "stop": "tool_use",
+            "native": {
+              "item": {
+                "content": "",
+                "reasoning_content": "The user provided a text: \"Alice is a 25 year old developer.\" I need to extract structured data: name, age, profession.\n\nName: Alice\nAge: 25\nProfession: developer\n\nSubmit.",
+                "role": "assistant",
+                "tool_calls": [
+                  {
+                    "function": {
+                      "arguments": "{\"name\": \"Alice\", \"age\": 25, \"profession\": \"developer\"}",
+                      "name": "submit"
+                    },
+                    "id": "call_00_hnAM2ynSS6NSzW7jorYZ1678",
+                    "type": "function"
+                  }
+                ]
+              },
+              "fingerprint": 40030546454504198
+            }
+          }
         },
         {
           "bevy_ecs::hierarchy::ChildOf": 7,
           "rig_ecs::agent::content::parts::ContentPart": {
             "Reasoning": {
-              "issuer": "deepseek",
-              "id": null,
-              "content": [
-                {
-                  "type": "text",
-                  "content": {
-                    "text": "The user provided a text: \"Alice is a 25 year old developer.\" I need to extract structured data: name, age, profession.\n\nName: Alice\nAge: 25\nProfession: developer\n\nSubmit."
-                  }
-                }
-              ]
+              "text": "The user provided a text: \"Alice is a 25 year old developer.\" I need to extract structured data: name, age, profession.\n\nName: Alice\nAge: 25\nProfession: developer\n\nSubmit.",
+              "native": {
+                "item": {
+                  "reasoning_content": "The user provided a text: \"Alice is a 25 year old developer.\" I need to extract structured data: name, age, profession.\n\nName: Alice\nAge: 25\nProfession: developer\n\nSubmit."
+                },
+                "fingerprint": 6969616469263934968
+              }
             }
           }
         },

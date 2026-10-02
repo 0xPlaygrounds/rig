@@ -14,7 +14,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 2
         }
       },
       {
@@ -30,7 +30,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -46,7 +46,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -62,7 +62,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -90,27 +90,11 @@
         }
       },
       {
-        "batch": 16,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
         "batch": 17,
         "id": 0,
         "kind": {
           "delivery": "stream",
           "items": 2
-        }
-      },
-      {
-        "batch": 18,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
         }
       },
       {
@@ -142,7 +126,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -151,14 +135,6 @@
         "kind": {
           "delivery": "stream",
           "items": 1
-        }
-      },
-      {
-        "batch": 24,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
         }
       },
       {
@@ -190,7 +166,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -206,7 +182,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -222,7 +198,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -262,7 +238,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -278,7 +254,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -310,7 +286,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -318,7 +294,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -326,7 +302,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -350,7 +326,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -358,7 +334,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -390,7 +366,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 1
         }
       },
       {
@@ -430,7 +406,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -566,7 +542,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -582,15 +558,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 78,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -654,7 +622,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -734,7 +702,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -806,11 +774,139 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 106,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 107,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 108,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 109,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 110,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 111,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 112,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 113,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 114,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 115,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 116,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 117,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 118,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
           "items": 2
         }
       },
       {
-        "batch": 105,
+        "batch": 120,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 121,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 122,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 122,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -887,20 +983,23 @@
           "choice": [
             {
               "type": "reasoning",
-              "issuer": "deepseek",
-              "id": null,
-              "content": [
-                {
-                  "type": "text",
-                  "content": {
-                    "text": "We need answer in one or two sentences. Explain Rust and why memory safety matters. Concise. Could mention Rust is systems language with compile-time ownership/borrow checker preventing memory errors. Memory safety matters because bugs like use-after-free, buffer overflows lead to crashes/security vulnerabilities. Two sentences. Ensure accurate."
-                  }
-                }
-              ]
+              "text": "We need answer in one or two sentences. Explain Rust and why memory safety matters. Concise. Could mention Rust is systems language with compile-time ownership/borrow checker preventing memory errors. Memory safety matters because bugs like use-after-free, buffer overflows lead to crashes/security vulnerabilities. Two sentences. Ensure accurate.",
+              "native": {
+                "item": {
+                  "reasoning_content": "We need answer in one or two sentences. Explain Rust and why memory safety matters. Concise. Could mention Rust is systems language with compile-time ownership/borrow checker preventing memory errors. Memory safety matters because bugs like use-after-free, buffer overflows lead to crashes/security vulnerabilities. Two sentences. Ensure accurate."
+                },
+                "fingerprint": 8869474291457835121
+              }
             },
             {
               "type": "text",
-              "text": "Rust is a systems programming language that uses compile-time ownership and borrowing rules to guarantee memory safety without a garbage collector. Memory safety matters because flaws like use-after-free, double frees, and buffer overflows cause crashes and security vulnerabilities, which Rust prevents by catching them at compile time."
+              "text": "Rust is a systems programming language that uses compile-time ownership and borrowing rules to guarantee memory safety without a garbage collector. Memory safety matters because flaws like use-after-free, double frees, and buffer overflows cause crashes and security vulnerabilities, which Rust prevents by catching them at compile time.",
+              "native": {
+                "item": {
+                  "content": "Rust is a systems programming language that uses compile-time ownership and borrowing rules to guarantee memory safety without a garbage collector. Memory safety matters because flaws like use-after-free, double frees, and buffer overflows cause crashes and security vulnerabilities, which Rust prevents by catching them at compile time."
+                },
+                "fingerprint": 3497688951533412974
+              }
             }
           ],
           "usage": {
@@ -910,11 +1009,22 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 64
           },
-          "message_id": null,
-          "response_id": "b086fc78-93d3-4756-9565-517280ec2936",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "deepseek",
+            "model": "deepseek-flash",
+            "response_model": "deepseek-flash",
+            "response_id": "b086fc78-93d3-4756-9565-517280ec2936"
+          },
+          "native": {
+            "item": {
+              "content": "Rust is a systems programming language that uses compile-time ownership and borrowing rules to guarantee memory safety without a garbage collector. Memory safety matters because flaws like use-after-free, double frees, and buffer overflows cause crashes and security vulnerabilities, which Rust prevents by catching them at compile time.",
+              "reasoning_content": "We need answer in one or two sentences. Explain Rust and why memory safety matters. Concise. Could mention Rust is systems language with compile-time ownership/borrow checker preventing memory errors. Memory safety matters because bugs like use-after-free, buffer overflows lead to crashes/security vulnerabilities. Two sentences. Ensure accurate.",
+              "role": "assistant"
+            },
+            "fingerprint": 12316169078097158594
+          },
           "finish_reason": "stop",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
           "raw": {
             "usage": {
               "prompt_tokens": 57,
@@ -1937,10 +2047,16 @@
           "item": "event",
           "value": {
             "event": "end",
-            "part": 1,
+            "part": 0,
             "content": {
-              "type": "text",
-              "text": "Rust is a systems programming language that uses compile-time ownership and borrowing rules to guarantee memory safety without a garbage collector. Memory safety matters because flaws like use-after-free, double frees, and buffer overflows cause crashes and security vulnerabilities, which Rust prevents by catching them at compile time."
+              "type": "reasoning",
+              "text": "We need answer in one or two sentences. Explain Rust and why memory safety matters. Concise. Could mention Rust is systems language with compile-time ownership/borrow checker preventing memory errors. Memory safety matters because bugs like use-after-free, buffer overflows lead to crashes/security vulnerabilities. Two sentences. Ensure accurate.",
+              "native": {
+                "item": {
+                  "reasoning_content": "We need answer in one or two sentences. Explain Rust and why memory safety matters. Concise. Could mention Rust is systems language with compile-time ownership/borrow checker preventing memory errors. Memory safety matters because bugs like use-after-free, buffer overflows lead to crashes/security vulnerabilities. Two sentences. Ensure accurate."
+                },
+                "fingerprint": 8869474291457835121
+              }
             }
           }
         },
@@ -1948,19 +2064,16 @@
           "item": "event",
           "value": {
             "event": "end",
-            "part": 0,
+            "part": 1,
             "content": {
-              "type": "reasoning",
-              "issuer": "deepseek",
-              "id": null,
-              "content": [
-                {
-                  "type": "text",
-                  "content": {
-                    "text": "We need answer in one or two sentences. Explain Rust and why memory safety matters. Concise. Could mention Rust is systems language with compile-time ownership/borrow checker preventing memory errors. Memory safety matters because bugs like use-after-free, buffer overflows lead to crashes/security vulnerabilities. Two sentences. Ensure accurate."
-                  }
-                }
-              ]
+              "type": "text",
+              "text": "Rust is a systems programming language that uses compile-time ownership and borrowing rules to guarantee memory safety without a garbage collector. Memory safety matters because flaws like use-after-free, double frees, and buffer overflows cause crashes and security vulnerabilities, which Rust prevents by catching them at compile time.",
+              "native": {
+                "item": {
+                  "content": "Rust is a systems programming language that uses compile-time ownership and borrowing rules to guarantee memory safety without a garbage collector. Memory safety matters because flaws like use-after-free, double frees, and buffer overflows cause crashes and security vulnerabilities, which Rust prevents by catching them at compile time."
+                },
+                "fingerprint": 3497688951533412974
+              }
             }
           }
         }

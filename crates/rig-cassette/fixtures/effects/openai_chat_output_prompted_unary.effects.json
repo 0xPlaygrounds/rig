@@ -66,7 +66,15 @@
           "choice": [
             {
               "type": "text",
-              "text": "{\"title\":\"Seattle Rust Meetup — Monthly\",\"category\":\"tech meetup\",\"summary\":\"Monthly Rust meetup in Seattle for talks, lightning demos, and networking. Beginners welcome — bring a laptop; typically 6:30–8:30pm at a local community space. RSVP on the Seattle Rust Meetup page.\"}"
+              "text": "{\"title\":\"Seattle Rust Meetup — Monthly\",\"category\":\"tech meetup\",\"summary\":\"Monthly Rust meetup in Seattle for talks, lightning demos, and networking. Beginners welcome — bring a laptop; typically 6:30–8:30pm at a local community space. RSVP on the Seattle Rust Meetup page.\"}",
+              "native": {
+                "item": {
+                  "annotations": [],
+                  "content": "{\"title\":\"Seattle Rust Meetup — Monthly\",\"category\":\"tech meetup\",\"summary\":\"Monthly Rust meetup in Seattle for talks, lightning demos, and networking. Beginners welcome — bring a laptop; typically 6:30–8:30pm at a local community space. RSVP on the Seattle Rust Meetup page.\"}",
+                  "refusal": null
+                },
+                "fingerprint": 9082447263403877169
+              }
             }
           ],
           "usage": {
@@ -76,12 +84,24 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 256
           },
-          "message_id": null,
-          "response_id": "chatcmpl-ERDCFO1f0ekfgGHmEqqTcctKzIOby",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "openai",
+            "model": "gpt-5-mini",
+            "response_model": "gpt-5-mini-2025-08-07",
+            "response_id": "chatcmpl-ERDCFO1f0ekfgGHmEqqTcctKzIOby"
+          },
+          "native": {
+            "item": {
+              "annotations": [],
+              "content": "{\"title\":\"Seattle Rust Meetup — Monthly\",\"category\":\"tech meetup\",\"summary\":\"Monthly Rust meetup in Seattle for talks, lightning demos, and networking. Beginners welcome — bring a laptop; typically 6:30–8:30pm at a local community space. RSVP on the Seattle Rust Meetup page.\"}",
+              "refusal": null,
+              "role": "assistant"
+            },
+            "fingerprint": 9514795809702293877
+          },
           "provider_request_id": "req_7eb8963b034b45878877a3a1a976e0be",
           "finish_reason": "stop",
-          "provider": "openai",
-          "model": "gpt-5-mini-2025-08-07",
           "raw": {
             "choices": [
               {

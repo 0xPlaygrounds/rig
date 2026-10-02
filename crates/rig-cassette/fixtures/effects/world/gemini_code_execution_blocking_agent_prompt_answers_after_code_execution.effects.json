@@ -80,8 +80,34 @@
           "outcome": "completion",
           "choice": [
             {
+              "type": "opaque",
+              "item": {
+                "executableCode": {
+                  "code": "print(2**20)\n",
+                  "language": "PYTHON"
+                }
+              },
+              "replay": true
+            },
+            {
+              "type": "opaque",
+              "item": {
+                "codeExecutionResult": {
+                  "outcome": "OUTCOME_OK",
+                  "output": "1048576\n"
+                }
+              },
+              "replay": true
+            },
+            {
               "type": "text",
-              "text": "The number 2 to the power of 20 is 1,048,576."
+              "text": "The number 2 to the power of 20 is 1,048,576.",
+              "native": {
+                "item": {
+                  "text": "The number 2 to the power of 20 is 1,048,576."
+                },
+                "fingerprint": 1588156661630724766
+              }
             }
           ],
           "usage": {
@@ -91,11 +117,21 @@
             "tool_use_prompt_tokens": 75,
             "reasoning_tokens": 34
           },
-          "message_id": null,
-          "response_id": "j3izauHJG87Qz7IP2d2JsAw",
+          "origin": {
+            "api": "gemini.generate_content",
+            "provider": "gcp.gemini",
+            "model": "gemini-2.5-flash",
+            "response_model": "gemini-2.5-flash",
+            "response_id": "j3izauHJG87Qz7IP2d2JsAw"
+          },
+          "native": {
+            "item": {
+              "finishReason": "STOP",
+              "index": 0
+            },
+            "fingerprint": 10401143185743423689
+          },
           "finish_reason": "stop",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
           "raw": {
             "candidates": [
               {

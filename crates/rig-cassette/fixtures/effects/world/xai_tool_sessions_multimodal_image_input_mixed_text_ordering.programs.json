@@ -110,7 +110,7 @@
                 }
               },
               "media_type": "jpeg",
-              "additional_params": null,
+              "native": null,
               "detail": null
             }
           }
