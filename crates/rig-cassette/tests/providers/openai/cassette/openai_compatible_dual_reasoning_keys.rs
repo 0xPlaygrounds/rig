@@ -5,9 +5,9 @@
 //! Not live traffic: the fixture is recorded from a local server that
 //! answers in that shape. No configured endpoint was found sending both
 //! keys. The two keys carry different text: rig reads `reasoning_content`
-//! as the turn's reasoning and sends the message back as the server sent it,
-//! both keys included, and the server refuses a continuation that does not
-//! echo `reasoning_content` back, as reasoning endpoints do.
+//! as the turn's reasoning and, as pi does, sends it back under that key
+//! alone; the server refuses a continuation that does not echo
+//! `reasoning_content` back, as reasoning endpoints do.
 
 use std::future::Future;
 use std::net::SocketAddr;
@@ -38,8 +38,8 @@ const UPSTREAM_REASONING: &str =
 const SURFACE_REASONING: &str = "Calling get_weather for Tokyo.";
 
 /// The first reply decodes with its tool call whole and its reasoning taken
-/// from `reasoning_content`, and the continuation echoes that reasoning
-/// under the key rig serializes.
+/// from `reasoning_content`, and the continuation sends that reasoning back
+/// under that key alone.
 #[tokio::test]
 async fn dual_reasoning_keys_tool_roundtrip() {
     let call_count = Arc::new(AtomicUsize::new(0));
@@ -65,7 +65,7 @@ async fn dual_reasoning_keys_tool_roundtrip() {
     let turns = crate::cassettes::recorded_json_turns("openai", SCENARIO);
     assert_eq!(turns.len(), 2, "the tool call, then the continuation");
     let replied = &turns[0].1["choices"][0]["message"];
-    let (Some(upstream), Some(surface)) = (
+    let (Some(upstream), Some(_surface)) = (
         replied["reasoning_content"].as_str(),
         replied["reasoning"].as_str(),
     ) else {
@@ -77,18 +77,24 @@ async fn dual_reasoning_keys_tool_roundtrip() {
         .flatten()
         .find(|message| message["role"] == "assistant")
         .expect("the continuation replays the assistant turn");
+    // As pi does, the reasoning goes back under the first key that carried
+    // it, once.
     assert_eq!(
         (
             echoed["reasoning_content"].as_str(),
             echoed["reasoning"].as_str()
         ),
-        (Some(upstream), Some(surface)),
-        "the message goes back with both keys, as the server sent it: {echoed}"
+        (Some(upstream), None),
+        "the reasoning goes back under the key it arrived in: {echoed}"
     );
-    assert_eq!(
-        echoed["tool_calls"], replied["tool_calls"],
-        "the tool call is replayed whole"
-    );
+    let call = |message: &serde_json::Value| {
+        let call = &message["tool_calls"][0];
+        let arguments: serde_json::Value =
+            serde_json::from_str(call["function"]["arguments"].as_str().unwrap_or("{}"))
+                .unwrap_or_default();
+        (call["id"].clone(), call["function"]["name"].clone(), arguments)
+    };
+    assert_eq!(call(echoed), call(replied), "the tool call is replayed");
 }
 
 async fn with_local_dual_reasoning_keys_cassette<F, Fut>(scenario: &'static str, test_body: F)

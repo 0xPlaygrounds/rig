@@ -84,7 +84,7 @@ crate::matrix::resume_matrix! {
     /// read_file call at tool turn 2 and rig-agent refuses the turn
     /// ("produced no answer ... finish_reason=Length"; round 3).
     #[tokio::test]
-    output_cap_midway: ("long_loop_matrix/output_cap_midway", long_loop::OUTPUT_CAP_MIDWAY, long_loop::OUTPUT_CAP_MIDWAY.resume_after, "deepseek_matrix_long_loop_output_cap_midway");
+    output_cap_midway: ("long_loop_matrix/output_cap_midway", long_loop::OUTPUT_CAP_MIDWAY_MAX_TURNS, long_loop::OUTPUT_CAP_MIDWAY_MAX_TURNS.resume_after, "deepseek_matrix_long_loop_output_cap_midway");
 }
 
 crate::matrix::case_matrix! {

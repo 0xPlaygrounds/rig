@@ -191,13 +191,14 @@ pub(crate) const MAX_TURNS_MIDWAY: Cell = Cell {
 /// which turn the cap bites, are per-wire facts of the model and rig-core's
 /// decoders (round 3 recordings), so each column names its own:
 ///
+/// * [`Ending::MaxTurns`]: OpenAI Chat and DeepSeek keep a length-cut tool
+///   call with what its arguments state, as pi does; the loop answers it
+///   with an error result and never runs it, and the turn budget ends the
+///   run.
 /// * [`Ending::Failed`]`(Response)`: the run fails at the capped
-///   completion. OpenAI Chat and DeepSeek: the shared chat decoder
-///   (`deserialize_choices_dropping_incomplete_tool_calls`) drops a
-///   length-cut tool call whose arguments do not parse, the turn carries
-///   neither text nor a call, and rig-agent refuses it ("produced no
-///   answer and stopped with finish_reason=Length") after 1–2 tool turns.
-///   OpenAI Responses: the same, at its own cut. Gemini: HTTP 200 with
+///   completion. OpenAI Responses: the turn carries neither text nor a
+///   call, and rig-agent refuses it ("produced no answer and stopped with
+///   finish_reason=Length"). Gemini: HTTP 200 with
 ///   `finishReason: "MALFORMED_FUNCTION_CALL"` and no content on the very
 ///   first request (a 10-token `list_files` call does not fit), which
 ///   rig-core decodes as a response error — the record itself is `Err`.
@@ -217,8 +218,11 @@ pub(crate) const fn output_cap_cell(ending: Ending) -> Cell {
     }
 }
 /// [`output_cap_cell`] on the wires whose cut turn fails the run (OpenAI
-/// Chat, OpenAI Responses, Gemini, DeepSeek).
+/// Responses, Gemini).
 pub(crate) const OUTPUT_CAP_MIDWAY: Cell = output_cap_cell(Ending::Failed(ErrorKind::Response));
+/// [`output_cap_cell`] on the Chat wires, whose cut call is answered with an
+/// error result until the turn budget ends the run (OpenAI Chat, DeepSeek).
+pub(crate) const OUTPUT_CAP_MIDWAY_MAX_TURNS: Cell = output_cap_cell(Ending::MaxTurns);
 /// [`output_cap_cell`] on Anthropic, whose cut text preamble is the answer
 /// under a `Length` finish.
 pub(crate) const OUTPUT_CAP_MIDWAY_LENGTH_ANSWER: Cell = output_cap_cell(Ending::Answer);
