@@ -90,7 +90,7 @@ impl Reported {
         Self {
             identity: response.identity(),
             finish_reason: response.finish_reason(),
-            model: response.model().clone(),
+            model: response.model().map(str::to_owned),
             usage: response.usage,
         }
     }
@@ -99,7 +99,7 @@ impl Reported {
         Self {
             identity: terminal.identity(),
             finish_reason: terminal.finish_reason().clone(),
-            model: terminal.model().clone(),
+            model: terminal.model().map(str::to_owned),
             usage: terminal.usage,
         }
     }
@@ -121,12 +121,10 @@ fn assert_route_parity(first: &Reported, second: &Reported, expected: FinishReas
     );
     // Both exchanges populate the same identity *fields*; the values are
     // per-exchange and pinned against their own fixture below.
-    assert!(first.identity.message_id.is_some());
-    assert!(second.identity.message_id.is_some());
+    assert!(first.identity.response_id.is_some());
+    assert!(second.identity.response_id.is_some());
     assert!(first.identity.provider_request_id.is_some());
     assert!(second.identity.provider_request_id.is_some());
-    assert_eq!(first.identity.response_id, None);
-    assert_eq!(second.identity.response_id, None);
 }
 
 /// Pin each exchange's identity and output usage to *its own* recorded
@@ -178,7 +176,7 @@ fn assert_identity_matches_fixture(
 
     let observed_message_ids: Vec<_> = reported
         .iter()
-        .map(|reported| reported.identity.message_id.clone())
+        .map(|reported| reported.identity.response_id.clone())
         .collect();
     assert_ids_match_recording(&observed_message_ids, &recorded_message_ids, scenario);
 
@@ -288,7 +286,7 @@ fn assert_raw_view_agrees(response: &RigCompletionResponse, reported: &Reported)
         .expect("`raw` is Anthropic's reply document, which the provider type reads");
     assert_eq!(
         Some(typed.id.as_str()),
-        reported.identity.message_id.as_deref(),
+        reported.identity.response_id.as_deref(),
         "the normalized message id is the document's"
     );
     assert_eq!(Some(typed.model.as_str()), reported.model.as_deref());

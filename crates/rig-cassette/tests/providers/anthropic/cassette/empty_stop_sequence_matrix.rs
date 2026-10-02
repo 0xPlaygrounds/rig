@@ -524,7 +524,8 @@ async fn identity_survives_empty_stop() {
                 response.usage.input_tokens.is_some_and(|n| n > 0),
                 "usage must survive"
             );
-            *sink.lock().expect("model sink should not be poisoned") = response.model();
+            *sink.lock().expect("model sink should not be poisoned") =
+                response.model().map(str::to_owned);
         },
     )
     .await;

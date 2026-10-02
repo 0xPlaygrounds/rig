@@ -49,9 +49,9 @@
 //! `tool_use` block.
 
 use rig::completion::{CompletionResponse as RigCompletionResponse, FinishReason, ToolDefinition};
-use rig::message::{AssistantContent, ReasoningContent, ToolChoice};
+use rig::message::{AssistantContent, ToolChoice};
 use rig::providers::anthropic;
-use rig::providers::anthropic::completion::{CompletionResponse, Content};
+use rig::providers::anthropic::completion::CompletionResponse;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -60,8 +60,9 @@ use super::super::support::{
     with_anthropic_cassette,
 };
 
+use super::super::support::canonical_without_raw;
 use crate::raw_capture::capture_completion;
-use crate::support::{Observed, assistant_text, normalized_without_raw};
+use crate::support::{Observed, assistant_text};
 use rig::completion::CompletionRequest;
 
 const PROMPT: &str = "Reply with exactly: raw capture probe";
@@ -161,7 +162,7 @@ fn assert_identity_matches_fixture(scenario: &str, response: &RigCompletionRespo
     let identity = response.identity();
     let body = recorded_response_body(scenario);
     assert_ids_match_recording(
-        std::slice::from_ref(&identity.message_id),
+        std::slice::from_ref(&identity.response_id),
         &[body["id"].as_str().map(str::to_string)],
         scenario,
     );
@@ -176,7 +177,6 @@ fn assert_identity_matches_fixture(scenario: &str, response: &RigCompletionRespo
         &request_ids,
         scenario,
     );
-    assert_eq!(identity.response_id, None);
     assert_eq!(response.model().as_deref(), body["model"].as_str());
     assert_eq!(
         response.usage.input_tokens,
@@ -240,10 +240,10 @@ async fn raw_round_trips_into_provider_type() {
     let raw = &response.raw;
     let typed = assert_raw_round_trips(raw);
     assert!(
-        typed.content.iter().any(|block| matches!(
-            block,
-            Content::Text { text, .. } if !text.is_empty()
-        )),
+        typed
+            .content
+            .iter()
+            .any(|block| block.kind() == "text" && !block.str("text").is_empty()),
         "typed access reads the reply's text block"
     );
 
@@ -324,7 +324,7 @@ async fn raw_exposes_stop_sequence() {
         "every response `completion` returns carries `raw`"
     );
     assert_eq!(response.finish_reason(), Some(FinishReason::Stop));
-    let normalized_keys: Vec<String> = normalized_without_raw(response.clone())
+    let normalized_keys: Vec<String> = canonical_without_raw(response.clone())
         .as_object()
         .expect("the normalized response serializes as an object")
         .keys()
@@ -383,7 +383,7 @@ async fn normalized_fields_match_raw_renormalized() {
         .expect("`raw` is Anthropic's reply document, which the provider type reads");
     assert_eq!(
         Some(typed.id.as_str()),
-        identity.message_id.as_deref(),
+        identity.response_id.as_deref(),
         "the message id the normalized response reports is the document's"
     );
     assert_eq!(
@@ -405,10 +405,8 @@ async fn normalized_fields_match_raw_renormalized() {
     let provider_text: String = typed
         .content
         .iter()
-        .filter_map(|block| match block {
-            Content::Text { text, .. } => Some(text.as_str()),
-            _ => None,
-        })
+        .filter(|block| block.kind() == "text")
+        .map(|block| block.str("text"))
         .collect();
     assert_eq!(
         assistant_text(&response.choice),
@@ -509,14 +507,14 @@ async fn raw_exposes_thinking_block_and_signature() {
     let typed_thinking = typed
         .content
         .iter()
-        .find_map(|block| match block {
-            Content::Thinking {
-                thinking,
-                signature,
-            } => Some((thinking.as_str(), signature.as_deref())),
-            _ => None,
+        .find(|block| block.kind() == "thinking")
+        .map(|block| {
+            (
+                block.str("thinking"),
+                block.0.get("signature").and_then(Value::as_str),
+            )
         })
-        .expect("typed `raw` carries `Content::Thinking`");
+        .expect("typed `raw` carries a thinking block");
     assert_eq!(typed_thinking.0, recorded_thinking_text);
     assert!(typed_thinking.1.is_some_and(|sig| !sig.is_empty()));
 
@@ -534,21 +532,21 @@ async fn raw_exposes_thinking_block_and_signature() {
         })
         .expect("the normalized choice carries the reasoning");
     assert_eq!(
-        normalized_reasoning
-            .open(normalized_reasoning.issuer())
-            .expect("sealed reasoning")
-            .content,
-        vec![ReasoningContent::Text {
-            text: recorded_thinking_text.to_string(),
-            signature: raw_thinking["signature"].as_str().map(str::to_string),
-        }],
-        "the normalized reasoning is the wire's text and signature, re-spelled"
+        normalized_reasoning.text, recorded_thinking_text,
+        "the normalized reasoning is the wire's text, re-spelled"
+    );
+    assert_eq!(
+        AssistantContent::Reasoning(normalized_reasoning.clone())
+            .native_item()
+            .map(|item| &item["signature"]),
+        Some(&raw_thinking["signature"]),
+        "the reasoning's provider item keeps the wire's signature"
     );
     assert_eq!(
         response.usage.reasoning_tokens,
         Some(recorded_thinking_tokens)
     );
-    let normalized = normalized_without_raw(response.clone());
+    let normalized = canonical_without_raw(response.clone());
     assert!(
         !contains_string(&normalized, "thinking"),
         "the normalized response never spells `thinking` — `raw` is the only way to read \
@@ -651,11 +649,9 @@ async fn raw_exposes_tool_use_block() {
     let (typed_id, typed_name, typed_input) = typed
         .content
         .iter()
-        .find_map(|block| match block {
-            Content::ToolUse { id, name, input } => Some((id.as_str(), name.as_str(), input)),
-            _ => None,
-        })
-        .expect("typed `raw` carries `Content::ToolUse`");
+        .find(|block| block.kind() == "tool_use")
+        .map(|block| (block.str("id"), block.str("name"), &block.0["input"]))
+        .expect("typed `raw` carries a tool_use block");
     assert_eq!(typed_name, "get_weather");
     assert_eq!(*typed_input, recorded_tool_use["input"]);
 
@@ -684,7 +680,7 @@ async fn raw_exposes_tool_use_block() {
         Some(typed_id),
         "the normalized call's provider id is the wire's `tool_use.id`"
     );
-    let normalized = normalized_without_raw(response.clone());
+    let normalized = canonical_without_raw(response.clone());
     assert!(
         !contains_string(&normalized, "tool_use"),
         "the normalized response never spells `tool_use` — `raw` is the only way to read \

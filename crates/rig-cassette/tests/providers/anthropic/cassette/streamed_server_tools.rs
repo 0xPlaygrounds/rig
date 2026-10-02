@@ -1,16 +1,10 @@
 //! Streamed server-tool blocks, recorded from the real API.
 //!
-//! `streaming.rs` models `server_tool_use`, `web_search_tool_result` and
-//! `code_execution_tool_result` on `content_block_start`/`content_block_stop`,
-//! including assembling a `server_tool_use`'s `input_json_delta` fragments —
-//! but no cassette in the suite carried streamed server-tool traffic, so that
-//! assembly had only hand-built unit streams behind it. Every recorded
-//! `content_block_start` in the tree was `text`, `tool_use`, `thinking` or
-//! `redacted_thinking`.
-//!
-//! This closes that gap: one recorded streaming web-search turn, asserted
-//! against its own fixture's frames so it cannot pass vacuously, plus its
-//! blocking twin for parity.
+//! A server tool's call and result are opaque blocks holding the provider's
+//! items, a `server_tool_use`'s `input_json_delta` fragments assembled onto
+//! its item. One recorded streaming web-search turn, asserted against its own
+//! fixture's frames so it cannot pass vacuously, plus its blocking twin for
+//! parity.
 //!
 //! Run cassette tests in replay mode by default, or set
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
@@ -54,14 +48,12 @@ fn recorded_block_types(scenario: &str) -> Vec<String> {
         .collect()
 }
 
-/// The raw Anthropic block type rig preserved on a normalized text part.
+/// The Anthropic block type of an opaque provider item.
 fn raw_block_type(content: &AssistantContent) -> Option<String> {
-    let AssistantContent::Text(text) = content else {
-        return None;
-    };
-    let params = text.native.as_ref()?;
-    let raw = params.get("anthropic_content")?;
-    raw.get("type")?.as_str().map(str::to_string)
+    match content {
+        AssistantContent::Opaque(opaque) => opaque.kind().map(str::to_string),
+        _ => None,
+    }
 }
 
 #[tokio::test]
@@ -80,18 +72,11 @@ async fn streamed_web_search_preserves_server_tool_blocks() {
 
             let mut raw_types = Vec::new();
             while let Some(item) = stream.next().await {
-                if let Item::Event(StreamEvent::End {
-                    content: rig::message::AssistantContent::Text(text),
-                    ..
-                }) = item.expect("stream item should not error")
-                    && let Some(raw) = text
-                        .native
-                        .as_ref()
-                        .and_then(|params| params.get("anthropic_content"))
-                        .and_then(|raw| raw.get("type"))
-                        .and_then(|value| value.as_str())
+                if let Item::Event(StreamEvent::End { content, .. }) =
+                    item.expect("stream item should not error")
+                    && let Some(raw) = raw_block_type(&content)
                 {
-                    raw_types.push(raw.to_string());
+                    raw_types.push(raw);
                 }
             }
             stream

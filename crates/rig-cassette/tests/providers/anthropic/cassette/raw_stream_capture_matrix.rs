@@ -52,7 +52,7 @@ use rig_test_support::cassette_models::AnthropicModels;
 
 use futures::StreamExt;
 use rig::completion::{FinishReason, ToolDefinition};
-use rig::message::{ReasoningContent, ToolChoice};
+use rig::message::ToolChoice;
 use rig::providers::anthropic;
 use rig::providers::anthropic::streaming::StreamingCompletionResponse;
 use rig::streaming::StreamEvent;
@@ -63,9 +63,9 @@ use super::super::support::{
     assert_ids_match_recording, recorded_request_id_headers, with_anthropic_cassette,
 };
 
+use super::super::support::canonical_without_raw;
 use crate::raw_capture::capture_terminal;
 use crate::support::Observed;
-use crate::support::normalized_without_raw;
 use rig::completion::CompletionRequest;
 
 const ANTHROPIC_PROVIDER: &str = "anthropic";
@@ -204,6 +204,7 @@ fn contains_string(value: &Value, needle: &str) -> bool {
 /// names the id and model, the terminal `message_delta` names the stop reason
 /// and carries the final usage, and the response carried a `request-id`.
 struct RecordedStream {
+    response_id: Option<String>,
     model: Option<String>,
     stop_reason: Option<String>,
     stop_sequence: Option<String>,
@@ -230,6 +231,7 @@ fn recorded_stream(scenario: &str) -> RecordedStream {
     let request_ids = recorded_request_id_headers(scenario);
     assert_eq!(request_ids.len(), 1, "{scenario}: one recorded interaction");
     RecordedStream {
+        response_id: start["message"]["id"].as_str().map(str::to_string),
         model: start["message"]["model"].as_str().map(str::to_string),
         stop_reason: delta["delta"]["stop_reason"].as_str().map(str::to_string),
         stop_sequence: delta["delta"]["stop_sequence"].as_str().map(str::to_string),
@@ -255,7 +257,7 @@ fn assert_terminal_matches_fixture(
 ) {
     assert!(
         recorded
-            .message_id
+            .response_id
             .as_deref()
             .is_some_and(|id| id.starts_with("msg_")),
         "{scenario}: premise — message_start names a msg_ id"
@@ -265,8 +267,8 @@ fn assert_terminal_matches_fixture(
         "{scenario}: premise — the response carries a request-id header"
     );
     assert_ids_match_recording(
-        std::slice::from_ref(&terminal.response_id()),
-        std::slice::from_ref(&recorded.message_id),
+        &[terminal.response_id().map(str::to_owned)],
+        std::slice::from_ref(&recorded.response_id),
         scenario,
     );
     assert_ids_match_recording(
@@ -274,7 +276,7 @@ fn assert_terminal_matches_fixture(
         std::slice::from_ref(&recorded.request_id),
         scenario,
     );
-    assert_eq!(terminal.model(), recorded.model);
+    assert_eq!(terminal.model(), recorded.model.as_deref());
     assert_eq!(terminal.usage.input_tokens, Some(recorded.input_tokens));
     assert_eq!(terminal.usage.output_tokens, Some(recorded.output_tokens));
     assert_eq!(terminal.provider(), ANTHROPIC_PROVIDER);
@@ -361,7 +363,7 @@ async fn terminal_raw_round_trips_into_provider_type() {
     );
     assert_ids_match_recording(
         &[raw["message_id"].as_str().map(str::to_string)],
-        std::slice::from_ref(&recorded.message_id),
+        std::slice::from_ref(&recorded.response_id),
         ROUND_TRIP_SCENARIO,
     );
     // The transport id is stamped on the normalized terminal, never on the
@@ -431,7 +433,7 @@ async fn raw_exposes_stop_sequence() {
     // Normalized: folded into `Stop`; the provider's spelling and the
     // sequence itself are only on `raw`.
     assert_eq!(terminal.finish_reason(), Some(FinishReason::Stop));
-    let normalized = normalized_without_raw(terminal.clone());
+    let normalized = canonical_without_raw(terminal.clone());
     let normalized_keys: Vec<&str> = normalized
         .as_object()
         .expect("object")
@@ -493,11 +495,11 @@ async fn normalized_terminal_matches_raw_renormalized() {
         "the provider record round-trips through its own serde"
     );
     assert_eq!(
-        typed.message_id,
+        typed.message_id.as_deref(),
         terminal.response_id(),
         "the message id survives raw → typed"
     );
-    assert_eq!(typed.model, terminal.model());
+    assert_eq!(typed.model.as_deref(), terminal.model());
     assert_eq!(
         typed.usage.input_tokens.map(|n| n as u64),
         terminal.usage.input_tokens
@@ -612,7 +614,7 @@ async fn terminal_raw_round_trips_for_thinking_stream() {
         terminal.usage.reasoning_tokens,
         Some(recorded_thinking_tokens)
     );
-    let normalized = normalized_without_raw(terminal.clone());
+    let normalized = canonical_without_raw(terminal.clone());
     assert!(
         !contains_string(&normalized, "thinking")
             && !contains_string(&normalized, "thinking_tokens")
@@ -632,17 +634,7 @@ async fn terminal_raw_round_trips_for_thinking_stream() {
             }) => Some(reasoning),
             _ => None,
         })
-        .flat_map(|reasoning| {
-            reasoning
-                .open(reasoning.issuer())
-                .expect("sealed reasoning")
-                .content
-                .iter()
-        })
-        .filter_map(|content| match content {
-            ReasoningContent::Text { text, .. } => Some(text.as_str()),
-            _ => None,
-        })
+        .map(|reasoning| reasoning.text.as_str())
         .collect::<String>();
     assert_eq!(
         streamed_reasoning, recorded_thinking_text,
@@ -726,7 +718,7 @@ async fn terminal_raw_round_trips_for_tool_use_stream() {
     assert_eq!(raw["stop_reason"], "tool_use");
     assert_eq!(typed.stop_reason.as_deref(), Some("tool_use"));
     assert_eq!(terminal.finish_reason(), Some(FinishReason::ToolCalls));
-    let normalized = normalized_without_raw(terminal.clone());
+    let normalized = canonical_without_raw(terminal.clone());
     assert!(
         !contains_string(&normalized, "tool_use") && !contains_string(&normalized, "stop_reason"),
         "the normalized terminal has neither the spelling `tool_use` nor a verbatim \

@@ -773,3 +773,17 @@ pub(super) async fn delete_uploaded_file(base_url: &str, api_key: &str, file_id:
         );
     }
 }
+
+/// A response serialized without its `raw` document or its blocks'
+/// provider items: what rig normalized, in rig's own spelling.
+pub(super) fn canonical_without_raw(
+    mut response: rig::completion::CompletionResponse,
+) -> serde_json::Value {
+    response.choice = response
+        .choice
+        .iter()
+        .map(rig::message::AssistantContent::canonical)
+        .collect();
+    response.native = None;
+    crate::support::normalized_without_raw(response)
+}

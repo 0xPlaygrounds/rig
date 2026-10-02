@@ -325,10 +325,8 @@ fn assert_matrix_raw_response(
     let text: String = response
         .content
         .iter()
-        .filter_map(|block| match block {
-            anthropic::completion::Content::Text { text, .. } => Some(text.as_str()),
-            _ => None,
-        })
+        .filter(|block| block.kind() == "text")
+        .map(|block| block.str("text"))
         .collect();
     assert_text_contains_cache_probe(&text, CACHE_PROBE_RESPONSE);
     assert_cache_creation_split(&response.usage, mode, prefix_ttl, context);

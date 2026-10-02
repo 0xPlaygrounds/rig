@@ -52,12 +52,7 @@ async fn drain_stream(mut stream: rig::streaming::CompletionStream) -> StreamRun
                 content: AssistantContent::Reasoning(reasoning),
                 ..
             }) => {
-                run.reasoning_blocks.push(
-                    reasoning
-                        .open(reasoning.issuer())
-                        .cloned()
-                        .expect("reasoning opens"),
-                );
+                run.reasoning_blocks.push(reasoning);
             }
             Item::Event(StreamEvent::Reasoning {
                 text: reasoning, ..
@@ -78,7 +73,6 @@ async fn drain_stream(mut stream: rig::streaming::CompletionStream) -> StreamRun
     // suite drains (#2258 C1).
     rig_core::test_utils::streaming_conformance::assert_valid_event_stream(&raw_items, &run.choice);
     run.response = Some(response.clone());
-    run.message_id = response.response_id().clone();
     run
 }
 
@@ -98,7 +92,11 @@ fn assert_terminal(run: &StreamRun, expected_finish: FinishReason) {
         terminal.usage
     );
     // ID contract: Anthropic names the assistant message (`msg_*`).
-    if let Some(message_id) = run.message_id.as_deref() {
+    if let Some(message_id) = run
+        .response
+        .as_ref()
+        .and_then(CompletionResponse::response_id)
+    {
         assert!(
             message_id.starts_with("msg_"),
             "message_id should be Anthropic's msg_* id, got {message_id}"

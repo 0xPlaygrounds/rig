@@ -24,11 +24,10 @@ fn cited_pdf() -> Document {
     Document {
         data: DocumentSourceKind::Url(PDF_URL.to_string()),
         media_type: None,
-        additional_params: rig::message::AdditionalParams::try_from_value(json!({
+        additional_params: Some(json!({
             "title": "Bitcoin Whitepaper",
             "citations": { "enabled": true }
-        }))
-        .expect("object params"),
+        })),
     }
 }
 

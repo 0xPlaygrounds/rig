@@ -19,10 +19,8 @@ fn provider_text(response: &rig::completion::CompletionResponse) -> Option<Strin
     let text: String = reply
         .content
         .iter()
-        .filter_map(|block| match block {
-            anthropic_completion::Content::Text { text, .. } => Some(text.as_str()),
-            _ => None,
-        })
+        .filter(|block| block.kind() == "text")
+        .map(|block| block.str("text"))
         .collect();
     (!text.is_empty()).then_some(text)
 }
@@ -48,11 +46,10 @@ fn cited_rust_document() -> Document {
     Document {
         data: DocumentSourceKind::String(rust_document()),
         media_type: Some(DocumentMediaType::TXT),
-        additional_params: rig::message::AdditionalParams::try_from_value(json!({
+        additional_params: Some(json!({
             "title": "Rust Goals",
             "citations": { "enabled": true }
-        }))
-        .expect("object params"),
+        })),
     }
 }
 

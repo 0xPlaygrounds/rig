@@ -633,7 +633,7 @@ async fn history_replay_does_not_leak_prior_run_identity() {
                 "run B reports its own transport id"
             );
             assert_ne!(
-                run_a_identity.message_id, run_b_identity.message_id,
+                run_a_identity.response_id, run_b_identity.response_id,
                 "run B's message id is run B's, not the replayed history's"
             );
         },
