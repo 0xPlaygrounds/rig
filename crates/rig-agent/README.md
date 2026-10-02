@@ -210,6 +210,20 @@ Portable tools implement `rig_core::tool::PortableTool` and work in both runtime
 Classic tools that need mutable per-call state implement
 `rig_agent::tool::Tool` and receive `&mut ToolContext`.
 
+Streamed runs report complete model tool calls through `ToolCall`, then emit
+`ToolResultItem` as each tool's accepted output becomes available. A top-level
+JSON array emits one item per element with a zero-based `index` and total
+`count`; any other output emits once. Nested arrays remain individual values,
+and multimodal blocks stay together as one result. Empty arrays emit no items.
+Tools still return their output through `Tool::call`; a returned collection is
+available for item streaming when that call completes.
+
+These items reflect outcome-hook rewrites and correlate through the call ID.
+They precede batch commit and can remain visible if a sibling later fails.
+`ToolExecutionCommitted` and aggregate `ToolResult` retain atomic batch semantics
+and call ordering. Consume `ToolResultItem` for live progress and the aggregate
+result for committed history; do not append both as distinct tool results.
+
 Tool output remains typed through dispatch; providers and telemetry render it
 at their boundaries. Ordinary serializable results become model output, while
 `ToolOutput` and `ToolResultContent` preserve explicit structured or multimodal

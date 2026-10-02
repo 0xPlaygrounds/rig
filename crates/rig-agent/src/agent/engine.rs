@@ -41,7 +41,7 @@ use super::{
         transcript::{assistant_text_from_choice, is_empty_assistant_turn, tool_result_output},
     },
     runner::AgentRunner,
-    streaming::MultiTurnStreamItem,
+    streaming::{MultiTurnStreamItem, tool_result_items},
     telemetry::{build_chat_span, new_execute_tool_span},
 };
 use crate::run::UnhandledInvalidToolCall;
@@ -452,12 +452,13 @@ where
 
 /// Execute a turn's tool calls **atomically per batch**, shared by both surfaces.
 ///
-/// The batch commits and surfaces all-or-nothing:
+/// History and commit-labelled events are atomic; output items are live:
 ///
 /// - The model tool-call events ([`MultiTurnStreamItem::ToolCall`]) are
 ///   emitted up front, reporting what the model emitted at turn commit.
 /// - Every tool then runs (sequentially at `tool_concurrency <= 1`, else
-///   concurrently bounded by it), with outcomes **collected, not surfaced**.
+///   concurrently bounded by it). Accepted outputs emit `ToolResultItem`
+///   immediately, then are collected for batch commit.
 /// - On the first hook termination / fail-closed error the batch fails fast: no
 ///   new tool starts, not-yet-started concurrent siblings are dropped,
 ///   already-started ones are drained, and the deterministic lowest call-index
@@ -542,10 +543,8 @@ where
             });
         }
 
-        // Outcomes are collected in call order and nothing is surfaced or
-        // committed until the whole batch settles. After the first termination or
-        // fail-closed error no new tool starts, started ones are drained, and the
-        // lowest call-index error wins.
+        // Live output items precede the atomic history commit. After a failure,
+        // drain started siblings without publishing further output items.
         let mut collected: Vec<Option<CollectedToolResult>> =
             (0..call_count).map(|_| None).collect();
         let mut first_error: Option<(usize, PromptError)> = None;
@@ -610,6 +609,15 @@ where
                 let Some(result) = outcome else { continue };
                 match result {
                     Ok(collected_result) => {
+                        if forward_items
+                            && first_error.is_none()
+                            && !matches!(collected_result.surface, ToolSurface::Preresolved)
+                            && let UserContent::ToolResult(result) = &collected_result.content
+                        {
+                            for item in tool_result_items(result) {
+                                yield Ok(item);
+                            }
+                        }
                         if let Some(slot) = collected.get_mut(index) {
                             *slot = Some(collected_result);
                         }
@@ -626,8 +634,8 @@ where
             }
         }
 
-        // On termination surface only the deterministic error: no execution
-        // commit, no result, and no history commit.
+        // Live items may already have escaped; no execution commit, aggregate
+        // result, or history commit escapes a failed batch.
         if let Some((_, err)) = first_error {
             yield Err(err);
             return;

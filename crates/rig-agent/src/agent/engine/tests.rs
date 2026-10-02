@@ -4241,12 +4241,22 @@ async fn stream_hook_skip_surfaces_result_without_execution_commit() {
 
     let mut exec_commits = 0;
     let mut results = 0;
+    let mut live_results = Vec::new();
     let mut final_response = None;
     let mut stream = stream;
     while let Some(item) = stream.next().await {
         match item.unwrap_or_else(|err| panic!("stream item errored: {err}")) {
             MultiTurnStreamItem::ToolExecutionCommitted { .. } => exec_commits += 1,
-            MultiTurnStreamItem::ToolResult { .. } => {
+            MultiTurnStreamItem::ToolResultItem {
+                tool_result,
+                index,
+                count,
+            } => {
+                assert_eq!((index, count), (0, 1));
+                live_results.push(tool_result);
+            }
+            MultiTurnStreamItem::ToolResult { tool_result } => {
+                assert_eq!(live_results.as_slice(), &[tool_result]);
                 results += 1;
             }
             MultiTurnStreamItem::FinalResponse(resp) => final_response = Some(resp),
@@ -4254,6 +4264,11 @@ async fn stream_hook_skip_surfaces_result_without_execution_commit() {
         }
     }
 
+    assert_eq!(
+        live_results.len(),
+        1,
+        "a skipped tool emits its single accepted output"
+    );
     assert_eq!(calls.load(SeqCst), 0, "a skipped tool's body never runs");
     assert_eq!(
         exec_commits, 0,
@@ -9827,4 +9842,298 @@ async fn outcome_stop_is_terminal_through_nested_hooks_on_both_surfaces() {
             assert_eq!(later.load(SeqCst), 0, "later hooks must not undo stop");
         }
     }
+}
+
+#[derive(Clone)]
+struct ReturnedItemsTool {
+    release: Arc<Notify>,
+    started: Arc<AtomicU32>,
+    pending_dropped: Arc<AtomicBool>,
+}
+
+impl Tool for ReturnedItemsTool {
+    const NAME: &'static str = "return_items";
+    type Args = serde_json::Value;
+    type Output = crate::tool::ToolOutput;
+    type Error = MockToolError;
+
+    fn description(&self) -> String {
+        "Return the supplied output after an optional consumer gate".into()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        json!({"type": "object"})
+    }
+
+    async fn call(
+        &self,
+        _context: &mut ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, Self::Error> {
+        self.started.fetch_add(1, SeqCst);
+        if args["wait"].as_bool() == Some(true) {
+            let _guard = PendingOutputGuard(self.pending_dropped.clone());
+            self.release.notified().await;
+        }
+        Ok(crate::tool::ToolOutput::json(args["output"].clone()))
+    }
+}
+
+#[tokio::test]
+async fn tool_result_items_arrive_before_siblings_finish_without_reordering_committed_history() {
+    for concurrency in [1, 2] {
+        let first_waits = concurrency > 1;
+        let release = Arc::new(Notify::new());
+        let started = Arc::new(AtomicU32::new(0));
+        let model = MockCompletionModel::from_stream_turns([
+            vec![
+                MockStreamEvent::tool_call(
+                    "first",
+                    "return_items",
+                    json!({"wait": first_waits, "output": [1, 2]}),
+                ),
+                MockStreamEvent::tool_call(
+                    "second",
+                    "return_items",
+                    json!({"wait": !first_waits, "output": {"value": 3}}),
+                ),
+                MockStreamEvent::final_response(Usage::default()),
+            ],
+            vec![
+                MockStreamEvent::text("done"),
+                MockStreamEvent::final_response(Usage::default()),
+            ],
+        ]);
+        let mut stream = AgentBuilder::new(model)
+            .tool(ReturnedItemsTool {
+                release: release.clone(),
+                started: started.clone(),
+                pending_dropped: Arc::new(AtomicBool::new(false)),
+            })
+            .build()
+            .prompt("go")
+            .max_turns(2)
+            .tool_concurrency(concurrency)
+            .stream();
+        let mut announced = Vec::new();
+        let mut live = Vec::new();
+        let mut aggregates = Vec::new();
+        let mut saw_commit = false;
+        let mut final_response = None;
+        tokio::time::timeout(std::time::Duration::from_secs(2), async {
+            while let Some(item) = stream.next().await {
+                match item.expect("stream succeeds") {
+                    MultiTurnStreamItem::ToolCall { tool_call } => announced.push(tool_call.id),
+                    MultiTurnStreamItem::ToolResultItem {
+                        tool_result,
+                        index,
+                        count,
+                    } => {
+                        assert!(!saw_commit, "live items precede batch commit");
+                        assert_eq!(announced.len(), 2, "complete tool calls precede outputs");
+                        assert!(announced.contains(&tool_result.call));
+                        if live.is_empty() {
+                            assert_eq!(started.load(SeqCst), if first_waits { 2 } else { 1 });
+                            release.notify_one();
+                        }
+                        let value = tool_result.content[0].as_json().expect("JSON item").clone();
+                        live.push((tool_result.call.to_string(), index, count, value));
+                    }
+                    MultiTurnStreamItem::ToolExecutionCommitted { .. } => saw_commit = true,
+                    MultiTurnStreamItem::ToolResult { tool_result } => aggregates.push(tool_result),
+                    MultiTurnStreamItem::FinalResponse(response) => final_response = Some(response),
+                    _ => {}
+                }
+            }
+        })
+        .await
+        .expect("output must reach the consumer before its gated sibling finishes");
+        let first = ("first".into(), 0, 2, json!(1));
+        let next = ("first".into(), 1, 2, json!(2));
+        let second = ("second".into(), 0, 1, json!({"value": 3}));
+        assert_eq!(
+            live,
+            if first_waits {
+                vec![second, first, next]
+            } else {
+                vec![first, next, second]
+            }
+        );
+        assert_eq!(
+            aggregates
+                .iter()
+                .map(|result| result.call.to_string())
+                .collect::<Vec<_>>(),
+            ["first", "second"]
+        );
+        assert_eq!(aggregates[0].content[0].as_json(), Some(&json!([1, 2])));
+        assert_eq!(
+            aggregates[1].content[0].as_json(),
+            Some(&json!({"value": 3}))
+        );
+        let final_response = final_response.expect("final response");
+        assert_eq!(
+            tool_result_ids(final_response.messages()),
+            ["first", "second"]
+        );
+        assert_eq!(final_response.output(), "done");
+    }
+}
+
+#[tokio::test]
+async fn tool_result_items_use_outcome_hook_rewrite_without_parsing_text_as_a_collection() {
+    let model = MockCompletionModel::from_stream_turns([
+        vec![
+            MockStreamEvent::tool_call(
+                "first",
+                "return_items",
+                json!({"output": ["secret", "raw"]}),
+            ),
+            MockStreamEvent::final_response(Usage::default()),
+        ],
+        vec![
+            MockStreamEvent::text("done"),
+            MockStreamEvent::final_response(Usage::default()),
+        ],
+    ]);
+    let mut stream = AgentBuilder::new(model)
+        .tool(ReturnedItemsTool {
+            release: Arc::new(Notify::new()),
+            started: Arc::new(AtomicU32::new(0)),
+            pending_dropped: Arc::new(AtomicBool::new(false)),
+        })
+        .add_hook(RewriteToolResultHook(r#"["redacted"]"#))
+        .build()
+        .prompt("go")
+        .max_turns(2)
+        .stream();
+    let mut live = Vec::new();
+    let mut aggregate = None;
+    while let Some(item) = stream.next().await {
+        match item.expect("stream succeeds") {
+            MultiTurnStreamItem::ToolResultItem {
+                tool_result,
+                index,
+                count,
+            } => {
+                assert_eq!((index, count), (0, 1));
+                live.push(tool_result);
+            }
+            MultiTurnStreamItem::ToolResult { tool_result } => aggregate = Some(tool_result),
+            _ => {}
+        }
+    }
+    let [result] = live.as_slice() else {
+        panic!("one rewritten item: {live:?}");
+    };
+    assert_eq!(result.content[0].as_text(), Some(r#"["redacted"]"#));
+    assert_eq!(Some(result), aggregate.as_ref());
+}
+
+#[tokio::test]
+async fn live_tool_result_items_survive_later_failure_without_aggregate_commit() {
+    struct StopSecondResult;
+    impl AgentHook for StopSecondResult {
+        async fn on_outcome(&self, _ctx: &HookContext, event: OutcomeEvent<'_>) -> OutcomeAction {
+            if event.tool_result().is_some()
+                && event.tool_args().is_some_and(|args| args.contains("stop"))
+            {
+                OutcomeAction::stop("reject second result")
+            } else {
+                OutcomeAction::proceed()
+            }
+        }
+    }
+    let model = MockCompletionModel::from_stream_turns([[
+        MockStreamEvent::tool_call("first", "return_items", json!({"output": [1, 2]})),
+        MockStreamEvent::tool_call("second", "return_items", json!({"output": "stop"})),
+        MockStreamEvent::final_response(Usage::default()),
+    ]]);
+    let mut stream = AgentBuilder::new(model)
+        .tool(ReturnedItemsTool {
+            release: Arc::new(Notify::new()),
+            started: Arc::new(AtomicU32::new(0)),
+            pending_dropped: Arc::new(AtomicBool::new(false)),
+        })
+        .add_hook(StopSecondResult)
+        .build()
+        .prompt("go")
+        .stream();
+    let mut live = Vec::new();
+    let mut error = None;
+    while let Some(item) = stream.next().await {
+        match item {
+            Ok(MultiTurnStreamItem::ToolResultItem { tool_result, .. }) => {
+                live.push(tool_result.call.to_string())
+            }
+            Ok(
+                MultiTurnStreamItem::ToolResult { .. }
+                | MultiTurnStreamItem::ToolExecutionCommitted { .. }
+                | MultiTurnStreamItem::FinalResponse(_),
+            ) => panic!("failed batch cannot commit"),
+            Err(err) => error = Some(err),
+            _ => {}
+        }
+    }
+    assert_eq!(live, ["first", "first"]);
+    let PromptError::Cancelled {
+        reason,
+        chat_history,
+    } = error.expect("failure")
+    else {
+        panic!("expected cancellation");
+    };
+    assert_eq!(reason, "reject second result");
+    assert!(tool_result_ids(&chat_history).is_empty());
+}
+
+struct PendingOutputGuard(Arc<AtomicBool>);
+
+impl Drop for PendingOutputGuard {
+    fn drop(&mut self) {
+        self.0.store(true, SeqCst);
+    }
+}
+
+#[tokio::test]
+async fn dropping_live_tool_result_items_cancels_pending_sibling() {
+    let pending_dropped = Arc::new(AtomicBool::new(false));
+    let started = Arc::new(AtomicU32::new(0));
+    let model = MockCompletionModel::from_stream_turns([[
+        MockStreamEvent::tool_call(
+            "pending",
+            "return_items",
+            json!({"wait": true, "output": "pending"}),
+        ),
+        MockStreamEvent::tool_call("ready", "return_items", json!({"output": "ready"})),
+        MockStreamEvent::final_response(Usage::default()),
+    ]]);
+    let mut stream = AgentBuilder::new(model)
+        .tool(ReturnedItemsTool {
+            release: Arc::new(Notify::new()),
+            started: started.clone(),
+            pending_dropped: pending_dropped.clone(),
+        })
+        .build()
+        .prompt("go")
+        .tool_concurrency(2)
+        .stream();
+    tokio::time::timeout(std::time::Duration::from_secs(2), async {
+        loop {
+            let item = stream.next().await.expect("stream item").expect("success");
+            if let MultiTurnStreamItem::ToolResultItem { tool_result, .. } = item {
+                assert_eq!(tool_result.call.to_string(), "ready");
+                break;
+            }
+        }
+    })
+    .await
+    .expect("ready sibling must surface while the other is pending");
+    assert_eq!(started.load(SeqCst), 2);
+    assert!(!pending_dropped.load(SeqCst));
+    drop(stream);
+    assert!(
+        pending_dropped.load(SeqCst),
+        "dropping the consumer must drop pending execution"
+    );
 }

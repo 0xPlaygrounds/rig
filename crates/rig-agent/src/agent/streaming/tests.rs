@@ -5881,3 +5881,77 @@ async fn an_abandoned_streamed_turn_keeps_reasoning_its_provider_accepts() {
         "the issuing provider accepts it: {reasoning:?}"
     );
 }
+
+#[test]
+fn tool_result_items_split_only_top_level_structured_collections() {
+    use crate::agent::streaming::tool_result_items;
+    use rig_core::message::{CallId, ToolName};
+    let outputs = [
+        (
+            crate::tool::ToolOutput::json(serde_json::json!([{"a": 1}, "two", [3, 4]])),
+            vec![
+                crate::tool::ToolOutput::json(serde_json::json!({"a": 1})),
+                crate::tool::ToolOutput::json(serde_json::json!("two")),
+                crate::tool::ToolOutput::json(serde_json::json!([3, 4])),
+            ],
+        ),
+        (crate::tool::ToolOutput::json(serde_json::json!([])), vec![]),
+        (
+            crate::tool::ToolOutput::json(serde_json::json!([null])),
+            vec![crate::tool::ToolOutput::json(serde_json::Value::Null)],
+        ),
+        (
+            crate::tool::ToolOutput::json(serde_json::json!({"results": [1, 2]})),
+            vec![crate::tool::ToolOutput::json(
+                serde_json::json!({"results": [1, 2]}),
+            )],
+        ),
+        (
+            crate::tool::ToolOutput::text("[1, 2]"),
+            vec![crate::tool::ToolOutput::text("[1, 2]")],
+        ),
+        (
+            crate::tool::ToolOutput::json(serde_json::Value::Bool(true)),
+            vec![crate::tool::ToolOutput::json(serde_json::Value::Bool(true))],
+        ),
+        (
+            crate::tool::ToolOutput::content(vec![
+                ToolResultContent::text("caption"),
+                ToolResultContent::image_base64("pixels", Some(ImageMediaType::PNG), None),
+            ])
+            .expect("multimodal"),
+            vec![
+                crate::tool::ToolOutput::content(vec![
+                    ToolResultContent::text("caption"),
+                    ToolResultContent::image_base64("pixels", Some(ImageMediaType::PNG), None),
+                ])
+                .expect("multimodal"),
+            ],
+        ),
+    ];
+    for (output, expected) in outputs {
+        let result = rig_core::message::ToolResult {
+            call: CallId::from_wire("call"),
+            name: ToolName::new("lookup").expect("name"),
+            content: output.into_content(),
+        };
+        let items: Vec<_> = tool_result_items(&result).collect();
+        assert_eq!(items.len(), expected.len());
+        for (index, (item, expected)) in items.iter().zip(&expected).enumerate() {
+            let MultiTurnStreamItem::ToolResultItem {
+                tool_result,
+                index: actual_index,
+                count,
+            } = item
+            else {
+                panic!("expected result item");
+            };
+            assert_eq!((*actual_index, *count), (index, items.len()));
+            assert_eq!(tool_result.call, result.call);
+            assert_eq!(tool_result.name, result.name);
+            assert_eq!(tool_result.content, expected.as_content());
+            let serialized = serde_json::to_value(item).expect("serialize item");
+            assert_eq!(serialized["type"], "toolResultItem");
+        }
+    }
+}
