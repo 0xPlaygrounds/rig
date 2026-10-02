@@ -30,7 +30,8 @@ use bevy_ecs::{
 };
 use rig_core::{
     completion::message::{
-        AssistantContent, ToolChoice, ToolResultContent, UserContent, turn_delivered_no_answer,
+        AssistantContent, AssistantMessage, ToolChoice, ToolResultContent, UserContent,
+        turn_delivered_no_answer,
     },
     effect::{EffectKind, FamilyDescriptor, Outcome},
     error::ErrorKind,
@@ -2047,7 +2048,9 @@ fn fail_unknown_call(
     call: InvalidCall,
 ) -> Result<(), ContentError> {
     commands.entity(turn).insert(Materialised);
-    if let Ok(assistant) = MessageParts::assistant(outs.head.message(call.prefix.clone())) {
+    // A streamed turn cut short replays from its canonical fields, as the
+    // agent loop replays it.
+    if let Ok(assistant) = MessageParts::assistant(AssistantMessage::new(call.prefix.clone())) {
         spawn_deferred(commands, assets, run, assistant)?;
     }
     commands
@@ -2080,7 +2083,12 @@ fn abandon_turn(
         call.prefix.clone()
     };
     let diagnostic_id = &call.id;
-    let assistant = MessageParts::assistant(outs.head.message(content.clone()))?;
+    let message = if call.prefix.is_empty() {
+        outs.head.message(content.clone())
+    } else {
+        AssistantMessage::new(content.clone())
+    };
+    let assistant = MessageParts::assistant(message)?;
     spawn_deferred(commands, assets, run, assistant)?;
     let results = MessageParts::user(invalid_call_feedback(&content, diagnostic_id, feedback))
         .map_err(|_| ContentError::Shape)?;
