@@ -29,7 +29,6 @@ pub const SUITE_WIRES: &[&str] = &[
     mock::HISTORY_WIRE,
     anthropic::HISTORY_WIRE,
     anthropic_moonshot::HISTORY_WIRE,
-    chat::HISTORY_WIRE,
     chatgpt::HISTORY_WIRE,
     cohere::HISTORY_WIRE,
     copilot::HISTORY_WIRE,
