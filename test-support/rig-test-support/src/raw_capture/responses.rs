@@ -26,19 +26,14 @@ pub type Terminal = responses_api::CompletionResponse;
 /// carries the whole response object, so `raw` is the same document a
 /// blocking reply keeps. The returned typed document is the cell's handle on
 /// whatever its dialect keeps beside the shared fields.
-#[cfg(any())]
 pub fn assert_terminal_round_trips(terminal: &CompletionResponse) -> Terminal {
     let typed = Terminal::deserialize(&terminal.raw).expect("raw is the Responses response object");
     assert_eq!(
-        terminal.response_id.as_deref(),
+        terminal.response_id(),
         Some(typed.id.as_str()),
         "response id"
     );
-    assert_eq!(
-        terminal.model.as_deref(),
-        Some(typed.model.as_str()),
-        "model"
-    );
+    assert_eq!(terminal.model(), Some(typed.model.as_str()), "model");
     let usage = typed.usage.as_ref().expect("the terminal reports usage");
     assert_eq!(
         (
@@ -92,7 +87,6 @@ pub fn recorded_finish_reason(body: &Value) -> FinishReason {
 /// header or sends none are different contracts, so each cell states its own
 /// with [`assert_contracted_request_id`](super::assert_contracted_request_id)
 /// or [`assert_no_request_id`](super::assert_no_request_id).
-#[cfg(any())]
 pub fn assert_reproduces_body(
     response: &CompletionResponse,
     provider: &str,
@@ -102,20 +96,16 @@ pub fn assert_reproduces_body(
     assert_eq!(response.provider(), provider, "{context}: provider");
     let (message_id, text) = recorded_message(body);
     assert_matches_recorded_token(
-        response.response_id().as_deref(),
+        response.response_id(),
         body["id"].as_str(),
         &format!("{context}: response id"),
     );
     assert_matches_recorded_token(
-        response.message_id.as_deref(),
+        message_item_id(response),
         Some(message_id),
         &format!("{context}: message id"),
     );
-    assert_eq!(
-        response.model().as_deref(),
-        body["model"].as_str(),
-        "{context}: model"
-    );
+    assert_eq!(response.model(), body["model"].as_str(), "{context}: model");
     assert_eq!(
         response.finish_reason(),
         Some(recorded_finish_reason(body)),
@@ -149,19 +139,18 @@ pub fn assert_reproduces_body(
 /// `provider_request_id` claim is part of the contract rather than an aside:
 /// this type has a slot for it and a reply *document* never fills it, because
 /// the id arrives on a header.
-#[cfg(any())]
 pub fn assert_native_matches_normalized(
     response: &CompletionResponse,
     native: &responses_api::CompletionResponse,
     context: &str,
 ) {
     assert_eq!(
-        response.response_id().as_deref(),
+        response.response_id(),
         Some(native.id.as_str()),
         "{context}: native response id"
     );
     assert_eq!(
-        response.model().as_deref(),
+        response.model(),
         Some(native.model.as_str()),
         "{context}: native model"
     );
@@ -198,8 +187,18 @@ pub fn assert_native_matches_normalized(
         })
         .expect("the reply carries a message item");
     assert_eq!(
-        response.message_id.as_deref(),
+        message_item_id(response),
         Some(message.id.as_str()),
         "{context}: native message id"
     );
+}
+
+/// The id of the message item the first text block of `response` holds.
+pub fn message_item_id(response: &CompletionResponse) -> Option<&str> {
+    response.choice.iter().find_map(|block| match block {
+        rig_core::message::AssistantContent::Text(text) => {
+            text.native.as_ref()?.item["id"].as_str()
+        }
+        _ => None,
+    })
 }

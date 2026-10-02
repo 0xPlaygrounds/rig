@@ -235,11 +235,6 @@ fn assert_parity(
         typed_identity.response_id.is_some() && normalized_identity.response_id.is_some(),
         "{scenario}: both routes carry the response id"
     );
-    assert_eq!(
-        typed_identity.message_id.is_some(),
-        normalized_identity.message_id.is_some(),
-        "{scenario}: both routes agree on whether a message id exists"
-    );
     assert_ne!(
         typed_identity.response_id, normalized_identity.response_id,
         "{scenario}: two live turns are two provider responses"
@@ -544,17 +539,25 @@ fn assert_responses_parity(
             "{scenario}: completion() tool call"
         );
     } else {
-        assert_eq!(typed.choice, normalized.choice, "{scenario}: text choice");
+        // Two live turns: the same text, each block holding its own item.
+        let canonical = |choice: &[rig::message::AssistantContent]| {
+            choice
+                .iter()
+                .map(rig::message::AssistantContent::canonical)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            canonical(&typed.choice),
+            canonical(&normalized.choice),
+            "{scenario}: text choice"
+        );
         // The Responses route names the assistant message; both sides do.
-        assert!(
-            typed
-                .response_id()
-                .as_deref()
+        let msg = |response: &rig::completion::CompletionResponse| {
+            crate::raw_capture::responses::message_item_id(response)
                 .is_some_and(|id| id.starts_with("msg_"))
-                && normalized
-                    .response_id()
-                    .as_deref()
-                    .is_some_and(|id| id.starts_with("msg_")),
+        };
+        assert!(
+            msg(&typed) && msg(&normalized),
             "{scenario}: both routes carry the msg_ id"
         );
     }

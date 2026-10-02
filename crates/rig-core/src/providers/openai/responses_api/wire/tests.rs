@@ -387,11 +387,8 @@ async fn a_chatgpt_reply_captures_the_terminal_response_object_as_raw() {
         assert_eq!(response.raw["service_tier"], "default", "{case}");
         assert_eq!(typed.id, "resp_chatgpt_raw", "{case}");
 
-        assert_eq!(
-            response.choice,
-            vec![message::AssistantContent::text("hi")],
-            "{case}: the deltas are the content"
-        );
+        assert_eq!(response.choice.len(), 1, "{case}: one message");
+        assert_eq!(response.text(), "hi", "{case}: the deltas are the content");
         assert_eq!(response.usage.total_tokens, Some(2), "{case}");
         assert_eq!(
             response.identity().response_id.as_deref(),

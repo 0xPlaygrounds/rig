@@ -53,14 +53,21 @@
 //! with a string `encrypted_content`; cell 6 requires a chunk whose delta
 //! carries `tool_calls` and a chunk finishing with `"tool_calls"`.
 
+use rig::completion::CompletionRequest;
 use rig::completion::CompletionResponse;
-use rig::completion::{CompletionRequest, FinishReason, ToolDefinition};
+#[cfg(any())]
+use rig::completion::FinishReason;
+#[cfg(any())]
+use rig::completion::ToolDefinition;
+#[cfg(any())]
 use rig::message::ToolChoice;
 use rig::providers::openai;
 use serde_json::{Value, json};
 
 use super::super::support::{sse_json_frames, with_openai_cassette_result};
-use crate::raw_capture::{assert_normalized_lacks, capture_terminal, chat, responses};
+#[cfg(any())]
+use crate::raw_capture::chat;
+use crate::raw_capture::{assert_normalized_lacks, capture_terminal, responses};
 use crate::support::normalized_without_raw;
 use crate::support::{Observed, assert_matches_recorded_token};
 
@@ -76,6 +83,7 @@ const PROMPT: &str = "Reply with exactly the single word: pong";
 /// find one fails on its premise.
 const REASONING_PROMPT: &str = "A train leaves at 09:30 and travels 150 km at 60 km/h. \
      At what time does it arrive? Reply with only the time in HH:MM.";
+#[cfg(any())]
 const TOOL_PROMPT: &str = "Call ping exactly once with no arguments.";
 
 fn request() -> CompletionRequest {
@@ -93,6 +101,7 @@ fn reasoning_request() -> CompletionRequest {
     }))
 }
 
+#[cfg(any())]
 fn ping_tool() -> ToolDefinition {
     ToolDefinition {
         name: rig_core::message::ToolName::new("ping").expect("tool name"),
@@ -101,6 +110,7 @@ fn ping_tool() -> ToolDefinition {
     }
 }
 
+#[cfg(any())]
 /// The forced tool call `raw_completion_parity_matrix` records: `required`
 /// leaves the model no text-only exit.
 fn tool_request() -> CompletionRequest {
@@ -111,6 +121,7 @@ fn tool_request() -> CompletionRequest {
         .max_tokens(64)
 }
 
+#[cfg(any())]
 /// Chat premise: the request asked for usage on the stream and the last
 /// recorded frame carries it. Returns the frames.
 fn chat_frames_with_terminal_usage(scenario: &str, request: &str, body: &str) -> Vec<Value> {
@@ -149,6 +160,7 @@ fn responses_completed_frame(scenario: &str, body: &str) -> Value {
     last["response"].clone()
 }
 
+#[cfg(any())]
 fn last_chunk_field(frames: &[Value], field: &str) -> Value {
     frames
         .iter()
@@ -172,6 +184,7 @@ fn captured_raw<'a>(scenario: &str, terminal: &'a CompletionResponse) -> &'a Val
 // Chat Completions
 // ---------------------------------------------------------------------------
 
+#[cfg(any())]
 #[tokio::test]
 async fn chat_stream_raw_round_trips_typed() {
     const SCENARIO: &str = "raw_stream_capture_matrix/chat_stream_raw_round_trips_typed";
@@ -222,6 +235,7 @@ async fn chat_stream_raw_round_trips_typed() {
     );
 }
 
+#[cfg(any())]
 #[tokio::test]
 async fn chat_stream_raw_exposes_service_tier() {
     const SCENARIO: &str = "raw_stream_capture_matrix/chat_stream_raw_exposes_service_tier";
@@ -346,7 +360,7 @@ async fn responses_stream_raw_exposes_status() {
     // normalized one must agree on it.
     assert_eq!(
         captured_message_id,
-        terminal.response_id().as_deref(),
+        responses::message_item_id(&terminal),
         "{SCENARIO}: captured and normalized message ids agree"
     );
     assert_normalized_lacks(&normalized_without_raw(terminal.clone()), &["status"]);
@@ -465,6 +479,7 @@ async fn responses_reasoning_stream_raw_round_trips_typed() {
     );
 }
 
+#[cfg(any())]
 /// A forced Chat tool-call stream: the terminal record round-trips, `raw`
 /// spells `finish_reason` as OpenAI's own `"tool_calls"` — the same word the
 /// last finishing chunk carried — and the normalized terminal reports

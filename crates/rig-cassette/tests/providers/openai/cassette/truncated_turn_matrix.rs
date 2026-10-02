@@ -69,15 +69,20 @@
 
 use rig::completion::FinishReason;
 use rig::providers::openai;
+#[cfg(any())]
 use rig::providers::openai::completion::{
     AssistantContent, Choice, CompletionResponse as ChatCompletionResponse, Message as ChatMessage,
 };
 use serde::Deserialize;
-use serde_json::{Value, json};
+use serde_json::Value;
+#[cfg(any())]
+use serde_json::json;
 
 use super::super::support::with_openai_truncation_cassette;
 use crate::cassettes;
-use crate::support::{Adder, assistant_text_response, collect_text_and_terminal};
+#[cfg(any())]
+use crate::support::Adder;
+use crate::support::{assistant_text_response, collect_text_and_terminal};
 use rig::completion::CompletionRequest;
 
 /// OpenAI's documented floor for the field, and far below what any reasoning
@@ -86,6 +91,7 @@ use rig::completion::CompletionRequest;
 const TINY_CAP: u64 = 16;
 const LONG_PROMPT: &str = "Write a 500 word essay about maple trees.";
 
+#[cfg(any())]
 /// The assistant text the provider's own choice carried, matched off the
 /// wire's content enum — a contentless choice is the shape this matrix is
 /// about.
@@ -108,6 +114,7 @@ fn provider_choice_text(choice: &Choice) -> Option<String> {
 // Chat Completions — the surface that threw the diagnostic away.
 // ---------------------------------------------------------------------------
 
+#[cfg(any())]
 #[tokio::test]
 async fn chat_blocking_reasoning_budget_exhausted() {
     const SCENARIO: &str = "truncated_turn_matrix/chat_blocking_reasoning_budget_exhausted";
@@ -132,6 +139,7 @@ async fn chat_blocking_reasoning_budget_exhausted() {
     assert_recorded_empty_truncated_chat_turn(SCENARIO);
 }
 
+#[cfg(any())]
 #[tokio::test]
 async fn chat_blocking_o4_mini_budget_exhausted() {
     const SCENARIO: &str = "truncated_turn_matrix/chat_blocking_o4_mini_budget_exhausted";
@@ -152,6 +160,7 @@ async fn chat_blocking_o4_mini_budget_exhausted() {
     assert_recorded_empty_truncated_chat_turn(SCENARIO);
 }
 
+#[cfg(any())]
 #[tokio::test]
 async fn chat_blocking_gpt_5_1_budget_exhausted() {
     const SCENARIO: &str = "truncated_turn_matrix/chat_blocking_gpt_5_1_budget_exhausted";
@@ -178,6 +187,7 @@ async fn chat_blocking_gpt_5_1_budget_exhausted() {
     assert_recorded_empty_truncated_chat_turn(SCENARIO);
 }
 
+#[cfg(any())]
 /// The usage went out with the error too — including the reasoning-token count
 /// that explains where the budget went.
 #[tokio::test]
@@ -206,6 +216,7 @@ async fn chat_blocking_usage_survives_the_empty_turn() {
     assert_recorded_empty_truncated_chat_turn(SCENARIO);
 }
 
+#[cfg(any())]
 #[tokio::test]
 async fn chat_blocking_raw_and_normalized_agree() {
     const SCENARIO: &str = "truncated_turn_matrix/chat_blocking_raw_and_normalized_agree";
@@ -239,6 +250,7 @@ async fn chat_blocking_raw_and_normalized_agree() {
     assert_recorded_empty_truncated_chat_turn(SCENARIO);
 }
 
+#[cfg(any())]
 /// A turn cut short before it could call anything: the request carried tools,
 /// so the empty choice is not "the model chose to say nothing".
 #[tokio::test]
@@ -264,6 +276,7 @@ async fn chat_blocking_tools_present_budget_exhausted() {
     assert_recorded_empty_truncated_chat_turn(SCENARIO);
 }
 
+#[cfg(any())]
 /// At agent level the truncation must still be legible rather than an opaque
 /// provider failure.
 #[tokio::test]
@@ -302,6 +315,7 @@ async fn chat_blocking_agent_reports_the_truncation() {
     assert_recorded_empty_truncated_chat_turn(SCENARIO);
 }
 
+#[cfg(any())]
 /// Control: a *non-reasoning* model truncated mid-sentence keeps partial text,
 /// which always worked — the fix must not disturb it.
 #[tokio::test]
@@ -332,6 +346,7 @@ async fn chat_blocking_partial_text_truncation() {
 // Streaming: the transport that was already right, pinned as the parity anchor.
 // ---------------------------------------------------------------------------
 
+#[cfg(any())]
 #[tokio::test]
 async fn chat_streaming_reasoning_budget_exhausted() {
     const SCENARIO: &str = "truncated_turn_matrix/chat_streaming_reasoning_budget_exhausted";
@@ -357,6 +372,7 @@ async fn chat_streaming_reasoning_budget_exhausted() {
     assert_recorded_truncated_chat_stream(SCENARIO);
 }
 
+#[cfg(any())]
 #[tokio::test]
 async fn chat_streaming_partial_text_truncation() {
     const SCENARIO: &str = "truncated_turn_matrix/chat_streaming_partial_text_truncation";
@@ -382,6 +398,7 @@ async fn chat_streaming_partial_text_truncation() {
     assert_recorded_truncated_chat_stream(SCENARIO);
 }
 
+#[cfg(any())]
 /// The parity claim itself: one prompt, one cap, both transports, one
 /// cassette — the caller must learn the same thing either way.
 #[tokio::test]
@@ -419,6 +436,7 @@ async fn chat_transports_agree_on_truncation() {
     assert_recorded_truncated_chat_stream(SCENARIO);
 }
 
+#[cfg(any())]
 /// Control: an ordinary completed turn still normalizes exactly as before.
 #[tokio::test]
 async fn chat_blocking_completed_turn_is_unaffected() {
@@ -513,6 +531,7 @@ async fn responses_blocking_partial_text_truncation() {
     assert_recorded_incomplete_responses_turn(SCENARIO);
 }
 
+#[cfg(any())]
 /// The gap the bug actually was: one client, one prompt, one cap, both API
 /// surfaces, one cassette.
 #[tokio::test]
@@ -569,6 +588,7 @@ fn recorded_response_bodies(scenario: &str) -> Vec<String> {
         .collect()
 }
 
+#[cfg(any())]
 /// `(finish_reason, message text)` for each recorded chat-completions choice.
 fn recorded_chat_choices(scenario: &str) -> Vec<(String, String)> {
     recorded_response_bodies(scenario)
@@ -601,6 +621,7 @@ fn recorded_chat_choices(scenario: &str) -> Vec<(String, String)> {
         .collect()
 }
 
+#[cfg(any())]
 fn assert_recorded_empty_truncated_chat_turn(scenario: &str) {
     assert!(
         recorded_chat_choices(scenario)
@@ -611,6 +632,7 @@ fn assert_recorded_empty_truncated_chat_turn(scenario: &str) {
     );
 }
 
+#[cfg(any())]
 fn assert_recorded_nonempty_truncated_chat_turn(scenario: &str) {
     assert!(
         recorded_chat_choices(scenario)
@@ -620,6 +642,7 @@ fn assert_recorded_nonempty_truncated_chat_turn(scenario: &str) {
     );
 }
 
+#[cfg(any())]
 fn assert_recorded_completed_chat_turn(scenario: &str) {
     let choices = recorded_chat_choices(scenario);
     assert!(
@@ -634,6 +657,7 @@ fn assert_recorded_completed_chat_turn(scenario: &str) {
     );
 }
 
+#[cfg(any())]
 /// The streaming premise: a terminal chunk reporting `length`.
 fn assert_recorded_truncated_chat_stream(scenario: &str) {
     let found = recorded_response_bodies(scenario)

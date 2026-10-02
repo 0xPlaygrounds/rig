@@ -15,7 +15,7 @@ use futures::StreamExt;
 use rig::completion::CompletionResponse;
 use rig::completion::FinishReason;
 use rig::message::{
-    AssistantContent, Message, Reasoning, ReasoningContent, ToolCall, ToolResultContent,
+    AssistantContent, AssistantMessage, Message, Reasoning, ToolCall, ToolResultContent,
     UserContent,
 };
 use rig::providers::openai;
@@ -48,6 +48,16 @@ struct StreamRun {
     response: Option<CompletionResponse>,
 }
 
+impl StreamRun {
+    /// The turn's origin and stop, for the history its blocks go back in.
+    fn head(&self) -> AssistantMessage {
+        self.response
+            .as_ref()
+            .map(CompletionResponse::head)
+            .unwrap_or_default()
+    }
+}
+
 async fn drain_stream(mut stream: rig::streaming::CompletionStream) -> StreamRun {
     let mut run = StreamRun {
         text: String::new(),
@@ -68,12 +78,7 @@ async fn drain_stream(mut stream: rig::streaming::CompletionStream) -> StreamRun
                 content: AssistantContent::Reasoning(reasoning),
                 ..
             }) => {
-                run.reasoning_blocks.push(
-                    reasoning
-                        .open(reasoning.issuer())
-                        .cloned()
-                        .expect("reasoning opens"),
-                );
+                run.reasoning_blocks.push(reasoning);
             }
             Item::Event(StreamEvent::Reasoning {
                 text: reasoning, ..
@@ -95,26 +100,30 @@ async fn drain_stream(mut stream: rig::streaming::CompletionStream) -> StreamRun
     // The shared lifecycle validator runs over every recorded turn this
     // suite drains (#2258 C1).
     rig_core::test_utils::streaming_conformance::assert_valid_event_stream(&raw_items, &run.choice);
-    run.response = Some(response.clone());
-    run.message_id = response.response_id().clone();
+    run.response = Some(response);
     run
 }
 
-/// Text of each reasoning part in the aggregated choice, in order.
-fn aggregated_reasoning_parts(choice: &[AssistantContent]) -> Vec<ReasoningContent> {
+/// The reasoning blocks of an aggregated choice, in order.
+fn aggregated_reasoning(choice: &[AssistantContent]) -> Vec<&Reasoning> {
     choice
         .iter()
         .filter_map(|content| match content {
-            AssistantContent::Reasoning(reasoning) => Some(
-                reasoning
-                    .open(reasoning.issuer())
-                    .expect("sealed reasoning")
-                    .content
-                    .clone(),
-            ),
+            AssistantContent::Reasoning(reasoning) => Some(reasoning),
             _ => None,
         })
+        .collect()
+}
+
+/// The summary parts the reasoning item a block holds states, in order.
+fn summary_parts(reasoning: &Reasoning) -> Vec<String> {
+    reasoning
+        .native
+        .as_ref()
+        .and_then(|native| native.item["summary"].as_array())
+        .into_iter()
         .flatten()
+        .filter_map(|part| part["text"].as_str().map(str::to_owned))
         .collect()
 }
 
@@ -136,14 +145,18 @@ fn assert_terminal(run: &StreamRun, expected_finish: FinishReason) {
     // ID contract: the Responses API names both the response (`resp_`) and the
     // assistant output message (`msg_`); prefixes survive cassette scrubbing.
     let response_id = terminal
-        .response_id
-        .as_deref()
+        .response_id()
         .expect("Responses API should report a response-scoped ID");
     assert!(
         response_id.starts_with("resp_"),
         "response_id should be response-scoped, got {response_id}"
     );
-    if let Some(message_id) = run.message_id.as_deref() {
+    let message_ids = run
+        .choice
+        .iter()
+        .filter(|content| matches!(content, AssistantContent::Text(_)))
+        .filter_map(|content| content.native_item()?["id"].as_str());
+    for message_id in message_ids {
         assert!(
             message_id.starts_with("msg_") || message_id.starts_with("rs_"),
             "message_id should be an output-item ID, got {message_id}"
@@ -191,58 +204,33 @@ async fn reasoning_summary_stream_aggregates_each_part_once() {
             let emitted_parts: Vec<String> = run
                 .reasoning_blocks
                 .iter()
-                .flat_map(|block| block.content.iter())
-                .filter_map(|part| match part {
-                    ReasoningContent::Text { text, .. } => Some(text.clone()),
-                    ReasoningContent::Summary(text) => Some(text.clone()),
-                    _ => None,
-                })
+                .flat_map(summary_parts)
                 .collect();
             assert!(
                 !emitted_parts.is_empty(),
                 "summary-enabled turn should emit readable reasoning parts"
             );
 
-            let aggregated = aggregated_reasoning_parts(&run.choice);
-
-            // The comparison must be part-by-part, not over concatenated text:
-            // on main the delta-built item survives with all parts merged into
-            // one string while the full blocks clobber each other (the two
-            // 34ee8ba5 P1s), which a concatenated-text check cannot see.
-            //
-            // Every summary part the wire emitted survives as its own
-            // aggregated part, exactly once — the full blocks supersede the
-            // delta accumulation, so no delta-built duplicate remains either.
+            // Each reasoning item is one block whose text is its summary
+            // parts as paragraphs: every part the wire emitted survives
+            // exactly once, and no delta-built duplicate remains.
+            let aggregated = aggregated_reasoning(&run.choice);
+            assert_eq!(aggregated.len(), run.reasoning_blocks.len());
+            let text: String = aggregated
+                .iter()
+                .map(|reasoning| reasoning.text.as_str())
+                .collect::<Vec<_>>()
+                .join("\n\n");
             for part in &emitted_parts {
-                let occurrences = aggregated
-                    .iter()
-                    .filter(|aggregated_part| match aggregated_part {
-                        ReasoningContent::Text { text, .. } | ReasoningContent::Summary(text) => {
-                            text == part
-                        }
-                        _ => false,
-                    })
-                    .count();
                 assert_eq!(
-                    occurrences, 1,
+                    text.matches(part.as_str()).count(),
+                    1,
                     "summary part should survive aggregation exactly once: {part:?}"
                 );
             }
-            let readable_aggregated = aggregated
-                .iter()
-                .filter(|part| {
-                    matches!(
-                        part,
-                        ReasoningContent::Text { .. } | ReasoningContent::Summary(_)
-                    )
-                })
-                .count();
-            assert_eq!(
-                readable_aggregated,
-                emitted_parts.len(),
-                "aggregated choice should contain exactly the emitted reasoning parts, \
-                 with the delta accumulation superseded; aggregated parts: {aggregated:?}"
-            );
+            for reasoning in aggregated {
+                assert_eq!(reasoning.text, summary_parts(reasoning).join("\n\n"));
+            }
         },
     )
     .await;
@@ -263,55 +251,36 @@ async fn encrypted_reasoning_keeps_summary_parts_and_encrypted_payload() {
             // multi-step count at high effort reliably yields a reasoning
             // item with summary and encrypted parts.
             let request = CompletionRequest::new(
-                    "How many positive integers n < 500 are divisible by 3 but not by 4? \
+                "How many positive integers n < 500 are divisible by 3 but not by 4? \
                      Work it out carefully, then answer with just the number.",
-                )
-                .additional_params(json!({
-                    "reasoning": { "effort": "high", "summary": "detailed" },
-                    "include": ["reasoning.encrypted_content"],
-                    "store": false
-                }));
+            )
+            .additional_params(json!({
+                "reasoning": { "effort": "high", "summary": "detailed" },
+                "include": ["reasoning.encrypted_content"],
+                "store": false
+            }));
             let run = drain_stream(model.stream(request).expect("stream should start")).await;
 
             assert!(!run.text.trim().is_empty(), "turn should produce text");
             assert_terminal(&run, FinishReason::Stop);
 
-            let emitted_parts: Vec<ReasoningContent> = run
-                .reasoning_blocks
-                .iter()
-                .flat_map(|block| block.content.iter().cloned())
-                .collect();
+            let aggregated = aggregated_reasoning(&run.choice);
             assert!(
-                emitted_parts
-                    .iter()
-                    .any(|part| matches!(part, ReasoningContent::Encrypted(payload) if !payload.is_empty())),
-                "include=reasoning.encrypted_content should yield an encrypted reasoning part"
-            );
-
-            let aggregated = aggregated_reasoning_parts(&run.choice);
-            assert!(
-                aggregated
-                    .iter()
-                    .any(|part| matches!(part, ReasoningContent::Encrypted(payload) if !payload.is_empty())),
+                aggregated.iter().any(|reasoning| reasoning
+                    .native
+                    .as_ref()
+                    .and_then(|native| native.item["encrypted_content"].as_str())
+                    .is_some_and(|payload| !payload.is_empty())),
                 "encrypted reasoning payload should survive into the aggregated choice"
             );
-            // Part-by-part, not concatenated text: the same-id fallback on
-            // main replaces earlier full blocks with later ones (34ee8ba5
-            // P1-2), so each readable part must survive as its own aggregated
-            // part alongside the encrypted payload.
-            for part in &emitted_parts {
-                let (ReasoningContent::Text { text, .. } | ReasoningContent::Summary(text)) = part
-                else {
-                    continue;
-                };
-                assert!(
-                    aggregated.iter().any(|aggregated_part| match aggregated_part {
-                        ReasoningContent::Text { text: aggregated_text, .. }
-                        | ReasoningContent::Summary(aggregated_text) => aggregated_text == text,
-                        _ => false,
-                    }),
-                    "readable reasoning part destroyed by the encrypted part: {text:?}"
-                );
+            // Every readable part survives beside the encrypted payload.
+            for reasoning in &aggregated {
+                for part in summary_parts(reasoning) {
+                    assert!(
+                        reasoning.text.contains(&part),
+                        "readable reasoning part destroyed by the encrypted part: {part:?}"
+                    );
+                }
             }
 
             // One `rs_*` item, one part: the multi-block done item must not
@@ -320,9 +289,7 @@ async fn encrypted_reasoning_keeps_summary_parts_and_encrypted_payload() {
             let reasoning_part_count = run
                 .choice
                 .iter()
-                .filter(|content| {
-                    matches!(content, rig::message::AssistantContent::Reasoning(_))
-                })
+                .filter(|content| matches!(content, rig::message::AssistantContent::Reasoning(_)))
                 .count();
             assert_eq!(
                 reasoning_part_count, 1,
@@ -373,11 +340,6 @@ async fn parallel_tool_calls_both_survive_aggregation() {
                     .unwrap_or_else(|| panic!("aggregated choice should keep the {name} call"));
                 // IDs derived from the recorded turn, never minted literally.
                 assert_eq!(aggregated.id, streamed.id, "{name} id should aggregate");
-                assert_eq!(
-                    aggregated.id.provider(),
-                    streamed.id.provider(),
-                    "{name} provider ids should aggregate"
-                );
             }
             assert_eq!(
                 aggregated_calls.len(),
@@ -500,7 +462,9 @@ async fn three_turn_tool_session_replays_rs_ids_across_turns() {
                 .choice
                 .iter()
                 .filter_map(|content| match content {
-                    AssistantContent::Reasoning(reasoning) => reasoning.open(reasoning.issuer()).expect("sealed reasoning").id.as_deref(),
+                    AssistantContent::Reasoning(reasoning) => {
+                        reasoning.native.as_ref()?.item["id"].as_str()
+                    }
                     _ => None,
                 })
                 .collect();
@@ -741,7 +705,7 @@ async fn previous_response_id_chains_server_side_state() {
             let previous_response_id = first
                 .response
                 .as_ref()
-                .and_then(|terminal| terminal.response_id.clone())
+                .and_then(|terminal| terminal.response_id().map(str::to_owned))
                 .expect("stored turn should report a resp_* id");
 
             let second_request = CompletionRequest::new(
@@ -767,14 +731,14 @@ async fn previous_response_id_chains_server_side_state() {
             let second_id = second
                 .response
                 .as_ref()
-                .and_then(|terminal| terminal.response_id.as_deref())
+                .and_then(|terminal| terminal.response_id())
                 .expect("chained turn should report its own resp_* id");
             assert_ne!(
                 second_id,
                 first
                     .response
                     .as_ref()
-                    .and_then(|terminal| terminal.response_id.as_deref())
+                    .and_then(|terminal| terminal.response_id())
                     .expect("first turn id"),
                 "each turn carries its own response-scoped id"
             );

@@ -8,14 +8,9 @@
 //! replayed as one item under one id and one `phase`. OpenAI documents a
 //! dropped `phase` as a quality regression on follow-ups.
 //!
-//! **Fix.** `InputContent::Compaction` / `Output::Compaction` round-trip
-//! the item verbatim; `OutputMessage.phase` is captured on unary and
-//! streamed text alike, rides rig history on the text block's own-wire
-//! extras (with the item's id when a reply has several message items), and
-//! is lifted back onto each assistant input item at replay. Exposing the
-//! terminal `output[]` on the streamed record was tried and reverted:
-//! `CompletionResponse::raw` is replay identity for every streamed effect
-//! log, and the field changed 66 goldens.
+//! **Fix.** Every output item is one block of history holding the item
+//! verbatim: a compaction item is an opaque block that replays, and each
+//! message item, `phase` and id included, goes back as it came.
 //!
 //! **Fixtures.** Cell 1 is recorded live against `gpt-5.6-sol`, which
 //! returns `phase: "final_answer"` on every message. Its second recorded
@@ -182,19 +177,23 @@ async fn compaction_item_decodes_on_the_response() {
                 .output
                 .iter()
                 .find_map(|item| match item {
-                    Output::Compaction(fields) => Some(fields.clone()),
+                    Output::Unknown(item) if item["type"] == "compaction" => Some(item.clone()),
                     _ => None,
                 })
-                .expect("turn 1's output must decode the compaction item as Output::Compaction");
+                .expect("turn 1's output must keep the compaction item");
             assert_eq!(compaction.get("id"), Some(&Value::from("cmp_REDACTED_1")));
-            assert!(compaction.get("type").is_none());
 
-            // The regular items beside it still decode and normalize.
-            assert!(!response.choice.is_empty());
+            // It reaches history as a block that replays, beside the
+            // regular items.
+            assert!(response.choice.iter().any(|block| matches!(
+                block,
+                AssistantContent::Opaque(opaque)
+                    if opaque.replay && opaque.item == compaction
+            )));
 
-            // The same item, re-serialized, is accepted on the input side
-            // byte-for-byte — this is what a stateless client sends back.
-            let wire = serde_json::to_value(Output::Compaction(compaction)).expect("serializes");
+            // The same item is accepted on the input side byte-for-byte —
+            // this is what a stateless client sends back.
+            let wire = compaction;
             let input: InputItem =
                 serde_json::from_value(wire.clone()).expect("the input side accepts the item");
             assert_eq!(
@@ -300,28 +299,19 @@ fn recorded_messages(body: &str) -> Vec<(String, String)> {
 }
 
 /// `(id, phase)` of the message item each text block of a reply's choice
-/// came from: the block's own id when the reply had several message items,
-/// else the reply's message id.
+/// holds.
 fn text_block_items(response: &rig::completion::CompletionResponse) -> Vec<(String, String)> {
     texts(&response.choice)
         .into_iter()
         .map(|text| {
-            let extras = text
-                .native
-                .as_ref()
-                .and_then(|params| params.wire_extras("openai_responses"));
             let field = |key: &str| {
-                extras
-                    .and_then(|extras| extras.get(key))
-                    .and_then(Value::as_str)
-                    .map(str::to_owned)
+                text.native
+                    .as_ref()
+                    .and_then(|native| native.item[key].as_str())
+                    .unwrap_or_default()
+                    .to_owned()
             };
-            (
-                field("message_id")
-                    .or_else(|| response.response_id().clone())
-                    .unwrap_or_default(),
-                field("phase").unwrap_or_default(),
-            )
+            (field("id"), field("phase"))
         })
         .collect()
 }

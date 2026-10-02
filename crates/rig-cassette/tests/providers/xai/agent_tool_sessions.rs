@@ -429,12 +429,10 @@ fn assert_response_metadata(response: &rig::completion::CompletionResponse) {
         "xAI `status: completed` should normalize to a stop finish reason"
     );
     assert!(
-        response
-            .response_id()
-            .as_deref()
+        crate::raw_capture::responses::message_item_id(response)
             .is_some_and(|id| id.starts_with("msg_")),
         "xAI Responses message id should be preserved, got {:?}",
-        response.response_id()
+        crate::raw_capture::responses::message_item_id(response)
     );
 }
 
@@ -573,9 +571,8 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
                 .message(Message::user("For this release, use the canary lane."))
                 .message(Message::assistant("Understood: the release lane is canary."))
                 .message(Message::user("Look up the harbor label with the tool."))
-                .message(Message::Assistant(rig_core::message::AssistantMessage::new(vec![AssistantContent::tool_call_with_call_id(
+                .message(Message::Assistant(rig_core::message::AssistantMessage::new(vec![AssistantContent::tool_call(
                         "call_REDACTED_1",
-                        "call_REDACTED_1".to_string(),
                         rig_core::message::ToolName::new(AlphaSignal::NAME).expect("tool name"),
                         json!({}),
                     )])))

@@ -525,21 +525,8 @@ async fn responses_reasoning_raw_round_trips_typed() {
     let encrypted_blocks: Vec<&str> = response
         .choice
         .iter()
-        .filter_map(|content| match content {
-            AssistantContent::Reasoning(reasoning) => Some(reasoning),
-            _ => None,
-        })
-        .flat_map(|reasoning| {
-            reasoning
-                .open(reasoning.issuer())
-                .expect("sealed reasoning")
-                .content
-                .iter()
-        })
-        .filter_map(|block| match block {
-            rig::message::ReasoningContent::Encrypted(data) => Some(data.as_str()),
-            _ => None,
-        })
+        .filter(|content| matches!(content, AssistantContent::Reasoning(_)))
+        .filter_map(|content| content.native_item()?["encrypted_content"].as_str())
         .collect();
     assert_eq!(
         encrypted_blocks,

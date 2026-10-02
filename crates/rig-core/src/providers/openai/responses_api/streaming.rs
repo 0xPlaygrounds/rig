@@ -197,9 +197,13 @@ pub struct ResponsesDecoder {
     /// Whether to repair absent envelope indices before retrying classification.
     /// Selected by dialect, independently of unary or streaming mode.
     repair_envelopes: bool,
-    /// The output indices and item ids the stream stated.
+    /// The output indices an item opened or was written at.
     seen: HashSet<usize>,
-    seen_ids: HashSet<String>,
+    /// The id of the item `output_item.added` opened at each index.
+    added_ids: HashMap<usize, String>,
+    /// The output indices and item ids whose done item was written.
+    written: HashSet<usize>,
+    written_ids: HashSet<String>,
     /// The text deltas wrote to each open item.
     texts: HashMap<usize, Streamed>,
     /// Reasoning items done without their ciphertext, by index and id. Azure
@@ -384,9 +388,10 @@ impl ResponsesDecoder {
     ) -> Result<(), ProviderError> {
         self.vacate(index, out)?;
         self.seen.insert(index);
-        if let Some(id) = item_id(&item) {
-            self.seen_ids.insert(id.to_owned());
-        }
+        match item_id(&item) {
+            Some(id) => self.added_ids.insert(index, id.to_owned()),
+            None => self.added_ids.remove(&index),
+        };
         self.texts.remove(&index);
         match block_of(&typed(&item)?) {
             Some(block) => out.open(index, block, item),
@@ -469,6 +474,11 @@ impl ResponsesDecoder {
         out: &mut Out<'_, Completion>,
     ) -> Result<(), ProviderError> {
         let output = typed(&item)?;
+        self.seen.insert(index);
+        self.written.insert(index);
+        if let Some(id) = item_id(&item) {
+            self.written_ids.insert(id.to_owned());
+        }
         // A call the provider cut short (`status: incomplete`, the token
         // limit reached mid-arguments) is dropped when its arguments do not
         // parse; a completed one with bad arguments fails the reply.
@@ -492,10 +502,6 @@ impl ResponsesDecoder {
             Output::Message(_) | Output::Reasoning { .. } | Output::Unknown(_) => None,
         };
         if let Some((call_id, name, arguments, if_malformed)) = call {
-            self.seen.insert(index);
-            if let Some(id) = item_id(&item) {
-                self.seen_ids.insert(id.to_owned());
-            }
             // A call with no name is not a call anything can answer.
             let Ok(name) = ToolName::new(name.as_str()) else {
                 return Ok(());
@@ -597,9 +603,9 @@ impl ResponsesDecoder {
         }
     }
 
-    /// The terminal response: write the output items no event carried, give
-    /// reasoning that waited its ciphertext, then end with how the turn
-    /// ended. A body that reports its reasoning as one top-level string and
+    /// The terminal response: finish the output items no done event
+    /// carried, give reasoning that waited its ciphertext, then end with how
+    /// the turn ended. A body that reports its reasoning as one top-level string and
     /// no reasoning item is written that reasoning first.
     fn finish(
         &mut self,
@@ -639,12 +645,27 @@ impl ResponsesDecoder {
                     }
                 })?;
             }
-            let stated = self.seen.contains(&index)
-                || id.as_ref().is_some_and(|id| self.seen_ids.contains(id));
-            if !stated {
-                self.added(index, item.clone(), &mut out)?;
-                self.done(index, item, &mut out)?;
+            let written = self.written.contains(&index)
+                || id.as_ref().is_some_and(|id| self.written_ids.contains(id));
+            if written {
+                continue;
             }
+            // An item the stream opened and never finished is done as the
+            // terminal states it; one the stream never stated is written
+            // from it whole.
+            let opened = out.is_open(index);
+            if opened
+                && self
+                    .added_ids
+                    .get(&index)
+                    .is_some_and(|added| Some(added) != id.as_ref())
+            {
+                continue;
+            }
+            if !opened {
+                self.added(index, item.clone(), &mut out)?;
+            }
+            self.done(index, item, &mut out)?;
         }
         for (index, _) in std::mem::take(&mut self.awaiting_ciphertext) {
             out.close(index, IfMalformed::Fail)?;

@@ -231,9 +231,9 @@ async fn normalized_fields_equal_raw_renormalized() {
         Some(from_raw.id.as_str())
     );
     assert_eq!(
-        response.response_id(),
+        responses::message_item_id(&response),
         from_raw.output.iter().find_map(|item| match item {
-            responses_api::Output::Message(message) => Some(message.id.clone()),
+            responses_api::Output::Message(message) => Some(message.id.as_str()),
             _ => None,
         }),
         "the normalized message id is the envelope's output-message id"

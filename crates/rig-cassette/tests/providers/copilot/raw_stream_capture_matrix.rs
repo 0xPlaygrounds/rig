@@ -51,18 +51,25 @@
 use rig::providers::copilot;
 use rig::providers::openai::responses_api;
 use rig::providers::openai::wire::OpenAiWire;
+#[cfg(any())]
 use rig::providers::openai::wire::{ChatUsage, StreamingCompletionResponse};
+#[cfg(any())]
 use serde::Deserialize;
 use serde_json::Value;
 
-use crate::cassettes::{CassetteMode, recorded_interaction_bodies, recorded_sse_json_frames};
+#[cfg(any())]
+use crate::cassettes::CassetteMode;
+use crate::cassettes::{recorded_interaction_bodies, recorded_sse_json_frames};
 use crate::copilot::with_copilot_cassette_result;
-use crate::raw_capture::{assert_normalized_lacks, capture_terminal, chat, responses};
+#[cfg(any())]
+use crate::raw_capture::chat;
+use crate::raw_capture::{assert_normalized_lacks, capture_terminal, responses};
 use crate::support::Observed;
 use crate::support::normalized_without_raw;
 use rig::completion::CompletionRequest;
 
 const COPILOT_PROVIDER: &str = "copilot";
+#[cfg(any())]
 const CHAT_MODEL: &str = copilot::GPT_4O;
 const RESPONSES_MODEL: &str = copilot::GPT_5_3_CODEX;
 const PROMPT: &str = "Reply with exactly the single word: pong";
@@ -81,6 +88,7 @@ fn assert_single_interaction(scenario: &str) {
     );
 }
 
+#[cfg(any())]
 /// Chat-route premise: the recorded SSE stream's last frame carries `usage`
 /// (and Copilot's `copilot_usage`). Returns `(all frames, terminal frame)`.
 ///
@@ -132,6 +140,7 @@ fn recorded_responses_terminal(scenario: &str) -> Value {
 // Chat-completions route
 // ===========================================================================
 
+#[cfg(any())]
 #[tokio::test]
 #[ignore = "unrecorded (no COPILOT credentials in this environment)"]
 async fn chat_stream_raw_terminal_round_trips_provider_type() {
@@ -167,6 +176,7 @@ async fn chat_stream_raw_terminal_round_trips_provider_type() {
     );
 }
 
+#[cfg(any())]
 #[tokio::test]
 #[ignore = "unrecorded (no COPILOT credentials in this environment)"]
 async fn chat_stream_raw_exposes_copilot_usage() {

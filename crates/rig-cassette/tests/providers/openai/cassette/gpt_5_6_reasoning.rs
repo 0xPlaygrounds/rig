@@ -11,7 +11,7 @@
 use futures::StreamExt;
 use rig::completion::CompletionResponse;
 use rig::driver::Model;
-use rig::message::{AssistantContent, Message, Reasoning};
+use rig::message::{AssistantContent, Message};
 use rig::providers::openai;
 use rig::providers::openai::wire::OpenAiWire;
 use rig::streaming::Item;
@@ -340,25 +340,12 @@ async fn five_turn_streaming_reasoning_metadata_roundtrip() {
                     panic!("turn {} stream should start: {error}", turn_index + 1)
                 });
                 let mut text = String::new();
-                let mut reasoning_blocks = Vec::new();
-                let mut reasoning_delta = String::new();
 
                 while let Some(item) = stream.next().await {
                     match item.unwrap_or_else(|error| {
                         panic!("turn {} stream should succeed: {error}", turn_index + 1)
                     }) {
                         Item::Event(StreamEvent::Text { text: delta, .. }) => text.push_str(&delta),
-                        Item::Event(StreamEvent::End {
-                            content: AssistantContent::Reasoning(reasoning),
-                            ..
-                        }) => {
-                            reasoning_blocks.push(AssistantContent::Reasoning(reasoning));
-                        }
-                        Item::Event(StreamEvent::Reasoning {
-                            text: reasoning, ..
-                        }) => {
-                            reasoning_delta.push_str(&reasoning);
-                        }
                         _ => {}
                     }
                 }
@@ -368,7 +355,6 @@ async fn five_turn_streaming_reasoning_metadata_roundtrip() {
                         turn_index + 1
                     )
                 });
-                let message_id = final_record.response_id().clone();
 
                 assert_eq!(
                     text.trim(),
@@ -381,10 +367,6 @@ async fn five_turn_streaming_reasoning_metadata_roundtrip() {
                 let final_response: openai::responses_api::CompletionResponse =
                     serde_json::from_value(final_record.raw.clone())
                         .expect("the terminal's raw is the Responses record");
-                // Same precedence the normalized stream applies: an explicit
-                // message-id block wins, and the terminal record only fills a
-                // gap it left.
-                let message_id = message_id.or_else(|| final_record.response_id().clone());
                 assert_eq!(
                     final_response.reasoning_context.as_deref(),
                     Some("all_turns")
@@ -406,17 +388,13 @@ async fn five_turn_streaming_reasoning_metadata_roundtrip() {
                     turn_index + 1
                 );
 
-                if reasoning_blocks.is_empty() && !reasoning_delta.is_empty() {
-                    reasoning_blocks.push(AssistantContent::Reasoning(
-                        Reasoning::new(&reasoning_delta).sealed("openai"),
-                    ));
-                }
-                reasoning_blocks.push(AssistantContent::text(&text));
                 stored_turns.push(StoredStreamingTurn {
                     user: user_message,
-                    assistant: Message::Assistant(rig::message::AssistantMessage::new(
-                        reasoning_blocks,
-                    )),
+                    // The turn as the stream folded it: its blocks, in order,
+                    // with the items the next turn sends back.
+                    assistant: final_record
+                        .message()
+                        .unwrap_or_else(|| Message::assistant(&text)),
                     final_response,
                 });
                 let stored_json = serde_json::to_value(&stored_turns)

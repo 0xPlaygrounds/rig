@@ -343,17 +343,14 @@ async fn long_history_replay_nonstreaming() {
             .message(Message::assistant("Noted - your favorite color is teal."))
             .message(Message::user("Now look up the harbor label with the tool."))
             .message(Message::Assistant(
-                rig_core::message::AssistantMessage::new(vec![
-                    AssistantContent::tool_call_with_call_id(
-                        "history_tool_1",
-                        call_id.clone(),
-                        rig_core::message::ToolName::new(AlphaSignal::NAME).expect("tool name"),
-                        serde_json::json!({}),
-                    ),
-                ]),
+                rig_core::message::AssistantMessage::new(vec![AssistantContent::tool_call(
+                    call_id.clone(),
+                    rig_core::message::ToolName::new(AlphaSignal::NAME).expect("tool name"),
+                    serde_json::json!({}),
+                )]),
             ))
             .message(Message::from(UserContent::tool_result(
-                rig_core::message::CallId::from_dual_wire("history_tool_1", call_id),
+                rig_core::message::CallId::from_wire(call_id),
                 rig_core::message::ToolName::new(AlphaSignal::NAME).expect("tool name"),
                 vec![rig::message::ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)],
             )))

@@ -67,7 +67,7 @@ async fn previous_response_id_chain_keeps_axes_distinct() {
                 .call(
                     CompletionRequest::new("What was the code word? Reply with just the word.")
                         .additional_params(serde_json::json!({
-                            "previous_response_id": first_response_id.clone(),
+                            "previous_response_id": first_response_id,
                         })),
                 )
                 .await
@@ -85,7 +85,7 @@ async fn previous_response_id_chain_keeps_axes_distinct() {
                  response still gets its own"
             );
             assert_ne!(
-                Some(second_response_id.as_str()),
+                Some(second_response_id),
                 second.provider_request_id.as_deref(),
                 "response-scoped and transport ids are never conflated"
             );
