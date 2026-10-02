@@ -260,14 +260,19 @@ fn call(id: &str, name: &str) -> ToolCall {
 }
 
 fn response(choice: Vec<AssistantContent>) -> CompletionResponse {
-    CompletionResponse::new(choice, Usage::default(), "test", serde_json::Value::Null)
+    CompletionResponse::new(
+        choice,
+        Usage::default(),
+        crate::message::Origin::new("test.api", "test", ""),
+        serde_json::Value::Null,
+    )
 }
 
 #[test]
 fn text_concatenates_the_text_parts_in_order() {
     let response = response(vec![
         AssistantContent::text("Par"),
-        AssistantContent::Reasoning(Reasoning::new("not text").sealed("test")),
+        AssistantContent::Reasoning(Reasoning::new("not text")),
         AssistantContent::ToolCall(call("c1", "lookup")),
         AssistantContent::text("is"),
     ]);
@@ -277,12 +282,13 @@ fn text_concatenates_the_text_parts_in_order() {
 #[test]
 fn reasoning_concatenates_reasoning_text_and_summaries_in_order() {
     let response = response(vec![
-        AssistantContent::Reasoning(Reasoning::new("first, ").sealed("test")),
+        AssistantContent::Reasoning(Reasoning::new("first, ")),
         AssistantContent::text("answer"),
-        AssistantContent::Reasoning(
-            Reasoning::summaries(vec!["then ".into(), "done".into()]).sealed("test"),
-        ),
-        AssistantContent::Reasoning(Reasoning::encrypted("opaque").sealed("test")),
+        AssistantContent::Reasoning(Reasoning::new("then done")),
+        AssistantContent::Reasoning(Reasoning {
+            redacted: true,
+            ..Reasoning::default()
+        }),
     ]);
     assert_eq!(response.reasoning(), "first, then done");
     assert_eq!(response.text(), "answer");
@@ -305,18 +311,19 @@ fn tool_calls_are_the_calls_in_order() {
 #[test]
 fn a_response_is_the_assistant_turn() {
     let choice = vec![
-        AssistantContent::Reasoning(Reasoning::new("hmm").sealed("test")),
+        AssistantContent::Reasoning(Reasoning::new("hmm")),
         AssistantContent::text("hi"),
         AssistantContent::ToolCall(call("c1", "a")),
     ];
     let mut response = response(choice.clone());
-    response.message_id = Some("msg_1".to_owned());
     assert_eq!(
         response.message().expect("a non-empty choice"),
-        Message::Assistant {
-            id: Some("msg_1".to_owned()),
+        Message::Assistant(crate::message::AssistantMessage {
             content: choice,
-        }
+            origin: Some(crate::message::Origin::new("test.api", "test", "")),
+            stop: Some(crate::message::StopReason::Stop),
+            native: None,
+        })
     );
 }
 

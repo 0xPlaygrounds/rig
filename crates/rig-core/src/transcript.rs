@@ -55,7 +55,7 @@ pub fn validate_canonical(messages: &[Message]) -> Result<(), TranscriptError> {
     let mut prev_was_assistant = false;
     for (index, message) in messages.iter().enumerate() {
         match message {
-            Message::Assistant { content, .. } => {
+            Message::Assistant(turn) => {
                 if prev_was_assistant {
                     return Err(TranscriptError::ConsecutiveAssistant { index });
                 }
@@ -68,13 +68,8 @@ pub fn validate_canonical(messages: &[Message]) -> Result<(), TranscriptError> {
                         call_id,
                     });
                 }
-                let calls: BTreeSet<CallId> = content
-                    .iter()
-                    .filter_map(|c| match c {
-                        AssistantContent::ToolCall(call) => Some(call.id.clone()),
-                        _ => None,
-                    })
-                    .collect();
+                let calls: BTreeSet<CallId> =
+                    turn.tool_calls().map(|call| call.id.clone()).collect();
                 prev_assistant_calls = (!calls.is_empty()).then_some(calls);
                 prev_was_assistant = true;
             }
@@ -108,119 +103,6 @@ pub fn validate_canonical(messages: &[Message]) -> Result<(), TranscriptError> {
         });
     }
     Ok(())
-}
-
-/// Answers every tool call that has no result, so a history cut short mid-turn,
-/// for example by a crash or a cancelled run, can be sent to a provider again.
-///
-/// `answer` is called once per unanswered call, in history order, and returns
-/// the placeholder result for it. A call is answered by the next user message
-/// after its assistant message, skipping system messages, as in
-/// [`validate_canonical`]. Placeholders join that message, or a new user
-/// message inserted right after the assistant message when there is none.
-/// Existing results are kept unchanged and in place. Placeholders go before
-/// any non-result content, since some providers reject text before tool
-/// results, and follow the order of the calls. Calls that share an id get one
-/// result.
-///
-/// Returns how many placeholders were added. A second call adds none.
-/// Afterwards [`validate_canonical`] passes unless the history breaks another
-/// rule, such as an orphan result or consecutive assistant messages, which
-/// this function leaves alone.
-///
-/// ```
-/// use rig_core::message::{AssistantContent, Message, ToolName};
-/// use rig_core::tool::ToolOutput;
-/// use rig_core::transcript::{answer_unanswered, validate_canonical};
-///
-/// let call = AssistantContent::tool_call("c1", ToolName::new("bash")?, serde_json::json!({}));
-/// let mut history = vec![
-///     Message::user("run it"),
-///     Message::Assistant { id: None, content: vec![call] },
-/// ];
-/// let added = answer_unanswered(&mut history, |call| {
-///     ToolOutput::text(format!("`{}` was interrupted", call.function.name))
-/// });
-/// assert_eq!(added, 1);
-/// validate_canonical(&history)?;
-/// # Ok::<(), Box<dyn std::error::Error>>(())
-/// ```
-pub fn answer_unanswered<F>(messages: &mut Vec<Message>, mut answer: F) -> usize
-where
-    F: FnMut(&ToolCall) -> ToolOutput,
-{
-    let mut added = 0;
-    let mut index = 0;
-    while let Some(message) = messages.get(index) {
-        let calls = match message {
-            Message::Assistant { content, .. } => distinct_calls(content),
-            _ => Vec::new(),
-        };
-        index += 1;
-        if calls.is_empty() {
-            continue;
-        }
-        let reply = messages
-            .iter_mut()
-            .skip(index)
-            .find(|message| !matches!(message, Message::System { .. }));
-        match reply {
-            Some(Message::User { content }) => {
-                added += answer_missing(content, &calls, &mut answer);
-            }
-            _ => {
-                let mut content = Vec::new();
-                added += answer_missing(&mut content, &calls, &mut answer);
-                messages.insert(index, Message::User { content });
-            }
-        }
-    }
-    added
-}
-
-/// The tool calls in `content`, in order, keeping the first of each id.
-fn distinct_calls(content: &[AssistantContent]) -> Vec<ToolCall> {
-    let mut calls: Vec<ToolCall> = Vec::new();
-    for part in content {
-        if let AssistantContent::ToolCall(call) = part
-            && !calls.iter().any(|seen| seen.id == call.id)
-        {
-            calls.push(call.clone());
-        }
-    }
-    calls
-}
-
-/// Adds a result to `content` for each of `calls` it does not answer. Each
-/// goes before the first non-result part or result for a later call.
-fn answer_missing<F>(content: &mut Vec<UserContent>, calls: &[ToolCall], answer: &mut F) -> usize
-where
-    F: FnMut(&ToolCall) -> ToolOutput,
-{
-    let order = |id: &CallId| calls.iter().position(|call| &call.id == id);
-    let mut added = 0;
-    for (rank, call) in calls.iter().enumerate() {
-        let answered = content
-            .iter()
-            .any(|part| matches!(part, UserContent::ToolResult(result) if result.call == call.id));
-        if answered {
-            continue;
-        }
-        let position = content
-            .iter()
-            .position(|part| match part {
-                UserContent::ToolResult(result) => order(&result.call).is_some_and(|r| r > rank),
-                _ => true,
-            })
-            .unwrap_or(content.len());
-        let output = answer(call);
-        content.insert(
-            position,
-            tool_result_output(call.id.clone(), call.function.name.clone(), output),
-        );
-        added += 1;
-    }
-    added
 }
 
 /// Shape a canonical real tool output as a tool result without reparsing text.
@@ -267,11 +149,12 @@ pub fn invalid_call_feedback(
 }
 
 /// Whether a generated assistant turn is empty: no parts, or exactly one
-/// empty, unannotated text part. An empty turn must not enter history.
+/// empty text part with no provider item. An empty turn must not enter
+/// history.
 pub fn is_empty_assistant_turn(content: &[AssistantContent]) -> bool {
     match content {
         [] => true,
-        [AssistantContent::Text(text)] => text.text.is_empty() && text.additional_params.is_none(),
+        [AssistantContent::Text(text)] => text.text.is_empty() && text.native.is_none(),
         _ => false,
     }
 }

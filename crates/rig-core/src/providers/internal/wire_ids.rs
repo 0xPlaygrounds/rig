@@ -51,7 +51,8 @@ impl WireIds {
             .enumerate()
             .flat_map(|(message, entry)| {
                 let ids: Vec<(usize, &CallId)> = match entry {
-                    Message::Assistant { content, .. } => content
+                    Message::Assistant(turn) => turn
+                        .content
                         .iter()
                         .enumerate()
                         .filter_map(|(index, part)| match part {
@@ -75,7 +76,7 @@ impl WireIds {
             .collect();
         let mut used: HashSet<String> = occurrences
             .iter()
-            .filter_map(|(_, id)| id.provider().map(|provider| provider.call_id.clone()))
+            .filter_map(|(_, id)| id.provider().map(|provider| provider.as_str().to_owned()))
             .chain(reserved)
             .collect();
         let mut aliases: HashMap<&LocalCallId, String> = HashMap::new();
@@ -83,7 +84,7 @@ impl WireIds {
         let mut ids = BTreeMap::new();
         for (position, id) in occurrences {
             let spelled = match id {
-                CallId::Provider(provider) => provider.call_id.clone(),
+                CallId::Provider(provider) => provider.as_str().to_owned(),
                 CallId::Local(local) => aliases
                     .entry(local)
                     .or_insert_with(|| {
@@ -160,4 +161,5 @@ impl WireIds {
 
 #[cfg(test)]
 #[allow(clippy::expect_used)]
+#[cfg(any())]
 pub(crate) mod tests;

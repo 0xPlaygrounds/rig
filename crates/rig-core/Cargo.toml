@@ -38,7 +38,10 @@ quick-xml = { workspace = true, optional = true }
 rig-derive = { version = "0.43.0", path = "../rig-derive", optional = true }
 schemars = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
-serde_json = { workspace = true, features = ["raw_value"] }
+# preserve_order keeps a provider item's keys in the order it sent them, so
+# a replayed item matches its recording; float_roundtrip keeps its numbers
+# exact. Comparisons stay `Value` equality, which ignores key order.
+serde_json = { workspace = true, features = ["raw_value", "preserve_order", "float_roundtrip"] }
 sha2 = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }

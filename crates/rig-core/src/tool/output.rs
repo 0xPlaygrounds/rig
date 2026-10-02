@@ -102,10 +102,7 @@ impl ToolOutput {
         }
 
         match self.content.first()? {
-            // `Some` params always carry data (`AdditionalParams` is
-            // non-empty by construction), so plain `is_none` is the whole
-            // annotation check.
-            ToolResultContent::Text(text) if text.additional_params.is_none() => Some(&text.text),
+            ToolResultContent::Text(text) if text.native.is_none() => Some(&text.text),
             ToolResultContent::Text(_)
             | ToolResultContent::Image(_)
             | ToolResultContent::Json { .. } => None,

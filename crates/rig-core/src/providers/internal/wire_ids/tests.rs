@@ -8,16 +8,15 @@ use crate::message::{ToolCall, ToolFunction, ToolResult};
 const SHARED: &str = "call_shared";
 
 fn call(id: CallId) -> Message {
-    Message::Assistant {
-        id: None,
-        content: vec![AssistantContent::ToolCall(ToolCall::new(
+    Message::Assistant(rig_core::message::AssistantMessage::new(vec![
+        AssistantContent::ToolCall(ToolCall::new(
             id,
             ToolFunction {
                 name: crate::message::ToolName::new("test").expect("tool name"),
                 arguments: serde_json::json!({}),
             },
-        ))],
-    }
+        )),
+    ]))
 }
 
 fn result(id: CallId) -> Message {
@@ -136,15 +135,14 @@ fn wire_slot_assignment_is_atomic_and_uses_original_content_order() {
             serde_json::json!({}),
         )
     };
-    let history = vec![Message::Assistant {
-        id: None,
-        content: vec![
+    let history = vec![Message::Assistant(
+        rig_core::message::AssistantMessage::new(vec![
             AssistantContent::text("before"),
             AssistantContent::ToolCall(ToolCall::new(provider("first"), function())),
             AssistantContent::text("between"),
             AssistantContent::ToolCall(ToolCall::new(provider("second"), function())),
-        ],
-    }];
+        ]),
+    )];
     let ids = WireIds::new(&history);
     for count in [1, 3] {
         let mut slots = vec!["unchanged".to_owned(); count];

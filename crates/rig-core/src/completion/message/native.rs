@@ -1,0 +1,185 @@
+//! Where an assistant turn came from and the provider items it was decoded
+//! from. An [`Origin`] names the wire, provider and requested model of a
+//! turn; a [`Native`] holds one provider item verbatim beside the canonical
+//! block it decoded to, with a [`Fingerprint`] of that block so an edited
+//! block stops replaying its stale item.
+//!
+//! ```
+//! use rig_core::message::{AssistantContent, Text};
+//!
+//! let block = AssistantContent::Text(Text::new("hi"))
+//!     .with_native(serde_json::json!({"type": "text", "text": "hi", "citations": []}));
+//! assert!(block.native_item().is_some());
+//! ```
+
+use std::borrow::Cow;
+
+use serde::{Deserialize, Serialize};
+
+/// The wire format a turn was produced by, for example
+/// `"anthropic.messages"`, `"openai.responses"` or `"openai.chat"`.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct Api(Cow<'static, str>);
+
+impl Api {
+    /// The API named `name`, in a const context.
+    pub const fn from_static(name: &'static str) -> Self {
+        Self(Cow::Borrowed(name))
+    }
+
+    /// The API's name.
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl From<&'static str> for Api {
+    fn from(name: &'static str) -> Self {
+        Self::from_static(name)
+    }
+}
+
+impl From<String> for Api {
+    fn from(name: String) -> Self {
+        Self(Cow::Owned(name))
+    }
+}
+
+impl std::fmt::Display for Api {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+/// Which wire, provider and model produced an assistant turn.
+///
+/// `model` is the model the request named. Replay compares it, with `api`
+/// and `provider`, against the target: only an exact match replays the
+/// turn's provider items.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Origin {
+    /// The wire format.
+    pub api: Api,
+    /// The provider descriptor name (`"anthropic"`).
+    pub provider: String,
+    /// The model the request named.
+    pub model: String,
+    /// The model the provider reported, when it reported one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub response_model: Option<String>,
+    /// The provider's response id, when it sent one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub response_id: Option<String>,
+}
+
+impl Origin {
+    /// A turn from `model` on `provider` over `api`, with no response
+    /// metadata.
+    pub fn new(api: impl Into<Api>, provider: impl Into<String>, model: impl Into<String>) -> Self {
+        Self {
+            api: api.into(),
+            provider: provider.into(),
+            model: model.into(),
+            response_model: None,
+            response_id: None,
+        }
+    }
+
+    /// Whether this turn came from exactly the wire, provider and model
+    /// `target` names. The one sameness rule replay uses.
+    pub fn same_model(&self, api: &Api, provider: &str, model: &str) -> bool {
+        &self.api == api && self.provider == provider && self.model == model
+    }
+}
+
+/// How an assistant turn ended.
+///
+/// A turn that ended in [`Self::Error`] or [`Self::Aborted`] is kept in
+/// history but never replayed to a model.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum StopReason {
+    /// The model finished.
+    Stop,
+    /// The output-token limit cut the turn.
+    Length,
+    /// The model stopped to call tools.
+    ToolUse,
+    /// The provider failed the turn or refused it, with its explanation.
+    Error(String),
+    /// The caller cancelled the turn.
+    Aborted(String),
+}
+
+impl StopReason {
+    /// Whether the turn is incomplete and must not be replayed.
+    pub fn is_failure(&self) -> bool {
+        matches!(self, Self::Error(_) | Self::Aborted(_))
+    }
+}
+
+/// A 64-bit FNV-1a hash of a value's JSON serialization.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct Fingerprint(u64);
+
+impl Fingerprint {
+    /// The fingerprint of `value`'s JSON bytes.
+    pub fn of(value: &impl Serialize) -> Self {
+        struct Fnv(u64);
+        impl std::io::Write for Fnv {
+            fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+                for byte in bytes {
+                    self.0 ^= u64::from(*byte);
+                    self.0 = self.0.wrapping_mul(0x0000_0100_0000_01b3);
+                }
+                Ok(bytes.len())
+            }
+
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        let mut hash = Fnv(0xcbf2_9ce4_8422_2325);
+        // Message types always serialize; a failure would only leave a
+        // fingerprint no native item matches, which replays canonically.
+        let _ = serde_json::to_writer(&mut hash, value);
+        Self(hash.0)
+    }
+}
+
+/// One provider item, verbatim in its API's JSON shape, beside the
+/// canonical block (or message) it was decoded to.
+///
+/// `fingerprint` is the canonical form's at decode time. When the block is
+/// edited its fingerprint changes, the item is stale, and encoders rebuild
+/// the wire item from the canonical fields instead.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Native {
+    /// The provider item.
+    pub item: serde_json::Value,
+    /// The fingerprint of the canonical form the item was decoded to.
+    pub fingerprint: Fingerprint,
+}
+
+/// A provider item with no canonical meaning, such as a hosted-tool step or
+/// a compaction record. Only the API that produced it reads it.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Opaque {
+    /// The provider item.
+    pub item: serde_json::Value,
+    /// Whether the item goes back to the model that produced it. A
+    /// client-executed call nothing answers is kept but never sent.
+    pub replay: bool,
+}
+
+impl Opaque {
+    /// The item's `type` field, when it is an object that has one.
+    pub fn kind(&self) -> Option<&str> {
+        self.item.get("type").and_then(serde_json::Value::as_str)
+    }
+}
+
+#[cfg(test)]
+mod tests;

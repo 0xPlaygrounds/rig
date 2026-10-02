@@ -26,7 +26,7 @@ mod empty_lists_parse_and_are_rejected_when_sent {
                 "user message at index 0 has no content",
             ),
             (
-                with(json!({"role": "assistant", "id": null, "content": []})),
+                with(json!({"role": "assistant", "content": []})),
                 "assistant message at index 0 has no content",
             ),
             (
@@ -34,7 +34,7 @@ mod empty_lists_parse_and_are_rejected_when_sent {
                     "role": "user",
                     "content": [{
                         "type": "toolresult",
-                        "call": {"provider": {"call_id": "call_1"}},
+                        "call": {"provider": "call_1"},
                         "name": "lookup",
                         "content": [],
                     }],
@@ -115,7 +115,7 @@ mod empty_lists_parse_and_are_rejected_when_sent {
             "role": "user",
             "content": [{
                 "type": "toolresult",
-                "call": {"provider": {"call_id": "call_1"}},
+                "call": {"provider": "call_1"},
                 "name": "lookup",
                 "content": [{"type": "text", "text": ""}],
             }],
@@ -181,12 +181,11 @@ fn normalized_response_round_trips_through_serde() {
                 tool_use_prompt_tokens: Some(0),
                 reasoning_tokens: Some(1),
             },
-            "example",
+            crate::message::Origin::new("test.api", "example", ""),
             serde_json::json!({}),
         )
         .with_finish_reason(FinishReason::Stop);
-        response.message_id = Some("msg_123".into());
-        response.model = Some("provider-model-v2".into());
+        response.origin.response_model = Some("provider-model-v2".into());
         response
     };
 
@@ -208,7 +207,7 @@ fn deserializing_stop_with_a_tool_call_reconciles_to_tool_calls() {
     let mut encoded = serde_json::to_value(CompletionResponse::new(
         tool_call_choice(),
         Usage::default(),
-        "example",
+        crate::message::Origin::new("test.api", "example", ""),
         serde_json::json!({}),
     ))
     .expect("serialize response");
@@ -227,20 +226,18 @@ fn deserializing_empty_identifiers_yields_none() {
     let mut encoded = serde_json::to_value(CompletionResponse::new(
         vec![AssistantContent::text("hello")],
         Usage::default(),
-        "example",
+        crate::message::Origin::new("test.api", "example", ""),
         serde_json::json!({}),
     ))
     .expect("serialize response");
-    encoded["message_id"] = serde_json::json!("");
-    encoded["response_id"] = serde_json::json!("");
-    encoded["model"] = serde_json::json!("");
+    encoded["origin"]["response_id"] = serde_json::json!("");
+    encoded["origin"]["response_model"] = serde_json::json!("");
 
     let decoded =
         serde_json::from_value::<CompletionResponse>(encoded).expect("deserialize response");
 
-    assert_eq!(decoded.message_id, None);
-    assert_eq!(decoded.response_id, None);
-    assert_eq!(decoded.model, None);
+    assert_eq!(decoded.response_id(), None);
+    assert_eq!(decoded.model(), None);
 }
 
 #[test]
@@ -257,7 +254,7 @@ fn stop_with_a_tool_call_reconciles_to_tool_calls() {
     let response = CompletionResponse::new(
         tool_call_choice(),
         Usage::default(),
-        "example",
+        crate::message::Origin::new("test.api", "example", ""),
         serde_json::json!({}),
     )
     .with_finish_reason(FinishReason::Stop);
@@ -273,14 +270,14 @@ fn optional_setter_reconciles_exactly_like_the_plain_setter() {
     let via_option = CompletionResponse::new(
         tool_call_choice(),
         Usage::default(),
-        "example",
+        crate::message::Origin::new("test.api", "example", ""),
         serde_json::json!({}),
     )
     .with_optional_finish_reason(Some(FinishReason::Stop));
     let via_plain = CompletionResponse::new(
         tool_call_choice(),
         Usage::default(),
-        "example",
+        crate::message::Origin::new("test.api", "example", ""),
         serde_json::json!({}),
     )
     .with_finish_reason(FinishReason::Stop);
@@ -301,7 +298,7 @@ fn reconciliation_only_upgrades_a_natural_stop() {
         let response = CompletionResponse::new(
             tool_call_choice(),
             Usage::default(),
-            "example",
+            crate::message::Origin::new("test.api", "example", ""),
             serde_json::json!({}),
         )
         .with_finish_reason(reason.clone());
@@ -315,7 +312,7 @@ fn reconciliation_leaves_a_stop_without_tool_calls_alone() {
     let response = CompletionResponse::new(
         vec![AssistantContent::text("done")],
         Usage::default(),
-        "example",
+        crate::message::Origin::new("test.api", "example", ""),
         serde_json::json!({}),
     )
     .with_finish_reason(FinishReason::Stop);
@@ -407,10 +404,10 @@ fn normalized_response_raw_round_trips_through_serde_mirror() {
         let mut response = CompletionResponse::new(
             vec![AssistantContent::text("hello")],
             Usage::default(),
-            "example",
+            crate::message::Origin::new("test.api", "example", ""),
             payload.clone(),
         );
-        response.response_id = Some("chatcmpl-1".into());
+        response.origin.response_id = Some("chatcmpl-1".into());
         response
     };
 
@@ -419,7 +416,7 @@ fn normalized_response_raw_round_trips_through_serde_mirror() {
     let decoded: CompletionResponse =
         serde_json::from_value(encoded.clone()).expect("deserialize response");
     assert_eq!(decoded.raw, payload);
-    assert_eq!(decoded.response_id.as_deref(), Some("chatcmpl-1"));
+    assert_eq!(decoded.response_id().as_deref(), Some("chatcmpl-1"));
     assert_eq!(
         serde_json::to_value(&decoded).expect("re-serialize"),
         encoded
@@ -428,7 +425,7 @@ fn normalized_response_raw_round_trips_through_serde_mirror() {
     let without_raw = serde_json::json!({
         "choice": [{"type": "text", "text": "hello"}],
         "usage": serde_json::to_value(Usage::default()).unwrap(),
-        "provider": "example"
+        "origin": {"api": "test.api", "provider": "example", "model": ""}
     });
     let error = serde_json::from_value::<CompletionResponse>(without_raw)
         .expect_err("a response without `raw` is refused");
@@ -612,7 +609,7 @@ fn build_places_documents_after_leading_system_messages_before_prior_history() {
     ));
     assert!(is_document_message(history[2], "doc1"));
     assert!(matches!(history[3], Message::User { .. }));
-    assert!(matches!(history[4], Message::Assistant { .. }));
+    assert!(matches!(history[4], Message::Assistant(_)));
     assert!(matches!(history[5], Message::User { .. }));
 }
 
@@ -649,7 +646,7 @@ fn chat_history_with_documents_places_documents_after_leading_system_messages() 
     assert_eq!(history.len(), 5);
     assert!(matches!(history[0], Message::System { .. }));
     assert!(is_document_message(history[1], "doc1"));
-    assert!(matches!(history[2], Message::Assistant { .. }));
+    assert!(matches!(history[2], Message::Assistant(_)));
     assert!(matches!(history[3], Message::User { .. }));
     assert!(matches!(history[4], Message::User { .. }));
 }
@@ -672,7 +669,7 @@ fn chat_history_with_documents_places_documents_before_mid_conversation_system_m
         Message::System { content } if content == "Leading system prompt"
     ));
     assert!(is_document_message(history[1], "doc1"));
-    assert!(matches!(history[2], Message::Assistant { .. }));
+    assert!(matches!(history[2], Message::Assistant(_)));
     assert!(matches!(
         history[3],
         Message::System { content } if content == "Mid-conversation instruction"
