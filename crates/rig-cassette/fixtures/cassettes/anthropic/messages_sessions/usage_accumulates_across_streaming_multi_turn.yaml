@@ -16,13 +16,13 @@ then:
   - name: content-type
     value: text/event-stream; charset=utf-8
   - name: request-id
-    value: req_011CfLchwzqMqd85KBoKk7nu
+    value: req_011Cfcn5xULSFJS36gdhwFot
   body: |+
     event: message_start
-    data: {"message":{"container":null,"content":[],"id":"msg_011CfLchxTrpZkfNVueXods1","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":null,"stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":621,"output_tokens":29,"service_tier":"standard"}},"type":"message_start"}
+    data: {"message":{"container":null,"content":[],"diagnostics":null,"id":"msg_011Cfcn5xoRPmmfEq45ALwK1","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":null,"stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":621,"output_tokens":29,"service_tier":"standard"}},"type":"message_start"}
 
     event: content_block_start
-    data: {"content_block":{"caller":{"type":"direct"},"id":"toolu_01UAWBMaejL4LRazkDdutB2A","input":{},"name":"lookup_harbor_label","type":"tool_use"},"index":0,"type":"content_block_start"}
+    data: {"content_block":{"caller":{"type":"direct"},"id":"toolu_01RLNKyZFgXBuV4wVwuXxzs3","input":{},"name":"lookup_harbor_label","type":"tool_use"},"index":0,"type":"content_block_start"}
 
     event: ping
     data: {"type":"ping"}
@@ -51,17 +51,17 @@ when:
     value: application/json
   - name: anthropic-version
     value: 2023-06-01
-  body: '{"max_tokens":2048,"messages":[{"content":[{"text":"Call `lookup_harbor_label` exactly once before answering. After the tool result is available, answer in one short sentence that includes the exact tool output.","type":"text"}],"role":"user"},{"content":[{"id":"toolu_01UAWBMaejL4LRazkDdutB2A","input":{},"name":"lookup_harbor_label","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"crimson-harbor","type":"text"}],"tool_use_id":"toolu_01UAWBMaejL4LRazkDdutB2A","type":"tool_result"}],"role":"user"}],"model":"claude-sonnet-4-6","stream":true,"system":[{"text":"You must call the requested tool before writing any normal text. After the tool result is available, do not call any more tools and answer in one short sentence that includes the exact tool output.","type":"text"}],"tool_choice":{"type":"auto"},"tools":[{"description":"Return the alpha signal marker.","input_schema":{"properties":{},"required":[],"type":"object"},"name":"lookup_harbor_label"}]}'
+  body: '{"max_tokens":2048,"messages":[{"content":[{"text":"Call `lookup_harbor_label` exactly once before answering. After the tool result is available, answer in one short sentence that includes the exact tool output.","type":"text"}],"role":"user"},{"content":[{"caller":{"type":"direct"},"id":"toolu_01RLNKyZFgXBuV4wVwuXxzs3","input":{},"name":"lookup_harbor_label","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"crimson-harbor","type":"text"}],"tool_use_id":"toolu_01RLNKyZFgXBuV4wVwuXxzs3","type":"tool_result"}],"role":"user"}],"model":"claude-sonnet-4-6","stream":true,"system":[{"text":"You must call the requested tool before writing any normal text. After the tool result is available, do not call any more tools and answer in one short sentence that includes the exact tool output.","type":"text"}],"tool_choice":{"type":"auto"},"tools":[{"description":"Return the alpha signal marker.","input_schema":{"properties":{},"required":[],"type":"object"},"name":"lookup_harbor_label"}]}'
 then:
   status: 200
   header:
   - name: content-type
     value: text/event-stream; charset=utf-8
   - name: request-id
-    value: req_011CfLci3Skq44LzV83foJ46
+    value: req_011Cfcn62c87cpo4zT6ydE4u
   body: |+
     event: message_start
-    data: {"message":{"container":null,"content":[],"id":"msg_011CfLci3t3pBKURZyUZVLd7","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":null,"stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":676,"output_tokens":2,"service_tier":"standard"}},"type":"message_start"}
+    data: {"message":{"container":null,"content":[],"diagnostics":null,"id":"msg_011Cfcn62wiX17M5zkdB9J9v","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":null,"stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":676,"output_tokens":2,"service_tier":"standard"}},"type":"message_start"}
 
     event: content_block_start
     data: {"content_block":{"text":"","type":"text"},"index":0,"type":"content_block_start"}
