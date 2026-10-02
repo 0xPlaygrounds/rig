@@ -2368,3 +2368,22 @@ async fn the_model_turn_hook_reads_the_reconciled_finish_reason() {
         "the record agrees with the hook"
     );
 }
+
+/// A turn the provider failed with nothing to show never ends a run as a
+/// success (an empty answer would pass for one).
+#[tokio::test]
+async fn a_failed_turn_without_an_answer_fails_the_run() {
+    let model = MockCompletionModel::from_turns([MockTurn::from_contents(Vec::new())
+        .with_finish_reason(rig_core::completion::FinishReason::Other(
+            "MALFORMED_FUNCTION_CALL".to_owned(),
+        ))]);
+    let agent = AgentBuilder::new(model).build();
+    let error = agent
+        .prompt("hello")
+        .await
+        .expect_err("a failed, answerless turn fails the run");
+    assert!(
+        error.to_string().contains("MALFORMED_FUNCTION_CALL"),
+        "the run names why the provider failed the turn: {error}"
+    );
+}

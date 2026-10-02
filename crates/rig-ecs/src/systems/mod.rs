@@ -2334,6 +2334,16 @@ pub fn read_turn(
             commands.entity(run).end(Failed(Failure::Provider(report)));
             continue;
         }
+        if let Some(message) = rig_core::completion::message::failed_turn_message(
+            &outs.content,
+            Some(&response.stop()),
+        ) {
+            let report = rig_core::error::ErrorReport::from(
+                &rig_core::error::ProviderError::Response(message),
+            );
+            commands.entity(run).end(Failed(Failure::Provider(report)));
+            continue;
+        }
         let access = access.get(turn).ok();
         let granted = granted_tools(turn, &children, &adverts, &bound, access);
         let allowed = access.and_then(|access| access.allowed.as_ref());

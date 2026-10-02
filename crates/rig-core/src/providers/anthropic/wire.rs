@@ -450,15 +450,25 @@ impl Messages {
         mut request: CompletionRequest,
         mode: Mode,
     ) -> Result<serde_json::Value, EncodeError> {
+        let model = request.model.clone().unwrap_or_else(|| self.model.clone());
         if request.max_tokens.is_none() {
-            let Some(tokens) = self.default_max_tokens else {
+            // A request that addresses another model gets that model's
+            // default; the wire's own model keeps the one it was built with.
+            let default = if model == self.model {
+                self.default_max_tokens
+            } else {
+                self.provider
+                    .dialect
+                    .default_max_tokens(&model)
+                    .or(self.default_max_tokens)
+            };
+            let Some(tokens) = default else {
                 return Err(EncodeError::request(
                     "`max_tokens` must be set for Anthropic",
                 ));
             };
             request.max_tokens = Some(tokens);
         }
-        let model = request.model.clone().unwrap_or_else(|| self.model.clone());
         let typed = AnthropicCompletionRequest::try_from_params(
             AnthropicRequestParams {
                 model: &model,

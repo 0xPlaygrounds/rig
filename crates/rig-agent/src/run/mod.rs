@@ -42,7 +42,7 @@ pub mod streamed;
 
 pub use policy::{InvalidToolCallAction, InvalidToolCallContext, RetryRequest};
 pub use response::{CompletionCall, MemoryAppend, PromptError, PromptResponse};
-use rig_core::completion::message::turn_delivered_no_answer;
+use rig_core::completion::message::{failed_turn_message, turn_delivered_no_answer};
 use rig_core::json_utils;
 use rig_core::structured_output;
 use transcript::{
@@ -935,6 +935,9 @@ impl AgentRun {
                     && let Some(reason) = self.truncating_finish_reason()
                 {
                     return Err(ProviderError::Response(reason.no_answer_message()).into());
+                }
+                if let Some(message) = failed_turn_message(&items, head.stop.as_ref()) {
+                    return Err(ProviderError::Response(message).into());
                 }
 
                 // Empty turns may succeed but cannot form provider history entries.

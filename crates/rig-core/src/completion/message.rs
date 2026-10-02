@@ -140,6 +140,21 @@ pub fn turn_delivered_no_answer(choice: &[AssistantContent]) -> bool {
     })
 }
 
+/// Why a run fails on a turn the provider failed (`stop` is
+/// [`StopReason::Error`]) that delivered no answer: a failed turn with
+/// nothing to show cannot end a run as a success. `None` for any other turn.
+pub fn failed_turn_message(
+    choice: &[AssistantContent],
+    stop: Option<&StopReason>,
+) -> Option<String> {
+    match stop {
+        Some(StopReason::Error(reason)) if turn_delivered_no_answer(choice) => Some(format!(
+            "the provider failed the turn without an answer: {reason}"
+        )),
+        _ => None,
+    }
+}
+
 /// User text, tool results, or media. Supported source kinds and media types
 /// depend on the target provider.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]

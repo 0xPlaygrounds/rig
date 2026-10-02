@@ -4709,13 +4709,11 @@ async fn empty_content_filtered_turn_is_an_error_not_an_empty_answer() {
     );
 }
 
-/// rig#2322 — the narrowing that keeps the rule from failing benign runs:
-/// a provider-specific `Other` reason is **not** treated as truncation.
-///
-/// `Other` carries a provider's own wire spelling with no normalized
-/// meaning, so erroring on it would fail runs on stops rig does not model.
+/// A finish reason the wire does not map is a failure (stops fail closed;
+/// each wire maps its benign reasons to `Stop` itself), so an answerless
+/// turn ending in one fails the run instead of finishing with `""`.
 #[tokio::test]
-async fn empty_turn_with_unmodeled_finish_reason_still_finalizes() {
+async fn empty_turn_with_an_unknown_finish_reason_fails_the_run() {
     let model =
         MockCompletionModel::from_stream_turns([[MockStreamEvent::FinalResponse(Finish {
             reason: Some(FinishReason::Other("PROVIDER_SPECIFIC".to_string())),
@@ -4724,20 +4722,28 @@ async fn empty_turn_with_unmodeled_finish_reason_still_finalizes() {
     let agent = AgentBuilder::new(model).build();
 
     let mut stream = agent.prompt("say nothing").stream();
-    let mut final_response_text = None;
-
+    let mut failure = None;
     while let Some(item) = stream.next().await {
         match item {
             Ok(MultiTurnStreamItem::FinalResponse(res)) => {
-                final_response_text = Some(res.output().to_owned());
-                break;
+                panic!(
+                    "a failed, answerless turn must not finish: {:?}",
+                    res.output()
+                );
             }
             Ok(_) => {}
-            Err(err) => panic!("an unmodeled finish reason must not error: {err:?}"),
+            Err(err) => {
+                failure = Some(err.to_string());
+                break;
+            }
         }
     }
-
-    assert_eq!(final_response_text.as_deref(), Some(""));
+    assert!(
+        failure
+            .as_deref()
+            .is_some_and(|error| error.contains("PROVIDER_SPECIFIC")),
+        "{failure:?}"
+    );
 }
 
 /// rig#2322 — a turn that spent its whole budget **thinking** and was cut

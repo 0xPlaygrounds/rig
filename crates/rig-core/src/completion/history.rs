@@ -291,14 +291,17 @@ fn assistant(
     }
 }
 
-/// Whether a block has anything to send: blank text and empty reasoning
-/// survive only with a provider item that is still current, and an opaque
-/// item only when it replays.
+/// Whether a block has anything to send: blank text survives only with a
+/// provider item that is still current, empty reasoning with any provider
+/// item (its identity pairs it with what follows, pi replays it whatever
+/// its text), and an opaque item only when it replays.
 fn kept(block: &AssistantContent) -> bool {
     let current = block.native_item().is_some();
     match block {
         AssistantContent::Text(text) => !text.text.trim().is_empty() || current,
-        AssistantContent::Reasoning(reasoning) => !reasoning.text.trim().is_empty() || current,
+        AssistantContent::Reasoning(reasoning) => {
+            !reasoning.text.trim().is_empty() || reasoning.native.is_some()
+        }
         AssistantContent::Opaque(opaque) => opaque.replay,
         AssistantContent::ToolCall(_) | AssistantContent::Image(_) => true,
     }
