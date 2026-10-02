@@ -28,40 +28,10 @@ fn classify_ndjson_line_is_known_or_corrupt() {
     ));
 }
 
-#[test]
-fn splits_legacy_reasoning_with_or_without_opening_marker() {
-    assert_eq!(
-        split_legacy_thinking("<think>private reasoning</think>\n\nvisible answer", false),
-        (Some("private reasoning"), "visible answer")
-    );
-    assert_eq!(
-        split_legacy_thinking("private reasoning\n</think>\n\nvisible answer", true),
-        (Some("private reasoning"), "visible answer")
-    );
-}
-
-#[test]
-fn leaves_unterminated_or_inline_reasoning_markers_visible() {
-    assert_eq!(
-        split_legacy_thinking("<think>unterminated", true),
-        (None, "<think>unterminated")
-    );
-    assert_eq!(
-        split_legacy_thinking("The literal marker is <think>.", true),
-        (None, "The literal marker is <think>.")
-    );
-    assert_eq!(
-        split_legacy_thinking("  visible indentation", true),
-        (None, "  visible indentation")
-    );
-    assert_eq!(
-        split_legacy_thinking("The closing token </think> is XML-like.", true),
-        (None, "The closing token </think> is XML-like.")
-    );
-    assert_eq!(
-        split_legacy_thinking("Example:\n</think>\nis a closing tag.", true),
-        (None, "Example:\n</think>\nis a closing tag.")
-    );
+/// A record's message, typed.
+fn typed(response: &CompletionResponse) -> Message {
+    serde_json::from_value(serde_json::Value::Object(response.message.clone()))
+        .expect("the record carries an assistant message")
 }
 
 /// Fold one `/api/chat` reply body through the bound chat wire, the way a
@@ -156,14 +126,12 @@ async fn response_metadata_is_normalized() {
     .await
     .expect("normalization should succeed");
 
-    assert_eq!(normalized.provider, PROVIDER_NAME);
-    assert_eq!(normalized.model.as_deref(), Some("llama3.2"));
+    assert_eq!(normalized.provider(), PROVIDER_NAME);
+    assert_eq!(normalized.model(), Some("llama3.2"));
     assert_eq!(
         normalized.finish_reason(),
         Some(completion::FinishReason::Length)
     );
-    // Ollama assigns no message identifier.
-    assert_eq!(normalized.message_id, None);
     assert_eq!(normalized.usage.input_tokens, Some(12));
     assert_eq!(normalized.usage.output_tokens, Some(3));
     assert_eq!(normalized.usage.total_tokens, Some(15));
@@ -330,7 +298,7 @@ async fn test_chat_completion_with_thinking() {
     // Verify thinking field is present
     if let Message::Assistant {
         thinking, content, ..
-    } = &chat_resp.message
+    } = &typed(&chat_resp)
     {
         assert_eq!(
             thinking.as_ref().unwrap(),
@@ -369,7 +337,7 @@ async fn test_chat_completion_without_thinking() {
     // Verify thinking field is None when not provided
     if let Message::Assistant {
         thinking, content, ..
-    } = &chat_resp.message
+    } = &typed(&chat_resp)
     {
         assert!(thinking.is_none());
         assert_eq!(content, "Hello!");
@@ -399,7 +367,7 @@ fn test_streaming_response_with_thinking() {
 
     if let Message::Assistant {
         thinking, content, ..
-    } = &chunk.message
+    } = &typed(&chunk)
     {
         assert_eq!(thinking.as_ref().unwrap(), "Analyzing the problem...");
         assert_eq!(content, "");
@@ -414,29 +382,23 @@ fn test_message_conversion_with_thinking() {
     // Create an internal message with reasoning content
     let reasoning_content = crate::message::Reasoning::new("Step 1: Consider the problem");
 
-    let internal_msg = crate::message::Message::Assistant {
-        id: None,
-        content: vec![
-            crate::message::AssistantContent::Reasoning(reasoning_content.sealed("ollama")),
+    let internal_msg =
+        crate::message::Message::Assistant(crate::message::AssistantMessage::new(vec![
+            crate::message::AssistantContent::Reasoning(reasoning_content),
             crate::message::AssistantContent::Text(crate::message::Text::new(
                 "The answer is X".to_string(),
             )),
-        ],
-    };
+        ]));
 
     // Convert to provider Message
     let provider_msgs: Vec<Message> = internal_msg.try_into().unwrap();
     assert_eq!(provider_msgs.len(), 1);
 
-    if let Message::Assistant {
-        thinking, content, ..
-    } = &provider_msgs[0]
-    {
-        assert_eq!(thinking.as_ref().unwrap(), "Step 1: Consider the problem");
-        assert_eq!(content, "The answer is X");
-    } else {
-        panic!("Expected Assistant message with thinking");
-    }
+    let Message::Native(message) = &provider_msgs[0] else {
+        panic!("Expected an assistant message");
+    };
+    assert_eq!(message["thinking"], "Step 1: Consider the problem");
+    assert_eq!(message["content"], "The answer is X");
 }
 
 /// Regression test for issue #1926: a non-streaming `/api/chat` response that
@@ -487,7 +449,7 @@ async fn nonstreaming_response_preserves_thinking_as_reasoning() {
         "non-streaming response must surface `thinking` as AssistantContent::Reasoning (issue #1926)",
     );
     assert_eq!(
-        reasoning.value().display_text(),
+        reasoning.text,
         "The user asked for the weather in Berlin. I should call get_weather with location=Berlin.",
     );
 }
@@ -519,7 +481,7 @@ fn test_empty_thinking_content() {
 
     if let Message::Assistant {
         thinking, content, ..
-    } = &chat_resp.message
+    } = &typed(&chat_resp)
     {
         // Empty string should still deserialize as Some("")
         assert_eq!(thinking.as_ref().unwrap(), "");
@@ -569,7 +531,7 @@ fn test_thinking_with_tool_calls() {
         content,
         tool_calls,
         ..
-    } = &chat_resp.message
+    } = &typed(&chat_resp)
     {
         assert_eq!(
             thinking.as_ref().unwrap(),
@@ -1048,12 +1010,9 @@ mod raw_capture {
     /// `to_value(&typed)`: that equality was the *old* contract, where
     /// `raw` was precisely that serialization, so it asserted nothing —
     /// and it is false of a verbatim capture the moment the DTO spells
-    /// out a default the body omitted. Ollama's assistant message has
-    /// exactly one such field, `tool_calls`, which is the lone member of
-    /// that variant without `skip_serializing_if` because the recorded
-    /// request bodies carry it. So the re-serialization is compared to
-    /// the body with that one default filled in: any *other* drift — a
-    /// dropped timing field, a reshaped message — still fails.
+    /// out a default the body omitted. The reply's message is kept as
+    /// Ollama sent it, so the re-serialization is the body exactly: any
+    /// drift (a dropped timing field, a reshaped message) fails.
     #[tokio::test]
     async fn completion_captures_raw_that_round_trips_into_the_wire_type() {
         let model = model();
@@ -1072,12 +1031,9 @@ mod raw_capture {
         let typed: CompletionResponse =
             serde_json::from_value(raw.clone()).expect("raw must deserialize");
         let reserialized = serde_json::to_value(&typed).expect("re-serialize");
-        let mut with_defaults = raw.clone();
-        with_defaults["message"]["tool_calls"] = serde_json::json!([]);
         assert_eq!(
-            reserialized, with_defaults,
-            "the wire type round-trips the whole document, up to the empty \
-             `tool_calls` the body omitted and the DTO always writes"
+            &reserialized, raw,
+            "the wire type round-trips the whole document, its message as sent"
         );
         assert_eq!(typed.total_duration, Some(5_043_500_667));
         assert_eq!(typed.eval_duration, Some(4_709_213_000));
@@ -1087,14 +1043,14 @@ mod raw_capture {
         let renormalized = unary(raw.clone()).await.expect("re-fold the capture");
         assert_eq!(response.identity(), renormalized.identity());
         assert_eq!(response.finish_reason(), renormalized.finish_reason());
-        assert_eq!(response.model, renormalized.model);
+        assert_eq!(response.model(), renormalized.model());
         assert_eq!(response.usage, renormalized.usage);
         assert_eq!(response.choice, renormalized.choice);
         assert_eq!(
             response.finish_reason(),
             Some(completion::FinishReason::Stop)
         );
-        assert_eq!(response.model.as_deref(), Some("llama3.2"));
+        assert_eq!(response.model(), Some("llama3.2"));
         assert_eq!(response.usage.total_tokens, Some(31));
     }
 }
@@ -1130,10 +1086,7 @@ async fn missing_tool_ids_are_distinct_and_collision_free_in_responses() {
     );
     assert!(calls[0].id.provider().is_none());
     assert_eq!(
-        calls[1]
-            .id
-            .provider()
-            .map(|provider| provider.call_id.as_str()),
+        calls[1].id.provider().map(|provider| provider.as_str()),
         Some("tool-0")
     );
     assert!(calls[2].id.provider().is_none());
@@ -1149,17 +1102,16 @@ fn daemon_issued_call_ids_replay_and_minted_handles_do_not() {
         ToolResultContent, UserContent,
     };
 
-    let call = |id: CallId| RigMessage::Assistant {
-        id: None,
-        content: vec![AssistantContent::ToolCall(ToolCall {
-            id,
-            function: ToolFunction {
-                name: crate::message::ToolName::new("add".to_owned()).expect("tool name"),
-                arguments: serde_json::json!({"x": 1}),
-            },
-            signature: None,
-            additional_params: None,
-        })],
+    let call = |id: CallId| {
+        RigMessage::Assistant(crate::message::AssistantMessage::new(vec![
+            AssistantContent::ToolCall(ToolCall::new(
+                id,
+                ToolFunction {
+                    name: crate::message::ToolName::new("add".to_owned()).expect("tool name"),
+                    arguments: serde_json::json!({"x": 1}),
+                },
+            )),
+        ]))
     };
     let result = |call: CallId| RigMessage::User {
         content: vec![UserContent::ToolResult(ToolResult {

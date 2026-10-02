@@ -93,8 +93,8 @@ async fn a_unary_reply_and_a_streamed_reply_fold_to_the_same_turn() {
     assert_eq!(buffered.usage, streamed.usage);
     assert_eq!(buffered.finish_reason(), streamed.finish_reason());
     // Cohere's `/v2/chat` names no model in either mode.
-    assert_eq!(buffered.model, streamed.model);
-    assert_eq!(buffered.response_id, streamed.response_id);
+    assert_eq!(buffered.model(), streamed.model());
+    assert_eq!(buffered.response_id(), streamed.response_id());
     assert_eq!(
         buffered.usage.output_tokens,
         Some(4),

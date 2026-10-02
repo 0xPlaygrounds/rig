@@ -21,8 +21,6 @@ fn params(
     content: Vec<message::ToolResultContent>,
 ) -> OpenAIRequestParams {
     OpenAIRequestParams {
-        issuers: vec![crate::message::Issuer::from("openai")],
-        reasoning_details: false,
         model: "test-model".to_string(),
         request: crate::completion::CompletionRequest::new(message::Message::User {
             content: vec![message::UserContent::ToolResult(message::ToolResult {

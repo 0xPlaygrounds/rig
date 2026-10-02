@@ -78,10 +78,18 @@ async fn a_unary_reply_and_a_streamed_reply_fold_to_the_same_turn() {
         .await
         .expect("the stream produced a terminal record");
 
-    assert_eq!(buffered.choice, streamed.choice);
+    // Two recordings of one turn: the same blocks, each holding its own
+    // reply's provider item.
+    let canonical = |choice: &[AssistantContent]| {
+        choice
+            .iter()
+            .map(AssistantContent::canonical)
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(canonical(&buffered.choice), canonical(&streamed.choice));
     assert_eq!(buffered.usage, streamed.usage);
     assert_eq!(buffered.finish_reason(), streamed.finish_reason());
-    assert_eq!(buffered.model, streamed.model);
+    assert_eq!(buffered.model(), streamed.model());
     assert_eq!(
         text_of(&buffered.choice),
         "Hmm, the user wants a concise explanation of Rust and why memory safety matters. They \
@@ -94,7 +102,7 @@ async fn a_unary_reply_and_a_streamed_reply_fold_to_the_same_turn() {
         buffered.finish_reason(),
         Some(crate::completion::FinishReason::Length)
     );
-    assert_eq!(buffered.model.as_deref(), Some("qwen3:4b"));
+    assert_eq!(buffered.model(), Some("qwen3:4b"));
 }
 
 /// The mode picks `stream` and the framer, and changes nothing else. Both
@@ -122,32 +130,6 @@ fn the_mode_is_the_only_difference_between_the_two_requests() {
     assert_eq!(json_body(&streamed.request), expected);
     // A streamed reply is newline-delimited JSON, never SSE.
     assert_eq!(streamed.framing, Framing::Ndjson);
-}
-
-/// A reasoning model that puts its reasoning in `content` is split on the
-/// whole reply only: the shape is the one recorded in
-/// `crates/rig-cassette/fixtures/cassettes/ollama/structured_output/raw_with_thinking.yaml`.
-#[tokio::test]
-async fn a_buffered_reply_splits_legacy_reasoning_out_of_its_content() {
-    let body = r#"{"model":"deepseek-r1","created_at":"1970-01-01T00:00:00Z","message":{"role":"assistant","content":"<think>weighing it up</think>the answer"},"done":true,"done_reason":"stop","prompt_eval_count":3,"eval_count":5}"#;
-    let response = crate::driver::Model::new(
-        OllamaConfig::new().completion("deepseek-r1"),
-        RecordingHttpClient::new(body),
-    )
-    .call(recorded_request())
-    .await
-    .expect("the reply decodes");
-
-    assert_eq!(text_of(&response.choice), "the answer");
-    assert!(
-        response.choice.iter().any(|block| matches!(
-            block,
-            AssistantContent::Reasoning(reasoning)
-                if reasoning.value().display_text() == "weighing it up"
-        )),
-        "the reasoning must survive into history: {:?}",
-        response.choice
-    );
 }
 
 /// A streamed fragment that merely opens a `<think>` marker is not a whole

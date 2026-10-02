@@ -35,14 +35,14 @@ fn completion_response_tolerates_null_or_missing_envelope_metadata() {
 /// per-wire upstream rule documented on `SyntheticIds`.
 #[test]
 fn minted_tool_ids_replay_as_a_consistent_pair() {
-    let assistant = crate::message::Message::Assistant {
-        id: None,
-        content: vec![crate::message::AssistantContent::tool_call(
-            "tool-0",
-            crate::message::ToolName::new("get_weather").expect("tool name"),
-            serde_json::json!({"city": "Tokyo"}),
-        )],
-    };
+    let assistant =
+        crate::message::Message::Assistant(crate::message::AssistantMessage::new(vec![
+            crate::message::AssistantContent::tool_call(
+                "tool-0",
+                crate::message::ToolName::new("get_weather").expect("tool name"),
+                serde_json::json!({"city": "Tokyo"}),
+            ),
+        ]));
     let tool_result = crate::message::Message::User {
         content: vec![crate::message::UserContent::tool_result(
             crate::message::CallId::from_wire("tool-0"),
@@ -57,9 +57,7 @@ fn minted_tool_ids_replay_as_a_consistent_pair() {
     let call_id = assistant_wire
         .iter()
         .find_map(|message| match message {
-            super::Message::Assistant { tool_calls, .. } => {
-                tool_calls.first().map(|call| call.id.clone())
-            }
+            super::Message::Native(item) => item["tool_calls"][0]["id"].as_str().map(str::to_owned),
             _ => None,
         })
         .expect("assistant message carries the tool call");
@@ -111,7 +109,7 @@ fn mixed_user_content_preserves_order_around_tool_results() {
     let content = vec![
         message::UserContent::text("before"),
         message::UserContent::tool_result(
-            crate::message::CallId::from_dual_wire("result-id", "call-id".to_string()),
+            crate::message::CallId::from_wire("call-id"),
             crate::message::ToolName::new("tool").expect("tool name"),
             vec![message::ToolResultContent::text("tool output")],
         ),
@@ -170,7 +168,8 @@ fn sanitize_plain_text_history_strips_tool_exchange_and_keeps_alternation() {
     // consecutive assistants left.
     assert_eq!(roles, ["user", "assistant", "user"]);
     assert_eq!(messages[1]["content"], "The label is crimson.");
-    assert!(messages[1].get("reasoning_content").is_none());
+    // A provider's own reasoning field replays as it came.
+    assert_eq!(messages[1]["reasoning_content"], "thinking");
     assert!(messages[1].get("tool_calls").is_none());
 }
 
@@ -224,8 +223,6 @@ fn sanitize_plain_text_history_merges_consecutive_assistant_messages() {
 #[test]
 fn tool_result_array_content_preserves_multiple_text_blocks() {
     let request = CompletionRequest::try_from(OpenAIRequestParams {
-        issuers: vec![crate::message::Issuer::from("openai")],
-        reasoning_details: false,
         model: "gpt-4o-mini".to_string(),
         request: request_with_multi_block_tool_result(),
         strict_tools: false,
@@ -263,8 +260,6 @@ fn tool_result_array_content_preserves_multiple_text_blocks() {
 #[test]
 fn tool_result_string_content_flattens_multiple_text_blocks() {
     let request = CompletionRequest::try_from(OpenAIRequestParams {
-        issuers: vec![crate::message::Issuer::from("openai")],
-        reasoning_details: false,
         model: "gpt-4o-mini".to_string(),
         request: request_with_multi_block_tool_result(),
         strict_tools: false,
@@ -324,8 +319,6 @@ fn test_openai_request_uses_request_model_override() {
     let request = crate::completion::CompletionRequest::new("Hello").model("gpt-4.1".to_string());
 
     let openai_request = CompletionRequest::try_from(OpenAIRequestParams {
-        issuers: vec![crate::message::Issuer::from("openai")],
-        reasoning_details: false,
         model: "gpt-4o-mini".to_string(),
         request,
         strict_tools: false,
@@ -353,8 +346,6 @@ fn tool_choice_is_dropped_when_no_tool_is_advertised() {
     };
     let convert = |request| {
         CompletionRequest::try_from(OpenAIRequestParams {
-            issuers: vec![crate::message::Issuer::from("openai")],
-            reasoning_details: false,
             model: "gpt-4o-mini".to_string(),
             request,
             strict_tools: false,
@@ -388,8 +379,6 @@ fn test_openai_request_uses_default_model_when_override_unset() {
     let request = crate::completion::CompletionRequest::new("Hello");
 
     let openai_request = CompletionRequest::try_from(OpenAIRequestParams {
-        issuers: vec![crate::message::Issuer::from("openai")],
-        reasoning_details: false,
         model: "gpt-4o-mini".to_string(),
         request,
         strict_tools: false,
@@ -416,8 +405,6 @@ fn openai_chat_request_keeps_documents_after_system_messages() {
         .document(test_document("doc1", "Document text."));
 
     let openai_request = CompletionRequest::try_from(OpenAIRequestParams {
-        issuers: vec![crate::message::Issuer::from("openai")],
-        reasoning_details: false,
         model: "gpt-4o-mini".to_string(),
         request,
         strict_tools: false,
@@ -468,8 +455,6 @@ fn openai_chat_direct_request_keeps_documents_after_system_messages() {
     .documents(vec![test_document("doc1", "Document text.")]);
 
     let openai_request = CompletionRequest::try_from(OpenAIRequestParams {
-        issuers: vec![crate::message::Issuer::from("openai")],
-        reasoning_details: false,
         model: "gpt-4o-mini".to_string(),
         request,
         strict_tools: false,
@@ -507,69 +492,46 @@ fn openai_chat_direct_request_keeps_documents_after_system_messages() {
 
 #[test]
 fn assistant_reasoning_alone_is_dropped() {
-    let assistant_content = vec![message::AssistantContent::reasoning("openai", "hidden")];
+    let turn = message::AssistantMessage::new(vec![message::AssistantContent::reasoning("hidden")]);
 
-    let converted: Vec<Message> = assistant_content_to_messages(
-        assistant_content,
-        false,
-        &[crate::message::Issuer::from("openai")],
-    )
-    .expect("conversion should work");
-
-    assert!(converted.is_empty());
+    assert_eq!(
+        assistant_message(turn).expect("conversion should work"),
+        None,
+        "pi skips a message with neither content nor tool calls"
+    );
 }
 
-// Regression test: providers that serve thinking models over the OpenAI
-// Chat Completions schema (DeepSeek-R1, GLM-4.6, Qwen3-Thinking) return
-// 400 "thinking is enabled but reasoning_content is missing" on the next
-// turn if the prior assistant tool-call message didn't echo the reasoning.
+/// A reasoning block keeps the field its provider sent it under: when the
+/// turn's message no longer matches its blocks, an unedited block's own
+/// fields still replay beside the rebuilt tool call (pi's rebuild).
 #[test]
-fn assistant_reasoning_is_attached_to_tool_call_message() {
-    let assistant_content = vec![
-        message::AssistantContent::reasoning("openai", "hidden"),
+fn an_unedited_reasoning_block_replays_its_own_field_beside_a_rebuilt_call() {
+    let turn = message::AssistantMessage::new(vec![
+        message::AssistantContent::reasoning("hidden")
+            .with_native(serde_json::json!({"reasoning_content": "hidden"})),
         message::AssistantContent::text("visible"),
         message::AssistantContent::tool_call(
             "call_1",
             crate::message::ToolName::new("subtract").expect("tool name"),
             serde_json::json!({"x": 2, "y": 1}),
         ),
-    ];
+    ])
+    .with_native(serde_json::json!({"role": "assistant", "content": "stale"}));
+    let mut turn = turn;
+    turn.content.pop();
 
-    let converted: Vec<Message> = assistant_content_to_messages(
-        assistant_content,
-        false,
-        &[crate::message::Issuer::from("openai")],
-    )
-    .expect("conversion should work");
-    assert_eq!(converted.len(), 1);
-
-    match &converted[0] {
-        Message::Assistant {
-            content,
-            tool_calls,
-            reasoning,
-            ..
-        } => {
-            assert_eq!(
-                content,
-                &vec![AssistantContent::Text {
-                    text: "visible".to_string()
-                }]
-            );
-            assert_eq!(tool_calls.len(), 1);
-            assert_eq!(tool_calls[0].id, "call_1");
-            assert_eq!(tool_calls[0].function.name, "subtract");
-            assert_eq!(
-                tool_calls[0].function.arguments,
-                serde_json::json!({"x": 2, "y": 1})
-            );
-            assert_eq!(reasoning.as_deref(), Some("hidden"));
-        }
-        _ => panic!("expected assistant message"),
-    }
-
-    let json = serde_json::to_value(&converted[0]).expect("serialize");
-    assert_eq!(json["reasoning_content"], "hidden");
+    let Some(Message::Native(json)) = assistant_message(turn).expect("conversion should work")
+    else {
+        panic!("a turn with content converts to a message");
+    };
+    assert_eq!(
+        json,
+        serde_json::json!({
+            "role": "assistant",
+            "reasoning_content": "hidden",
+            "content": "visible",
+        })
+    );
 }
 
 /// The raw text view of an assistant turn joins its non-empty parts in
@@ -825,8 +787,6 @@ fn test_max_tokens_is_forwarded_to_request() {
     let request = crate::completion::CompletionRequest::new("Hello").max_tokens(4096);
 
     let openai_request = CompletionRequest::try_from(OpenAIRequestParams {
-        issuers: vec![crate::message::Issuer::from("openai")],
-        reasoning_details: false,
         model: "gpt-4o-mini".to_string(),
         request,
         strict_tools: false,
@@ -845,8 +805,6 @@ fn test_max_tokens_is_forwarded_to_request() {
 /// A chat-completions request whose only interesting property is the cap.
 fn capped_request(max_tokens: Option<u64>, additional_params: Option<Value>) -> CompletionRequest {
     CompletionRequest::try_from(OpenAIRequestParams {
-        issuers: vec![crate::message::Issuer::from("openai")],
-        reasoning_details: false,
         model: "gpt-4o-mini".to_string(),
         request: crate::completion::CompletionRequest::new("Hello")
             .max_tokens(max_tokens)
@@ -1000,8 +958,6 @@ fn test_max_tokens_omitted_when_none() {
     let request = crate::completion::CompletionRequest::new("Hello");
 
     let openai_request = CompletionRequest::try_from(OpenAIRequestParams {
-        issuers: vec![crate::message::Issuer::from("openai")],
-        reasoning_details: false,
         model: "gpt-4o-mini".to_string(),
         request,
         strict_tools: false,
@@ -1047,8 +1003,6 @@ fn additional_params_function_tools_merge_and_native_tools_stay() {
         }));
 
     let openai_request = CompletionRequest::try_from(OpenAIRequestParams {
-        issuers: vec![crate::message::Issuer::from("openai")],
-        reasoning_details: false,
         model: "gpt-4o-mini".to_string(),
         request,
         strict_tools: false,
@@ -1074,14 +1028,11 @@ fn additional_params_function_tools_merge_and_native_tools_stay() {
 
 #[test]
 fn request_conversion_errors_when_all_messages_are_filtered() {
-    let request = CoreCompletionRequest::new(message::Message::Assistant {
-        id: None,
-        content: vec![message::AssistantContent::reasoning("openai", "hidden")],
-    });
+    let request = CoreCompletionRequest::new(message::Message::Assistant(
+        message::AssistantMessage::new(vec![message::AssistantContent::reasoning("hidden")]),
+    ));
 
     let result = CompletionRequest::try_from(OpenAIRequestParams {
-        issuers: vec![crate::message::Issuer::from("openai")],
-        reasoning_details: false,
         model: "gpt-4o-mini".to_string(),
         request,
         strict_tools: false,
@@ -1126,8 +1077,6 @@ fn request_conversion_omits_response_format_on_initial_tool_turn() {
         }]);
 
     let openai_request = CompletionRequest::try_from(OpenAIRequestParams {
-        issuers: vec![crate::message::Issuer::from("openai")],
-        reasoning_details: false,
         model: "gpt-4o-mini".to_string(),
         request,
         strict_tools: false,
@@ -1151,14 +1100,13 @@ fn request_conversion_omits_response_format_on_initial_tool_turn() {
 fn request_conversion_restores_response_format_after_tool_result() {
     let request = CoreCompletionRequest::from(vec![
         message::Message::user("Hello, whats the weather in London?"),
-        message::Message::Assistant {
-            id: None,
-            content: vec![message::AssistantContent::tool_call(
+        message::Message::Assistant(message::AssistantMessage::new(vec![
+            message::AssistantContent::tool_call(
                 "call_1",
                 crate::message::ToolName::new("weather").expect("tool name"),
                 serde_json::json!({ "city": "London" }),
-            )],
-        },
+            ),
+        ])),
         message::Message::tool_result(
             crate::message::CallId::from_wire("call_1"),
             crate::message::ToolName::new("weather").expect("tool name"),
@@ -1190,8 +1138,6 @@ fn request_conversion_restores_response_format_after_tool_result() {
     }]);
 
     let openai_request = CompletionRequest::try_from(OpenAIRequestParams {
-        issuers: vec![crate::message::Issuer::from("openai")],
-        reasoning_details: false,
         model: "gpt-4o-mini".to_string(),
         request,
         strict_tools: false,
@@ -1585,7 +1531,7 @@ fn base64_image_without_detail_defaults_to_auto() {
         data: DocumentSourceKind::Base64("iVBORw0KGgo=".into()),
         media_type: Some(message::ImageMediaType::PNG),
         detail: None,
-        additional_params: None,
+        native: None,
     });
     let converted: UserContent = image.try_into().expect("conversion should succeed");
     let UserContent::Image { image_url } = converted else {
@@ -1709,8 +1655,7 @@ fn request_plans_tool_ids_across_namespaces_turns_and_split_user_content() {
             name: crate::message::ToolName::new("test").expect("tool name"),
             arguments: serde_json::json!({}),
         },
-        signature: None,
-        additional_params: None,
+        native: None,
     };
     let hint = generated.id.wire().into_owned();
     let real = message::ToolCall::from_wire(&hint, generated.function.clone());
@@ -1720,13 +1665,10 @@ fn request_plans_tool_ids_across_namespaces_turns_and_split_user_content() {
         ..generated.clone()
     };
     let history = vec![
-        message::Message::Assistant {
-            id: None,
-            content: vec![
-                AssistantContent::ToolCall(generated.clone()),
-                AssistantContent::ToolCall(real.clone()),
-            ],
-        },
+        message::Message::Assistant(message::AssistantMessage::new(vec![
+            AssistantContent::ToolCall(generated.clone()),
+            AssistantContent::ToolCall(real.clone()),
+        ])),
         message::Message::User {
             content: vec![
                 UserContent::tool_result(
@@ -1742,10 +1684,9 @@ fn request_plans_tool_ids_across_namespaces_turns_and_split_user_content() {
                 ),
             ],
         },
-        message::Message::Assistant {
-            id: None,
-            content: vec![AssistantContent::ToolCall(later_call.clone())],
-        },
+        message::Message::Assistant(message::AssistantMessage::new(vec![
+            AssistantContent::ToolCall(later_call.clone()),
+        ])),
         message::Message::User {
             content: vec![UserContent::tool_result(
                 later_call.id.clone(),
@@ -1756,8 +1697,6 @@ fn request_plans_tool_ids_across_namespaces_turns_and_split_user_content() {
     ];
     let request = CoreCompletionRequest::from(history);
     let wire = CompletionRequest::try_from(OpenAIRequestParams {
-        issuers: vec![crate::message::Issuer::from("openai")],
-        reasoning_details: false,
         model: "test".into(),
         request,
         strict_tools: false,
@@ -1792,8 +1731,6 @@ fn additional_params_override_typed_fields_on_the_wire() {
         .temperature(0.1)
         .additional_params(serde_json::json!({"temperature": 0.9, "top_p": 0.5}));
     let request = CompletionRequest::try_from(OpenAIRequestParams {
-        issuers: vec![crate::message::Issuer::from("openai")],
-        reasoning_details: false,
         model: "gpt-4o-mini".to_string(),
         request: rig_request,
         strict_tools: false,

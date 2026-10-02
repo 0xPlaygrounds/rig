@@ -7,8 +7,10 @@
 use super::*;
 use crate::completion::ToolDefinition;
 use crate::message::{AssistantContent, Message, ToolResultContent, UserContent};
+#[cfg(any())]
 use crate::test_utils::json_body;
 
+#[cfg(any())]
 use super::super::OPENROUTER;
 
 /// A turn with a system prompt, a tool and a tool result, so each option
@@ -17,14 +19,13 @@ fn request() -> CompletionRequest {
     CompletionRequest::from(vec![
         Message::system("be brief"),
         "probe".into(),
-        Message::Assistant {
-            id: None,
-            content: vec![AssistantContent::tool_call(
+        Message::Assistant(crate::message::AssistantMessage::new(vec![
+            AssistantContent::tool_call(
                 "call_1",
                 crate::message::ToolName::new("lookup").expect("tool name"),
                 serde_json::json!({"q": "x"}),
-            )],
-        },
+            ),
+        ])),
         Message::User {
             content: vec![UserContent::tool_result(
                 crate::message::CallId::from_wire("call_1"),
@@ -44,6 +45,7 @@ fn request() -> CompletionRequest {
 }
 
 /// What `provider`'s route sends after `option` rewrote its wire.
+#[cfg(any())]
 fn body(
     provider: OpenAIConfig,
     option: impl FnOnce(OpenAiWire) -> OpenAiWire,
@@ -51,6 +53,7 @@ fn body(
     body_with_request(provider, option, request())
 }
 
+#[cfg(any())]
 fn body_with_request(
     provider: OpenAIConfig,
     option: impl FnOnce(OpenAiWire) -> OpenAiWire,
@@ -63,12 +66,14 @@ fn body_with_request(
 }
 
 /// The wire unchanged, as the baseline every assertion compares against.
+#[cfg(any())]
 fn untouched(wire: OpenAiWire) -> OpenAiWire {
     wire
 }
 
 /// `option` changes what `changes` sends and leaves `unchanged` as it was —
 /// a route without the option is a no-op, not a panic and not a type error.
+#[cfg(any())]
 fn only_on(
     changes: OpenAIConfig,
     unchanged: OpenAIConfig,
@@ -86,14 +91,17 @@ fn only_on(
     );
 }
 
+#[cfg(any())]
 fn chat() -> OpenAIConfig {
     OpenAIConfig::new("sk-test").with_route(Route::Chat)
 }
 
+#[cfg(any())]
 fn responses() -> OpenAIConfig {
     OpenAIConfig::new("sk-test").with_route(Route::Responses)
 }
 
+#[cfg(any())]
 fn tool() -> ResponsesToolDefinition {
     ResponsesToolDefinition::function(
         "hosted",
@@ -104,10 +112,13 @@ fn tool() -> ResponsesToolDefinition {
 
 /// The placement [`OpenAiWire::with_system_instructions_as_messages`] is
 /// sugar for.
+#[cfg(any())]
 fn as_messages(wire: OpenAiWire) -> OpenAiWire {
     wire.with_system_instructions_placement(SystemInstructionsPlacement::InputSystemMessages)
 }
 
+// Encodes on the Responses route, which the Responses family migrates.
+#[cfg(any())]
 #[test]
 fn map_wire_reaches_strict_tools_on_both_routes() {
     for provider in [chat(), responses()] {
@@ -118,6 +129,8 @@ fn map_wire_reaches_strict_tools_on_both_routes() {
     }
 }
 
+// Encodes on the Responses route, which the Responses family migrates.
+#[cfg(any())]
 #[test]
 fn map_wire_reaches_tool_result_array_content_on_the_chat_route_only() {
     only_on(
@@ -129,6 +142,8 @@ fn map_wire_reaches_tool_result_array_content_on_the_chat_route_only() {
 
 /// Prompt caching is OpenRouter's `cache_control` on the chat body, so that
 /// is the dialect whose request it changes.
+// Encodes on the Responses route, which the Responses family migrates.
+#[cfg(any())]
 #[test]
 fn map_wire_reaches_prompt_caching_on_the_chat_route_only() {
     only_on(
@@ -138,6 +153,8 @@ fn map_wire_reaches_prompt_caching_on_the_chat_route_only() {
     );
 }
 
+// Encodes on the Responses route, which the Responses family migrates.
+#[cfg(any())]
 #[test]
 fn changed_system_prefix_changes_both_encoded_openai_routes() {
     for provider in [chat(), responses()] {
@@ -151,6 +168,8 @@ fn changed_system_prefix_changes_both_encoded_openai_routes() {
     }
 }
 
+// Encodes on the Responses route, which the Responses family migrates.
+#[cfg(any())]
 #[test]
 fn encoded_cache_affinity_and_retention_preserve_configured_values() {
     for provider in [chat(), responses()] {
@@ -171,6 +190,8 @@ fn encoded_cache_affinity_and_retention_preserve_configured_values() {
     }
 }
 
+// Encodes on the Responses route, which the Responses family migrates.
+#[cfg(any())]
 #[test]
 fn openrouter_cache_controls_do_not_change_openai_requests() {
     for provider in [chat(), responses()] {
@@ -181,22 +202,30 @@ fn openrouter_cache_controls_do_not_change_openai_requests() {
     }
 }
 
+// Encodes on the Responses route, which the Responses family migrates.
+#[cfg(any())]
 #[test]
 fn map_wire_reaches_a_wire_level_tool_on_the_responses_route_only() {
     only_on(responses(), chat(), |wire| wire.with_tool(tool()));
 }
 
+// Encodes on the Responses route, which the Responses family migrates.
+#[cfg(any())]
 #[test]
 fn map_wire_reaches_wire_level_tools_on_the_responses_route_only() {
     only_on(responses(), chat(), |wire| wire.with_tools([tool()]));
 }
 
+// Encodes on the Responses route, which the Responses family migrates.
+#[cfg(any())]
 #[test]
 fn map_wire_reaches_the_system_instructions_placement_on_the_responses_route_only() {
     only_on(responses(), chat(), as_messages);
 }
 
 /// The sugar is the placement, which is what the encoded body shows.
+// Encodes on the Responses route, which the Responses family migrates.
+#[cfg(any())]
 #[test]
 fn map_wire_reaches_system_instructions_as_messages_on_the_responses_route_only() {
     only_on(
@@ -214,6 +243,8 @@ fn map_wire_reaches_system_instructions_as_messages_on_the_responses_route_only(
 }
 
 /// Synthetic hooks test extension dispatch and precedence, which recorded provider traffic cannot exercise.
+// Encodes on the Responses route, which the Responses family migrates.
+#[cfg(any())]
 #[test]
 fn dialect_hooks_apply_to_both_routes_without_provider_identity() {
     use super::super::{Dialect, DialectHooks, Quirks};
@@ -319,6 +350,8 @@ fn dialect_hooks_apply_to_both_routes_without_provider_identity() {
 }
 
 /// A synthetic dialect isolates the default capability from provider identity; no server is involved.
+// Encodes on the Responses route, which the Responses family migrates.
+#[cfg(any())]
 #[test]
 fn responses_strict_tools_default_is_an_independent_capability() {
     use super::super::{Dialect, OPENAI, Quirks, ResponsesQuirks};

@@ -84,10 +84,10 @@ fn classify_known_event_decodes() {
 
 #[test]
 fn classify_unknown_event_type_is_unknown() {
-    let frame = json!({"type": "citation-start"}).to_string();
+    let frame = json!({"type": "debug-trace"}).to_string();
     assert!(matches!(
         classify(&frame),
-        crate::wire::WireEvent::Unknown { event_type, .. } if event_type == "citation-start"
+        crate::wire::WireEvent::Unknown { event_type, .. } if event_type == "debug-trace"
     ));
 }
 
@@ -118,11 +118,10 @@ async fn stream_terminal_record_is_normalized() {
     .await;
     let response = replied.outcome.expect("the reply ended");
     assert_eq!(
-        response.provider,
+        response.provider(),
         crate::providers::cohere::completion::PROVIDER_NAME
     );
-    assert_eq!(response.response_id.as_deref(), Some("msg_1"));
-    assert_eq!(response.message_id, None);
+    assert_eq!(response.response_id(), Some("msg_1"));
     assert_eq!(
         response.finish_reason(),
         Some(crate::completion::FinishReason::Length)
@@ -131,7 +130,7 @@ async fn stream_terminal_record_is_normalized() {
     assert_eq!(response.usage.output_tokens, Some(4));
     assert_eq!(response.usage.total_tokens, Some(14));
     // Cohere's stream never names the model.
-    assert_eq!(response.model, None);
+    assert_eq!(response.model(), None);
 }
 
 #[tokio::test]
@@ -190,7 +189,7 @@ async fn unknown_event_type_is_skipped_and_the_end_still_arrives() {
     // passed through for forward compatibility, not surfaced as an error.
     let replied = replied(&[
         r#"{"type":"message-start","id":"msg_1"}"#,
-        r#"{"type":"citation-start","delta":{"whatever":true}}"#,
+        r#"{"type":"debug-trace","delta":{"whatever":true}}"#,
         r#"{"type":"content-delta","delta":{"message":{"content":{"text":"hi"}}}}"#,
         r#"{"type":"message-end","delta":{"finish_reason":"COMPLETE","usage":{"tokens":{"input_tokens":10,"output_tokens":4}}}}"#,
     ])
@@ -223,7 +222,7 @@ async fn message_end_without_delta_still_ends_the_reply() {
         .expect("message-end without a delta is still the end");
     assert_eq!(response.usage, crate::completion::Usage::default());
     assert_eq!(response.finish_reason(), None);
-    assert_eq!(response.response_id.as_deref(), Some("msg_1"));
+    assert_eq!(response.response_id(), Some("msg_1"));
 }
 
 #[tokio::test]
@@ -237,9 +236,13 @@ async fn thinking_deltas_aggregate_into_one_reasoning_part_before_the_text() {
     // and the thought text was lost).
     let replied = replied(&[
         r#"{"type":"message-start","id":"msg_1"}"#,
-        r#"{"type":"content-delta","delta":{"message":{"content":{"thinking":"step one, "}}}}"#,
-        r#"{"type":"content-delta","delta":{"message":{"content":{"thinking":"step two"}}}}"#,
-        r#"{"type":"content-delta","delta":{"message":{"content":{"text":"answer"}}}}"#,
+        r#"{"type":"content-start","index":0,"delta":{"message":{"content":{"type":"thinking","thinking":""}}}}"#,
+        r#"{"type":"content-delta","index":0,"delta":{"message":{"content":{"thinking":"step one, "}}}}"#,
+        r#"{"type":"content-delta","index":0,"delta":{"message":{"content":{"thinking":"step two"}}}}"#,
+        r#"{"type":"content-end","index":0}"#,
+        r#"{"type":"content-start","index":1,"delta":{"message":{"content":{"type":"text","text":""}}}}"#,
+        r#"{"type":"content-delta","index":1,"delta":{"message":{"content":{"text":"answer"}}}}"#,
+        r#"{"type":"content-end","index":1}"#,
         r#"{"type":"message-end","delta":{"finish_reason":"COMPLETE","usage":{"tokens":{"input_tokens":10,"output_tokens":4}}}}"#,
     ])
     .await;
@@ -257,12 +260,7 @@ async fn thinking_deltas_aggregate_into_one_reasoning_part_before_the_text() {
     assert_eq!(parts.len(), 2, "one reasoning part, one text part");
     assert!(matches!(
         parts.first(),
-        Some(AssistantContent::Reasoning(reasoning))
-            if reasoning.value().content.iter().any(|content| matches!(
-                content,
-                crate::message::ReasoningContent::Text { text, .. }
-                    if text == "step one, step two"
-            ))
+        Some(AssistantContent::Reasoning(reasoning)) if reasoning.text == "step one, step two"
     ));
     assert!(matches!(
         parts.get(1),
@@ -308,11 +306,9 @@ fn test_message_content_delta_deserialization() {
 
     let event: StreamingEvent = serde_json::from_value(json).unwrap();
     match event {
-        StreamingEvent::ContentDelta { delta } => {
-            assert!(delta.is_some());
-            let message = delta.unwrap().message.unwrap();
-            let content = message.content.unwrap();
-            assert_eq!(content.text, Some("Hello world".to_string()));
+        StreamingEvent::ContentDelta { delta, .. } => {
+            let message = delta.unwrap().message;
+            assert_eq!(message["content"]["text"], "Hello world");
         }
         _ => panic!("Expected ContentDelta"),
     }
@@ -337,14 +333,10 @@ fn test_tool_call_start_deserialization() {
 
     let event: StreamingEvent = serde_json::from_value(json).unwrap();
     match event {
-        StreamingEvent::ToolCallStart { delta } => {
-            assert!(delta.is_some());
-            let tool_call = delta.unwrap().message.unwrap().tool_calls.unwrap();
-            assert_eq!(tool_call.id, Some("call_123".to_string()));
-            assert_eq!(
-                tool_call.function.unwrap().name,
-                Some("get_weather".to_string())
-            );
+        StreamingEvent::ToolCallStart { delta, .. } => {
+            let message = delta.unwrap().message;
+            assert_eq!(message["tool_calls"]["id"], "call_123");
+            assert_eq!(message["tool_calls"]["function"]["name"], "get_weather");
         }
         _ => panic!("Expected ToolCallStart"),
     }
@@ -367,11 +359,12 @@ fn test_tool_call_delta_deserialization() {
 
     let event: StreamingEvent = serde_json::from_value(json).unwrap();
     match event {
-        StreamingEvent::ToolCallDelta { delta } => {
-            assert!(delta.is_some());
-            let tool_call = delta.unwrap().message.unwrap().tool_calls.unwrap();
-            let function = tool_call.function.unwrap();
-            assert_eq!(function.arguments, Some("\"location\"".to_string()));
+        StreamingEvent::ToolCallDelta { delta, .. } => {
+            let message = delta.unwrap().message;
+            assert_eq!(
+                message["tool_calls"]["function"]["arguments"],
+                "\"location\""
+            );
         }
         _ => panic!("Expected ToolCallDelta"),
     }
@@ -385,7 +378,7 @@ fn test_tool_call_end_deserialization() {
 
     let event: StreamingEvent = serde_json::from_value(json).unwrap();
     match event {
-        StreamingEvent::ToolCallEnd => {
+        StreamingEvent::ToolCallEnd { .. } => {
             // Success
         }
         _ => panic!("Expected ToolCallEnd"),
@@ -446,7 +439,7 @@ fn test_streaming_event_order() {
             }
         }),
         json!({"type": "content-end"}),
-        json!({"type": "tool-plan"}),
+        json!({"type": "tool-plan-delta"}),
         json!({
             "type": "tool-call-start",
             "delta": {

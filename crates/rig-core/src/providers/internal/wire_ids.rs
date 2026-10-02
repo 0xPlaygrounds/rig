@@ -161,5 +161,4 @@ impl WireIds {
 
 #[cfg(test)]
 #[allow(clippy::expect_used)]
-#[cfg(any())]
 pub(crate) mod tests;

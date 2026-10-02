@@ -10,7 +10,7 @@ use serde_json::{Value, json};
 
 use super::*;
 use crate::completion::{CompletionResponse, FinishReason};
-use crate::message::{AssistantContent, Reasoning, ReasoningContent, ToolCall};
+use crate::message::{AssistantContent, Reasoning, ToolCall};
 use crate::providers::openai::wire::{Dialect, LLAMACPP, OPENAI, OPENROUTER, OpenAIConfig};
 use crate::streaming::{Item, PartKind, StreamEvent};
 use crate::test_utils::MockStreamingClient;
@@ -93,7 +93,7 @@ fn calls(response: &CompletionResponse) -> Vec<&ToolCall> {
 }
 
 fn provider_id(call: &ToolCall) -> Option<&str> {
-    call.id.provider().map(|provider| provider.call_id.as_str())
+    call.id.provider().map(|provider| provider.as_str())
 }
 
 #[tokio::test]
@@ -247,7 +247,12 @@ async fn a_length_cut_inside_a_call_drops_only_that_call() {
     let response = response.expect("the reply folds");
     let ids: Vec<_> = calls(&response).into_iter().map(provider_id).collect();
     assert_eq!(ids, [Some("call_whole")]);
-    assert!(response.choice.contains(&AssistantContent::text("noting")));
+    assert!(
+        response
+            .choice
+            .iter()
+            .any(|block| block.canonical() == AssistantContent::text("noting"))
+    );
     assert_eq!(response.finish_reason(), Some(FinishReason::Length));
 }
 
@@ -256,10 +261,19 @@ fn reasoning_of(response: &CompletionResponse) -> Vec<Reasoning> {
         .choice
         .iter()
         .filter_map(|content| match content {
-            AssistantContent::Reasoning(sealed) => sealed.open(sealed.issuer()).cloned(),
+            AssistantContent::Reasoning(reasoning) => Some(reasoning.clone()),
             _ => None,
         })
         .collect()
+}
+
+/// The `reasoning_details` a reasoning block holds in its provider item.
+fn details_of(reasoning: &Reasoning) -> Value {
+    reasoning
+        .native
+        .as_ref()
+        .map(|native| native.item["reasoning_details"].clone())
+        .unwrap_or_default()
 }
 
 fn signature(detail: &str) -> String {
@@ -274,6 +288,8 @@ fn signature(detail: &str) -> String {
     )
 }
 
+/// The message's reasoning is one block, however its fields interleave the
+/// text: a signature that arrives after the answer still lands in it.
 #[tokio::test]
 async fn a_late_signature_signs_the_reasoning_text_interleaved() {
     let (_, response) = stream(
@@ -292,18 +308,23 @@ async fn a_late_signature_signs_the_reasoning_text_interleaved() {
     let [only] = &reasoning[..] else {
         panic!("one reasoning part: {:?}", response.choice);
     };
+    assert_eq!(only.text, "thinking");
     assert_eq!(
-        only.content,
-        [ReasoningContent::Text {
-            text: "thinking".to_owned(),
-            signature: Some("sig-late".to_owned()),
-        }]
+        details_of(only),
+        json!([{"type": "reasoning.text", "text": "", "signature": "sig-late", "index": 0}])
     );
-    assert!(response.choice.contains(&AssistantContent::text("answer")));
+    assert!(
+        response
+            .choice
+            .iter()
+            .any(|block| block.canonical() == AssistantContent::text("answer"))
+    );
 }
 
+/// pi's merge: a second signature for the same detail fills nothing, as the
+/// first already signed it.
 #[tokio::test]
-async fn a_second_signature_is_a_part_of_its_own() {
+async fn a_second_signature_for_one_detail_keeps_the_first() {
     let (_, response) = stream(
         &OPENROUTER,
         &[
@@ -317,21 +338,13 @@ async fn a_second_signature_is_a_part_of_its_own() {
     )
     .await;
     let response = response.expect("the reply folds");
-    let signatures: Vec<_> = reasoning_of(&response)
-        .into_iter()
-        .flat_map(|reasoning| reasoning.content)
-        .map(|content| match content {
-            ReasoningContent::Text { text, signature } => (text, signature),
-            other => panic!("text reasoning only: {other:?}"),
-        })
-        .collect();
+    let reasoning = reasoning_of(&response);
+    let [only] = &reasoning[..] else {
+        panic!("one reasoning part: {:?}", response.choice);
+    };
     assert_eq!(
-        signatures,
-        [
-            ("thinking".to_owned(), Some("sig-1".to_owned())),
-            (String::new(), Some("sig-2".to_owned())),
-        ],
-        "the first signature closes the text it signs; the second stands alone"
+        details_of(only),
+        json!([{"type": "reasoning.text", "text": "", "signature": "sig-1", "index": 0}])
     );
 }
 
@@ -351,7 +364,7 @@ async fn a_provider_id_sent_twice_is_a_duplicate_call_id() {
         matches!(
             items.last(),
             Some(Err(ProviderError::DuplicateCallId(id)))
-                if id.provider().is_some_and(|id| id.call_id == "call_same")
+                if id.provider().is_some_and(|id| id.as_str() == "call_same")
         ),
         "the duplicate is the stream's last item: {items:?}"
     );
@@ -359,7 +372,7 @@ async fn a_provider_id_sent_twice_is_a_duplicate_call_id() {
         matches!(
             &response,
             Err(ProviderError::DuplicateCallId(id))
-                if id.provider().is_some_and(|id| id.call_id == "call_same")
+                if id.provider().is_some_and(|id| id.as_str() == "call_same")
         ),
         "finish returns the error the stream yielded: {response:?}"
     );

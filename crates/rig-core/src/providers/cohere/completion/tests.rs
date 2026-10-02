@@ -147,10 +147,9 @@ async fn tool_call_response_normalizes_to_tool_calls_finish_reason() {
     )
     .await;
 
-    assert_eq!(normalized.provider, PROVIDER_NAME);
-    assert_eq!(normalized.response_id.as_deref(), Some("abc123"));
-    assert_eq!(normalized.message_id, None);
-    assert_eq!(normalized.model, None);
+    assert_eq!(normalized.provider(), PROVIDER_NAME);
+    assert_eq!(normalized.response_id(), Some("abc123"));
+    assert_eq!(normalized.model(), None);
     assert_eq!(
         normalized.finish_reason(),
         Some(completion::FinishReason::ToolCalls)
@@ -162,7 +161,7 @@ async fn tool_call_response_normalizes_to_tool_calls_finish_reason() {
         panic!("expected a tool call, got {:?}", normalized.choice);
     };
     assert_eq!(
-        call.id.provider().map(|provider| provider.call_id.as_str()),
+        call.id.provider().map(|provider| provider.as_str()),
         Some("subtract_1")
     );
     assert_eq!(call.function.name, "subtract");
@@ -210,8 +209,11 @@ async fn response_usage_matches_the_canonical_mapping() {
     assert_eq!(converted.usage.input_tokens, Some(1610));
     assert_eq!(converted.usage.cached_input_tokens, Some(112));
     assert_eq!(
-        converted.choice.first(),
-        Some(&completion::AssistantContent::text("hi"))
+        converted
+            .choice
+            .first()
+            .map(crate::message::AssistantContent::canonical),
+        Some(completion::AssistantContent::text("hi"))
     );
 }
 
