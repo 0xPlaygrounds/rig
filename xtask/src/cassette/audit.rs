@@ -735,7 +735,7 @@ impl<'a> File<'a> {
         let strip = |error: &Value| {
             let mut error = error.clone();
             if let Some(object) = error.as_object_mut() {
-                object.remove("item");
+                object.shift_remove("item");
             }
             error
         };
@@ -787,7 +787,7 @@ fn streamed(effect: &serde_json::Map<String, Value>) -> bool {
 fn without_raw(outcome: &Value) -> Value {
     let mut outcome = outcome.clone();
     if let Some(ok) = outcome.get_mut("Ok").and_then(Value::as_object_mut) {
-        ok.remove("raw");
+        ok.shift_remove("raw");
     }
     outcome
 }

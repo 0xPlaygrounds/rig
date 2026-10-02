@@ -1179,7 +1179,7 @@ fn flatten_root_all_of(schema: &mut serde_json::Value) {
     let Value::Object(root) = schema else {
         return;
     };
-    let Some(all_of) = root.remove("allOf") else {
+    let Some(all_of) = root.shift_remove("allOf") else {
         return;
     };
     let mut conflicting_constraints = Map::new();
@@ -1220,14 +1220,14 @@ fn inline_local_root_reference(schema: &mut serde_json::Value) {
         let Some(mut root) = schema.as_object().cloned() else {
             return;
         };
-        root.remove("$ref");
+        root.shift_remove("$ref");
 
         for keyword in ["$defs", "definitions"] {
-            let Some(root_definitions) = root.remove(keyword) else {
+            let Some(root_definitions) = root.shift_remove(keyword) else {
                 continue;
             };
             let definitions =
-                merge_document_definitions(root_definitions, referenced.remove(keyword));
+                merge_document_definitions(root_definitions, referenced.shift_remove(keyword));
             referenced.insert(keyword.to_string(), definitions);
         }
 
@@ -1321,8 +1321,10 @@ fn merge_root_all_of(
                         let Some(root_definitions) = schema.get(keyword).cloned() else {
                             continue;
                         };
-                        let definitions =
-                            merge_document_definitions(root_definitions, branch.remove(keyword));
+                        let definitions = merge_document_definitions(
+                            root_definitions,
+                            branch.shift_remove(keyword),
+                        );
                         branch.insert(keyword.to_string(), definitions);
                     }
                     let mut branch = Value::Object(branch);
@@ -1361,7 +1363,7 @@ fn merge_schema_properties(
     };
 
     for (name, sibling_schema) in sibling_properties {
-        match properties.remove(&name) {
+        match properties.shift_remove(&name) {
             None => {
                 properties.insert(name, sibling_schema);
             }
@@ -1413,7 +1415,7 @@ fn transform_strict_tool_schema(schema: serde_json::Value) -> serde_json::Value 
     let mut strict = Map::new();
 
     for keyword in ["$defs", "definitions"] {
-        if let Some(definitions) = source.remove(keyword) {
+        if let Some(definitions) = source.shift_remove(keyword) {
             match definitions {
                 Value::Object(definitions) => {
                     strict.insert(
@@ -1433,15 +1435,15 @@ fn transform_strict_tool_schema(schema: serde_json::Value) -> serde_json::Value 
         }
     }
 
-    if let Some(reference) = source.remove("$ref") {
+    if let Some(reference) = source.shift_remove("$ref") {
         strict.insert("$ref".to_string(), reference);
         return Value::Object(strict);
     }
 
-    let schema_type = source.remove("type");
-    let any_of = source.remove("anyOf");
-    let one_of = source.remove("oneOf");
-    let all_of = source.remove("allOf");
+    let schema_type = source.shift_remove("type");
+    let any_of = source.shift_remove("anyOf");
+    let one_of = source.shift_remove("oneOf");
+    let all_of = source.shift_remove("allOf");
     let alternatives = match (any_of, one_of, all_of) {
         (Some(Value::Array(variants)), _, _) => Some(("anyOf", variants)),
         (_, Some(Value::Array(variants)), _) => Some(("anyOf", variants)),
@@ -1462,14 +1464,14 @@ fn transform_strict_tool_schema(schema: serde_json::Value) -> serde_json::Value 
         strict.insert("type".to_string(), schema_type);
     }
 
-    if let Some(Value::Array(values)) = source.remove("enum") {
+    if let Some(Value::Array(values)) = source.shift_remove("enum") {
         strict.insert("enum".to_string(), Value::Array(values));
     }
-    if let Some(constant) = source.remove("const") {
+    if let Some(constant) = source.shift_remove("const") {
         strict.insert("const".to_string(), constant);
     }
     for keyword in ["description", "title"] {
-        if let Some(Value::String(value)) = source.remove(keyword) {
+        if let Some(Value::String(value)) = source.shift_remove(keyword) {
             strict.insert(keyword.to_string(), Value::String(value));
         }
     }
@@ -1480,7 +1482,7 @@ fn transform_strict_tool_schema(schema: serde_json::Value) -> serde_json::Value 
         strict.insert("type".to_string(), Value::String("object".to_string()));
     }
     if schema_has_type(schema_type.as_ref(), "object") || has_properties {
-        let properties = match source.remove("properties") {
+        let properties = match source.shift_remove("properties") {
             Some(Value::Object(properties)) => properties
                 .into_iter()
                 .map(|(name, schema)| (name, transform_strict_tool_schema(schema)))
@@ -1488,15 +1490,15 @@ fn transform_strict_tool_schema(schema: serde_json::Value) -> serde_json::Value 
             _ => Map::new(),
         };
         strict.insert("properties".to_string(), Value::Object(properties));
-        source.remove("additionalProperties");
+        source.shift_remove("additionalProperties");
         strict.insert("additionalProperties".to_string(), Value::Bool(false));
-        if let Some(Value::Array(required)) = source.remove("required") {
+        if let Some(Value::Array(required)) = source.shift_remove("required") {
             strict.insert("required".to_string(), Value::Array(required));
         }
     }
 
     if schema_has_type(schema_type.as_ref(), "string")
-        && let Some(format) = source.remove("format")
+        && let Some(format) = source.shift_remove("format")
     {
         const SUPPORTED_FORMATS: &[&str] = &[
             "date-time",
@@ -1521,10 +1523,10 @@ fn transform_strict_tool_schema(schema: serde_json::Value) -> serde_json::Value 
     }
 
     if schema_has_type(schema_type.as_ref(), "array") {
-        if let Some(items) = source.remove("items") {
+        if let Some(items) = source.shift_remove("items") {
             strict.insert("items".to_string(), transform_strict_tool_schema(items));
         }
-        if let Some(min_items) = source.remove("minItems") {
+        if let Some(min_items) = source.shift_remove("minItems") {
             if matches!(min_items.as_u64(), Some(0 | 1)) {
                 strict.insert("minItems".to_string(), min_items);
             } else {
@@ -1653,7 +1655,7 @@ fn normalize_tool_cache_control(tools: &mut [serde_json::Value]) {
                 .get("cache_control")
                 .is_some_and(serde_json::Value::is_null)
         {
-            tool.remove("cache_control");
+            tool.shift_remove("cache_control");
         }
     }
 }
@@ -1916,7 +1918,7 @@ pub(super) fn extract_top_level_cache_control(
     additional_params: &mut serde_json::Value,
 ) -> Result<Option<CacheControl>, EncodeError> {
     if let Some(map) = additional_params.as_object_mut()
-        && let Some(raw_cache_control) = map.remove("cache_control")
+        && let Some(raw_cache_control) = map.shift_remove("cache_control")
     {
         if raw_cache_control.is_null() {
             return Ok(None);
@@ -2176,7 +2178,7 @@ pub(super) fn extract_tools_from_additional_params(
     additional_params: &mut serde_json::Value,
 ) -> Result<Vec<serde_json::Value>, EncodeError> {
     if let Some(map) = additional_params.as_object_mut()
-        && let Some(raw_tools) = map.remove("tools")
+        && let Some(raw_tools) = map.shift_remove("tools")
     {
         return serde_json::from_value::<Vec<serde_json::Value>>(raw_tools).map_err(|err| {
             EncodeError::request(format!(

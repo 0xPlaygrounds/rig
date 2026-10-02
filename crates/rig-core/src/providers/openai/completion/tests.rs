@@ -880,7 +880,7 @@ fn request_body_moves_nothing_but_the_cap() {
     let cap = renamed
         .as_object_mut()
         .expect("object body")
-        .remove("max_completion_tokens")
+        .shift_remove("max_completion_tokens")
         .expect("renamed cap");
     renamed["max_tokens"] = cap;
 

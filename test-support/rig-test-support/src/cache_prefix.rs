@@ -128,14 +128,14 @@ pub fn splice_cached_content(body: &Value, cache: &Value) -> Option<Value> {
     body.get("cachedContent")?.as_str()?;
     let mut spliced = body.clone();
     let object = spliced.as_object_mut()?;
-    object.remove("cachedContent");
+    object.shift_remove("cachedContent");
     for key in ["systemInstruction", "tools", "toolConfig"] {
         match cache.get(key) {
             Some(value) => {
                 object.insert(key.to_owned(), value.clone());
             }
             None => {
-                object.remove(key);
+                object.shift_remove(key);
             }
         }
     }
@@ -439,7 +439,7 @@ fn finished_turn_lost_its_signatures(
     let mut removed = false;
     for part in parts {
         if let Some(part) = part.as_object_mut() {
-            removed |= part.remove("thoughtSignature").is_some();
+            removed |= part.shift_remove("thoughtSignature").is_some();
         }
     }
     let user_text_follows = later_blocks

@@ -307,7 +307,7 @@ pub(crate) fn create_request_body(
     for spelling in CACHED_CONTENT {
         let Some(value) = additional_params_payload
             .as_object_mut()
-            .and_then(|object| object.remove(spelling))
+            .and_then(|object| object.shift_remove(spelling))
         else {
             continue;
         };
@@ -514,7 +514,7 @@ fn extract_tools_from_additional_params(
     additional_params: &mut Value,
 ) -> Result<Vec<Value>, EncodeError> {
     if let Some(map) = additional_params.as_object_mut()
-        && let Some(raw_tools) = map.remove("tools")
+        && let Some(raw_tools) = map.shift_remove("tools")
     {
         return serde_json::from_value::<Vec<Value>>(raw_tools).map_err(|err| {
             EncodeError::request(format!(
@@ -1821,8 +1821,8 @@ pub mod gemini_api_types {
         resolve_refs(&mut schema, defs_obj)?;
 
         if let Some(obj) = schema.as_object_mut() {
-            obj.remove("$defs");
-            obj.remove("definitions");
+            obj.shift_remove("$defs");
+            obj.shift_remove("definitions");
         }
 
         Ok(schema)

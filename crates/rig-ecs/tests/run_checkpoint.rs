@@ -369,7 +369,7 @@ fn corrupt_commits_links_and_hold_owners_are_rejected_before_destination_mutatio
         let mut checkpoint = good.clone();
         match defect {
             "missing_results" => {
-                checkpoint.entities[turn].remove(type_name::<TurnResults>());
+                checkpoint.entities[turn].shift_remove(type_name::<TurnResults>());
             }
             "wrong_role" => {
                 let assistant = checkpoint.entities[turn][type_name::<TurnAssistant>()].clone();
@@ -382,11 +382,11 @@ fn corrupt_commits_links_and_hold_owners_are_rejected_before_destination_mutatio
                 object(commit)["turn"] = (if defect == "zero_commit" { 0 } else { 99 }).into();
             }
             "orphan_results" => {
-                checkpoint.entities[turn].remove(type_name::<ToolTurnCommit>());
+                checkpoint.entities[turn].shift_remove(type_name::<ToolTurnCommit>());
             }
             "empty_owner" => {
                 let mut holds = holds.clone();
-                let turn = object(&mut holds).remove("workspace").unwrap();
+                let turn = object(&mut holds).shift_remove("workspace").unwrap();
                 object(&mut holds).insert(String::new(), turn);
                 checkpoint.entities[run].insert(type_name::<ToolTurnHolds>().into(), holds);
             }

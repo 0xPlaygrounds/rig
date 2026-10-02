@@ -592,7 +592,7 @@ fn malformed_run_graph_is_rejected_before_spawning() {
                 bad = unread.clone();
                 let run = entities_with::<Run>(&bad)[0];
                 let prompt = bad.entities[run]
-                    .remove(type_name::<rig_ecs::agent::Prompt>())
+                    .shift_remove(type_name::<rig_ecs::agent::Prompt>())
                     .expect("the run's prompt is not yet read");
                 let owner = entities_with::<Owner>(&bad)[0];
                 bad.entities[owner]

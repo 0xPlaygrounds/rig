@@ -3915,7 +3915,7 @@ async fn stream_prompt_observes_interleaved_reasoning_deltas_before_unchanged_em
     let rs_b = completed
         .iter()
         .find(|(part, _)| *part == 1)
-        .and_then(|(_, reasoning)| Some(reasoning))
+        .map(|(_, reasoning)| reasoning)
         .expect("the second part ends");
     assert_eq!(
         rs_b.native

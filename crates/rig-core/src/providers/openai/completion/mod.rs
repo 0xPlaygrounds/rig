@@ -1313,7 +1313,7 @@ pub(crate) fn request_body(
 
     if modern_output_cap
         && let Some(object) = body.as_object_mut()
-        && let Some(max_tokens) = object.remove("max_tokens")
+        && let Some(max_tokens) = object.shift_remove("max_tokens")
     {
         // Preserve explicit modern caps while removing the rejected legacy key.
         object.entry("max_completion_tokens").or_insert(max_tokens);
@@ -1391,10 +1391,10 @@ pub(crate) fn sanitize_plain_text_history(
             continue;
         };
         if object.get("role").and_then(serde_json::Value::as_str) == Some("assistant") {
-            object.remove("tool_calls");
+            object.shift_remove("tool_calls");
         }
         if strip_names {
-            object.remove("name");
+            object.shift_remove("name");
         }
         if let Some((separator, only_if_all_text)) = flatten
             && let Some(content) = object.get_mut("content")
@@ -1569,7 +1569,7 @@ impl TryFrom<OpenAIRequestParams> for CompletionRequest {
             && let Some(map) = additional_params
                 .as_mut()
                 .and_then(serde_json::Value::as_object_mut)
-            && let Some(raw_tools) = map.remove("tools")
+            && let Some(raw_tools) = map.shift_remove("tools")
         {
             let raw_tools =
                 serde_json::from_value::<Vec<serde_json::Value>>(raw_tools).map_err(|err| {

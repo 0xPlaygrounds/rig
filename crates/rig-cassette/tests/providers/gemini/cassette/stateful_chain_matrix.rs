@@ -398,7 +398,7 @@ async fn interactions_chain_with_tool_call() {
                     )
                     .await
                     .expect("turn three continues");
-                keep(third.response_id().as_deref().expect("an interaction id"));
+                keep(third.response_id().expect("an interaction id"));
                 assert!(text(&third.choice).contains(CODE), "{:?}", third.choice);
             })
             .await;

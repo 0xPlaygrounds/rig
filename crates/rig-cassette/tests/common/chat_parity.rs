@@ -432,7 +432,7 @@ pub fn restate_chat(body: &Value) -> Vec<WireFrame> {
             .filter(|delta| !delta.is_empty())
             .map(Value::Object),
     );
-    if let Some(Value::Array(details)) = message.remove("reasoning_details") {
+    if let Some(Value::Array(details)) = message.shift_remove("reasoning_details") {
         deltas.extend(
             details
                 .into_iter()
@@ -443,7 +443,7 @@ pub fn restate_chat(body: &Value) -> Vec<WireFrame> {
         deltas.extend(halves(text).map(|piece| json!({ "content": piece })));
         text.clear();
     }
-    if let Some(Value::Array(calls)) = message.remove("tool_calls") {
+    if let Some(Value::Array(calls)) = message.shift_remove("tool_calls") {
         for (index, call) in calls.into_iter().enumerate() {
             let mut opening = call.clone();
             opening["index"] = json!(index);
@@ -480,7 +480,7 @@ pub fn restate_cohere(reply: &Value) -> Vec<WireFrame> {
         _ => Vec::new(),
     };
     let (content, calls, citations) = (take("content"), take("tool_calls"), take("citations"));
-    let plan = message.remove("tool_plan");
+    let plan = message.shift_remove("tool_plan");
     let mut events =
         vec![json!({"type": "message-start", "id": reply["id"], "delta": {"message": message}})];
     if let Some(Value::String(plan)) = plan {

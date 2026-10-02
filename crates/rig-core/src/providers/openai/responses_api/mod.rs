@@ -192,7 +192,7 @@ where
             .into_iter()
             .filter_map(|item| match item {
                 Value::Object(mut item) => item
-                    .remove("text")
+                    .shift_remove("text")
                     .and_then(|text| text.as_str().map(ToOwned::to_owned)),
                 Value::String(text) => Some(text),
                 _ => None,
@@ -1095,7 +1095,7 @@ impl TryFrom<ResponsesRequestParams> for CompletionRequest {
 
         let mut additional_tools = Vec::new();
         if let Some(additional_params_map) = additional_params_payload.as_object_mut() {
-            if let Some(raw_tools) = additional_params_map.remove("tools") {
+            if let Some(raw_tools) = additional_params_map.shift_remove("tools") {
                 additional_tools = serde_json::from_value::<Vec<ResponsesToolDefinition>>(
                     raw_tools,
                 )
@@ -1105,7 +1105,7 @@ impl TryFrom<ResponsesRequestParams> for CompletionRequest {
                     ))
                 })?;
             }
-            additional_params_map.remove("stream");
+            additional_params_map.shift_remove("stream");
         }
 
         if additional_params_payload.is_boolean() {

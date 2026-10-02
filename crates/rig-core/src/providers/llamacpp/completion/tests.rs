@@ -60,7 +60,7 @@ fn a_response_without_timings_still_decodes() {
     let mut body: serde_json::Value = serde_json::from_str(BODY).expect("fixture should parse");
     body.as_object_mut()
         .expect("body is an object")
-        .remove("timings")
+        .shift_remove("timings")
         .expect("the fixture carries timings to remove");
 
     let response: CompletionResponse = serde_json::from_value(body)

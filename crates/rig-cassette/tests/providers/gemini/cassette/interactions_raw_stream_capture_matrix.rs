@@ -201,7 +201,7 @@ async fn raw_exposes_terminal_only_fields() {
             normalized
                 .as_object_mut()
                 .expect("terminal is an object")
-                .remove("raw");
+                .shift_remove("raw");
             assert!(!contains_key(&normalized, "object"));
             assert!(!contains_key(&normalized, "status"));
             assert_eq!(terminal.finish_reason(), Some(FinishReason::Stop));

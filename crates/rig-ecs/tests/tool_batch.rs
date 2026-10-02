@@ -1082,7 +1082,7 @@ fn concurrency_and_independent_holds_survive_mid_batch_checkpoints() {
                     .iter_mut()
                     .find(|entity| entity.contains_key(type_name::<BatchHeld>()))
                     .expect("a batch-held call is in the checkpoint");
-                held.remove(missing).unwrap();
+                held.shift_remove(missing).unwrap();
                 let (mut destination, _, _, _) = tooling(vec![]);
                 let before = destination.world().entities().len();
                 assert!(

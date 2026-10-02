@@ -364,9 +364,9 @@ fn refuse_part(part: &mut serde_json::Value) {
         part["type"] = "refusal".into();
         let text = part["text"].take();
         let object = part.as_object_mut().expect("a part");
-        object.remove("text");
-        object.remove("annotations");
-        object.remove("logprobs");
+        object.shift_remove("text");
+        object.shift_remove("annotations");
+        object.shift_remove("logprobs");
         part["refusal"] = text;
     }
 }
@@ -391,8 +391,8 @@ fn responses_refusal(frames: &[String]) -> Vec<String> {
                         data["type"] = "response.refusal.done".into();
                         let text = data["text"].take();
                         let object = data.as_object_mut().expect("an event");
-                        object.remove("text");
-                        object.remove("logprobs");
+                        object.shift_remove("text");
+                        object.shift_remove("logprobs");
                         data["refusal"] = text;
                     }
                     "response.content_part.added" | "response.content_part.done" => {

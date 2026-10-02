@@ -235,7 +235,7 @@ impl TryFrom<(&str, CompletionRequest)> for OllamaCompletionRequest {
         let options = if let Some(mut extra) = req.additional_params {
             // These controls belong at the request root, not in model options.
             if let Some(obj) = extra.as_object_mut() {
-                if let Some(think_val) = obj.remove("think") {
+                if let Some(think_val) = obj.shift_remove("think") {
                     think = Some(match think_val {
                         Value::Bool(think) => Think::Bool(think),
                         Value::String(think) => Think::Level(match think.to_lowercase().as_str() {
@@ -257,7 +257,7 @@ impl TryFrom<(&str, CompletionRequest)> for OllamaCompletionRequest {
                     });
                 }
 
-                if let Some(keep_alive_val) = obj.remove("keep_alive") {
+                if let Some(keep_alive_val) = obj.shift_remove("keep_alive") {
                     keep_alive = Some(
                         keep_alive_val
                             .as_str()
@@ -451,7 +451,7 @@ impl OllamaDecoder {
             response.done || calls_follow,
             &mut out,
         )?;
-        if let Some(Value::Array(calls)) = message.remove("tool_calls") {
+        if let Some(Value::Array(calls)) = message.shift_remove("tool_calls") {
             for call in calls {
                 let name = call
                     .pointer("/function/name")

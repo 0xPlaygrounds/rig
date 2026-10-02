@@ -388,7 +388,7 @@ fn assistant_message(turn: message::AssistantMessage) -> Result<Message, message
                 message::AssistantContent::Reasoning(_),
                 Some(serde_json::Value::Object(mut fields)),
             ) if fields.contains_key("tool_plan") => {
-                tool_plan = fields.remove("tool_plan").unwrap_or_default();
+                tool_plan = fields.shift_remove("tool_plan").unwrap_or_default();
             }
             (
                 message::AssistantContent::Text(_)
@@ -428,7 +428,7 @@ fn input_form(mut item: serde_json::Value) -> serde_json::Value {
     if item.get("tool_plan").and_then(serde_json::Value::as_str) == Some("")
         && let Some(fields) = item.as_object_mut()
     {
-        fields.remove("tool_plan");
+        fields.shift_remove("tool_plan");
     }
     item
 }

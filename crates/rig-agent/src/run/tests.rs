@@ -1704,7 +1704,7 @@ fn raw_round_trips_and_a_missing_key_is_refused() {
     without_raw
         .as_object_mut()
         .expect("turn serializes as an object")
-        .remove("raw")
+        .shift_remove("raw")
         .expect("the raw key was present");
     let error = serde_json::from_value::<ModelTurn>(without_raw)
         .expect_err("a turn without a raw key is refused");
@@ -1719,7 +1719,7 @@ fn raw_round_trips_and_a_missing_key_is_refused() {
     value
         .as_object_mut()
         .expect("call serializes as an object")
-        .remove("raw")
+        .shift_remove("raw")
         .expect("the raw key was present");
     let error = serde_json::from_value::<CompletionCall>(value)
         .expect_err("a call without a raw key is refused");

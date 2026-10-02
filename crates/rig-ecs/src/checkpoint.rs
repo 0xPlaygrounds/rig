@@ -365,7 +365,7 @@ fn reflect_to_json(
     // `ReflectSerializer` wraps the value in a one-key map by type path.
     Ok(match json {
         serde_json::Value::Object(mut map) if map.len() == 1 => {
-            map.remove(&path).unwrap_or(serde_json::Value::Null)
+            map.shift_remove(&path).unwrap_or(serde_json::Value::Null)
         }
         other => other,
     })

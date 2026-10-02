@@ -344,7 +344,7 @@ fn missing_published_output_is_unknown_not_explicitly_absent() {
     json["records"][0]
         .as_object_mut()
         .unwrap()
-        .remove("tool_output");
+        .shift_remove("tool_output");
     let error = serde_json::from_value::<EffectLog>(json).expect_err("old recorder omitted output");
     assert!(error.to_string().contains("tool_output"));
 }

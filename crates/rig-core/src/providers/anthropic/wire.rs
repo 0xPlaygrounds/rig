@@ -482,7 +482,7 @@ impl Messages {
                 map.entry("tool_choice")
                     .or_insert_with(|| serde_json::json!({ "type": "auto" }));
             } else {
-                map.remove("tool_choice");
+                map.shift_remove("tool_choice");
             }
         }
         Ok(body)

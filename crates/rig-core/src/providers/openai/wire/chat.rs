@@ -314,7 +314,7 @@ fn fold_groq_native_tools(request: &mut unary::CompletionRequest) -> Result<(), 
     else {
         return Ok(());
     };
-    let Some(raw_tools) = map.remove("tools") else {
+    let Some(raw_tools) = map.shift_remove("tools") else {
         return Ok(());
     };
     let serde_json::Value::Array(native_tools) = raw_tools else {
@@ -387,7 +387,7 @@ fn finalize_groq(map: &mut serde_json::Map<String, serde_json::Value>) {
         if let Some(message) = message.as_object_mut()
             && message.get("role").and_then(serde_json::Value::as_str) == Some("assistant")
         {
-            message.remove("channel");
+            message.shift_remove("channel");
         }
     }
 }
@@ -710,7 +710,7 @@ fn finalize_openrouter(map: &mut serde_json::Map<String, serde_json::Value>, pro
                 .get_mut("image_url")
                 .and_then(serde_json::Value::as_object_mut)
             {
-                image.remove("detail");
+                image.shift_remove("detail");
             }
         }
     }
@@ -1046,7 +1046,7 @@ impl ChatDecoder {
                 .filter(|text| !text.is_empty())
                 .map(str::to_owned)
         });
-        let details = match delta.remove(REASONING_DETAILS) {
+        let details = match delta.shift_remove(REASONING_DETAILS) {
             Some(serde_json::Value::Array(details)) => details,
             _ => Vec::new(),
         };
@@ -1063,7 +1063,7 @@ impl ChatDecoder {
             let index = open_once(&mut self.text, Block::Text, out)?;
             out.push(index, &text)?;
         }
-        if let Some(serde_json::Value::Array(calls)) = delta.remove("tool_calls") {
+        if let Some(serde_json::Value::Array(calls)) = delta.shift_remove("tool_calls") {
             for call in calls {
                 self.call(call, out)?;
             }
@@ -1104,7 +1104,7 @@ impl ChatDecoder {
             Some(Some(serde_json::Value::Object(existing))),
         ) = (
             call.as_object_mut().map(|fields| {
-                fields.remove("index");
+                fields.shift_remove("index");
                 serde_json::Value::Object(std::mem::take(fields))
             }),
             self.calls.get_mut(at),

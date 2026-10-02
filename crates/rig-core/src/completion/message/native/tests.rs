@@ -30,7 +30,7 @@ fn a_fresh_native_item_is_current_and_an_edit_makes_it_stale() {
 fn fingerprints_survive_a_serde_round_trip() {
     // Key order and float digits must survive, or a stored block would
     // never match its item again after a history is saved and loaded.
-    let arguments = json!({"zeta": 1, "alpha": {"y": 0.1, "x": [2.718_281_828_459_045, 1e-7]}});
+    let arguments = json!({"zeta": 1, "alpha": {"y": 0.1, "x": [2.718_281_828_459_1, 1e-7]}});
     let block = call(arguments).with_native(json!({"type": "function_call", "id": "fc_1"}));
     let saved = serde_json::to_string(&block).expect("serialize");
     let loaded: AssistantContent = serde_json::from_str(&saved).expect("deserialize");

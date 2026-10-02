@@ -396,7 +396,7 @@ impl ChatDecoder {
         };
         let (content, calls, citations) =
             (items("content"), items("tool_calls"), items("citations"));
-        let plan = message.remove("tool_plan");
+        let plan = message.shift_remove("tool_plan");
         let delta = |key: &str, value: Value| {
             let mut message = serde_json::Map::new();
             message.insert(key.to_owned(), value);

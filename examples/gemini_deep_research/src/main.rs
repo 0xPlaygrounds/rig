@@ -287,7 +287,7 @@ async fn main() -> Result<()> {
     };
     println!("Research started: {interaction_id}");
 
-    let interaction = poll_until_terminal(&gemini, &interaction_id, &request).await?;
+    let interaction = poll_until_terminal(&gemini, interaction_id, &request).await?;
     print_interaction_result(&interaction);
 
     Ok(())

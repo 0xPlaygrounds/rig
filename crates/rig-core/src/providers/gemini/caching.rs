@@ -557,7 +557,7 @@ fn estimate(json: &str) -> u64 {
     fn scrub(value: &mut serde_json::Value) {
         match value {
             serde_json::Value::Object(map) => {
-                map.remove("thoughtSignature");
+                map.shift_remove("thoughtSignature");
                 map.values_mut().for_each(scrub);
             }
             serde_json::Value::Array(items) => items.iter_mut().for_each(scrub),

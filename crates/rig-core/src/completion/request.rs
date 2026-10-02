@@ -724,7 +724,7 @@ fn merge_provider_tools_into_additional_params(
         _ => serde_json::Map::new(),
     };
 
-    let mut merged_tools = match params_map.remove("tools") {
+    let mut merged_tools = match params_map.shift_remove("tools") {
         Some(serde_json::Value::Array(existing)) => existing,
         _ => Vec::new(),
     };

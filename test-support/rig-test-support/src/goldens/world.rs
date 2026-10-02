@@ -71,7 +71,7 @@ pub fn capture_world_program(world: &mut World, run: Entity, log: &EffectLog) {
     // This scene proves configuration, not execution. An intentionally unserved
     // startup intent must not require an implementation during configuration restore.
     for entity in &mut scene.entities {
-        entity.remove(std::any::type_name::<rig_ecs::bus::PendingEffect>());
+        entity.shift_remove(std::any::type_name::<rig_ecs::bus::PendingEffect>());
     }
     PROGRAMS.with(|programs| {
         let mut programs = programs.borrow_mut();
@@ -122,7 +122,7 @@ pub(super) fn without_delivery_boundaries(mut value: serde_json::Value) -> serde
         .get_mut("header")
         .and_then(serde_json::Value::as_object_mut)
         .expect("effect log header")
-        .remove("deliveries");
+        .shift_remove("deliveries");
     value
 }
 
