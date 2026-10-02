@@ -1658,11 +1658,24 @@ fn halves(text: &str) -> [String; 2] {
 /// no content, its text in deltas, then done; then `response.completed`
 /// restating the output.
 fn restated(output: &[serde_json::Value]) -> Vec<serde_json::Value> {
+    let mut body = serde_json::to_value(sample_response(ResponseStatus::Completed))
+        .expect("the sample response serializes");
+    body["output"] = json!(output);
+    restated_body(&body)
+}
+
+/// [`restated`] for a whole response `body`, which the stream's terminal
+/// restates.
+fn restated_body(body: &serde_json::Value) -> Vec<serde_json::Value> {
+    let mut created = body.clone();
+    created["status"] = json!("in_progress");
+    created["output"] = json!([]);
     let mut events = vec![json!({
         "type": "response.created",
         "sequence_number": 0,
-        "response": sample_response(ResponseStatus::InProgress),
+        "response": created,
     })];
+    let output = body["output"].as_array().cloned().unwrap_or_default();
     for (index, item) in output.iter().enumerate() {
         let mut added = item.clone();
         match item["type"].as_str() {
@@ -1733,7 +1746,11 @@ fn restated(output: &[serde_json::Value]) -> Vec<serde_json::Value> {
         }
         events.push(item_done(index as u64, events.len() as u64, item.clone()));
     }
-    events.push(completed_with(events.len() as u64, json!(output)));
+    events.push(json!({
+        "type": "response.completed",
+        "sequence_number": events.len(),
+        "response": body,
+    }));
     events
 }
 
@@ -2130,4 +2147,88 @@ fn a_reply_names_the_model_and_response_it_came_from() {
     assert_eq!(origin.provider, "openai");
     assert_eq!(origin.model, "gpt-5.4");
     assert_eq!(origin.response_id.as_deref(), Some("resp_123"));
+}
+
+/// The whole Responses replies a provider's cassettes record: each unary
+/// body, and the response object each recorded stream's terminal restates.
+fn recorded_whole_replies(provider: &str) -> Vec<serde_json::Value> {
+    let mut replies = Vec::new();
+    let mut stack = vec![
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../rig-cassette/fixtures/cassettes")
+            .join(provider),
+    ];
+    while let Some(dir) = stack.pop() {
+        for path in std::fs::read_dir(&dir)
+            .into_iter()
+            .flatten()
+            .flatten()
+            .map(|entry| entry.path())
+        {
+            if path.is_dir() {
+                stack.push(path);
+                continue;
+            }
+            let Ok(text) = std::fs::read_to_string(&path) else {
+                continue;
+            };
+            for reply in text.split("\nthen:").skip(1) {
+                let Some(body) = reply.split_once("  body: ").map(|(_, body)| body) else {
+                    continue;
+                };
+                let documents: Vec<serde_json::Value> = match body.strip_prefix("|+\n") {
+                    Some(block) => block
+                        .lines()
+                        .take_while(|line| line.starts_with("    ") || line.trim().is_empty())
+                        .filter_map(|line| line.trim().strip_prefix("data:"))
+                        .filter_map(|data| {
+                            serde_json::from_str::<serde_json::Value>(data.trim()).ok()
+                        })
+                        .filter(|event| event["type"] == "response.completed")
+                        .map(|event| event["response"].clone())
+                        .collect(),
+                    None => body
+                        .lines()
+                        .next()
+                        .map(|line| line.trim().trim_matches('\'').replace("''", "'"))
+                        .and_then(|json| serde_json::from_str::<serde_json::Value>(&json).ok())
+                        .into_iter()
+                        .collect(),
+                };
+                replies.extend(documents.into_iter().filter(|document| {
+                    document["object"] == "response"
+                        && document["status"] == "completed"
+                        && document["output"].is_array()
+                }));
+            }
+        }
+    }
+    replies
+}
+
+/// Every whole reply the family's cassettes record folds into the same turn
+/// restated as a stream, through the shared restate-as-stream harness.
+#[test]
+fn every_recorded_whole_reply_agrees_with_its_restatement_as_a_stream() {
+    let mut checked = 0;
+    for (provider, wire) in [
+        ("openai", wire()),
+        ("xai", wire()),
+        ("copilot", wire()),
+        (
+            "chatgpt",
+            OpenAIConfig::with_key(&crate::providers::chatgpt::DIALECT, "token")
+                .responses("gpt-5.4"),
+        ),
+    ] {
+        for body in recorded_whole_replies(provider) {
+            crate::test_utils::history::assert_restated_agrees(
+                &wire,
+                [WireFrame::Text(body.to_string())],
+                frames(&restated_body(&body)),
+            );
+            checked += 1;
+        }
+    }
+    assert!(checked > 100, "the family records whole replies: {checked}");
 }
