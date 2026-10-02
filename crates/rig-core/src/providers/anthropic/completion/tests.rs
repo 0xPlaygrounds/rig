@@ -3449,3 +3449,28 @@ fn the_last_turn_container_is_replayed_unless_the_request_names_one() {
     ];
     assert!(body(foreign, None).get("container").is_none());
 }
+
+/// A tool-result image takes the sources a user image does, a URL among
+/// them, rather than being refused.
+#[test]
+fn a_tool_result_image_by_url_is_sent_by_url() {
+    let result = message::UserContent::ToolResult(message::ToolResult {
+        call: message::CallId::from_wire("toolu_1"),
+        name: message::ToolName::new("screenshot").expect("tool name"),
+        content: vec![message::ToolResultContent::Image(message::Image {
+            data: message::DocumentSourceKind::Url("https://example.com/shot.png".to_owned()),
+            ..message::Image::default()
+        })],
+        is_error: false,
+    });
+    let converted = convert(message::Message::User {
+        content: vec![result],
+    })
+    .expect("the result converts")
+    .expect("a message");
+    let value = serde_json::to_value(&converted).expect("the message serializes");
+    assert_eq!(
+        value["content"][0]["content"][0]["source"],
+        json!({"type": "url", "url": "https://example.com/shot.png"})
+    );
+}
