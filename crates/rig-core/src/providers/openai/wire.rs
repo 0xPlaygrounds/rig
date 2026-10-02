@@ -279,26 +279,21 @@ pub enum BodyRewrite {
     None,
     /// Groq: fold `additional_params.tools` (its compound-system native
     /// tools) into `compound_custom.enabled_tools` so they do not clobber
-    /// the function-tool array on serialization, and leave the `channel` its
-    /// streamed messages carry out of a replayed one, which Groq rejects.
+    /// the function-tool array on serialization.
     GroqCompoundTools,
     /// Hugging Face's router: qualify the model identifier for sub-providers
     /// that demand one (Fireworks).
     HuggingFaceRouter,
     /// DeepSeek: string-flattened content, `content: ""` on tool-call-only
     /// assistant turns, `reasoning_content: ""` on assistant turns without
-    /// reasoning, `index` on echoed tool calls, and forced tool choices
+    /// reasoning, and forced tool choices
     /// suppressed unless thinking is explicitly disabled.
     DeepSeek,
-    /// Mira's gateway: plain `{role, content}` history, names stripped,
-    /// content-part arrays flattened.
+    /// Mira's gateway: content-part arrays flattened to strings.
     Mira,
-    /// Perplexity: plain text history with strict user/assistant
-    /// alternation, text-only arrays flattened.
+    /// Perplexity: strict user/assistant alternation, text-only arrays
+    /// flattened.
     Perplexity,
-    /// Hyperbolic: tool-exchange remnants stripped, content-part arrays kept
-    /// (its vision models need them).
-    Hyperbolic,
     /// Mistral: `any` for a forced tool choice, the choice relaxed to `auto`
     /// beside a structured response format, its own content chunks, and
     /// `content` on every assistant turn.
@@ -310,7 +305,7 @@ pub enum BodyRewrite {
     /// `required` to `auto` with a steering message.
     Moonshot,
     /// OpenRouter: ephemeral `cache_control` on the system prompt when
-    /// prompt caching is on, and image parts without a detail level.
+    /// prompt caching is on.
     OpenRouter,
 }
 

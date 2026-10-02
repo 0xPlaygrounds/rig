@@ -15,7 +15,9 @@
 //!    request carries every opaque value the previous response delivered.
 //! 2. [`same_model_replay_sends_the_recorded_output_items`]: a continuation
 //!    on the same model sends each output item of the previous reply back
-//!    equal to the recorded item, as JSON values, in the reply's order.
+//!    equal to the recorded item, as JSON values, in the reply's order. A
+//!    message-shaped wire sends the projection its rebuild makes of the
+//!    reply's message instead.
 //! 3. [`every_recorded_request_pairs_tool_calls_with_results`]: no request
 //!    leaves a tool call unanswered or a result unmatched, including the
 //!    request after a fault.
@@ -537,32 +539,173 @@ fn replayed_items(dialect: Dialect, request: &Value) -> Vec<Value> {
     }
 }
 
-/// `item` with the wire rules every replay applies, for comparing a reply's
-/// item with the item the next request sends. A Chat call's `index` orders
-/// a stream, so it is compared without it, and an empty `tool_calls` list
-/// carries no call; DeepSeek takes an empty `reasoning_content` on every
-/// assistant turn (pi's rule).
-fn as_replayed(scenario: &str, dialect: Dialect, mut item: Value) -> Value {
-    if dialect == Dialect::ChatCompletions
-        && let Some(message) = item.as_object_mut()
-    {
-        if let Some(Value::Array(calls)) = message.get_mut("tool_calls") {
-            for call in calls.iter_mut().filter_map(Value::as_object_mut) {
-                call.shift_remove("index");
-            }
-        }
-        if message
-            .get("tool_calls")
-            .and_then(Value::as_array)
-            .is_some_and(Vec::is_empty)
-        {
-            message.shift_remove("tool_calls");
-        }
-        if scenario.starts_with("deepseek/") && !message.contains_key("reasoning_content") {
-            message.insert("reasoning_content".to_owned(), Value::from(""));
-        }
+/// The item a same-model replay sends for the reply item `item`. An
+/// item-shaped wire sends its items as they came. A message-shaped wire
+/// (Chat, Ollama, Cohere) rebuilds the message from its blocks, as pi's
+/// `openai-completions` does, so the item is the projection of the reply's
+/// message that rebuild sends: never the whole message.
+fn as_replayed(scenario: &str, dialect: Dialect, item: Value) -> Value {
+    match dialect {
+        Dialect::ChatCompletions => chat_projection(provider_of(scenario), &item),
+        Dialect::OllamaChat => ollama_projection(&item),
+        Dialect::CohereChat => cohere_projection(&item),
+        Dialect::AnthropicMessages
+        | Dialect::GeminiGenerateContent
+        | Dialect::GeminiInteractions
+        | Dialect::OpenAiResponses
+        | Dialect::BedrockConverse
+        | Dialect::Unmodeled => item,
     }
-    item
+}
+
+/// A call's arguments as the rebuild sends them: the object they state,
+/// as JSON text when `text`.
+fn canonical_arguments(arguments: Option<&Value>, text: bool) -> Value {
+    let object = match arguments {
+        Some(Value::String(raw)) => match serde_json::from_str::<Value>(raw) {
+            Ok(Value::String(inner)) => serde_json::from_str(&inner).unwrap_or_default(),
+            Ok(value) => value,
+            Err(_) => Value::Null,
+        },
+        Some(value) => value.clone(),
+        None => Value::Null,
+    };
+    let object = if object.is_object() {
+        object
+    } else {
+        Value::Object(Default::default())
+    };
+    if text {
+        Value::String(object.to_string())
+    } else {
+        object
+    }
+}
+
+/// `call` as the rebuild sends it: its item with `arguments` canonical, and
+/// without the stream `index` Chat calls carry.
+fn replayed_call(call: &Value, text: bool, keep_index: bool) -> Value {
+    let mut call = call.clone();
+    if let Some(fields) = call.as_object_mut()
+        && !keep_index
+    {
+        fields.shift_remove("index");
+    }
+    if call.get("type").and_then(Value::as_str) != Some("custom") {
+        let arguments = canonical_arguments(call.pointer("/function/arguments"), text);
+        call["function"]["arguments"] = arguments;
+    }
+    call
+}
+
+/// The assistant message a Chat dialect's rebuild sends for a reply's
+/// `message`: its text as `content`, its reasoning under the first field
+/// that carries it, `reasoning_details` and an answer's audio id, and each
+/// call. DeepSeek takes `content` and `reasoning_content` on every
+/// assistant turn, Mistral `content`.
+fn chat_projection(provider: &str, message: &Value) -> Value {
+    let mut out = serde_json::Map::new();
+    out.insert("role".to_owned(), "assistant".into());
+    let text = ["content", "refusal"].iter().find_map(|key| {
+        message
+            .get(*key)
+            .and_then(Value::as_str)
+            .filter(|text| !text.is_empty())
+    });
+    if let Some(text) = text.filter(|text| !text.trim().is_empty()) {
+        out.insert("content".to_owned(), text.into());
+    }
+    let reasoning = ["reasoning_content", "reasoning", "reasoning_text"]
+        .iter()
+        .find_map(|key| {
+            let text = message.get(*key).and_then(Value::as_str)?;
+            (!text.is_empty()).then_some((*key, text))
+        });
+    if let Some((field, text)) = reasoning.filter(|(_, text)| !text.trim().is_empty()) {
+        out.insert(field.to_owned(), text.into());
+    }
+    if let Some(details) = message.get("reasoning_details").filter(|details| {
+        details
+            .as_array()
+            .is_some_and(|details| !details.is_empty())
+    }) {
+        out.insert("reasoning_details".to_owned(), details.clone());
+    }
+    if let Some(id) = message.pointer("/audio/id") {
+        out.insert("audio".to_owned(), serde_json::json!({ "id": id }));
+    }
+    let calls: Vec<Value> = message
+        .get("tool_calls")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .map(|call| replayed_call(call, true, false))
+        .collect();
+    if !calls.is_empty() {
+        out.insert("tool_calls".to_owned(), calls.into());
+    }
+    if provider == "deepseek" {
+        out.entry("reasoning_content").or_insert_with(|| "".into());
+    }
+    if provider == "deepseek" || provider == "mistral" {
+        out.entry("content").or_insert_with(|| "".into());
+    }
+    Value::Object(out)
+}
+
+/// The message Ollama's rebuild sends for a reply's `message`: its text,
+/// its thinking when it has some, and each call with object arguments.
+fn ollama_projection(message: &Value) -> Value {
+    let text = message
+        .get("content")
+        .and_then(Value::as_str)
+        .filter(|text| !text.trim().is_empty())
+        .unwrap_or_default();
+    let mut out = serde_json::json!({"role": "assistant", "content": text});
+    if let Some(thinking) = message
+        .get("thinking")
+        .and_then(Value::as_str)
+        .filter(|thinking| !thinking.trim().is_empty())
+    {
+        out["thinking"] = thinking.into();
+    }
+    let calls: Vec<Value> = message
+        .get("tool_calls")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .map(|call| replayed_call(call, false, true))
+        .collect();
+    if !calls.is_empty() {
+        out["tool_calls"] = calls.into();
+    }
+    out
+}
+
+/// The message Cohere's rebuild sends for a reply's `message`: each content
+/// item as it came, the tool plan when it has one, and each call with its
+/// arguments as JSON text.
+fn cohere_projection(message: &Value) -> Value {
+    let calls: Vec<Value> = message
+        .get("tool_calls")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .map(|call| replayed_call(call, true, true))
+        .collect();
+    let mut out = serde_json::json!({
+        "role": "assistant",
+        "content": message.get("content").cloned().unwrap_or_else(|| Value::Array(Vec::new())),
+        "tool_calls": calls,
+    });
+    if let Some(plan) = message
+        .get("tool_plan")
+        .and_then(Value::as_str)
+        .filter(|plan| !plan.trim().is_empty())
+    {
+        out["tool_plan"] = plan.into();
+    }
+    out
 }
 
 #[test]
@@ -590,10 +733,7 @@ fn same_model_replay_sends_the_recorded_output_items() {
             .map(|item| as_replayed(scenario, earlier.dialect, item))
             .collect();
         compared += 1;
-        let sent: Vec<Value> = replayed_items(later.dialect, &later.request)
-            .into_iter()
-            .map(|item| as_replayed(scenario, later.dialect, item))
-            .collect();
+        let sent: Vec<Value> = replayed_items(later.dialect, &later.request);
         let mut from = 0;
         let missing: Vec<&Value> = items
             .iter()

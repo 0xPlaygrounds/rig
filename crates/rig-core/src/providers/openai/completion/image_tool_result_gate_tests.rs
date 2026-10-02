@@ -1,25 +1,15 @@
-//! The per-provider gate on images in `role:"tool"` messages.
+//! Images in `role:"tool"` messages. Official OpenAI Chat Completions
+//! answers 400 on `gpt-4o` and drops the image on `gpt-5`; llama.cpp reads
+//! it. The adapter moves an image out of a result for a dialect that reads
+//! none ([`Quirks::supports_image_tool_results`]), so the encoder only
+//! carries one where it is read.
 //!
-//! Measured, not assumed. Official OpenAI Chat Completions answers 400 on
-//! `gpt-4o`/`gpt-4o-mini` (*"Image URLs are only allowed for messages with
-//! role 'user'"*) and, on `gpt-5` … `gpt-5.5`, answers 200 with the image
-//! discarded and the model describing what it never received. llama.cpp
-//! (`b1-6d05498`, Qwen3-VL-2B) delivers it: a magenta/green/yellow square
-//! handed back through a tool is named correctly 3/3, matching a control
-//! that sends the same bytes in a `user` message.
-//!
-//! These are unit tests rather than cassettes because the behaviour under
-//! test is a *local* refusal — no request is made, so there is nothing to
-//! record. The provider-side facts they encode are pinned by recorded cells
-//! in the llamacpp and openai suites.
+//! [`Quirks::supports_image_tool_results`]: crate::providers::openai::wire::Quirks::supports_image_tool_results
 
 use super::*;
 use crate::message;
 
-fn params(
-    supports_image_tool_results: bool,
-    content: Vec<message::ToolResultContent>,
-) -> OpenAIRequestParams {
+fn params(content: Vec<message::ToolResultContent>) -> OpenAIRequestParams {
     OpenAIRequestParams {
         model: "test-model".to_string(),
         request: crate::completion::CompletionRequest::new(message::Message::User {
@@ -32,7 +22,6 @@ fn params(
         }),
         strict_tools: false,
         tool_result_array_content: false,
-        supports_image_tool_results,
         supports_tools: true,
         supports_response_format: true,
         response_format_with_tools: false,
@@ -47,28 +36,10 @@ fn image() -> message::ToolResultContent {
     )
 }
 
-/// A provider that cannot carry the image refuses locally rather than
-/// flattening it away or letting the provider answer.
+/// An image in a result reaches the wire.
 #[test]
-fn an_image_tool_result_is_refused_when_the_provider_cannot_carry_it() {
-    let error = CompletionRequest::try_from(params(false, vec![image()]))
-        .expect_err("a provider without the capability must refuse");
-    let message = error.to_string();
-    assert!(
-        message.contains("does not accept an image in a tool result"),
-        "{message}"
-    );
-    assert!(
-        message.contains("Responses API"),
-        "the refusal should name the surface that works: {message}"
-    );
-}
-
-/// The same request is built when the provider does carry it.
-#[test]
-fn an_image_tool_result_is_sent_when_the_provider_supports_it() {
-    let request = CompletionRequest::try_from(params(true, vec![image()]))
-        .expect("a capable provider should accept the image");
+fn an_image_tool_result_is_sent() {
+    let request = CompletionRequest::try_from(params(vec![image()])).expect("the image is sent");
     let wire = serde_json::to_value(&request.messages).expect("serialize");
     let content = &wire[0]["content"];
     assert_eq!(content[0]["type"], "image_url", "{wire}");
@@ -84,7 +55,7 @@ fn an_image_tool_result_is_sent_when_the_provider_supports_it() {
 /// because a string has nowhere to put it.
 #[test]
 fn an_image_forces_array_content_even_when_flattening_is_configured() {
-    let request = CompletionRequest::try_from(params(true, vec![image()])).expect("build");
+    let request = CompletionRequest::try_from(params(vec![image()])).expect("build");
     let wire = serde_json::to_value(&request.messages).expect("serialize");
     assert!(
         wire[0]["content"].is_array(),
@@ -92,36 +63,13 @@ fn an_image_forces_array_content_even_when_flattening_is_configured() {
     );
 }
 
-/// Text-only results are untouched by the gate, on both settings.
+/// A text-only result flattens to a string.
 #[test]
-fn a_text_tool_result_is_unaffected_by_the_gate() {
-    for supports in [false, true] {
-        let request = CompletionRequest::try_from(params(
-            supports,
-            vec![message::ToolResultContent::text("ok")],
-        ))
-        .unwrap_or_else(|e| panic!("text results must always build (supports={supports}): {e}"));
-        let wire = serde_json::to_value(&request.messages).expect("serialize");
-        assert_eq!(wire[0]["content"], "ok", "supports={supports}: {wire}");
-    }
-}
-
-/// A mixed result is refused as a whole rather than silently losing its
-/// image half.
-#[test]
-fn a_mixed_text_and_image_result_is_refused_rather_than_partly_sent() {
-    let error = CompletionRequest::try_from(params(
-        false,
-        vec![
-            message::ToolResultContent::text("here is the file"),
-            image(),
-        ],
-    ))
-    .expect_err("the image half cannot be dropped silently");
-    assert!(
-        error.to_string().contains("does not accept an image"),
-        "{error}"
-    );
+fn a_text_tool_result_is_a_string() {
+    let request = CompletionRequest::try_from(params(vec![message::ToolResultContent::text("ok")]))
+        .expect("text results build");
+    let wire = serde_json::to_value(&request.messages).expect("serialize");
+    assert_eq!(wire[0]["content"], "ok", "{wire}");
 }
 
 /// And the image shape round-trips.

@@ -54,7 +54,7 @@ fn test_deserialize_completion_response() {
         billed_units,
         tokens,
         ..
-    } = usage.unwrap();
+    } = serde_json::from_value::<Usage>(usage.unwrap()).unwrap();
     let BilledUnits {
         input_tokens: billed_input_tokens,
         output_tokens: billed_output_tokens,
@@ -104,14 +104,25 @@ fn finish_reason_maps_every_documented_wire_value() {
 }
 
 #[test]
-fn unknown_finish_reason_survives_verbatim() {
-    let reason: FinishReason =
-        serde_json::from_str("\"ERROR_TOXIC\"").expect("unknown reasons must still deserialize");
-    assert_eq!(reason, FinishReason::Other("ERROR_TOXIC".to_owned()));
-    assert_eq!(
-        map_finish_reason(&reason),
-        completion::FinishReason::Other("ERROR_TOXIC".to_owned())
-    );
+fn every_documented_finish_reason_maps_and_the_rest_fail() {
+    use completion::FinishReason as Normalized;
+    let failed = |reason: &str| Normalized::Other(reason.to_owned());
+    for (wire, expected) in [
+        ("COMPLETE", Normalized::Stop),
+        ("STOP_SEQUENCE", Normalized::Stop),
+        ("MAX_TOKENS", Normalized::Length),
+        ("TOOL_CALL", Normalized::ToolCalls),
+        ("ERROR", failed("ERROR")),
+        ("ERROR_TOXIC", failed("ERROR_TOXIC")),
+        ("ERROR_LIMIT", failed("ERROR_LIMIT")),
+        ("USER_CANCEL", failed("USER_CANCEL")),
+        ("TIMEOUT", failed("TIMEOUT")),
+        ("X_RIG_INVENTED", failed("X_RIG_INVENTED")),
+    ] {
+        let reason: FinishReason =
+            serde_json::from_value(serde_json::json!(wire)).expect("every reason deserializes");
+        assert_eq!(map_finish_reason(&reason), expected, "{wire}");
+    }
 }
 
 /// Fold one `/v2/chat` reply body through the bound chat wire, the way a
@@ -203,8 +214,7 @@ async fn response_usage_matches_the_canonical_mapping() {
             }"#;
     let response: CompletionResponse =
         serde_json::from_str(BODY).expect("response should deserialize");
-    let expected =
-        crate::completion::Usage::from(response.usage.as_ref().expect("usage should be present"));
+    let expected = usage_of(response.usage.as_ref().expect("usage should be present"));
 
     let converted = unary(BODY).await;
 
@@ -469,11 +479,11 @@ fn full_request_preserves_typed_tool_pairs_across_turns() {
 /// (HTTP 400, probed 2026-10-01). The plan is left out; everything else of
 /// the message goes back as it came.
 #[test]
-fn an_empty_tool_plan_is_left_out_of_a_replayed_message() {
+fn a_replayed_message_is_rebuilt_from_its_blocks() {
     let streamed = serde_json::json!({
         "role": "assistant",
         "content": [{"type": "text", "text": "done"}],
-        "citations": [],
+        "citations": [{"start": 0, "end": 4, "text": "done", "sources": []}],
         "tool_calls": [],
         "tool_plan": "",
     });
@@ -481,14 +491,13 @@ fn an_empty_tool_plan_is_left_out_of_a_replayed_message() {
         .with_native(streamed);
     let converted = Vec::<Message>::try_from(message::Message::Assistant(turn)).expect("converts");
     let Some(Message::Native(sent)) = converted.first() else {
-        panic!("the provider's message: {converted:?}");
+        panic!("the rebuilt message: {converted:?}");
     };
     assert_eq!(
         *sent,
         serde_json::json!({
             "role": "assistant",
             "content": [{"type": "text", "text": "done"}],
-            "citations": [],
             "tool_calls": [],
         })
     );

@@ -79,11 +79,12 @@ impl StreamingToolCall {
 }
 
 /// The keys whose string fragments concatenate when a provider streams them:
-/// text and reasoning, a call's arguments, audio's transcript and data, a
-/// reasoning detail's text and summary. Every other string is an identifier,
+/// text and reasoning, a call's arguments or custom input, audio's transcript
+/// and data, a reasoning detail's text and summary. Every other string is an identifier,
 /// a tag or a signature a later fragment restates.
-const FRAGMENT_KEYS: [&str; 12] = [
+const FRAGMENT_KEYS: [&str; 13] = [
     "content",
+    "input",
     "refusal",
     "reasoning",
     "reasoning_content",
@@ -99,9 +100,11 @@ const FRAGMENT_KEYS: [&str; 12] = [
 
 /// Merge one streamed fragment of a provider object into what arrived so
 /// far: fragment strings ([`FRAGMENT_KEYS`]) append, arrays extend, objects
-/// merge key by key, and anything else replaces. A `null` or empty string
-/// never erases a value, and a literal `null` argument placeholder gives
-/// way to the first real fragment.
+/// merge key by key, and content parts (a message's `content`, a thinking
+/// part's `thinking`) go through [`merge_content`]. A
+/// value never replaces one of another JSON type, a `null` or empty string
+/// never erases a value, and a literal `null` argument placeholder gives way
+/// to the first real fragment.
 pub(crate) fn merge_fields(
     target: &mut serde_json::Map<String, serde_json::Value>,
     delta: &serde_json::Map<String, serde_json::Value>,
@@ -111,6 +114,12 @@ pub(crate) fn merge_fields(
         let fragment = FRAGMENT_KEYS.contains(&key.as_str());
         match (target.get_mut(key), value) {
             (Some(_), Value::Null) => {}
+            (Some(existing), more)
+                if matches!(key.as_str(), "content" | "thinking")
+                    && (existing.is_array() || more.is_array()) =>
+            {
+                merge_content(existing, more);
+            }
             (Some(Value::String(existing)), Value::String(more)) if fragment => {
                 if existing.trim() == "null" && !more.trim().is_empty() {
                     existing.clear();
@@ -123,11 +132,45 @@ pub(crate) fn merge_fields(
                 existing.extend(more.iter().cloned());
             }
             (Some(Value::Object(existing)), Value::Object(more)) => merge_fields(existing, more),
+            (Some(existing), more)
+                if !existing.is_null()
+                    && std::mem::discriminant(existing) != std::mem::discriminant(more) => {}
             _ => {
                 target.insert(key.clone(), value.clone());
             }
         }
     }
+}
+
+/// Merge streamed message content into what arrived so far, as content
+/// parts once either side is a part array: a string is a text part, and a
+/// text or thinking part continues the last part of its type.
+fn merge_content(existing: &mut serde_json::Value, more: &serde_json::Value) {
+    use serde_json::Value;
+    fn parts(value: Value) -> Vec<Value> {
+        match value {
+            Value::Array(parts) => parts,
+            Value::String(text) if !text.is_empty() => {
+                vec![serde_json::json!({"type": "text", "text": text})]
+            }
+            _ => Vec::new(),
+        }
+    }
+    let mut merged = parts(std::mem::take(existing));
+    for part in parts(more.clone()) {
+        let kind = part.get("type").and_then(Value::as_str).map(str::to_owned);
+        let kind = kind.as_deref();
+        match (merged.last_mut(), part) {
+            (Some(Value::Object(last)), Value::Object(next))
+                if matches!(kind, Some("text" | "thinking"))
+                    && last.get("type").and_then(Value::as_str) == kind =>
+            {
+                merge_fields(last, &next);
+            }
+            (_, part) => merged.push(part),
+        }
+    }
+    *existing = Value::Array(merged);
 }
 
 /// Open the block `slot` names, once: its writer index.
@@ -145,37 +188,17 @@ pub(crate) fn open_once(
     Ok(index)
 }
 
-/// The text a message or delta carries: its `content` string, or the text
-/// and refusal parts of a content array, falling back to the sibling
-/// `refusal` when there is no content.
+/// The text a message or delta carries as a string: its `content`, falling
+/// back to the sibling `refusal` when there is no content. Content-part
+/// arrays go through the decoder's part dispatcher instead.
 pub(crate) fn delta_text(delta: &serde_json::Map<String, serde_json::Value>) -> Option<String> {
-    use serde_json::Value;
-    let content = match delta.get("content") {
-        Some(Value::String(text)) => text.clone(),
-        Some(Value::Array(parts)) => parts
-            .iter()
-            .filter(|part| {
-                matches!(
-                    part.get("type").and_then(Value::as_str),
-                    Some("text" | "refusal")
-                )
-            })
-            .filter_map(|part| {
-                part.get("text")
-                    .or_else(|| part.get("refusal"))
-                    .and_then(Value::as_str)
-            })
-            .collect(),
-        _ => String::new(),
-    };
-    if !content.is_empty() {
-        return Some(content);
-    }
-    delta
-        .get("refusal")
-        .and_then(Value::as_str)
-        .filter(|refusal| !refusal.is_empty())
-        .map(str::to_owned)
+    ["content", "refusal"].into_iter().find_map(|key| {
+        delta
+            .get(key)
+            .and_then(serde_json::Value::as_str)
+            .filter(|text| !text.is_empty())
+            .map(str::to_owned)
+    })
 }
 
 /// A chat-completions terminal reason, in the wire's own vocabulary.
@@ -242,23 +265,99 @@ impl ChatUsage {
         }
         usage
     }
+}
 
-    /// Normalize this accounting for a dialect with `quirks`, as the chat
-    /// wire does: [`Self::to_normalized`], with the reasoning count left
-    /// unreported where the dialect's count cannot be trusted
-    /// ([`Quirks::reliable_reasoning_count`](super::Quirks::reliable_reasoning_count)).
+impl ChatUsage {
+    /// This accounting normalized for a dialect with `quirks`, as the chat
+    /// wire reads it ([`UsageCounts`]).
     pub fn to_normalized_for(&self, quirks: &super::Quirks) -> crate::completion::Usage {
-        let mut usage = self.to_normalized();
-        if !quirks.reliable_reasoning_count {
-            usage.reasoning_tokens = None;
-        }
-        usage
+        UsageCounts::read(&serde_json::to_value(self).unwrap_or_default()).normalized(quirks)
     }
 }
 
 impl From<ChatUsage> for crate::completion::Usage {
     fn from(value: ChatUsage) -> Self {
         value.to_normalized()
+    }
+}
+
+/// The counters of a Chat usage object, read leniently: a counter that is
+/// absent, `null` or not a non-negative integer is unreported, so no usage
+/// shape fails a reply. One reader for the decoder and the observation
+/// projection.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct UsageCounts {
+    pub(crate) prompt: Option<u64>,
+    pub(crate) completion: Option<u64>,
+    pub(crate) total: Option<u64>,
+    /// `prompt_tokens_details.cached_tokens`.
+    pub(crate) cached: Option<u64>,
+    /// `completion_tokens_details.reasoning_tokens`.
+    pub(crate) reasoning: Option<u64>,
+    audio: Option<u64>,
+    cache_write: Option<u64>,
+    /// Whether the usage has the details objects the counts above sit in.
+    prompt_details: bool,
+    completion_details: bool,
+    /// Mistral's `num_cached_tokens` and DeepSeek's `prompt_cache_hit_tokens`.
+    num_cached: Option<u64>,
+    cache_hit: Option<u64>,
+}
+
+impl UsageCounts {
+    /// The counters of `usage`.
+    pub(crate) fn read(usage: &serde_json::Value) -> Self {
+        let count = |pointer: &str| usage.pointer(pointer).and_then(serde_json::Value::as_u64);
+        let object = |key: &str| usage.get(key).is_some_and(serde_json::Value::is_object);
+        Self {
+            prompt: count("/prompt_tokens"),
+            completion: count("/completion_tokens"),
+            total: count("/total_tokens"),
+            cached: count("/prompt_tokens_details/cached_tokens"),
+            reasoning: count("/completion_tokens_details/reasoning_tokens"),
+            audio: count("/prompt_tokens_details/audio_tokens"),
+            cache_write: count("/prompt_tokens_details/cache_write_tokens"),
+            prompt_details: object("prompt_tokens_details"),
+            completion_details: object("completion_tokens_details"),
+            num_cached: count("/num_cached_tokens"),
+            cache_hit: count("/prompt_cache_hit_tokens"),
+        }
+    }
+
+    /// The normalized usage, as [`Usage::to_normalized`] reads it, for a
+    /// dialect with `quirks`. A counter inside a details object the usage
+    /// has is zero when unreported; cached input falls back to Mistral's
+    /// and then DeepSeek's spelling; output is the remainder of the total
+    /// when unreported; and the reasoning count is left out where the
+    /// dialect's cannot be trusted
+    /// ([`Quirks::reliable_reasoning_count`](super::Quirks::reliable_reasoning_count)).
+    pub(crate) fn normalized(&self, quirks: &super::Quirks) -> crate::completion::Usage {
+        let audio = self.audio.unwrap_or(0);
+        let input = self.prompt.map(|prompt| {
+            let beside = prompt.saturating_add(audio);
+            let accounted = beside.saturating_add(self.completion.unwrap_or(0));
+            if audio != 0 && Some(accounted) == self.total {
+                beside
+            } else {
+                prompt
+            }
+        });
+        let in_details = |count: Option<u64>, present: bool| count.or(present.then_some(0));
+        crate::completion::Usage {
+            input_tokens: input,
+            output_tokens: self.completion.or_else(|| {
+                self.total
+                    .map(|total| total.saturating_sub(input.unwrap_or(0)))
+            }),
+            total_tokens: self.total,
+            cached_input_tokens: in_details(self.cached, self.prompt_details)
+                .or(self.num_cached)
+                .or(self.cache_hit),
+            cache_creation_input_tokens: self.cache_write,
+            reasoning_tokens: in_details(self.reasoning, self.completion_details)
+                .filter(|_| quirks.reliable_reasoning_count),
+            ..Default::default()
+        }
     }
 }
 
@@ -299,7 +398,9 @@ pub struct ChatFrame {
     pub(crate) model: Option<String>,
     #[serde(default, deserialize_with = "json_utils::null_or_default")]
     pub(crate) choices: Vec<ChatChoice>,
-    pub(crate) usage: Option<ChatUsage>,
+    /// The usage object as the provider sent it, read by [`UsageCounts`].
+    #[serde(default)]
+    pub(crate) usage: Option<serde_json::Value>,
     /// Provider-specific top-level fields. Chat-completions-compatible
     /// services add fields independently (`service_tier`, `provider`,
     /// `system_fingerprint`), and the terminal record must not erase them
@@ -332,7 +433,8 @@ impl ChatFrame {
 /// reply: the response's `raw`, so a caller reaches every provider field rig
 /// does not normalize.
 ///
-/// `U` is the accounting: [`ChatUsage`] on the wire path.
+/// `U` is the accounting: the provider's usage object as it came on the wire
+/// path, and [`ChatUsage`] for a caller reading it back typed.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct StreamingCompletionResponse<U = Usage> {
     /// Usage reported on the reply's terminal event; `None` when the reply
@@ -356,23 +458,6 @@ pub struct StreamingCompletionResponse<U = Usage> {
     /// routed `provider`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub additional_params: Option<serde_json::Map<String, serde_json::Value>>,
-}
-
-impl<U> StreamingCompletionResponse<U>
-where
-    U: Into<crate::completion::Usage>,
-{
-    /// The provider's end of the reply: normalized usage and terminal
-    /// metadata.
-    pub fn into_finish(self) -> crate::operation::Finish {
-        crate::operation::Finish {
-            usage: self.usage.map(Into::into).unwrap_or_default(),
-            reason: self.finish_reason,
-            response_id: self.response_id,
-            model: self.model,
-            ..crate::operation::Finish::default()
-        }
-    }
 }
 
 #[cfg(test)]

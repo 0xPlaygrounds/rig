@@ -157,19 +157,21 @@ async fn test_chat_completion() {
 }
 
 #[test]
-fn done_reason_maps_documented_values_and_preserves_the_rest() {
-    assert_eq!(map_done_reason("stop"), completion::FinishReason::Stop);
-    assert_eq!(map_done_reason("length"), completion::FinishReason::Length);
-    // Ollama's operational reasons have no normalized equivalent, so they
-    // are carried through verbatim rather than read as a natural stop.
-    assert_eq!(
-        map_done_reason("load"),
-        completion::FinishReason::Other("load".to_owned())
-    );
-    assert_eq!(
-        map_done_reason("unload"),
-        completion::FinishReason::Other("unload".to_owned())
-    );
+fn every_done_reason_maps_and_an_unknown_one_fails() {
+    // `load` and `unload` end a request that only loaded or unloaded the
+    // model: a stop, not a failure.
+    for (reason, expected) in [
+        ("stop", completion::FinishReason::Stop),
+        ("length", completion::FinishReason::Length),
+        ("load", completion::FinishReason::Stop),
+        ("unload", completion::FinishReason::Stop),
+        (
+            "x_rig_invented",
+            completion::FinishReason::Other("x_rig_invented".to_owned()),
+        ),
+    ] {
+        assert_eq!(map_done_reason(reason), expected, "{reason}");
+    }
 }
 
 #[tokio::test]

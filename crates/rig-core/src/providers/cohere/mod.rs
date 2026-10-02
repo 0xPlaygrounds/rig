@@ -61,3 +61,6 @@ pub(crate) fn model_dimensions_from_identifier(identifier: &str) -> Option<usize
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod history_tests;

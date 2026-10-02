@@ -10,7 +10,7 @@
 use crate::error::ProviderError;
 use crate::operation::{Block, CallFragment, Completion, Finish};
 use crate::providers::cohere::completion::{
-    CompletionResponse, FinishReason, Usage, map_finish_reason,
+    CompletionResponse, FinishReason, map_finish_reason, usage_of,
 };
 use crate::providers::internal::wire;
 use crate::providers::openai::wire::dto::{merge_fields, open_once};
@@ -139,8 +139,9 @@ impl Delta {
 /// The `message-end` payload: what the turn cost and why it stopped.
 #[derive(Debug, Deserialize)]
 pub struct MessageEndDelta {
-    /// Token counters, when Cohere reported them.
-    pub usage: Option<Usage>,
+    /// Token counters as Cohere sent them, when it reported them.
+    #[serde(default)]
+    pub usage: Option<Value>,
     /// Cohere's own finish reason.
     #[serde(default)]
     pub finish_reason: Option<FinishReason>,
@@ -150,7 +151,10 @@ pub struct MessageEndDelta {
 /// it: a streamed response's `raw`.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct StreamingCompletionResponse {
-    pub usage: Option<Usage>,
+    /// The usage as Cohere sent it, which
+    /// [`completion::Usage`](crate::providers::cohere::completion::Usage)
+    /// reads typed.
+    pub usage: Option<Value>,
     /// Cohere's own `finish_reason` from the `message-end` event, when reported.
     #[serde(default)]
     pub finish_reason: Option<FinishReason>,
@@ -236,7 +240,11 @@ impl ChatDecoder {
             StreamingEvent::ContentEnd { index } => self.close_content(index, out)?,
             StreamingEvent::ToolPlanDelta { delta } => {
                 let fragment = delta.unwrap_or_default().message;
-                if let Some(plan) = fragment.get("tool_plan").and_then(Value::as_str) {
+                if let Some(plan) = fragment
+                    .get("tool_plan")
+                    .and_then(Value::as_str)
+                    .filter(|plan| !plan.is_empty())
+                {
                     let index =
                         open_once(&mut self.plan, Block::Reasoning { redacted: false }, out)?;
                     out.push(index, plan)?;
@@ -378,9 +386,9 @@ impl ChatDecoder {
         Ok(())
     }
 
-    /// Close tool call `index`, holding its call. This endpoint drops a call
-    /// whose assembled arguments are unparseable, or that names no tool, and
-    /// the message then leaves it out too.
+    /// Close tool call `index`, holding its call. Arguments that never parse
+    /// keep what they state, and a call that names no tool is dropped by the
+    /// writer.
     fn close_call(
         &mut self,
         index: usize,
@@ -390,25 +398,7 @@ impl ChatDecoder {
             return Ok(());
         }
         let call = self.tool_calls.get(index).cloned().unwrap_or_default();
-        let complete = call
-            .pointer("/function/name")
-            .and_then(Value::as_str)
-            .is_some_and(|name| !name.is_empty())
-            && crate::json_utils::parse_tool_arguments(
-                call.pointer("/function/arguments")
-                    .and_then(Value::as_str)
-                    .unwrap_or_default(),
-            )
-            .is_ok();
-        if !complete {
-            out.discard(CALL_INDEX + index);
-            if let Some(dropped) = self.tool_calls.get_mut(index) {
-                *dropped = Value::Null;
-            }
-            return Ok(());
-        }
-        out.edit(CALL_INDEX + index, |item| *item = call)?;
-        out.finish(CALL_INDEX + index)
+        out.finish_with(CALL_INDEX + index, call)
     }
 
     /// The unary reply, restated as the events of its message, then the end
@@ -482,7 +472,7 @@ impl ChatDecoder {
     /// is this native record; a whole reply's is the reply itself.
     fn end(
         &mut self,
-        usage: Option<Usage>,
+        usage: Option<Value>,
         finish_reason: Option<FinishReason>,
         mut out: Out<'_, Completion>,
         streamed: bool,
@@ -518,10 +508,7 @@ impl ChatDecoder {
             }
         }
         out.message_native(Value::Object(message));
-        let recorded_usage = usage
-            .as_ref()
-            .map(crate::completion::Usage::from)
-            .unwrap_or_default();
+        let recorded_usage = usage.as_ref().map(usage_of).unwrap_or_default();
         let native = StreamingCompletionResponse {
             usage,
             finish_reason,

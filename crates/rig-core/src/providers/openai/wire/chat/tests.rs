@@ -1058,16 +1058,11 @@ fn a_reasoning_turn_replays_under_the_field_its_provider_sent() {
     use crate::providers::openai::wire::DEEPSEEK;
 
     let assistant = |dialect: &Dialect, field: &str| {
-        let message = serde_json::json!({
-            "role": "assistant",
-            "content": "visible answer",
-            field: "private chain",
-        });
         let turn = crate::message::AssistantMessage::new(vec![
-            AssistantContent::Reasoning(Reasoning::new("private chain")),
+            AssistantContent::Reasoning(Reasoning::new("private chain"))
+                .with_native(serde_json::json!({ field: "private chain" })),
             AssistantContent::text("visible answer"),
-        ])
-        .with_native(message);
+        ]);
         let mut request = prompt("and then?");
         request.chat_history = vec![
             Message::user("think first"),
@@ -1218,11 +1213,12 @@ fn invented_turn() -> (Vec<crate::wire::WireFrame>, Vec<crate::wire::WireFrame>)
     (vec![frame(&whole)], streamed)
 }
 
-/// A message field rig has never seen, and a field it has never seen on a
-/// tool call, survive decoding in both modes and go back to the model that
-/// sent them.
+/// A message field rig has never seen stays in the turn's message, for
+/// display, but never goes back: the message is rebuilt from its blocks. A
+/// field rig has never seen on a tool call is the call's own item, and goes
+/// back to the model that sent it.
 #[test]
-fn an_invented_message_field_and_call_field_survive_decode_and_replay() {
+fn an_invented_call_field_replays_and_an_invented_message_field_does_not() {
     use crate::message::{AssistantMessage, Message};
     use crate::wire::Mode;
 
@@ -1258,9 +1254,9 @@ fn an_invented_message_field_and_call_field_survive_decode_and_replay() {
         );
         let body = json_body(&wire.encode(request, Mode::Unary).expect("encodes").request);
         let replayed = &body["messages"][1];
-        assert_eq!(
-            replayed["x_message_probe"][0]["kind"], "invented",
-            "{mode:?}"
+        assert!(
+            replayed.get("x_message_probe").is_none(),
+            "{mode:?}: {replayed}"
         );
         assert_eq!(
             replayed["tool_calls"][0]["x_call_probe"]["kept"], true,
@@ -1342,26 +1338,38 @@ fn streamed_annotations_and_audio_survive() {
     ];
     let response = crate::test_utils::history::decode(&wire(), Mode::Streaming, frames)
         .expect("the reply decodes");
-    let Some(AssistantContent::Text(text)) = response.choice.first() else {
-        panic!("one text block: {:?}", response.choice);
+    let [
+        AssistantContent::Text(text),
+        AssistantContent::Opaque(audio),
+    ] = response.choice.as_slice()
+    else {
+        panic!("a text block and the audio: {:?}", response.choice);
     };
     assert_eq!(text.text, "See rig.rs");
-    let item = &text
-        .native
-        .as_ref()
-        .expect("the block keeps its fields")
-        .item;
+    assert_eq!(audio.item, serde_json::json!({"audio": {"id": "audio_1"}}));
+    // The message keeps every field for display.
+    let message = response.head().native.expect("the message");
     assert_eq!(
-        item["annotations"][0]["url_citation"]["url"],
-        "https://rig.rs"
-    );
-    assert_eq!(
-        item["audio"],
+        message.item["audio"],
         serde_json::json!({"id": "audio_1", "transcript": "See rig.rs", "data": "UklG"})
     );
-    let message = response.head().native.expect("the message");
-    assert_eq!(message.item["audio"]["id"], "audio_1");
-    assert_eq!(message.item["annotations"], item["annotations"]);
+    assert_eq!(
+        message.item["annotations"][0]["url_citation"]["url"],
+        "https://rig.rs"
+    );
+    // Replay sends what OpenAI takes back: the text and the audio's id.
+    let turn = crate::message::AssistantMessage {
+        content: response.choice.clone(),
+        ..response.head()
+    };
+    let replayed = crate::providers::openai::completion::assistant_message(turn);
+    let Some(crate::providers::openai::completion::Message::Native(replayed)) = replayed else {
+        panic!("a rebuilt message");
+    };
+    assert_eq!(
+        replayed,
+        serde_json::json!({"role": "assistant", "content": "See rig.rs", "audio": {"id": "audio_1"}})
+    );
 }
 
 /// pi's id rule for this wire (`openai-completions.js`, `normalizeToolCallId`)
@@ -1432,30 +1440,39 @@ fn foreign_call_ids_are_normalized_the_way_pi_does() {
 /// satisfied[('messages.2' : property 'channel' is unsupported)]" (HTTP 400,
 /// recorded 2026-10-01). The rest of the message replays as it came.
 #[test]
-fn groq_replays_its_streamed_message_without_the_channel() {
-    use crate::message::{Message, Reasoning};
+fn groq_never_gets_its_streamed_channel_back() {
+    use crate::message::Message;
 
-    let turn = crate::message::AssistantMessage::new(vec![
-        AssistantContent::Reasoning(Reasoning::new("plan")),
-        AssistantContent::text("done"),
-    ])
-    .with_native(serde_json::json!({
-        "role": "assistant",
-        "channel": "analysis",
-        "reasoning": "plan",
-        "content": "done",
-    }));
-    let mut request = prompt("and then?");
-    request.chat_history = vec![
-        Message::user("go"),
-        Message::Assistant(turn),
-        Message::user("and then?"),
-    ];
-    let encoded = OpenAIConfig::new("k")
+    let wire = OpenAIConfig::new("k")
         .with_dialect(&GROQ)
-        .chat("openai/gpt-oss-20b")
-        .encode(request, Mode::Unary)
-        .expect("encodes");
+        .chat("openai/gpt-oss-20b");
+    let frames = vec![
+        delta_chunk(
+            serde_json::json!({"role": "assistant", "channel": "analysis", "reasoning": "plan"}),
+            None,
+        ),
+        delta_chunk(
+            serde_json::json!({"channel": "final", "content": "done"}),
+            Some("stop"),
+        ),
+        crate::wire::WireFrame::Text("[DONE]".to_owned()),
+    ];
+    let response = crate::test_utils::history::decode(&wire, Mode::Streaming, frames)
+        .expect("the reply decodes");
+    let turn = crate::message::AssistantMessage {
+        content: response.choice.clone(),
+        ..response.head()
+    };
+    let mut request = prompt("and then?");
+    request.chat_history = crate::completion::history::adapt(
+        &[
+            Message::user("go"),
+            Message::Assistant(turn),
+            Message::user("and then?"),
+        ],
+        &wire,
+    );
+    let encoded = wire.encode(request, Mode::Unary).expect("encodes");
     assert_eq!(
         json_body(&encoded.request)["messages"][1],
         serde_json::json!({"role": "assistant", "reasoning": "plan", "content": "done"})
@@ -1463,8 +1480,9 @@ fn groq_replays_its_streamed_message_without_the_channel() {
 }
 
 /// A streamed function call that never gets a name is dropped, since
-/// nothing can answer it; a call of a kind rig does not model is kept as it
-/// came, and content that is not text fails the reply.
+/// nothing can answer it; a custom call is a call whose arguments are its
+/// `{"input"}`, kept with its item; a call of a kind rig cannot answer is
+/// kept but never sent back; and content that is not text fails the reply.
 #[test]
 fn malformed_and_unknown_calls_are_never_dropped_silently() {
     use crate::wire::Mode;
@@ -1485,10 +1503,32 @@ fn malformed_and_unknown_calls_are_never_dropped_silently() {
         Some("tool_calls"),
     )];
     let response = crate::test_utils::history::decode(&wire, Mode::Streaming, custom)
+        .expect("a custom call decodes");
+    let [AssistantContent::ToolCall(call)] = response.choice.as_slice() else {
+        panic!("a custom call is a call: {:?}", response.choice);
+    };
+    assert_eq!(call.function.name.as_str(), "grep");
+    assert_eq!(
+        call.function.arguments_value(),
+        serde_json::json!({"input": "x"})
+    );
+    assert_eq!(
+        call.native
+            .as_ref()
+            .map(|native| native.item["type"].clone()),
+        Some(serde_json::json!("custom"))
+    );
+
+    let invented = vec![delta_chunk(
+        serde_json::json!({"tool_calls": [{"index": 0, "id": "call_1", "type": "x_rig_invented",
+                "x_rig_invented": {"name": "grep"}}]}),
+        Some("tool_calls"),
+    )];
+    let response = crate::test_utils::history::decode(&wire, Mode::Streaming, invented)
         .expect("an unknown call kind decodes");
     assert!(
         matches!(response.choice.as_slice(), [AssistantContent::Opaque(opaque)]
-            if opaque.item["custom"]["name"] == "grep"),
+            if !opaque.replay && opaque.item["type"] == "x_rig_invented"),
         "{:?}",
         response.choice
     );

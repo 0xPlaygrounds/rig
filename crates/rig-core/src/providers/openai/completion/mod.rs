@@ -376,9 +376,9 @@ pub struct FileData {
     pub filename: Option<String>,
 }
 
-/// Text or image content in a tool-result message.
-/// Image emission requires
-/// [`Quirks::supports_image_tool_results`](crate::providers::openai::wire::Quirks::supports_image_tool_results).
+/// Text or image content in a tool-result message. An image reaches it only
+/// on a dialect that reads one
+/// ([`Quirks::supports_image_tool_results`](crate::providers::openai::wire::Quirks::supports_image_tool_results)).
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 #[serde(tag = "type")]
 pub enum ToolResultContent {
@@ -886,90 +886,73 @@ pub fn user_content_to_messages(
     Ok(messages)
 }
 
-/// One assistant turn as the message Chat Completions takes.
-///
-/// The provider's message goes back as it came while the turn still holds
-/// what it was decoded from. Otherwise the message is rebuilt the way pi
-/// rebuilds it: text joined into a `content` string, reasoning sent only
-/// under the fields that carried it (an unedited block's own fields,
-/// `reasoning_details` verbatim), and each call as it came or rebuilt from
-/// its canonical fields. A message with neither content nor tool calls is
-/// `None`, as pi skips it: providers reject an empty assistant message.
-/// Images are a conversion error.
-#[deny(clippy::wildcard_enum_match_arm)]
-pub fn assistant_message(
-    turn: message::AssistantMessage,
-) -> Result<Option<Message>, message::MessageError> {
-    use crate::providers::openai::wire::dto::merge_fields;
-    let wire = match turn.native_item() {
-        Some(serde_json::Value::Object(item)) => item.clone(),
-        _ => {
-            let mut wire = serde_json::Map::new();
-            wire.insert("role".to_owned(), "assistant".into());
-            let mut calls = Vec::new();
-            for block in turn.content {
-                let native = block
-                    .native_item()
-                    .and_then(serde_json::Value::as_object)
-                    .cloned();
-                match (block, native) {
-                    (message::AssistantContent::ToolCall(_), Some(call)) => {
-                        calls.push(serde_json::Value::Object(call));
-                    }
-                    (message::AssistantContent::ToolCall(call), None) => {
-                        calls.push(serde_json::to_value(ToolCall::from(call)).map_err(
-                            |error| message::MessageError::ConversionError(error.to_string()),
-                        )?);
-                    }
-                    (
-                        message::AssistantContent::Text(_)
-                        | message::AssistantContent::Reasoning(_)
-                        | message::AssistantContent::Opaque(_),
-                        Some(fields),
-                    ) => merge_fields(&mut wire, &fields),
-                    (message::AssistantContent::Opaque(message::Opaque { item, .. }), None) => {
-                        if let serde_json::Value::Object(fields) = item {
-                            merge_fields(&mut wire, &fields);
-                        }
-                    }
-                    (message::AssistantContent::Text(text), None) => {
-                        // pi leaves out blank text.
-                        if !text.text.trim().is_empty() {
-                            let content = serde_json::Map::from_iter([(
-                                "content".to_owned(),
-                                text.text.into(),
-                            )]);
-                            merge_fields(&mut wire, &content);
-                        }
-                    }
-                    // Reasoning with no field of its own has nowhere to go.
-                    (message::AssistantContent::Reasoning(_), None) => {}
-                    (message::AssistantContent::Image(_), _) => {
-                        return Err(message::MessageError::ConversionError(
-                            "OpenAI assistant messages do not support image content in chat \
-                             completions"
-                                .into(),
-                        ));
-                    }
+/// One assistant turn as the message Chat Completions takes, rebuilt from
+/// its blocks the way pi rebuilds it: text joined into a `content` string,
+/// or a part array when a block is a content part (Mistral's thinking),
+/// reasoning under the field it arrived in, `reasoning_details` and other
+/// item fields verbatim, and each call with its canonical name and
+/// arguments. The provider's own message is never sent. A message with
+/// neither content nor tool calls is `None`, as pi skips it: providers
+/// reject an empty assistant message.
+pub fn assistant_message(turn: message::AssistantMessage) -> Option<Message> {
+    use crate::providers::internal::rebuild::{Piece, Rebuilt, call_item};
+    let rebuilt = Rebuilt::of(&turn);
+    let mut wire = serde_json::Map::new();
+    wire.insert("role".to_owned(), "assistant".into());
+    if rebuilt.has_parts() {
+        let parts: Vec<serde_json::Value> = rebuilt
+            .pieces
+            .iter()
+            .filter_map(|piece| match piece {
+                Piece::Text {
+                    part: Some(part), ..
                 }
-            }
-            if !calls.is_empty() {
-                wire.insert("tool_calls".to_owned(), serde_json::Value::Array(calls));
-            }
-            wire
+                | Piece::Reasoning {
+                    part: Some(part), ..
+                } => Some(part.clone()),
+                Piece::Text { text, part: None } => (!text.trim().is_empty())
+                    .then(|| serde_json::json!({"type": "text", "text": text})),
+                Piece::Opaque(item) => item.get("type").is_some().then(|| item.clone()),
+                Piece::Reasoning { part: None, .. } => None,
+            })
+            .collect();
+        wire.insert("content".to_owned(), parts.into());
+    } else {
+        let text = rebuilt.text();
+        if !text.is_empty() {
+            wire.insert("content".to_owned(), text.into());
         }
-    };
+    }
+    for (field, text) in rebuilt.reasoning(None) {
+        wire.insert(field, text.into());
+    }
+    for piece in &rebuilt.pieces {
+        if let Piece::Opaque(serde_json::Value::Object(fields)) = piece
+            && !fields.contains_key("type")
+        {
+            wire.extend(fields.clone());
+        }
+    }
+    wire.extend(rebuilt.fields);
+    let calls: Vec<serde_json::Value> = rebuilt
+        .calls
+        .into_iter()
+        .map(|(call, item)| {
+            let id = call.id.wire().into_owned();
+            call_item(&call, item, Some(id), true)
+        })
+        .collect();
+    if !calls.is_empty() {
+        wire.insert("tool_calls".to_owned(), calls.into());
+    }
     let has_content = wire.contains_key("audio")
         || match wire.get("content") {
             Some(serde_json::Value::String(text)) => !text.is_empty(),
             Some(serde_json::Value::Array(parts)) => !parts.is_empty(),
             _ => false,
         };
-    let has_calls = wire
-        .get("tool_calls")
-        .and_then(serde_json::Value::as_array)
-        .is_some_and(|calls| !calls.is_empty());
-    Ok((has_content || has_calls).then(|| Message::Native(serde_json::Value::Object(wire))))
+    (has_content || wire.contains_key("tool_calls"))
+        .then(|| Message::Native(serde_json::Value::Object(wire)))
 }
 
 /// The id slots of the tool calls a converted message carries, in order. A
@@ -1008,7 +991,7 @@ impl TryFrom<message::Message> for Vec<Message> {
         match message {
             message::Message::System { content } => Ok(vec![Message::system(&content)]),
             message::Message::User { content } => user_content_to_messages(content),
-            message::Message::Assistant(turn) => Ok(assistant_message(turn)?.into_iter().collect()),
+            message::Message::Assistant(turn) => Ok(assistant_message(turn).into_iter().collect()),
         }
     }
 }
@@ -1373,87 +1356,11 @@ pub(crate) fn flatten_text_content_parts(
     *content = serde_json::Value::String(flattened);
 }
 
-/// Remove tool messages, assistant tool calls, and empty assistant turns.
-/// Optionally strip names and flatten content using the supplied separator and
-/// text-only guard. With `merge_same_role`, join adjacent user or assistant text
-/// messages of the same role with newlines.
-pub(crate) fn sanitize_plain_text_history(
-    messages: &mut Vec<serde_json::Value>,
-    flatten: Option<(&str, bool)>,
-    strip_names: bool,
-    merge_same_role: bool,
-) {
-    messages
-        .retain(|message| message.get("role").and_then(serde_json::Value::as_str) != Some("tool"));
-
-    for message in messages.iter_mut() {
-        let Some(object) = message.as_object_mut() else {
-            continue;
-        };
-        if object.get("role").and_then(serde_json::Value::as_str) == Some("assistant") {
-            object.shift_remove("tool_calls");
-        }
-        if strip_names {
-            object.shift_remove("name");
-        }
-        if let Some((separator, only_if_all_text)) = flatten
-            && let Some(content) = object.get_mut("content")
-        {
-            flatten_text_content_parts(content, separator, only_if_all_text);
-        }
-    }
-
-    messages.retain(|message| {
-        if message.get("role").and_then(serde_json::Value::as_str) != Some("assistant") {
-            return true;
-        }
-        match message.get("content") {
-            Some(serde_json::Value::String(text)) => !text.is_empty(),
-            Some(serde_json::Value::Null) | None => false,
-            Some(_) => true,
-        }
-    });
-
-    if !merge_same_role {
-        return;
-    }
-
-    let mut merged: Vec<serde_json::Value> = Vec::with_capacity(messages.len());
-    for message in std::mem::take(messages) {
-        let merged_text = if let Some(role) = message
-            .get("role")
-            .and_then(serde_json::Value::as_str)
-            .filter(|role| matches!(*role, "assistant" | "user"))
-            && let Some(previous) = merged.last()
-            && previous.get("role").and_then(serde_json::Value::as_str) == Some(role)
-            && let Some(previous_text) = previous.get("content").and_then(serde_json::Value::as_str)
-            && let Some(text) = message.get("content").and_then(serde_json::Value::as_str)
-        {
-            Some(format!("{previous_text}\n{text}"))
-        } else {
-            None
-        };
-
-        if let Some(text) = merged_text
-            && let Some(previous) = merged.last_mut().and_then(serde_json::Value::as_object_mut)
-        {
-            previous.insert("content".to_string(), serde_json::Value::String(text));
-            continue;
-        }
-        merged.push(message);
-    }
-    *messages = merged;
-}
-
 pub struct OpenAIRequestParams {
     pub model: String,
     pub request: CoreCompletionRequest,
     pub strict_tools: bool,
     pub tool_result_array_content: bool,
-    /// Whether the endpoint honours an image inside a `role:"tool"` message;
-    /// see
-    /// [`Quirks::supports_image_tool_results`](crate::providers::openai::wire::Quirks::supports_image_tool_results).
-    pub supports_image_tool_results: bool,
     /// Maps `output_schema` to `response_format` when true; drops it with a
     /// warning when false (providers whose APIs reject `json_schema`).
     pub supports_response_format: bool,
@@ -1475,7 +1382,6 @@ impl TryFrom<OpenAIRequestParams> for CompletionRequest {
             request: req,
             strict_tools,
             tool_result_array_content,
-            supports_image_tool_results,
             supports_response_format,
             response_format_with_tools,
             supports_tools,
@@ -1509,34 +1415,15 @@ impl TryFrom<OpenAIRequestParams> for CompletionRequest {
             )));
         }
 
-        // Image support is dialect-specific and unavailable during isolated result conversion.
         for msg in &mut full_history {
             if let Message::ToolResult { content, .. } = msg {
-                if content.has_image() {
-                    if !supports_image_tool_results {
-                        // Reject unsupported images instead of silently removing tool output.
-                        return Err(EncodeError::request(concat!(
-                            "this provider does not accept an image in a tool result. ",
-                            "Official OpenAI refuses it on Chat Completions (and the GPT-5 ",
-                            "family accepts the request while ignoring the image); use the ",
-                            "Responses API, which carries images in `function_call_output`, ",
-                            "or a server that sets `SUPPORTS_IMAGE_TOOL_RESULTS` ",
-                            "(llama.cpp does)",
-                        )));
-                    }
-                    // An image cannot be flattened to a string, so array form is
-                    // forced regardless of `tool_result_array_content`.
-                    *content = content.to_array();
-                    continue;
-                }
-
-                let normalized = if tool_result_array_content {
+                // An image reaches a tool result only where the dialect reads
+                // it, and has no string form.
+                *content = if tool_result_array_content || content.has_image() {
                     content.to_array()
                 } else {
                     ToolResultContentValue::String(content.as_text())
                 };
-
-                *content = normalized;
             }
         }
 

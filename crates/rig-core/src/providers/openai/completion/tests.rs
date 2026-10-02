@@ -144,58 +144,6 @@ fn video_url_with_unrecognized_mime_stays_a_url_on_the_wire() {
 }
 
 #[test]
-fn sanitize_plain_text_history_strips_tool_exchange_and_keeps_alternation() {
-    let mut messages = vec![
-        serde_json::json!({"role": "user", "content": "Look up the label."}),
-        serde_json::json!({"role": "assistant", "tool_calls": [
-            {"id": "call_1", "type": "function", "function": {"name": "lookup", "arguments": "{}"}}
-        ]}),
-        serde_json::json!({"role": "tool", "tool_call_id": "call_1", "content": "crimson"}),
-        serde_json::json!({
-            "role": "assistant",
-            "content": [{"type": "text", "text": "The label is crimson."}],
-            "reasoning_content": "thinking"
-        }),
-        serde_json::json!({"role": "user", "content": "Thanks!"}),
-    ];
-
-    sanitize_plain_text_history(&mut messages, Some(("\n", true)), false, true);
-
-    let roles = messages
-        .iter()
-        .map(|m| m["role"].as_str().unwrap_or_default())
-        .collect::<Vec<_>>();
-    // tool message removed, tool-call-only assistant dropped, no
-    // consecutive assistants left.
-    assert_eq!(roles, ["user", "assistant", "user"]);
-    assert_eq!(messages[1]["content"], "The label is crimson.");
-    // A provider's own reasoning field replays as it came.
-    assert_eq!(messages[1]["reasoning_content"], "thinking");
-    assert!(messages[1].get("tool_calls").is_none());
-}
-
-#[test]
-fn sanitize_plain_text_history_merges_consecutive_user_messages() {
-    // Dropping a tool exchange whose final assistant answer never made it
-    // into history leaves user/user adjacency, which alternation-strict
-    // APIs reject.
-    let mut messages = vec![
-        serde_json::json!({"role": "user", "content": "Look it up."}),
-        serde_json::json!({"role": "assistant", "tool_calls": [
-            {"id": "call_1", "type": "function", "function": {"name": "lookup", "arguments": "{}"}}
-        ]}),
-        serde_json::json!({"role": "tool", "tool_call_id": "call_1", "content": "crimson"}),
-        serde_json::json!({"role": "user", "content": "Ask again."}),
-    ];
-
-    sanitize_plain_text_history(&mut messages, Some(("\n", true)), false, true);
-
-    assert_eq!(messages.len(), 1);
-    assert_eq!(messages[0]["role"], "user");
-    assert_eq!(messages[0]["content"], "Look it up.\nAsk again.");
-}
-
-#[test]
 fn flatten_text_content_parts_treats_refusals_as_text() {
     let mut content = serde_json::json!([
         {"type": "text", "text": "Partly:"},
@@ -208,20 +156,6 @@ fn flatten_text_content_parts_treats_refusals_as_text() {
 }
 
 #[test]
-fn sanitize_plain_text_history_merges_consecutive_assistant_messages() {
-    let mut messages = vec![
-        serde_json::json!({"role": "assistant", "content": "First."}),
-        serde_json::json!({"role": "tool", "tool_call_id": "c", "content": "x"}),
-        serde_json::json!({"role": "assistant", "content": "Second."}),
-    ];
-
-    sanitize_plain_text_history(&mut messages, Some(("\n", true)), false, true);
-
-    assert_eq!(messages.len(), 1);
-    assert_eq!(messages[0]["content"], "First.\nSecond.");
-}
-
-#[test]
 fn tool_result_array_content_preserves_multiple_text_blocks() {
     let request = CompletionRequest::try_from(OpenAIRequestParams {
         model: "gpt-4o-mini".to_string(),
@@ -230,7 +164,6 @@ fn tool_result_array_content_preserves_multiple_text_blocks() {
         tool_result_array_content: true,
         supports_response_format: true,
         response_format_with_tools: false,
-        supports_image_tool_results: false,
         supports_tools: true,
     })
     .expect("request conversion should succeed");
@@ -267,7 +200,6 @@ fn tool_result_string_content_flattens_multiple_text_blocks() {
         tool_result_array_content: false,
         supports_response_format: true,
         response_format_with_tools: false,
-        supports_image_tool_results: false,
         supports_tools: true,
     })
     .expect("request conversion should succeed");
@@ -327,7 +259,6 @@ fn test_openai_request_uses_request_model_override() {
         tool_result_array_content: false,
         supports_response_format: true,
         response_format_with_tools: false,
-        supports_image_tool_results: false,
         supports_tools: true,
     })
     .expect("request conversion should succeed");
@@ -354,7 +285,6 @@ fn tool_choice_is_dropped_when_no_tool_is_advertised() {
             tool_result_array_content: false,
             supports_response_format: true,
             response_format_with_tools: false,
-            supports_image_tool_results: false,
             supports_tools: true,
         })
         .expect("request conversion should succeed")
@@ -387,7 +317,6 @@ fn test_openai_request_uses_default_model_when_override_unset() {
         tool_result_array_content: false,
         supports_response_format: true,
         response_format_with_tools: false,
-        supports_image_tool_results: false,
         supports_tools: true,
     })
     .expect("request conversion should succeed");
@@ -413,7 +342,6 @@ fn openai_chat_request_keeps_documents_after_system_messages() {
         tool_result_array_content: false,
         supports_response_format: true,
         response_format_with_tools: false,
-        supports_image_tool_results: false,
         supports_tools: true,
     })
     .expect("request conversion should succeed");
@@ -464,7 +392,6 @@ fn openai_chat_direct_request_keeps_documents_after_system_messages() {
         tool_result_array_content: false,
         supports_response_format: true,
         response_format_with_tools: false,
-        supports_image_tool_results: false,
         supports_tools: true,
     })
     .expect("request conversion should succeed");
@@ -498,7 +425,7 @@ fn assistant_reasoning_alone_is_dropped() {
     let turn = message::AssistantMessage::new(vec![message::AssistantContent::reasoning("hidden")]);
 
     assert_eq!(
-        assistant_message(turn).expect("conversion should work"),
+        assistant_message(turn),
         None,
         "pi skips a message with neither content nor tool calls"
     );
@@ -523,8 +450,7 @@ fn an_unedited_reasoning_block_replays_its_own_field_beside_a_rebuilt_call() {
     let mut turn = turn;
     turn.content.pop();
 
-    let Some(Message::Native(json)) = assistant_message(turn).expect("conversion should work")
-    else {
+    let Some(Message::Native(json)) = assistant_message(turn) else {
         panic!("a turn with content converts to a message");
     };
     assert_eq!(
@@ -795,7 +721,6 @@ fn test_max_tokens_is_forwarded_to_request() {
         tool_result_array_content: false,
         supports_response_format: true,
         response_format_with_tools: false,
-        supports_image_tool_results: false,
         supports_tools: true,
     })
     .expect("request conversion should succeed");
@@ -815,7 +740,6 @@ fn capped_request(max_tokens: Option<u64>, additional_params: Option<Value>) -> 
         tool_result_array_content: false,
         supports_response_format: true,
         response_format_with_tools: false,
-        supports_image_tool_results: false,
         supports_tools: true,
     })
     .expect("request conversion should succeed")
@@ -966,7 +890,6 @@ fn test_max_tokens_omitted_when_none() {
         tool_result_array_content: false,
         supports_response_format: true,
         response_format_with_tools: false,
-        supports_image_tool_results: false,
         supports_tools: true,
     })
     .expect("request conversion should succeed");
@@ -1011,7 +934,6 @@ fn additional_params_function_tools_merge_and_native_tools_stay() {
         tool_result_array_content: false,
         supports_response_format: true,
         response_format_with_tools: false,
-        supports_image_tool_results: false,
         supports_tools: true,
     })
     .expect("request conversion should succeed");
@@ -1041,7 +963,6 @@ fn request_conversion_errors_when_all_messages_are_filtered() {
         tool_result_array_content: false,
         supports_response_format: true,
         response_format_with_tools: false,
-        supports_image_tool_results: false,
         supports_tools: true,
     });
 
@@ -1085,7 +1006,6 @@ fn request_conversion_omits_response_format_on_initial_tool_turn() {
         tool_result_array_content: false,
         supports_response_format: true,
         response_format_with_tools: false,
-        supports_image_tool_results: false,
         supports_tools: true,
     })
     .expect("request conversion should succeed");
@@ -1146,7 +1066,6 @@ fn request_conversion_restores_response_format_after_tool_result() {
         tool_result_array_content: false,
         supports_response_format: true,
         response_format_with_tools: false,
-        supports_image_tool_results: false,
         supports_tools: true,
     })
     .expect("request conversion should succeed");
@@ -1705,7 +1624,6 @@ fn request_plans_tool_ids_across_namespaces_turns_and_split_user_content() {
         tool_result_array_content: true,
         supports_response_format: true,
         response_format_with_tools: false,
-        supports_image_tool_results: false,
         supports_tools: true,
     })
     .unwrap();
@@ -1739,7 +1657,6 @@ fn additional_params_override_typed_fields_on_the_wire() {
         tool_result_array_content: true,
         supports_response_format: true,
         response_format_with_tools: false,
-        supports_image_tool_results: false,
         supports_tools: true,
     })
     .expect("request conversion should succeed");

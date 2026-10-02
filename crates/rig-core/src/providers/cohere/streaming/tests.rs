@@ -404,9 +404,8 @@ fn test_message_end_with_usage_deserialization() {
         StreamingEvent::MessageEnd { delta } => {
             assert!(delta.is_some());
             let usage = delta.unwrap().usage.unwrap();
-            let tokens = usage.tokens.unwrap();
-            assert_eq!(tokens.input_tokens, Some(100.0));
-            assert_eq!(tokens.output_tokens, Some(50.0));
+            assert_eq!(usage["tokens"]["input_tokens"], 100);
+            assert_eq!(usage["tokens"]["output_tokens"], 50);
         }
         _ => panic!("Expected MessageEnd"),
     }

@@ -107,7 +107,6 @@ pub const HYPERBOLIC: Dialect = Dialect {
         audio_generation_path: "/v1/audio/generation",
         image_body: ImageBody::Hyperbolic,
         speech_body: SpeechBody::Hyperbolic,
-        rewrite: BodyRewrite::Hyperbolic,
         ..Quirks::openai()
     },
     // The bare host: the chat path carries its own `/v1`.

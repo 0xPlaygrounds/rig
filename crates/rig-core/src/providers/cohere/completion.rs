@@ -22,14 +22,17 @@ use serde::{Deserialize, Serialize};
 /// telemetry spans for this provider.
 pub(crate) const PROVIDER_NAME: &str = "cohere";
 
+/// The whole `/v2/chat` reply. Only `message` and `finish_reason` build the
+/// turn; the usage stays as Cohere sent it, read by [`usage_of`].
 #[derive(Debug, Deserialize, Serialize)]
 pub struct CompletionResponse {
+    #[serde(default)]
     pub id: String,
     pub finish_reason: FinishReason,
     /// The assistant message, as Cohere sent it.
     pub message: serde_json::Value,
     #[serde(default)]
-    pub usage: Option<Usage>,
+    pub usage: Option<serde_json::Value>,
 }
 
 impl CompletionResponse {
@@ -61,6 +64,10 @@ pub enum FinishReason {
     StopSequence,
     Complete,
     Error,
+    ErrorToxic,
+    ErrorLimit,
+    UserCancel,
+    Timeout,
     ToolCall,
     /// A reason outside the set Cohere documents today, kept verbatim in
     /// Cohere's own spelling rather than failing deserialization.
@@ -68,15 +75,48 @@ pub enum FinishReason {
     Other(String),
 }
 
-/// Normalize the terminal reason, preserving `ERROR` and unknown values as
-/// [`completion::FinishReason::Other`] rather than treating them as natural stops.
+/// Normalize the terminal reason. Every documented failure (`ERROR`,
+/// `ERROR_TOXIC`, `ERROR_LIMIT`, `USER_CANCEL`, `TIMEOUT`) and any unknown
+/// value is [`completion::FinishReason::Other`] in Cohere's spelling, which
+/// fails the turn.
 pub(crate) fn map_finish_reason(reason: &FinishReason) -> completion::FinishReason {
+    let failed = |reason: &str| completion::FinishReason::Other(reason.to_owned());
     match reason {
         FinishReason::Complete | FinishReason::StopSequence => completion::FinishReason::Stop,
         FinishReason::MaxTokens => completion::FinishReason::Length,
         FinishReason::ToolCall => completion::FinishReason::ToolCalls,
-        FinishReason::Error => completion::FinishReason::Other("ERROR".to_owned()),
-        FinishReason::Other(other) => completion::FinishReason::Other(other.clone()),
+        FinishReason::Error => failed("ERROR"),
+        FinishReason::ErrorToxic => failed("ERROR_TOXIC"),
+        FinishReason::ErrorLimit => failed("ERROR_LIMIT"),
+        FinishReason::UserCancel => failed("USER_CANCEL"),
+        FinishReason::Timeout => failed("TIMEOUT"),
+        FinishReason::Other(other) => failed(other),
+    }
+}
+
+/// The normalized usage of a Cohere usage object, read leniently: a counter
+/// that is absent or not a number is unreported. Totals count tokens, not
+/// billed units, which exclude cached input and system overhead; a total
+/// needs both counts, and cached input is reported only beside `tokens`.
+pub(crate) fn usage_of(usage: &serde_json::Value) -> crate::completion::Usage {
+    let count = |pointer: &str| {
+        usage
+            .pointer(pointer)
+            .and_then(serde_json::Value::as_f64)
+            .filter(|count| *count >= 0.0)
+            .map(|count| count as u64)
+    };
+    let input_tokens = count("/tokens/input_tokens");
+    let output_tokens = count("/tokens/output_tokens");
+    crate::completion::Usage {
+        input_tokens,
+        output_tokens,
+        total_tokens: input_tokens
+            .zip(output_tokens)
+            .map(|(input, output)| input + output),
+        cached_input_tokens: count("/cached_tokens")
+            .filter(|_| usage.get("tokens").is_some_and(|tokens| !tokens.is_null())),
+        ..Default::default()
     }
 }
 
@@ -91,24 +131,10 @@ pub struct Usage {
     pub cached_tokens: Option<f64>,
 }
 
-/// Normalize total token counters, not billed units, which exclude cached input
-/// and system overhead. A total requires both input and output counts.
+/// [`usage_of`] the usage this typed view reads.
 impl From<&Usage> for crate::completion::Usage {
     fn from(usage: &Usage) -> crate::completion::Usage {
-        let tokens = usage.tokens.as_ref();
-        let input_tokens = tokens.and_then(|t| t.input_tokens).map(|n| n as u64);
-        let output_tokens = tokens.and_then(|t| t.output_tokens).map(|n| n as u64);
-        crate::completion::Usage {
-            input_tokens,
-            output_tokens,
-            total_tokens: input_tokens
-                .zip(output_tokens)
-                .map(|(input, output)| input + output),
-            // `cached_input_tokens` is a subset of `input_tokens`, so it's only
-            // reported when Cohere also reports `tokens`.
-            cached_input_tokens: tokens.and(usage.cached_tokens).map(|n| n as u64),
-            ..Default::default()
-        }
+        usage_of(&serde_json::to_value(usage).unwrap_or_default())
     }
 }
 
@@ -254,8 +280,13 @@ pub enum Message {
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum UserContent {
-    Text { text: String },
-    ImageUrl { image_url: ImageUrl },
+    Text {
+        text: String,
+    },
+    #[serde(rename = "image_url")]
+    ImageUrl {
+        image_url: ImageUrl,
+    },
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -316,121 +347,149 @@ impl TryFrom<message::Message> for Vec<Message> {
 
     fn try_from(message: message::Message) -> Result<Self, Self::Error> {
         Ok(match message {
-            message::Message::User { content } => content
-                .into_iter()
-                .map(|content| match content {
-                    message::UserContent::Text(message::Text { text, .. }) => Ok(Message::User {
-                        content: vec![UserContent::Text { text }],
-                    }),
-                    message::UserContent::ToolResult(tool_result) => Ok(Message::Tool {
-                        tool_call_id: tool_result.call.wire().into_owned(),
-                        content: tool_result
-                            .content
-                            .into_iter()
-                            .map(|content| match content {
-                                message::ToolResultContent::Text(text) => {
-                                    Ok(ToolResultContent::Text { text: text.text })
-                                }
-                                message::ToolResultContent::Json { value } => {
-                                    Ok(ToolResultContent::Text {
-                                        text: value.to_string(),
-                                    })
-                                }
-                                message::ToolResultContent::Image(_) => {
-                                    Err(message::MessageError::ConversionError(
-                                        "Only text tool result content is supported by Cohere"
-                                            .to_owned(),
-                                    ))
-                                }
-                            })
-                            .collect::<Result<Vec<_>, _>>()?,
-                    }),
-                    _ => Err(message::MessageError::ConversionError(
-                        "Only text content is supported by Cohere".to_owned(),
-                    )),
-                })
-                .collect::<Result<Vec<_>, _>>()?,
+            message::Message::User { content } => user_messages(content)?,
             message::Message::System { content } => {
                 vec![Message::System { content }]
             }
-            message::Message::Assistant(turn) => vec![assistant_message(turn)?],
+            message::Message::Assistant(turn) => assistant_message(turn).into_iter().collect(),
         })
     }
 }
 
-/// One assistant turn as Cohere takes it: Cohere's message while the turn
-/// still holds what it was decoded from, otherwise rebuilt with each
-/// unedited item as it came. Images are a conversion error.
-#[deny(clippy::wildcard_enum_match_arm)]
-fn assistant_message(turn: message::AssistantMessage) -> Result<Message, message::MessageError> {
-    if let Some(item) = turn.native_item() {
-        return Ok(Message::Native(input_form(item.clone())));
-    }
-    let mut content = Vec::new();
-    let mut tool_calls = Vec::new();
-    let mut tool_plan = serde_json::Value::Null;
-    for block in turn.content {
-        let native = block.native_item().cloned();
-        match (block, native) {
-            (message::AssistantContent::ToolCall(_), Some(call)) => tool_calls.push(call),
-            (message::AssistantContent::ToolCall(call), None) => {
-                tool_calls.push(serde_json::json!({
-                    "id": call.id.wire(),
-                    "type": "function",
-                    "function": {
-                        "name": call.function.name,
-                        "arguments": call.function.arguments_value().to_string(),
-                    },
-                }));
+/// A user message as Cohere takes it: each run of text and images one user
+/// message, and each tool result a tool message, in order.
+fn user_messages(
+    content: Vec<message::UserContent>,
+) -> Result<Vec<Message>, message::MessageError> {
+    let mut messages = Vec::new();
+    let mut pending = Vec::new();
+    for part in content {
+        match part {
+            message::UserContent::Text(message::Text { text, .. }) => {
+                pending.push(UserContent::Text { text });
             }
-            // The tool plan is the one item that is a field, not content.
-            (
-                message::AssistantContent::Reasoning(_),
-                Some(serde_json::Value::Object(mut fields)),
-            ) if fields.contains_key("tool_plan") => {
-                tool_plan = fields.shift_remove("tool_plan").unwrap_or_default();
+            message::UserContent::Image(image) => pending.push(UserContent::ImageUrl {
+                image_url: ImageUrl {
+                    url: image_url(image)?,
+                },
+            }),
+            message::UserContent::ToolResult(tool_result) => {
+                if !pending.is_empty() {
+                    messages.push(Message::User {
+                        content: std::mem::take(&mut pending),
+                    });
+                }
+                messages.push(Message::Tool {
+                    tool_call_id: tool_result.call.wire().into_owned(),
+                    content: tool_result
+                        .content
+                        .into_iter()
+                        .map(|content| match content {
+                            message::ToolResultContent::Text(text) => {
+                                ToolResultContent::Text { text: text.text }
+                            }
+                            message::ToolResultContent::Json { value } => ToolResultContent::Text {
+                                text: value.to_string(),
+                            },
+                            // The adapter moves a result's images to a user
+                            // message, since Cohere reads none here.
+                            message::ToolResultContent::Image(_) => ToolResultContent::Text {
+                                text: crate::completion::history::TOOL_IMAGE_OMITTED.to_owned(),
+                            },
+                        })
+                        .collect(),
+                });
             }
-            (
-                message::AssistantContent::Text(_)
-                | message::AssistantContent::Reasoning(_)
-                | message::AssistantContent::Opaque(_),
-                Some(item),
-            ) => content.push(item),
-            (message::AssistantContent::Opaque(opaque), None) => content.push(opaque.item),
-            (message::AssistantContent::Text(text), None) => {
-                content.push(serde_json::json!({"type": "text", "text": text.text}));
-            }
-            (message::AssistantContent::Reasoning(reasoning), None) => {
-                content.push(serde_json::json!({"type": "thinking", "thinking": reasoning.text}));
-            }
-            (message::AssistantContent::Image(_), _) => {
+            message::UserContent::Audio(_)
+            | message::UserContent::Video(_)
+            | message::UserContent::Document(_) => {
                 return Err(message::MessageError::ConversionError(
-                    "Cohere currently doesn't support images.".to_owned(),
+                    "Cohere takes text and images in user messages".to_owned(),
                 ));
             }
         }
     }
-    Ok(Message::Native(serde_json::json!({
-        "role": "assistant",
-        "content": content,
-        "citations": [],
-        "tool_calls": tool_calls,
-        "tool_plan": tool_plan,
-    })))
+    if !pending.is_empty() {
+        messages.push(Message::User { content: pending });
+    }
+    Ok(messages)
 }
 
-/// Cohere's own message as it takes it back. Its stream opens every message
-/// with `"tool_plan": ""`, yet it answers an assistant message carrying an
-/// empty plan with a 400 ("invalid message provided at index N: must have
-/// non-empty content or tool calls", probed 2026-10-01), so an empty plan is
-/// left out.
-fn input_form(mut item: serde_json::Value) -> serde_json::Value {
-    if item.get("tool_plan").and_then(serde_json::Value::as_str) == Some("")
-        && let Some(fields) = item.as_object_mut()
-    {
-        fields.shift_remove("tool_plan");
+/// An image as the URL Cohere reads: its URL, or a data URL of its base64
+/// data.
+fn image_url(image: message::Image) -> Result<String, message::MessageError> {
+    use message::{DocumentSourceKind, MimeType};
+    match image.data {
+        DocumentSourceKind::Url(url) => Ok(url),
+        DocumentSourceKind::Base64(data) => {
+            let media_type = image.media_type.ok_or_else(|| {
+                message::MessageError::ConversionError(
+                    "a base64 image needs a media type to build its data URL".to_owned(),
+                )
+            })?;
+            Ok(format!("data:{};base64,{data}", media_type.to_mime_type()))
+        }
+        DocumentSourceKind::Raw(_)
+        | DocumentSourceKind::FileId(_)
+        | DocumentSourceKind::String(_)
+        | DocumentSourceKind::Unknown => Err(message::MessageError::ConversionError(
+            "Cohere reads an image by URL or as base64 data".to_owned(),
+        )),
     }
-    item
+}
+
+/// One assistant turn as Cohere takes it, rebuilt from its blocks: each
+/// text, thinking and unknown content item in order (as it came while
+/// current), the tool plan, and each call with its canonical name and
+/// arguments. The provider's own message is never sent, and a turn with no
+/// content and no calls sends nothing, as Cohere refuses an empty message.
+#[deny(clippy::wildcard_enum_match_arm)]
+fn assistant_message(turn: message::AssistantMessage) -> Option<Message> {
+    use crate::providers::internal::rebuild::{Piece, Rebuilt, call_item};
+    let rebuilt = Rebuilt::of(&turn);
+    let content: Vec<serde_json::Value> = rebuilt
+        .pieces
+        .iter()
+        .filter_map(|piece| match piece {
+            Piece::Text {
+                part: Some(part), ..
+            }
+            | Piece::Reasoning {
+                part: Some(part), ..
+            } => Some(part.clone()),
+            Piece::Text { text, part: None } => {
+                (!text.trim().is_empty()).then(|| serde_json::json!({"type": "text", "text": text}))
+            }
+            Piece::Reasoning {
+                text,
+                field: None,
+                part: None,
+            } => (!text.trim().is_empty())
+                .then(|| serde_json::json!({"type": "thinking", "thinking": text})),
+            Piece::Reasoning { field: Some(_), .. } => None,
+            Piece::Opaque(item) => Some(item.clone()),
+        })
+        .collect();
+    let tool_calls: Vec<serde_json::Value> = rebuilt
+        .calls
+        .iter()
+        .map(|(call, item)| {
+            let id = call.id.wire().into_owned();
+            call_item(call, item.clone(), Some(id), true)
+        })
+        .collect();
+    if content.is_empty() && tool_calls.is_empty() {
+        return None;
+    }
+    let mut message = serde_json::json!({
+        "role": "assistant",
+        "content": content,
+        "tool_calls": tool_calls,
+    });
+    for (field, text) in rebuilt.reasoning(None) {
+        message[field] = text.into();
+    }
+    Some(Message::Native(message))
 }
 
 /// Cohere's `tool_choice` is a bare string; only `REQUIRED`/`NONE` are valid.

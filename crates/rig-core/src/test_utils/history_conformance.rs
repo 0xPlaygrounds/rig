@@ -785,17 +785,26 @@ pub fn h08_pairing<F: HistoryFixture>(fixture: &F) {
             _ => None,
         })
         .collect();
-    assert_eq!(
-        results.len(),
-        2,
-        "one result per call, the orphan gone: {results:?}"
-    );
-    assert!(
-        results.iter().any(|result| result.is_error
-            && result.content.first().and_then(ToolResultContent::as_text)
-                == Some(crate::completion::history::NO_RESULT_PROVIDED)),
-        "the unanswered call gets an error result: {results:?}"
-    );
+    if replay.accepts(fixture.model()).tools {
+        assert_eq!(
+            results.len(),
+            2,
+            "one result per call, the orphan gone: {results:?}"
+        );
+        assert!(
+            results.iter().any(|result| result.is_error
+                && result.content.first().and_then(ToolResultContent::as_text)
+                    == Some(crate::completion::history::NO_RESULT_PROVIDED)),
+            "the unanswered call gets an error result: {results:?}"
+        );
+    } else {
+        // A model without tools reads calls and results as text, so nothing
+        // is left to pair.
+        assert!(
+            results.is_empty(),
+            "a model without tools gets no results: {results:?}"
+        );
+    }
     for mode in MODES {
         sent(fixture, fixture.model(), history[1..].to_vec(), mode)
             .unwrap_or_else(|error| panic!("{mode:?}: the paired history encodes: {error}"));

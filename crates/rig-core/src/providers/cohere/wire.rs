@@ -177,9 +177,13 @@ impl crate::completion::ReplayTarget for Chat {
         &self.model
     }
 
-    /// Cohere's chat reads text and tools.
-    fn accepts(&self, _model: &str) -> crate::completion::Accepts {
-        crate::completion::Accepts::TEXT
+    /// Cohere's chat reads text and tools, and user images on its vision
+    /// models (Command A Vision, Aya Vision).
+    fn accepts(&self, model: &str) -> crate::completion::Accepts {
+        crate::completion::Accepts {
+            user_images: model.contains("vision"),
+            ..crate::completion::Accepts::TEXT
+        }
     }
 }
 

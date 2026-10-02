@@ -19,9 +19,8 @@ use crate::completion::Usage;
 use crate::error::EncodeError;
 use crate::error::ProviderError;
 use crate::message::DocumentSourceKind;
-use crate::message::{CallId, ToolName};
 use crate::model::ModelInfo;
-use crate::operation::{Block, Completion, Finish};
+use crate::operation::{Block, CallFragment, Completion, Finish};
 use crate::providers::internal;
 use crate::providers::openai::wire::dto::open_once;
 use crate::wire::{Flow, Out};
@@ -117,36 +116,41 @@ pub const GPT_OSS: &str = "gpt-oss";
 /// The `phi4` model.
 pub const PHI4: &str = "phi4";
 
+/// One `/api/chat` record. Only `message` and `done` build the turn, so
+/// every other field is optional, and a counter that is not a count is
+/// unreported.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CompletionResponse {
+    #[serde(default)]
     pub model: String,
+    #[serde(default)]
     pub created_at: String,
     /// The record's assistant message, as Ollama sent it.
     pub message: serde_json::Map<String, Value>,
     pub done: bool,
     #[serde(default)]
     pub done_reason: Option<String>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "crate::observe::lenient_count")]
     pub total_duration: Option<u64>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "crate::observe::lenient_count")]
     pub load_duration: Option<u64>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "crate::observe::lenient_count")]
     pub prompt_eval_count: Option<u64>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "crate::observe::lenient_count")]
     pub prompt_eval_duration: Option<u64>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "crate::observe::lenient_count")]
     pub eval_count: Option<u64>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "crate::observe::lenient_count")]
     pub eval_duration: Option<u64>,
 }
-/// Map Ollama's `done_reason` onto rig's normalized vocabulary.
-///
-/// Ollama documents `stop` and `length`, but also emits operational reasons
-/// such as `load`/`unload`; those are carried verbatim in Ollama's own spelling
-/// rather than being flattened into a natural stop.
+
+/// Map Ollama's `done_reason` onto rig's normalized vocabulary: `stop` and
+/// `length` as documented, and `load` and `unload` (a request that only
+/// loaded or unloaded the model) as stops. Any other reason is kept
+/// verbatim, which fails the turn.
 pub(crate) fn map_done_reason(reason: &str) -> completion::FinishReason {
     match reason {
-        "stop" => completion::FinishReason::Stop,
+        "stop" | "load" | "unload" => completion::FinishReason::Stop,
         "length" => completion::FinishReason::Length,
         other => completion::FinishReason::Other(other.to_owned()),
     }
@@ -363,9 +367,9 @@ pub struct OllamaDecoder {
     /// How many tool calls had arrived when the reasoning and the text block
     /// opened: a fragment after a later call opens the next block.
     opened_at: [usize; 2],
-    /// The reasoning and text of the open blocks, once a call has split one:
-    /// each block then holds its own part of the message's field.
-    segments: [Option<String>; 2],
+    /// The open reasoning block's text: each block holds its own part of
+    /// the message's `thinking`.
+    thinking: String,
     /// Content held while it may still open with inline reasoning.
     held: String,
     /// Whether the content's shape is known: explicit thinking arrived, or
@@ -386,41 +390,33 @@ impl OllamaDecoder {
         }
         let calls = self.tool_calls.len();
         let [reasoning_at, text_at] = &mut self.opened_at;
-        let [reasoning_part, text_part] = &mut self.segments;
-        let (key, slot, opened_at, segment, block) = if reasoning {
+        let (slot, opened_at, block) = if reasoning {
             (
-                "thinking",
                 &mut self.reasoning,
                 reasoning_at,
-                reasoning_part,
                 Block::Reasoning { redacted: false },
             )
         } else {
-            ("content", &mut self.text, text_at, text_part, Block::Text)
+            (&mut self.text, text_at, Block::Text)
         };
         if let Some(index) = *slot
             && *opened_at < calls
         {
-            // A call ends the block: what follows it is the next block, and
-            // each holds its own part of the field.
-            let part = segment.take().unwrap_or_else(|| {
-                self.message
-                    .get(key)
-                    .and_then(Value::as_str)
-                    .unwrap_or_default()
-                    .to_owned()
-            });
-            out.edit(index, |item| *item = json!({ key: part }))?;
-            out.finish(index)?;
+            // A call ends the block: what follows it is the next block.
             *slot = None;
-            *segment = Some(String::new());
+            if reasoning {
+                let thinking = std::mem::take(&mut self.thinking);
+                out.finish_with(index, json!({ "thinking": thinking }))?;
+            } else {
+                out.finish(index)?;
+            }
         }
         if slot.is_none() {
             *opened_at = calls;
         }
         let index = open_once(slot, block, out)?;
-        if let Some(segment) = segment {
-            segment.push_str(fragment);
+        if reasoning {
+            self.thinking.push_str(fragment);
         }
         out.push(index, fragment)
     }
@@ -493,30 +489,26 @@ impl OllamaDecoder {
         )?;
         if let Some(Value::Array(calls)) = message.shift_remove("tool_calls") {
             for call in calls {
-                let name = call
-                    .pointer("/function/name")
-                    .and_then(Value::as_str)
-                    .and_then(|name| ToolName::new(name).ok());
-                let Some(name) = name else {
-                    return Err(ProviderError::Response(format!(
-                        "Ollama tool call without a name: {call}"
-                    )));
+                // Ollama sends each call whole, with object arguments (a
+                // proxy may stringify them). A nameless call is dropped by
+                // the writer; an id-less one gets an id rig issues, never
+                // the tool name.
+                let text = |pointer: &str| call.pointer(pointer).and_then(Value::as_str);
+                let arguments = match call.pointer("/function/arguments") {
+                    Some(Value::String(text)) => text.clone(),
+                    Some(arguments) => arguments.to_string(),
+                    None => String::new(),
                 };
-                // An id-less call gets an id rig issues, never the tool name:
-                // only the daemon's ids are provider-issued.
-                let id =
-                    CallId::from_wire(call.get("id").and_then(Value::as_str).unwrap_or_default());
-                let arguments = call
-                    .pointer("/function/arguments")
-                    .cloned()
-                    .unwrap_or_else(|| json!({}))
-                    .to_string();
-                out.whole(
-                    CALL_INDEX + self.tool_calls.len(),
-                    Block::Call { id, name },
-                    call.clone(),
-                    &arguments,
+                let index = CALL_INDEX + self.tool_calls.len();
+                out.fragment(
+                    index,
+                    CallFragment {
+                        id: text("/id"),
+                        name: text("/function/name"),
+                        arguments: Some(&arguments),
+                    },
                 )?;
+                out.finish_with(index, call.clone())?;
                 self.tool_calls.push(call);
             }
         }
@@ -546,26 +538,11 @@ impl OllamaDecoder {
             }
             message.insert("content".to_owned(), visible.into());
         }
-        let [reasoning_part, text_part] = std::mem::take(&mut self.segments);
-        for (index, key, part) in [
-            (self.reasoning.take(), "thinking", reasoning_part),
-            (self.text.take(), "content", text_part),
-        ] {
-            let Some(index) = index else {
-                continue;
-            };
-            let mut fields: serde_json::Map<_, _> = message
-                .iter()
-                .filter(|(name, _)| match key {
-                    "thinking" => name.as_str() == "thinking",
-                    _ => !matches!(name.as_str(), "thinking" | "role"),
-                })
-                .map(|(name, value)| (name.clone(), value.clone()))
-                .collect();
-            if let Some(part) = part {
-                fields.insert(key.to_owned(), part.into());
-            }
-            out.edit(index, |item| *item = Value::Object(fields))?;
+        if let Some(index) = self.reasoning.take() {
+            let thinking = std::mem::take(&mut self.thinking);
+            out.finish_with(index, json!({ "thinking": thinking }))?;
+        }
+        if let Some(index) = self.text.take() {
             out.finish(index)?;
         }
         if !self.tool_calls.is_empty() {
@@ -832,10 +809,11 @@ impl TryFrom<crate::message::Message> for Vec<Message> {
                                     crate::message::ToolResultContent::Json { value } => {
                                         Ok(value.to_string())
                                     }
+                                    // The adapter moves a result's images to a user
+                                    // message, since Ollama reads none here.
                                     crate::message::ToolResultContent::Image(_) => {
-                                        Err(crate::message::MessageError::ConversionError(
-                                            "Ollama does not support images in tool results".into(),
-                                        ))
+                                        Ok(crate::completion::history::TOOL_IMAGE_OMITTED
+                                            .to_owned())
                                     }
                                 })
                                 .collect::<Result<Vec<_>, _>>()?
@@ -856,64 +834,42 @@ impl TryFrom<crate::message::Message> for Vec<Message> {
 
                 Ok(messages)
             }
-            InternalMessage::Assistant(turn) => Ok(vec![assistant_message(turn)?]),
+            InternalMessage::Assistant(turn) => Ok(vec![assistant_message(turn)]),
         }
     }
 }
 
-/// One assistant turn as Ollama takes it: the daemon's message while the
-/// turn still holds what it was decoded from, otherwise rebuilt from its
-/// text, its reasoning as `thinking`, and each call as it came or from its
-/// canonical fields. Images are a conversion error.
-#[deny(clippy::wildcard_enum_match_arm)]
-fn assistant_message(
-    turn: crate::message::AssistantMessage,
-) -> Result<Message, crate::message::MessageError> {
-    if let Some(item) = turn.native_item() {
-        return Ok(Message::Native(item.clone()));
+/// One assistant turn as Ollama takes it, rebuilt from its blocks as pi
+/// rebuilds a message: its text joined into `content`, its reasoning joined
+/// into `thinking`, and each call with its canonical name and object
+/// arguments. A rig-issued call id stays off the wire: the daemon pairs a
+/// result with its call by tool name.
+fn assistant_message(turn: crate::message::AssistantMessage) -> Message {
+    use crate::providers::internal::rebuild::{Rebuilt, call_item};
+    let rebuilt = Rebuilt::of(&turn);
+    let mut message = serde_json::Map::new();
+    message.insert("role".to_owned(), "assistant".into());
+    message.insert("content".to_owned(), rebuilt.text().into());
+    let thinking: Vec<String> = rebuilt
+        .reasoning(Some("thinking"))
+        .into_iter()
+        .map(|(_, text)| text)
+        .collect();
+    if !thinking.is_empty() {
+        message.insert("thinking".to_owned(), thinking.join("\n").into());
     }
-    let mut text = Vec::new();
-    let mut thinking = None;
-    let mut tool_calls = Vec::new();
-    for block in turn.content {
-        let native = block.native_item().cloned();
-        match block {
-            crate::message::AssistantContent::Text(content) => text.push(content.text),
-            crate::message::AssistantContent::ToolCall(call) => tool_calls.push(match native {
-                Some(item) => item,
-                // A rig-issued id stays off the wire: the daemon pairs a
-                // result with its call by tool name.
-                None => match call.id.provider() {
-                    Some(id) => json!({
-                        "id": id.as_str(),
-                        "type": "function",
-                        "function": {"name": call.function.name, "arguments": call.function.arguments},
-                    }),
-                    None => json!({
-                        "type": "function",
-                        "function": {"name": call.function.name, "arguments": call.function.arguments},
-                    }),
-                },
-            }),
-            crate::message::AssistantContent::Reasoning(reasoning) => {
-                if !reasoning.text.is_empty() {
-                    thinking = Some(reasoning.text);
-                }
-            }
-            crate::message::AssistantContent::Opaque(_) => {}
-            crate::message::AssistantContent::Image(_) => {
-                return Err(crate::message::MessageError::ConversionError(
-                    "Ollama currently doesn't support images.".into(),
-                ));
-            }
-        }
+    let calls: Vec<Value> = rebuilt
+        .calls
+        .into_iter()
+        .map(|(call, item)| {
+            let id = call.id.provider().map(|id| id.as_str().to_owned());
+            call_item(&call, item, id, false)
+        })
+        .collect();
+    if !calls.is_empty() {
+        message.insert("tool_calls".to_owned(), calls.into());
     }
-    let mut message =
-        json!({"role": "assistant", "content": text.join(" "), "tool_calls": tool_calls});
-    if let (Some(thinking), Some(fields)) = (thinking, message.as_object_mut()) {
-        fields.insert("thinking".to_owned(), thinking.into());
-    }
-    Ok(Message::Native(message))
+    Message::Native(Value::Object(message))
 }
 
 impl Message {
@@ -929,3 +885,6 @@ impl Message {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod history_tests;

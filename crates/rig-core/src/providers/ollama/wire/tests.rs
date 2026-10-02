@@ -315,7 +315,7 @@ async fn an_embedding_reply_keeps_its_whole_body_as_raw() {
 /// A message field rig has never seen, and a field it has never seen on a
 /// tool call, survive decoding in both modes and go back to the daemon.
 #[test]
-fn an_invented_message_field_and_call_field_survive_decode_and_replay() {
+fn an_invented_call_field_replays_and_an_invented_message_field_does_not() {
     use crate::message::{AssistantMessage, Message};
     use crate::wire::{Mode, Wire, WireFrame};
 
@@ -377,10 +377,11 @@ fn an_invented_message_field_and_call_field_survive_decode_and_replay() {
         );
         let body = json_body(&wire.encode(request, Mode::Unary).expect("encodes").request);
         let replayed = &body["messages"][1];
-        assert_eq!(
-            replayed["x_message_probe"],
-            serde_json::json!([1]),
-            "{mode:?}"
+        // The message is rebuilt from its blocks: a field only the reply
+        // carries never goes back, while the call's own item does.
+        assert!(
+            replayed.get("x_message_probe").is_none(),
+            "{mode:?}: {replayed}"
         );
         assert_eq!(replayed["tool_calls"][0]["x_call_probe"], 1, "{mode:?}");
         assert_eq!(replayed["thinking"], "plan", "{mode:?}");
