@@ -334,7 +334,9 @@ pub(crate) fn restated(output: &InternalConverseOutput) -> Vec<aws_bedrock::Conv
             ContentBlock::CachePoint(_)
             | ContentBlock::Document(_)
             | ContentBlock::GuardContent(_)
-            | ContentBlock::Video(_) => panic!("{block:?} never streams"),
+            | ContentBlock::Video(_)
+            | ContentBlock::Audio
+            | ContentBlock::SearchResult => panic!("{block:?} never streams"),
         }
         events.push(stop(index));
     }
@@ -483,7 +485,7 @@ fn only_reasoning_keeps_a_provider_item() {
     assert_eq!(
         response.choice[5],
         AssistantContent::Opaque(Opaque {
-            item: serde_json::to_value(tool_result_block()).expect("serializes"),
+            item: json!({ "type": "tool_result" }),
             replay: false,
         })
     );
@@ -552,6 +554,8 @@ fn every_content_block_decodes() {
             format: VideoFormat::Mp4,
             source: None,
         }),
+        ContentBlock::Audio,
+        ContentBlock::SearchResult,
         ContentBlock::Unknown,
     ];
     let variant_index = |block: &ContentBlock| match block {
@@ -565,9 +569,11 @@ fn every_content_block_decodes() {
         ContentBlock::ToolResult(_) => 7,
         ContentBlock::ToolUse(_) => 8,
         ContentBlock::Video(_) => 9,
-        ContentBlock::Unknown => 10,
+        ContentBlock::Audio => 10,
+        ContentBlock::SearchResult => 11,
+        ContentBlock::Unknown => 12,
     };
-    assert_every_variant(&samples, variant_index, 11);
+    assert_every_variant(&samples, variant_index, 13);
     for block in samples {
         let whole_only = matches!(
             block,
@@ -575,6 +581,8 @@ fn every_content_block_decodes() {
                 | ContentBlock::Document(_)
                 | ContentBlock::GuardContent(_)
                 | ContentBlock::Video(_)
+                | ContentBlock::Audio
+                | ContentBlock::SearchResult
         );
         let unknown = block == ContentBlock::Unknown;
         let output = reply_of(vec![block], StopReason::EndTurn);
@@ -612,6 +620,8 @@ fn every_content_block_decodes() {
         | ContentBlock::ToolResult(_)
         | ContentBlock::ToolUse(_)
         | ContentBlock::Video(_)
+        | ContentBlock::Audio
+        | ContentBlock::SearchResult
         | ContentBlock::Unknown => 3,
     };
     assert_every_variant(&reasoning, reasoning_index, 3);

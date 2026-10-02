@@ -95,14 +95,16 @@ impl StreamState {
             ContentBlock::Image(image) => {
                 return match assistant_image(&image) {
                     Some(image) => out.content(image),
-                    None => opaque(out, index, &ContentBlock::Image(image)),
+                    None => opaque(out, index, "image"),
                 };
             }
-            block @ (ContentBlock::CachePoint(_)
-            | ContentBlock::Document(_)
-            | ContentBlock::GuardContent(_)
-            | ContentBlock::ToolResult(_)
-            | ContentBlock::Video(_)) => return opaque(out, index, &block),
+            ContentBlock::CachePoint(_) => return opaque(out, index, "cache_point"),
+            ContentBlock::Document(_) => return opaque(out, index, "document"),
+            ContentBlock::GuardContent(_) => return opaque(out, index, "guard_content"),
+            ContentBlock::ToolResult(_) => return opaque(out, index, "tool_result"),
+            ContentBlock::Video(_) => return opaque(out, index, "video"),
+            ContentBlock::Audio => return opaque(out, index, "audio"),
+            ContentBlock::SearchResult => return opaque(out, index, "search_result"),
             ContentBlock::ReasoningContent(ReasoningContentBlock::Unknown)
             | ContentBlock::Unknown => {
                 skip("content block");
@@ -307,17 +309,13 @@ fn assistant_image(image: &ImageBlock) -> Option<AssistantContent> {
     ))
 }
 
-/// A block with no canonical meaning. It is kept but not sent back: a
-/// Converse reply carries none Rig can encode again.
-fn opaque(
-    out: &mut Out<'_, Completion>,
-    index: usize,
-    block: &ContentBlock,
-) -> Result<(), ProviderError> {
+/// A block with no canonical meaning, kept as a marker naming its `kind`
+/// and never sent back. Like pi, rig stores no copy of the SDK's types.
+fn opaque(out: &mut Out<'_, Completion>, index: usize, kind: &str) -> Result<(), ProviderError> {
     out.whole(
         index,
         Block::Opaque { replay: false },
-        serde_json::to_value(block)?,
+        serde_json::json!({ "type": kind }),
         "",
     )
 }

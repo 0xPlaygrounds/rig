@@ -128,7 +128,7 @@ fn mirror_enum_unknown_variant_keeps_its_spelling() {
 
 /// A union variant this crate does not mirror is `Unknown`, not an error.
 #[test]
-fn mirror_union_unmirrored_variant_is_unknown() {
+fn a_search_result_block_is_kept_as_a_marker() {
     let block = aws_bedrock::ContentBlock::SearchResult(
         aws_bedrock::SearchResultBlock::builder()
             .source("s")
@@ -144,7 +144,7 @@ fn mirror_union_unmirrored_variant_is_unknown() {
     );
     assert_eq!(
         ContentBlock::try_from(block).unwrap(),
-        ContentBlock::Unknown
+        ContentBlock::SearchResult
     );
 }
 

@@ -204,6 +204,10 @@ pub enum ContentBlock {
     ToolResult(ToolResultBlock),
     ToolUse(ToolUseBlock),
     Video(VideoBlock),
+    /// An audio block, which rig keeps only as a marker.
+    Audio,
+    /// A search-result block, which rig keeps only as a marker.
+    SearchResult,
     Unknown,
 }
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
@@ -539,18 +543,29 @@ mirror_enum!(GuardrailConverseContentQualifier, aws_bedrock::GuardrailConverseCo
 mirror_union!(ConverseOutput, aws_bedrock::ConverseOutput {
     Message => Message,
 });
-mirror_union!(ContentBlock, aws_bedrock::ContentBlock {
-    CachePoint => CachePoint,
-    CitationsContent => CitationsContent,
-    Document => Document,
-    GuardContent => GuardContent,
-    Image => Image,
-    ReasoningContent => ReasoningContent,
-    Text => Text,
-    ToolResult => ToolResult,
-    ToolUse => ToolUse,
-    Video => Video,
-});
+impl TryFrom<aws_bedrock::ContentBlock> for ContentBlock {
+    type Error = TypeConversionError;
+    fn try_from(value: aws_bedrock::ContentBlock) -> Result<Self, Self::Error> {
+        type Aws = aws_bedrock::ContentBlock;
+        Ok(match value {
+            Aws::CachePoint(value) => ContentBlock::CachePoint(value.try_into()?),
+            Aws::CitationsContent(value) => ContentBlock::CitationsContent(value.try_into()?),
+            Aws::Document(value) => ContentBlock::Document(value.try_into()?),
+            Aws::GuardContent(value) => ContentBlock::GuardContent(value.try_into()?),
+            Aws::Image(value) => ContentBlock::Image(value.try_into()?),
+            Aws::ReasoningContent(value) => ContentBlock::ReasoningContent(value.try_into()?),
+            Aws::Text(value) => ContentBlock::Text(value.try_into()?),
+            Aws::ToolResult(value) => ContentBlock::ToolResult(value.try_into()?),
+            Aws::ToolUse(value) => ContentBlock::ToolUse(value.try_into()?),
+            Aws::Video(value) => ContentBlock::Video(value.try_into()?),
+            Aws::Audio(_) => ContentBlock::Audio,
+            Aws::SearchResult(_) => ContentBlock::SearchResult,
+            // The SDK's own `Unknown` carries no payload, and the enum is
+            // non-exhaustive.
+            _ => ContentBlock::Unknown,
+        })
+    }
+}
 mirror_union!(CitationGeneratedContent, aws_bedrock::CitationGeneratedContent {
     Text => Text,
 });
