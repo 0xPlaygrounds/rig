@@ -31,52 +31,6 @@ fn models(
     )
 }
 
-/// A turn continued on another model replays from its canonical fields:
-/// the first reply delivered a signed thinking block, and the continuation
-/// carries its text but no thinking block and no signature, which only the
-/// model that produced them reads.
-fn assert_ported(scenario: &str) {
-    let bodies = crate::cassettes::recorded_interaction_bodies("anthropic", scenario);
-    assert_eq!(bodies.len(), 2, "one turn and one continuation");
-    let reply: serde_json::Value =
-        serde_json::from_str(&bodies[0].1).expect("the first reply is JSON");
-    let thinking = reply["content"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .find(|block| block["type"] == "thinking" && block["signature"] != "")
-        .expect("premise: the first reply delivered a signed thinking block");
-    let next: serde_json::Value =
-        serde_json::from_str(&bodies[1].0).expect("the continuation request is JSON");
-    let blocks: Vec<&serde_json::Value> = next["messages"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .filter(|message| message["role"] == "assistant")
-        .flat_map(|message| message["content"].as_array().into_iter().flatten())
-        .collect();
-    assert!(
-        blocks
-            .iter()
-            .all(|block| block["type"] != "thinking" && block["type"] != "redacted_thinking"),
-        "no thinking block reaches another model: {blocks:?}"
-    );
-    assert!(
-        !bodies[1].0.contains(
-            thinking["signature"]
-                .as_str()
-                .expect("the signature is a string")
-        ),
-        "the signature does not reach another model"
-    );
-    assert!(
-        blocks
-            .iter()
-            .any(|block| block["type"] == "text" && block["text"] == thinking["thinking"]),
-        "the reasoning reaches another model as text: {blocks:?}"
-    );
-}
-
 #[tokio::test]
 async fn same_model() {
     const SCENARIO: &str = "session_matrix/same_model";
@@ -97,7 +51,7 @@ async fn other_model() {
         sessions::run(first, other, CELL).await;
     })
     .await;
-    assert_ported(SCENARIO);
+    sessions::assert_ported(CELL, SCENARIO);
 }
 
 /// The continuation is checkpointed, restored into a fresh world, and sent
@@ -113,7 +67,7 @@ async fn checkpoint_other_model() {
         },
     )
     .await;
-    assert_ported(SCENARIO);
+    sessions::assert_ported(CELL, SCENARIO);
 }
 
 /// The agent's conversation memory carries the reasoning into a second
