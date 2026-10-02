@@ -206,8 +206,17 @@ pub(crate) fn parse_assistant(
     }
 }
 
+/// The model a local runtime addresses: the one it loaded.
+pub(crate) const LOCAL_MODEL: &str = "local";
+
 fn validate_common_request(request: &CompletionRequest) -> Result<(), CandleError> {
-    if let Some(model) = &request.model {
+    // The prepared request names the loaded model itself; any other is an
+    // override.
+    if let Some(model) = request
+        .model
+        .as_deref()
+        .filter(|model| *model != LOCAL_MODEL)
+    {
         return Err(CandleError::UnsupportedFeature(format!(
             "model override `{model}`; byte-loaded models do not support request-time model selection"
         )));

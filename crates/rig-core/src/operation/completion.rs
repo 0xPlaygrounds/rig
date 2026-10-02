@@ -56,6 +56,7 @@ impl Operation for Completion {
             .model
             .as_deref()
             .or(call.wire.model)
+            .or_else(|| call.wire.replay.map(|target| target.model()))
             .unwrap_or_default();
         let span = SpanBuilder::new(call.wire.name, model, telemetry)
             .system_instructions(

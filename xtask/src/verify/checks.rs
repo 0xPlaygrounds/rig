@@ -282,6 +282,10 @@ pub(super) fn all() -> Vec<Check> {
                 "rig-candle",
                 "-p",
                 "rig-gemini-grpc",
+                "-p",
+                "rig-bedrock",
+                "-p",
+                "rig-vertexai",
                 "--all-features",
                 // nextest -E filters execution after Cargo compilation. Select
                 // the same integration targets before compiling their harnesses.
@@ -291,10 +295,12 @@ pub(super) fn all() -> Vec<Check> {
                 "streaming_conformance_websocket",
                 "--test",
                 "driver_adoption",
+                "--test",
+                "history_conformance",
                 "--retries",
                 "0",
                 "-E",
-                "binary(streaming_conformance) + binary(streaming_conformance_websocket) + binary(driver_adoption)",
+                "binary(streaming_conformance) + binary(streaming_conformance_websocket) + binary(driver_adoption) + binary(history_conformance)",
             ])],
         ),
         check(

@@ -349,8 +349,9 @@ impl rig_core::completion::ReplayTarget for Generation {
         crate::types::PROVIDER_NAME
     }
 
+    /// A local runtime addresses the one model it loaded.
     fn model(&self) -> &str {
-        ""
+        crate::protocol::LOCAL_MODEL
     }
 
     /// A local text model reads text and tools.

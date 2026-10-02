@@ -3,6 +3,7 @@
 mod completion;
 mod embeddings;
 pub mod history;
+pub mod history_conformance;
 mod memory;
 pub mod observations;
 mod relay;
