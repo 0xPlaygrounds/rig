@@ -2391,9 +2391,8 @@ pub mod fixtures {
             }
         }
 
-        /// Thought-summary delta, interleaved function call, thought-summary
-        /// delta, terminal — the constant-id (`reasoning-0`) interleaving
-        /// shape on the Interactions wire.
+        /// A thought step, a function-call step, a second thought step,
+        /// terminal: each step is its own block on the Interactions wire.
         fn interleaved_thought_fixture() -> InterleavedReasoningFixture {
             let frames = vec![
                 sse(&json!({
@@ -2406,7 +2405,7 @@ pub mod fixtures {
                 })),
                 sse(&json!({
                     "event_type": "step.delta",
-                    "index": 0,
+                    "index": 1,
                     "delta": {
                         "type": "function_call",
                         "name": "get_weather",
@@ -2416,7 +2415,7 @@ pub mod fixtures {
                 })),
                 sse(&json!({
                     "event_type": "step.delta",
-                    "index": 0,
+                    "index": 2,
                     "delta": {
                         "type": "thought_summary",
                         "content": {"type": "text", "text": "after tool"},
