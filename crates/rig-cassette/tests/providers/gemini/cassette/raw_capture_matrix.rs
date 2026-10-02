@@ -414,9 +414,15 @@ async fn raw_exposes_forced_function_call() {
         Some(&Value::String("STOP".to_string())),
         "the normalized finish reason is rig's vocabulary, not Gemini's"
     );
+    let canonical: Vec<AssistantContent> = response
+        .choice
+        .iter()
+        .map(AssistantContent::canonical)
+        .collect();
     assert!(
-        !json_contains_key(&normalized, "functionCall"),
-        "functionCall is Gemini's wire spelling; the normalized choice carries a ToolCall"
+        !json_contains_key(&serde_json::json!(canonical), "functionCall"),
+        "functionCall is Gemini's wire spelling, kept only in the call's provider item; \
+         the canonical choice carries a ToolCall"
     );
 
     let body = assert_recorded_function_call_body(SCENARIO);

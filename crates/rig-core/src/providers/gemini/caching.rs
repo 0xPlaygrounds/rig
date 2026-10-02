@@ -515,6 +515,16 @@ fn hex(bytes: &[u8]) -> String {
     })
 }
 
+/// `fragment` with its keys sorted: a history replays a provider part with
+/// the key order it arrived in, which a recording does not keep, so the
+/// digests read the content, not its spelling.
+fn canonical(fragment: &str) -> std::borrow::Cow<'_, str> {
+    serde_json::from_str::<serde_json::Value>(fragment)
+        .map_or(std::borrow::Cow::Borrowed(fragment), |value| {
+            std::borrow::Cow::Owned(crate::json_utils::to_canonical_string(&value))
+        })
+}
+
 /// `d[k]`: the digest of the model, the prefix and `contents[..k]`.
 pub(crate) fn digests(model: &str, parsed: &Parsed) -> Vec<String> {
     let mut hasher = Sha256::new();
@@ -522,7 +532,7 @@ pub(crate) fn digests(model: &str, parsed: &Parsed) -> Vec<String> {
     for field in &parsed.prefix {
         hasher.update([0u8]);
         if let Some(raw) = field {
-            hasher.update(raw.get().as_bytes());
+            hasher.update(canonical(raw.get()).as_bytes());
         }
     }
     let mut state = hasher.finalize().to_vec();
@@ -530,7 +540,7 @@ pub(crate) fn digests(model: &str, parsed: &Parsed) -> Vec<String> {
     for content in &parsed.contents {
         let mut hasher = Sha256::new();
         hasher.update(&state);
-        hasher.update(content.get().as_bytes());
+        hasher.update(canonical(content.get()).as_bytes());
         state = hasher.finalize().to_vec();
         out.push(hex(&state));
     }

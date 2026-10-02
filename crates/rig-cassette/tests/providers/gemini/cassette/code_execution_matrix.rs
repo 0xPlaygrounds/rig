@@ -1022,11 +1022,11 @@ mod unit {
         );
     }
 
-    /// Not a recording: one live turn emits one ordering. The skip must not
-    /// depend on where the code parts sit relative to the text, so every
-    /// position is asserted from the recorded part shapes.
+    /// Not a recording: one live turn emits one ordering. Each code part
+    /// stays an opaque block where it sat, whatever its position, and the
+    /// text stays the only answer.
     #[tokio::test]
-    async fn code_execution_parts_are_skipped_in_every_position() {
+    async fn code_execution_parts_keep_their_position_as_opaque_blocks() {
         let text = json!({ "text": "The 7 factorial is 5040." });
         let orderings = [
             vec![executable_code_part(), code_result_part(), text.clone()],
@@ -1042,42 +1042,45 @@ mod unit {
         ];
 
         for (index, parts) in orderings.into_iter().enumerate() {
-            let response = completion_of(parts)
+            let response = completion_of(parts.clone())
                 .await
                 .unwrap_or_else(|error| panic!("ordering {index} should convert: {error:?}"));
-            assert_eq!(
-                response.choice.len(),
-                1,
-                "ordering {index}: only the text part carries assistant content"
-            );
-            assert!(
-                matches!(
-                    response.choice.first(),
-                    Some(rig::message::AssistantContent::Text(text)) if text.text == "The 7 factorial is 5040."
-                ),
-                "ordering {index}: the surviving part must be the model's text, got {:?}",
-                response.choice
-            );
+            let kept: Vec<Value> = response
+                .choice
+                .iter()
+                .map(|block| match block {
+                    rig::message::AssistantContent::Opaque(opaque) => {
+                        assert!(opaque.replay, "ordering {index}: code parts replay");
+                        opaque.item.clone()
+                    }
+                    rig::message::AssistantContent::Text(text) => json!({ "text": text.text }),
+                    other => panic!("ordering {index}: unexpected block {other:?}"),
+                })
+                .collect();
+            assert_eq!(kept, parts, "ordering {index}: every part keeps its place");
         }
     }
 
     /// Not a recording: `generateContent` never answers with a
-    /// `functionResponse` or `fileData` part (they are request-side kinds), so
-    /// the arm that must keep failing has no live source. Widening the skip to
-    /// every unmodeled kind would turn a genuinely unaccountable payload into
-    /// a silent content drop.
+    /// `functionResponse` or `fileData` part (they are request-side kinds),
+    /// so neither has a live source. Rig has no block for them, and they
+    /// survive as opaque blocks rather than being dropped.
     #[tokio::test]
-    async fn unmodeled_part_kinds_still_fail_loudly() {
+    async fn unmodeled_part_kinds_survive_as_opaque_blocks() {
         for part in [
             json!({ "functionResponse": { "name": "add", "response": { "result": 3 } } }),
             json!({ "fileData": { "mimeType": "text/plain", "fileUri": "https://example.invalid/f" } }),
         ] {
-            let error = completion_of(vec![part.clone(), json!({ "text": "done" })])
+            let response = completion_of(vec![part.clone(), json!({ "text": "done" })])
                 .await
-                .expect_err("an unaccountable part must still fail the response");
+                .unwrap_or_else(|error| panic!("part {part} should convert: {error:?}"));
             assert!(
-                matches!(error, ProviderError::Response(_)),
-                "part {part} should be a ResponseError, got {error:?}"
+                matches!(
+                    response.choice.first(),
+                    Some(rig::message::AssistantContent::Opaque(opaque)) if opaque.item == part
+                ),
+                "part {part} survives as an opaque block: {:?}",
+                response.choice
             );
         }
     }

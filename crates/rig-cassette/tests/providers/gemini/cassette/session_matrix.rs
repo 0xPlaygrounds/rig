@@ -5,6 +5,27 @@ use super::super::support::with_gemini_cassette;
 use rig_test_support::cassette_models::GeminiModels;
 
 use crate::history_survival::sessions::{self, Cell};
+use crate::history_survival::{Dialect, response_tokens, string_values};
+
+/// A turn another model produced replays from its canonical fields: the
+/// first reply delivered thought signatures, and none of them reaches the
+/// continuation.
+fn assert_signatures_stay_with_their_model(scenario: &str) {
+    let bodies = crate::cassettes::recorded_interaction_bodies("gemini", scenario);
+    assert_eq!(bodies.len(), 2, "one turn and one continuation");
+    let next: serde_json::Value =
+        serde_json::from_str(&bodies[1].0).expect("the continuation is JSON");
+    let sent = string_values(&next);
+    let signatures: Vec<_> = response_tokens(Dialect::GeminiGenerateContent, &bodies[0].1)
+        .into_iter()
+        .filter(|token| token.kind == "thought_signature")
+        .collect();
+    assert!(!signatures.is_empty(), "the first reply signed its turn");
+    assert!(
+        signatures.iter().all(|token| !sent.contains(&token.value)),
+        "another model's signature reached the continuation: {signatures:?}"
+    );
+}
 
 fn params() -> Option<serde_json::Value> {
     Some(
@@ -53,7 +74,8 @@ async fn same_model() {
     sessions::assert_recorded(CELL, SCENARIO);
 }
 
-/// The loaded history continues on another model of the same provider.
+/// The loaded history continues on another model of the same provider,
+/// which receives the turn without the first model's signatures.
 #[tokio::test]
 async fn other_model() {
     const SCENARIO: &str = "session_matrix/other_model";
@@ -62,7 +84,7 @@ async fn other_model() {
         sessions::run(first, other, CELL).await;
     })
     .await;
-    sessions::assert_recorded(CELL, SCENARIO);
+    assert_signatures_stay_with_their_model(SCENARIO);
 }
 
 /// The continuation is checkpointed, restored into a fresh world, and sent
@@ -78,7 +100,7 @@ async fn checkpoint_other_model() {
         },
     )
     .await;
-    sessions::assert_recorded(CELL, SCENARIO);
+    assert_signatures_stay_with_their_model(SCENARIO);
 }
 
 /// The agent's conversation memory carries the reasoning into a second
