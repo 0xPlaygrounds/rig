@@ -348,14 +348,8 @@ async fn long_history_replay_nonstreaming() {
                 "a plain answer should preserve the end_turn stop reason"
             );
             assert!(
-                response
-                    .model()
-                    .as_deref()
-                    .is_some_and(|model| !model.is_empty())
-                    && response
-                        .response_id()
-                        .as_deref()
-                        .is_some_and(|id| !id.is_empty()),
+                response.model().is_some_and(|model| !model.is_empty())
+                    && response.response_id().is_some_and(|id| !id.is_empty()),
                 "provider response should preserve model and message id"
             );
             assert!(

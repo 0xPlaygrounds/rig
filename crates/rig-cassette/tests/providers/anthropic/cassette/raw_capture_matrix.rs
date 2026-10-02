@@ -177,7 +177,7 @@ fn assert_identity_matches_fixture(scenario: &str, response: &RigCompletionRespo
         &request_ids,
         scenario,
     );
-    assert_eq!(response.model().as_deref(), body["model"].as_str());
+    assert_eq!(response.model(), body["model"].as_str());
     assert_eq!(
         response.usage.input_tokens,
         body["usage"]["input_tokens"].as_u64()
@@ -396,7 +396,7 @@ async fn normalized_fields_match_raw_renormalized() {
         Some(FinishReason::Stop),
         "the decoder maps the document's `end_turn` onto `Stop`"
     );
-    assert_eq!(Some(typed.model.as_str()), response.model().as_deref());
+    assert_eq!(Some(typed.model.as_str()), response.model());
     assert_eq!(Some(typed.usage.input_tokens), response.usage.input_tokens);
     assert_eq!(
         Some(typed.usage.output_tokens),

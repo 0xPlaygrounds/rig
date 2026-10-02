@@ -36,7 +36,6 @@ async fn nonstreaming_response_carries_identity() {
             assert!(
                 response
                     .response_id()
-                    .as_deref()
                     .is_some_and(|id| id.starts_with("msg")),
                 "Anthropic reports message.id, got {:?}",
                 response.response_id()
@@ -71,7 +70,6 @@ async fn streaming_terminal_carries_identity() {
             assert!(
                 terminal
                     .response_id()
-                    .as_deref()
                     .is_some_and(|id| id.starts_with("msg")),
                 "streaming terminal carries message_id, got {:?}",
                 terminal.response_id()
