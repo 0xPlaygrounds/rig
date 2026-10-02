@@ -22,12 +22,9 @@ const NOVA: &str = "amazon.nova-lite-v1:0";
 struct Scripted(std::sync::Arc<std::sync::Mutex<Vec<aws_bedrock::ConverseStreamOutput>>>);
 
 impl Transport<Converse> for Scripted {
-    fn send(&self, payload: ConverseRequest, _exchange: Exchange) -> Opening<ConverseFrame> {
+    fn send(&self, _payload: ConverseRequest, _exchange: Exchange) -> Opening<ConverseFrame> {
         let events = std::mem::take(&mut *self.0.lock().expect("script lock"));
-        let opened = ConverseFrame::Opened {
-            model: payload.model,
-            request_id: None,
-        };
+        let opened = ConverseFrame::Opened { request_id: None };
         Opening::ready(Opened::new(futures::stream::iter(
             std::iter::once(opened)
                 .chain(events.into_iter().map(ConverseFrame::Event))
@@ -60,10 +57,7 @@ fn streamed_as(
     model: &str,
     events: Vec<aws_bedrock::ConverseStreamOutput>,
 ) -> Result<CompletionResponse, ProviderError> {
-    let opened = ConverseFrame::Opened {
-        model: model.to_owned(),
-        request_id: None,
-    };
+    let opened = ConverseFrame::Opened { request_id: None };
     let frames = std::iter::once(opened).chain(events.into_iter().map(ConverseFrame::Event));
     decode(&Converse::new(model), Mode::Streaming, frames)
 }
@@ -80,10 +74,7 @@ pub(crate) fn unary_as(
     output: InternalConverseOutput,
 ) -> Result<CompletionResponse, ProviderError> {
     let frames = [
-        ConverseFrame::Opened {
-            model: model.to_owned(),
-            request_id: None,
-        },
+        ConverseFrame::Opened { request_id: None },
         ConverseFrame::Whole(Box::new(output)),
     ];
     decode(&Converse::new(model), Mode::Unary, frames)
@@ -369,10 +360,7 @@ pub(crate) fn restated(output: &InternalConverseOutput) -> Vec<aws_bedrock::Conv
 /// Assert `output` decoded whole and restated as a stream fold into the
 /// same turn for `model`.
 pub(crate) fn assert_agrees(model: &str, output: &InternalConverseOutput) {
-    let opened = || ConverseFrame::Opened {
-        model: model.to_owned(),
-        request_id: None,
-    };
+    let opened = || ConverseFrame::Opened { request_id: None };
     let stream =
         std::iter::once(opened()).chain(restated(output).into_iter().map(ConverseFrame::Event));
     assert_restated_agrees(

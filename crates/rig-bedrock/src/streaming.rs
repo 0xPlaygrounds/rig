@@ -440,7 +440,7 @@ impl<'id> rig_core::wire::Decoder<'id, Completion, ConverseFrame> for StreamStat
         out: Out<'id, Completion>,
     ) -> Result<Flow, ProviderError> {
         match event {
-            ConverseFrame::Opened { request_id, .. } => {
+            ConverseFrame::Opened { request_id } => {
                 self.provider_request_id = request_id;
                 Ok(Flow::More)
             }

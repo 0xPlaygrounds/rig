@@ -105,10 +105,7 @@ pub(super) fn assert_recorded_history(model: &str, response: &CompletionResponse
         other => panic!("a recorded message: {other:?}"),
     };
     let wire = Converse::new(model);
-    let opened = || ConverseFrame::Opened {
-        model: model.to_owned(),
-        request_id: None,
-    };
+    let opened = || ConverseFrame::Opened { request_id: None };
     let streamed = std::iter::once(opened()).chain(restated(&content, &output));
     assert_restated_agrees(
         &wire,

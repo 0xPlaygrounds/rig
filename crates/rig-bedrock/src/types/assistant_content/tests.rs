@@ -100,10 +100,7 @@ fn reply_as_sent() -> Vec<aws_bedrock::ContentBlock> {
 /// The turns a reply decodes to, whole and streamed.
 fn decoded(model: &str) -> [Message; 2] {
     let whole = unary_as(model, reply()).expect("decodes whole");
-    let opened = crate::completion::ConverseFrame::Opened {
-        model: model.to_owned(),
-        request_id: None,
-    };
+    let opened = crate::completion::ConverseFrame::Opened { request_id: None };
     let frames = std::iter::once(opened).chain(
         restated(&reply())
             .into_iter()

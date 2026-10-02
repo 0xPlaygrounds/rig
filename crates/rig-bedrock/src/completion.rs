@@ -189,12 +189,9 @@ pub struct ConverseRequest {
 
 /// One unit of a Converse reply.
 pub enum ConverseFrame {
-    /// The reply opened: the model it answers for, and the AWS request id
-    /// from the SDK's response metadata.
-    Opened {
-        model: String,
-        request_id: Option<String>,
-    },
+    /// The reply opened, with the AWS request id from the SDK's response
+    /// metadata.
+    Opened { request_id: Option<String> },
     /// The whole unary reply.
     Whole(Box<InternalConverseOutput>),
     /// One streamed event.
@@ -307,7 +304,7 @@ impl Transport<Converse> for BedrockRuntime {
                 Mode::Unary => {
                     let sent = client
                         .converse()
-                        .model_id(model.clone())
+                        .model_id(model)
                         .set_additional_model_request_fields(additional_params)
                         .set_inference_config(Some(inference_config))
                         .set_tool_config(tool_config)
@@ -328,7 +325,6 @@ impl Transport<Converse> for BedrockRuntime {
                             let request_id = output.request_id().map(str::to_owned);
                             Opened::new(futures::stream::iter([
                                 Ok(ConverseFrame::Opened {
-                                    model,
                                     request_id: request_id.clone(),
                                 }),
                                 Ok(ConverseFrame::Whole(Box::new(output))),
@@ -341,7 +337,7 @@ impl Transport<Converse> for BedrockRuntime {
                 Mode::Streaming => {
                     let sent = client
                         .converse_stream()
-                        .model_id(model.clone())
+                        .model_id(model)
                         .set_additional_model_request_fields(additional_params)
                         .set_inference_config(Some(inference_config))
                         .set_tool_config(tool_config)
@@ -362,7 +358,6 @@ impl Transport<Converse> for BedrockRuntime {
                         aws_sdk_bedrockruntime::operation::RequestId::request_id(&response)
                             .map(str::to_owned);
                     let opened = ConverseFrame::Opened {
-                        model,
                         request_id: request_id.clone(),
                     };
                     let frames = async_stream::stream! {
