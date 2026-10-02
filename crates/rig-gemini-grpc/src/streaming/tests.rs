@@ -519,11 +519,13 @@ async fn safety_ratings_and_citations_are_the_turns_native() {
     let terminal = normalized_terminal(vec![frame]).await;
     let native = terminal.native.map(|native| native.item).expect("a native");
     assert_eq!(
-        native["safetyRatings"],
-        json!([{ "category": "HARM_CATEGORY_HARASSMENT", "probability": "NEGLIGIBLE", "blocked": false }])
+        native.get("safetyRatings"),
+        Some(
+            &json!([{ "category": "HARM_CATEGORY_HARASSMENT", "probability": "NEGLIGIBLE", "blocked": false }])
+        )
     );
     assert_eq!(
-        native["citationMetadata"]["citationSources"][0]["uri"],
-        json!("https://example.com")
+        native.pointer("/citationMetadata/citationSources/0/uri"),
+        Some(&json!("https://example.com"))
     );
 }
