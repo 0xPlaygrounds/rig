@@ -15,7 +15,7 @@ then:
     value: text/event-stream
   body: |+
     event: message-start
-    data: {"delta":{"message":{"citations":[],"content":[],"role":"assistant","tool_calls":[],"tool_plan":""}},"id":"440df1f5-3b77-4419-a003-de5bdf95531e","type":"message-start"}
+    data: {"delta":{"message":{"citations":[],"content":[],"role":"assistant","tool_calls":[],"tool_plan":""}},"id":"26d55853-2bb1-41f5-95a3-2ad47ddad51d","type":"message-start"}
 
     event: tool-plan-delta
     data: {"delta":{"message":{"tool_plan":"I"}},"type":"tool-plan-delta"}
@@ -54,7 +54,7 @@ then:
     data: {"delta":{"message":{"tool_plan":"."}},"type":"tool-plan-delta"}
 
     event: tool-call-start
-    data: {"delta":{"message":{"tool_calls":{"function":{"arguments":"","name":"subtract"},"id":"subtract_82y521vs6vj3","type":"function"}}},"index":0,"type":"tool-call-start"}
+    data: {"delta":{"message":{"tool_calls":{"function":{"arguments":"","name":"subtract"},"id":"subtract_xsphsb49s4w7","type":"function"}}},"index":0,"type":"tool-call-start"}
 
     event: tool-call-delta
     data: {"delta":{"message":{"tool_calls":{"function":{"arguments":"{\""}}}},"index":0,"type":"tool-call-delta"}
@@ -96,7 +96,7 @@ then:
     data: {"index":0,"type":"tool-call-end"}
 
     event: message-end
-    data: {"delta":{"finish_reason":"TOOL_CALL","usage":{"billed_units":{"input_tokens":125,"output_tokens":24},"cached_tokens":112,"tokens":{"input_tokens":1600,"output_tokens":56}}},"type":"message-end"}
+    data: {"delta":{"finish_reason":"TOOL_CALL","usage":{"billed_units":{"input_tokens":125,"output_tokens":24},"cached_tokens":992,"tokens":{"input_tokens":1600,"output_tokens":56}}},"type":"message-end"}
 
     data: [DONE]
 
@@ -110,7 +110,7 @@ when:
     value: text/event-stream
   - name: content-type
     value: application/json
-  body: '{"documents":[],"messages":[{"content":"You are a calculator. Use the provided tools before answering arithmetic questions.","role":"system"},{"content":[{"text":"Calculate 2 - 5.","type":"text"}],"role":"user"},{"citations":[],"content":[],"role":"assistant","tool_calls":[{"function":{"arguments":"{\"x\": 2, \"y\": 5}","name":"subtract"},"id":"subtract_82y521vs6vj3","type":"function"}],"tool_plan":"I will use the subtract tool to calculate 2 - 5."},{"content":[{"text":"-3","type":"text"}],"role":"tool","tool_call_id":"subtract_82y521vs6vj3"}],"model":"command-a-03-2025","stream":true,"tools":[{"function":{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"description":"The first number to add","type":"integer"},"y":{"description":"The second number to add","type":"integer"}},"required":["x","y"],"type":"object"}},"type":"function"},{"function":{"description":"Subtract y from x (i.e.: x - y)","name":"subtract","parameters":{"properties":{"x":{"description":"The number to subtract from","type":"integer"},"y":{"description":"The number to subtract","type":"integer"}},"required":["x","y"],"type":"object"}},"type":"function"}]}'
+  body: '{"documents":[],"messages":[{"content":"You are a calculator. Use the provided tools before answering arithmetic questions.","role":"system"},{"content":[{"text":"Calculate 2 - 5.","type":"text"}],"role":"user"},{"content":[],"role":"assistant","tool_calls":[{"function":{"arguments":"{\"x\":2,\"y\":5}","name":"subtract"},"id":"subtract_xsphsb49s4w7","type":"function"}],"tool_plan":"I will use the subtract tool to calculate 2 - 5."},{"content":[{"text":"-3","type":"text"}],"role":"tool","tool_call_id":"subtract_xsphsb49s4w7"}],"model":"command-a-03-2025","stream":true,"tools":[{"function":{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"description":"The first number to add","type":"integer"},"y":{"description":"The second number to add","type":"integer"}},"required":["x","y"],"type":"object"}},"type":"function"},{"function":{"description":"Subtract y from x (i.e.: x - y)","name":"subtract","parameters":{"properties":{"x":{"description":"The number to subtract from","type":"integer"},"y":{"description":"The number to subtract","type":"integer"}},"required":["x","y"],"type":"object"}},"type":"function"}]}'
 then:
   status: 200
   header:
@@ -118,7 +118,7 @@ then:
     value: text/event-stream
   body: |+
     event: message-start
-    data: {"delta":{"message":{"citations":[],"content":[],"role":"assistant","tool_calls":[],"tool_plan":""}},"id":"3fb186eb-e4f6-4ca9-8c49-9fccf1ce8888","type":"message-start"}
+    data: {"delta":{"message":{"citations":[],"content":[],"role":"assistant","tool_calls":[],"tool_plan":""}},"id":"a5d26ed4-cd19-4af0-93af-445764f250a0","type":"message-start"}
 
     event: content-start
     data: {"delta":{"message":{"content":{"text":"","type":"text"}}},"index":0,"type":"content-start"}
@@ -130,7 +130,7 @@ then:
     data: {"delta":{"message":{"content":{"text":"3"}}},"index":0,"type":"content-delta"}
 
     event: citation-start
-    data: {"delta":{"message":{"citations":{"end":2,"sources":[{"id":"subtract_82y521vs6vj3:0","tool_output":{"content":"-3"},"type":"tool"}],"start":0,"text":"-3","type":"TEXT_CONTENT"}}},"index":0,"type":"citation-start"}
+    data: {"delta":{"message":{"citations":{"end":2,"sources":[{"id":"subtract_xsphsb49s4w7:0","tool_output":{"content":"-3"},"type":"tool"}],"start":0,"text":"-3","type":"TEXT_CONTENT"}}},"index":0,"type":"citation-start"}
 
     event: citation-end
     data: {"index":0,"type":"citation-end"}
