@@ -14,8 +14,8 @@ pub(super) fn validation_len(stream: &BusStreamed) -> usize {
 
 /// The assistant content `items` delivered, in start order: every part that
 /// ended, and the text still open where the stream stands (a text part the
-/// model was writing when the prefix was cut is part of it). Open reasoning
-/// names no issuer yet, so it is left out.
+/// model was writing when the prefix was cut is part of it). Reasoning still
+/// open is not yet whole, so it is left out.
 pub(super) fn delivered_prefix(items: &[Item<StreamEvent>]) -> Vec<AssistantContent> {
     let mut parts: Vec<Option<AssistantContent>> = Vec::new();
     let mut open_text: std::collections::BTreeMap<usize, String> = Default::default();

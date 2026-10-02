@@ -3381,3 +3381,17 @@ fn consecutive_tool_results_merge_into_one_user_message() {
     assert_eq!(messages[2]["content"][0]["tool_use_id"], "toolu_1");
     assert_eq!(messages[2]["content"][1]["tool_use_id"], "toolu_2");
 }
+
+/// A `tool_use` whose `input` is not an object is a malformed item.
+#[test]
+fn a_malformed_tool_use_fails_the_reply() {
+    for block in [json!({"type": "tool_use", "id": "toolu_1", "name": "lookup", "input": "{}"})] {
+        let value = json!({
+            "id": "msg_bad", "model": CLAUDE_SONNET_4_6, "role": "assistant",
+            "stop_reason": "tool_use", "stop_sequence": null,
+            "usage": {"input_tokens": 1, "output_tokens": 1},
+            "content": [block]
+        });
+        assert!(fold_reply(&value).is_err());
+    }
+}

@@ -123,6 +123,12 @@ impl<'de> Deserialize<'de> for ContentItem {
                 item.kind()
             )));
         }
+        if item.kind() == "tool_use" && item.0.get("input").is_some_and(|input| !input.is_object())
+        {
+            return Err(D::Error::custom(
+                "Anthropic `tool_use` needs an object `input`",
+            ));
+        }
         match (item.kind(), item.0.get("citations"), item.0.get("citation")) {
             ("text", Some(citations), _) if !citations.is_null() => {
                 Vec::<Citation>::deserialize(citations).map_err(D::Error::custom)?;

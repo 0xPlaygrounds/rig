@@ -329,8 +329,8 @@ impl From<&StreamingCompletionResponse> for Usage {
 
 /// Ollama's `done: true` record as the provider's end of the reply.
 fn finish_of(response: StreamingCompletionResponse) -> Finish {
-    // Ollama's `/api/chat` stream assigns no message identifier, so the
-    // normalized `message_id` stays unset.
+    // Ollama's `/api/chat` stream assigns no response identifier, so the
+    // origin's `response_id` stays unset.
     Finish {
         usage: Usage::from(&response),
         reason: response.done_reason.as_deref().map(map_done_reason),
@@ -363,6 +363,9 @@ pub struct OllamaDecoder {
     /// How many tool calls had arrived when the reasoning and the text block
     /// opened: a fragment after a later call opens the next block.
     opened_at: [usize; 2],
+    /// The reasoning and text of the open blocks, once a call has split one:
+    /// each block then holds its own part of the message's field.
+    segments: [Option<String>; 2],
     /// Content held while it may still open with inline reasoning.
     held: String,
     /// Whether the content's shape is known: explicit thinking arrived, or
@@ -382,25 +385,37 @@ impl OllamaDecoder {
             return Ok(());
         }
         let calls = self.tool_calls.len();
-        let (slot, opened_at, block) = if reasoning {
-            (
-                &mut self.reasoning,
-                &mut self.opened_at[0],
-                Block::Reasoning { redacted: false },
-            )
+        let at = usize::from(!reasoning);
+        let key = if reasoning { "thinking" } else { "content" };
+        let (slot, block) = if reasoning {
+            (&mut self.reasoning, Block::Reasoning { redacted: false })
         } else {
-            (&mut self.text, &mut self.opened_at[1], Block::Text)
+            (&mut self.text, Block::Text)
         };
         if let Some(index) = *slot
-            && *opened_at < calls
+            && self.opened_at[at] < calls
         {
+            // A call ends the block: what follows it is the next block, and
+            // each holds its own part of the field.
+            let segment = self.segments[at].take().unwrap_or_else(|| {
+                self.message
+                    .get(key)
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_owned()
+            });
+            out.edit(index, |item| *item = json!({ key: segment }))?;
             out.close(index, IfMalformed::Fail)?;
             *slot = None;
+            self.segments[at] = Some(String::new());
         }
         if slot.is_none() {
-            *opened_at = calls;
+            self.opened_at[at] = calls;
         }
         let index = open_once(slot, block, out)?;
+        if let Some(segment) = &mut self.segments[at] {
+            segment.push_str(fragment);
+        }
         out.push(index, fragment)
     }
 
@@ -525,14 +540,17 @@ impl OllamaDecoder {
             }
             message.insert("content".to_owned(), visible.into());
         }
-        for (index, key) in [
+        for (at, (index, key)) in [
             (self.reasoning.take(), "thinking"),
             (self.text.take(), "content"),
-        ] {
+        ]
+        .into_iter()
+        .enumerate()
+        {
             let Some(index) = index else {
                 continue;
             };
-            let fields: serde_json::Map<_, _> = message
+            let mut fields: serde_json::Map<_, _> = message
                 .iter()
                 .filter(|(name, _)| match key {
                     "thinking" => name.as_str() == "thinking",
@@ -540,6 +558,9 @@ impl OllamaDecoder {
                 })
                 .map(|(name, value)| (name.clone(), value.clone()))
                 .collect();
+            if let Some(segment) = self.segments[at].take() {
+                fields.insert(key.to_owned(), segment.into());
+            }
             out.edit(index, |item| *item = Value::Object(fields))?;
             out.close(index, IfMalformed::Fail)?;
         }

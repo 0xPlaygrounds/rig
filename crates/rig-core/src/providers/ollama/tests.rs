@@ -1198,3 +1198,58 @@ fn daemon_issued_call_ids_replay_and_minted_handles_do_not() {
     assert!(assistant["tool_calls"][0].get("id").is_none());
     assert!(tool.get("tool_call_id").is_none());
 }
+
+/// Reasoning around an interleaved tool call is two blocks in arrival
+/// order, each holding its own part of the message's `thinking`.
+#[test]
+fn reasoning_split_by_a_call_keeps_each_part_in_its_block() {
+    use crate::wire::WireFrame;
+
+    let record = |message: serde_json::Value, done: bool| {
+        WireFrame::Text(
+            json!({"model": "llama3.2", "created_at": "1970-01-01T00:00:00Z", "message": message, "done": done, "done_reason": "stop"})
+                .to_string(),
+        )
+    };
+    let wire = Chat {
+        provider: OllamaConfig::new(),
+        model: "llama3.2".to_owned(),
+    };
+    let frames = [
+        record(
+            json!({"role": "assistant", "content": "", "thinking": "before"}),
+            false,
+        ),
+        record(
+            json!({"role": "assistant", "content": "", "tool_calls": [{"function": {"name": "lookup", "arguments": {}}}]}),
+            false,
+        ),
+        record(
+            json!({"role": "assistant", "content": "", "thinking": "after"}),
+            false,
+        ),
+        record(json!({"role": "assistant", "content": ""}), true),
+    ];
+    let response = crate::test_utils::history::decode(&wire, crate::wire::Mode::Streaming, frames)
+        .expect("decodes");
+    let [
+        completion::AssistantContent::Reasoning(first),
+        completion::AssistantContent::ToolCall(_),
+        completion::AssistantContent::Reasoning(second),
+    ] = response.choice.as_slice()
+    else {
+        panic!("{:?}", response.choice);
+    };
+    assert_eq!(
+        (first.text.as_str(), second.text.as_str()),
+        ("before", "after")
+    );
+    assert_eq!(
+        response.choice[0].native_item(),
+        Some(&json!({"thinking": "before"}))
+    );
+    assert_eq!(
+        response.choice[2].native_item(),
+        Some(&json!({"thinking": "after"}))
+    );
+}
