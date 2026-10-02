@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [0.44.0](https://github.com/0xPlaygrounds/rig/compare/rig-bedrock-v0.43.0...rig-bedrock-v0.44.0) - 2026-10-02
+
+### Other
+
+- *(agent)* [**breaking**] derive PromptResponse output from content, tighten extractor ([#2690](https://github.com/0xPlaygrounds/rig/pull/2690)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- [**breaking**] type tool definition and tool choice names as ToolName ([#2689](https://github.com/0xPlaygrounds/rig/pull/2689)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2689
+- [**breaking**] consistent provider client constructors (Anthropic dialect, Bedrock builder, Vertex errors) ([#2691](https://github.com/0xPlaygrounds/rig/pull/2691)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2691
+- [**breaking**] consistent media content constructors ([#2685](https://github.com/0xPlaygrounds/rig/pull/2685)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2685
+- leftovers sweep (bedrock text helper, derive trybuild, one-impl traits) ([#2680](https://github.com/0xPlaygrounds/rig/pull/2680)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2680
+- *(bedrock)* drop the Rig* newtype conversion layer and its dead inbound half ([#2652](https://github.com/0xPlaygrounds/rig/pull/2652)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(bedrock)* collapse the per-operation SDK error mapping into one generic conversion ([#2654](https://github.com/0xPlaygrounds/rig/pull/2654)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+
+### Contributors
+
+* [gold-silver-copper](https://github.com/gold-silver-copper)
 ## [0.43.0](https://github.com/0xPlaygrounds/rig/compare/rig-bedrock-v0.42.0...rig-bedrock-v0.43.0) - 2026-09-30
 
 ### Added

@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [0.44.0](https://github.com/0xPlaygrounds/rig/compare/rig-ecs-v0.43.0...rig-ecs-v0.44.0) - 2026-10-02
+
+### Other
+
+- [**breaking**] type tool definition and tool choice names as ToolName ([#2689](https://github.com/0xPlaygrounds/rig/pull/2689)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2689
+- *(ecs)* [**breaking**] typed checkpoint save/restore errors ([#2692](https://github.com/0xPlaygrounds/rig/pull/2692)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- [**breaking**] stop flattening tool and MCP failures into strings ([#2687](https://github.com/0xPlaygrounds/rig/pull/2687)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2687
+- *(tests)* share request fixtures and golden helpers outside provider tests ([#2677](https://github.com/0xPlaygrounds/rig/pull/2677)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(ecs)* [**breaking**] one request-assembly pass and no hand-kept mirrors in rig-ecs ([#2672](https://github.com/0xPlaygrounds/rig/pull/2672)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- [**breaking**] share structured-output policy between rig-agent and rig-ecs ([#2660](https://github.com/0xPlaygrounds/rig/pull/2660)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2660
+
+### Contributors
+
+* [gold-silver-copper](https://github.com/gold-silver-copper)
 ## [0.43.0](https://github.com/0xPlaygrounds/rig/compare/rig-ecs-v0.0.1...rig-ecs-v0.43.0) - 2026-09-30
 
 ### Added

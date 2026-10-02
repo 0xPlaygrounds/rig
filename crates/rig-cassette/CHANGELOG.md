@@ -6,6 +6,35 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [0.44.0](https://github.com/0xPlaygrounds/rig/compare/rig-cassette-v0.43.0...rig-cassette-v0.44.0) - 2026-10-02
+
+### Added
+
+- *(rig-cassette)* add non-panicking try_start_at and try_finish ([#2701](https://github.com/0xPlaygrounds/rig/pull/2701)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+
+### Other
+
+- *(agent)* [**breaking**] derive PromptResponse output from content, tighten extractor ([#2690](https://github.com/0xPlaygrounds/rig/pull/2690)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(vector_store)* [**breaking**] named VectorStoreIndex search results ([#2688](https://github.com/0xPlaygrounds/rig/pull/2688)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- [**breaking**] type tool definition and tool choice names as ToolName ([#2689](https://github.com/0xPlaygrounds/rig/pull/2689)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2689
+- *(ecs)* [**breaking**] typed checkpoint save/restore errors ([#2692](https://github.com/0xPlaygrounds/rig/pull/2692)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(vector_store)* [**breaking**] tighten the VectorSearchRequest surface ([#2683](https://github.com/0xPlaygrounds/rig/pull/2683)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- [**breaking**] consistent media content constructors ([#2685](https://github.com/0xPlaygrounds/rig/pull/2685)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2685
+- *(agent)* [**breaking**] plain run results and streamed tool results ([#2686](https://github.com/0xPlaygrounds/rig/pull/2686)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- leftovers sweep (bedrock text helper, derive trybuild, one-impl traits) ([#2680](https://github.com/0xPlaygrounds/rig/pull/2680)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2680
+- *(rig-cassette)* one scripted long-loop suite instead of five ([#2678](https://github.com/0xPlaygrounds/rig/pull/2678)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(ecs)* [**breaking**] one request-assembly pass and no hand-kept mirrors in rig-ecs ([#2672](https://github.com/0xPlaygrounds/rig/pull/2672)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-cassette)* one scripted ECS fault suite instead of six ([#2671](https://github.com/0xPlaygrounds/rig/pull/2671)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(openrouter)* [**breaking**] read OpenRouter replies through OpenAI's chat types ([#2664](https://github.com/0xPlaygrounds/rig/pull/2664)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- [**breaking**] read DeepSeek and Mistral replies through OpenAI's chat types ([#2661](https://github.com/0xPlaygrounds/rig/pull/2661)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2661
+- [**breaking**] share structured-output policy between rig-agent and rig-ecs ([#2660](https://github.com/0xPlaygrounds/rig/pull/2660)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2660
+- *(test-utils)* one tracing capture layer for span and event assertions ([#2659](https://github.com/0xPlaygrounds/rig/pull/2659)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- [**breaking**] drop mirror types kept in step by hand-written conversions ([#2656](https://github.com/0xPlaygrounds/rig/pull/2656)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2656
+- *(rig-agent)* [**breaking**] one agent-run error type that keeps what it knows ([#2644](https://github.com/0xPlaygrounds/rig/pull/2644)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+
+### Contributors
+
+* [gold-silver-copper](https://github.com/gold-silver-copper)
 ## [0.43.0](https://github.com/0xPlaygrounds/rig/compare/rig-cassette-v0.0.1...rig-cassette-v0.43.0) - 2026-09-30
 
 ### Added
