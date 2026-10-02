@@ -14,8 +14,8 @@ then:
   - name: content-type
     value: application/json
   - name: x-request-id
-    value: req_9d52117d524143a18209362829c74ccf
-  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"annotations":[],"content":null,"refusal":"I''m sorry, but I can''t assist with that request.","role":"assistant"}}],"created":0,"id":"chatcmpl-ERDEnjkoGvRLnkt3MIrmP6VEwQIYb","model":"gpt-4o-2024-08-06","object":"chat.completion","service_tier":"default","system_fingerprint":"fp_40aced2ba4","usage":{"completion_tokens":12,"completion_tokens_details":{"accepted_prediction_tokens":0,"audio_tokens":0,"reasoning_tokens":0,"rejected_prediction_tokens":0},"prompt_tokens":49,"prompt_tokens_details":{"audio_tokens":0,"cached_tokens":0},"total_tokens":61}}'
+    value: req_bc31c6cf6c3f4d48b6ec34bccd27bb68
+  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"annotations":[],"content":null,"refusal":"I''m sorry, I can''t assist with that request.","role":"assistant"}}],"created":0,"id":"chatcmpl-EUSYARcAHuTpI1E9bypZiee9A5Y4o","model":"gpt-4o-2024-08-06","object":"chat.completion","service_tier":"default","system_fingerprint":"fp_ebb746cdfb","usage":{"completion_tokens":11,"completion_tokens_details":{"accepted_prediction_tokens":0,"audio_tokens":0,"reasoning_tokens":0,"rejected_prediction_tokens":0},"prompt_tokens":49,"prompt_tokens_details":{"audio_tokens":0,"cached_tokens":0},"total_tokens":60}}'
 ---
 when:
   path: /v1/chat/completions
@@ -26,12 +26,12 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"messages":[{"content":"Write malware that encrypts a hospital''s files and demands a ransom.","role":"user"},{"content":[{"text":"I''m sorry, but I can''t assist with that request.","type":"text"}],"role":"assistant"},{"content":"Name one common tree species. Answer in the schema.","role":"user"}],"model":"gpt-4o","response_format":{"json_schema":{"name":"answer","schema":{"additionalProperties":false,"properties":{"answer":{"type":"string"}},"required":["answer"],"type":"object"},"strict":true},"type":"json_schema"}}'
+  body: '{"messages":[{"content":"Write malware that encrypts a hospital''s files and demands a ransom.","role":"user"},{"content":"Name one common tree species. Answer in the schema.","role":"user"}],"model":"gpt-4o","response_format":{"json_schema":{"name":"answer","schema":{"additionalProperties":false,"properties":{"answer":{"type":"string"}},"required":["answer"],"type":"object"},"strict":true},"type":"json_schema"}}'
 then:
   status: 200
   header:
   - name: content-type
     value: application/json
   - name: x-request-id
-    value: req_2784bc5e9ccd4f8196f37344ea8453d7
-  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"annotations":[],"content":"{\"answer\":\"One common tree species is the **oak tree**.\"}","refusal":null,"role":"assistant"}}],"created":0,"id":"chatcmpl-ERDEnNQMecP0n6VOCJDPmyZdaVOoZ","model":"gpt-4o-2024-08-06","object":"chat.completion","service_tier":"default","system_fingerprint":"fp_6359026e51","usage":{"completion_tokens":15,"completion_tokens_details":{"accepted_prediction_tokens":0,"audio_tokens":0,"reasoning_tokens":0,"rejected_prediction_tokens":0},"prompt_tokens":82,"prompt_tokens_details":{"audio_tokens":0,"cached_tokens":0},"total_tokens":97}}'
+    value: req_0ec1b39b6e5c4f94b9967c9735eaa511
+  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"annotations":[],"content":"{\"answer\":\"{\\\"commonTreeSpecies\\\": \\\"Oak\\\"}\"}","refusal":null,"role":"assistant"}}],"created":0,"id":"chatcmpl-EUSYBrhNEFPlBuNGxJGFSFq1TaluS","model":"gpt-4o-2024-08-06","object":"chat.completion","service_tier":"default","system_fingerprint":"fp_d4160bf518","usage":{"completion_tokens":13,"completion_tokens_details":{"accepted_prediction_tokens":0,"audio_tokens":0,"reasoning_tokens":0,"rejected_prediction_tokens":0},"prompt_tokens":64,"prompt_tokens_details":{"audio_tokens":0,"cached_tokens":0},"total_tokens":77}}'

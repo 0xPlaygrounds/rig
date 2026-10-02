@@ -141,9 +141,10 @@ fn assert_responses_request_order(scenario: &str) {
         input[0].to_string().contains("<file id: ordering-note>"),
         "expected first input item to contain normalized document: {body:#}"
     );
+    // A hand-built turn is rebuilt as a completed message item.
     assert_eq!(input[1]["role"], "assistant");
-    assert_eq!(input[1]["content"], "Acknowledged.");
-    assert!(input[1].get("status").is_none());
+    assert_eq!(input[1]["content"][0]["type"], "output_text");
+    assert_eq!(input[1]["content"][0]["text"], "Acknowledged.");
     assert_eq!(input[2]["role"], "user");
     assert!(input[2].to_string().contains(PROMPT));
 }

@@ -7,12 +7,12 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"max_tokens":24,"messages":[{"content":"Unicode context: café 東京. The marker is exactly: lantern-42.","role":"user"},{"content":[{"text":"lantern-42","type":"text"}],"role":"assistant"},{"content":"Reply with exactly the marker from the prior conversation.","role":"user"}],"model":"gpt-4o-mini"}'
+  body: '{"max_tokens":24,"messages":[{"content":"Unicode context: café 東京. The marker is exactly: lantern-42.","role":"user"},{"content":"lantern-42","role":"assistant"},{"content":"Reply with exactly the marker from the prior conversation.","role":"user"}],"model":"gpt-4o-mini"}'
 then:
   status: 200
   header:
   - name: content-type
     value: application/json
   - name: x-request-id
-    value: req_43b0397b6b144ca78bb02932c8bba518
-  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"annotations":[],"content":"lantern-42","refusal":null,"role":"assistant"}}],"created":0,"id":"chatcmpl-ERDAjTWf78d9BjQgzxa5doAK2anw3","model":"gpt-4o-mini-2024-07-18","object":"chat.completion","service_tier":"default","system_fingerprint":"fp_9262d56da7","usage":{"completion_tokens":4,"completion_tokens_details":{"accepted_prediction_tokens":0,"audio_tokens":0,"reasoning_tokens":0,"rejected_prediction_tokens":0},"prompt_tokens":44,"prompt_tokens_details":{"audio_tokens":0,"cached_tokens":0},"total_tokens":48}}'
+    value: req_8788b23a5a79402caa3459c62587b846
+  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"annotations":[],"content":"lantern-42","refusal":null,"role":"assistant"}}],"created":0,"id":"chatcmpl-EUSGce7OKV2r5dtfsNHX86Df9cdw8","model":"gpt-4o-mini-2024-07-18","object":"chat.completion","service_tier":"default","system_fingerprint":"fp_e63ee9cfdb","usage":{"completion_tokens":4,"completion_tokens_details":{"accepted_prediction_tokens":0,"audio_tokens":0,"reasoning_tokens":0,"rejected_prediction_tokens":0},"prompt_tokens":44,"prompt_tokens_details":{"audio_tokens":0,"cached_tokens":0},"total_tokens":48}}'
