@@ -270,7 +270,15 @@ fn call_anchor(object: &serde_json::Map<String, Value>, complete: bool) -> Optio
     }
     let arguments = ["arguments", "input", "args"]
         .iter()
-        .find_map(|key| function.get(*key))
+        .find_map(|key| function.get(*key));
+    // A call the output budget cut states what a tolerant parse reads, not
+    // the text it arrived as, so it is owned by its name alone.
+    if let Some(Value::String(text)) = arguments
+        && serde_json::from_str::<Value>(text).is_err()
+    {
+        return Some(name.to_owned());
+    }
+    let arguments = arguments
         .map(|arguments| match arguments {
             Value::String(text) => serde_json::from_str(text).unwrap_or(arguments.clone()),
             other => other.clone(),

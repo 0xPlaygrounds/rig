@@ -136,14 +136,6 @@ const VERBATIM_EXEMPT: &[(&str, &str)] = &[
          into one block so a stream and a whole reply fold alike, and the block replays as one part",
     ),
     (
-        "doubleword/prompt_caching/blocking_probe.yaml",
-        "the cache probe rebuilds each answer from its text, so the history holds no reasoning",
-    ),
-    (
-        "groq/prompt_caching/blocking_probe.yaml",
-        "the cache probe rebuilds each answer from its text, so the history holds no reasoning",
-    ),
-    (
         "openai/prompt_caching/responses_streaming_probe.yaml",
         "the cache probe rebuilds each answer from its text, so the history holds no item ids",
     ),
@@ -152,12 +144,9 @@ const VERBATIM_EXEMPT: &[(&str, &str)] = &[
         "the cache probe rebuilds each answer from its text, so the history holds no reasoning",
     ),
     (
-        "openai/refusal_matrix/chat_refusal_turn_survives_into_history.yaml",
-        "the cell builds its history by hand from the refusal text",
-    ),
-    (
-        "openrouter/refusal_matrix/blocking_refusal_survives_into_history.yaml",
-        "the cell builds its history by hand from the refusal text",
+        "copilot/permission_control/permission_control_prompt_example.yaml",
+        "Copilot has no credentials to re-record with, so its request still echoes the \
+         reply's whole message rather than the projection the rebuild sends",
     ),
     (
         "ollama/tools/optional_argument.yaml",
@@ -180,11 +169,7 @@ const KIND_COVERAGE_EXEMPT: &[(&str, &str, &str)] = &[];
 
 /// Providers no committed cassette continues a conversation for, with the
 /// reason. An entry is stale once the provider has a continuation pair.
-const CONTINUATION_EXEMPT: &[(&str, &str)] = &[(
-    "mistral",
-    "its multi-turn cells are unrecorded: Mistral rate-limited their re-record after the \
-     history shape changed",
-)];
+const CONTINUATION_EXEMPT: &[(&str, &str)] = &[];
 
 #[derive(Deserialize)]
 struct RecordedInteraction {
@@ -565,7 +550,10 @@ fn canonical_arguments(arguments: Option<&Value>, text: bool) -> Value {
         Some(Value::String(raw)) => match serde_json::from_str::<Value>(raw) {
             Ok(Value::String(inner)) => serde_json::from_str(&inner).unwrap_or_default(),
             Ok(value) => value,
-            Err(_) => Value::Null,
+            // A cut call states what pi's tolerant parse reads from it.
+            Err(_) => rig_core::json_utils::parse_partial_object(raw)
+                .map(Value::Object)
+                .unwrap_or_default(),
         },
         Some(value) => value.clone(),
         None => Value::Null,
@@ -643,6 +631,13 @@ fn chat_projection(provider: &str, message: &Value) -> Value {
         .collect();
     if !calls.is_empty() {
         out.insert("tool_calls".to_owned(), calls.into());
+    }
+    // A message with no content and no calls is not sent, as pi skips it.
+    if !["content", "audio", "tool_calls"]
+        .iter()
+        .any(|key| out.contains_key(*key))
+    {
+        return Value::Null;
     }
     if provider == "deepseek" {
         out.entry("reasoning_content").or_insert_with(|| "".into());
@@ -731,6 +726,7 @@ fn same_model_replay_sends_the_recorded_output_items() {
         let items: Vec<Value> = items
             .into_iter()
             .map(|item| as_replayed(scenario, earlier.dialect, item))
+            .filter(|item| !item.is_null())
             .collect();
         compared += 1;
         let sent: Vec<Value> = replayed_items(later.dialect, &later.request);
