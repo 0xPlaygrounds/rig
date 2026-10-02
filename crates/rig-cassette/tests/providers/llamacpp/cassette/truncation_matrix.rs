@@ -11,10 +11,9 @@
 //! shared policy for the state llama.cpp produces here: a turn that ran out of
 //! output budget mid-arguments comes back with `finish_reason: "length"` and
 //! `tool_calls[].function.arguments` cut partway through the JSON object. The
-//! decoder tolerates unparseable arguments **only** when the outer finish
-//! reason maps to `Length`, drops the unusable call, and keeps the rest of the
-//! turn; an ordinary completed `tool_calls` response with malformed JSON stays
-//! a decode error.
+//! decoder now keeps the call, as pi does: its arguments are what pi's
+//! tolerant parse reads, and its text is kept as `invalid_arguments`, so the
+//! agent answers it with an error result and never runs it.
 //!
 //! That policy was derived from DeepSeek and Mistral. llama.cpp is a third
 //! wire that produces the same state, from a completely different server, and
@@ -25,8 +24,8 @@
 //!
 //! | Cell | Transport | Pinned |
 //! | --- | --- | --- |
-//! | [`a_tool_call_cut_mid_arguments_does_not_destroy_the_turn`] | blocking | the response decodes; the unusable call is dropped, not returned half-parsed |
-//! | [`the_streaming_path_drops_the_same_cut_call`] | streaming | the same boundary, and the stream still terminates cleanly |
+//! | [`a_tool_call_cut_mid_arguments_does_not_destroy_the_turn`] | blocking | the response decodes; the cut call is kept with its text, so nothing runs it |
+//! | [`the_streaming_path_keeps_the_same_cut_call`] | streaming | the same boundary, and the stream still terminates cleanly |
 //! | [`a_complete_call_under_the_same_cap_survives`] | blocking | the control: a cap large enough to finish yields a usable call |
 
 use rig::completion::FinishReason;
