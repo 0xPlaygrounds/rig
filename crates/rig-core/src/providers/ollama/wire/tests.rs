@@ -305,3 +305,78 @@ async fn an_embedding_reply_keeps_its_whole_body_as_raw() {
     );
     assert_eq!(response.raw["unmodeled"], "kept");
 }
+
+/// A message field rig has never seen, and a field it has never seen on a
+/// tool call, survive decoding in both modes and go back to the daemon.
+#[test]
+fn an_invented_message_field_and_call_field_survive_decode_and_replay() {
+    use crate::message::{AssistantMessage, Message};
+    use crate::wire::{Mode, Wire, WireFrame};
+
+    let wire = OllamaConfig::new().completion("qwen3");
+    let call = serde_json::json!({"id": "call_1", "function": {"name": "add", "arguments": {"x": 1}}, "x_call_probe": 1});
+    let record = |message: serde_json::Value, done: bool| {
+        WireFrame::Text(
+            serde_json::json!({"model": "qwen3", "created_at": "1970-01-01T00:00:00Z", "message": message, "done": done, "done_reason": "stop"})
+                .to_string(),
+        )
+    };
+    let whole = record(
+        serde_json::json!({"role": "assistant", "thinking": "plan", "content": "adding", "x_message_probe": [1], "tool_calls": [call]}),
+        true,
+    );
+    let streamed = vec![
+        record(
+            serde_json::json!({"role": "assistant", "thinking": "pl", "content": "", "x_message_probe": [1]}),
+            false,
+        ),
+        record(
+            serde_json::json!({"role": "assistant", "thinking": "an"}),
+            false,
+        ),
+        record(
+            serde_json::json!({"role": "assistant", "content": "adding"}),
+            false,
+        ),
+        record(
+            serde_json::json!({"role": "assistant", "tool_calls": [call]}),
+            false,
+        ),
+        record(
+            serde_json::json!({"role": "assistant", "content": ""}),
+            true,
+        ),
+    ];
+    crate::test_utils::history::assert_restated_agrees(&wire, [whole.clone()], streamed.clone());
+    for (mode, frames) in [(Mode::Unary, vec![whole]), (Mode::Streaming, streamed)] {
+        let response =
+            crate::test_utils::history::decode(&wire, mode, frames).expect("the reply decodes");
+        let turn = AssistantMessage {
+            content: response.choice.clone(),
+            ..response.head()
+        };
+        let mut request = CompletionRequest::new("and then?");
+        request.chat_history = crate::completion::history::adapt(
+            &[
+                Message::user("add one"),
+                Message::Assistant(turn),
+                Message::tool_result(
+                    crate::message::CallId::from_wire("call_1"),
+                    crate::message::ToolName::new("add").expect("tool name"),
+                    "1",
+                ),
+                Message::user("and then?"),
+            ],
+            &wire,
+        );
+        let body = json_body(&wire.encode(request, Mode::Unary).expect("encodes").request);
+        let replayed = &body["messages"][1];
+        assert_eq!(
+            replayed["x_message_probe"],
+            serde_json::json!([1]),
+            "{mode:?}"
+        );
+        assert_eq!(replayed["tool_calls"][0]["x_call_probe"], 1, "{mode:?}");
+        assert_eq!(replayed["thinking"], "plan", "{mode:?}");
+    }
+}

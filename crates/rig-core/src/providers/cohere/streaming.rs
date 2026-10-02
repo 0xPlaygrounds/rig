@@ -181,9 +181,9 @@ pub struct ChatDecoder {
     /// The message as assembled so far, without its content, tool calls and
     /// citations.
     message: serde_json::Map<String, Value>,
-    content: Vec<Value>,
-    tool_calls: Vec<Value>,
-    citations: Vec<Value>,
+    content: Items,
+    tool_calls: Items,
+    citations: Items,
     /// The writer index of the tool plan's reasoning.
     plan: Option<usize>,
     message_id: Option<String>,
@@ -209,7 +209,7 @@ impl ChatDecoder {
                 let mut item = delta.unwrap_or_default().take("content");
                 if out.is_open(index) {
                     self.content_fragment(index, item, out)?;
-                } else if self.content.get(index).is_none_or(Value::is_null) {
+                } else if self.content.get(index).is_none() {
                     // A delta of an item whose start never came opens it.
                     let kind = if item.contains_key("thinking") {
                         "thinking"
@@ -244,11 +244,8 @@ impl ChatDecoder {
                 merge_fields(&mut self.message, &fragment);
             }
             StreamingEvent::ToolCallStart { index, delta } => {
-                put(
-                    &mut self.tool_calls,
-                    index,
-                    Value::Object(serde_json::Map::new()),
-                );
+                self.tool_calls
+                    .start(index, Value::Object(serde_json::Map::new()));
                 self.call_fragment(index, delta.unwrap_or_default().take("tool_calls"), out)?;
             }
             StreamingEvent::ToolCallDelta { index, delta } => {
@@ -258,8 +255,7 @@ impl ChatDecoder {
             }
             StreamingEvent::ToolCallEnd { index } => self.close_call(index, out)?,
             StreamingEvent::CitationStart { index, delta } => {
-                put(
-                    &mut self.citations,
+                self.citations.start(
                     index,
                     Value::Object(delta.unwrap_or_default().take("citations")),
                 );
@@ -284,11 +280,8 @@ impl ChatDecoder {
             _ => Block::Opaque { replay: true },
         };
         out.open(index, block, Value::Null)?;
-        put(
-            &mut self.content,
-            index,
-            Value::Object(serde_json::Map::new()),
-        );
+        self.content
+            .start(index, Value::Object(serde_json::Map::new()));
         self.content_fragment(index, item, out)
     }
 
@@ -470,25 +463,27 @@ impl ChatDecoder {
             out.edit(index, |item| *item = Value::Object(plan))?;
             out.close(index, IfMalformed::Fail)?;
         }
-        for index in 0..self.tool_calls.len() {
+        for index in self.tool_calls.open() {
             self.close_call(index, &mut out)?;
         }
-        for (index, item) in self.content.iter().enumerate() {
+        for index in self.content.open() {
             if out.is_open(index) {
-                let item = item.clone();
+                let item = self.content.get(index).cloned().unwrap_or_default();
                 out.edit(index, |slot| *slot = item)?;
                 out.close(index, IfMalformed::Fail)?;
             }
         }
         let mut message = std::mem::take(&mut self.message);
-        let calls = std::mem::take(&mut self.tool_calls);
         for (key, items) in [
-            ("content", std::mem::take(&mut self.content)),
+            ("content", std::mem::take(&mut self.content).into_values()),
             (
                 "tool_calls",
-                calls.into_iter().filter(|call| !call.is_null()).collect(),
+                std::mem::take(&mut self.tool_calls).into_values(),
             ),
-            ("citations", std::mem::take(&mut self.citations)),
+            (
+                "citations",
+                std::mem::take(&mut self.citations).into_values(),
+            ),
         ] {
             if !items.is_empty() || message.contains_key(key) {
                 message.insert(key.to_owned(), Value::Array(items));
@@ -518,13 +513,40 @@ impl ChatDecoder {
     }
 }
 
-/// Set the item at `index`, growing `items` to it.
-fn put(items: &mut Vec<Value>, index: usize, item: Value) {
-    if items.len() <= index {
-        items.resize(index + 1, Value::Null);
+/// One kind of the message's items in arrival order, keyed by the wire
+/// index of the item each currently extends.
+#[derive(Default)]
+struct Items {
+    values: Vec<Value>,
+    at: std::collections::BTreeMap<usize, usize>,
+}
+
+impl Items {
+    /// A new item at wire `index`, after every item so far.
+    fn start(&mut self, index: usize, item: Value) {
+        self.at.insert(index, self.values.len());
+        self.values.push(item);
     }
-    if let Some(slot) = items.get_mut(index) {
-        *slot = item;
+
+    fn get(&self, index: usize) -> Option<&Value> {
+        self.values.get(*self.at.get(&index)?)
+    }
+
+    fn get_mut(&mut self, index: usize) -> Option<&mut Value> {
+        self.values.get_mut(*self.at.get(&index)?)
+    }
+
+    /// The wire indices items were last started at.
+    fn open(&self) -> Vec<usize> {
+        self.at.keys().copied().collect()
+    }
+
+    /// The items, without the ones dropped.
+    fn into_values(self) -> Vec<Value> {
+        self.values
+            .into_iter()
+            .filter(|item| !item.is_null())
+            .collect()
     }
 }
 

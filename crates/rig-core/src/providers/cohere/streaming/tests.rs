@@ -538,3 +538,136 @@ async fn empty_tool_call_ids_are_minted_not_keyed_on_the_empty_string() {
     assert_eq!(calls[0].function.arguments, json!({"n": 1}));
     assert_eq!(calls[1].function.arguments, json!({"n": 2}));
 }
+
+/// Every event of this wire has a sample, so a new one fails to compile
+/// until it is numbered here and fails until a frame decodes to it.
+#[test]
+fn every_streaming_event_has_a_sample() {
+    let index = |event: &StreamingEvent| match event {
+        StreamingEvent::MessageStart { .. } => 0,
+        StreamingEvent::ContentStart { .. } => 1,
+        StreamingEvent::ContentDelta { .. } => 2,
+        StreamingEvent::ContentEnd { .. } => 3,
+        StreamingEvent::ToolPlanDelta { .. } => 4,
+        StreamingEvent::ToolCallStart { .. } => 5,
+        StreamingEvent::ToolCallDelta { .. } => 6,
+        StreamingEvent::ToolCallEnd { .. } => 7,
+        StreamingEvent::CitationStart { .. } => 8,
+        StreamingEvent::CitationEnd => 9,
+        StreamingEvent::MessageEnd { .. } => 10,
+    };
+    let samples: Vec<StreamingEvent> = KNOWN_EVENT_TYPES
+        .iter()
+        .map(|kind| serde_json::from_value(json!({"type": kind})).expect("each event decodes"))
+        .collect();
+    crate::test_utils::history::assert_every_variant(&samples, index, 11);
+}
+
+/// The events of one turn: thinking, an item kind rig has never seen, text,
+/// and a call carrying a field rig has never seen, with `id` when given.
+fn invented_events(id: Option<&str>) -> Vec<String> {
+    [
+        json!({"type": "message-start", "id": "msg_1", "delta": {"message": {"role": "assistant"}}}),
+        json!({"type": "content-start", "index": 0, "delta": {"message": {"content": {"type": "thinking", "thinking": "plan"}}}}),
+        json!({"type": "content-end", "index": 0}),
+        json!({"type": "content-start", "index": 1, "delta": {"message": {"content": {"type": "x-probe", "payload": {"kept": true}}}}}),
+        json!({"type": "content-end", "index": 1}),
+        json!({"type": "content-start", "index": 2, "delta": {"message": {"content": {"type": "text", "text": "adding"}}}}),
+        json!({"type": "content-end", "index": 2}),
+        {
+            let mut call = json!({"type": "function", "function": {"name": "add", "arguments": ""}, "x_call_probe": 1});
+            if let Some(id) = id {
+                call["id"] = json!(id);
+            }
+            json!({"type": "tool-call-start", "index": 0, "delta": {"message": {"tool_calls": call}}})
+        },
+        json!({"type": "tool-call-delta", "index": 0, "delta": {"message": {"tool_calls": {"function": {"arguments": "{\"x\":1}"}}}}}),
+        json!({"type": "tool-call-end", "index": 0}),
+        json!({"type": "message-end", "delta": {"finish_reason": "TOOL_CALL"}}),
+    ]
+    .iter()
+    .map(serde_json::Value::to_string)
+    .collect()
+}
+
+/// A streamed call Cohere sent without an id is kept, with an id rig issues.
+#[tokio::test]
+async fn a_streamed_call_without_an_id_is_kept() {
+    let events = invented_events(None);
+    let events: Vec<&str> = events.iter().map(String::as_str).collect();
+    let response = replied(&events).await.outcome.expect("the reply ended");
+    let calls: Vec<_> = response.tool_calls().collect();
+    let [call] = calls.as_slice() else {
+        panic!("one call: {:?}", response.choice);
+    };
+    assert!(call.id.is_local());
+    assert_eq!(call.function.arguments, json!({"x": 1}));
+}
+
+/// An item kind rig has never seen is kept as an item that replays, and a
+/// field it has never seen on a call is kept on the call: both survive
+/// decoding in both modes and go back to the model that sent them.
+#[test]
+fn an_invented_item_and_call_field_survive_decode_and_replay() {
+    use crate::message::{AssistantContent, AssistantMessage, Message};
+    use crate::wire::{Mode, Wire, WireFrame};
+
+    let wire = crate::providers::cohere::CohereConfig::new("k").completion("command");
+    let streamed: Vec<WireFrame> = invented_events(Some("add_1"))
+        .into_iter()
+        .map(WireFrame::Text)
+        .collect();
+    let whole = WireFrame::Text(
+        json!({
+            "id": "msg_1",
+            "finish_reason": "TOOL_CALL",
+            "message": {
+                "role": "assistant",
+                "content": [
+                    {"type": "thinking", "thinking": "plan"},
+                    {"type": "x-probe", "payload": {"kept": true}},
+                    {"type": "text", "text": "adding"},
+                ],
+                "tool_calls": [{"type": "function", "function": {"name": "add", "arguments": "{\"x\":1}"}, "x_call_probe": 1, "id": "add_1"}],
+            },
+        })
+        .to_string(),
+    );
+    crate::test_utils::history::assert_restated_agrees(&wire, [whole.clone()], streamed.clone());
+    for (mode, frames) in [(Mode::Unary, vec![whole]), (Mode::Streaming, streamed)] {
+        let response =
+            crate::test_utils::history::decode(&wire, mode, frames).expect("the reply decodes");
+        assert!(
+            response.choice.iter().any(|block| matches!(
+                block,
+                AssistantContent::Opaque(opaque) if opaque.replay && opaque.kind() == Some("x-probe")
+            )),
+            "{mode:?}: {:?}",
+            response.choice
+        );
+        let turn = AssistantMessage {
+            content: response.choice.clone(),
+            ..response.head()
+        };
+        let call = turn.tool_calls().next().expect("the call").clone();
+        let mut request = CompletionRequest::new("and then?");
+        request.chat_history = crate::completion::history::adapt(
+            &[
+                Message::user("add one"),
+                Message::Assistant(turn),
+                Message::tool_result(call.id.clone(), call.function.name.clone(), "1"),
+                Message::user("and then?"),
+            ],
+            &wire,
+        );
+        let encoded = wire.encode(request, Mode::Unary).expect("encodes");
+        let crate::wire::Body::Bytes(bytes) = encoded.request.body() else {
+            panic!("a JSON body");
+        };
+        let body: serde_json::Value = serde_json::from_slice(bytes).expect("JSON");
+        let replayed = &body["messages"][1];
+        assert_eq!(replayed["content"][1]["payload"]["kept"], true, "{mode:?}");
+        assert_eq!(replayed["tool_calls"][0]["x_call_probe"], 1, "{mode:?}");
+        assert_eq!(replayed["tool_calls"][0]["id"], "add_1", "{mode:?}");
+    }
+}
