@@ -55,7 +55,7 @@ async fn nonstreaming() {
             assert!(
                 chat_history.iter().any(|msg| matches!(
                     msg,
-                    Message::Assistant { content, .. }
+                    Message::Assistant(rig::message::AssistantMessage { content, .. })
                         if content.iter().any(|c| matches!(c, AssistantContent::Reasoning(_)))
                 )),
                 "[ollama] expected at least one assistant turn carrying Reasoning in history",

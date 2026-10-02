@@ -65,8 +65,8 @@ fn request() -> rig::completion::CompletionRequest {
 /// response id.
 fn assert_cross_request_parity(first: &RigCompletionResponse, second: &RigCompletionResponse) {
     assert_eq!(first.finish_reason(), second.finish_reason());
-    assert_eq!(first.model, second.model);
-    assert_eq!(first.provider, second.provider);
+    assert_eq!(first.model(), second.model());
+    assert_eq!(first.provider(), second.provider());
     // Identical request bytes tokenize identically; the output side is the
     // model's to vary.
     assert_eq!(first.usage.input_tokens, second.usage.input_tokens);
@@ -161,10 +161,10 @@ async fn rest_raw_try_into_matches_completion() {
     // `generateContent` document, reproduces the response it rode on.
     let typed = GenerateContentResponse::deserialize(&second.raw)
         .expect("captured raw is Gemini's own generateContent document");
-    assert_eq!(typed.model_version.as_deref(), second.model.as_deref());
+    assert_eq!(typed.model_version.as_deref(), second.model().as_deref());
     assert_eq!(
         Some(typed.response_id.as_str()),
-        second.response_id.as_deref()
+        second.response_id().as_deref()
     );
     assert_eq!(
         typed
@@ -221,8 +221,8 @@ async fn interactions_raw_try_into_matches_completion() {
     // own document, reproduces the response it rode on.
     let typed = Interaction::deserialize(&second.raw)
         .expect("captured raw is the Interactions API's own document");
-    assert_eq!(typed.model, second.model);
-    assert_eq!(Some(typed.id.as_str()), second.response_id.as_deref());
+    assert_eq!(typed.model, second.model());
+    assert_eq!(Some(typed.id.as_str()), second.response_id().as_deref());
     assert_eq!(
         typed
             .usage

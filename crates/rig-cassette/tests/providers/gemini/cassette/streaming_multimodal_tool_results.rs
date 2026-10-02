@@ -109,7 +109,7 @@ async fn streaming_history_preserves_hybrid_tool_result_image_parts() {
     assert!(
         history.iter().any(|message| matches!(
             message,
-            Message::Assistant { content, .. }
+            Message::Assistant(rig::message::AssistantMessage { content, .. })
                 if content.iter().any(|item| matches!(
                     item,
                     AssistantContent::ToolCall(tool_call)

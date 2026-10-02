@@ -149,10 +149,9 @@ async fn text_boundary_pauses_before_polling_and_release_preserves_every_item() 
         let mut response = CompletionResponse::new(
             Vec::new(),
             Usage::default(),
-            "anthropic",
+            rig::message::Origin::new("test.api", "anthropic", ""),
             serde_json::json!({"stop_reason": "end_turn"}),
         );
-        response.message_id = Some("message".into());
         response
     }))));
     let polls = Arc::new(AtomicUsize::new(0));

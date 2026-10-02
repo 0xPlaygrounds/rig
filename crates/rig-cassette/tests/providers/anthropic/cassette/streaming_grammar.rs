@@ -30,7 +30,6 @@ struct StreamRun {
     tool_calls: Vec<ToolCall>,
     choice: Vec<AssistantContent>,
     response: Option<CompletionResponse>,
-    message_id: Option<String>,
 }
 
 async fn drain_stream(mut stream: rig::streaming::CompletionStream) -> StreamRun {
@@ -41,7 +40,6 @@ async fn drain_stream(mut stream: rig::streaming::CompletionStream) -> StreamRun
         tool_calls: Vec::new(),
         choice: vec![AssistantContent::text("")],
         response: None,
-        message_id: None,
     };
 
     let mut raw_items = Vec::new();
@@ -80,7 +78,7 @@ async fn drain_stream(mut stream: rig::streaming::CompletionStream) -> StreamRun
     // suite drains (#2258 C1).
     rig_core::test_utils::streaming_conformance::assert_valid_event_stream(&raw_items, &run.choice);
     run.response = Some(response.clone());
-    run.message_id = response.message_id.clone();
+    run.message_id = response.response_id().clone();
     run
 }
 
@@ -214,7 +212,7 @@ async fn parallel_tool_use_stays_distinct() {
                 streamed
                     .id
                     .provider()
-                    .map(|provider| provider.call_id.as_str())
+                    .map(|provider| provider.as_str())
                     .is_some_and(|id| id.starts_with("toolu_")),
                 "{name} should carry the wire's toolu_* id, got {}",
                 streamed.id

@@ -150,7 +150,7 @@ fn handle_stream_item(state: &mut StreamState, item: Item<StreamEvent>) {
 /// and, under `interaction` in its `raw`, Gemini's own document for the
 /// finished run.
 fn finish_research(state: &mut StreamState, response: rig::completion::CompletionResponse) {
-    if let Some(response_id) = response.response_id.as_deref() {
+    if let Some(response_id) = response.response_id().as_deref() {
         state.interaction_id = Some(response_id.to_owned());
     }
     state.interaction = response
@@ -281,7 +281,7 @@ async fn main() -> Result<()> {
     let opened = interactions.call(request.clone()).await?;
     // rig normalizes the interaction id onto `response_id`, so opening a
     // background run needs no reach into `raw`.
-    let Some(interaction_id) = opened.response_id else {
+    let Some(interaction_id) = opened.response_id() else {
         println!("No interaction id returned; aborting.");
         return Ok(());
     };

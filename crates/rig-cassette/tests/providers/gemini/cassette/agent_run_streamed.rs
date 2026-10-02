@@ -74,8 +74,7 @@ async fn run_streamed_turn(
                 }
                 StreamedTurnEvent::HoldToolCall | StreamedTurnEvent::EmitToolCall { .. } => {}
                 StreamedTurnEvent::InvalidToolCall(invalid) => {
-                    let partial =
-                        assembler.partial_turn(stream.message_id(), &stream.partial().choice);
+                    let partial = assembler.partial_turn(&stream.partial());
                     let context = run.streamed_invalid_tool_call_context(&partial, &invalid);
                     assert!(context.is_streaming);
                     assert_eq!(context.tool_name, invalid.tool_call.function.name);
@@ -127,7 +126,7 @@ async fn run_streamed_turn(
         response.raw.clone(),
     )
     .expect("completion call should record while the turn is pending");
-    let streamed_turn = assembler.finish(response.message_id.clone(), &response);
+    let streamed_turn = assembler.finish(&response);
     run.streamed_turn(streamed_turn)?;
     Ok(TurnEnd::Finished)
 }

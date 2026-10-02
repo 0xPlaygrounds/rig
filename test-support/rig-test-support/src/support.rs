@@ -851,10 +851,8 @@ impl StreamObservation {
 pub struct ToolCallRecord {
     /// Tool name emitted by the provider.
     pub name: String,
-    /// Provider signature associated with the tool call, when present.
-    pub signature: Option<String>,
-    /// Additional provider parameters associated with the call, when present.
-    pub additional_params: Option<serde_json::Value>,
+    /// The provider item the call was decoded from, when it kept one.
+    pub native: Option<rig_core::message::Native>,
 }
 
 /// Observations from a raw provider completion stream before agent tool execution.
@@ -926,8 +924,7 @@ pub async fn collect_stream_observation(stream: &mut StreamingResult) -> StreamO
                     .push(tool_call.function.name.clone().into());
                 observation.tool_call_records.push(ToolCallRecord {
                     name: tool_call.function.name.into(),
-                    signature: tool_call.signature,
-                    additional_params: tool_call.additional_params,
+                    native: tool_call.native,
                 });
                 observation.events.push("tool_call");
             }
@@ -1266,8 +1263,7 @@ where
                 observation.tool_calls.push(tool_call.clone());
                 observation.tool_call_records.push(ToolCallRecord {
                     name: tool_call.function.name.into(),
-                    signature: tool_call.signature,
-                    additional_params: tool_call.additional_params,
+                    native: tool_call.native,
                 });
                 observation.events.push("tool_call");
             }

@@ -117,7 +117,7 @@ async fn chat_raw_with_request_id_reproduces_completion() {
     let typed = openai::CompletionResponse::deserialize(&response.raw)
         .expect("`raw` is the chat route's own reply body");
     chat::assert_native_matches_normalized(&response, &typed, "the chat route's own body");
-    assert_eq!(response.provider, COPILOT_PROVIDER);
+    assert_eq!(response.provider(), COPILOT_PROVIDER);
     // The native comparison pins the reason to the body's word; this cell
     // also pins which word a plain answer carries.
     assert_eq!(response.finish_reason(), Some(FinishReason::Stop));
@@ -173,7 +173,7 @@ async fn responses_raw_completion_carries_request_id() {
         &typed,
         "the Responses route's own body",
     );
-    assert_eq!(response.provider, COPILOT_PROVIDER);
+    assert_eq!(response.provider(), COPILOT_PROVIDER);
     assert_eq!(
         Some(typed.id.as_str()),
         response.identity().response_id.as_deref()

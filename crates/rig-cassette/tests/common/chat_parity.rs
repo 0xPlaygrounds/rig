@@ -18,7 +18,7 @@ use serde_json::{Value, json};
 use rig::completion::CompletionResponse;
 use rig::driver::{Exchange, Model, Opened, Opening, Transport};
 use rig::error::ErrorKind;
-use rig::message::{AssistantContent, ReasoningContent};
+use rig::message::AssistantContent;
 use rig::providers::openai::wire::{
     Chat, DEEPSEEK, DOUBLEWORD, Dialect, GROQ, LLAMACPP, MISTRAL, OPENAI, OPENROUTER, OpenAIConfig,
     PERPLEXITY, VENICE,
@@ -264,10 +264,9 @@ pub fn project(streaming: bool, outcome: &Result<CompletionResponse, ErrorKind>)
             "mode": mode,
             "choice": response.choice.iter().map(project_content).collect::<Vec<_>>(),
             "usage": response.usage,
-            "message_id": response.message_id,
-            "response_id": response.response_id,
+            "response_id": response.response_id(),
             "finish_reason": response.finish_reason(),
-            "model": response.model,
+            "model": response.model(),
             "provider_request_id": response.provider_request_id,
             "raw": response.raw,
         }),
@@ -278,44 +277,31 @@ fn project_content(content: &AssistantContent) -> Value {
     match content {
         AssistantContent::Text(text) => json!({
             "text": text.text,
-            "additional_params": text.additional_params,
+            "native": text.native,
         }),
         AssistantContent::ToolCall(call) => {
-            let (id, item_id) = match call.id.provider() {
-                Some(provider) => (provider.call_id.clone(), provider.item_id.clone()),
-                None => ("rig-issued".to_owned(), None),
+            let id = match call.id.provider() {
+                Some(provider) => provider.as_str().to_owned(),
+                None => "rig-issued".to_owned(),
             };
             json!({
                 "tool_call": {
                     "id": id,
-                    "item_id": item_id,
                     "name": call.function.name,
                     "arguments": call.function.arguments,
-                    "signature": call.signature,
-                    "additional_params": call.additional_params,
+                    "native": call.native,
                 }
             })
         }
-        AssistantContent::Reasoning(sealed) => {
-            let reasoning = sealed
-                .open(sealed.issuer())
-                .expect("reasoning opens for its issuer");
-            json!({
-                "reasoning": {
-                    "id": reasoning.id,
-                    "issuer": sealed.issuer(),
-                    "content": reasoning.content.iter().map(|part| match part {
-                        ReasoningContent::Text { text, signature } => {
-                            json!({ "text": text, "signature": signature })
-                        }
-                        ReasoningContent::Encrypted(data) => json!({ "encrypted": data }),
-                        ReasoningContent::Redacted { data } => json!({ "redacted": data }),
-                        ReasoningContent::Summary(summary) => json!({ "summary": summary }),
-                    }).collect::<Vec<_>>(),
-                }
-            })
-        }
+        AssistantContent::Reasoning(reasoning) => json!({
+            "reasoning": {
+                "text": reasoning.text,
+                "redacted": reasoning.redacted,
+                "native": reasoning.native,
+            }
+        }),
         AssistantContent::Image(image) => json!({ "image": image }),
+        AssistantContent::Opaque(opaque) => json!({ "opaque": opaque }),
     }
 }
 

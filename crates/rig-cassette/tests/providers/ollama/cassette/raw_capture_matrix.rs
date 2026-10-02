@@ -121,7 +121,7 @@ async fn raw_round_trips_provider_type() {
     assert!(typed.done, "raw carries the completed turn");
     assert_eq!(
         Some(typed.model.as_str()),
-        response.model.as_deref(),
+        response.model().as_deref(),
         "normalized model equals the raw model"
     );
 
@@ -218,8 +218,8 @@ async fn normalized_fields_equal_raw_renormalized() {
     let typed = ollama::CompletionResponse::deserialize(raw)
         .expect("raw must deserialize into ollama::CompletionResponse");
 
-    assert_eq!(response.provider, OLLAMA_PROVIDER);
-    assert_eq!(Some(typed.model.as_str()), response.model.as_deref());
+    assert_eq!(response.provider(), OLLAMA_PROVIDER);
+    assert_eq!(Some(typed.model.as_str()), response.model().as_deref());
     // The provider's own vocabulary, paired with what the decoder made
     // of it. Read from the payload rather than hardcoded, so the cell
     // pins the mapping for whichever reason the fixture holds and fails
@@ -257,7 +257,7 @@ async fn normalized_fields_equal_raw_renormalized() {
         .expect("recorded body must be an Ollama chat response");
     assert_eq!(
         Some(from_wire.model.as_str()),
-        response.model.as_deref(),
+        response.model().as_deref(),
         "the normalized response names the model the wire bytes named"
     );
     assert_eq!(from_wire.prompt_eval_count, response.usage.input_tokens);

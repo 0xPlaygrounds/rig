@@ -390,7 +390,7 @@ fn history_tool_calls(history: &[Message]) -> Vec<HistoryToolCall> {
         .iter()
         .enumerate()
         .flat_map(|(message_index, message)| match message {
-            Message::Assistant { content, .. } => content
+            Message::Assistant(rig_core::message::AssistantMessage { content, .. }) => content
                 .iter()
                 .filter_map(move |content| match content {
                     AssistantContent::ToolCall(tool_call) => Some(HistoryToolCall {
@@ -474,8 +474,8 @@ fn assert_response_metadata(
     raw: &mistral::CompletionResponse,
 ) {
     assert_nonempty_response(&raw.id);
-    assert_eq!(response.response_id.as_deref(), Some(raw.id.as_str()));
-    assert_eq!(response.message_id, None);
+    assert_eq!(response.response_id().as_deref(), Some(raw.id.as_str()));
+    assert_eq!(response.response_id(), None);
     assert_nonempty_response(&raw.model);
     assert!(
         raw.choices

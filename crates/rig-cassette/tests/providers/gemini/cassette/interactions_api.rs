@@ -60,7 +60,7 @@ async fn basic_interaction_returns_id() {
                 "interactions api should return an interaction id"
             );
             assert_eq!(
-                response.response_id.as_deref(),
+                response.response_id().as_deref(),
                 Some(document.id.as_str()),
                 "the continuation handle is what the normalized response names"
             );
@@ -92,7 +92,7 @@ async fn followup_with_previous_interaction_id() {
             // decoder reports as the response id; it is what
             // `previous_interaction_id` echoes back.
             let interaction_id = initial
-                .response_id
+                .response_id()
                 .clone()
                 .expect("expected an interaction id");
             assert!(!interaction_id.is_empty(), "expected an interaction id");
@@ -191,7 +191,7 @@ async fn tool_result_roundtrip() {
             // reports as the response id, and the same response supplies the
             // tool call — so this still costs one interaction.
             let interaction_id = initial
-                .response_id
+                .response_id()
                 .clone()
                 .expect("expected an interaction id");
             assert!(!interaction_id.is_empty(), "expected an interaction id");
@@ -274,7 +274,7 @@ async fn streaming_final_metadata_exposes_model_version() {
 
             assert_nonempty_response(&text);
             assert_eq!(
-                response.model.as_deref(),
+                response.model().as_deref(),
                 Some("gemini-3-flash-preview"),
                 "expected Interactions stream final response to expose Interaction.model"
             );

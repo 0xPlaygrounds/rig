@@ -10,9 +10,7 @@
 use serde_json::Value;
 
 use rig_core::completion::{CompletionRequest, CompletionResponse, ToolDefinition};
-use rig_core::message::{
-    AssistantContent, CallId, Message, ReasoningContent, ToolResultContent, UserContent,
-};
+use rig_core::message::{AssistantContent, CallId, Message, ToolResultContent, UserContent};
 use rig_core::providers::anthropic::wire::AnthropicConfig;
 use rig_core::providers::gemini::GeminiConfig;
 use rig_core::providers::gemini::completion::GenerateContent;
@@ -81,10 +79,10 @@ fn result(call: CallId, record: &str) -> UserContent {
 }
 
 fn assistant(reply: &CompletionResponse) -> Message {
-    Message::Assistant {
-        id: reply.message_id.clone(),
+    Message::Assistant(rig_core::message::AssistantMessage {
         content: reply.choice.clone(),
-    }
+        ..reply.head()
+    })
 }
 
 /// Two completed lookups that both used the call id `id`, then a question
@@ -100,14 +98,13 @@ pub async fn colliding_ids(
         if index > 0 {
             history.push(Message::user(format!("Now look up record {record}.")));
         }
-        history.push(Message::Assistant {
-            id: None,
-            content: vec![AssistantContent::tool_call(
+        history.push(Message::Assistant(
+            rig_core::message::AssistantMessage::new(vec![AssistantContent::tool_call(
                 id,
                 rig_core::message::ToolName::new("lookup_code").expect("tool name"),
                 serde_json::json!({ "record": record }),
-            )],
-        });
+            )]),
+        ));
         let call = CallId::from_wire(id);
         history.push(Message::User {
             content: vec![result(call, record)],
@@ -298,13 +295,11 @@ pub async fn reasoning_round_trip(
 
 /// Whether a reply holds a signed reasoning block with no text.
 pub fn has_empty_signed_reasoning(reply: &CompletionResponse) -> bool {
-    reply.choice.iter().any(|content| {
-        match content {
-        AssistantContent::Reasoning(reasoning) => reasoning.open(reasoning.issuer()).expect("sealed reasoning").content.iter().any(|block| {
-            matches!(block, ReasoningContent::Text { text, signature: Some(_) } if text.is_empty())
-        }),
+    reply.choice.iter().any(|content| match content {
+        AssistantContent::Reasoning(reasoning) => {
+            reasoning.text.is_empty() && reasoning.native.is_some()
+        }
         _ => false,
-    }
     })
 }
 

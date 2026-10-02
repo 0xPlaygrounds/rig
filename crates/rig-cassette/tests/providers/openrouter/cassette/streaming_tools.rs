@@ -240,10 +240,7 @@ async fn stream_encrypted_reasoning_survives_into_the_next_turn() {
 
             // The whole choice — reasoning block included — is what a caller
             // replays as history.
-            let assistant_message = Message::Assistant {
-                id: stream.message_id(),
-                content: stream.partial().choice,
-            };
+            let assistant_message = Message::Assistant(rig::message::AssistantMessage::new(stream.partial().choice));
             let tool_result_message = Message::User {
         content: vec![UserContent::tool_result(tool_call.id.clone(), tool_call.function.name.clone(), vec![ToolResultContent::text("Weather in Tokyo, Japan: 72F (22C), sunny with light clouds, humidity 45%, wind 8 mph NW")])],
     };
@@ -325,10 +322,7 @@ async fn raw_followup_uses_tool_result_without_new_tool_calls() {
                 .find(|tool_call| tool_call.function.name == "lookup_harbor_label")
                 .cloned()
                 .expect("raw stream should yield lookup_harbor_label");
-            let assistant_message = Message::Assistant {
-                id: None,
-                content: vec![AssistantContent::ToolCall(tool_call.clone())],
-            };
+            let assistant_message = Message::Assistant(rig::message::AssistantMessage::new(vec![AssistantContent::ToolCall(tool_call.clone())]));
             let tool_result_message = Message::User {
         content: vec![UserContent::tool_result(tool_call.id.clone(), tool_call.function.name.clone(), vec![ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)])],
     };

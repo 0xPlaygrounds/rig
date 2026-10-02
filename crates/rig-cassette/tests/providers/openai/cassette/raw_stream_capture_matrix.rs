@@ -346,7 +346,7 @@ async fn responses_stream_raw_exposes_status() {
     // normalized one must agree on it.
     assert_eq!(
         captured_message_id,
-        terminal.message_id.as_deref(),
+        terminal.response_id().as_deref(),
         "{SCENARIO}: captured and normalized message ids agree"
     );
     assert_normalized_lacks(&normalized_without_raw(terminal.clone()), &["status"]);

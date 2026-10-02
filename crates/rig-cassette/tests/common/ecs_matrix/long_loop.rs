@@ -1000,7 +1000,7 @@ pub(crate) fn assert_log(cell: &Cell, thinking: ThinkingWire, log: &EffectLog) {
                 let assistant = &history[previous.len()];
                 let results = &history[previous.len() + 1];
                 assert!(
-                    matches!(assistant, Message::Assistant { content, .. } if content.iter().any(|part| matches!(part, AssistantContent::ToolCall(_)))),
+                    matches!(assistant, Message::Assistant(rig_core::message::AssistantMessage { content, .. }) if content.iter().any(|part| matches!(part, AssistantContent::ToolCall(_)))),
                     "{}: the turn's assistant utterance carries its calls",
                     cell.name
                 );
@@ -1730,7 +1730,7 @@ pub(crate) fn assert_transcript(cell: &Cell, log: &EffectLog, history: &[Message
         .map(|message| match message {
             Message::System { .. } => "system",
             Message::User { .. } => "user",
-            Message::Assistant { .. } => "assistant",
+            Message::Assistant(_) => "assistant",
         })
         .collect();
     assert_eq!(

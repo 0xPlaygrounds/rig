@@ -81,7 +81,7 @@ async fn raw_round_trips_openai_type() {
     let raw = &response.raw;
     let typed = openai::CompletionResponse::deserialize(raw)
         .expect("raw is the shared OpenAI CompletionResponse Doubleword parses into");
-    assert_eq!(Some(typed.id.as_str()), response.response_id.as_deref());
+    assert_eq!(Some(typed.id.as_str()), response.response_id().as_deref());
 
     // `raw` is the document Doubleword sent, not a re-serialization of
     // `typed`: these usage fields have no home on the shared type and reach

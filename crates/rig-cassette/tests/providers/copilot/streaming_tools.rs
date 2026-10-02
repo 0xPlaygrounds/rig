@@ -150,10 +150,7 @@ async fn raw_followup_uses_tool_result_without_new_tool_calls() {
             .find(|tool_call| tool_call.function.name == "lookup_harbor_label")
             .cloned()
             .expect("raw stream should yield lookup_harbor_label");
-        let assistant_message = Message::Assistant {
-            id: None,
-            content: vec![AssistantContent::ToolCall(tool_call.clone())],
-        };
+        let assistant_message = Message::Assistant(rig::message::AssistantMessage::new(vec![AssistantContent::ToolCall(tool_call.clone())]));
         let tool_result_message =
             Message::User {
         content: vec![UserContent::tool_result(tool_call.id.clone(), tool_call.function.name.clone(), vec![ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)])],

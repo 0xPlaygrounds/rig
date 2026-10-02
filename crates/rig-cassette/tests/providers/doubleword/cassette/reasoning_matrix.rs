@@ -39,10 +39,7 @@ async fn exercise_blocking(client: OpenAiModels, model_name: &'static str) {
     let has_wire_reasoning = reply.choices.iter().any(|choice| {
         matches!(
             &choice.message,
-            openai::completion::Message::Assistant {
-                reasoning: Some(reasoning),
-                ..
-            } if !reasoning.is_empty()
+            openai::completion::Message::Assistant(_) if !reasoning.is_empty()
         )
     });
     assert!(

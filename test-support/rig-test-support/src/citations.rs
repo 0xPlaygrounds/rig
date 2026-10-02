@@ -65,14 +65,17 @@ pub fn choice_texts(choice: &[AssistantContent]) -> Vec<Text> {
         .collect()
 }
 
-/// The Responses-owned extras on a text block, without `phase`.
+/// The extras a Responses text block's output part carries: every field of
+/// its provider item's first content part but `type` and `text`.
 pub fn content_extras(text: &Text) -> Option<Map<String, Value>> {
     let mut extras = text
-        .additional_params
+        .native
         .as_ref()
-        .and_then(|params| params.wire_extras(EXTRAS_KEY))
+        .and_then(|native| native.item.pointer("/content/0"))
+        .and_then(Value::as_object)
         .cloned()?;
-    extras.remove("phase");
+    extras.shift_remove("type");
+    extras.shift_remove("text");
     (!extras.is_empty()).then_some(extras)
 }
 

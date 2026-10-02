@@ -179,7 +179,7 @@ async fn chat_raw_round_trips_provider_type() {
          chat-completions type does not model: it reaches the caller \
          because raw is the reply document"
     );
-    assert_eq!(response.provider, COPILOT_PROVIDER);
+    assert_eq!(response.provider(), COPILOT_PROVIDER);
     assert!(!response.choice.is_empty());
 
     let (_, body) = recorded_json_turn(COPILOT_PROVIDER, scenario);
@@ -250,12 +250,12 @@ async fn chat_normalized_fields_equal_raw_renormalized() {
     let reply = openai::CompletionResponse::deserialize(&response.raw)
         .expect("raw must read back as the chat route's own response type");
     chat::assert_native_matches_normalized(&response, &reply, "the typed view of raw");
-    assert_eq!(response.provider, COPILOT_PROVIDER);
+    assert_eq!(response.provider(), COPILOT_PROVIDER);
     // Both sides of this comparison come from the same live reply, so the id
     // compares exactly in either cassette mode — stricter than the token
     // comparator the fixture-side check has to use.
     assert_eq!(
-        response.response_id.as_deref(),
+        response.response_id().as_deref(),
         Some(reply.id.as_str()),
         "response id"
     );
@@ -307,7 +307,7 @@ async fn responses_raw_round_trips_provider_type() {
         raw.get("provider_request_id").is_none(),
         "the transport request id is a reply header, so the document never carries it"
     );
-    assert_eq!(response.provider, COPILOT_PROVIDER);
+    assert_eq!(response.provider(), COPILOT_PROVIDER);
     assert!(!response.choice.is_empty());
 
     let (_, body) = recorded_json_turn(COPILOT_PROVIDER, scenario);
@@ -372,11 +372,11 @@ async fn responses_normalized_fields_equal_raw_renormalized() {
     let reply = responses_api::CompletionResponse::deserialize(&response.raw)
         .expect("raw must read back as the Responses route's own response type");
     responses::assert_native_matches_normalized(&response, &reply, "the typed view of raw");
-    assert_eq!(response.provider, COPILOT_PROVIDER);
+    assert_eq!(response.provider(), COPILOT_PROVIDER);
     // As on the chat route: both ids come from the same live reply here, so
     // the comparison is exact rather than mode-aware.
     assert_eq!(
-        response.response_id.as_deref(),
+        response.response_id().as_deref(),
         Some(reply.id.as_str()),
         "response id"
     );

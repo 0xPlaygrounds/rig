@@ -255,7 +255,7 @@ fn collect_assistant_tool_calls(messages: &[Message]) -> Vec<(String, serde_json
     let mut tool_calls = Vec::new();
 
     for message in messages {
-        if let Message::Assistant { content, .. } = message {
+        if let Message::Assistant(rig::message::AssistantMessage { content, .. }) = message {
             for item in content.iter() {
                 if let AssistantContent::ToolCall(tool_call) = item {
                     tool_calls.push((

@@ -177,7 +177,7 @@ fn assert_identity_matches_fixture(scenario: &str, response: &RigCompletionRespo
         scenario,
     );
     assert_eq!(identity.response_id, None);
-    assert_eq!(response.model.as_deref(), body["model"].as_str());
+    assert_eq!(response.model().as_deref(), body["model"].as_str());
     assert_eq!(
         response.usage.input_tokens,
         body["usage"]["input_tokens"].as_u64()
@@ -396,7 +396,7 @@ async fn normalized_fields_match_raw_renormalized() {
         Some(FinishReason::Stop),
         "the decoder maps the document's `end_turn` onto `Stop`"
     );
-    assert_eq!(Some(typed.model.as_str()), response.model.as_deref());
+    assert_eq!(Some(typed.model.as_str()), response.model().as_deref());
     assert_eq!(Some(typed.usage.input_tokens), response.usage.input_tokens);
     assert_eq!(
         Some(typed.usage.output_tokens),
@@ -680,7 +680,7 @@ async fn raw_exposes_tool_use_block() {
             .id
             .provider()
             .as_ref()
-            .map(|provider| provider.call_id.as_str()),
+            .map(|provider| provider.as_str()),
         Some(typed_id),
         "the normalized call's provider id is the wire's `tool_use.id`"
     );

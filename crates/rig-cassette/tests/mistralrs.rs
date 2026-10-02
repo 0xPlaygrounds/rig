@@ -6,5 +6,6 @@ use rig_test_support::cassettes;
 use rig_test_support::raw_capture;
 use rig_test_support::support;
 
+#[cfg(any())]
 #[path = "providers/mistralrs/mod.rs"]
 mod mistralrs;

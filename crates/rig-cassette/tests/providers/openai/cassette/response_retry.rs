@@ -78,7 +78,7 @@ async fn rejected_response_is_retried_with_feedback() {
                             })
                             .collect::<String>(),
                     ),
-                    Message::Assistant { content, .. } => (
+                    Message::Assistant(rig::message::AssistantMessage { content, .. }) => (
                         "assistant",
                         content
                             .iter()

@@ -84,7 +84,7 @@ async fn raw_round_trips_responses_type() {
     assert_eq!(Some(typed.model.as_str()), raw["model"].as_str());
     assert_eq!(typed.status, responses_api::ResponseStatus::Completed);
     assert_eq!(raw["status"], json!("completed"));
-    assert_eq!(Some(typed.id.as_str()), response.response_id.as_deref());
+    assert_eq!(Some(typed.id.as_str()), response.response_id().as_deref());
     // The transport id is not part of the reply document, so the capture
     // never carries it — it lives on the normalized response only.
     assert!(raw.get("provider_request_id").is_none());

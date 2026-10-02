@@ -102,7 +102,7 @@ impl Transport<MockScript> for Scripted {
             vec![AssistantContent::text("done")]
         };
         let document = serde_json::json!({ "provider": "fixture" });
-        let response = CompletionResponse::new(choice, Usage::default(), "fixture", document.clone());
+        let response = CompletionResponse::new(choice, Usage::default(), rig_core::message::Origin::new("test.api", "fixture", ""), document.clone());
         Opening::ready(
             Opened::new(futures::stream::iter([Ok(MockFrame::Response(Box::new(response)))]))
                 .with_document(document),

@@ -129,10 +129,7 @@ async fn claude_tool_turn(client: &OpenAiModels, route: Route, streamed: bool) -
         .unwrap_or_else(|| panic!("Claude calls lookup_code: {first:?}"));
     vec![
         prompt,
-        Message::Assistant {
-            id: None,
-            content: first,
-        },
+        Message::Assistant(rig_core::message::AssistantMessage::new(first)),
         Message::User {
             content: vec![UserContent::tool_result(
                 call.id.clone(),
@@ -152,10 +149,9 @@ async fn switch(client: OpenAiModels, route: Route, streamed: bool) {
     ));
     let on_gemini = turn(&client, route, GEMINI, history.clone(), streamed).await;
     assert!(text(&on_gemini).contains(CODE), "{on_gemini:?}");
-    history.push(Message::Assistant {
-        id: None,
-        content: on_gemini,
-    });
+    history.push(Message::Assistant(
+        rig_core::message::AssistantMessage::new(on_gemini),
+    ));
     history.push(Message::user(
         "Without calling any tool, say the code once more, in uppercase.",
     ));

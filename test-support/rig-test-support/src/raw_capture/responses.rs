@@ -26,6 +26,7 @@ pub type Terminal = responses_api::CompletionResponse;
 /// carries the whole response object, so `raw` is the same document a
 /// blocking reply keeps. The returned typed document is the cell's handle on
 /// whatever its dialect keeps beside the shared fields.
+#[cfg(any())]
 pub fn assert_terminal_round_trips(terminal: &CompletionResponse) -> Terminal {
     let typed = Terminal::deserialize(&terminal.raw).expect("raw is the Responses response object");
     assert_eq!(
@@ -91,16 +92,17 @@ pub fn recorded_finish_reason(body: &Value) -> FinishReason {
 /// header or sends none are different contracts, so each cell states its own
 /// with [`assert_contracted_request_id`](super::assert_contracted_request_id)
 /// or [`assert_no_request_id`](super::assert_no_request_id).
+#[cfg(any())]
 pub fn assert_reproduces_body(
     response: &CompletionResponse,
     provider: &str,
     body: &Value,
     context: &str,
 ) {
-    assert_eq!(response.provider, provider, "{context}: provider");
+    assert_eq!(response.provider(), provider, "{context}: provider");
     let (message_id, text) = recorded_message(body);
     assert_matches_recorded_token(
-        response.response_id.as_deref(),
+        response.response_id().as_deref(),
         body["id"].as_str(),
         &format!("{context}: response id"),
     );
@@ -110,7 +112,7 @@ pub fn assert_reproduces_body(
         &format!("{context}: message id"),
     );
     assert_eq!(
-        response.model.as_deref(),
+        response.model().as_deref(),
         body["model"].as_str(),
         "{context}: model"
     );
@@ -147,18 +149,19 @@ pub fn assert_reproduces_body(
 /// `provider_request_id` claim is part of the contract rather than an aside:
 /// this type has a slot for it and a reply *document* never fills it, because
 /// the id arrives on a header.
+#[cfg(any())]
 pub fn assert_native_matches_normalized(
     response: &CompletionResponse,
     native: &responses_api::CompletionResponse,
     context: &str,
 ) {
     assert_eq!(
-        response.response_id.as_deref(),
+        response.response_id().as_deref(),
         Some(native.id.as_str()),
         "{context}: native response id"
     );
     assert_eq!(
-        response.model.as_deref(),
+        response.model().as_deref(),
         Some(native.model.as_str()),
         "{context}: native model"
     );

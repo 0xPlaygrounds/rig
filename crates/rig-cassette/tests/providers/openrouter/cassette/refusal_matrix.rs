@@ -225,7 +225,7 @@ async fn blocking_raw_and_normalized_agree() {
                 .choices
                 .first()
                 .and_then(|choice| match &choice.openai.message {
-                    OpenAiMessage::Assistant { refusal, .. } => refusal.clone(),
+                    OpenAiMessage::Assistant(_) => refusal.clone(),
                     _ => None,
                 })
                 .expect("the recorded turn must carry a top-level refusal");

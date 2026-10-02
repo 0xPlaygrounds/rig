@@ -78,7 +78,7 @@ async fn raw_round_trips_venice_type() {
         .expect("raw is Venice's own CompletionResponse");
     assert_eq!(
         Some(typed.openai.id.as_str()),
-        response.response_id.as_deref()
+        response.response_id().as_deref()
     );
 
     // `raw` is the document Venice sent, not a re-serialization of `typed`:

@@ -307,7 +307,7 @@ fn text_block_items(response: &rig::completion::CompletionResponse) -> Vec<(Stri
         .into_iter()
         .map(|text| {
             let extras = text
-                .additional_params
+                .native
                 .as_ref()
                 .and_then(|params| params.wire_extras("openai_responses"));
             let field = |key: &str| {
@@ -318,7 +318,7 @@ fn text_block_items(response: &rig::completion::CompletionResponse) -> Vec<(Stri
             };
             (
                 field("message_id")
-                    .or_else(|| response.message_id.clone())
+                    .or_else(|| response.response_id().clone())
                     .unwrap_or_default(),
                 field("phase").unwrap_or_default(),
             )

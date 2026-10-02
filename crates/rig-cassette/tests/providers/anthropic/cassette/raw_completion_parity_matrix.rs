@@ -90,7 +90,7 @@ impl Reported {
         Self {
             identity: response.identity(),
             finish_reason: response.finish_reason(),
-            model: response.model.clone(),
+            model: response.model().clone(),
             usage: response.usage,
         }
     }
@@ -99,7 +99,7 @@ impl Reported {
         Self {
             identity: terminal.identity(),
             finish_reason: terminal.finish_reason().clone(),
-            model: terminal.model.clone(),
+            model: terminal.model().clone(),
             usage: terminal.usage,
         }
     }

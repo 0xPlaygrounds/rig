@@ -153,11 +153,8 @@ async fn thinking_and_tool_call_in_one_stream() {
                 .provider()
                 .expect("the daemon-issued call id must be preserved");
             assert_eq!(
-                streamed
-                    .id
-                    .provider()
-                    .map(|provider| provider.call_id.as_str()),
-                Some(provider.call_id.as_str()),
+                streamed.id.provider().map(|provider| provider.as_str()),
+                Some(provider.as_str()),
                 "the durable id adopts the daemon's call id"
             );
         },
@@ -346,9 +343,8 @@ async fn chat_sourced_history_replays_the_tool_name_not_the_identifier() {
                 rig::message::Message::user(
                     "/no_think Use the add tool to compute 2 + 3, then state the result.",
                 ),
-                rig::message::Message::Assistant {
-                    id: None,
-                    content: vec![AssistantContent::ToolCall(rig::message::ToolCall {
+                rig::message::Message::Assistant(rig_core::message::AssistantMessage::new(vec![
+                    AssistantContent::ToolCall(rig::message::ToolCall {
                         id: call_id.clone(),
                         function: rig::message::ToolFunction {
                             name: rig_core::message::ToolName::new("add").expect("tool name"),
@@ -356,8 +352,8 @@ async fn chat_sourced_history_replays_the_tool_name_not_the_identifier() {
                         },
                         signature: None,
                         additional_params: None,
-                    })],
-                },
+                    }),
+                ])),
                 rig::message::Message::User {
                     content: vec![rig::message::UserContent::ToolResult(
                         rig::message::ToolResult {

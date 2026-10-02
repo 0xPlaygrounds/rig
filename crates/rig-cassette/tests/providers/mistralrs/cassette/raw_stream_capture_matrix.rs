@@ -100,7 +100,7 @@ async fn stream_raw_terminal_round_trips_provider_type() {
         usage.openai.completion_tokens.map(|tokens| tokens as u64),
         terminal.usage.output_tokens
     );
-    assert_eq!(terminal.provider, NORMALIZED_PROVIDER);
+    assert_eq!(terminal.provider(), NORMALIZED_PROVIDER);
 
     let (_, terminal_frame) = chat::recorded_frames_with_terminal(MISTRALRS_PROVIDER, scenario);
     let raw = &terminal.raw;

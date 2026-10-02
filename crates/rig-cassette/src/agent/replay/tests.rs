@@ -61,7 +61,7 @@ async fn kept_stream_replay_preserves_every_error_item_and_its_position() {
             rig_core::completion::CompletionResponse::new(
                 Vec::new(),
                 rig_core::completion::Usage::default(),
-                "test",
+                rig_core::message::Origin::new("test.api", "test", ""),
                 serde_json::json!({}),
             ),
         )));
@@ -129,7 +129,7 @@ async fn replayed_model_handle_retains_live_capabilities_and_model_identity() {
                 rig_core::completion::CompletionResponse::new(
                     vec![AssistantContent::text("ok")],
                     rig_core::completion::Usage::default(),
-                    "composing",
+                    rig_core::message::Origin::new("test.api", "composing", ""),
                     serde_json::json!({ "composing": "ok" }),
                 ),
             )))

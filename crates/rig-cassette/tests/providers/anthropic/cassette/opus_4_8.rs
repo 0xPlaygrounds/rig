@@ -225,10 +225,7 @@ fn server_tool_assistant_message_from_response(content: Vec<AssistantContent>) -
         "first Anthropic response should end the preserved raw transcript with a server-tool result"
     );
 
-    Message::Assistant {
-        id: None,
-        content: raw_blocks,
-    }
+    Message::Assistant(rig::message::AssistantMessage::new(raw_blocks))
 }
 
 fn content_raw_type(content: &AssistantContent) -> Option<&str> {
@@ -240,7 +237,7 @@ fn content_raw_type(content: &AssistantContent) -> Option<&str> {
 }
 
 fn anthropic_raw_content_type(text: &Text) -> Option<&str> {
-    text.additional_params
+    text.native
         .as_ref()
         .and_then(|params| params.get("anthropic_content"))
         .and_then(|raw_content| raw_content.get("type"))

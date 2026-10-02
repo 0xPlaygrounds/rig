@@ -21,7 +21,7 @@ use crate::model::{ModelInfo, ModelList};
 use crate::observe::{
     AdapterContext, AdapterEvent, AdapterUsage, AdapterVerdict, ObservationLog, Subject,
 };
-use crate::operation::{Completion, Finish, ModelListing, ModelPage, TextPart};
+use crate::operation::{Block, Completion, Finish, ModelListing, ModelPage};
 use crate::streaming::Streamed;
 use crate::test_utils::{
     HttpErrorStreamingClient, MockHttpResponse, MockStreamingClient, NonSuccessStreamingClient,
@@ -134,7 +134,7 @@ struct Usage {
 
 #[derive(Default)]
 struct EchoDecoder<'id> {
-    text: Option<TextPart<'id>>,
+    brand: std::marker::PhantomData<fn(&'id ()) -> &'id ()>,
 }
 
 impl<'id> Decoder<'id, Completion> for EchoDecoder<'id> {
@@ -154,26 +154,33 @@ impl<'id> Decoder<'id, Completion> for EchoDecoder<'id> {
         match event {
             // A whole message is the stream's text and end in one frame.
             Frame::Message { text, usage } => {
-                self.push_text(&mut out, &text);
-                return Ok(self.end(out, usage));
+                out.run(Block::Text, &text)?;
+                return self.end(out, usage);
             }
-            Frame::Delta { text } => self.push_text(&mut out, &text),
-            Frame::Stop { usage } => return Ok(self.end(out, usage)),
+            Frame::Delta { text } => {
+                out.run(Block::Text, &text)?;
+            }
+            Frame::Stop { usage } => return self.end(out, usage),
             Frame::Tool {
                 name,
                 arguments,
                 usage,
             } => {
-                if let Some(part) = self.text.take() {
-                    out.close_text(part);
-                }
+                out.end_run()?;
                 let name = ToolName::new(name)
                     .map_err(|error| ProviderError::Response(error.to_string()))?;
-                let part = out.call(CallId::from_wire("call_1"), name)?;
-                out.push_arguments(&part, &arguments);
-                out.close_call(part)?;
+                let index = out.fresh_index();
+                out.whole(
+                    index,
+                    Block::Call {
+                        id: CallId::from_wire("call_1"),
+                        name,
+                    },
+                    serde_json::Value::Null,
+                    &arguments,
+                )?;
                 if let Some(usage) = usage {
-                    return Ok(self.end(out, usage));
+                    return self.end(out, usage);
                 }
             }
         }
@@ -182,23 +189,16 @@ impl<'id> Decoder<'id, Completion> for EchoDecoder<'id> {
 }
 
 impl<'id> EchoDecoder<'id> {
-    fn push_text(&mut self, out: &mut Out<'id, Completion>, text: &str) {
-        let part = self.text.get_or_insert_with(|| out.text());
-        out.push_text(part, text);
-    }
-
-    fn end(&mut self, mut out: Out<'id, Completion>, usage: Usage) -> Flow {
-        if let Some(part) = self.text.take() {
-            out.close_text(part);
-        }
-        out.end(Finish {
+    fn end(&mut self, mut out: Out<'id, Completion>, usage: Usage) -> Result<Flow, ProviderError> {
+        out.end_run()?;
+        Ok(out.end(Finish {
             usage: crate::completion::Usage {
                 output_tokens: Some(usage.output_tokens),
                 ..crate::completion::Usage::default()
             },
             model: Some("echo-1".to_owned()),
             ..Finish::default()
-        })
+        }))
     }
 }
 
@@ -228,6 +228,20 @@ impl EchoDecoder<'_> {
     }
 }
 
+impl crate::completion::ReplayTarget for Echo {
+    fn api(&self) -> crate::message::Api {
+        crate::message::Api::from_static("echo.chat")
+    }
+
+    fn provider(&self) -> &str {
+        "echo"
+    }
+
+    fn model(&self) -> &str {
+        "echo-1"
+    }
+}
+
 impl Wire for Echo {
     type Op = Completion;
     type Payload = Encoded;
@@ -235,7 +249,7 @@ impl Wire for Echo {
     type Decoder<'id> = EchoDecoder<'id>;
 
     fn describe(&self) -> Descriptor<'_> {
-        Descriptor::new("echo").model("echo-1")
+        Descriptor::new("echo").model("echo-1").replay(self)
     }
 
     fn encode(&self, request: CompletionRequest, _mode: Mode) -> Result<Encoded, EncodeError> {
@@ -289,7 +303,7 @@ async fn a_unary_reply_and_a_streamed_reply_fold_to_the_same_response() {
 
     assert_eq!(buffered.choice, streamed.choice);
     assert_eq!(buffered.usage, streamed.usage);
-    assert_eq!(buffered.model, streamed.model);
+    assert_eq!(buffered.model(), streamed.model());
     assert_eq!(buffered.finish_reason(), streamed.finish_reason());
     assert_eq!(
         buffered.choice.first().and_then(|block| match block {
@@ -989,7 +1003,7 @@ async fn the_driver_records_the_folded_responses_metadata() {
         futures::executor::block_on(bound.call(prompt()))
     })
     .expect("the reply decodes");
-    assert_eq!(response.model.as_deref(), Some("echo-1"));
+    assert_eq!(response.model().as_deref(), Some("echo-1"));
     assert!(
         capture
             .values_of("gen_ai.response.model")
@@ -1062,15 +1076,26 @@ fn text_of(response: &crate::completion::CompletionResponse) -> Option<&str> {
 /// not be built: the stream's only item.
 #[test]
 fn a_stream_the_driver_cannot_send_is_a_request_failure() {
-    #[derive(Clone)]
+    #[derive(Clone, Debug)]
     struct Multipart;
+    impl crate::completion::ReplayTarget for Multipart {
+        fn api(&self) -> crate::message::Api {
+            crate::message::Api::from_static("echo.chat")
+        }
+        fn provider(&self) -> &str {
+            "echo"
+        }
+        fn model(&self) -> &str {
+            ""
+        }
+    }
     impl Wire for Multipart {
         type Op = Completion;
         type Payload = Encoded;
         type Frame = WireFrame;
         type Decoder<'id> = EchoDecoder<'id>;
         fn describe(&self) -> Descriptor<'_> {
-            Descriptor::new("echo")
+            Descriptor::new("echo").replay(self)
         }
         fn encode(&self, _request: CompletionRequest, _mode: Mode) -> Result<Encoded, EncodeError> {
             let request = http::Request::post("https://echo.invalid/a")
@@ -1122,11 +1147,14 @@ impl crate::wire::Operation for Guarded {
         crate::operation::Whole::new()
     }
 
-    fn validate(request: &String) -> Result<(), ProviderError> {
+    fn prepare(
+        request: String,
+        _wire: &crate::wire::Descriptor<'_>,
+    ) -> Result<String, ProviderError> {
         if request.is_empty() {
             return Err(ProviderError::request("the request is empty"));
         }
-        Ok(())
+        Ok(request)
     }
 }
 

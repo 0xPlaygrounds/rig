@@ -245,12 +245,7 @@ async fn consume_workspace_like_stream(
                 ..
             })) => {
                 observation.events.push("reasoning");
-                observation.reasoning_text.push_str(
-                    &reasoning
-                        .open(reasoning.issuer())
-                        .map(Reasoning::display_text)
-                        .unwrap_or_default(),
-                );
+                observation.reasoning_text.push_str(&reasoning.text.clone());
             }
             MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Reasoning {
                 text: reasoning,

@@ -400,7 +400,7 @@ fn history_tool_calls(history: &[Message]) -> Vec<HistoryToolCall> {
         .iter()
         .enumerate()
         .flat_map(|(message_index, message)| match message {
-            Message::Assistant { content, .. } => content
+            Message::Assistant(rig_core::message::AssistantMessage { content, .. }) => content
                 .iter()
                 .filter_map(move |content| match content {
                     AssistantContent::ToolCall(tool_call) => Some(HistoryToolCall {

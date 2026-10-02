@@ -277,14 +277,13 @@ async fn a_very_long_tool_output_survives_the_round_trip() {
                         Message::User {
                             content: vec![UserContent::text("What code does the dump end with?")],
                         },
-                        Message::Assistant {
-                            id: None,
-                            content: vec![AssistantContent::tool_call(
+                        Message::Assistant(rig_core::message::AssistantMessage::new(vec![
+                            AssistantContent::tool_call(
                                 "call_long",
                                 rig_core::message::ToolName::new("dump").expect("tool name"),
                                 json!({}),
-                            )],
-                        },
+                            ),
+                        ])),
                     ])
                     .max_tokens(256),
                 )
@@ -328,10 +327,9 @@ async fn a_system_message_plus_history_keeps_its_order() {
                         Message::User {
                             content: vec![UserContent::text("Codeword one is heliotrope.")],
                         },
-                        Message::Assistant {
-                            id: None,
-                            content: vec![AssistantContent::text("Noted.")],
-                        },
+                        Message::Assistant(rig_core::message::AssistantMessage::new(vec![
+                            AssistantContent::text("Noted."),
+                        ])),
                         Message::User {
                             content: vec![UserContent::text("Codeword two is quicksilver.")],
                         },

@@ -90,7 +90,8 @@ const LONG_PROMPT: &str = "Write a 500 word essay about maple trees.";
 /// wire's content enum — a contentless choice is the shape this matrix is
 /// about.
 fn provider_choice_text(choice: &Choice) -> Option<String> {
-    let ChatMessage::Assistant { content, .. } = &choice.message else {
+    let ChatMessage::Assistant(rig::message::AssistantMessage { content, .. }) = &choice.message
+    else {
         return None;
     };
     let text: String = content

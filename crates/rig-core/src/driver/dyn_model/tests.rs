@@ -38,7 +38,6 @@ fn usage() -> Usage {
 
 fn unary_turn() -> MockTurn {
     MockTurn::tool_call("call_1", "lookup", json!({"q": 1}))
-        .with_message_id("msg_1")
         .with_response_id("resp_1")
         .with_provider_request_id("req_1")
         .with_usage(usage())
@@ -46,7 +45,6 @@ fn unary_turn() -> MockTurn {
 
 fn stream_turn() -> Vec<MockStreamEvent> {
     vec![
-        MockStreamEvent::message_id("msg_1"),
         MockStreamEvent::text("hel"),
         MockStreamEvent::text("lo"),
         MockStreamEvent::tool_call("call_1", "lookup", json!({"q": 1})),

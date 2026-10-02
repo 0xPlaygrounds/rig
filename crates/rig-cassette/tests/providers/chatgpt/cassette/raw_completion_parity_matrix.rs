@@ -132,11 +132,11 @@ fn assert_response_id_shape(response: &RigCompletionResponse) {
     if matches!(CassetteMode::current(), CassetteMode::Record) {
         assert!(
             response
-                .response_id
+                .response_id()
                 .as_deref()
                 .is_some_and(|id| id.starts_with("resp_")),
             "response id should be a resp_ id, got {:?}",
-            response.response_id
+            response.response_id()
         );
     }
 }
@@ -257,9 +257,9 @@ async fn raw_normalize_reproduces_completion_with_tool_call() {
     // token comparator owning the replay/record split on the ids.
     let from_wire = responses_api::CompletionResponse::deserialize(&terminals[0])
         .expect("recorded terminal envelope must be a Responses response");
-    assert_eq!(response.provider, CHATGPT_PROVIDER, "provider");
+    assert_eq!(response.provider(), CHATGPT_PROVIDER, "provider");
     assert_eq!(
-        response.model.as_deref(),
+        response.model().as_deref(),
         Some(from_wire.model.as_str()),
         "model"
     );
@@ -282,13 +282,13 @@ async fn raw_normalize_reproduces_completion_with_tool_call() {
     );
     assert_no_request_id(response.provider_request_id.as_deref(), CHATGPT_PROVIDER);
     assert_matches_recorded_token(
-        response.response_id.as_deref(),
+        response.response_id().as_deref(),
         Some(from_wire.id.as_str()),
         "response id",
     );
     let wire_message = wire_message_id(&from_wire);
     assert_matches_recorded_token(
-        response.message_id.as_deref(),
+        response.response_id().as_deref(),
         wire_message.as_deref(),
         "message id",
     );

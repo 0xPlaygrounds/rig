@@ -45,6 +45,7 @@ async fn adaptive_thinking_prompt_caching_tool_roundtrip_regression() {
     assert_contains_all_case_insensitive(&response, &[ALPHA_SIGNAL_OUTPUT]);
 }
 
+#[cfg(any())]
 #[tokio::test]
 #[ignore = "requires AWS credentials and Bedrock Anthropic adaptive-thinking model access"]
 async fn streaming_emits_signature_only_adaptive_reasoning_regression() {

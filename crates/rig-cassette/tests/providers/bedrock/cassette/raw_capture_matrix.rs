@@ -237,9 +237,9 @@ async fn normalized_fields_equal_raw_renormalized() {
         .provider_request_id
         .clone_from(&response.provider_request_id);
 
-    assert_eq!(response.provider, BEDROCK_PROVIDER);
-    assert_eq!(from_raw.provider, response.provider);
-    assert_eq!(from_raw.model, response.model);
+    assert_eq!(response.provider(), BEDROCK_PROVIDER);
+    assert_eq!(from_raw.provider(), response.provider());
+    assert_eq!(from_raw.model(), response.model());
     assert_eq!(from_raw.finish_reason(), response.finish_reason());
     assert_eq!(from_raw.identity(), response.identity());
     assert_eq!(from_raw.usage, response.usage);

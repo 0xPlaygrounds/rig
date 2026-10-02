@@ -144,13 +144,13 @@ async fn raw_roundtrips_streaming_completion_response() {
             );
 
             // The typed value agrees with the normalized terminal next to it.
-            assert_eq!(typed.model_version, terminal.model);
+            assert_eq!(typed.model_version, terminal.model());
             assert_eq!(
                 typed
                     .interaction
                     .as_ref()
                     .map(|interaction| interaction.id.as_str()),
-                terminal.response_id.as_deref()
+                terminal.response_id().as_deref()
             );
             assert_eq!(
                 typed.usage.as_ref().and_then(|usage| usage.total_tokens),

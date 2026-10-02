@@ -92,10 +92,10 @@ async fn file_id_chain() {
             assert!(text(&first.choice).contains('3'), "{:?}", first.choice);
             let history = vec![
                 document,
-                Message::Assistant {
-                    id: first.message_id.clone(),
+                Message::Assistant(rig::message::AssistantMessage {
                     content: first.choice.clone(),
-                },
+                    ..first.head()
+                }),
                 Message::user("Is the attached PDF longer than two pages? Answer yes or no."),
             ];
             let second = model

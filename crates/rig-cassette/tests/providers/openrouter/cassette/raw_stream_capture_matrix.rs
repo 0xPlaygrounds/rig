@@ -125,7 +125,7 @@ async fn stream_raw_exposes_terminal_cost_and_provider() {
     );
     // The normalized terminal has no slot for either: its `provider` is rig's
     // descriptor name, not the routed upstream.
-    assert_eq!(terminal.provider, PROVIDER);
+    assert_eq!(terminal.provider(), PROVIDER);
     let normalized_usage = serde_json::to_value(terminal.usage).expect("usage serializes");
     assert!(
         normalized_usage.get("cost").is_none(),

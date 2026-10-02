@@ -21,7 +21,9 @@ fn assert_history_tool_calls(history: &[Message], expected: &[&str], forbidden: 
     let tool_names = history
         .iter()
         .filter_map(|message| match message {
-            Message::Assistant { content, .. } => Some(content),
+            Message::Assistant(rig_core::message::AssistantMessage { content, .. }) => {
+                Some(content)
+            }
             _ => None,
         })
         .flat_map(|content| content.iter())

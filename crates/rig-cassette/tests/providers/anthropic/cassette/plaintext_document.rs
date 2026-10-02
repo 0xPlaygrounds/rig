@@ -227,10 +227,10 @@ async fn document_citations_followup_preserves_assistant_citation_history() {
                         .max_tokens(64)
                         .temperature(0.0)
                         .message(prompt)
-                        .message(Message::Assistant {
-                            id: first_turn.message_id.clone(),
+                        .message(Message::Assistant(rig::message::AssistantMessage {
                             content: first_turn.choice.clone(),
-                        }),
+                            ..first_turn.head()
+                        })),
                 )
                 .await
                 .expect("follow-up citation history turn should succeed");

@@ -442,17 +442,16 @@ async fn blocking_assistant_and_tool_history_still_flattens() {
             let response = model
                 .call(
                     CompletionRequest::new("Now say: history-ok")
-                        .message(Message::Assistant {
-                            id: None,
-                            content: vec![
+                        .message(Message::Assistant(
+                            rig_core::message::AssistantMessage::new(vec![
                                 rig::message::AssistantContent::text("Checking the ledger."),
                                 rig::message::AssistantContent::tool_call(
                                     "call_history_1",
                                     rig_core::message::ToolName::new("ping").expect("tool name"),
                                     json!({}),
                                 ),
-                            ],
-                        })
+                            ]),
+                        ))
                         .message(Message::User {
                             content: vec![UserContent::tool_result(
                                 rig_core::message::CallId::from_wire("call_history_1"),

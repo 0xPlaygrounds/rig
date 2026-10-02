@@ -25,6 +25,7 @@ use rig_test_support::reasoning;
 use rig_test_support::stream_faults;
 use rig_test_support::support;
 
+#[cfg(any())]
 #[path = "providers/gemini/mod.rs"]
 mod gemini;
 

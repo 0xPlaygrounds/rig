@@ -288,7 +288,7 @@ fn count_assistant_tool_calls(chat_history: &[Message], tool_name: &str) -> usiz
     chat_history
         .iter()
         .filter_map(|message| match message {
-            Message::Assistant { content, .. } => Some(content),
+            Message::Assistant(rig::message::AssistantMessage { content, .. }) => Some(content),
             _ => None,
         })
         .flat_map(|content| content.iter())

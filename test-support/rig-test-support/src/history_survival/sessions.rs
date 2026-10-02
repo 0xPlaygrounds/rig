@@ -13,9 +13,7 @@
 use serde_json::Value;
 
 use rig_core::completion::{CompletionRequest, ToolDefinition};
-use rig_core::message::{
-    AssistantContent, Message, ReasoningContent, ToolResultContent, UserContent,
-};
+use rig_core::message::{AssistantContent, Message, ToolResultContent, UserContent};
 
 use super::{Dialect, lost_tokens, response_tokens};
 
@@ -206,38 +204,10 @@ async fn turn_one(
         "[{}] turn one reasoned",
         cell.provider
     );
-    assert!(
-        reasoning
-            .iter()
-            .all(|reasoning| !reasoning.issuer().as_str().is_empty()),
-        "[{}] decoded reasoning records its issuer",
-        cell.provider
-    );
-    // Replayable state rides a reasoning block (signature, ciphertext, item
-    // id) or, on Gemini, the function call itself (its thought signature).
-    let replayable = call.signature.is_some()
-        || reasoning.iter().any(|reasoning| {
-            reasoning
-                .open(reasoning.issuer())
-                .expect("sealed reasoning")
-                .id
-                .is_some()
-                || reasoning
-                    .open(reasoning.issuer())
-                    .expect("sealed reasoning")
-                    .content
-                    .iter()
-                    .any(|block| {
-                        matches!(
-                            block,
-                            ReasoningContent::Text {
-                                signature: Some(_),
-                                ..
-                            } | ReasoningContent::Encrypted(_)
-                                | ReasoningContent::Redacted { .. }
-                        )
-                    })
-        });
+    // Replayable state rides a reasoning block's provider item (signature,
+    // ciphertext, item id) or, on Gemini, the function call's.
+    let replayable =
+        call.native.is_some() || reasoning.iter().any(|reasoning| reasoning.native.is_some());
     assert!(
         cell.expect.is_empty() || replayable,
         "[{}] turn one delivered replayable reasoning state",
@@ -246,10 +216,10 @@ async fn turn_one(
 
     let history = vec![
         prompt,
-        Message::Assistant {
-            id: reply.message_id.clone(),
+        Message::Assistant(rig_core::message::AssistantMessage {
             content: reply.choice.clone(),
-        },
+            ..reply.head()
+        }),
         Message::User {
             content: vec![UserContent::tool_result(
                 call.id.clone(),

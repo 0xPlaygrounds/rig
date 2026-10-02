@@ -381,7 +381,7 @@ async fn streamed_hand_driven_multi_turn_run_completes() {
         let kept: Vec<&rig::message::ToolCall> = messages
             .iter()
             .filter_map(|message| match message {
-                rig::message::Message::Assistant { content, .. } => Some(content.iter()),
+                rig::message::Message::Assistant(rig::message::AssistantMessage { content, .. }) => Some(content.iter()),
                 _ => None,
             })
             .flatten()

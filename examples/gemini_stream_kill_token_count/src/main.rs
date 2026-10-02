@@ -173,9 +173,7 @@ fn visible_len(item: &Relayed) -> usize {
         StreamEvent::End {
             content: AssistantContent::Reasoning(r),
             ..
-        } => r
-            .open(r.issuer())
-            .map_or(0, |r| r.display_text().chars().count()),
+        } => r.text.chars().count(),
         _ => 0,
     }
 }
@@ -244,11 +242,7 @@ where
                     content: AssistantContent::Reasoning(r),
                     ..
                 } => {
-                    output.push_str(
-                        &r.open(r.issuer())
-                            .map(Reasoning::display_text)
-                            .unwrap_or_default(),
-                    );
+                    output.push_str(&r.text.clone());
                 }
                 _ => {}
             },

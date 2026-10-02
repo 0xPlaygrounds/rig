@@ -46,8 +46,6 @@ struct StreamRun {
     choice: Vec<AssistantContent>,
     /// The normalized terminal record retained on the stream.
     response: Option<CompletionResponse>,
-    /// Provider-assigned assistant message ID retained on the stream.
-    message_id: Option<String>,
 }
 
 async fn drain_stream(mut stream: rig::streaming::CompletionStream) -> StreamRun {
@@ -58,7 +56,6 @@ async fn drain_stream(mut stream: rig::streaming::CompletionStream) -> StreamRun
         tool_calls: Vec::new(),
         choice: vec![AssistantContent::text("")],
         response: None,
-        message_id: None,
     };
 
     let mut raw_items = Vec::new();
@@ -99,7 +96,7 @@ async fn drain_stream(mut stream: rig::streaming::CompletionStream) -> StreamRun
     // suite drains (#2258 C1).
     rig_core::test_utils::streaming_conformance::assert_valid_event_stream(&raw_items, &run.choice);
     run.response = Some(response.clone());
-    run.message_id = response.message_id.clone();
+    run.message_id = response.response_id().clone();
     run
 }
 
@@ -421,10 +418,10 @@ async fn tool_call_then_followup_text_across_turns() {
                 })
                 .expect("aggregated first turn should contain the lookup_harbor_label call");
 
-            let assistant_message = Message::Assistant {
-                id: first.message_id.clone(),
+            let assistant_message = Message::Assistant(rig_core::message::AssistantMessage {
                 content: vec![AssistantContent::ToolCall(tool_call.clone())],
-            };
+                ..first.head()
+            });
             let tool_result = Message::from(UserContent::tool_result(
                 tool_call.id.clone(),
                 tool_call.function.name.clone(),
@@ -534,10 +531,10 @@ async fn three_turn_tool_session_replays_rs_ids_across_turns() {
             // Turn 2: the full aggregated choice — reasoning items with their
             // recorded rs_* ids included — goes back through the provenance
             // gate together with the tool result.
-            let first_assistant = Message::Assistant {
-                id: first.message_id.clone(),
-                content: first.choice.clone(),
-            };
+            let first_assistant = Message::Assistant(rig_core::message::AssistantMessage {
+            content: first.choice.clone(),
+            ..first.head()
+        });
             let tool_result = Message::from(UserContent::tool_result(tool_call.id.clone(), tool_call.function.name.clone(), vec![ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)]));
             let second_request = CompletionRequest::new(
                     "Answer in one short sentence that includes the exact tool output. \
@@ -564,10 +561,10 @@ async fn three_turn_tool_session_replays_rs_ids_across_turns() {
             );
 
             // Turn 3: both prior assistant turns' rs_* items replay together.
-            let second_assistant = Message::Assistant {
-                id: second.message_id.clone(),
-                content: second.choice.clone(),
-            };
+            let second_assistant = Message::Assistant(rig_core::message::AssistantMessage {
+            content: second.choice.clone(),
+            ..second.head()
+        });
             let third_request = CompletionRequest::new(
                     "Repeat the exact tool output one more time, alone on a single line.",
                 )

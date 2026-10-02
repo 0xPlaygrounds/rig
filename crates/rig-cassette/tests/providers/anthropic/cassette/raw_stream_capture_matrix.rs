@@ -204,7 +204,6 @@ fn contains_string(value: &Value, needle: &str) -> bool {
 /// names the id and model, the terminal `message_delta` names the stop reason
 /// and carries the final usage, and the response carried a `request-id`.
 struct RecordedStream {
-    message_id: Option<String>,
     model: Option<String>,
     stop_reason: Option<String>,
     stop_sequence: Option<String>,
@@ -231,7 +230,6 @@ fn recorded_stream(scenario: &str) -> RecordedStream {
     let request_ids = recorded_request_id_headers(scenario);
     assert_eq!(request_ids.len(), 1, "{scenario}: one recorded interaction");
     RecordedStream {
-        message_id: start["message"]["id"].as_str().map(str::to_string),
         model: start["message"]["model"].as_str().map(str::to_string),
         stop_reason: delta["delta"]["stop_reason"].as_str().map(str::to_string),
         stop_sequence: delta["delta"]["stop_sequence"].as_str().map(str::to_string),
@@ -267,7 +265,7 @@ fn assert_terminal_matches_fixture(
         "{scenario}: premise — the response carries a request-id header"
     );
     assert_ids_match_recording(
-        std::slice::from_ref(&terminal.message_id),
+        std::slice::from_ref(&terminal.response_id()),
         std::slice::from_ref(&recorded.message_id),
         scenario,
     );
@@ -276,10 +274,10 @@ fn assert_terminal_matches_fixture(
         std::slice::from_ref(&recorded.request_id),
         scenario,
     );
-    assert_eq!(terminal.model, recorded.model);
+    assert_eq!(terminal.model(), recorded.model);
     assert_eq!(terminal.usage.input_tokens, Some(recorded.input_tokens));
     assert_eq!(terminal.usage.output_tokens, Some(recorded.output_tokens));
-    assert_eq!(terminal.provider, ANTHROPIC_PROVIDER);
+    assert_eq!(terminal.provider(), ANTHROPIC_PROVIDER);
 }
 
 // ---------------------------------------------------------------------------
@@ -495,10 +493,11 @@ async fn normalized_terminal_matches_raw_renormalized() {
         "the provider record round-trips through its own serde"
     );
     assert_eq!(
-        typed.message_id, terminal.message_id,
+        typed.message_id,
+        terminal.response_id(),
         "the message id survives raw → typed"
     );
-    assert_eq!(typed.model, terminal.model);
+    assert_eq!(typed.model, terminal.model());
     assert_eq!(
         typed.usage.input_tokens.map(|n| n as u64),
         terminal.usage.input_tokens
@@ -761,7 +760,7 @@ async fn terminal_raw_round_trips_for_tool_use_stream() {
             .id
             .provider()
             .as_ref()
-            .map(|provider| provider.call_id.clone())],
+            .map(|provider| provider.as_str().to_owned())],
         std::slice::from_ref(&recorded_tool_id),
         TOOL_USE_SCENARIO,
     );

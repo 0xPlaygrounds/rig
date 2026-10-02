@@ -253,11 +253,7 @@ async fn assert_blocking_truncation_survives(client: &OpenAiModels, max_tokens: 
         choice.finish_reason, "length",
         "premise: the recorded turn must have been cut by the budget"
     );
-    let openai::completion::Message::Assistant {
-        tool_calls: wire_calls,
-        ..
-    } = &choice.message
-    else {
+    let openai::completion::Message::Assistant(_) = &choice.message else {
         panic!("a completion choice carries an assistant message");
     };
     assert!(
@@ -282,11 +278,11 @@ async fn assert_blocking_truncation_survives(client: &OpenAiModels, max_tokens: 
         response.usage
     );
     assert!(
-        response.response_id.is_some(),
+        response.response_id().is_some(),
         "the response id survives the truncated call"
     );
     assert!(
-        response.model.is_some(),
+        response.model().is_some(),
         "the model name survives the truncated call"
     );
     Ok(())
@@ -1227,11 +1223,7 @@ fn a_truncated_call_is_dropped_at_decode_and_the_turn_survives() {
 
     let response: deepseek::CompletionResponse =
         serde_json::from_str(body).expect("a truncated turn must still decode");
-    let openai::completion::Message::Assistant {
-        tool_calls: wire_calls,
-        ..
-    } = &response.choices[0].message
-    else {
+    let openai::completion::Message::Assistant(_) = &response.choices[0].message else {
         panic!("a completion choice carries an assistant message");
     };
     assert_eq!(

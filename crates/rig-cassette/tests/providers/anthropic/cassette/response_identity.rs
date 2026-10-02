@@ -35,11 +35,11 @@ async fn nonstreaming_response_carries_identity() {
 
             assert!(
                 response
-                    .message_id
+                    .response_id()
                     .as_deref()
                     .is_some_and(|id| id.starts_with("msg")),
                 "Anthropic reports message.id, got {:?}",
-                response.message_id
+                response.response_id()
             );
             assert_request_id(response.provider_request_id.as_deref(), "blocking response");
         },
@@ -70,11 +70,11 @@ async fn streaming_terminal_carries_identity() {
 
             assert!(
                 terminal
-                    .message_id
+                    .response_id()
                     .as_deref()
                     .is_some_and(|id| id.starts_with("msg")),
                 "streaming terminal carries message_id, got {:?}",
-                terminal.message_id
+                terminal.response_id()
             );
             // Blocking/streaming parity: the SSE connection's `request-id`
             // header lands on the terminal record.
@@ -111,7 +111,7 @@ impl AgentHook for IdentityCapture {
         self.seen.lock().expect("snapshots").push((
             ctx.is_streaming(),
             (
-                response.message_id.clone(),
+                response.response_id().clone(),
                 response.provider_request_id.clone(),
             ),
         ));

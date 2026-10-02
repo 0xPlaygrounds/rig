@@ -170,10 +170,12 @@ async fn patch_tool_args_effect_log_is_the_golden_fixture() {
             .chat_history
             .iter()
             .find_map(|message| match message {
-                Message::Assistant { content, .. } => content.iter().find_map(|c| match c {
-                    AssistantContent::ToolCall(call) => Some(call.function.arguments.clone()),
-                    _ => None,
-                }),
+                Message::Assistant(rig::message::AssistantMessage { content, .. }) => {
+                    content.iter().find_map(|c| match c {
+                        AssistantContent::ToolCall(call) => Some(call.function.arguments.clone()),
+                        _ => None,
+                    })
+                }
                 _ => None,
             })
             .expect("the model's call is in history");

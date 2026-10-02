@@ -39,7 +39,7 @@ struct ToolEvent {
 fn history_tool_calls(history: &[Message]) -> Vec<ToolEvent> {
     let mut calls = Vec::new();
     for (message_index, message) in history.iter().enumerate() {
-        if let Message::Assistant { content, .. } = message {
+        if let Message::Assistant(rig_core::message::AssistantMessage { content, .. }) = message {
             for item in content.iter() {
                 if let AssistantContent::ToolCall(tool_call) = item {
                     calls.push(ToolEvent {
@@ -213,9 +213,8 @@ async fn long_history_replay_nonstreaming() {
             ))
             .message(Message::assistant("Noted - your favorite color is teal."))
             .message(Message::user("Now look up the harbor label with the tool."))
-            .message(Message::Assistant {
-                id: None,
-                content: vec![
+            .message(Message::Assistant(
+                rig_core::message::AssistantMessage::new(vec![
                     AssistantContent::text("Checking the harbor label now."),
                     // Gemini issues no functionCall ids: an empty wire id
                     // records no provider id and mints the correlation
@@ -225,8 +224,8 @@ async fn long_history_replay_nonstreaming() {
                         rig_core::message::ToolName::new(AlphaSignal::NAME).expect("tool name"),
                         serde_json::json!({}),
                     ),
-                ],
-            })
+                ]),
+            ))
             .message(Message::tool_result(
                 rig_core::message::CallId::from_wire(""),
                 rig_core::message::ToolName::new(AlphaSignal::NAME).expect("tool name"),
@@ -265,7 +264,7 @@ async fn long_history_replay_nonstreaming() {
             );
             assert!(
                 response
-                    .model
+                    .model()
                     .as_deref()
                     .is_some_and(|version| !version.is_empty()),
                 "provider response should preserve the model version"

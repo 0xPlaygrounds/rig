@@ -112,15 +112,15 @@ fn assert_terminal(run: &StreamRun, expected_finish: FinishReason) {
     // populate `response_id` and leave `message_id` empty.
     assert!(
         terminal
-            .response_id
+            .response_id()
             .as_deref()
             .is_some_and(|id| !id.is_empty()),
         "Gemini should surface its responseId as the response-scoped ID"
     );
     assert!(
-        terminal.message_id.is_none(),
+        terminal.response_id().is_none(),
         "Gemini has no replayable assistant-message ID; got {:?}",
-        terminal.message_id
+        terminal.response_id()
     );
 }
 
@@ -834,13 +834,13 @@ async fn interactions_same_tool_called_twice_stays_distinct() {
             );
             for call in &add_calls {
                 assert_ne!(
-                    call.id.provider().map(|provider| provider.call_id.as_str()), Some("add"),
+                    call.id.provider().map(|provider| provider.as_str()), Some("add"),
                     "the tool name must never be fabricated into the durable id"
                 );
                 assert!(
                     call.id.provider()
                         .as_ref()
-                        .is_none_or(|provider| provider.call_id != "add"),
+                        .is_none_or(|provider| provider.as_str() != "add"),
                     "the tool name must never be fabricated into the provider call id"
                 );
                 assert!(
@@ -995,9 +995,8 @@ async fn chat_sourced_history_replays_the_tool_name_not_the_identifier() {
                 rig::message::Message::user(
                     "Use the add tool to compute 2 + 3, then state the result.",
                 ),
-                rig::message::Message::Assistant {
-                    id: None,
-                    content: vec![AssistantContent::ToolCall(ToolCall {
+                rig::message::Message::Assistant(rig_core::message::AssistantMessage::new(vec![
+                    AssistantContent::ToolCall(ToolCall {
                         id: cross_provider_handle.clone(),
                         function: rig::message::ToolFunction {
                             name: rig_core::message::ToolName::new("add").expect("tool name"),
@@ -1005,8 +1004,8 @@ async fn chat_sourced_history_replays_the_tool_name_not_the_identifier() {
                         },
                         signature: None,
                         additional_params: None,
-                    })],
-                },
+                    }),
+                ])),
                 rig::message::Message::User {
                     content: vec![UserContent::ToolResult(rig::message::ToolResult {
                         call: cross_provider_handle,

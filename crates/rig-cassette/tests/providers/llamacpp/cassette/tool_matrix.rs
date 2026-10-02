@@ -68,14 +68,13 @@ const NO_THINK: &str = "/no_think ";
 
 /// The assistant turn a tool result answers.
 fn lookup_call_turn(id: &str) -> Message {
-    Message::Assistant {
-        id: None,
-        content: vec![AssistantContent::tool_call(
+    Message::Assistant(rig_core::message::AssistantMessage::new(vec![
+        AssistantContent::tool_call(
             id,
             rig_core::message::ToolName::new("lookup").expect("tool name"),
             json!({}),
-        )],
-    }
+        ),
+    ]))
 }
 
 /// The tool calls a recorded assistant message asked for.

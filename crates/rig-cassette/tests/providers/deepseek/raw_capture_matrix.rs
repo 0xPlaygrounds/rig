@@ -267,7 +267,7 @@ async fn reasoning_raw_round_trips_and_exposes_reasoning_content() {
     let typed = deepseek::CompletionResponse::deserialize(&response.raw)
         .expect("raw reads back as DeepSeek's own CompletionResponse");
     assert_typed_view_matches(&typed, &response);
-    let openai::completion::Message::Assistant { reasoning, .. } = &typed
+    let openai::completion::Message::Assistant(_) = &typed
         .choices
         .first()
         .expect("a reply carries a choice")

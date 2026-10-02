@@ -93,9 +93,12 @@ async fn raw_reads_back_as_openrouter_type() {
         .expect("raw is OpenRouter's own CompletionResponse");
     assert_eq!(
         Some(typed.openai.id.as_str()),
-        response.response_id.as_deref()
+        response.response_id().as_deref()
     );
-    assert_eq!(Some(typed.openai.model.as_str()), response.model.as_deref());
+    assert_eq!(
+        Some(typed.openai.model.as_str()),
+        response.model().as_deref()
+    );
     assert_eq!(
         typed.openai.choices.len(),
         1,
@@ -131,7 +134,7 @@ async fn raw_exposes_routed_provider() {
     assert_eq!(raw["usage"]["cost"], json!(recorded_cost));
     // And the normalized view has no slot for either: `provider` on the
     // normalized response is rig's descriptor name, not the routed upstream.
-    assert_eq!(response.provider, PROVIDER);
+    assert_eq!(response.provider(), PROVIDER);
     let normalized_usage = serde_json::to_value(response.usage).expect("usage serializes");
     assert!(
         normalized_usage.get("cost").is_none(),

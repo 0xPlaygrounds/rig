@@ -362,7 +362,7 @@ async fn interactions_chain_with_tool_call() {
                     )
                     .await
                     .expect("turn one");
-                let first_id = first.response_id.clone().expect("an interaction id");
+                let first_id = first.response_id().clone().expect("an interaction id");
                 keep(&first_id);
                 let call = only_call(&first.choice);
 
@@ -379,7 +379,7 @@ async fn interactions_chain_with_tool_call() {
                     )
                     .await
                     .expect("turn two answers the call");
-                let second_id = second.response_id.clone().expect("an interaction id");
+                let second_id = second.response_id().clone().expect("an interaction id");
                 keep(&second_id);
 
                 let third = model
@@ -391,7 +391,7 @@ async fn interactions_chain_with_tool_call() {
                     )
                     .await
                     .expect("turn three continues");
-                keep(third.response_id.as_deref().expect("an interaction id"));
+                keep(third.response_id().as_deref().expect("an interaction id"));
                 assert!(text(&third.choice).contains(CODE), "{:?}", third.choice);
             })
             .await;
@@ -484,10 +484,10 @@ async fn file_uri_chain() {
                 );
                 let history = vec![
                     document,
-                    Message::Assistant {
-                        id: first.message_id.clone(),
-                        content: first.choice.clone(),
-                    },
+                    Message::Assistant(rig_core::message::AssistantMessage {
+            content: first.choice.clone(),
+            ..first.head()
+        }),
                     Message::user(
                         "What is the shelf code in the same attached file? Reply with the code only.",
                     ),

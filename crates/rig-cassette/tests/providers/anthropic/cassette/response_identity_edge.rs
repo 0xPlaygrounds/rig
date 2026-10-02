@@ -163,7 +163,7 @@ async fn strict_tools_and_identity() {
                 response.provider_request_id.as_deref(),
                 "strict-tools response",
             );
-            assert!(response.message_id.is_some());
+            assert!(response.response_id().is_some());
         },
     )
     .await;

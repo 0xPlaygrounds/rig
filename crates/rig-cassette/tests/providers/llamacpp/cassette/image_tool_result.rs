@@ -42,14 +42,13 @@ fn image_tool_result() -> ToolResult {
 }
 
 fn tool_call_turn() -> rig::message::Message {
-    rig::message::Message::Assistant {
-        id: None,
-        content: vec![rig::message::AssistantContent::tool_call(
+    rig::message::Message::Assistant(rig_core::message::AssistantMessage::new(vec![
+        rig::message::AssistantContent::tool_call(
             "call_1",
             rig_core::message::ToolName::new("view_file").expect("tool name"),
             serde_json::json!({}),
-        )],
-    }
+        ),
+    ]))
 }
 
 fn assistant_text(response: &rig::completion::CompletionResponse) -> String {

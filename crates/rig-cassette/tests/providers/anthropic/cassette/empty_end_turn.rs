@@ -93,7 +93,7 @@ impl Tool for Notify {
 fn assistant_message_has_notify_tool_call(message: &Message) -> bool {
     matches!(
         message,
-        Message::Assistant { content, .. }
+        Message::Assistant(rig_core::message::AssistantMessage { content, .. })
             if content.iter().any(|item| matches!(
                 item,
                 AssistantContent::ToolCall(tool_call) if tool_call.function.name == Notify::NAME
@@ -104,7 +104,7 @@ fn assistant_message_has_notify_tool_call(message: &Message) -> bool {
 fn assistant_message_has_nonempty_text_and_notify_tool_call(message: &Message) -> bool {
     matches!(
         message,
-        Message::Assistant { content, .. }
+        Message::Assistant(rig_core::message::AssistantMessage { content, .. })
             if content.iter().any(|item| matches!(
                 item,
                 AssistantContent::Text(text) if !text.text.trim().is_empty()
@@ -127,7 +127,7 @@ fn history_has_empty_assistant_text(messages: &[Message]) -> bool {
     messages.iter().any(|message| {
         matches!(
             message,
-            Message::Assistant { content, .. }
+            Message::Assistant(rig_core::message::AssistantMessage { content, .. })
                 if content.iter().any(|item| matches!(
                     item,
                     AssistantContent::Text(text) if text.text.is_empty()

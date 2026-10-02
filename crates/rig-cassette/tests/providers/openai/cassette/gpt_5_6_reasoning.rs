@@ -268,10 +268,10 @@ async fn five_turn_reasoning_metadata_roundtrip() {
 
                 stored_turns.push(StoredResponseTurn {
                     user: user_message,
-                    assistant: Message::Assistant {
-                        id: response.message_id,
-                        content: response.choice,
-                    },
+                    assistant: Message::Assistant(rig::message::AssistantMessage {
+                        content: response.choice.clone(),
+                        ..response.head()
+                    }),
                     raw_response,
                 });
                 let stored_json =
@@ -368,7 +368,7 @@ async fn five_turn_streaming_reasoning_metadata_roundtrip() {
                         turn_index + 1
                     )
                 });
-                let message_id = final_record.message_id.clone();
+                let message_id = final_record.response_id().clone();
 
                 assert_eq!(
                     text.trim(),
@@ -384,7 +384,7 @@ async fn five_turn_streaming_reasoning_metadata_roundtrip() {
                 // Same precedence the normalized stream applies: an explicit
                 // message-id block wins, and the terminal record only fills a
                 // gap it left.
-                let message_id = message_id.or_else(|| final_record.message_id.clone());
+                let message_id = message_id.or_else(|| final_record.response_id().clone());
                 assert_eq!(
                     final_response.reasoning_context.as_deref(),
                     Some("all_turns")
@@ -414,10 +414,9 @@ async fn five_turn_streaming_reasoning_metadata_roundtrip() {
                 reasoning_blocks.push(AssistantContent::text(&text));
                 stored_turns.push(StoredStreamingTurn {
                     user: user_message,
-                    assistant: Message::Assistant {
-                        id: message_id,
-                        content: reasoning_blocks,
-                    },
+                    assistant: Message::Assistant(rig::message::AssistantMessage::new(
+                        reasoning_blocks,
+                    )),
                     final_response,
                 });
                 let stored_json = serde_json::to_value(&stored_turns)

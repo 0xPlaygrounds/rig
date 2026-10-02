@@ -150,7 +150,7 @@ fn assert_chat_fixture_premise(
         "{scenario}: the recorded turn finished as the cell expects"
     );
     assert_matches_recorded_token(
-        response.response_id.as_deref(),
+        response.response_id().as_deref(),
         body["id"].as_str(),
         &format!("{scenario}: response_id"),
     );
@@ -205,12 +205,12 @@ fn assert_chat_raw_agrees(
     response: &CompletionResponse,
 ) {
     assert_eq!(
-        response.response_id.as_deref(),
+        response.response_id().as_deref(),
         Some(typed.id.as_str()),
         "{scenario}: the response id is the provider's `id`"
     );
     assert_eq!(
-        response.model.as_deref(),
+        response.model().as_deref(),
         Some(typed.model.as_str()),
         "{scenario}: model"
     );

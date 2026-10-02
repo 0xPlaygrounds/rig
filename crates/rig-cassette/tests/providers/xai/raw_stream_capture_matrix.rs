@@ -86,14 +86,14 @@ fn assert_terminal_reproduces_event(
     terminal: &rig::completion::CompletionResponse,
     response: &Value,
 ) {
-    assert_eq!(terminal.provider, PROVIDER, "provider");
+    assert_eq!(terminal.provider(), PROVIDER, "provider");
     assert_matches_recorded_token(
-        terminal.response_id.as_deref(),
+        terminal.response_id().as_deref(),
         response["id"].as_str(),
         "response id",
     );
     assert_eq!(
-        terminal.model.as_deref(),
+        terminal.model().as_deref(),
         response["model"].as_str(),
         "model"
     );

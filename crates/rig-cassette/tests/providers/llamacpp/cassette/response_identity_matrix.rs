@@ -151,7 +151,7 @@ async fn the_response_id_reaches_the_caller_on_both_transports() {
                 .expect("completion should succeed");
 
             let id = response
-                .response_id
+                .response_id()
                 .expect("llama.cpp mints a response id and rig surfaces it");
             assert!(
                 id.starts_with("chatcmpl-"),
@@ -175,7 +175,7 @@ async fn the_response_id_reaches_the_caller_on_both_transports() {
                 .finish()
                 .await
                 .expect("the stream must terminate")
-                .response_id
+                .response_id()
                 .expect("the streamed terminal must carry the same handle");
             assert!(id.starts_with("chatcmpl-"), "{id:?}");
         },
@@ -256,8 +256,8 @@ async fn the_typed_route_reproduces_the_normalized_one() {
                 .expect("the same request should succeed again");
 
             // Across the two turns: everything the wire makes equal.
-            assert_eq!(first.provider, second.provider);
-            assert_eq!(first.model, second.model);
+            assert_eq!(first.provider(), second.provider());
+            assert_eq!(first.model(), second.model());
             assert_eq!(first.finish_reason(), second.finish_reason());
             assert_eq!(
                 first.provider_request_id, second.provider_request_id,
@@ -269,10 +269,10 @@ async fn the_typed_route_reproduces_the_normalized_one() {
                  reports None by design"
             );
             assert!(
-                first.response_id.is_some() && second.response_id.is_some(),
+                first.response_id().is_some() && second.response_id().is_some(),
                 "both turns must carry the provider's own id: {:?} vs {:?}",
-                first.response_id,
-                second.response_id
+                first.response_id(),
+                second.response_id()
             );
             assert_eq!(
                 first.usage.input_tokens, second.usage.input_tokens,
@@ -284,10 +284,10 @@ async fn the_typed_route_reproduces_the_normalized_one() {
             let typed = llamacpp::CompletionResponse::deserialize(&second.raw)
                 .expect("raw is llama.cpp's own response type");
             assert_eq!(
-                second.response_id.as_deref(),
+                second.response_id().as_deref(),
                 Some(typed.openai.id.as_str())
             );
-            assert_eq!(second.model.as_deref(), Some(typed.openai.model.as_str()));
+            assert_eq!(second.model().as_deref(), Some(typed.openai.model.as_str()));
             assert_eq!(
                 second.usage.input_tokens,
                 typed

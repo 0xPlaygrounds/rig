@@ -37,7 +37,7 @@ fn replay_keeps_recorded_model_semantics_even_when_it_has_records() {
         record.outcome = Ok(Outcome::Completion(CompletionResponse::new(
             vec![AssistantContent::text("ok")],
             Usage::default(),
-            "composing-model",
+            rig_core::message::Origin::new("test.api", "composing-model", ""),
             serde_json::json!({}),
         )));
     }
@@ -290,7 +290,7 @@ fn effect_record_and_log_round_trip() {
             outcome: Ok(Outcome::Completion(CompletionResponse::new(
                 vec![AssistantContent::text("hi")],
                 Usage::default(),
-                "mock",
+                rig_core::message::Origin::new("test.api", "mock", ""),
                 serde_json::json!({}),
             ))),
             events: None,
@@ -719,10 +719,9 @@ async fn typed_tool_namespaces_survive_log_roundtrip_and_replay() {
     ))
     .expect("a transcript");
     let mut next = request();
-    next.chat_history.push(Message::Assistant {
-        id: None,
-        content: choice.clone(),
-    });
+    next.chat_history.push(Message::Assistant(
+        rig_core::message::AssistantMessage::new(choice.clone()),
+    ));
     next.chat_history.push(Message::User {
         content: calls
             .iter()
@@ -744,7 +743,7 @@ async fn typed_tool_namespaces_survive_log_roundtrip_and_replay() {
     records[0].outcome = Ok(Outcome::Completion(CompletionResponse::new(
         choice,
         Usage::default(),
-        "test",
+        rig_core::message::Origin::new("test.api", "test", ""),
         serde_json::json!({}),
     )));
     records[0].events = Some(events);
@@ -755,7 +754,7 @@ async fn typed_tool_namespaces_survive_log_roundtrip_and_replay() {
     records[1].outcome = Ok(Outcome::Completion(CompletionResponse::new(
         vec![AssistantContent::text("done")],
         Usage::default(),
-        "test",
+        rig_core::message::Origin::new("test.api", "test", ""),
         serde_json::json!({}),
     )));
     let log = EffectLog::from_records(records);

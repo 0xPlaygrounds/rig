@@ -47,7 +47,7 @@ struct ToolEvent {
 fn history_tool_calls(history: &[Message]) -> Vec<ToolEvent> {
     let mut calls = Vec::new();
     for (message_index, message) in history.iter().enumerate() {
-        if let Message::Assistant { content, .. } = message {
+        if let Message::Assistant(rig_core::message::AssistantMessage { content, .. }) = message {
             for item in content.iter() {
                 if let AssistantContent::ToolCall(tool_call) = item {
                     calls.push(ToolEvent {
@@ -144,15 +144,17 @@ async fn sequential_tool_calls_nonstreaming() {
                 .iter()
                 .skip(subtract_result_index + 1)
                 .filter_map(|message| match message {
-                    Message::Assistant { content, .. } => Some(
-                        content
-                            .iter()
-                            .filter_map(|item| match item {
-                                AssistantContent::Text(text) => Some(text.text.clone()),
-                                _ => None,
-                            })
-                            .collect::<String>(),
-                    ),
+                    Message::Assistant(rig_core::message::AssistantMessage { content, .. }) => {
+                        Some(
+                            content
+                                .iter()
+                                .filter_map(|item| match item {
+                                    AssistantContent::Text(text) => Some(text.text.clone()),
+                                    _ => None,
+                                })
+                                .collect::<String>(),
+                        )
+                    }
                     _ => None,
                 })
                 .collect::<String>();
@@ -323,7 +325,7 @@ async fn long_history_replay_nonstreaming() {
                 .expect("first turn should call lookup_harbor_label");
             let call_id = tool_call.id.provider().as_ref().map_or_else(
                 || tool_call.id.to_string(),
-                |provider| provider.call_id.clone(),
+                |provider| provider.as_str().to_owned(),
             );
 
             // Follow-up: replay a long client-owned history around that tool
@@ -340,15 +342,16 @@ async fn long_history_replay_nonstreaming() {
             ))
             .message(Message::assistant("Noted - your favorite color is teal."))
             .message(Message::user("Now look up the harbor label with the tool."))
-            .message(Message::Assistant {
-                id: None,
-                content: vec![AssistantContent::tool_call_with_call_id(
-                    "history_tool_1",
-                    call_id.clone(),
-                    rig_core::message::ToolName::new(AlphaSignal::NAME).expect("tool name"),
-                    serde_json::json!({}),
-                )],
-            })
+            .message(Message::Assistant(
+                rig_core::message::AssistantMessage::new(vec![
+                    AssistantContent::tool_call_with_call_id(
+                        "history_tool_1",
+                        call_id.clone(),
+                        rig_core::message::ToolName::new(AlphaSignal::NAME).expect("tool name"),
+                        serde_json::json!({}),
+                    ),
+                ]),
+            ))
             .message(Message::from(UserContent::tool_result(
                 rig_core::message::CallId::from_dual_wire("history_tool_1", call_id),
                 rig_core::message::ToolName::new(AlphaSignal::NAME).expect("tool name"),

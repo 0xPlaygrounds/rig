@@ -94,7 +94,7 @@ async fn hand_driven_single_turn_completes() {
                 "single turn accumulates [user prompt, assistant reply]: {messages:?}"
             );
             assert!(matches!(messages.first(), Some(Message::User { .. })));
-            assert!(matches!(messages.last(), Some(Message::Assistant { .. })));
+            assert!(matches!(messages.last(), Some(Message::Assistant(_))));
         },
     )
     .await;
@@ -132,7 +132,7 @@ async fn hand_driven_multi_turn_tool_run_completes() {
                                 "follow-up turns are prompted by the pending tool results: {prompt:?}"
                             );
                             assert!(
-                                history.iter().any(|m| matches!(m, Message::Assistant { .. })),
+                                history.iter().any(|m| matches!(m, Message::Assistant(_))),
                                 "follow-up history threads the prior assistant turn: {history:?}"
                             );
                         }

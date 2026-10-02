@@ -58,7 +58,7 @@ async fn previous_response_id_chain_keeps_axes_distinct() {
                 .await
                 .expect("first chained call should succeed");
             let first_response_id = first
-                .response_id
+                .response_id()
                 .clone()
                 .expect("Responses API reports a response id");
             assert_transport_request_id(first.provider_request_id.as_deref(), "chain call 1");
@@ -78,7 +78,7 @@ async fn previous_response_id_chain_keeps_axes_distinct() {
                 first.provider_request_id, second.provider_request_id,
                 "each chained call has its own transport id"
             );
-            let second_response_id = second.response_id.expect("second response id");
+            let second_response_id = second.response_id().expect("second response id");
             assert_ne!(
                 first_response_id, second_response_id,
                 "chaining reuses the first response id as *input*; the second \
@@ -196,7 +196,7 @@ async fn raw_and_normalized_views_agree_on_identity() {
                 .expect("`raw` is the serialized responses_api::CompletionResponse");
             assert_eq!(
                 Some(reply.id.as_str()),
-                response.response_id.as_deref(),
+                response.response_id().as_deref(),
                 "raw and normalized views describe the same interaction"
             );
             assert!(

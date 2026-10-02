@@ -135,7 +135,7 @@ async fn stream_raw_terminal_round_trips_provider_type() {
 
     // The typed terminal agrees with the normalized one: raw is the
     // record the adapter mapped, not a divergent copy.
-    assert_eq!(Some(typed.model.as_str()), terminal.model.as_deref());
+    assert_eq!(Some(typed.model.as_str()), terminal.model().as_deref());
     assert_eq!(
         typed.eval_count, terminal.usage.output_tokens,
         "normalized output tokens come from the raw eval_count"

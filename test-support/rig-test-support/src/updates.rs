@@ -6,7 +6,7 @@
 use futures::StreamExt;
 use rig_core::completion::CompletionResponse;
 use rig_core::error::ProviderError;
-use rig_core::message::{AssistantContent, ReasoningContent};
+use rig_core::message::AssistantContent;
 use rig_core::streaming::{CompletionStream, Item, PartKind, StreamEvent, Transcript};
 
 /// One part of the response, as the stream delivered it.
@@ -107,17 +107,9 @@ pub fn assert_update_contract(updates: &Updates) -> (CompletionResponse, Vec<Del
 fn finished_text(part: &AssistantContent) -> String {
     match part {
         AssistantContent::Text(text) => text.text.clone(),
-        AssistantContent::Reasoning(reasoning) => reasoning
-            .open(reasoning.issuer())
-            .map(|reasoning| reasoning.content.as_slice())
-            .unwrap_or_default()
-            .iter()
-            .map(|content| match content {
-                ReasoningContent::Text { text, .. } => text.as_str(),
-                ReasoningContent::Summary(summary) => summary.as_str(),
-                ReasoningContent::Encrypted(_) | ReasoningContent::Redacted { .. } => "",
-            })
-            .collect(),
-        AssistantContent::ToolCall(_) | AssistantContent::Image(_) => String::new(),
+        AssistantContent::Reasoning(reasoning) => reasoning.text.clone(),
+        AssistantContent::ToolCall(_)
+        | AssistantContent::Image(_)
+        | AssistantContent::Opaque(_) => String::new(),
     }
 }

@@ -169,20 +169,20 @@ fn assert_side_matches_fixture(
         REQUEST_ID_HEADER,
     );
     assert_matches_recorded_token(
-        response.response_id.as_deref(),
+        response.response_id().as_deref(),
         body["id"].as_str(),
         &format!("{context}: response_id vs the fixture body id"),
     );
     assert!(
         response
-            .response_id
+            .response_id()
             .as_deref()
             .is_some_and(|id| id.starts_with(id_prefix)),
         "{context}: response_id should be a {id_prefix} id, got {:?}",
-        response.response_id
+        response.response_id()
     );
     assert_eq!(
-        response.model.as_deref(),
+        response.model().as_deref(),
         body["model"].as_str(),
         "{context}: model"
     );
@@ -196,7 +196,7 @@ fn assert_side_matches_fixture(
         body["usage"][usage_output_key].as_u64(),
         "{context}: output tokens"
     );
-    assert_eq!(response.provider, PROVIDER, "{context}: provider");
+    assert_eq!(response.provider(), PROVIDER, "{context}: provider");
 }
 
 /// The contract: the two routes agree on identity shape, finish reason,
@@ -217,9 +217,13 @@ fn assert_parity(
         Some(expected_finish),
         "{scenario}: completion() finish reason"
     );
-    assert_eq!(typed.model, normalized.model, "{scenario}: model");
+    assert_eq!(typed.model(), normalized.model(), "{scenario}: model");
     assert_eq!(typed.usage, normalized.usage, "{scenario}: usage");
-    assert_eq!(typed.provider, normalized.provider, "{scenario}: provider");
+    assert_eq!(
+        typed.provider(),
+        normalized.provider(),
+        "{scenario}: provider"
+    );
     let typed_identity = typed.identity();
     let normalized_identity = normalized.identity();
     assert!(
@@ -259,12 +263,12 @@ fn assert_chat_views_agree(
     response: &CompletionResponse,
 ) {
     assert_eq!(
-        response.response_id.as_deref(),
+        response.response_id().as_deref(),
         Some(reply.id.as_str()),
         "{scenario}: the response id is the provider's `id`"
     );
     assert_eq!(
-        response.model.as_deref(),
+        response.model().as_deref(),
         Some(reply.model.as_str()),
         "{scenario}: model"
     );
@@ -423,18 +427,18 @@ async fn chat_plain_raw_completion_lacks_request_id() {
     let bodies = crate::cassettes::recorded_interaction_bodies(PROVIDER, SCENARIO);
     let first: Value = serde_json::from_str(&bodies[0].1).expect("recorded body should be JSON");
     assert_matches_recorded_token(
-        plain.response_id.as_deref(),
+        plain.response_id().as_deref(),
         first["id"].as_str(),
         &format!("{SCENARIO}: plain route response_id"),
     );
-    assert_eq!(plain.model.as_deref(), first["model"].as_str());
+    assert_eq!(plain.model().as_deref(), first["model"].as_str());
     assert_eq!(
         plain.usage.input_tokens,
         first["usage"]["prompt_tokens"].as_u64()
     );
     assert_eq!(plain.finish_reason(), Some(FinishReason::Stop));
     assert_eq!(normalized.finish_reason(), Some(FinishReason::Stop));
-    assert_eq!(plain.model, normalized.model);
+    assert_eq!(plain.model(), normalized.model());
 }
 
 // ---------------------------------------------------------------------------
@@ -450,12 +454,12 @@ fn assert_responses_views_agree(
     response: &CompletionResponse,
 ) {
     assert_eq!(
-        response.response_id.as_deref(),
+        response.response_id().as_deref(),
         Some(reply.id.as_str()),
         "{scenario}: the response id is the provider's `id`"
     );
     assert_eq!(
-        response.model.as_deref(),
+        response.model().as_deref(),
         Some(reply.model.as_str()),
         "{scenario}: model"
     );
@@ -544,11 +548,11 @@ fn assert_responses_parity(
         // The Responses route names the assistant message; both sides do.
         assert!(
             typed
-                .message_id
+                .response_id()
                 .as_deref()
                 .is_some_and(|id| id.starts_with("msg_"))
                 && normalized
-                    .message_id
+                    .response_id()
                     .as_deref()
                     .is_some_and(|id| id.starts_with("msg_")),
             "{scenario}: both routes carry the msg_ id"

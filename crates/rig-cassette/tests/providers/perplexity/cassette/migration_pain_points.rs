@@ -64,10 +64,11 @@ async fn tool_exchange_history_is_stripped_and_remerged() {
                     )
                     .preamble("Answer in one short sentence.")
                     .message(Message::user("Remember this code word: amber-rig."))
-                    .message(Message::Assistant {
-                        id: None,
-                        content: vec![AssistantContent::ToolCall(tool_call)],
-                    })
+                    .message(Message::Assistant(
+                        rig_core::message::AssistantMessage::new(vec![AssistantContent::ToolCall(
+                            tool_call,
+                        )]),
+                    ))
                     .message(Message::tool_result(
                         rig_core::message::CallId::from_wire("call_amber"),
                         rig_core::message::ToolName::new("lookup_code_word").expect("tool name"),

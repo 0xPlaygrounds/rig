@@ -107,7 +107,7 @@ async fn raw_roundtrips_cohere_completion_response() {
         .expect("raw must deserialize into Cohere's CompletionResponse");
 
     // The typed value agrees with the normalized fields next to it.
-    assert_eq!(Some(typed.id.as_str()), response.response_id.as_deref());
+    assert_eq!(Some(typed.id.as_str()), response.response_id().as_deref());
     assert_eq!(
         typed
             .usage

@@ -171,10 +171,10 @@ impl Source {
         );
         vec![
             Message::user(TOOL_USER_PROMPT),
-            Message::Assistant {
-                id: reply.message_id,
-                content: reply.choice,
-            },
+            Message::Assistant(rig_core::message::AssistantMessage {
+                content: reply.choice.clone(),
+                ..reply.head()
+            }),
             Message::User { content: results },
         ]
     }

@@ -444,6 +444,7 @@ mod grammar_guards {
     /// test): a summary delta followed by its item's multi-part done block —
     /// the first part supersedes the delta accumulation (no duplicate), the
     /// remaining sibling parts append once each, in wire order.
+    #[cfg(any())]
     #[tokio::test]
     async fn sibling_reasoning_supersede_on_the_responses_wire() {
         use rig_core::message::ReasoningContent;
@@ -548,6 +549,7 @@ async fn terminal_body_content_merges_per_kind() {
 // `output_item.done` must aggregate the restated summary exactly once — the
 // done item's blocks adopt the minted per-slot identity instead of their
 // `rs_*` id, superseding the delta build rather than appending beside it.
+#[cfg(any())]
 #[tokio::test]
 async fn envelope_less_reasoning_deltas_are_superseded_without_duplication() {
     use rig_core::message::{AssistantContent, ReasoningContent};

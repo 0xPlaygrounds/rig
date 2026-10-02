@@ -59,7 +59,7 @@ fn raw_block_type(content: &AssistantContent) -> Option<String> {
     let AssistantContent::Text(text) = content else {
         return None;
     };
-    let params = text.additional_params.as_ref()?;
+    let params = text.native.as_ref()?;
     let raw = params.get("anthropic_content")?;
     raw.get("type")?.as_str().map(str::to_string)
 }
@@ -85,7 +85,7 @@ async fn streamed_web_search_preserves_server_tool_blocks() {
                     ..
                 }) = item.expect("stream item should not error")
                     && let Some(raw) = text
-                        .additional_params
+                        .native
                         .as_ref()
                         .and_then(|params| params.get("anthropic_content"))
                         .and_then(|raw| raw.get("type"))

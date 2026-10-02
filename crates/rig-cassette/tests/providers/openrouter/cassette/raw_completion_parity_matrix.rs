@@ -119,8 +119,8 @@ async fn raw_reproduces_the_completion_it_rode_on() {
     );
 
     // Where the wire makes the two turns equal, the two turns agree.
-    assert_eq!(second.provider, first.provider);
-    assert_eq!(second.model, first.model);
+    assert_eq!(second.provider(), first.provider());
+    assert_eq!(second.model(), first.model());
     assert_eq!(second.finish_reason(), first.finish_reason());
     assert_eq!(
         second.identity().provider_request_id,
@@ -156,5 +156,5 @@ async fn no_request_id_contract_holds_on_both_turns() {
     assert_no_request_id(first.provider_request_id.as_deref(), "OpenRouter");
     assert_no_request_id(second.provider_request_id.as_deref(), "OpenRouter");
     assert_eq!(first.finish_reason(), second.finish_reason());
-    assert_eq!(first.model, second.model);
+    assert_eq!(first.model(), second.model());
 }

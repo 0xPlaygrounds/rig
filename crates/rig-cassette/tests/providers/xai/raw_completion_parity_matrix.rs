@@ -114,8 +114,8 @@ async fn raw_normalize_reproduces_completion() {
     assert_maps_provider_fields(&first, "first turn");
     assert_maps_provider_fields(&second, "second turn");
     // Where the wire makes the two turns equal, the two agree.
-    assert_eq!(second.provider, first.provider);
-    assert_eq!(second.model, first.model);
+    assert_eq!(second.provider(), first.provider());
+    assert_eq!(second.model(), first.model());
     assert_eq!(second.finish_reason(), first.finish_reason());
     assert!(first.identity().provider_request_id.is_some());
     assert!(second.identity().provider_request_id.is_some());

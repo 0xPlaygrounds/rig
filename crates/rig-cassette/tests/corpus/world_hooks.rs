@@ -592,7 +592,8 @@ fn judge_turn(
                 AssistantContent::Text(text) => Some(text.text.as_str()),
                 AssistantContent::ToolCall(_)
                 | AssistantContent::Reasoning(_)
-                | AssistantContent::Image(_) => None,
+                | AssistantContent::Image(_)
+                | AssistantContent::Opaque(_) => None,
             })
             .collect();
         for hook in hooks.hooks {

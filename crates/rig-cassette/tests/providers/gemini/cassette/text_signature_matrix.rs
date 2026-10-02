@@ -117,10 +117,7 @@ where
     assert!(answer(&first).contains("289"), "{first:?}");
     let history = vec![
         Message::user(QUESTION),
-        Message::Assistant {
-            id: None,
-            content: first,
-        },
+        Message::Assistant(rig::message::AssistantMessage::new(first)),
         Message::user(FOLLOW_UP),
     ];
     let second = turn(&model, cell, history).await;

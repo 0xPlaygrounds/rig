@@ -173,8 +173,8 @@ async fn encode_is_deterministic_and_raw_is_faithful() {
     assert_raw_is_the_reply_document(&second, &interactions[1].1, &second_id, "second turn");
 
     // Where the wire makes the two turns equal, they are equal.
-    assert_eq!(second.provider, first.provider);
-    assert_eq!(second.model, first.model);
+    assert_eq!(second.provider(), first.provider());
+    assert_eq!(second.model(), first.model());
     assert_eq!(second.finish_reason(), first.finish_reason());
     assert_eq!(second.identity().message_id, first.identity().message_id);
     // Identical request bytes tokenize identically; the output side is the
@@ -214,7 +214,7 @@ async fn the_transport_id_comes_from_the_header_not_the_body() {
         Some(request_id.as_str()),
         "the driver stamps the transport id from the header Groq contracts",
     );
-    assert!(response.response_id.is_some());
+    assert!(response.response_id().is_some());
 
     // The shared typed view of the document has no slot for a transport id —
     // which is why reading it off the header is the only way to have it.

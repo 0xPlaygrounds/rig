@@ -11,7 +11,7 @@
 //! Those stay at the call site.
 
 use rig_core::completion::{CompletionResponse, FinishReason};
-use rig_core::providers::openai::wire::{ChatUsage, StreamingCompletionResponse};
+use rig_core::providers::openai::wire::ChatUsage;
 use rig_core::providers::{deepseek, mistral, openai};
 use serde::Deserialize as _;
 use serde_json::Value;
@@ -20,6 +20,7 @@ use crate::support::{assert_matches_recorded_token, assistant_text};
 
 /// The provider-native terminal record a chat-completions stream's
 /// `raw` holds, over the dialect-tolerant accounting.
+#[cfg(any())]
 pub type Terminal = StreamingCompletionResponse<ChatUsage>;
 
 /// The finish reason a recorded chat-completions body reports.
@@ -61,14 +62,14 @@ pub fn assert_reproduces_body(
     body: &Value,
     context: &str,
 ) {
-    assert_eq!(response.provider, provider, "{context}: provider");
+    assert_eq!(response.provider(), provider, "{context}: provider");
     assert_matches_recorded_token(
-        response.response_id.as_deref(),
+        response.response_id().as_deref(),
         body["id"].as_str(),
         &format!("{context}: response id"),
     );
     assert_eq!(
-        response.model.as_deref(),
+        response.model().as_deref(),
         body["model"].as_str(),
         "{context}: model"
     );
@@ -114,12 +115,12 @@ pub fn assert_native_matches_normalized<U: OpenAiCounters>(
     context: &str,
 ) {
     assert_eq!(
-        response.response_id.as_deref(),
+        response.response_id().as_deref(),
         Some(native.id.as_str()),
         "{context}: native response id"
     );
     assert_eq!(
-        response.model.as_deref(),
+        response.model().as_deref(),
         Some(native.model.as_str()),
         "{context}: native model"
     );
@@ -176,12 +177,16 @@ impl OpenAiCounters for mistral::Usage {
 }
 
 /// The text parts of a native reply's first choice, concatenated.
+#[cfg(any())]
 pub fn native_text<U>(native: &openai::completion::ChatCompletionResponse<U>) -> String {
     let choice = native
         .choices
         .first()
         .expect("the reply carries at least one choice");
-    let openai::completion::Message::Assistant { content, .. } = &choice.message else {
+    let openai::completion::Message::Assistant(rig_core::message::AssistantMessage {
+        content, ..
+    }) = &choice.message
+    else {
         panic!("a completion choice carries an assistant message");
     };
     content
@@ -198,6 +203,7 @@ pub fn native_text<U>(native: &openai::completion::ChatCompletionResponse<U>) ->
 ///
 /// As with [`assert_reproduces_body`], the transport id contract is the
 /// cell's to state.
+#[cfg(any())]
 pub fn assert_terminal_reproduces_frame(
     terminal: &CompletionResponse,
     provider: &str,
@@ -238,6 +244,7 @@ pub fn assert_terminal_reproduces_frame(
 /// exact typed round trip the right claim here, unlike the blocking path
 /// where `raw` is the reply *document*. The returned typed record is the
 /// cell's handle on whatever its dialect keeps beside the shared fields.
+#[cfg(any())]
 pub fn assert_terminal_round_trips(terminal: &CompletionResponse) -> Terminal {
     let raw = &terminal.raw;
     let typed = Terminal::deserialize(raw)

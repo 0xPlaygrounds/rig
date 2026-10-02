@@ -122,8 +122,8 @@ async fn raw_round_trips_mistral_type() {
     // are the normalized response's fields.
     let typed = mistral::CompletionResponse::deserialize(&response.raw)
         .expect("raw is Mistral's own CompletionResponse");
-    assert_eq!(Some(typed.id.as_str()), response.response_id.as_deref());
-    assert_eq!(Some(typed.model.as_str()), response.model.as_deref());
+    assert_eq!(Some(typed.id.as_str()), response.response_id().as_deref());
+    assert_eq!(Some(typed.model.as_str()), response.model().as_deref());
     let usage = &typed.usage.as_ref().expect("Mistral reports usage").openai;
     assert_eq!(
         Some(usage.total_tokens as u64),
@@ -250,7 +250,7 @@ async fn tool_call_raw_round_trips_and_exposes_wire_tool_call() {
     let response = observed.take();
     let typed = mistral::CompletionResponse::deserialize(&response.raw)
         .expect("raw is Mistral's own CompletionResponse");
-    assert_eq!(Some(typed.id.as_str()), response.response_id.as_deref());
+    assert_eq!(Some(typed.id.as_str()), response.response_id().as_deref());
 
     let (request_body, body) = recorded_json_turn(PROVIDER, SCENARIO);
     // Premise, from the bytes: the call was forced and the recorded turn is
@@ -319,7 +319,7 @@ async fn tool_call_raw_round_trips_and_exposes_wire_tool_call() {
         normalized_call
             .id
             .provider()
-            .map(|provider| provider.call_id.as_str()),
+            .map(|provider| provider.as_str()),
         recorded_call["id"].as_str(),
         "normalized tool call id",
     );

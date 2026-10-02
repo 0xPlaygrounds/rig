@@ -78,7 +78,7 @@ async fn max_tokens_truncation_preserves_finish_reason_and_partial_text() {
             );
             assert!(
                 response
-                    .model
+                    .model()
                     .as_deref()
                     .is_some_and(|version| !version.is_empty()),
                 "provider response should preserve the model version"

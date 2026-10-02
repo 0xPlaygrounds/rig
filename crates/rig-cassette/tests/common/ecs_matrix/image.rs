@@ -149,7 +149,7 @@ fn images(message: &Message) -> Vec<&rig_core::message::Image> {
                 _ => None,
             })
             .collect(),
-        Message::Assistant { content, .. } => content
+        Message::Assistant(rig_core::message::AssistantMessage { content, .. }) => content
             .iter()
             .filter_map(|part| match part {
                 AssistantContent::Image(image) => Some(image),
@@ -180,10 +180,7 @@ fn assert_image(image: &rig_core::message::Image, source: ImageSource, what: &st
         "{what}: the media type"
     );
     assert_eq!(image.detail, None, "{what}: no detail was asked");
-    assert_eq!(
-        image.additional_params, None,
-        "{what}: no options were asked"
-    );
+    assert_eq!(image.native, None, "{what}: no options were asked");
 }
 
 /// The messages a request or a committed history holds, checked as the
@@ -222,7 +219,7 @@ fn assert_messages(cell: &Cell, image: ImageCell, messages: &[Message], what: &s
     }
     for message in messages
         .iter()
-        .filter(|message| matches!(message, Message::Assistant { .. }))
+        .filter(|message| matches!(message, Message::Assistant(_)))
     {
         assert!(
             images(message).is_empty(),
@@ -288,7 +285,7 @@ pub(crate) fn assert_log(cell: &Cell, log: &EffectLog) {
             let call_id = second
                 .iter()
                 .find_map(|message| match message {
-                    Message::Assistant { content, .. } => {
+                    Message::Assistant(rig_core::message::AssistantMessage { content, .. }) => {
                         content.iter().find_map(|part| match part {
                             AssistantContent::ToolCall(call) => Some(call.id.clone()),
                             _ => None,
@@ -368,7 +365,7 @@ pub(crate) fn assert_history(cell: &Cell, history: &[Message], what: &str) {
     assert!(
         history
             .iter()
-            .any(|message| matches!(message, Message::Assistant { .. })),
+            .any(|message| matches!(message, Message::Assistant(_))),
         "{what}: the answer is committed"
     );
 }

@@ -237,7 +237,7 @@ async fn nested_arguments_roundtrip_nonstreaming() {
             let arguments = history
                 .iter()
                 .find_map(|message| match message {
-                    Message::Assistant { content, .. } => {
+                    Message::Assistant(rig_core::message::AssistantMessage { content, .. }) => {
                         content.iter().find_map(|item| match item {
                             AssistantContent::ToolCall(tool_call)
                                 if tool_call.function.name == PlanTrip::NAME =>

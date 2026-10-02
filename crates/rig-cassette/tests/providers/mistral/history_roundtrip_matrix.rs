@@ -97,10 +97,9 @@ fn history(shape: Shape) -> Vec<Message> {
                     "Unicode context: café 東京. The marker is exactly: lantern-42.",
                 )],
             },
-            Message::Assistant {
-                id: None,
-                content: vec![AssistantContent::text("lantern-42")],
-            },
+            Message::Assistant(rig::message::AssistantMessage::new(vec![
+                AssistantContent::text("lantern-42"),
+            ])),
         ],
     }
 }

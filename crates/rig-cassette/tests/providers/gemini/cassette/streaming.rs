@@ -114,7 +114,7 @@ async fn final_metadata_exposes_finish_reason_and_model_version() {
                 final_response.finish_reason()
             );
             assert_eq!(
-                final_response.model.as_deref(),
+                final_response.model().as_deref(),
                 Some(gemini::completion::GEMINI_2_5_FLASH),
                 "expected resolved Gemini model version to be surfaced"
             );
@@ -158,7 +158,7 @@ async fn final_metadata_handles_terminal_finish_reason_chunk() {
                 final_response.finish_reason()
             );
             assert_eq!(
-                final_response.model.as_deref(),
+                final_response.model().as_deref(),
                 Some(gemini::completion::GEMINI_2_5_FLASH),
                 "expected modelVersion from terminal chunks to be retained"
             );

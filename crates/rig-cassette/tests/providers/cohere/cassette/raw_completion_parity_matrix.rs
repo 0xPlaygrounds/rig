@@ -73,12 +73,13 @@ async fn raw_try_into_matches_completion() {
     // Across two live requests: everything the contract names, except that
     // each request gets its own generation id.
     assert_eq!(first.finish_reason(), second.finish_reason());
-    assert_eq!(first.model, second.model);
+    assert_eq!(first.model(), second.model());
     assert_eq!(
-        first.model, None,
+        first.model(),
+        None,
         "Cohere's /v2/chat payload names no model"
     );
-    assert_eq!(first.provider, second.provider);
+    assert_eq!(first.provider(), second.provider());
     // Identical request bytes tokenize identically; the output side is the
     // model's to vary.
     assert_eq!(first.usage.input_tokens, second.usage.input_tokens);
