@@ -51,7 +51,7 @@ crate::matrix::resume_matrix! {
     #[tokio::test]
     task_inventory: ("long_task_matrix/responses_inventory", crate::ecs_matrix::long_tasks::INVENTORY_WIDE_BATCH, None, "openai_responses_long_task_inventory");
     #[tokio::test]
-    task_inventory_restore: ("long_task_matrix/responses_inventory", crate::ecs_matrix::long_tasks::INVENTORY_WIDE_BATCH, Some(5), "openai_responses_long_task_inventory_restore");
+    task_inventory_restore: ("long_task_matrix/responses_inventory", crate::ecs_matrix::long_tasks::INVENTORY_WIDE_BATCH, Some(3), "openai_responses_long_task_inventory_restore");
 }
 
 /// The scripted rows' wire; the provider fault rewrites the recorded setup
