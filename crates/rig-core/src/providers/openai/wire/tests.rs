@@ -103,7 +103,6 @@ fn a_gateway_configuration_round_trips_without_its_credential() {
 }
 
 /// The endpoint template a wire's encoded request declares.
-#[cfg(any())]
 fn route_of(wire: &OpenAiWire) -> Option<&'static str> {
     use crate::wire::Wire as _;
     let request = crate::completion::CompletionRequest::new("hi");
@@ -115,8 +114,6 @@ fn route_of(wire: &OpenAiWire) -> Option<&'static str> {
 /// The default completion wire is the dialect's flagship route, and it is
 /// data like the two wires it chooses between: it stores without the
 /// credential and loads back onto the same route.
-// Encodes on the Responses route, which the Responses family migrates.
-#[cfg(any())]
 #[test]
 fn the_default_completion_wire_is_the_dialects_route_and_round_trips() {
     use crate::wire::Wire as _;
@@ -145,8 +142,6 @@ fn the_default_completion_wire_is_the_dialects_route_and_round_trips() {
 /// is stored beside the dialect rather than inside it — a dialect
 /// serializes as its name alone, so an override written into its quirks
 /// would not survive a round trip.
-// Encodes on the Responses route, which the Responses family migrates.
-#[cfg(any())]
 #[test]
 fn a_configured_route_overrides_the_dialects_and_round_trips() {
     let on_chat = OpenAIConfig::new("sk-secret").with_route(Route::Chat);

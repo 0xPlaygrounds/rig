@@ -8,8 +8,6 @@
 
 use std::process::Command;
 
-use super::verification_checks;
-
 /// `(package, `cargo tree` feature arguments, forbidden dependency names,
 /// required dependency names)`. The three lists are space-separated; empty
 /// features select the package's defaults.

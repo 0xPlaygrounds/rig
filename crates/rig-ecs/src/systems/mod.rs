@@ -2044,7 +2044,6 @@ fn fail_unknown_call(
     assets: &mut BinaryAssets,
     run: Entity,
     turn: Entity,
-    outs: &Outputs,
     call: InvalidCall,
 ) -> Result<(), ContentError> {
     commands.entity(turn).insert(Materialised);
@@ -2172,7 +2171,7 @@ pub fn judge_invalid_calls(
         }
         let judged = match verdict {
             InvalidVerdict::Fail(call) => {
-                fail_unknown_call(&mut commands, &mut assets, run, turn, &outs, call)
+                fail_unknown_call(&mut commands, &mut assets, run, turn, call)
             }
             InvalidVerdict::Retry(call, feedback) | InvalidVerdict::Skip(call, feedback) => {
                 let retries = matches!(invalid_verdict(&pending), InvalidVerdict::Retry(..))

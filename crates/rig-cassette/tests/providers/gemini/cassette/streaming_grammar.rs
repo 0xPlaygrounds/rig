@@ -14,18 +14,15 @@ use futures::StreamExt;
 use rig::completion::CompletionResponse;
 use rig::completion::FinishReason;
 use rig::message::{AssistantContent, Reasoning, ToolCall, ToolResultContent, UserContent};
-#[cfg(any())]
 use rig::message::{Message, ToolChoice};
 use rig::providers::gemini;
 use rig::providers::gemini::completion::gemini_api_types::{
     AdditionalParameters, GenerationConfig, ThinkingConfig, ThinkingLevel,
 };
-#[cfg(any())]
 use rig::providers::gemini::interactions_api;
 use rig::streaming::Item;
 use rig::streaming::StreamEvent;
 
-#[cfg(any())]
 use crate::support::ALPHA_SIGNAL_OUTPUT;
 use crate::support::{
     AlphaSignal, BetaSignal, ORDERED_TOOL_STREAM_PREAMBLE, ORDERED_TOOL_STREAM_PROMPT,
@@ -509,7 +506,6 @@ async fn stop_finish_reason_normalizes_on_text_turn() {
 /// Thinking-enabled Interactions streaming turn: reasoning and text arrive as
 /// discrete normalized parts through the shared REST/interactions part-kind
 /// interpretation, pinned on real traffic.
-#[cfg(any())]
 #[tokio::test]
 async fn interactions_thinking_stream_keeps_reasoning_and_text_discrete() {
     super::super::support::with_gemini_interactions_cassette(
@@ -629,7 +625,6 @@ async fn interactions_thinking_stream_keeps_reasoning_and_text_discrete() {
 /// Interactions API turn that stops for a declared client tool
 /// (`requires_action`), then completes after the tool result is submitted —
 /// one recorded exchange, asserted through the normalized conversion.
-#[cfg(any())]
 #[tokio::test]
 async fn interactions_requires_action_roundtrip() {
     super::super::support::with_gemini_interactions_cassette(
@@ -742,7 +737,6 @@ async fn interactions_requires_action_roundtrip() {
 ///
 /// Re-record with:
 /// `RIG_PROVIDER_TEST_MODE=record GEMINI_API_KEY=... cargo test --test gemini interactions_same_tool_twice -- --test-threads=1`
-#[cfg(any())]
 #[tokio::test]
 async fn interactions_same_tool_called_twice_stays_distinct() {
     super::super::support::with_gemini_interactions_cassette(
@@ -849,7 +843,6 @@ async fn interactions_same_tool_called_twice_stays_distinct() {
 ///
 /// Re-record with:
 /// `RIG_PROVIDER_TEST_MODE=record GEMINI_API_KEY=... cargo test --test gemini interactions_signature_without_summaries -- --test-threads=1`
-#[cfg(any())]
 #[tokio::test]
 async fn interactions_signature_without_summaries_never_fabricates_an_empty_sibling() {
     super::super::support::with_gemini_interactions_cassette(

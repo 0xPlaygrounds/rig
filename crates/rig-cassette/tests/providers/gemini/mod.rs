@@ -16,7 +16,6 @@ mod cassette {
     mod chat_history;
     mod code_execution_matrix;
     mod corpus_breadth;
-    #[cfg(any())]
     mod corpus_delta;
     mod corpus_faults;
     mod corpus_matrix;
@@ -80,7 +79,6 @@ mod cassette {
     mod lifecycle_matrix;
     mod models;
     mod multi_turn_streaming;
-    #[cfg(any())]
     mod portability_matrix;
     mod prompt_caching;
     mod raw_capture_agent_matrix;

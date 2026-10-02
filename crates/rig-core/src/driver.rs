@@ -566,34 +566,6 @@ pub(crate) fn settle<Op: Operation>(
     }
 }
 
-/// Decode a reply whose frames are already in hand through `wire`'s
-/// decoder and `fold`, without a transport: what a caller that reads a
-/// provider's frames itself (a websocket session, a whole body) finishes a
-/// reply with.
-#[cfg(any(test, feature = "websocket"))]
-pub(crate) fn decode_frames<W: Wire>(
-    wire: &W,
-    fold: <W::Op as Operation>::Fold,
-    frames: impl IntoIterator<Item = W::Frame>,
-    reply: crate::wire::Reply,
-) -> Result<Response<W>, ProviderError> {
-    let shared = Mutex::new(Shared::new(fold));
-    let fed = feed(&mut wire.decoder(), &shared, frames);
-    settle(shared, fed, reply).outcome
-}
-
-/// A whole reply body of an HTTP wire, decoded as its one frame: what a
-/// caller holding the body finishes a reply with.
-#[cfg(any(test, feature = "websocket"))]
-pub(crate) fn decode_body<W: Wire<Frame = crate::wire::WireFrame>>(
-    wire: &W,
-    fold: <W::Op as Operation>::Fold,
-    body: String,
-    reply: crate::wire::Reply,
-) -> Result<Response<W>, ProviderError> {
-    decode_frames(wire, fold, [crate::wire::WireFrame::Text(body)], reply)
-}
-
 /// A completion reply decoded from frames already in hand, as the bus
 /// relays it: its items, then the response, or the error that ended it.
 #[cfg(any(test, feature = "test-utils"))]

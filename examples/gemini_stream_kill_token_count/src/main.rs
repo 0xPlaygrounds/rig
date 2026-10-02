@@ -53,7 +53,7 @@ use rig::completion::CompletionRequest;
 use rig::completion::Usage;
 use rig::error::ErrorReport;
 use rig::error::ProviderError;
-use rig::message::{AssistantContent, Reasoning};
+use rig::message::AssistantContent;
 use rig::providers::gemini::Gemini;
 use rig::providers::gemini::completion::gemini_api_types::{
     AdditionalParameters, GenerationConfig, ThinkingConfig,

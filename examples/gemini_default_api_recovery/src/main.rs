@@ -9,8 +9,8 @@ use rig::agent::{
     AgentHook, HookContext, InvalidToolCallAction, InvalidToolCallContext, MultiTurnStreamItem,
     PromptResponse, StreamingResult,
 };
+use rig::message::AssistantContent;
 use rig::message::ToolResultContent;
-use rig::message::{AssistantContent, Reasoning};
 use rig::prelude::*;
 use rig::providers::gemini::{
     Gemini,

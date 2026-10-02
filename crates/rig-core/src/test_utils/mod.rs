@@ -55,16 +55,18 @@ pub(crate) fn decode_reply<W: crate::wire::Wire>(
     frames: impl IntoIterator<Item = W::Frame>,
     raw: serde_json::Value,
 ) -> Result<crate::wire::Response<W>, crate::error::ProviderError> {
-    crate::driver::decode_frames(
-        wire,
-        fold_for(request, wire, mode),
-        frames,
+    let shared = std::sync::Mutex::new(crate::wire::Shared::new(fold_for(request, wire, mode)));
+    let fed = crate::driver::feed(&mut wire.decoder(), &shared, frames);
+    crate::driver::settle(
+        shared,
+        fed,
         crate::wire::Reply {
             provider: wire.describe().name.to_owned(),
             raw,
             provider_request_id: None,
         },
     )
+    .outcome
 }
 
 /// The fold a call to `wire` in `mode` opens for `request`, for tests that

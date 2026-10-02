@@ -78,7 +78,6 @@ async fn generate_content_keeps_documents_after_system_before_history() {
     );
 }
 
-#[cfg(any())]
 #[tokio::test]
 async fn interactions_keeps_documents_after_system_before_history() {
     super::super::support::with_gemini_interactions_cassette(
@@ -165,7 +164,6 @@ fn assert_generate_content_request_order(scenario: &str) {
     );
 }
 
-#[cfg(any())]
 fn assert_interactions_request_order(scenario: &str) {
     let body = recorded_request_body(scenario);
     assert_eq!(body["system_instruction"], SYSTEM_INSTRUCTION);

@@ -375,7 +375,6 @@ pub(super) async fn with_gemini_corpus_breadth_cassette<F, Fut>(
     with_gemini_cassette(spec, test_body).await;
 }
 
-#[cfg(any())]
 /// The effect corpus's delta-wire matrix (Matrix K):
 /// `crates/rig-cassette/fixtures/cassettes/gemini/corpus_delta/`.
 pub(super) async fn with_gemini_corpus_delta_cassette<F, Fut>(

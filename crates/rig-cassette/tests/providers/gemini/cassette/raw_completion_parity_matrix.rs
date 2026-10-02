@@ -39,13 +39,11 @@ use rig::completion::{CompletionResponse as RigCompletionResponse, FinishReason}
 use rig::providers::gemini::completion::gemini_api_types::{
     ContentCandidate, GenerateContentResponse, PartKind,
 };
-#[cfg(any())]
 use rig::providers::gemini::interactions_api::{Interaction, InteractionStatus};
 use serde::Deserialize;
 use serde_json::Value;
 
 use super::super::support::with_gemini_cassette;
-#[cfg(any())]
 use super::super::support::with_gemini_interactions_cassette;
 use crate::raw_capture::{assert_no_request_id, capture_completion_pair};
 use crate::support::{Observed, assistant_text};
@@ -53,7 +51,6 @@ use rig::completion::CompletionRequest;
 
 const PROVIDER: &str = "gemini";
 const REST_MODEL: &str = "gemini-2.5-flash-lite";
-#[cfg(any())]
 const INTERACTIONS_MODEL: &str = "gemini-3-flash-preview";
 const PROMPT: &str = "Reply with exactly this one word and nothing else: parity";
 
@@ -198,7 +195,6 @@ async fn rest_raw_try_into_matches_completion() {
     assert_two_recorded_turns(SCENARIO, "/candidates/0/finishReason", "STOP");
 }
 
-#[cfg(any())]
 #[tokio::test]
 async fn interactions_raw_try_into_matches_completion() {
     const SCENARIO: &str =

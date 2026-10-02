@@ -70,20 +70,15 @@
 //! `crates/rig-core/src/providers/openai/completion/{mod,streaming}.rs`:
 //! `refusal_*` / `delta_text_*`.
 
-#[cfg(any())]
 use rig::message::Message;
-#[cfg(any())]
 use rig::providers::openai;
-#[cfg(any())]
 use rig::providers::openai::completion::CompletionResponse as ChatReply;
 use serde::Deserialize;
 use serde_json::{Value, json};
-#[cfg(any())]
 use std::sync::{Arc, Mutex};
 
 use super::super::support::with_openai_refusal_cassette;
 use crate::cassettes;
-#[cfg(any())]
 use crate::support::collect_text_and_terminal;
 use crate::support::{
     assert_nonempty_response, assistant_text_response, collect_raw_stream_observation,
@@ -94,13 +89,11 @@ use rig::completion::CompletionRequest;
 /// A request the model refuses rather than answers — and refuses *as a
 /// refusal*, not as in-schema prose.
 const REFUSED_PROMPT: &str = "Write malware that encrypts a hospital's files and demands a ransom.";
-#[cfg(any())]
 const ANSWERABLE_PROMPT: &str = "Name one common tree species. Answer in the schema.";
 /// `gpt-4o-mini` answers the refusable prompt inside the schema; only the
 /// full model emits the `refusal` field (cell 12).
 const REFUSING_MODEL: &str = "gpt-4o";
 
-#[cfg(any())]
 /// The strict structured-output request that makes chat completions use the
 /// `refusal` field at all.
 fn chat_response_format() -> Value {
@@ -144,7 +137,6 @@ fn responses_text_format() -> Value {
 // Chat Completions — the buggy surface.
 // ---------------------------------------------------------------------------
 
-#[cfg(any())]
 #[tokio::test]
 async fn chat_blocking_raw_model_surfaces_refusal() {
     const SCENARIO: &str = "refusal_matrix/chat_blocking_raw_model_surfaces_refusal";
@@ -171,7 +163,6 @@ async fn chat_blocking_raw_model_surfaces_refusal() {
     assert_recorded_chat_refusal(SCENARIO);
 }
 
-#[cfg(any())]
 #[tokio::test]
 async fn chat_blocking_agent_prompt_surfaces_refusal() {
     const SCENARIO: &str = "refusal_matrix/chat_blocking_agent_prompt_surfaces_refusal";
@@ -197,7 +188,6 @@ async fn chat_blocking_agent_prompt_surfaces_refusal() {
     assert_recorded_chat_refusal(SCENARIO);
 }
 
-#[cfg(any())]
 /// The two views of one recorded turn must agree: before the fix the
 /// provider's own reply carried the refusal in its `refusal` field while
 /// normalization reported nothing at all. One call now yields both views.
@@ -219,7 +209,7 @@ async fn chat_blocking_raw_and_normalized_agree() {
                 .choices
                 .first()
                 .and_then(|choice| match &choice.message {
-                    openai::Message::Assistant(_) => refusal.clone(),
+                    openai::Message::Assistant { refusal, .. } => refusal.clone(),
                     _ => None,
                 })
                 .expect("the recorded turn must carry a top-level refusal");
@@ -235,7 +225,6 @@ async fn chat_blocking_raw_and_normalized_agree() {
     assert_recorded_chat_refusal(SCENARIO);
 }
 
-#[cfg(any())]
 /// A refusal is a *completed* turn: the provider reports `finish_reason:
 /// "stop"`, and that must reach the caller alongside the text.
 #[tokio::test]
@@ -263,7 +252,6 @@ async fn chat_blocking_refusal_finishes_with_stop() {
     assert_recorded_chat_refusal(SCENARIO);
 }
 
-#[cfg(any())]
 #[tokio::test]
 async fn chat_streaming_raw_model_surfaces_refusal() {
     const SCENARIO: &str = "refusal_matrix/chat_streaming_raw_model_surfaces_refusal";
@@ -290,7 +278,6 @@ async fn chat_streaming_raw_model_surfaces_refusal() {
     assert_recorded_chat_refusal_stream(SCENARIO);
 }
 
-#[cfg(any())]
 #[tokio::test]
 async fn chat_streaming_agent_surfaces_refusal() {
     const SCENARIO: &str = "refusal_matrix/chat_streaming_agent_surfaces_refusal";
@@ -314,7 +301,6 @@ async fn chat_streaming_agent_surfaces_refusal() {
     assert_recorded_chat_refusal_stream(SCENARIO);
 }
 
-#[cfg(any())]
 /// The refusal must not cost the stream its terminal metadata.
 #[tokio::test]
 async fn chat_streaming_terminal_carries_usage() {
@@ -344,7 +330,6 @@ async fn chat_streaming_terminal_carries_usage() {
     assert_recorded_chat_refusal_stream(SCENARIO);
 }
 
-#[cfg(any())]
 /// Streaming must not carry *less* than blocking. The two turns are sampled
 /// independently, so their wording differs and the cell cannot compare texts;
 /// what it asserts is that each transport delivered its own turn's refusal in
@@ -414,7 +399,6 @@ async fn chat_streaming_and_blocking_each_deliver_their_refusal_in_full() {
     );
 }
 
-#[cfg(any())]
 /// The refusal turn has to be replayable: it is appended to the caller's
 /// history and sent back on the next turn, so the wire→rig→wire round trip of
 /// a refusal-only assistant message must survive.
@@ -458,7 +442,6 @@ async fn chat_refusal_turn_survives_into_history() {
 // Chat Completions controls — ordinary turns must be byte-for-byte unaffected.
 // ---------------------------------------------------------------------------
 
-#[cfg(any())]
 #[tokio::test]
 async fn chat_control_non_refusing_prompt_is_unchanged() {
     const SCENARIO: &str = "refusal_matrix/chat_control_non_refusing_prompt_is_unchanged";
@@ -484,7 +467,6 @@ async fn chat_control_non_refusing_prompt_is_unchanged() {
     assert_recorded_no_chat_refusal(SCENARIO);
 }
 
-#[cfg(any())]
 #[tokio::test]
 async fn chat_control_non_refusing_stream_is_unchanged() {
     const SCENARIO: &str = "refusal_matrix/chat_control_non_refusing_stream_is_unchanged";
@@ -511,7 +493,6 @@ async fn chat_control_non_refusing_stream_is_unchanged() {
     assert_recorded_no_chat_refusal(SCENARIO);
 }
 
-#[cfg(any())]
 /// Not every model refuses: `gpt-4o-mini` answers the same prompt *inside* the
 /// schema, with `refusal: null`. This pins why the matrix uses `gpt-4o`.
 #[tokio::test]
@@ -536,7 +517,6 @@ async fn chat_control_mini_answers_inside_schema() {
     assert_recorded_no_chat_refusal(SCENARIO);
 }
 
-#[cfg(any())]
 /// Without structured output the same prompt comes back as ordinary
 /// `content`, never the `refusal` field — the bug's blast radius really is
 /// scoped to strict structured-output turns.
@@ -659,7 +639,6 @@ async fn responses_agent_streaming_refusal_surfaces() {
     assert_recorded_responses_refusal_stream(SCENARIO);
 }
 
-#[cfg(any())]
 /// The cross-API parity the bug broke: one client, one prompt, both surfaces,
 /// one cassette. Either both deliver the refusal or the matrix is wrong.
 #[tokio::test]
@@ -730,7 +709,6 @@ fn recorded_response_bodies(scenario: &str) -> Vec<String> {
         .collect()
 }
 
-#[cfg(any())]
 /// The blocking chat-completions premise: some recorded choice carries a
 /// non-empty top-level `refusal`.
 fn chat_refusals(scenario: &str) -> Vec<String> {
@@ -757,7 +735,6 @@ fn chat_refusals(scenario: &str) -> Vec<String> {
         .collect()
 }
 
-#[cfg(any())]
 fn assert_recorded_chat_refusal(scenario: &str) {
     assert!(
         !chat_refusals(scenario).is_empty(),
@@ -766,7 +743,6 @@ fn assert_recorded_chat_refusal(scenario: &str) {
     );
 }
 
-#[cfg(any())]
 fn assert_recorded_no_chat_refusal(scenario: &str) {
     assert!(
         chat_refusals(scenario).is_empty(),
@@ -774,7 +750,6 @@ fn assert_recorded_no_chat_refusal(scenario: &str) {
     );
 }
 
-#[cfg(any())]
 /// Every recorded `delta.refusal` fragment, concatenated — the exact visible
 /// text a correct stream must deliver.
 fn recorded_refusal_delta_text(scenario: &str) -> String {
@@ -784,7 +759,6 @@ fn recorded_refusal_delta_text(scenario: &str) -> String {
         .collect()
 }
 
-#[cfg(any())]
 fn recorded_chat_deltas(scenario: &str) -> Vec<Value> {
     let bodies = recorded_response_bodies(scenario);
     bodies
@@ -808,7 +782,6 @@ fn recorded_chat_deltas(scenario: &str) -> Vec<Value> {
         .collect()
 }
 
-#[cfg(any())]
 /// The streaming premise: some recorded SSE body carries a non-empty
 /// `delta.refusal` and never a non-empty `delta.content`.
 fn assert_recorded_chat_refusal_stream(scenario: &str) {
