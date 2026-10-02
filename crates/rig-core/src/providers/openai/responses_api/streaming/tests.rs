@@ -2274,3 +2274,28 @@ fn a_failed_or_cancelled_reply_ends_in_an_error() {
         );
     }
 }
+
+/// A content part, summary part or call status of a kind rig does not
+/// model decodes and keeps its item, in both modes.
+#[test]
+fn new_nested_kinds_do_not_fail_the_reply() {
+    let output = vec![
+        json!({"type": "reasoning", "id": "rs_1", "summary": [
+            {"type": "summary_text", "text": "Think."},
+            {"type": "summary_image", "url": "u"},
+        ]}),
+        json!({"type": "message", "id": "msg_1", "role": "assistant", "status": "completed",
+        "content": [
+            {"type": "output_text", "text": "Done.", "annotations": []},
+            {"type": "output_audio", "transcript": "Done."},
+        ]}),
+        json!({"type": "function_call", "id": "fc_1", "call_id": "call_1", "name": "lookup",
+            "arguments": "{}", "status": "searching"}),
+    ];
+    for response in [
+        decode(Mode::Streaming, frames(&restated(&output))),
+        decode(Mode::Unary, whole(&output)),
+    ] {
+        assert_eq!(natives(&response), output);
+    }
+}

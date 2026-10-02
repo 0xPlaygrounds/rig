@@ -158,13 +158,21 @@ impl InputItem {
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ReasoningSummary {
-    SummaryText { text: String },
+    SummaryText {
+        text: String,
+    },
+    /// A summary part of a kind rig does not model, kept as it came.
+    #[serde(untagged)]
+    Unknown(Value),
 }
 
 impl ReasoningSummary {
+    /// The part's text; a part rig does not model has none.
     pub fn text(&self) -> &str {
-        let ReasoningSummary::SummaryText { text } = self;
-        text
+        match self {
+            ReasoningSummary::SummaryText { text } => text,
+            ReasoningSummary::Unknown(_) => "",
+        }
     }
 }
 
@@ -1915,6 +1923,9 @@ pub enum ToolStatus {
     InProgress,
     Completed,
     Incomplete,
+    /// A status rig does not model, kept as it came.
+    #[serde(untagged)]
+    Other(String),
 }
 
 /// An output message from OpenAI's Responses API.
@@ -1974,7 +1985,12 @@ impl Message {
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum AssistantContent {
     OutputText(OutputText),
-    Refusal { refusal: String },
+    Refusal {
+        refusal: String,
+    },
+    /// A content part of a kind rig does not model, kept as it came.
+    #[serde(untagged)]
+    Unknown(Value),
 }
 
 /// Responses `output_text` block with unmodeled sibling fields preserved as JSON.

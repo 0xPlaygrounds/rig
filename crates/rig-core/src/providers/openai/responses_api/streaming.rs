@@ -268,6 +268,7 @@ fn text_of(item: &Output) -> String {
             .map(|part| match part {
                 super::AssistantContent::OutputText(text) => text.text.as_str(),
                 super::AssistantContent::Refusal { refusal } => refusal.as_str(),
+                super::AssistantContent::Unknown(_) => "",
             })
             .collect(),
         Output::Reasoning {
