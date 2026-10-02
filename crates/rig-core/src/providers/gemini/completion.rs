@@ -46,8 +46,8 @@ use crate::providers::gemini::completion::gemini_api_types::{
 use crate::telemetry::GenAiOperation;
 use crate::wire::{Body, Descriptor, Encoded, Framing, Mode, Wire};
 use gemini_api_types::{
-    Content, FinishReason, FunctionDeclaration, GenerateContentRequest, GenerationConfig, Part,
-    Role, Tool, assistant_part, user_part,
+    Content, FunctionDeclaration, GenerateContentRequest, GenerationConfig, Part, Role, Tool,
+    assistant_part, user_part,
 };
 use serde_json::{Map, Value};
 use std::convert::TryFrom;
@@ -226,9 +226,10 @@ impl crate::completion::ReplayTarget for GenerateContent {
         &self.model
     }
 
-    /// Gemini reads images in every role.
-    fn accepts(&self, _model: &str) -> crate::completion::Accepts {
-        crate::completion::Accepts::ALL
+    /// Gemini reads images in every role, and inside function responses
+    /// from Gemini 3 on.
+    fn accepts(&self, model: &str) -> crate::completion::Accepts {
+        accepts(model)
     }
 
     fn normalize_tool_call_id(
@@ -248,20 +249,33 @@ pub fn requires_tool_call_id(model: &str) -> bool {
     model.starts_with("claude-") || model.starts_with("gpt-oss-") || gemini_3_or_later(&model)
 }
 
+/// What `model` reads on every GenerateContent wire (REST, Vertex AI and
+/// gRPC): images in every role, and images inside function responses only
+/// from Gemini 3 on. Gemini 2 reads no multimodal function responses, so
+/// the adapter moves their images to a user message after the results.
+/// A model that is not Gemini (Claude behind Vertex AI) reads them.
+pub fn accepts(model: &str) -> crate::completion::Accepts {
+    crate::completion::Accepts {
+        tool_result_images: gemini_major(model).is_none_or(|major| major >= 3),
+        ..crate::completion::Accepts::ALL
+    }
+}
+
+/// The major version of a `gemini-<major>…` or `gemini-live-<major>…` model.
+fn gemini_major(model: &str) -> Option<u32> {
+    let model = model.to_ascii_lowercase();
+    let rest = model.strip_prefix("gemini-")?;
+    let rest = rest.strip_prefix("live-").unwrap_or(rest);
+    let end = rest
+        .find(|c: char| !c.is_ascii_digit())
+        .unwrap_or(rest.len());
+    rest.get(..end)?.parse::<u32>().ok()
+}
+
 /// Whether `model` is Gemini 3 or later, which validates the thought
 /// signatures of function calls.
 fn gemini_3_or_later(model: &str) -> bool {
-    let model = model.to_ascii_lowercase();
-    model
-        .strip_prefix("gemini-")
-        .and_then(|rest| {
-            let rest = rest.strip_prefix("live-").unwrap_or(rest);
-            let end = rest
-                .find(|c: char| !c.is_ascii_digit())
-                .unwrap_or(rest.len());
-            rest.get(..end)?.parse::<u32>().ok()
-        })
-        .is_some_and(|major| major >= 3)
+    gemini_major(model).is_some_and(|major| major >= 3)
 }
 
 /// `id` as `model` takes another model's call id: when the model takes ids
@@ -289,7 +303,7 @@ pub(crate) fn create_request_body(
     completion_request: CompletionRequest,
     model: &str,
 ) -> Result<GenerateContentRequest, EncodeError> {
-    let chat_history = completion_request.chat_history_with_documents();
+    let (history_system, contents) = conversation(&completion_request, model)?;
 
     let CompletionRequest {
         model: _,
@@ -303,8 +317,6 @@ pub(crate) fn create_request_body(
         output_schema,
         record_telemetry_content: _,
     } = completion_request;
-
-    let (history_system, full_history) = split_system_messages_from_history(chat_history);
 
     let mut additional_params_payload = additional_params
         .take()
@@ -417,7 +429,7 @@ pub(crate) fn create_request_body(
     }
 
     let mut request = GenerateContentRequest {
-        contents: contents(full_history, model)?,
+        contents,
         generation_config,
         safety_settings: None,
         tools,
@@ -432,6 +444,19 @@ pub(crate) fn create_request_body(
     }
 
     Ok(request)
+}
+
+/// What `request` sends to `model` as its conversation: the text of every
+/// system message, for the system instruction, and the contents of the
+/// rest, with the request's documents opening the first user message.
+/// Shared by the GenerateContent wires (REST, Vertex AI and gRPC).
+pub fn conversation(
+    request: &CompletionRequest,
+    model: &str,
+) -> Result<(Vec<String>, Vec<Value>), EncodeError> {
+    let (system, history) =
+        split_system_messages_from_history(request.chat_history_with_documents());
+    Ok((system, contents(history, model)?))
 }
 
 /// The Gemini contents for `history`. A user part is converted, and a
@@ -585,88 +610,56 @@ impl TryFrom<Vec<completion::ToolDefinition>> for Tool {
     }
 }
 
-/// The wire spelling of a serde enum (`SCREAMING_SNAKE_CASE`, or the raw
-/// string of an `Unknown` variant), for messages that quote the provider.
-mod erased_wire {
-    pub(super) trait Wire {
-        fn wire_name(&self) -> String;
-    }
-    impl<T: serde::Serialize> Wire for T {
-        fn wire_name(&self) -> String {
-            match serde_json::to_value(self) {
-                Ok(serde_json::Value::String(name)) => name,
-                Ok(other) => other.to_string(),
-                Err(_) => "<unserializable>".to_owned(),
-            }
-        }
-    }
-}
-
-/// Convert a specified prompt block reason into a provider error with safety ratings.
-/// Content refusals are final; unknown and `OTHER` reasons are transient.
-pub(crate) fn blocked_prompt_error(
-    feedback: &gemini_api_types::PromptFeedback,
-) -> Option<ProviderError> {
-    let reason = match feedback.block_reason.as_ref()? {
-        // Documented as unused: the zero value is never sent, and it names
-        // no block if it ever were.
-        gemini_api_types::BlockReason::BlockReasonUnspecified => return None,
-        reason => reason,
+/// Convert a specified prompt block reason into a provider error with its
+/// safety ratings. `feedback` is the reply's `promptFeedback` JSON, read
+/// leniently. Content refusals are final; `OTHER` and unknown reasons are
+/// transient.
+pub(crate) fn blocked_prompt_error(feedback: &Value) -> Option<ProviderError> {
+    let reason = match feedback.get("blockReason")? {
+        Value::String(reason) => reason.clone(),
+        Value::Number(number) => format!("BLOCK_REASON_{number}"),
+        _ => return None,
     };
-    let wire = |value: &dyn erased_wire::Wire| value.wire_name();
+    // The zero value names no block. Gemini spells it `BLOCK_REASON_`,
+    // Vertex AI `BLOCKED_REASON_`.
+    if matches!(
+        reason.as_str(),
+        "BLOCK_REASON_UNSPECIFIED" | "BLOCKED_REASON_UNSPECIFIED"
+    ) {
+        return None;
+    }
+    let spelled = |value: Option<&Value>| match value {
+        Some(Value::String(name)) => name.clone(),
+        Some(other) => other.to_string(),
+        None => "<unset>".to_owned(),
+    };
     let ratings = feedback
-        .safety_ratings
-        .as_ref()
+        .get("safetyRatings")
+        .and_then(Value::as_array)
         .filter(|ratings| !ratings.is_empty())
         .map(|ratings| {
             ratings
                 .iter()
-                .map(|rating| format!("{}={}", wire(&rating.category), wire(&rating.probability)))
+                .map(|rating| {
+                    format!(
+                        "{}={}",
+                        spelled(rating.get("category")),
+                        spelled(rating.get("probability"))
+                    )
+                })
                 .collect::<Vec<_>>()
                 .join(", ")
         })
         .map(|ratings| format!(", safety_ratings=[{ratings}]"))
         .unwrap_or_default();
-    let message = format!(
-        "Gemini blocked the prompt: block_reason={}{ratings}",
-        reason.as_wire_str()
-    );
-    Some(match reason {
-        gemini_api_types::BlockReason::Safety
-        | gemini_api_types::BlockReason::Blocklist
-        | gemini_api_types::BlockReason::ProhibitedContent
-        | gemini_api_types::BlockReason::BlockReasonUnspecified => ProviderError::ProviderResponse(
-            crate::provider_response::ProviderResponseError::without_status(message)
-                .with_code(Some(reason.as_wire_str().to_owned()))
-                .with_refusal(true),
-        ),
-        gemini_api_types::BlockReason::Other | gemini_api_types::BlockReason::Unknown(_) => {
-            ProviderError::ProviderResponse(
-                crate::provider_response::ProviderResponseError::without_status(message)
-                    .with_code(Some(reason.as_wire_str().to_owned()))
-                    .with_transient(Some(true)),
-            )
-        }
-    })
-}
-
-pub(crate) fn function_call_finish_reason_error(
-    reason: &FinishReason,
-    finish_message: Option<&str>,
-) -> Option<ProviderError> {
-    match reason {
-        FinishReason::MalformedFunctionCall
-        | FinishReason::UnexpectedToolCall
-        | FinishReason::MissingThoughtSignature
-        | FinishReason::TooManyToolCalls
-        | FinishReason::MalformedResponse => {
-            let message = finish_message.unwrap_or("no finish message provided");
-            Some(ProviderError::Response(format!(
-                "Gemini stopped with finish_reason={reason:?}: {message}"
-            )))
-        }
-        _ => None,
-    }
+    let message = format!("Gemini blocked the prompt: block_reason={reason}{ratings}");
+    let error = crate::provider_response::ProviderResponseError::without_status(message)
+        .with_code(Some(reason.clone()));
+    Some(ProviderError::ProviderResponse(match reason.as_str() {
+        "SAFETY" | "BLOCKLIST" | "PROHIBITED_CONTENT" | "IMAGE_SAFETY" | "MODEL_ARMOR"
+        | "JAILBREAK" => error.with_refusal(true),
+        _ => error.with_transient(Some(true)),
+    }))
 }
 
 pub mod gemini_api_types {
@@ -850,7 +843,7 @@ pub mod gemini_api_types {
         }
     }
 
-    /// Convert a URL or base64 media source into a Gemini part.
+    /// Convert a URL, base64 or raw media source into a Gemini part.
     /// Accept untagged strings as base64 only when `string_is_data` is true.
     /// Reject other sources with a conversion error naming `kind`.
     fn media_source_to_part_kind(
@@ -871,9 +864,13 @@ pub mod gemini_api_types {
             DocumentSourceKind::String(_) => Err(message::MessageError::ConversionError(format!(
                 "Strings cannot be used as Gemini {kind} inputs"
             ))),
-            DocumentSourceKind::Raw(_) => Err(message::MessageError::ConversionError(
-                "Raw files not supported, encode as base64 first".to_string(),
-            )),
+            DocumentSourceKind::Raw(bytes) => {
+                use base64::Engine;
+                Ok(PartKind::InlineData(Blob {
+                    mime_type,
+                    data: base64::engine::general_purpose::STANDARD.encode(bytes),
+                }))
+            }
             DocumentSourceKind::FileId(_) => Err(message::MessageError::ConversionError(format!(
                 "Provider file IDs are not supported for Gemini {kind} inputs"
             ))),
@@ -956,71 +953,86 @@ pub mod gemini_api_types {
                 part: PartKind::Text(text),
                 additional_params: None,
             }),
-            message::UserContent::ToolResult(message::ToolResult { name, content, .. }) => {
-                let function_name = name;
+            message::UserContent::ToolResult(message::ToolResult {
+                name,
+                content,
+                is_error,
+                ..
+            }) => {
                 let mut response_values = Vec::new();
                 let mut parts: Vec<FunctionResponsePart> = Vec::new();
 
-                for item in content.iter() {
+                for item in content {
                     match item {
                         message::ToolResultContent::Text(text) => {
-                            response_values.push(json!(&text.text));
+                            response_values.push(Value::String(text.text));
                         }
                         message::ToolResultContent::Json { value } => {
-                            response_values.push(value.clone());
+                            response_values.push(value);
                         }
+                        // The adapter leaves images here only for a model
+                        // that reads them (Gemini 3 on). Gemini rejects
+                        // synthetic `$ref` links for inline function-response
+                        // media, so the parts keep their order directly.
                         message::ToolResultContent::Image(image) => {
-                            let part = match &image.data {
-                                DocumentSourceKind::Base64(b64) => {
-                                    let mime_type = gemini_tool_result_image_mime_type(
-                                        image.media_type.as_ref(),
-                                    )?;
-
-                                    // Gemini rejects synthetic `$ref` links for inline
-                                    // function-response media, so preserve ordered parts directly.
+                            let mime_type =
+                                gemini_tool_result_image_mime_type(image.media_type.as_ref())?
+                                    .to_owned();
+                            parts.push(match image.data {
+                                DocumentSourceKind::Base64(data)
+                                | DocumentSourceKind::String(data) => FunctionResponsePart {
+                                    inline_data: Some(FunctionResponseInlineData {
+                                        mime_type,
+                                        data,
+                                        display_name: None,
+                                    }),
+                                    file_data: None,
+                                },
+                                DocumentSourceKind::Raw(bytes) => {
+                                    use base64::Engine;
                                     FunctionResponsePart {
                                         inline_data: Some(FunctionResponseInlineData {
-                                            mime_type: mime_type.to_string(),
-                                            data: b64.clone(),
+                                            mime_type,
+                                            data: base64::engine::general_purpose::STANDARD
+                                                .encode(bytes),
                                             display_name: None,
                                         }),
                                         file_data: None,
                                     }
                                 }
-                                DocumentSourceKind::Url(_) => {
+                                DocumentSourceKind::Url(file_uri) => FunctionResponsePart {
+                                    inline_data: None,
+                                    file_data: Some(FileData {
+                                        mime_type: Some(mime_type),
+                                        file_uri,
+                                    }),
+                                },
+                                DocumentSourceKind::FileId(_) | DocumentSourceKind::Unknown => {
                                     return Err(message::MessageError::ConversionError(
-                                            "Gemini tool result images must use base64 inline data; URL-backed images are not supported"
-                                                .to_string(),
-                                        ));
-                                }
-                                _ => {
-                                    return Err(message::MessageError::ConversionError(
-                                        "Unsupported image source kind for tool results"
+                                        "A Gemini tool result image needs its data or a URL"
                                             .to_string(),
                                     ));
                                 }
-                            };
-                            parts.push(part);
+                            });
                         }
                     }
                 }
 
-                let response_json = if response_values.is_empty() {
-                    None
-                } else {
-                    let result = if response_values.len() == 1 {
-                        response_values.remove(0)
-                    } else {
-                        serde_json::Value::Array(response_values)
-                    };
-                    Some(json!({ "result": result }))
+                let result = match <[Value; 1]>::try_from(response_values) {
+                    Ok([single]) => Some(single),
+                    Err(values) if values.is_empty() => None,
+                    Err(values) => Some(Value::Array(values)),
                 };
+                // A failed tool's text goes under `error`, as the Gemini
+                // SDKs spell a function's failure.
+                let key = if is_error { "error" } else { "result" };
+                let response_json = result.map(|result| json!({ key: result }));
 
                 Ok(Part {
                     thought: Some(false),
                     thought_signature: None,
                     part: PartKind::FunctionResponse(FunctionResponse {
-                        name: function_name.into(),
+                        name: name.into(),
                         id: id.map(str::to_owned),
                         response: response_json,
                         parts: if parts.is_empty() { None } else { Some(parts) },
@@ -1406,25 +1418,34 @@ pub mod gemini_api_types {
         pub tool_use_prompt_tokens_details: Option<Vec<ModalityTokenCount>>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub traffic_type: Option<TrafficType>,
+        /// Fields this crate does not model, such as `serviceTier`, kept
+        /// verbatim.
+        #[serde(flatten)]
+        pub additional_fields: serde_json::Map<String, Value>,
     }
 
     #[derive(Clone, Debug, Deserialize, Serialize)]
     #[serde(rename_all = "camelCase")]
     pub struct ModalityTokenCount {
+        #[serde(default)]
         pub modality: Modality,
         #[serde(default)]
         pub token_count: i32,
     }
 
-    #[derive(Clone, Debug, Deserialize, Serialize)]
+    #[derive(Clone, Debug, Default, Deserialize, Serialize)]
     #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
     pub enum Modality {
+        #[default]
         ModalityUnspecified,
         Text,
         Image,
         Video,
         Audio,
         Document,
+        /// A modality this crate does not know yet, carried verbatim.
+        #[serde(untagged)]
+        Unknown(String),
     }
 
     #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -1433,33 +1454,15 @@ pub mod gemini_api_types {
         TrafficTypeUnspecified,
         OnDemand,
         ProvisionedThroughput,
+        /// A traffic type this crate does not know yet, carried verbatim.
+        #[serde(untagged)]
+        Unknown(String),
     }
 
-    /// Rig's input is the prompt plus the tool-use prompt, its output the
-    /// candidates plus the thoughts, and its total their sum, which is
-    /// `totalTokenCount`. A count Gemini leaves out is zero, as its JSON omits
-    /// zeros (a reply that only thought carries no candidates count).
+    /// The usage [`usage_of`] reads from this metadata's JSON.
     impl From<&UsageMetadata> for crate::completion::Usage {
         fn from(value: &UsageMetadata) -> crate::completion::Usage {
-            let count = |count: i32| count as u64;
-            // Cached tokens are counted against the prompt and the tool-use
-            // prompt, so without the tool-use part they could exceed input.
-            let tool_use = value.tool_use_prompt_token_count.map_or(0, count);
-            let input = count(value.prompt_token_count).saturating_add(tool_use);
-            let thoughts = value.thoughts_token_count.map_or(0, count);
-            let output = value
-                .candidates_token_count
-                .map_or(0, count)
-                .saturating_add(thoughts);
-            crate::completion::Usage {
-                input_tokens: Some(input),
-                output_tokens: Some(output),
-                cached_input_tokens: value.cached_content_token_count.map(count),
-                reasoning_tokens: value.thoughts_token_count.map(count),
-                tool_use_prompt_tokens: value.tool_use_prompt_token_count.map(count),
-                total_tokens: Some(input.saturating_add(output)),
-                cache_creation_input_tokens: None,
-            }
+            usage_of(&serde_json::to_value(value).unwrap_or(Value::Null))
         }
     }
 
@@ -1575,28 +1578,90 @@ pub mod gemini_api_types {
         }
     }
 
-    /// Normalize a Google `finishReason` in its SCREAMING_SNAKE_CASE wire spelling.
-    /// Return `None` for `FINISH_REASON_UNSPECIFIED`. Preserve reasons without a
-    /// normalized counterpart as `Other`, including tool-protocol failures.
-    pub fn map_google_finish_reason(wire_name: &str) -> Option<crate::completion::FinishReason> {
-        Some(match wire_name {
-            "FINISH_REASON_UNSPECIFIED" => return None,
+    /// Every `finishReason` Gemini and Vertex AI document that ends a turn
+    /// as a failure: content filters, recitation, unsupported language,
+    /// image failures, tool-protocol failures and the unused zero value.
+    /// The turn keeps what arrived and is never replayed.
+    pub const FAILURE_FINISHES: &[&str] = &[
+        "FINISH_REASON_UNSPECIFIED",
+        "SAFETY",
+        "RECITATION",
+        "LANGUAGE",
+        "OTHER",
+        "BLOCKLIST",
+        "PROHIBITED_CONTENT",
+        "SPII",
+        "MALFORMED_FUNCTION_CALL",
+        "IMAGE_SAFETY",
+        "IMAGE_PROHIBITED_CONTENT",
+        "IMAGE_OTHER",
+        "NO_IMAGE",
+        "IMAGE_RECITATION",
+        "UNEXPECTED_TOOL_CALL",
+        "TOO_MANY_TOOL_CALLS",
+        "MISSING_THOUGHT_SIGNATURE",
+        "MALFORMED_RESPONSE",
+        "ESCALATION",
+        "PUP_LIMITED_DISABLED",
+        "MODEL_ARMOR",
+    ];
+
+    /// Map a Google `finishReason` in its SCREAMING_SNAKE_CASE wire spelling.
+    /// `STOP` is a stop (a tool use when the turn holds calls) and
+    /// `MAX_TOKENS` a length stop. Every other reason, documented in
+    /// [`FAILURE_FINISHES`] or unknown, is a failure: the content filters
+    /// as [`ContentFilter`](crate::completion::FinishReason::ContentFilter),
+    /// the rest as [`Other`](crate::completion::FinishReason::Other) with
+    /// the reason's name.
+    pub fn map_google_finish_reason(wire_name: &str) -> crate::completion::FinishReason {
+        match wire_name {
             "STOP" => crate::completion::FinishReason::Stop,
             "MAX_TOKENS" => crate::completion::FinishReason::Length,
-            "SAFETY" | "BLOCKLIST" | "PROHIBITED_CONTENT" | "SPII" => {
-                crate::completion::FinishReason::ContentFilter
-            }
+            "SAFETY"
+            | "BLOCKLIST"
+            | "PROHIBITED_CONTENT"
+            | "SPII"
+            | "IMAGE_SAFETY"
+            | "IMAGE_PROHIBITED_CONTENT"
+            | "MODEL_ARMOR" => crate::completion::FinishReason::ContentFilter,
             other => crate::completion::FinishReason::Other(other.to_owned()),
-        })
+        }
     }
 
     /// Map a Gemini REST `finishReason` onto rig's normalized vocabulary.
-    ///
-    /// Shared by the unary and streaming paths so both agree.
-    pub(crate) fn map_finish_reason(
-        reason: &FinishReason,
-    ) -> Option<crate::completion::FinishReason> {
+    pub fn map_finish_reason(reason: &FinishReason) -> crate::completion::FinishReason {
         map_google_finish_reason(reason.as_wire_str())
+    }
+
+    /// Rig's usage for a `usageMetadata` document, read leniently: a count
+    /// that is absent or not a non-negative integer is unreported, and no
+    /// other field is read, so usage never fails a reply. Rig's input is the
+    /// prompt plus the tool-use prompt, its output the candidates plus the
+    /// thoughts, and its total their sum, which is `totalTokenCount`. A
+    /// count Gemini leaves out is zero in those sums, as its JSON omits
+    /// zeros (a reply that only thought carries no candidates count). The
+    /// REST, Vertex AI and gRPC wires all read usage here.
+    pub fn usage_of(usage: &Value) -> crate::completion::Usage {
+        let count = |key: &str| usage.get(key).and_then(Value::as_u64);
+        // Cached tokens are counted against the prompt and the tool-use
+        // prompt, so without the tool-use part they could exceed input.
+        let tool_use = count("toolUsePromptTokenCount");
+        let input = count("promptTokenCount")
+            .unwrap_or(0)
+            .saturating_add(tool_use.unwrap_or(0));
+        let thoughts = count("thoughtsTokenCount");
+        let output = count("candidatesTokenCount")
+            .unwrap_or(0)
+            .saturating_add(thoughts.unwrap_or(0));
+        crate::completion::Usage {
+            input_tokens: Some(input),
+            output_tokens: Some(output),
+            cached_input_tokens: count("cachedContentTokenCount"),
+            reasoning_tokens: thoughts,
+            tool_use_prompt_tokens: tool_use,
+            total_tokens: Some(input.saturating_add(output)),
+            cache_creation_input_tokens: None,
+        }
     }
 
     #[derive(Clone, Debug, Deserialize, Serialize)]

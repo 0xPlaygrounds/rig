@@ -1,5 +1,14 @@
 use super::*;
 use rig_core::completion::{CompletionRequest, ToolDefinition};
+use rig_core::error::ProviderError;
+use rig_core::wire::{Mode, Wire};
+
+/// The contents `request` sends to Gemini 2.5 Flash.
+fn contents(request: CompletionRequest) -> Result<Vec<vertexai::model::Content>, EncodeError> {
+    crate::completion::GenerateContent::new(crate::completion::GEMINI_2_5_FLASH)
+        .encode(request, Mode::Unary)
+        .map(|request| request.contents)
+}
 use rig_core::message::{Message, Text, ToolChoice, UserContent};
 
 // Helper to create a minimal CompletionRequest for testing
@@ -61,9 +70,7 @@ fn tool_result_serializes_the_executed_name_not_an_identifier() {
         ..minimal_request()
     };
 
-    let contents = VertexCompletionRequest(request)
-        .contents()
-        .expect("conversion should succeed");
+    let contents = contents(request).expect("conversion should succeed");
     let response_names: Vec<String> = contents
         .iter()
         .flat_map(|content| content.parts.iter())
@@ -241,7 +248,7 @@ fn test_system_instruction_from_system_history_and_contents_skip_system() {
         ..minimal_request()
     };
 
-    let vertex_request = VertexCompletionRequest(request);
+    let vertex_request = VertexCompletionRequest(request.clone());
 
     let system_instruction = vertex_request.system_instruction();
     assert!(system_instruction.is_some());
@@ -252,7 +259,7 @@ fn test_system_instruction_from_system_history_and_contents_skip_system() {
         Some(&"System from history".to_string())
     );
 
-    let contents = vertex_request.contents().expect("contents should convert");
+    let contents = contents(request).expect("contents should convert");
     assert_eq!(contents.len(), 1);
     assert_eq!(contents[0].role.as_str(), "user");
 }
@@ -552,6 +559,7 @@ fn generation_config_rejects_audio_response_modality() {
     let error = VertexCompletionRequest(request)
         .generation_config()
         .expect_err("audio output must fail before the API call");
+    let error = ProviderError::from(error);
     assert!(matches!(error, ProviderError::Request(_)));
     assert!(error.to_string().contains("responseModalities AUDIO"));
 }
@@ -565,6 +573,7 @@ fn generation_config_rejects_out_of_f32_range_typed_and_provider_values() {
     let typed_error = VertexCompletionRequest(typed_request)
         .generation_config()
         .expect_err("typed temperature beyond f32 must fail");
+    let typed_error = ProviderError::from(typed_error);
     assert!(matches!(typed_error, ProviderError::Request(_)));
     assert!(typed_error.to_string().contains("temperature"));
 
@@ -573,6 +582,7 @@ fn generation_config_rejects_out_of_f32_range_typed_and_provider_values() {
         ..Default::default()
     })
     .expect_err("provider top_p beyond f32 must fail");
+    let provider_error = ProviderError::from(provider_error);
     assert!(matches!(provider_error, ProviderError::Request(_)));
     assert!(provider_error.to_string().contains("top_p"));
 }
@@ -587,6 +597,7 @@ fn generation_config_rejects_non_finite_typed_values() {
     let error = VertexCompletionRequest(request)
         .generation_config()
         .expect_err("non-finite typed temperature must fail");
+    let error = ProviderError::from(error);
     assert!(matches!(error, ProviderError::Request(_)));
     assert!(error.to_string().contains("temperature"));
 }
@@ -706,6 +717,7 @@ fn generation_config_rejects_conflicting_response_schema_forms() {
         let error = VertexCompletionRequest(request)
             .generation_config()
             .expect_err("response schema forms cannot be combined");
+        let error = ProviderError::from(error);
         assert!(matches!(error, ProviderError::Request(_)));
         assert!(
             error
@@ -730,6 +742,7 @@ fn generation_config_rejects_both_response_json_schema_aliases() {
     let error = VertexCompletionRequest(request)
         .generation_config()
         .expect_err("JSON schema aliases cannot be combined");
+    let error = ProviderError::from(error);
     assert!(matches!(error, ProviderError::Request(_)));
     assert!(
         error
@@ -809,9 +822,7 @@ fn only_vertex_reasoning_is_replayed_as_thought() {
         ],
         &crate::completion::GenerateContent::new(crate::completion::GEMINI_2_5_FLASH),
     );
-    let contents = VertexCompletionRequest(request)
-        .contents()
-        .expect("contents build");
+    let contents = contents(request).expect("contents build");
     let thoughts: Vec<(bool, String)> = contents
         .iter()
         .filter(|content| content.role == "model")

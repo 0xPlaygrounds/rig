@@ -16,11 +16,14 @@
 use super::VertexAi;
 use crate::types::completion_request::VertexCompletionRequest;
 use crate::types::completion_response::{PROVIDER_NAME, VertexDecoder};
+use base64::Engine as _;
+use base64::engine::general_purpose::{STANDARD as BASE64, URL_SAFE};
 use google_cloud_aiplatform_v1 as vertexai;
 use rig_core::completion::CompletionRequest;
 use rig_core::driver::{Exchange, Opened, Opening, Transport};
 use rig_core::error::{EncodeError, ProviderError};
 use rig_core::operation::Completion;
+use rig_core::providers::gemini::completion::conversation;
 use rig_core::wire::{Descriptor, Mode, Wire};
 
 /// `gemini-1.5-pro`
@@ -54,15 +57,11 @@ impl GenerateContent {
     }
 }
 
-/// One `GenerateContent` request: the model it addresses and the request.
-pub struct VertexRequest {
-    model: String,
-    request: VertexCompletionRequest,
-}
-
 impl Wire for GenerateContent {
     type Op = Completion;
-    type Payload = VertexRequest;
+    /// The SDK request. Its `model` is the model id the request addresses;
+    /// the transport qualifies it with the project and location.
+    type Payload = vertexai::model::GenerateContentRequest;
     type Frame = vertexai::model::GenerateContentResponse;
     type Decoder<'id> = VertexDecoder;
 
@@ -72,22 +71,58 @@ impl Wire for GenerateContent {
             .replay(self)
     }
 
+    /// The contents are the shared Gemini encoder's REST JSON, read into
+    /// the SDK's types.
     fn encode(
         &self,
         request: CompletionRequest,
         _mode: Mode,
-    ) -> Result<VertexRequest, EncodeError> {
+    ) -> Result<vertexai::model::GenerateContentRequest, EncodeError> {
         tracing::debug!(
             target: "rig_core::vertexai",
             "Vertex AI completion request: {request:?}"
         );
-        Ok(VertexRequest {
-            model: self.model.clone(),
-            request: VertexCompletionRequest(request),
-        })
+        let model = request.model.clone().unwrap_or_else(|| self.model.clone());
+        let (_, contents) = conversation(&request, &model)?;
+        let contents = contents
+            .into_iter()
+            .map(|mut content| {
+                standard_signatures(&mut content);
+                serde_json::from_value::<vertexai::model::Content>(content)
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let request = VertexCompletionRequest(request);
+        let mut payload = vertexai::model::GenerateContentRequest::new()
+            .set_model(model)
+            .set_contents(contents)
+            .set_tools(request.tools());
+        payload.generation_config = request.generation_config()?;
+        payload.system_instruction = request.system_instruction();
+        payload.tool_config = request.tool_config();
+        Ok(payload)
     }
+
     fn decoder<'id>(&self) -> Self::Decoder<'id> {
         VertexDecoder::default()
+    }
+}
+
+/// Respell every thought signature in `content` in standard base64, the
+/// only alphabet the SDK's byte fields read. Google's placeholder signature
+/// is URL-safe base64; Vertex AI reads the bytes either spelling decodes
+/// to, so both name the same signature.
+fn standard_signatures(content: &mut serde_json::Value) {
+    let parts = content
+        .get_mut("parts")
+        .and_then(serde_json::Value::as_array_mut);
+    for part in parts.into_iter().flatten() {
+        if let Some(signature) = part.get_mut("thoughtSignature")
+            && let Some(text) = signature.as_str()
+            && BASE64.decode(text).is_err()
+            && let Ok(bytes) = URL_SAFE.decode(text)
+        {
+            *signature = serde_json::Value::String(BASE64.encode(bytes));
+        }
     }
 }
 
@@ -104,9 +139,9 @@ impl rig_core::completion::ReplayTarget for GenerateContent {
         &self.model
     }
 
-    /// Gemini on Vertex reads images in every role.
-    fn accepts(&self, _model: &str) -> rig_core::completion::Accepts {
-        rig_core::completion::Accepts::ALL
+    /// What the model reads, as on every GenerateContent wire.
+    fn accepts(&self, model: &str) -> rig_core::completion::Accepts {
+        rig_core::providers::gemini::completion::accepts(model)
     }
 
     fn normalize_tool_call_id(
@@ -123,25 +158,14 @@ impl rig_core::completion::ReplayTarget for GenerateContent {
 impl Transport<GenerateContent> for VertexAi {
     fn send(
         &self,
-        payload: VertexRequest,
+        mut request: vertexai::model::GenerateContentRequest,
         _exchange: Exchange,
     ) -> Opening<vertexai::model::GenerateContentResponse> {
-        let VertexRequest { model, request } = payload;
-        let generation_config = match request.generation_config() {
-            Ok(config) => config,
-            Err(error) => return Opening::failed(error),
-        };
-        let system_instruction = request.system_instruction();
-        let tools = request.tools();
-        let tool_config = request.tool_config();
-        let contents = match request.contents() {
-            Ok(contents) => contents,
-            Err(error) => return Opening::failed(error),
-        };
-        let model_path = format!(
-            "projects/{}/locations/{}/publishers/google/models/{model}",
+        request.model = format!(
+            "projects/{}/locations/{}/publishers/google/models/{}",
             self.project(),
-            self.location()
+            self.location(),
+            request.model
         );
         let client = self.clone();
         Opening::new(async move {
@@ -149,23 +173,12 @@ impl Transport<GenerateContent> for VertexAi {
                 Ok(service) => service,
                 Err(error) => return Err(ProviderError::request(error)),
             };
-            let mut request_builder = service
+            match service
                 .generate_content()
-                .set_model(&model_path)
-                .set_contents(contents);
-            if let Some(config) = generation_config {
-                request_builder = request_builder.set_generation_config(config);
-            }
-            if let Some(system_instruction) = system_instruction {
-                request_builder = request_builder.set_system_instruction(system_instruction);
-            }
-            if let Some(tools) = tools {
-                request_builder = request_builder.set_tools([tools]);
-            }
-            if let Some(tool_config) = tool_config {
-                request_builder = request_builder.set_tool_config(tool_config);
-            }
-            match request_builder.send().await {
+                .with_request(request)
+                .send()
+                .await
+            {
                 Ok(response) => {
                     tracing::debug!(
                         target: "rig_core::vertexai",

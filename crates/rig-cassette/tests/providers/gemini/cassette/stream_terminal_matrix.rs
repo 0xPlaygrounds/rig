@@ -904,16 +904,20 @@ mod unit {
         const FAILURE: &str = r#"{"candidates":[{"finishReason":"MALFORMED_FUNCTION_CALL","finishMessage":"malformed function call","index":0}]}"#;
         let run = run(&[ANSWER, FAILURE, ANSWER, REAL_TERMINAL]).await;
 
-        assert_eq!(run.errors, 1);
+        assert_eq!(
+            run.errors, 0,
+            "a failure finish is a failed turn, not a stream error"
+        );
         assert_eq!(
             run.text, "The answer is 42.",
             "nothing after the in-band failure is interpreted"
         );
+        let response = run.response.expect("the failure ends the turn");
         assert!(
-            run.response.is_none(),
-            "an in-band failure must not acquire a terminal record from the EOF deferral"
+            response.stop().is_failure(),
+            "a later STOP cannot dress the failed turn up as complete: {:?}",
+            response.stop()
         );
-        assert!(run.response.is_none());
     }
 
     #[tokio::test]

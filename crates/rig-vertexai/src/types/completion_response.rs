@@ -1,7 +1,6 @@
 use google_cloud_aiplatform_v1 as vertexai;
 use rig_core::error::ProviderError;
 use rig_core::operation::Completion;
-use rig_core::providers::gemini::completion::gemini_api_types::{PromptFeedback, UsageMetadata};
 use rig_core::providers::gemini::streaming::{GenerateContentChunk, GenerateContentDecoder};
 use rig_core::wire::{Decoder, Flow, Out, WireEvent};
 use serde_json::{Map, Value};
@@ -31,9 +30,9 @@ impl<'id> Decoder<'id, Completion, vertexai::model::GenerateContentResponse> for
         response: vertexai::model::GenerateContentResponse,
         out: Out<'id, Completion>,
     ) -> Result<Flow, ProviderError> {
-        // The provider's own document, captured before it is restated.
-        self.0.keep_raw(serde_json::to_value(&response)?);
-        Decoder::<'id, Completion>::decode(&mut self.0, rest_chunk(&response)?, out)
+        let chunk = rest_chunk(&response)?;
+        self.0.keep_raw(Value::Object(chunk.clone()));
+        Decoder::<'id, Completion>::decode(&mut self.0, GenerateContentChunk(chunk), out)
     }
 
     fn eof(&mut self, out: Out<'id, Completion>) -> Result<Flow, ProviderError> {
@@ -41,66 +40,74 @@ impl<'id> Decoder<'id, Completion, vertexai::model::GenerateContentResponse> for
     }
 }
 
-/// `response` as the REST chunk its JSON is, with the finish and block
-/// reasons spelled by name.
-fn rest_chunk(
+/// `response` as the REST JSON Vertex AI sent: the SDK's own JSON, with
+/// each enum value respelled by name, since the SDK serializes enums by
+/// number. The SDK keeps the tool-use prompt count only per modality, so
+/// its total is the breakdown's sum.
+pub(crate) fn rest_chunk(
     response: &vertexai::model::GenerateContentResponse,
-) -> Result<GenerateContentChunk, ProviderError> {
-    let candidates = response
+) -> Result<Map<String, Value>, ProviderError> {
+    let Value::Object(mut chunk) = serde_json::to_value(response)? else {
+        return Ok(Map::new());
+    };
+    let candidates = chunk.get_mut("candidates").and_then(Value::as_array_mut);
+    for (candidate, json) in response
         .candidates
         .iter()
-        .map(|candidate| {
-            let Value::Object(mut fields) = serde_json::to_value(candidate)? else {
-                return Ok(Map::new());
-            };
-            // The SDK spells enums by number; REST JSON spells them by name.
-            if fields.contains_key("finishReason") {
-                let reason = &candidate.finish_reason;
-                let name = reason
-                    .name()
-                    .map_or_else(|| reason.to_string(), str::to_owned);
-                fields.insert("finishReason".to_owned(), name.into());
+        .zip(candidates.into_iter().flatten())
+    {
+        spell(json, "finishReason", candidate.finish_reason.name());
+        ratings(json, &candidate.safety_ratings);
+    }
+    if let (Some(feedback), Some(json)) =
+        (&response.prompt_feedback, chunk.get_mut("promptFeedback"))
+    {
+        spell(json, "blockReason", feedback.block_reason.name());
+        ratings(json, &feedback.safety_ratings);
+    }
+    if let (Some(usage), Some(json)) = (&response.usage_metadata, chunk.get_mut("usageMetadata")) {
+        spell(json, "trafficType", usage.traffic_type.name());
+        for (key, details) in [
+            ("promptTokensDetails", &usage.prompt_tokens_details),
+            ("cacheTokensDetails", &usage.cache_tokens_details),
+            ("candidatesTokensDetails", &usage.candidates_tokens_details),
+            (
+                "toolUsePromptTokensDetails",
+                &usage.tool_use_prompt_tokens_details,
+            ),
+        ] {
+            let json = json.get_mut(key).and_then(Value::as_array_mut);
+            for (detail, json) in details.iter().zip(json.into_iter().flatten()) {
+                spell(json, "modality", detail.modality.name());
             }
-            Ok(fields)
-        })
-        .collect::<Result<_, serde_json::Error>>()?;
-    let prompt_feedback = response
-        .prompt_feedback
-        .as_ref()
-        .and_then(|feedback| feedback.block_reason.name())
-        .filter(|reason| *reason != "BLOCKED_REASON_UNSPECIFIED")
-        .map(|reason| PromptFeedback {
-            block_reason: serde_json::from_value(reason.into()).ok(),
-            safety_ratings: None,
-        });
-    Ok(GenerateContentChunk {
-        response_id: response.response_id.clone(),
-        candidates,
-        prompt_feedback,
-        usage_metadata: response.usage_metadata.as_ref().map(rest_usage),
-        model_version: Some(response.model_version.clone()).filter(|model| !model.is_empty()),
-        error: None,
-    })
+        }
+        let tool_use: i64 = usage
+            .tool_use_prompt_tokens_details
+            .iter()
+            .map(|detail| i64::from(detail.token_count))
+            .sum();
+        if let (Some(json), true) = (json.as_object_mut(), tool_use > 0) {
+            json.entry("toolUsePromptTokenCount")
+                .or_insert_with(|| tool_use.into());
+        }
+    }
+    Ok(chunk)
 }
 
-/// Vertex's usage as the REST usage it reads as. Vertex reports the
-/// tool-use prompt only per modality, so its count is the breakdown's sum;
-/// every count is reported, zero included.
-fn rest_usage(usage: &vertexai::model::generate_content_response::UsageMetadata) -> UsageMetadata {
-    UsageMetadata {
-        prompt_token_count: usage.prompt_token_count,
-        cached_content_token_count: Some(usage.cached_content_token_count),
-        candidates_token_count: Some(usage.candidates_token_count),
-        total_token_count: usage.total_token_count,
-        thoughts_token_count: Some(usage.thoughts_token_count),
-        tool_use_prompt_token_count: Some(
-            usage
-                .tool_use_prompt_tokens_details
-                .iter()
-                .map(|modality| modality.token_count)
-                .sum(),
-        ),
-        ..UsageMetadata::default()
+/// Respell the safety ratings under `json` by name.
+fn ratings(json: &mut Value, ratings: &[vertexai::model::SafetyRating]) {
+    let json = json.get_mut("safetyRatings").and_then(Value::as_array_mut);
+    for (rating, json) in ratings.iter().zip(json.into_iter().flatten()) {
+        spell(json, "category", rating.category.name());
+        spell(json, "probability", rating.probability.name());
+        spell(json, "severity", rating.severity.name());
+    }
+}
+
+/// Replace the number at `json[key]` with `name`, when both exist.
+fn spell(json: &mut Value, key: &str, name: Option<&str>) {
+    if let (Some(slot), Some(name)) = (json.get_mut(key), name) {
+        *slot = Value::String(name.to_owned());
     }
 }
 

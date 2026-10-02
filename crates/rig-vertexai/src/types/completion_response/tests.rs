@@ -10,11 +10,28 @@ pub(crate) struct Reply(vertexai::model::GenerateContentResponse);
 impl Transport<crate::completion::GenerateContent> for Reply {
     fn send(
         &self,
-        _payload: crate::completion::VertexRequest,
+        _payload: vertexai::model::GenerateContentRequest,
         _exchange: Exchange,
     ) -> Opening<vertexai::model::GenerateContentResponse> {
         Opening::ready(Opened::new(futures::stream::iter([Ok(self.0.clone())])))
     }
+}
+
+/// The content a turn holding `choice` replays as, encoded for the model
+/// the replies come from.
+pub(crate) fn replay(
+    choice: Vec<rig_core::message::AssistantContent>,
+) -> Result<vertexai::model::Content, rig_core::error::EncodeError> {
+    use rig_core::wire::{Mode, Wire};
+    let mut request = CompletionRequest::new("next");
+    request.chat_history = vec![rig_core::message::Message::from(choice)];
+    let request = crate::completion::GenerateContent::new(crate::completion::GEMINI_2_5_FLASH)
+        .encode(request, Mode::Unary)?;
+    request
+        .contents
+        .into_iter()
+        .next()
+        .ok_or_else(|| rig_core::error::EncodeError::request("no content"))
 }
 
 /// The reply as the unary endpoint answers it.
@@ -287,10 +304,7 @@ fn every_inline_part_keeps_its_part_and_replays_it() {
         .collect();
     assert_eq!(kinds, ["text", "opaque", "opaque", "image", "text"]);
 
-    let replayed = crate::types::message::content_from_message(rig_core::message::Message::from(
-        response.choice.clone(),
-    ))
-    .expect("the turn replays");
+    let replayed = replay(response.choice.clone()).expect("the turn replays");
     assert_eq!(replayed.parts, parts);
 }
 
@@ -383,9 +397,14 @@ fn vertex_generate_content_output_round_trips_through_serde_json_value() {
         native.map(|native| &native["avgLogprobs"]),
         Some(&json!(-0.25))
     );
+    // The turn reads the REST JSON, which spells enums by name.
     assert_eq!(
         native.map(|native| &native["safetyRatings"][0]["category"]),
-        Some(&json!(3))
+        Some(&json!("HARM_CATEGORY_HARASSMENT"))
+    );
+    assert_eq!(
+        original.raw.pointer("/candidates/0/finishReason"),
+        Some(&json!("STOP"))
     );
     let restored: CompletionResponse = back.complete().expect("restored converts");
     assert_eq!(restored.identity(), original.identity());
@@ -495,10 +514,8 @@ fn answer_text_signature_is_kept_and_replayed_on_its_part() {
         Some(&json!({ "text": "the answer", "thoughtSignature": BASE64.encode(raw) }))
     );
 
-    let replayed: vertexai::model::Content = crate::types::message::content_from_message(
-        rig_core::message::Message::from(response.choice.clone()),
-    )
-    .expect("the turn replays");
+    let replayed: vertexai::model::Content =
+        replay(response.choice.clone()).expect("the turn replays");
     assert_eq!(replayed.parts.len(), 1);
     assert_eq!(replayed.parts[0].thought_signature.to_vec(), raw.to_vec());
     assert!(!replayed.parts[0].thought);

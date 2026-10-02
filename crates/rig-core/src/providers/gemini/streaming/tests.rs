@@ -77,75 +77,48 @@ fn test_deserialize_stream_response_with_single_text_part() {
 }
 
 #[test]
-fn test_streaming_tool_protocol_finish_reason_returns_response_error() {
-    for (finish_reason, reason_name, finish_message) in [
-        (
-            "MALFORMED_FUNCTION_CALL",
-            "MalformedFunctionCall",
-            "malformed function call: default_api",
-        ),
-        (
-            "UNEXPECTED_TOOL_CALL",
-            "UnexpectedToolCall",
-            "unexpected tool call: default_api",
-        ),
-        (
-            "MISSING_THOUGHT_SIGNATURE",
-            "MissingThoughtSignature",
-            "missing thought signature for tool call",
-        ),
-        (
-            "TOO_MANY_TOOL_CALLS",
-            "TooManyToolCalls",
-            "too many tool calls in response",
-        ),
-        (
-            "MALFORMED_RESPONSE",
-            "MalformedResponse",
-            "malformed response from provider",
-        ),
+fn a_tool_protocol_finish_is_a_failed_turn_not_a_failed_reply() {
+    use crate::test_utils::history_conformance::decode;
+    let wire =
+        crate::providers::gemini::GeminiConfig::new("test-key").completion("gemini-2.5-flash");
+    for finish_reason in [
+        "MALFORMED_FUNCTION_CALL",
+        "UNEXPECTED_TOOL_CALL",
+        "MISSING_THOUGHT_SIGNATURE",
+        "TOO_MANY_TOOL_CALLS",
+        "MALFORMED_RESPONSE",
     ] {
-        let json_data = json!({
+        let frame = json!({
             "candidates": [{
                 "finishReason": finish_reason,
-                "finishMessage": finish_message,
+                "finishMessage": "the call was malformed",
                 "index": 0
             }]
         });
-
-        let response: GenerateContentResponse = serde_json::from_value(json_data).unwrap();
-        let candidate = response
-            .candidates
-            .first()
-            .expect("expected terminal candidate");
-        let err = candidate
-            .finish_reason
-            .as_ref()
-            .and_then(|reason| {
-                function_call_finish_reason_error(reason, candidate.finish_message.as_deref())
-            })
-            .expect("tool protocol finish reason should be an error");
-
-        assert!(matches!(
-            err,
-            ProviderError::Response(message)
-                if message.contains(reason_name)
-                    && message.contains(finish_message)
-        ));
+        let response = decode(
+            &wire,
+            &crate::completion::CompletionRequest::new("hi"),
+            crate::wire::Mode::Unary,
+            [crate::wire::WireFrame::Text(frame.to_string())],
+        )
+        .unwrap_or_else(|error| panic!("{finish_reason} is a turn: {error}"));
+        assert!(
+            response.stop().is_failure(),
+            "{finish_reason} ends the turn as a failure: {:?}",
+            response.stop()
+        );
     }
 }
 
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 #[tokio::test]
-async fn tool_protocol_failure_ends_the_stream_without_draining_later_frames() {
+async fn a_failure_finish_ends_the_stream_without_draining_later_frames() {
     use crate::streaming::{Item, StreamEvent};
     use futures::StreamExt;
 
-    // A tool-protocol terminal failure, then more frames: a well-formed
-    // text chunk, an unknown frame, and a terminal `finishReason` chunk.
-    // The failure must be the LAST item the consumer sees — the driver
-    // stops reading (`is_finished`), so nothing after it is interpreted
-    // or passed through as `Unknown`.
+    // A tool-protocol failure, then more frames: a text chunk, an unknown
+    // frame, and a `STOP` chunk. The failure ends the reply, so nothing
+    // after it is read and a later `STOP` cannot make the turn look clean.
     let frames = [
         r#"{"candidates":[{"content":{"parts":[{"text":"hi"}],"role":"model"},"index":0}]}"#,
         r#"{"candidates":[{"finishReason":"MALFORMED_FUNCTION_CALL","finishMessage":"malformed function call","index":0}]}"#,
@@ -160,29 +133,21 @@ async fn tool_protocol_failure_ends_the_stream_without_draining_later_frames() {
         .expect("stream should open");
 
     let mut texts = Vec::new();
-    let mut saw_error = false;
-    let mut items_after_error = 0usize;
     while let Some(item) = stream.next().await {
-        if saw_error {
-            items_after_error += 1;
-        }
         match item {
             Ok(Item::Event(StreamEvent::Text { text, .. })) => texts.push(text),
             Ok(_) => {}
-            Err(_) => saw_error = true,
+            Err(error) => panic!("a failure finish is not a stream error: {error}"),
         }
     }
 
     assert_eq!(texts, ["hi"]);
+    let response = stream.finish().await.expect("the reply ended");
     assert!(
-        saw_error,
-        "the tool-protocol failure must reach the consumer"
+        response.stop().is_failure(),
+        "the turn failed: {:?}",
+        response.stop()
     );
-    assert_eq!(
-        items_after_error, 0,
-        "the in-band failure must end the stream: no later text, Unknown passthrough, or end"
-    );
-    assert!(stream.finish().await.is_err());
 }
 
 #[test]
@@ -456,6 +421,7 @@ fn test_partial_usage_token_calculation() {
         tool_use_prompt_token_count: Some(12),
         tool_use_prompt_tokens_details: None,
         traffic_type: None,
+        ..Default::default()
     };
 
     let token_usage = crate::completion::Usage::from(&usage);
@@ -483,6 +449,7 @@ fn test_partial_usage_with_missing_counts() {
         tool_use_prompt_token_count: None,
         tool_use_prompt_tokens_details: None,
         traffic_type: None,
+        ..Default::default()
     };
 
     let token_usage = crate::completion::Usage::from(&usage);
@@ -548,6 +515,7 @@ fn test_streaming_completion_response_token_usage() {
             tool_use_prompt_token_count: None,
             tool_use_prompt_tokens_details: None,
             traffic_type: None,
+            ..Default::default()
         },
         finish_reason: Some(FinishReason::Stop),
         finish_message: None,
@@ -1089,4 +1057,36 @@ async fn each_block_reason_classifies_the_same_on_the_stream_as_unary() {
             "{reason}: a blocked prompt has no terminal record"
         );
     }
+}
+
+/// A part becomes a provider item only at its end: the next part, or the
+/// reply's finish. A text part the reply was cut off in has no item, so it
+/// can never replay as a provider part; the part before it, which a later
+/// part ended, keeps its own.
+#[test]
+fn a_part_cut_off_before_its_end_keeps_no_provider_item() {
+    use crate::test_utils::history_conformance::partial;
+    let wire = crate::providers::gemini::GeminiConfig::new("test-key")
+        .completion("gemini-3-flash-preview");
+    let frames = [
+        r#"{"candidates":[{"content":{"parts":[{"text":"plan","thought":true,"thoughtSignature":"c2ln"}],"role":"model"}}]}"#,
+        r#"{"candidates":[{"content":{"parts":[{"text":"the answer is"}],"role":"model"}}]}"#,
+    ]
+    .map(|frame| crate::wire::WireFrame::Text(frame.to_owned()));
+    let (response, ended) = partial(&wire, crate::wire::Mode::Streaming, frames);
+    assert!(!ended, "no finish arrived");
+    let [
+        AssistantContent::Reasoning(plan),
+        AssistantContent::Text(answer),
+    ] = response.choice.as_slice()
+    else {
+        panic!("the ended thought and the open text: {:?}", response.choice);
+    };
+    assert_eq!(
+        plan.native.as_ref().map(|native| &native.item),
+        Some(&json!({"text": "plan", "thought": true, "thoughtSignature": "c2ln"}))
+    );
+    assert_eq!(answer.text, "the answer is");
+    assert!(answer.native.is_none(), "{answer:?}");
+    assert!(response.stop().is_failure());
 }

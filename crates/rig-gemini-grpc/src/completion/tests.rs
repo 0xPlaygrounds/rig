@@ -63,36 +63,45 @@ fn rpc_error_preserves_status_text_without_http_status() {
     assert_eq!(err.provider_response_status(), None);
 }
 
+/// A call rebuilt for Gemini 3 carries Google's placeholder signature as
+/// the bytes its URL-safe base64 spells, the bytes Gemini's REST API reads
+/// it as.
 #[test]
-fn test_decode_base64_bytes_accepts_url_safe_with_padding() {
-    assert!(matches!(
-        decode_base64_bytes("_-wgVQA="),
-        Ok(bytes) if bytes == vec![0xFF, 0xEC, 0x20, 0x55, 0x00]
-    ));
-}
-
-#[test]
-fn test_decode_base64_bytes_accepts_url_safe_no_pad() {
-    assert!(matches!(
-        decode_base64_bytes("_-wgVQA"),
-        Ok(bytes) if bytes == vec![0xFF, 0xEC, 0x20, 0x55, 0x00]
-    ));
-}
-
-#[test]
-fn test_decode_base64_bytes_accepts_standard_no_pad() {
-    assert!(matches!(
-        decode_base64_bytes("Zg"),
-        Ok(bytes) if bytes == b"f".to_vec()
-    ));
-}
-
-#[test]
-fn test_decode_base64_bytes_accepts_data_uri_prefix() {
-    assert!(matches!(
-        decode_base64_bytes("data:text/plain;base64,Zm9v"),
-        Ok(bytes) if bytes == b"foo".to_vec()
-    ));
+fn a_rebuilt_gemini_3_call_carries_the_placeholder_signature_bytes() {
+    use base64::Engine as _;
+    let call = message::ToolCall::new(
+        message::CallId::from_wire("call_1"),
+        message::ToolFunction::new(
+            message::ToolName::new("lookup").expect("a tool name"),
+            serde_json::json!({"q": "rig"}),
+        ),
+    );
+    let mut request = CompletionRequest::new("next");
+    request.chat_history = vec![
+        message::Message::user("q"),
+        message::Message::Assistant(message::AssistantMessage::new(vec![
+            message::AssistantContent::ToolCall(call.clone()),
+        ])),
+        message::Message::User {
+            content: vec![message::UserContent::ToolResult(
+                call.result(vec![message::ToolResultContent::text("ok")]),
+            )],
+        },
+    ];
+    let request = create_grpc_request("gemini-3-flash-preview", request).expect("encodes");
+    let signature = request
+        .contents
+        .iter()
+        .flat_map(|content| &content.parts)
+        .find(|part| matches!(part.data, Some(proto::part::Data::FunctionCall(_))))
+        .map(|part| part.thought_signature.clone())
+        .expect("the call is sent");
+    assert_eq!(
+        signature,
+        base64::engine::general_purpose::URL_SAFE
+            .decode("skip_thought_signature_validator")
+            .expect("URL-safe base64")
+    );
 }
 
 // ============================================================
@@ -344,8 +353,8 @@ fn create_grpc_request_sends_the_executed_name_not_an_identifier() {
     );
 }
 
-/// Messages go through the shared Gemini conversion. Raw image bytes and
-/// text documents are sent; media inside a tool result is refused.
+/// Messages go through the shared Gemini conversion. Raw image bytes, text
+/// documents and media inside a tool result are all sent.
 #[test]
 fn create_grpc_request_transcodes_the_shared_gemini_content() {
     use rig_core::message::{
@@ -385,7 +394,7 @@ fn create_grpc_request_transcodes_the_shared_gemini_content() {
         ]
     );
 
-    let error = encode(vec![UserContent::ToolResult(ToolResult {
+    let request = encode(vec![UserContent::ToolResult(ToolResult {
         is_error: false,
         call: rig_core::message::CallId::from_wire("call_1"),
         name: rig_core::message::ToolName::new("draw".to_owned()).expect("tool name"),
@@ -394,10 +403,25 @@ fn create_grpc_request_transcodes_the_shared_gemini_content() {
             ..image
         })],
     })])
-    .expect_err("tool-result media has no proto field");
-    assert!(
-        error.to_string().contains("images in tool results"),
-        "{error}"
+    .expect("tool-result media rides the function response");
+    let Some(proto::part::Data::FunctionResponse(response)) = request
+        .contents
+        .iter()
+        .flat_map(|content| &content.parts)
+        .find_map(|part| part.data.clone())
+    else {
+        panic!("a function response: {request:?}");
+    };
+    assert_eq!(
+        response.parts,
+        vec![proto::FunctionResponsePart {
+            data: Some(proto::function_response_part::Data::InlineData(
+                proto::FunctionResponseBlob {
+                    mime_type: "image/png".to_owned(),
+                    data: vec![1, 2, 3],
+                }
+            )),
+        }]
     );
 }
 
@@ -456,76 +480,12 @@ fn create_grpc_request_populates_tool_parameters() {
 /// gRPC, not HTTP), so the wire shape is stated directly.
 /// A signature on answer text stays on that text: Gemini's rules return a
 /// signature inside the part that carried it, never merged into another.
+/// A reply's `raw` is its REST JSON, which reads back as the same
+/// message, and normalizing the restored message agrees with normalizing
+/// the original. Fields rig never normalizes (`cachedContentTokenCount`,
+/// the candidate's `finishMessage`) survive both directions.
 #[test]
-fn a_signature_on_answer_text_stays_on_that_text() {
-    let response = proto::GenerateContentResponse {
-        candidates: vec![proto::Candidate {
-            content: Some(proto::Content {
-                parts: vec![
-                    proto::Part {
-                        data: Some(proto::part::Data::Text("the chain".to_string())),
-                        thought: true,
-                        ..Default::default()
-                    },
-                    proto::Part {
-                        data: Some(proto::part::Data::Text("answer".to_string())),
-                        thought: false,
-                        thought_signature: b"sig-bytes".to_vec(),
-                        ..Default::default()
-                    },
-                ],
-                ..Default::default()
-            }),
-            finish_reason: proto::candidate::FinishReason::Stop as i32,
-            ..Default::default()
-        }],
-        ..Default::default()
-    };
-
-    let normalized = complete(response).expect("payload should normalize");
-    let signed = serde_json::json!({ "text": "answer", "thoughtSignature": "c2lnLWJ5dGVz" });
-    assert_eq!(
-        normalized.choice,
-        vec![
-            message::AssistantContent::reasoning("the chain")
-                .with_native(serde_json::json!({ "text": "the chain", "thought": true })),
-            message::AssistantContent::text("answer").with_native(signed),
-        ]
-    );
-
-    // The same model replays it on the answer part.
-    let request = create_grpc_request(
-        "gemini-2.5-flash",
-        CompletionRequest::from(vec![
-            message::Message::user("q"),
-            message::Message::from(normalized.choice.clone()),
-            message::Message::user("again"),
-        ]),
-    )
-    .expect("request build");
-    let answer = request
-        .contents
-        .get(1)
-        .expect("the assistant turn")
-        .parts
-        .iter()
-        .find(|part| matches!(&part.data, Some(proto::part::Data::Text(text)) if text == "answer"))
-        .expect("the answer part");
-    assert_eq!(answer.thought_signature, b"sig-bytes".to_vec());
-}
-
-/// The load-bearing property behind `CompletionResponse::raw` for the
-/// gRPC provider: the captured value is
-/// `serde_json::to_value(&GenerateContentResponse)` — the prost message
-/// `raw_completion` returns, with the serde derives `build.rs` attaches to
-/// every generated type — and a consumer must be able to read it back as
-/// the same message and get the same JSON. There is no cassette harness
-/// for gRPC, so this is the unit-form pin. Fields rig never normalizes
-/// (`cached_content_token_count` under `usage_metadata`, the candidate's
-/// `finish_message`) survive both directions, and normalizing the
-/// restored message agrees with normalizing the original.
-#[test]
-fn generate_content_response_round_trips_through_serde_json_value() {
+fn generate_content_response_round_trips_through_its_rest_json() {
     let raw = proto::GenerateContentResponse {
         candidates: vec![proto::Candidate {
             content: Some(proto::Content {
@@ -545,49 +505,38 @@ fn generate_content_response_round_trips_through_serde_json_value() {
             candidates_token_count: 20,
             total_token_count: 30,
             cached_content_token_count: 4,
-            tool_use_prompt_token_count: 0,
-            thoughts_token_count: 0,
+            ..Default::default()
         }),
         model_version: "gemini-2.5-flash".to_string(),
         response_id: "resp-grpc-1".to_string(),
         prompt_feedback: None,
     };
 
-    let value = serde_json::to_value(&raw).expect("serialize");
+    let value = crate::rest::to_rest(&raw).expect("transcodes");
     assert_eq!(
-        value.pointer("/usage_metadata/cached_content_token_count"),
+        value.pointer("/usageMetadata/cachedContentTokenCount"),
         Some(&serde_json::json!(4))
     );
     assert_eq!(
-        value.pointer("/candidates/0/finish_message"),
+        value.pointer("/candidates/0/finishMessage"),
         Some(&serde_json::json!("done"))
     );
     assert_eq!(
-        value.pointer("/model_version"),
-        Some(&serde_json::json!("gemini-2.5-flash"))
+        value.pointer("/candidates/0/finishReason"),
+        Some(&serde_json::json!("STOP"))
     );
 
     let back: proto::GenerateContentResponse =
-        serde_json::from_value(value.clone()).expect("deserialize");
-    assert_eq!(
-        serde_json::to_value(&back).expect("re-serialize"),
-        value,
-        "the capture must read back into GenerateContentResponse and re-serialize identically"
-    );
+        crate::rest::from_rest(value.clone()).expect("reads back");
     assert_eq!(back, raw);
 
     let original = complete(raw.clone()).expect("original converts");
-    assert_eq!(original.raw, value, "the response's raw is the capture");
+    assert_eq!(original.raw, value, "the response's raw is its REST JSON");
     let restored = complete(back).expect("restored converts");
     assert_eq!(restored.identity(), original.identity());
     assert_eq!(restored.finish_reason(), original.finish_reason());
-    assert_eq!(restored.model(), original.model());
     assert_eq!(restored.usage, original.usage);
     assert_eq!(restored.choice, original.choice);
-    assert_eq!(
-        restored.identity().response_id.as_deref(),
-        Some("resp-grpc-1")
-    );
     assert_eq!(
         restored.finish_reason(),
         Some(rig_core::completion::FinishReason::Stop)
@@ -831,6 +780,7 @@ fn usage_counts_thoughts_as_output_and_the_tool_use_prompt_as_input() {
             cached_content_token_count: 40,
             tool_use_prompt_token_count: 75,
             thoughts_token_count: 34,
+            ..Default::default()
         }),
         ..Default::default()
     };

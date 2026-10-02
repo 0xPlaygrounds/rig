@@ -2,7 +2,9 @@
 //
 // IMPORTANT: Field numbers and wire types are intentionally aligned with
 // Google's official `google.ai.generativelanguage.v1beta` protos so the
-// generated Rust types are gRPC-wire-compatible.
+// generated Rust types are gRPC-wire-compatible. Replies are read through
+// their canonical proto3 JSON, which is the REST JSON, so every reply
+// field the REST decoder reads must be declared here.
 //
 // Reference sources (field numbers/types):
 // - google/ai/generativelanguage/v1beta/content.proto
@@ -18,36 +20,11 @@ service GenerativeService {
   rpc EmbedContent(EmbedContentRequest) returns (EmbedContentResponse);
 }
 
+import "google/protobuf/struct.proto";
+
 // ================================================================
 // Shared types
 // ================================================================
-
-// Mirrors google.protobuf.NullValue.
-enum NullValue {
-  NULL_VALUE = 0;
-}
-
-// Mirrors google.protobuf.Value.
-message Value {
-  oneof kind {
-    NullValue null_value = 1;
-    double number_value = 2;
-    string string_value = 3;
-    bool bool_value = 4;
-    Struct struct_value = 5;
-    ListValue list_value = 6;
-  }
-}
-
-// Mirrors google.protobuf.Struct.
-message Struct {
-  map<string, Value> fields = 1;
-}
-
-// Mirrors google.protobuf.ListValue.
-message ListValue {
-  repeated Value values = 1;
-}
 
 // Data type enum used by Schema (matches content.proto).
 enum Type {
@@ -80,7 +57,7 @@ message Part {
   // Mirrors content.proto fields.
   bool thought = 11;
   bytes thought_signature = 13;
-  Struct part_metadata = 8;
+  google.protobuf.Struct part_metadata = 8;
 }
 
 message Blob {
@@ -95,14 +72,35 @@ message FileData {
 
 message FunctionCall {
   string name = 1;
-  Struct args = 2;
+  optional google.protobuf.Struct args = 2;
   string id = 3;
 }
 
 message FunctionResponse {
+  enum Scheduling {
+    SCHEDULING_UNSPECIFIED = 0;
+    SILENT = 1;
+    WHEN_IDLE = 2;
+    INTERRUPT = 3;
+  }
+
   string name = 1;
-  Struct response = 2;
+  google.protobuf.Struct response = 2;
   string id = 3;
+  bool will_continue = 4;
+  optional Scheduling scheduling = 5;
+  repeated FunctionResponsePart parts = 8;
+}
+
+message FunctionResponsePart {
+  oneof data {
+    FunctionResponseBlob inline_data = 1;
+  }
+}
+
+message FunctionResponseBlob {
+  string mime_type = 1;
+  bytes data = 2;
 }
 
 message ExecutableCode {
@@ -143,8 +141,8 @@ message FunctionDeclaration {
   string description = 2;
   Schema parameters = 3;
   Schema response = 4;
-  Value parameters_json_schema = 6;
-  Value response_json_schema = 7;
+  google.protobuf.Value parameters_json_schema = 6;
+  google.protobuf.Value response_json_schema = 7;
 }
 
 message Schema {
@@ -159,12 +157,24 @@ message Schema {
 }
 
 // ================================================================
-// Safety (placeholder; not currently mapped in Rig)
+// Safety
 // ================================================================
 
 message SafetySetting {}
 
-message PromptFeedback {}
+message PromptFeedback {
+  enum BlockReason {
+    BLOCK_REASON_UNSPECIFIED = 0;
+    SAFETY = 1;
+    OTHER = 2;
+    BLOCKLIST = 3;
+    PROHIBITED_CONTENT = 4;
+    IMAGE_SAFETY = 5;
+  }
+
+  BlockReason block_reason = 1;
+  repeated SafetyRating safety_ratings = 2;
+}
 
 // ================================================================
 // Generation
@@ -199,12 +209,30 @@ message GenerateContentRequest {
   string cached_content = 9;
 }
 
+enum Modality {
+  MODALITY_UNSPECIFIED = 0;
+  TEXT = 1;
+  IMAGE = 2;
+  VIDEO = 3;
+  AUDIO = 4;
+  DOCUMENT = 5;
+}
+
+message ModalityTokenCount {
+  Modality modality = 1;
+  int32 token_count = 2;
+}
+
 message UsageMetadata {
   int32 prompt_token_count = 1;
   int32 candidates_token_count = 2;
   int32 total_token_count = 3;
   int32 cached_content_token_count = 4;
+  repeated ModalityTokenCount prompt_tokens_details = 5;
+  repeated ModalityTokenCount cache_tokens_details = 6;
+  repeated ModalityTokenCount candidates_tokens_details = 7;
   int32 tool_use_prompt_token_count = 8;
+  repeated ModalityTokenCount tool_use_prompt_tokens_details = 9;
   int32 thoughts_token_count = 10;
 }
 
@@ -236,6 +264,25 @@ message Candidate {
   optional string finish_message = 4;
   repeated SafetyRating safety_ratings = 5;
   CitationMetadata citation_metadata = 6;
+  int32 token_count = 7;
+  double avg_logprobs = 10;
+  LogprobsResult logprobs_result = 11;
+}
+
+message LogprobsResult {
+  message Candidate {
+    optional string token = 1;
+    optional int32 token_id = 3;
+    optional float log_probability = 2;
+  }
+
+  message TopCandidates {
+    repeated Candidate candidates = 1;
+  }
+
+  optional float log_probability_sum = 3;
+  repeated TopCandidates top_candidates = 1;
+  repeated Candidate chosen_candidates = 2;
 }
 
 // Mirrors safety.proto.

@@ -1,5 +1,6 @@
 use super::*;
 use crate::completion::tests::{complete, stream_from_events};
+use base64::Engine as _;
 use futures::StreamExt;
 use rig_core::completion::CompletionResponse;
 use rig_core::message::{AssistantContent, Reasoning};
@@ -200,6 +201,7 @@ fn failed_response(
 struct Drained {
     errors: Vec<String>,
     reached_terminal: bool,
+    failed: bool,
     text: String,
 }
 
@@ -208,6 +210,7 @@ async fn drain(events: Vec<proto::GenerateContentResponse>) -> Drained {
     let mut drained = Drained {
         errors: Vec::new(),
         reached_terminal: false,
+        failed: false,
         text: String::new(),
     };
 
@@ -218,54 +221,39 @@ async fn drain(events: Vec<proto::GenerateContentResponse>) -> Drained {
             Err(error) => drained.errors.push(error.to_string()),
         }
     }
-    drained.reached_terminal = stream.finish().await.is_ok();
+    if let Ok(response) = stream.finish().await {
+        drained.reached_terminal = true;
+        drained.failed = response.stop().is_failure();
+    }
 
     drained
 }
 
-// The gRPC surface only set `is_final` on a nonzero finish reason, so an
-// aborted tool protocol read as a completed turn. It must now fail, as
-// the REST surface always has.
+// A tool-protocol finish ends the turn as a failure, which is never
+// replayed, rather than failing the reply.
 #[tokio::test]
-async fn malformed_function_call_fails_the_stream_with_no_terminal() {
-    let drained = drain(vec![failed_response(
-        proto::candidate::FinishReason::MalformedFunctionCall,
-        Some("could not parse the function call"),
-    )])
-    .await;
-
-    assert_eq!(drained.errors.len(), 1, "errors: {:?}", drained.errors);
-    let error = drained.errors.first().expect("one error");
-    assert!(
-        error.contains("MalformedFunctionCall")
-            && error.contains("could not parse the function call"),
-        "error should name the reason and carry finish_message: {error}"
-    );
-    assert!(
-        !drained.reached_terminal,
-        "a failed turn must not synthesize a terminal record"
-    );
-}
-
-#[tokio::test]
-async fn unexpected_and_too_many_tool_calls_also_fail_the_stream() {
+async fn tool_protocol_finishes_end_the_turn_as_a_failure() {
     for reason in [
+        proto::candidate::FinishReason::MalformedFunctionCall,
         proto::candidate::FinishReason::UnexpectedToolCall,
         proto::candidate::FinishReason::TooManyToolCalls,
     ] {
-        let drained = drain(vec![failed_response(reason, None)]).await;
-        assert_eq!(
-            drained.errors.len(),
-            1,
-            "{} should fail the stream",
+        let drained = drain(vec![failed_response(
+            reason,
+            Some("the call was malformed"),
+        )])
+        .await;
+        assert!(drained.errors.is_empty(), "errors: {:?}", drained.errors);
+        assert!(
+            drained.reached_terminal && drained.failed,
+            "{}",
             reason.as_str_name()
         );
-        assert!(!drained.reached_terminal);
     }
 }
 
-// Everything after the in-band failure is dead: an error ends the reply,
-// so a later genuine terminal cannot dress the aborted turn up as complete.
+// Everything after a failure finish is dead, so a later genuine terminal
+// cannot dress the failed turn up as complete.
 #[tokio::test]
 async fn frames_after_a_tool_protocol_failure_are_not_interpreted() {
     let drained = drain(vec![
@@ -280,9 +268,9 @@ async fn frames_after_a_tool_protocol_failure_are_not_interpreted() {
     ])
     .await;
 
-    assert_eq!(drained.errors.len(), 1, "errors: {:?}", drained.errors);
+    assert!(drained.errors.is_empty(), "errors: {:?}", drained.errors);
     assert!(drained.text.is_empty(), "text: {:?}", drained.text);
-    assert!(!drained.reached_terminal);
+    assert!(drained.reached_terminal && drained.failed);
 }
 
 // Ordinary terminals are untouched by the new gate.
@@ -303,19 +291,18 @@ async fn non_tool_protocol_finish_reasons_still_complete_the_turn() {
 }
 
 // The unary path decodes through the same decoder, so the two surfaces
-// report an aborted tool protocol with the same message.
+// end a tool-protocol failure alike.
 #[tokio::test]
-async fn unary_and_streaming_report_the_same_tool_protocol_error() {
+async fn unary_and_streaming_report_the_same_tool_protocol_failure() {
     let response = failed_response(
         proto::candidate::FinishReason::TooManyToolCalls,
         Some("budget exhausted"),
     );
 
     let streamed = drain(vec![response.clone()]).await;
-    match complete(response) {
-        Err(err) => assert_eq!(streamed.errors, vec![err.to_string()]),
-        Ok(_) => panic!("the unary path must fail on a tool-protocol finish reason"),
-    }
+    let unary = complete(response).expect("a failed turn is a reply");
+    assert!(streamed.failed);
+    assert!(unary.stop().is_failure());
 }
 
 // The streaming path maps both the initial `stream_generate_content` RPC
@@ -362,6 +349,7 @@ fn terminal_frame() -> proto::GenerateContentResponse {
             cached_content_token_count: 0,
             tool_use_prompt_token_count: 0,
             thoughts_token_count: 0,
+            ..Default::default()
         }),
         model_version: "gemini-2.5-flash".to_string(),
         response_id: "resp-grpc-stream".to_string(),
@@ -398,7 +386,7 @@ async fn stream_from_events_terminal_carries_raw() {
 
     let raw = &terminal.raw;
     let typed: proto::GenerateContentResponse =
-        serde_json::from_value(raw.clone()).expect("raw must deserialize");
+        crate::rest::from_rest(raw.clone()).expect("raw must read back");
     assert_eq!(typed, terminal_frame());
     assert_eq!(terminal.usage.total_tokens, Some(5));
 }
@@ -417,18 +405,16 @@ async fn terminal_raw_round_trips_into_the_terminal_type() {
 
     let raw = &terminal.raw;
     let typed: proto::GenerateContentResponse =
-        serde_json::from_value(raw.clone()).expect("raw must deserialize");
+        crate::rest::from_rest(raw.clone()).expect("raw must read back");
     assert_eq!(
-        serde_json::to_value(&typed).expect("re-serialize"),
+        crate::rest::to_rest(&typed).expect("transcodes"),
         *raw,
-        "the capture must be exactly what the terminal type serializes to"
+        "the capture is exactly the terminal message's REST JSON"
     );
     assert_eq!(typed, terminal_frame());
     assert_eq!(
-        raw.pointer("/candidates/0/finish_reason"),
-        Some(&serde_json::json!(
-            proto::candidate::FinishReason::Stop as i32
-        ))
+        raw.pointer("/candidates/0/finishReason"),
+        Some(&serde_json::json!("STOP"))
     );
 
     // Feeding the capture back through the same pipeline tells the same
@@ -520,9 +506,7 @@ async fn safety_ratings_and_citations_are_the_turns_native() {
     let native = terminal.native.map(|native| native.item).expect("a native");
     assert_eq!(
         native.get("safetyRatings"),
-        Some(
-            &json!([{ "category": "HARM_CATEGORY_HARASSMENT", "probability": "NEGLIGIBLE", "blocked": false }])
-        )
+        Some(&json!([{ "category": "HARM_CATEGORY_HARASSMENT", "probability": "NEGLIGIBLE" }]))
     );
     assert_eq!(
         native.pointer("/citationMetadata/citationSources/0/uri"),
@@ -530,32 +514,62 @@ async fn safety_ratings_and_citations_are_the_turns_native() {
     );
 }
 
-/// Code execution's language and outcome are proto enums; the restated part
-/// spells them the way the REST API does.
+/// Code execution's language and outcome are proto enums; the REST JSON
+/// spells them by name.
 #[test]
 fn code_execution_parts_restate_with_rest_enum_names() {
-    let code = proto::Part {
-        data: Some(proto::part::Data::ExecutableCode(proto::ExecutableCode {
-            language: proto::executable_code::Language::Python as i32,
-            code: "print(1)".to_owned(),
-        })),
-        ..Default::default()
-    };
-    let result = proto::Part {
-        data: Some(proto::part::Data::CodeExecutionResult(
-            proto::CodeExecutionResult {
-                outcome: proto::code_execution_result::Outcome::Ok as i32,
-                output: "1\n".to_owned(),
+    let content = proto::Content {
+        parts: vec![
+            proto::Part {
+                data: Some(proto::part::Data::ExecutableCode(proto::ExecutableCode {
+                    language: proto::executable_code::Language::Python as i32,
+                    code: "print(1)".to_owned(),
+                })),
+                ..Default::default()
             },
-        )),
-        ..Default::default()
+            proto::Part {
+                data: Some(proto::part::Data::CodeExecutionResult(
+                    proto::CodeExecutionResult {
+                        outcome: proto::code_execution_result::Outcome::Ok as i32,
+                        output: "1\n".to_owned(),
+                    },
+                )),
+                ..Default::default()
+            },
+        ],
+        role: "model".to_owned(),
     };
     assert_eq!(
-        rest_part(&code),
-        Some(json!({"executableCode": {"language": "PYTHON", "code": "print(1)"}}))
+        crate::rest::to_rest(&content).expect("transcodes"),
+        json!({"role": "model", "parts": [
+            {"executableCode": {"language": "PYTHON", "code": "print(1)"}},
+            {"codeExecutionResult": {"outcome": "OUTCOME_OK", "output": "1\n"}},
+        ]})
     );
-    assert_eq!(
-        rest_part(&result),
-        Some(json!({"codeExecutionResult": {"outcome": "OUTCOME_OK", "output": "1\n"}}))
+}
+
+/// #2475: a blocked prompt's only reply carries `promptFeedback` and no
+/// candidate. It is the provider's refusal, naming the reason and ratings,
+/// as on REST, never a truncated reply.
+#[test]
+fn a_blocked_prompt_is_a_refusal_on_grpc() {
+    let blocked = proto::GenerateContentResponse {
+        prompt_feedback: Some(proto::PromptFeedback {
+            block_reason: proto::prompt_feedback::BlockReason::Safety as i32,
+            safety_ratings: vec![proto::SafetyRating {
+                category: proto::HarmCategory::HateSpeech as i32,
+                probability: proto::safety_rating::HarmProbability::High as i32,
+                blocked: true,
+            }],
+        }),
+        ..Default::default()
+    };
+    let error = complete(blocked).expect_err("a blocked prompt is no answer");
+    assert!(error.report().refusal, "{error:?}");
+    let message = error.to_string();
+    assert!(
+        message.contains("block_reason=SAFETY")
+            && message.contains("HARM_CATEGORY_HATE_SPEECH=HIGH"),
+        "{message}"
     );
 }

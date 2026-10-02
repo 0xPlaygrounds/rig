@@ -18,7 +18,6 @@ pub const GEMINI_2_0_FLASH_LITE: &str = "gemini-2.0-flash-lite";
 /// `gemini-2.0-flash` completion model
 pub const GEMINI_2_0_FLASH: &str = "gemini-2.0-flash";
 
-use base64::Engine as _;
 use futures::StreamExt;
 use rig_core::completion::CompletionRequest;
 use rig_core::driver::{Exchange, Opened, Opening, Transport};
@@ -26,11 +25,10 @@ use rig_core::error::EncodeError;
 use rig_core::error::ProviderError;
 use rig_core::message;
 use rig_core::operation::Completion;
+use rig_core::providers::gemini::completion::conversation;
 use rig_core::providers::gemini::completion::gemini_api_types::{
-    Blob, Content, FileData, Part, PartKind, Role, Schema as GeminiSchema, UsageMetadata,
-    tool_parameters_to_schema,
+    Schema as GeminiSchema, tool_parameters_to_schema,
 };
-use rig_core::providers::gemini::completion::{contents, split_system_messages_from_history};
 use rig_core::wire::{Descriptor, Mode, Wire};
 
 use super::GeminiGrpc;
@@ -90,12 +88,9 @@ impl rig_core::completion::ReplayTarget for GenerateContent {
         &self.model
     }
 
-    /// The gRPC transcode carries no images inside function responses.
-    fn accepts(&self, _model: &str) -> rig_core::completion::Accepts {
-        rig_core::completion::Accepts {
-            tool_result_images: false,
-            ..rig_core::completion::Accepts::ALL
-        }
+    /// What the model reads, as on every GenerateContent wire.
+    fn accepts(&self, model: &str) -> rig_core::completion::Accepts {
+        rig_core::providers::gemini::completion::accepts(model)
     }
 
     fn normalize_tool_call_id(
@@ -197,29 +192,23 @@ pub(crate) fn transient_grpc_code(code: tonic::Code) -> bool {
     )
 }
 
+/// The request `completion_request` sends to `model`. Its contents are
+/// the shared Gemini encoder's REST JSON, read back as protobuf messages.
 pub(crate) fn create_grpc_request(
     model: &str,
     completion_request: CompletionRequest,
 ) -> Result<GenerateContentRequest, EncodeError> {
+    let (history_system, contents) = conversation(&completion_request, model)?;
+    let contents = contents
+        .into_iter()
+        .map(crate::rest::from_rest::<proto::Content>)
+        .collect::<Result<Vec<_>, _>>()?;
     let CompletionRequest {
-        model: _,
-        chat_history,
-        documents: _,
         tools,
         temperature,
         max_tokens,
-        tool_choice: _,
-        additional_params: _,
-        output_schema: _,
-        record_telemetry_content: _,
+        ..
     } = completion_request;
-
-    let (history_system, chat_history) = split_system_messages_from_history(chat_history);
-    let chat_history = chat_history.into_iter().map(encode_raw_images).collect();
-    let contents = contents(chat_history, model)?
-        .into_iter()
-        .map(|content| grpc_content(serde_json::from_value(content)?))
-        .collect::<Result<Vec<_>, _>>()?;
 
     let mut system_parts = Vec::new();
     for content in history_system {
@@ -279,249 +268,6 @@ pub(crate) fn create_grpc_request(
     })
 }
 
-/// Encodes raw image bytes as base64, the form the shared Gemini conversion
-/// takes, so gRPC keeps accepting them.
-fn encode_raw_images(mut message: message::Message) -> message::Message {
-    if let message::Message::User { content } = &mut message {
-        for item in content {
-            if let message::UserContent::Image(image) = item
-                && let message::DocumentSourceKind::Raw(bytes) = &image.data
-            {
-                let data = base64::engine::general_purpose::STANDARD.encode(bytes);
-                image.data = message::DocumentSourceKind::Base64(data);
-            }
-        }
-    }
-    message
-}
-
-/// Transcodes content built by the shared Gemini conversion into its
-/// protobuf encoding.
-fn grpc_content(content: Content) -> Result<proto::Content, EncodeError> {
-    let role = match content.role {
-        Some(Role::Model) => "model",
-        Some(Role::User) | None => "user",
-    };
-    Ok(proto::Content {
-        parts: content
-            .parts
-            .into_iter()
-            .map(grpc_part)
-            .collect::<Result<Vec<_>, _>>()?,
-        role: role.to_string(),
-    })
-}
-
-/// Transcodes one Gemini part. Rejects what the gRPC proto cannot carry:
-/// media inside a function response and part metadata.
-fn grpc_part(part: Part) -> Result<proto::Part, EncodeError> {
-    if part
-        .additional_params
-        .as_ref()
-        .is_some_and(|extra| extra.as_object().is_none_or(|extra| !extra.is_empty()))
-    {
-        return Err(EncodeError::request(
-            "Gemini gRPC does not support part metadata",
-        ));
-    }
-    let data = match part.part {
-        PartKind::Text(text) => proto::part::Data::Text(text),
-        PartKind::InlineData(Blob { mime_type, data }) => {
-            proto::part::Data::InlineData(proto::Blob {
-                mime_type,
-                data: decode_base64_bytes(&data)?,
-            })
-        }
-        PartKind::FileData(FileData {
-            mime_type,
-            file_uri,
-        }) => proto::part::Data::FileData(proto::FileData {
-            mime_type: mime_type.unwrap_or_default(),
-            file_uri,
-        }),
-        PartKind::FunctionCall(call) => proto::part::Data::FunctionCall(proto::FunctionCall {
-            name: call.name,
-            args: Some(json_to_prost_struct(call.args)?),
-            id: call.id.unwrap_or_default(),
-        }),
-        PartKind::FunctionResponse(response) => {
-            if response.parts.is_some() {
-                return Err(EncodeError::request(
-                    "Gemini gRPC does not support images in tool results",
-                ));
-            }
-            proto::part::Data::FunctionResponse(proto::FunctionResponse {
-                name: response.name,
-                response: response.response.map(json_to_prost_struct).transpose()?,
-                id: response.id.unwrap_or_default(),
-            })
-        }
-        PartKind::ExecutableCode(code) => {
-            proto::part::Data::ExecutableCode(proto::ExecutableCode {
-                language: proto::executable_code::Language::from_str_name(&wire_name(
-                    &code.language,
-                )?)
-                .unwrap_or_default() as i32,
-                code: code.code,
-            })
-        }
-        PartKind::CodeExecutionResult(result) => {
-            proto::part::Data::CodeExecutionResult(proto::CodeExecutionResult {
-                outcome: proto::code_execution_result::Outcome::from_str_name(&wire_name(
-                    &result.outcome,
-                )?)
-                .unwrap_or_default() as i32,
-                output: result.output.unwrap_or_default(),
-            })
-        }
-    };
-    Ok(proto::Part {
-        data: Some(data),
-        thought: part.thought.unwrap_or(false),
-        thought_signature: decode_optional_base64(part.thought_signature)?,
-        part_metadata: None,
-    })
-}
-
-/// A REST enum value's wire spelling, which the trimmed proto carries as a
-/// string.
-fn wire_name(value: &impl serde::Serialize) -> Result<String, EncodeError> {
-    match serde_json::to_value(value)? {
-        serde_json::Value::String(name) => Ok(name),
-        other => Err(EncodeError::request(format!(
-            "expected a Gemini enum spelling, got {other}"
-        ))),
-    }
-}
-
-fn decode_base64_bytes(input: &str) -> Result<Vec<u8>, EncodeError> {
-    let data = input.trim();
-
-    // Allow `data:<mime>;base64,<data>` inputs.
-    let data = if let Some(rest) = data.strip_prefix("data:") {
-        rest.split_once(',').map_or(data, |(_, b64)| b64)
-    } else {
-        data
-    };
-
-    let mut last_err: Option<String> = None;
-
-    for engine in [
-        &base64::engine::general_purpose::STANDARD,
-        &base64::engine::general_purpose::URL_SAFE,
-        &base64::engine::general_purpose::STANDARD_NO_PAD,
-        &base64::engine::general_purpose::URL_SAFE_NO_PAD,
-    ] {
-        match engine.decode(data) {
-            Ok(bytes) => return Ok(bytes),
-            Err(err) => last_err = Some(err.to_string()),
-        }
-    }
-
-    let err = last_err.unwrap_or_else(|| "unknown base64 decode error".to_string());
-    Err(EncodeError::request(format!("Invalid base64 data: {err}")))
-}
-
-fn decode_optional_base64(sig: Option<String>) -> Result<Vec<u8>, EncodeError> {
-    let Some(sig) = sig else {
-        return Ok(Vec::new());
-    };
-    decode_base64_bytes(&sig)
-}
-
-/// Gemini's protobuf `UsageMetadata` as the REST usage it transcodes to.
-/// Proto3 cannot tell an unsent count from zero, so every optional count
-/// is reported.
-pub(crate) fn rest_usage(usage: &proto::UsageMetadata) -> UsageMetadata {
-    UsageMetadata {
-        prompt_token_count: usage.prompt_token_count,
-        cached_content_token_count: Some(usage.cached_content_token_count),
-        candidates_token_count: Some(usage.candidates_token_count),
-        total_token_count: usage.total_token_count,
-        thoughts_token_count: Some(usage.thoughts_token_count),
-        tool_use_prompt_token_count: Some(usage.tool_use_prompt_token_count),
-        ..UsageMetadata::default()
-    }
-}
-
-pub(crate) fn encode_optional_base64(bytes: &[u8]) -> Option<String> {
-    if bytes.is_empty() {
-        None
-    } else {
-        Some(base64::engine::general_purpose::STANDARD.encode(bytes))
-    }
-}
-
-fn json_to_prost_struct(value: serde_json::Value) -> Result<proto::Struct, EncodeError> {
-    match value {
-        serde_json::Value::Object(map) => Ok(proto::Struct {
-            fields: map
-                .into_iter()
-                .map(|(k, v)| (k, json_to_prost_value(v)))
-                .collect(),
-        }),
-        _ => Err(EncodeError::request(
-            "Expected a JSON object for google.protobuf.Struct",
-        )),
-    }
-}
-
-fn json_to_prost_value(value: serde_json::Value) -> proto::Value {
-    match value {
-        serde_json::Value::Null => proto::Value {
-            kind: Some(proto::value::Kind::NullValue(
-                proto::NullValue::NullValue as i32,
-            )),
-        },
-        serde_json::Value::Bool(b) => proto::Value {
-            kind: Some(proto::value::Kind::BoolValue(b)),
-        },
-        serde_json::Value::Number(n) => proto::Value {
-            kind: Some(proto::value::Kind::NumberValue(
-                n.as_f64().unwrap_or_default(),
-            )),
-        },
-        serde_json::Value::String(s) => proto::Value {
-            kind: Some(proto::value::Kind::StringValue(s)),
-        },
-        serde_json::Value::Array(items) => proto::Value {
-            kind: Some(proto::value::Kind::ListValue(proto::ListValue {
-                values: items.into_iter().map(json_to_prost_value).collect(),
-            })),
-        },
-        serde_json::Value::Object(map) => proto::Value {
-            kind: Some(proto::value::Kind::StructValue(proto::Struct {
-                fields: map
-                    .into_iter()
-                    .map(|(k, v)| (k, json_to_prost_value(v)))
-                    .collect(),
-            })),
-        },
-    }
-}
-
-pub(crate) fn prost_struct_to_json(st: &proto::Struct) -> serde_json::Value {
-    let mut out = serde_json::Map::with_capacity(st.fields.len());
-    for (k, v) in &st.fields {
-        out.insert(k.clone(), prost_value_to_json(v));
-    }
-    serde_json::Value::Object(out)
-}
-
-fn prost_value_to_json(v: &proto::Value) -> serde_json::Value {
-    match &v.kind {
-        None | Some(proto::value::Kind::NullValue(_)) => serde_json::Value::Null,
-        Some(proto::value::Kind::BoolValue(b)) => serde_json::Value::Bool(*b),
-        Some(proto::value::Kind::NumberValue(n)) => serde_json::Number::from_f64(*n)
-            .map_or(serde_json::Value::Null, serde_json::Value::Number),
-        Some(proto::value::Kind::StringValue(s)) => serde_json::Value::String(s.clone()),
-        Some(proto::value::Kind::StructValue(st)) => prost_struct_to_json(st),
-        Some(proto::value::Kind::ListValue(list)) => {
-            serde_json::Value::Array(list.values.iter().map(prost_value_to_json).collect())
-        }
-    }
-}
-
 /// Converts tool parameters to protobuf schema through the shared Gemini conversion.
 /// Empty object schemas map to `None`.
 fn tool_parameters_to_proto_schema(
@@ -564,5 +310,5 @@ fn json_type_to_proto_type(t: &str) -> proto::Type {
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used, clippy::unwrap_used)]
+#[allow(clippy::expect_used, clippy::panic, clippy::unwrap_used)]
 pub(crate) mod tests;

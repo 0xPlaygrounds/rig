@@ -441,30 +441,14 @@ async fn test_thought_signature_is_preserved_from_response_reasoning_part() {
 }
 
 #[tokio::test]
-async fn test_tool_protocol_finish_reason_returns_response_error() {
-    for (reason, finish_message) in [
-        (
-            FinishReason::MalformedFunctionCall,
-            "malformed function call: default_api",
-        ),
-        (
-            FinishReason::UnexpectedToolCall,
-            "unexpected tool call: default_api",
-        ),
-        (
-            FinishReason::MissingThoughtSignature,
-            "missing thought signature for tool call",
-        ),
-        (
-            FinishReason::TooManyToolCalls,
-            "too many tool calls in response",
-        ),
-        (
-            FinishReason::MalformedResponse,
-            "malformed response from provider",
-        ),
+async fn a_tool_protocol_finish_keeps_the_call_in_a_failed_turn() {
+    for reason in [
+        "MALFORMED_FUNCTION_CALL",
+        "UNEXPECTED_TOOL_CALL",
+        "MISSING_THOUGHT_SIGNATURE",
+        "TOO_MANY_TOOL_CALLS",
+        "MALFORMED_RESPONSE",
     ] {
-        let reason_name = format!("{reason:?}");
         let body = json!({
             "responseId": "resp_tool_protocol_error",
             "candidates": [{
@@ -473,23 +457,24 @@ async fn test_tool_protocol_finish_reason_returns_response_error() {
                     "role": "model"
                 },
                 "finishReason": reason,
-                "finishMessage": finish_message,
+                "finishMessage": "the call was malformed",
                 "index": 0
             }]
         });
 
-        let err = fold_unary("gemini-2.5-flash", body.to_string())
+        let response = fold_unary("gemini-2.5-flash", body.to_string())
             .await
-            .expect_err("tool protocol finish reason should fail");
+            .unwrap_or_else(|error| panic!("{reason} is a turn, not a failed reply: {error}"));
 
+        assert_eq!(response.tool_calls().count(), 1, "{reason}");
+        assert_eq!(
+            response.finish_reason(),
+            Some(crate::completion::FinishReason::Other(reason.to_owned()))
+        );
         assert!(
-            matches!(
-                &err,
-                ProviderError::Response(message)
-                    if message.contains(&reason_name)
-                        && message.contains(finish_message)
-            ),
-            "{reason_name}: {err}"
+            response.stop().is_failure(),
+            "{reason}: {:?}",
+            response.stop()
         );
     }
 }
@@ -555,18 +540,13 @@ fn test_finish_reason_maps_every_wire_variant() {
             Normalized::Other("MALFORMED_RESPONSE".to_string()),
         ),
     ] {
-        assert_eq!(
-            map_finish_reason(&wire),
-            Some(expected),
-            "wire reason {wire:?}"
-        );
+        assert_eq!(map_finish_reason(&wire), expected, "wire reason {wire:?}");
     }
 
-    // The proto default means Gemini reported no reason; both the REST and
-    // gRPC mappers treat it as absent rather than an `Other` value.
+    // The unused zero value names no clean stop, so it is a failure.
     assert_eq!(
         map_finish_reason(&FinishReason::FinishReasonUnspecified),
-        None
+        Normalized::Other("FINISH_REASON_UNSPECIFIED".to_owned())
     );
 }
 
@@ -611,9 +591,7 @@ fn test_unknown_finish_reason_round_trips_verbatim() {
     );
     assert_eq!(
         map_finish_reason(&reason),
-        Some(crate::completion::FinishReason::Other(
-            "FINISH_REASON_FUTURE".to_string()
-        ))
+        crate::completion::FinishReason::Other("FINISH_REASON_FUTURE".to_string())
     );
 }
 
@@ -672,9 +650,7 @@ fn test_streaming_candidate_with_unknown_finish_reason_stays_parseable() {
     let reason = candidate.finish_reason.expect("finish reason present");
     assert_eq!(
         map_finish_reason(&reason),
-        Some(crate::completion::FinishReason::Other(
-            "FINISH_REASON_FUTURE".to_string()
-        ))
+        crate::completion::FinishReason::Other("FINISH_REASON_FUTURE".to_string())
     );
 }
 
@@ -1158,37 +1134,6 @@ fn mixed_inline_image_and_json_keep_structured_value_and_media_part() {
 }
 
 #[test]
-fn mixed_url_image_and_response_value_is_rejected() {
-    use crate::message::{DocumentSourceKind, Image, ImageMediaType, ToolResultContent};
-
-    let tool_result = message::Message::User {
-        content: vec![message::UserContent::ToolResult(message::ToolResult {
-            is_error: false,
-            call: crate::message::CallId::from_wire(""),
-            name: crate::message::ToolName::new("url_tool".to_string()).expect("tool name"),
-            content: vec![
-                ToolResultContent::Image(Image {
-                    data: DocumentSourceKind::Url("https://example.com/image.png".to_string()),
-                    media_type: Some(ImageMediaType::PNG),
-                    detail: None,
-                    native: None,
-                }),
-                ToolResultContent::text("after-image"),
-            ],
-        })],
-    };
-
-    let error =
-        to_content(tool_result).expect_err("URL-backed tool result images should be rejected");
-    assert!(
-        error
-            .to_string()
-            .contains("URL-backed images are not supported"),
-        "unexpected error: {error}"
-    );
-}
-
-#[test]
 fn tool_result_rejects_unsupported_image_media_types() {
     use crate::message::{ImageMediaType, ToolResult, ToolResultContent};
 
@@ -1445,7 +1390,7 @@ fn test_user_image_url_renders_as_file_data() {
 }
 
 #[test]
-fn test_tool_result_with_url_image_is_rejected() {
+fn a_url_tool_result_image_is_sent_as_file_data() {
     use crate::message::{
         DocumentSourceKind, Image, ImageMediaType, ToolResult, ToolResultContent,
     };
@@ -1454,26 +1399,32 @@ fn test_tool_result_with_url_image_is_rejected() {
         is_error: false,
         call: crate::message::CallId::from_wire(""),
         name: crate::message::ToolName::new("screenshot_tool".to_string()).expect("tool name"),
-        content: vec![ToolResultContent::Image(Image {
-            data: DocumentSourceKind::Url("https://example.com/image.png".to_string()),
-            media_type: Some(ImageMediaType::PNG),
-            detail: None,
-            native: None,
-        })],
+        content: vec![
+            ToolResultContent::Image(Image {
+                data: DocumentSourceKind::Url("https://example.com/image.png".to_string()),
+                media_type: Some(ImageMediaType::PNG),
+                detail: None,
+                native: None,
+            }),
+            ToolResultContent::text("after-image"),
+        ],
     };
 
-    let user_content = message::UserContent::ToolResult(tool_result);
-    let msg = message::Message::User {
-        content: vec![user_content],
+    let content = to_content_for(
+        "gemini-3-flash-preview",
+        message::Message::User {
+            content: vec![message::UserContent::ToolResult(tool_result)],
+        },
+    )
+    .expect("a URL image encodes");
+    let PartKind::FunctionResponse(response) = &content.parts[0].part else {
+        panic!("a function response: {content:?}");
     };
-
-    let error = to_content(msg).expect_err("URL-backed tool result images should be rejected");
-    assert!(
-        error
-            .to_string()
-            .contains("URL-backed images are not supported"),
-        "unexpected error: {error}"
-    );
+    assert_eq!(response.response, Some(json!({"result": "after-image"})));
+    let parts = response.parts.as_ref().expect("the image is a part");
+    let file = parts[0].file_data.as_ref().expect("the image is file data");
+    assert_eq!(file.file_uri, "https://example.com/image.png");
+    assert_eq!(file.mime_type.as_deref(), Some("image/png"));
 }
 
 #[test]
@@ -2225,5 +2176,188 @@ fn a_request_model_override_decides_call_id_normalization() {
     assert_eq!(
         wire.normalize_tool_call_id("a.b", "gemini-3-pro-preview", None),
         "a_b"
+    );
+}
+
+/// The body `request` sends to `model` once prepared, as the driver sends it.
+fn prepared_body(model: &str, request: CompletionRequest) -> Value {
+    use crate::wire::Operation;
+    let wire = wire(model);
+    let request = crate::operation::Completion::prepare(request, &wire.describe())
+        .expect("the request prepares");
+    let encoded = wire
+        .encode(request, Mode::Unary)
+        .expect("the request encodes");
+    let crate::wire::Body::Bytes(bytes) = sole(&encoded).body() else {
+        panic!("a JSON body");
+    };
+    serde_json::from_slice(bytes).expect("JSON")
+}
+
+#[tokio::test]
+async fn an_unknown_traffic_type_or_modality_never_fails_the_reply() {
+    let response = fold_unary(
+        "gemini-2.5-flash",
+        r#"{"candidates":[{"content":{"parts":[{"text":"kept"}],"role":"model"},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":3,"candidatesTokenCount":2,"totalTokenCount":5,"trafficType":"ON_DEMAND_PRIORITY","promptTokensDetails":[{"modality":"HOLOGRAM","tokenCount":3}],"serviceTier":"flex"}}"#,
+    )
+    .await
+    .expect("a usage label never fails the reply");
+    assert_eq!(response.text(), "kept");
+    assert_eq!(response.usage.total_tokens, Some(5));
+}
+
+#[tokio::test]
+async fn a_function_call_without_args_decodes_with_empty_arguments() {
+    let response = fold_unary(
+        "gemini-2.5-flash",
+        r#"{"candidates":[{"content":{"parts":[{"functionCall":{"name":"now"}}],"role":"model"},"finishReason":"STOP"}]}"#,
+    )
+    .await
+    .expect("a call without args decodes");
+    let calls: Vec<_> = response.tool_calls().collect();
+    let [call] = calls.as_slice() else {
+        panic!("one call: {:?}", response.choice);
+    };
+    assert_eq!(call.function.arguments_value(), json!({}));
+    assert!(call.function.invalid_arguments.is_none());
+}
+
+#[tokio::test]
+async fn every_documented_finish_reason_ends_the_turn_as_documented() {
+    for (reason, failed) in [("STOP", false), ("MAX_TOKENS", false)]
+        .into_iter()
+        .chain(
+            gemini_api_types::FAILURE_FINISHES
+                .iter()
+                .map(|reason| (*reason, true)),
+        )
+        .chain([("A_REASON_FROM_TOMORROW", true)])
+    {
+        let body = json!({
+            "candidates": [{
+                "content": {"parts": [{"text": "partial"}], "role": "model"},
+                "finishReason": reason
+            }]
+        });
+        let response = fold_unary("gemini-2.5-flash", body.to_string())
+            .await
+            .unwrap_or_else(|error| panic!("{reason} is a turn: {error}"));
+        assert_eq!(
+            response.stop().is_failure(),
+            failed,
+            "{reason} ends as {:?}",
+            response.stop()
+        );
+    }
+}
+
+#[test]
+fn a_failed_tool_result_is_sent_under_error() {
+    let mut result = message::ToolCall::new(
+        message::CallId::from_wire("call_1"),
+        message::ToolFunction::new(
+            message::ToolName::new("lookup").expect("a tool name"),
+            json!({}),
+        ),
+    )
+    .error_result(vec![message::ToolResultContent::text("no such file")]);
+    let content = to_content(message::Message::User {
+        content: vec![message::UserContent::ToolResult(result.clone())],
+    })
+    .expect("a failed result encodes");
+    let PartKind::FunctionResponse(response) = &content.parts[0].part else {
+        panic!("a function response: {content:?}");
+    };
+    assert_eq!(response.response, Some(json!({"error": "no such file"})));
+
+    result.is_error = false;
+    let content = to_content(message::Message::User {
+        content: vec![message::UserContent::ToolResult(result)],
+    })
+    .expect("a result encodes");
+    let PartKind::FunctionResponse(response) = &content.parts[0].part else {
+        panic!("a function response: {content:?}");
+    };
+    assert_eq!(response.response, Some(json!({"result": "no such file"})));
+}
+
+/// A tool-result image as Gemini 2 and Gemini 3 get it: Gemini 3 reads it
+/// inside the function response, Gemini 2 in a user message after it.
+#[test]
+fn tool_result_images_reach_gemini_2_in_a_following_user_message() {
+    let call = message::ToolCall::new(
+        message::CallId::from_wire("call_shot"),
+        message::ToolFunction::new(
+            message::ToolName::new("shot").expect("a tool name"),
+            json!({}),
+        ),
+    );
+    let image = message::Image {
+        data: message::DocumentSourceKind::base64("aW1hZ2U="),
+        media_type: Some(message::ImageMediaType::PNG),
+        ..message::Image::default()
+    };
+    let history = vec![
+        message::Message::user("look"),
+        message::Message::Assistant(message::AssistantMessage::new(vec![
+            message::AssistantContent::ToolCall(call.clone()),
+        ])),
+        message::Message::User {
+            content: vec![message::UserContent::ToolResult(call.result(vec![
+                message::ToolResultContent::text("see"),
+                message::ToolResultContent::Image(image),
+            ]))],
+        },
+    ];
+    let request = |history: Vec<message::Message>| {
+        let mut request = CompletionRequest::new("next");
+        request.chat_history = history;
+        request
+    };
+
+    let body = prepared_body("gemini-2.5-flash", request(history.clone()));
+    let contents = body["contents"].as_array().expect("contents");
+    let response = contents
+        .iter()
+        .flat_map(|content| content["parts"].as_array().into_iter().flatten())
+        .find_map(|part| part.get("functionResponse"))
+        .expect("the result is sent");
+    assert!(response.get("parts").is_none(), "{response}");
+    assert!(
+        contents.iter().any(|content| content["role"] == "user"
+            && content["parts"]
+                .as_array()
+                .is_some_and(|parts| parts.iter().any(|part| part.get("inlineData").is_some()))),
+        "the image follows in a user message: {body}"
+    );
+
+    let body = prepared_body("gemini-3-flash-preview", request(history));
+    let response = body["contents"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .flat_map(|content| content["parts"].as_array().into_iter().flatten())
+        .find_map(|part| part.get("functionResponse"))
+        .expect("the result is sent");
+    assert!(response.get("parts").is_some(), "{response}");
+}
+
+/// #1179: documents open the first user message, so the contents keep
+/// alternating roles.
+#[test]
+fn documents_open_the_first_user_message_on_gemini() {
+    let request =
+        CompletionRequest::new("the prompt").documents(vec![crate::completion::Document {
+            id: "doc1".to_owned(),
+            text: "first note".to_owned(),
+            additional_props: Default::default(),
+        }]);
+    let body = prepared_body("gemini-2.5-flash", request);
+    let contents = body["contents"].as_array().expect("contents");
+    assert_eq!(contents.len(), 1, "one user content: {body}");
+    let text = contents[0].to_string();
+    assert!(
+        text.contains("first note") && text.contains("the prompt"),
+        "{body}"
     );
 }

@@ -80,8 +80,7 @@ fn response(parts: Vec<proto::Part>, finish_reason: i32) -> proto::GenerateConte
             finish_reason,
             index: None,
             finish_message: None,
-            safety_ratings: Vec::new(),
-            citation_metadata: None,
+            ..Default::default()
         }],
         prompt_feedback: None,
         usage_metadata: None,
@@ -100,11 +99,11 @@ fn text_part(text: &str) -> proto::Part {
 }
 
 fn function_call_part(name: &str) -> proto::Part {
-    let args = proto::Struct {
+    let args = prost_types::Struct {
         fields: [(
             "city".to_string(),
-            proto::Value {
-                kind: Some(proto::value::Kind::StringValue("Tokyo".to_string())),
+            prost_types::Value {
+                kind: Some(prost_types::value::Kind::StringValue("Tokyo".to_string())),
             },
         )]
         .into_iter()
@@ -145,9 +144,7 @@ fn usage(prompt: i32, candidates: i32, total: i32) -> proto::UsageMetadata {
         prompt_token_count: prompt,
         candidates_token_count: candidates,
         total_token_count: total,
-        cached_content_token_count: 0,
-        tool_use_prompt_token_count: 0,
-        thoughts_token_count: 0,
+        ..Default::default()
     }
 }
 

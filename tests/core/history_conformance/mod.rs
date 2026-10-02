@@ -9,6 +9,7 @@ pub mod anthropic;
 pub mod anthropic_moonshot;
 pub mod chatgpt;
 pub mod copilot;
+pub mod gemini_rest;
 pub mod mock;
 pub mod openai_responses;
 pub mod xai;
@@ -20,6 +21,7 @@ pub const SUITE_WIRES: &[&str] = &[
     anthropic_moonshot::HISTORY_WIRE,
     chatgpt::HISTORY_WIRE,
     copilot::HISTORY_WIRE,
+    gemini_rest::HISTORY_WIRE,
     openai_responses::HISTORY_WIRE,
     xai::HISTORY_WIRE,
 ];

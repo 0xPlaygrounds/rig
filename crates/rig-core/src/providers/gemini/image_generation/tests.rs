@@ -117,6 +117,7 @@ fn response_parsing_returns_first_non_thought_inline_image() {
             tool_use_prompt_token_count: None,
             tool_use_prompt_tokens_details: None,
             traffic_type: None,
+            ..Default::default()
         }),
         model_version: Some(GEMINI_2_5_FLASH_IMAGE.to_string()),
         response_id: "response-id".to_string(),
