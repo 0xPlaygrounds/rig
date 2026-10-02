@@ -200,6 +200,16 @@ async fn long_history_replay_nonstreaming() {
             // functionResponse parts to functionCall parts by name, so a fully
             // client-constructed history (including model text before the
             // functionCall and after the functionResponse) must be accepted.
+            // Gemini issues no functionCall ids: an empty wire id mints the
+            // correlation handle, which never reaches its wire, and the result
+            // answers the call through it.
+            let call = rig_core::message::ToolCall::from_wire(
+                "",
+                rig_core::message::ToolFunction::new(
+                    rig_core::message::ToolName::new(AlphaSignal::NAME).expect("tool name"),
+                    serde_json::json!({}),
+                ),
+            );
             let request = CompletionRequest::new(
                 "In one short sentence: what is my favorite color, and what was the \
                      harbor label you looked up earlier?",
@@ -216,21 +226,12 @@ async fn long_history_replay_nonstreaming() {
             .message(Message::Assistant(
                 rig_core::message::AssistantMessage::new(vec![
                     AssistantContent::text("Checking the harbor label now."),
-                    // Gemini issues no functionCall ids: an empty wire id
-                    // records no provider id and mints the correlation
-                    // handle, which never reaches the wire.
-                    AssistantContent::tool_call(
-                        "",
-                        rig_core::message::ToolName::new(AlphaSignal::NAME).expect("tool name"),
-                        serde_json::json!({}),
-                    ),
+                    AssistantContent::ToolCall(call.clone()),
                 ]),
             ))
-            .message(Message::tool_result(
-                rig_core::message::CallId::from_wire(""),
-                rig_core::message::ToolName::new(AlphaSignal::NAME).expect("tool name"),
-                ALPHA_SIGNAL_OUTPUT,
-            ))
+            .message(Message::tool_results(vec![call.result(vec![
+                rig_core::message::ToolResultContent::text(ALPHA_SIGNAL_OUTPUT),
+            ])]))
             .message(Message::assistant("The harbor label is crimson-harbor."))
             .tool(rig::tool::tool_definition(&AlphaSignal));
 
