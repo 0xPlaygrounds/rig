@@ -13,7 +13,7 @@ then:
   header:
   - name: content-type
     value: application/json
-  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"logprobs":null,"message":{"content":"","role":"assistant","tool_calls":[{"function":{"arguments":"{\"q\": \"What is the capital of France?\"}","name":"lookup"},"id":"call_00_gihBXdiJXzIOg1tHY7Z59521","index":0,"type":"function"}]}}],"created":0,"id":"41af3571-1944-43e2-b238-5439862e6131","model":"deepseek-flash","object":"chat.completion","system_fingerprint":"aeb56401ca74e127821c4f9126dcb669","usage":{"completion_tokens":42,"prompt_cache_hit_tokens":128,"prompt_cache_miss_tokens":201,"prompt_tokens":329,"prompt_tokens_details":{"cached_tokens":128},"total_tokens":371}}'
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"logprobs":null,"message":{"content":"","role":"assistant","tool_calls":[{"function":{"arguments":"{\"q\": \"What is the capital of France?\"}","name":"lookup"},"id":"call_00_66V6gslxFASIbOAEVUNQ7228","index":0,"type":"function"}]}}],"created":0,"id":"3033dee9-bf2c-4412-9367-010c5edb773b","model":"deepseek-flash","object":"chat.completion","system_fingerprint":"aeb56401ca74e127821c4f9126dcb669","usage":{"completion_tokens":42,"prompt_cache_hit_tokens":128,"prompt_cache_miss_tokens":201,"prompt_tokens":329,"prompt_tokens_details":{"cached_tokens":128},"total_tokens":371}}'
 ---
 when:
   path: /chat/completions
@@ -30,7 +30,7 @@ then:
   header:
   - name: content-type
     value: application/json
-  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"Paris","role":"assistant"}}],"created":0,"id":"4f4f3459-c873-428d-94a3-040d25fc5920","model":"deepseek-flash","object":"chat.completion","system_fingerprint":"aeb56401ca74e127821c4f9126dcb669","usage":{"completion_tokens":1,"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":17,"prompt_tokens":17,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":18}}'
+  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"Paris","role":"assistant"}}],"created":0,"id":"38c004c7-735e-4a6b-8891-b56a9ee0dca3","model":"deepseek-flash","object":"chat.completion","system_fingerprint":"aeb56401ca74e127821c4f9126dcb669","usage":{"completion_tokens":1,"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":17,"prompt_tokens":17,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":18}}'
 ---
 when:
   path: /chat/completions
@@ -41,10 +41,10 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"messages":[{"content":"You are a research assistant. Use the lookup tool to answer.","role":"system"},{"content":"Use the lookup tool with q set to exactly \"What is the capital of France?\" and reply with just the lookup result.","role":"user"},{"content":"","reasoning_content":"","role":"assistant","tool_calls":[{"function":{"arguments":"{\"q\": \"What is the capital of France?\"}","name":"lookup"},"id":"call_00_gihBXdiJXzIOg1tHY7Z59521","index":0,"type":"function"}]},{"content":"Paris","role":"tool","tool_call_id":"call_00_gihBXdiJXzIOg1tHY7Z59521"}],"model":"deepseek-chat","temperature":0.0,"tools":[{"function":{"description":"Look a question up","name":"lookup","parameters":{"properties":{"leaf":{"description":"Answer directly, without looking further","type":"boolean"},"q":{"description":"The question to look up","type":"string"}},"required":["q"],"type":"object"}},"type":"function"}]}'
+  body: '{"messages":[{"content":"You are a research assistant. Use the lookup tool to answer.","role":"system"},{"content":"Use the lookup tool with q set to exactly \"What is the capital of France?\" and reply with just the lookup result.","role":"user"},{"content":"","reasoning_content":"","role":"assistant","tool_calls":[{"function":{"arguments":"{\"q\":\"What is the capital of France?\"}","name":"lookup"},"id":"call_00_66V6gslxFASIbOAEVUNQ7228","type":"function"}]},{"content":"Paris","role":"tool","tool_call_id":"call_00_66V6gslxFASIbOAEVUNQ7228"}],"model":"deepseek-chat","temperature":0.0,"tools":[{"function":{"description":"Look a question up","name":"lookup","parameters":{"properties":{"leaf":{"description":"Answer directly, without looking further","type":"boolean"},"q":{"description":"The question to look up","type":"string"}},"required":["q"],"type":"object"}},"type":"function"}]}'
 then:
   status: 200
   header:
   - name: content-type
     value: application/json
-  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"Paris","role":"assistant"}}],"created":0,"id":"13bdd28b-2b3c-45c1-8124-efa5b940b19c","model":"deepseek-flash","object":"chat.completion","system_fingerprint":"aeb56401ca74e127821c4f9126dcb669","usage":{"completion_tokens":1,"prompt_cache_hit_tokens":128,"prompt_cache_miss_tokens":256,"prompt_tokens":384,"prompt_tokens_details":{"cached_tokens":128},"total_tokens":385}}'
+  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"Paris","role":"assistant"}}],"created":0,"id":"38876aab-d77b-4f40-a431-a84062c46fd9","model":"deepseek-flash","object":"chat.completion","system_fingerprint":"aeb56401ca74e127821c4f9126dcb669","usage":{"completion_tokens":1,"prompt_cache_hit_tokens":128,"prompt_cache_miss_tokens":256,"prompt_tokens":384,"prompt_tokens_details":{"cached_tokens":128},"total_tokens":385}}'

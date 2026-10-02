@@ -7,10 +7,10 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"max_tokens":16,"messages":[{"content":[{"image_url":{"detail":"auto","url":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAAT0lEQVR42u3PQQkAAAgEsAtx/ZMZxgi+hcEKLNO+FgEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQGBywKqxUDxqh7TUQAAAABJRU5ErkJggg=="},"type":"image_url"}],"role":"user"}],"model":"deepseek-v4-flash","thinking":{"type":"disabled"}}'
+  body: '{"max_tokens":16,"messages":[{"content":"(image omitted: model does not support images)","role":"user"}],"model":"deepseek-v4-flash","thinking":{"type":"disabled"}}'
 then:
-  status: 400
+  status: 200
   header:
   - name: content-type
     value: application/json
-  body: '{"error":{"code":"invalid_request_error","message":"Failed to deserialize the JSON body into the target type: messages[0]: unknown variant `image_url`, expected `text` at line 1 column 335","param":null,"type":"invalid_request_error"}}'
+  body: '{"choices":[{"finish_reason":"length","index":0,"logprobs":null,"message":{"content":"It looks like you''ve attached an image, but I''m not able to view","role":"assistant"}}],"created":0,"id":"dc3f62fe-c9b1-466a-a11d-bc921bb0678b","model":"deepseek-flash","object":"chat.completion","system_fingerprint":"aeb56401ca74e127821c4f9126dcb669","usage":{"completion_tokens":16,"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":13,"prompt_tokens":13,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":29}}'

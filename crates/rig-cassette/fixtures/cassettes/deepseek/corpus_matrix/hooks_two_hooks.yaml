@@ -13,7 +13,7 @@ then:
   header:
   - name: content-type
     value: application/json
-  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"logprobs":null,"message":{"content":"","role":"assistant","tool_calls":[{"function":{"arguments":"{\"x\": 17, \"y\": 25}","name":"add"},"id":"call_00_qsdH98RZCuON2rhHrjwk3030","index":0,"type":"function"}]}}],"created":0,"id":"33d1fcc1-1909-4823-b75c-c4c0d05e871e","model":"deepseek-flash","object":"chat.completion","system_fingerprint":"aeb56401ca74e127821c4f9126dcb669","usage":{"completion_tokens":52,"prompt_cache_hit_tokens":128,"prompt_cache_miss_tokens":208,"prompt_tokens":336,"prompt_tokens_details":{"cached_tokens":128},"total_tokens":388}}'
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"logprobs":null,"message":{"content":"","role":"assistant","tool_calls":[{"function":{"arguments":"{\"x\": 17, \"y\": 25}","name":"add"},"id":"call_00_SLP6D8hxtYzG8f7oDmYu3381","index":0,"type":"function"}]}}],"created":0,"id":"3893d596-7220-4fb5-9378-5e6d12022702","model":"deepseek-flash","object":"chat.completion","system_fingerprint":"aeb56401ca74e127821c4f9126dcb669","usage":{"completion_tokens":52,"prompt_cache_hit_tokens":128,"prompt_cache_miss_tokens":208,"prompt_tokens":336,"prompt_tokens_details":{"cached_tokens":128},"total_tokens":388}}'
 ---
 when:
   path: /chat/completions
@@ -24,10 +24,10 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"messages":[{"content":"You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user''s question.","role":"system"},{"content":"Use the add tool to add 17 and 25, then reply with just the number.","role":"user"},{"content":"","reasoning_content":"","role":"assistant","tool_calls":[{"function":{"arguments":"{\"x\": 17, \"y\": 25}","name":"add"},"id":"call_00_qsdH98RZCuON2rhHrjwk3030","index":0,"type":"function"}]},{"content":"99","role":"tool","tool_call_id":"call_00_qsdH98RZCuON2rhHrjwk3030"}],"model":"deepseek-chat","temperature":0.0,"tools":[{"function":{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"description":"The first number to add","type":"number"},"y":{"description":"The second number to add","type":"number"}},"required":["x","y"],"type":"object"}},"type":"function"}]}'
+  body: '{"messages":[{"content":"You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user''s question.","role":"system"},{"content":"Use the add tool to add 17 and 25, then reply with just the number.","role":"user"},{"content":"","reasoning_content":"","role":"assistant","tool_calls":[{"function":{"arguments":"{\"x\":17,\"y\":25}","name":"add"},"id":"call_00_SLP6D8hxtYzG8f7oDmYu3381","type":"function"}]},{"content":"99","role":"tool","tool_call_id":"call_00_SLP6D8hxtYzG8f7oDmYu3381"}],"model":"deepseek-chat","temperature":0.0,"tools":[{"function":{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"description":"The first number to add","type":"number"},"y":{"description":"The second number to add","type":"number"}},"required":["x","y"],"type":"object"}},"type":"function"}]}'
 then:
   status: 200
   header:
   - name: content-type
     value: application/json
-  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"42","role":"assistant"}}],"created":0,"id":"b4d983d6-f217-4a98-b999-1bf115ebfb5c","model":"deepseek-flash","object":"chat.completion","system_fingerprint":"aeb56401ca74e127821c4f9126dcb669","usage":{"completion_tokens":1,"prompt_cache_hit_tokens":256,"prompt_cache_miss_tokens":145,"prompt_tokens":401,"prompt_tokens_details":{"cached_tokens":256},"total_tokens":402}}'
+  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"42","role":"assistant"}}],"created":0,"id":"83aa83f9-d51b-4094-a481-bbccc3f87a09","model":"deepseek-flash","object":"chat.completion","system_fingerprint":"aeb56401ca74e127821c4f9126dcb669","usage":{"completion_tokens":1,"prompt_cache_hit_tokens":256,"prompt_cache_miss_tokens":145,"prompt_tokens":401,"prompt_tokens_details":{"cached_tokens":256},"total_tokens":402}}'

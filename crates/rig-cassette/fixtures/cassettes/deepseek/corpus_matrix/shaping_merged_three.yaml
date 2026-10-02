@@ -7,13 +7,13 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"messages":[{"content":"You are a pirate. Answer in one short sentence.","role":"system"},{"content":"<file id: shaping-context>\nDefinition of a glarb-glarb: an ancient farming tool from planet Jiro.\n</file>\n","role":"user"},{"content":"Use the add tool to add 17 and 25, then reply with just the number.","role":"user"}],"model":"deepseek-chat","temperature":0.0,"tool_choice":null,"tools":[{"function":{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"description":"The first number to add","type":"number"},"y":{"description":"The second number to add","type":"number"}},"required":["x","y"],"type":"object"}},"type":"function"}]}'
+  body: '{"messages":[{"content":"You are a pirate. Answer in one short sentence.","role":"system"},{"content":"<file id: shaping-context>\nDefinition of a glarb-glarb: an ancient farming tool from planet Jiro.\n</file>\n\nUse the add tool to add 17 and 25, then reply with just the number.","role":"user"}],"model":"deepseek-chat","temperature":0.0,"tool_choice":null,"tools":[{"function":{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"description":"The first number to add","type":"number"},"y":{"description":"The second number to add","type":"number"}},"required":["x","y"],"type":"object"}},"type":"function"}]}'
 then:
   status: 200
   header:
   - name: content-type
     value: application/json
-  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"logprobs":null,"message":{"content":"","role":"assistant","tool_calls":[{"function":{"arguments":"{\"x\": 17, \"y\": 25}","name":"add"},"id":"call_00_7jkB9PstCuJ0lMmKhX1a1285","index":0,"type":"function"}]}}],"created":0,"id":"060c6248-5556-430f-8d85-dfdbd6bb0c80","model":"deepseek-flash","object":"chat.completion","system_fingerprint":"aeb56401ca74e127821c4f9126dcb669","usage":{"completion_tokens":52,"prompt_cache_hit_tokens":128,"prompt_cache_miss_tokens":223,"prompt_tokens":351,"prompt_tokens_details":{"cached_tokens":128},"total_tokens":403}}'
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"logprobs":null,"message":{"content":"","role":"assistant","tool_calls":[{"function":{"arguments":"{\"x\": 17, \"y\": 25}","name":"add"},"id":"call_00_pJRG30CvljLicbSxhlTb8271","index":0,"type":"function"}]}}],"created":0,"id":"b2726eab-8e10-4cfe-9e9d-0f1e1cc4551a","model":"deepseek-flash","object":"chat.completion","system_fingerprint":"aeb56401ca74e127821c4f9126dcb669","usage":{"completion_tokens":52,"prompt_cache_hit_tokens":128,"prompt_cache_miss_tokens":223,"prompt_tokens":351,"prompt_tokens_details":{"cached_tokens":128},"total_tokens":403}}'
 ---
 when:
   path: /chat/completions
@@ -24,10 +24,10 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"messages":[{"content":"You are a pirate. Answer in one short sentence.","role":"system"},{"content":"<file id: shaping-context>\nDefinition of a glarb-glarb: an ancient farming tool from planet Jiro.\n</file>\n","role":"user"},{"content":"Use the add tool to add 17 and 25, then reply with just the number.","role":"user"},{"content":"","reasoning_content":"","role":"assistant","tool_calls":[{"function":{"arguments":"{\"x\": 17, \"y\": 25}","name":"add"},"id":"call_00_7jkB9PstCuJ0lMmKhX1a1285","index":0,"type":"function"}]},{"content":"42","role":"tool","tool_call_id":"call_00_7jkB9PstCuJ0lMmKhX1a1285"}],"model":"deepseek-chat","temperature":0.0,"tools":[{"function":{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"description":"The first number to add","type":"number"},"y":{"description":"The second number to add","type":"number"}},"required":["x","y"],"type":"object"}},"type":"function"}]}'
+  body: '{"messages":[{"content":"You are a pirate. Answer in one short sentence.","role":"system"},{"content":"<file id: shaping-context>\nDefinition of a glarb-glarb: an ancient farming tool from planet Jiro.\n</file>\n\nUse the add tool to add 17 and 25, then reply with just the number.","role":"user"},{"content":"","reasoning_content":"","role":"assistant","tool_calls":[{"function":{"arguments":"{\"x\":17,\"y\":25}","name":"add"},"id":"call_00_pJRG30CvljLicbSxhlTb8271","type":"function"}]},{"content":"42","role":"tool","tool_call_id":"call_00_pJRG30CvljLicbSxhlTb8271"}],"model":"deepseek-chat","temperature":0.0,"tools":[{"function":{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"description":"The first number to add","type":"number"},"y":{"description":"The second number to add","type":"number"}},"required":["x","y"],"type":"object"}},"type":"function"}]}'
 then:
   status: 200
   header:
   - name: content-type
     value: application/json
-  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"42","role":"assistant"}}],"created":0,"id":"beabc5a9-fa1f-4bc8-8800-705f292cf237","model":"deepseek-flash","object":"chat.completion","system_fingerprint":"aeb56401ca74e127821c4f9126dcb669","usage":{"completion_tokens":1,"prompt_cache_hit_tokens":256,"prompt_cache_miss_tokens":160,"prompt_tokens":416,"prompt_tokens_details":{"cached_tokens":256},"total_tokens":417}}'
+  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"42","role":"assistant"}}],"created":0,"id":"31c46e69-bf40-40fb-88e4-13253b3fd916","model":"deepseek-flash","object":"chat.completion","system_fingerprint":"aeb56401ca74e127821c4f9126dcb669","usage":{"completion_tokens":1,"prompt_cache_hit_tokens":256,"prompt_cache_miss_tokens":160,"prompt_tokens":416,"prompt_tokens_details":{"cached_tokens":256},"total_tokens":417}}'
