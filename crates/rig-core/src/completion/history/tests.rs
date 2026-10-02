@@ -24,8 +24,8 @@ impl ReplayTarget for Target {
         "model-a"
     }
 
-    fn accepts_images(&self) -> bool {
-        self.accepts_images
+    fn accepts_images(&self, model: &str) -> bool {
+        self.accepts_images && model != "text-only"
     }
 
     fn normalize_tool_call_id(&self, id: &str, _source: Option<&Origin>) -> String {
@@ -368,4 +368,21 @@ fn the_message_level_item_follows_sameness() {
     message.origin = Some(other());
     let adapted = adapt(&[Message::Assistant(message)], &TARGET);
     assert!(assistant(&adapted[0]).native.is_none());
+}
+
+#[test]
+fn a_request_model_override_decides_image_input() {
+    let history = vec![Message::User {
+        content: vec![UserContent::Image(Image {
+            data: crate::message::DocumentSourceKind::url("https://example.invalid/a.png"),
+            ..Image::default()
+        })],
+    }];
+    assert_eq!(adapt(&history, &TARGET), history);
+    assert_eq!(
+        adapt_for_model(&history, &TARGET, Some("text-only")),
+        vec![Message::User {
+            content: vec![UserContent::text(USER_IMAGE_OMITTED)],
+        }]
+    );
 }

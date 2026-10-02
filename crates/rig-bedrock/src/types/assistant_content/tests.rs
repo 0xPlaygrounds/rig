@@ -195,10 +195,10 @@ fn a_foreign_call_id_is_normalized_with_its_result() {
 
 #[test]
 fn text_only_models_take_no_images() {
-    assert!(!Converse::new(AMAZON_NOVA_MICRO).accepts_images());
-    assert!(!Converse::new("us.deepseek.r1-v1:0").accepts_images());
-    assert!(Converse::new(AMAZON_NOVA_LITE).accepts_images());
-    assert!(Converse::new(ANTHROPIC_CLAUDE_SONNET_4_6).accepts_images());
+    assert!(!Converse::new(AMAZON_NOVA_MICRO).accepts_images(AMAZON_NOVA_MICRO));
+    assert!(!Converse::new("us.deepseek.r1-v1:0").accepts_images("us.deepseek.r1-v1:0"));
+    assert!(Converse::new(AMAZON_NOVA_LITE).accepts_images(AMAZON_NOVA_LITE));
+    assert!(Converse::new(ANTHROPIC_CLAUDE_SONNET_4_6).accepts_images(ANTHROPIC_CLAUDE_SONNET_4_6));
 }
 
 #[test]

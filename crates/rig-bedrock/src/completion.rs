@@ -250,10 +250,10 @@ impl rig_core::completion::ReplayTarget for Converse {
         &self.model
     }
 
-    fn accepts_images(&self) -> bool {
+    fn accepts_images(&self, model: &str) -> bool {
         !TEXT_ONLY
             .split_whitespace()
-            .any(|family| self.model.contains(family))
+            .any(|family| model.contains(family))
     }
 
     /// Converse tool-use ids match `[a-zA-Z0-9_-]{1,64}`.

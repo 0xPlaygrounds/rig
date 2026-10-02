@@ -55,9 +55,11 @@ pub trait ReplayTarget: std::fmt::Debug + WasmCompatSync {
     /// The model id the wire addresses.
     fn model(&self) -> &str;
 
-    /// Whether the model reads images. When it does not, user and
-    /// tool-result images are replaced by a placeholder text.
-    fn accepts_images(&self) -> bool {
+    /// Whether `model`, the model a request addresses on this wire, reads
+    /// images. When it does not, user and tool-result images are replaced
+    /// by a placeholder text.
+    fn accepts_images(&self, model: &str) -> bool {
+        let _ = model;
         true
     }
 
@@ -98,12 +100,9 @@ pub(crate) fn adapt_for_model(
     target: &dyn ReplayTarget,
     model: Option<&str>,
 ) -> Vec<Message> {
-    let same = (
-        target.api(),
-        target.provider(),
-        model.unwrap_or(target.model()),
-    );
-    let images = target.accepts_images();
+    let model = model.unwrap_or(target.model());
+    let same = (target.api(), target.provider(), model);
+    let images = target.accepts_images(model);
     let mut renamed = HashMap::new();
     let shaped = history
         .iter()
