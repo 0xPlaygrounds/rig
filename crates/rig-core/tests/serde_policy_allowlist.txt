@@ -9,13 +9,10 @@
 
 
 
-# --- anthropic: content assembly, not frame triage -------------------------
-providers/anthropic/streaming.rs | citation: serde_json::from_value(citation) | Field decode inside the content-delta Deserialize impl: converts the `citation` value of an already-tag-matched `citations_delta` into its typed form; failure is a serde::de error and unrecognized tags fall to Self::Unknown, so no frame is triaged here.
-providers/anthropic/streaming.rs | serde_json::from_str(&server_tool_use.input_json) | Assembles the accumulated server_tool_use partial_json fragments into the raw-content value; malformed input surfaces as a ProviderError, no frame is triaged here.
-
 # --- openai Responses SSE: classifier-adjacent helpers ---------------------
 providers/openai/responses_api/streaming.rs | let mut value = serde_json::from_str::<serde_json::Value>(data).ok()?; | repair_envelope_less_frame: buffered-body envelope repair feeding the ONE classifier (classify_with_repair); documented F8 policy note at the fn doc.
 providers/openai/responses_api/streaming.rs | let kind = serde_json::from_str::<serde_json::Value>(&data) | Reads the `type` tag only to word the buffered-path Corrupt error message; the classification itself came from classify_with_repair.
+providers/openai/responses_api/streaming.rs | let output = serde_json::from_str::<serde_json::Value>(&raw) | Reads the already-classified terminal frame's `response.output` items verbatim, so each finished item becomes its block's provider item exactly as the provider sent it.
 # Single-file providers: unary/non-stream parses sharing a file with streaming code.
 
 # --- #[serde(untagged)] unions that are not frame triage --------------------
@@ -30,12 +27,9 @@ providers/openai/responses_api/streaming.rs | #[serde(untagged)] | Two sites, ne
 # frame the classifier already returned as `Known`. The sixth is the wire's
 # observation projection, argued with its two siblings in the section below.
 providers/openai/wire/chat.rs | serde_json::from_str::<serde_json::Value>(&data) | `classify` peeks for the bare JSON string reply the dialects with `accepts_bare_string_reply` are measured to send: a non-object frame is not the shared classifier's shape, so this pre-empts it exactly as `[DONE]` and the in-band error envelope above it do, and the verdict it reaches is `Known` rather than a skip.
-providers/openai/wire/chat.rs | let mut body = serde_json::from_str::<serde_json::Value>(data).ok()?; | body_without_calls_cut_by_the_budget: the rig#2359 budget-cut repair, and the chat twin of `repair_envelope_less_frame` above. `classify` reaches it only after the strict decode already returned `Corrupt` (or a Known budget-cut turn), and `None` leaves that verdict standing, so no frame's fate is decided here.
-providers/openai/wire/chat.rs | let frame = serde_json::from_value::<ChatFrame>(body).ok()?; | The same repair's final typed decode of the repaired body into the wire's own frame type; failure returns `None`, which restores the strict classification rather than inventing a verdict.
 # A chat chunk's `delta.reasoning_details` is deliberately typed
 # `Vec<serde_json::Value>`: the entries are a gateway extension, so an entry
 # shape this build does not model must not fail the chunk that carries it.
-providers/openai/wire/chat.rs | serde_json::from_value(detail.clone()).ok() | `typed_detail` reads one `reasoning_details` entry of a frame the classifier already returned as `Known`; an unmodeled entry yields `None` and is skipped on its own, leaving the chunk that carried it untouched.
 
 # --- the observation projections, folded into their decoders ---------------
 # `Decoder::project` is a read-only side channel onto the observation trace.
@@ -83,3 +77,18 @@ providers/gemini/model_listing.rs | let page: ListModelsResponse = serde_json::f
 providers/gemini/transcription.rs | let mut generation_config = serde_json::from_value::<GenerationConfig>(additional_params)?; | Reads the caller's own `additional_params` on the REQUEST side, before anything is sent; it decodes no reply and cannot triage a frame.
 rig-bedrock/src/embedding.rs | .and_then(|body| serde_json::from_str(&body).map_err(ProviderError::Json)); | InvokeModel returns the model's whole JSON body as an opaque blob; the transport decodes that one document into the typed reply before any frame exists, and a malformed body is the frame's error, never skipped.
 rig-bedrock/src/image.rs | serde_json::from_str::<TextToImageResponse>(&body) | The unary InvokeModel reply is one opaque JSON blob with no frames to triage; its typed decode fails the call with a ProviderError, never skipped.
+
+# --- vertexai: SDK reply restated as the REST chunk ------------------------
+rig-vertexai/src/types/completion_response.rs | block_reason: serde_json::from_value(reason.into()).ok(), | Converts the SDK's prompt-feedback block reason name into the REST enum while restating the SDK reply as a GenerateContent chunk; no frame is triaged here.
+
+# --- item-shaped decoders: typed views of classified frames ----------------
+# Each decoder keeps a classified frame as JSON so the provider's item survives
+# verbatim, then reads one field of it through its typed form.
+providers/openai/wire/chat.rs | let incoming = serde_json::from_value::<StreamingToolCall>(call.clone()) | Typed view of one tool-call fragment of a classified chunk; the fragment itself is merged into the call's provider item as sent.
+providers/gemini/streaming.rs | let reason: FinishReason = serde_json::from_value(reason.clone())?; | Typed view of a classified candidate's `finishReason`; the candidate's fields stay the turn's provider item as sent.
+providers/gemini/streaming.rs | let call: FunctionCall = serde_json::from_value(call.clone())?; | Typed view of a classified part's `functionCall`; the part stays the call's provider item as sent.
+providers/gemini/streaming.rs | let blob: Blob = serde_json::from_value(blob.clone())?; | Typed view of a classified part's `inlineData`; the part stays the image's provider item as sent.
+providers/gemini/interactions_api/streaming.rs | serde_json::from_value(Value::Object(delta.clone()))?; | Typed view of a classified `step.delta`; the delta is merged into the step's provider item as sent.
+providers/gemini/interactions_api/streaming.rs | match serde_json::from_value(item.clone()) { | Typed view of a classified step; a step of an unknown type stays an opaque provider item.
+providers/gemini/interactions_api/streaming.rs | if serde_json::from_value::<Step>(tag).is_ok() { | Asks whether a classified step's `type` names a known step, so a known step that fails to parse is an error and an unknown one stays opaque.
+providers/gemini/interactions_api/streaming.rs | let image: ImageContent = serde_json::from_value(image.clone()).ok()?; | Typed view of a classified model output that is a single image, which becomes an image block holding the step.
