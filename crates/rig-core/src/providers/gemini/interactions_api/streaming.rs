@@ -1,16 +1,17 @@
 use serde::{Deserialize, Serialize};
 
+use std::collections::BTreeMap;
+
 use super::interactions_api_types::{
-    Content, ContentDelta, FunctionCallContent, Interaction, InteractionSseEvent, InteractionUsage,
-    Step, TextContent, TextDelta, ThoughtContent, ThoughtSignatureDelta, ThoughtSummaryContent,
-    ThoughtSummaryDelta, map_interaction_status,
+    Content, FunctionCallContent, ImageContent, Interaction, InteractionSseEvent, InteractionUsage,
+    Step, ThoughtSummaryContent, map_interaction_status,
 };
 use crate::error::ProviderError;
-use crate::operation::{CallFragment, Completion, Finish, IfMalformed};
-use crate::providers::gemini::streaming::shared_parts;
+use crate::message::{AssistantContent, DocumentSourceKind, Image, ImageMediaType, MimeType};
+use crate::operation::{Block, CallFragment, Completion, Finish, IfMalformed};
 use crate::providers::internal::wire;
 use crate::wire::{Decoder, Flow, Out, WireEvent, WireFrame};
-use serde_json::{Map, Value};
+use serde_json::{Map, Value, json};
 
 /// Recognized Interactions SSE tags. Listed events must decode fully;
 /// unlisted tags classify as unknown.
@@ -40,7 +41,17 @@ pub enum InteractionsEvent {
     /// One `event_type`-tagged streaming event.
     Sse(InteractionSseEvent),
     /// The whole interaction resource, as the unary reply delivers it.
-    Whole(Interaction),
+    Whole(WholeInteraction),
+}
+
+/// A whole interaction resource: its steps verbatim, beside the rest of the
+/// resource.
+#[derive(Deserialize)]
+pub struct WholeInteraction {
+    #[serde(default)]
+    steps: Vec<Map<String, Value>>,
+    #[serde(flatten)]
+    interaction: Interaction,
 }
 
 /// Classify a tagged SSE event, falling back to whole-resource classification
@@ -53,7 +64,7 @@ fn classify_interactions_frame(data: &str) -> WireEvent<InteractionsEvent> {
         "event_type",
         |data| classify_interaction_frame(data).map(InteractionsEvent::Sse),
         |data| {
-            wire::classify_marker_keyed_frame::<Interaction>(data, INTERACTION_MARKER_KEYS)
+            wire::classify_marker_keyed_frame::<WholeInteraction>(data, INTERACTION_MARKER_KEYS)
                 .map(InteractionsEvent::Whole)
         },
     )
@@ -87,89 +98,326 @@ impl From<StreamingCompletionResponse> for crate::completion::Usage {
     }
 }
 
-/// The Gemini Interactions wire's decoder: one state machine for the whole
-/// interaction and its stream of steps.
-#[cfg(any())]
+/// The Gemini Interactions wire's decoder. Each step of the interaction is
+/// one block, in step order: it opens on `step.start`, grows with its
+/// `step.delta`s and closes on `step.stop`, with the step, as its deltas
+/// rebuilt it, as the block's provider item. A whole interaction is
+/// restated step by step through the same calls.
 #[derive(Default)]
-pub struct InteractionsDecoder<'id> {
-    /// Thought boundaries inferred from content transitions and signatures.
-    thoughts: Thoughts<'id>,
-    /// The answer text part text extends.
-    text: Option<TextPart<'id>>,
+pub struct InteractionsDecoder {
+    /// The open steps, by wire index.
+    steps: BTreeMap<usize, Kind>,
 }
 
-/// One content item as the decoder writes it.
-#[cfg(any())]
-enum Chunk {
-    Thought {
-        text: String,
-        signature: Option<String>,
-    },
-    Text(String),
-    Call {
-        name: String,
-        arguments: Option<Value>,
-        id: Option<String>,
-    },
-    /// A content item the choice has no part for, kept verbatim on a text
-    /// part's metadata.
-    Raw(crate::message::AdditionalParams),
+/// What an open step decodes to.
+enum Kind {
+    Thought,
+    Output,
+    /// A function call, with the argument JSON streamed so far.
+    Call(String),
+    Opaque,
 }
 
-#[cfg(any())]
-impl<'id> InteractionsDecoder<'id> {
-    /// Write one content item: thoughts, the boundary text or a call
-    /// makes, text, then the call.
-    #[cfg(any())]
-    fn write(&mut self, chunk: Chunk, out: &mut Out<'id, Completion>) -> Result<(), ProviderError> {
-        match chunk {
-            Chunk::Thought { text, signature } => {
-                if !text.is_empty() {
-                    out.close_open_text(&mut self.text);
+impl InteractionsDecoder {
+    /// Open the step at `index` as it starts, writing the content it
+    /// already states.
+    #[deny(clippy::wildcard_enum_match_arm)]
+    fn start(
+        &mut self,
+        index: usize,
+        step: Map<String, Value>,
+        out: &mut Out<'_, Completion>,
+    ) -> Result<(), ProviderError> {
+        let item = Value::Object(step);
+        let kind = match parse_step(&item)? {
+            Some(Step::Thought(thought)) => {
+                out.open(index, Block::Reasoning { redacted: false }, item)?;
+                for summary in thought.summary.into_iter().flatten() {
+                    if let ThoughtSummaryContent::Text(text) = summary {
+                        out.push(index, &text.text)?;
+                    }
                 }
-                self.thoughts.fragment(out, &text);
-                if let Some(signature) = signature {
-                    self.thoughts.signature(out, signature);
-                }
+                Kind::Thought
             }
-            Chunk::Text(text) => {
-                if text.is_empty() {
-                    return Ok(());
+            Some(Step::ModelOutput { content }) => {
+                out.open(index, Block::Text, item)?;
+                for content in content {
+                    if let Content::Text(text) = content {
+                        out.push(index, &text.text)?;
+                    }
                 }
-                self.thoughts.boundary();
-                out.extend_text(&mut self.text, &text);
+                Kind::Output
             }
-            Chunk::Call {
-                name,
-                arguments,
-                id,
-            } => {
-                self.thoughts.boundary();
-                out.close_open_text(&mut self.text);
-                shared_parts::function_call(
-                    out,
-                    name,
-                    arguments.unwrap_or(Value::Object(Map::new())),
-                    id,
-                    None,
+            Some(Step::FunctionCall(call)) => {
+                out.fragment(
+                    index,
+                    CallFragment {
+                        id: call.id.as_deref(),
+                        name: call.name.as_deref(),
+                        arguments: None,
+                    },
                 )?;
+                if let Some(arguments) = call.arguments {
+                    out.announce(index, arguments)?;
+                }
+                out.edit(index, |slot| *slot = item)?;
+                Kind::Call(String::new())
             }
-            Chunk::Raw(params) => {
-                self.thoughts.boundary();
-                out.close_open_text(&mut self.text);
-                let part = out.text();
-                out.text_params(&part, params);
-                out.close_text(part);
+            // Input a reply restates: kept, never sent back.
+            Some(Step::UserInput { .. } | Step::FunctionResult(_)) => {
+                out.open(index, Block::Opaque { replay: false }, item)?;
+                Kind::Opaque
             }
-        }
+            // Hosted-tool steps, and step types rig does not know, go back
+            // to the model that produced them.
+            Some(
+                Step::CodeExecutionCall(_)
+                | Step::CodeExecutionResult(_)
+                | Step::UrlContextCall(_)
+                | Step::UrlContextResult(_)
+                | Step::GoogleSearchCall(_)
+                | Step::GoogleSearchResult(_)
+                | Step::McpServerToolCall(_)
+                | Step::McpServerToolResult(_)
+                | Step::FileSearchResult(_),
+            )
+            | None => {
+                out.open(index, Block::Opaque { replay: true }, item)?;
+                Kind::Opaque
+            }
+        };
+        self.steps.insert(index, kind);
         Ok(())
     }
+
+    /// Apply one delta to the step at `index`. A delta for a step that
+    /// never started opens the step it implies: a resumed stream can join
+    /// a step after its start.
+    fn delta(
+        &mut self,
+        index: usize,
+        delta: Map<String, Value>,
+        out: &mut Out<'_, Completion>,
+    ) -> Result<(), ProviderError> {
+        let kind_of = |delta: &Map<String, Value>| {
+            delta
+                .get("type")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_owned()
+        };
+        let delta_type = kind_of(&delta);
+        if !self.steps.contains_key(&index) {
+            let step = match delta_type.as_str() {
+                "text" | "image" | "audio" | "document" | "video" => "model_output",
+                "thought_summary" | "thought_signature" => "thought",
+                "arguments_delta" => "function_call",
+                other => other,
+            };
+            let step = Map::from_iter([("type".to_owned(), Value::from(step))]);
+            self.start(index, step, out)?;
+        }
+        let Some(kind) = self.steps.get_mut(&index) else {
+            return Ok(());
+        };
+        match (kind, delta_type.as_str()) {
+            (Kind::Output, "text") => {
+                if let Some(text) = delta.get("text").and_then(Value::as_str) {
+                    out.push(index, text)?;
+                }
+                out.edit(index, |item| extend_text(item, delta))
+            }
+            // Media arrive whole, one content item per delta.
+            (Kind::Output, _) => out.edit(index, |item| {
+                if let Some(content) = content(item) {
+                    content.push(Value::Object(delta));
+                }
+            }),
+            (Kind::Thought, "thought_summary") => {
+                let content = delta.get("content").cloned().unwrap_or_default();
+                if let Some(text) = content
+                    .get("type")
+                    .filter(|kind| *kind == "text")
+                    .and(content.get("text"))
+                    .and_then(Value::as_str)
+                {
+                    out.push(index, text)?;
+                }
+                out.merge(
+                    index,
+                    &Map::from_iter([("summary".to_owned(), json!([content]))]),
+                )
+            }
+            (Kind::Call(arguments), "arguments_delta") => {
+                let fragment = delta
+                    .get("arguments")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default();
+                arguments.push_str(fragment);
+                out.fragment(
+                    index,
+                    CallFragment {
+                        arguments: Some(fragment),
+                        ..CallFragment::default()
+                    },
+                )
+            }
+            (kind, _) => {
+                if let Kind::Call(_) = kind
+                    && delta_type == "function_call"
+                {
+                    let call: FunctionCallContent =
+                        serde_json::from_value(Value::Object(delta.clone()))?;
+                    out.fragment(
+                        index,
+                        CallFragment {
+                            id: call.id.as_deref(),
+                            name: call.name.as_deref(),
+                            arguments: None,
+                        },
+                    )?;
+                    if let Some(arguments) = call.arguments {
+                        out.announce(index, arguments)?;
+                    }
+                }
+                restate_or_merge(index, delta, out)
+            }
+        }
+    }
+
+    /// Close the step at `index`. A model output that is a single image
+    /// becomes an image block.
+    fn stop(&mut self, index: usize, out: &mut Out<'_, Completion>) -> Result<(), ProviderError> {
+        match self.steps.remove(&index) {
+            None => Ok(()),
+            Some(Kind::Call(arguments)) => {
+                // Streamed fragments supersede the arguments the start
+                // announced.
+                if !arguments.is_empty()
+                    && let Ok(arguments) = crate::json_utils::parse_tool_arguments(&arguments)
+                {
+                    out.edit(index, |item| item["arguments"] = arguments)?;
+                }
+                out.close(index, IfMalformed::Fail)
+            }
+            Some(Kind::Output) => {
+                let mut image = None;
+                out.edit(index, |item| {
+                    image = sole_image(item)
+                        .map(|image| AssistantContent::Image(image).with_native(item.clone()));
+                })?;
+                match image {
+                    Some(image) => {
+                        out.discard(index);
+                        out.content(image)
+                    }
+                    None => out.close(index, IfMalformed::Fail),
+                }
+            }
+            Some(Kind::Thought | Kind::Opaque) => out.close(index, IfMalformed::Fail),
+        }
+    }
+}
+
+/// The step `item` is, or `None` for a step type rig does not know. A known
+/// step that does not decode is an error.
+fn parse_step(item: &Value) -> Result<Option<Step>, ProviderError> {
+    match serde_json::from_value(item.clone()) {
+        Ok(step) => Ok(Some(step)),
+        Err(error) => {
+            // Every step's fields are optional, so the tag alone decodes
+            // exactly when the type is one rig knows.
+            let tag = json!({ "type": item.get("type") });
+            if serde_json::from_value::<Step>(tag).is_ok() {
+                Err(ProviderError::Response(format!(
+                    "malformed Interactions step: {error}"
+                )))
+            } else {
+                Ok(None)
+            }
+        }
+    }
+}
+
+/// A delta that restates its step (it carries the step's own `type`)
+/// replaces the fields it names; any other merges into the step.
+fn restate_or_merge(
+    index: usize,
+    delta: Map<String, Value>,
+    out: &mut Out<'_, Completion>,
+) -> Result<(), ProviderError> {
+    let mut merged = None;
+    out.edit(index, |item| {
+        if item.get("type") != delta.get("type") {
+            merged = Some(delta);
+        } else if let Some(item) = item.as_object_mut() {
+            item.extend(delta);
+        }
+    })?;
+    match merged {
+        Some(delta) => out.merge(index, &delta),
+        None => Ok(()),
+    }
+}
+
+/// The content array of a model output, created when the step has none.
+fn content(item: &mut Value) -> Option<&mut Vec<Value>> {
+    item.as_object_mut()?
+        .entry("content")
+        .or_insert_with(|| json!([]))
+        .as_array_mut()
+}
+
+/// Append a text delta to the step's last content item when that is text,
+/// else add it as a new one.
+fn extend_text(item: &mut Value, delta: Map<String, Value>) {
+    let Some(content) = content(item) else {
+        return;
+    };
+    match content.last_mut().and_then(Value::as_object_mut) {
+        Some(last) if last.get("type") == delta.get("type") => {
+            for (key, value) in delta.into_iter().filter(|(key, _)| key != "type") {
+                match (last.get_mut(&key), value) {
+                    (Some(Value::String(text)), Value::String(more)) => text.push_str(&more),
+                    (Some(Value::Array(items)), Value::Array(more)) => items.extend(more),
+                    (_, value) => {
+                        last.insert(key, value);
+                    }
+                }
+            }
+        }
+        _ => content.push(Value::Object(delta)),
+    }
+}
+
+/// The image a model output states alone.
+fn sole_image(item: &Value) -> Option<Image> {
+    let [image] = item.get("content")?.as_array()?.as_slice() else {
+        return None;
+    };
+    if image.get("type")? != "image" {
+        return None;
+    }
+    let image: ImageContent = serde_json::from_value(image.clone()).ok()?;
+    let data = match (image.data, image.uri) {
+        (Some(data), _) => DocumentSourceKind::Base64(data),
+        (None, Some(uri)) => DocumentSourceKind::Url(uri),
+        (None, None) => return None,
+    };
+    Some(Image {
+        data,
+        media_type: image
+            .mime_type
+            .as_deref()
+            .and_then(ImageMediaType::from_mime_type),
+        detail: None,
+        native: None,
+    })
 }
 
 /// EOF without `interaction.completed` is truncation, not successful
 /// completion, so the decoder has nothing to add at the end of the reply.
-#[cfg(any())]
-impl<'id> Decoder<'id, Completion> for InteractionsDecoder<'id> {
+impl<'id> Decoder<'id, Completion> for InteractionsDecoder {
     type Event = InteractionsEvent;
 
     fn classify(&self, frame: WireFrame) -> WireEvent<InteractionsEvent> {
@@ -183,13 +431,10 @@ impl<'id> Decoder<'id, Completion> for InteractionsDecoder<'id> {
     ) -> Result<Flow, ProviderError> {
         let event = match event {
             InteractionsEvent::Sse(event) => event,
-            // The whole interaction states its content at once, in the
-            // order a stream would write it.
-            InteractionsEvent::Whole(interaction) => {
-                for content in interaction.output_contents() {
-                    if let Some(chunk) = content_chunk(content) {
-                        self.write(chunk, &mut out)?;
-                    }
+            InteractionsEvent::Whole(WholeInteraction { steps, interaction }) => {
+                for (index, step) in steps.into_iter().enumerate() {
+                    self.start(index, step, &mut out)?;
+                    self.stop(index, &mut out)?;
                 }
                 InteractionSseEvent::InteractionCompleted {
                     interaction,
@@ -199,104 +444,21 @@ impl<'id> Decoder<'id, Completion> for InteractionsDecoder<'id> {
         };
 
         match event {
-            InteractionSseEvent::StepDelta { index, delta, .. } => match delta {
-                ContentDelta::ArgumentsDelta(arguments_delta) => {
-                    let index = index as usize;
-                    if let Some(fragment) = arguments_delta.arguments
-                        && !out.pending_name(index).is_empty()
-                    {
-                        out.call_fragment(
-                            index,
-                            CallFragment {
-                                arguments: Some(fragment.as_str()),
-                                ..CallFragment::default()
-                            },
-                        )?;
-                    } else {
-                        tracing::warn!(
-                            step_index = index,
-                            "arguments_delta with no open function-call step; dropping fragment"
-                        );
-                    }
-                }
-                ContentDelta::ThoughtSummary(ThoughtSummaryDelta { content }) => {
-                    if let ThoughtSummaryContent::Text(text) = content {
-                        self.write(
-                            Chunk::Thought {
-                                text: text.text,
-                                signature: None,
-                            },
-                            &mut out,
-                        )?;
-                    }
-                }
-                ContentDelta::ThoughtSignature(ThoughtSignatureDelta { signature }) => {
-                    // Signatures must survive even when no reasoning text streamed.
-                    self.thoughts.signature(&mut out, signature);
-                }
-                delta => {
-                    if let Some(chunk) = delta_content(delta).and_then(content_chunk) {
-                        self.write(chunk, &mut out)?;
-                    }
-                }
-            },
             InteractionSseEvent::StepStart { index, step, .. } => {
-                if let Step::FunctionCall(FunctionCallContent {
-                    name: Some(name),
-                    arguments,
-                    id,
-                }) = step
-                {
-                    // The call stays open: its arguments may arrive in later
-                    // deltas.
-                    self.thoughts.boundary();
-                    out.close_open_text(&mut self.text);
-                    let index = index as usize;
-                    out.call_fragment(
-                        index,
-                        CallFragment {
-                            id: id.as_deref(),
-                            name: Some(name.as_str()),
-                            ..CallFragment::default()
-                        },
-                    )?;
-                    // Announced arguments are a fallback, not an appendable
-                    // fragment: combining them with later deltas could
-                    // concatenate JSON objects.
-                    if let Some(arguments) = arguments.filter(|arguments| {
-                        arguments
-                            .as_object()
-                            .is_none_or(|object| !object.is_empty())
-                    }) {
-                        out.announce_pending(index, arguments);
-                    }
-                } else {
-                    for chunk in step_start_chunks(step) {
-                        self.write(chunk, &mut out)?;
-                    }
-                }
+                self.start(index as usize, step, &mut out)?;
+            }
+            InteractionSseEvent::StepDelta { index, delta, .. } => {
+                self.delta(index as usize, delta, &mut out)?;
             }
             InteractionSseEvent::StepStop { index, .. } => {
-                // A completed call with malformed arguments fails the reply.
-                out.close_pending(index as usize, IfMalformed::Fail)?;
+                self.stop(index as usize, &mut out)?;
             }
             InteractionSseEvent::InteractionCompleted { interaction, .. } => {
-                let span = tracing::Span::current();
-                span.record("gen_ai.response.id", &interaction.id);
-                if let Some(model) = interaction.model.clone() {
-                    span.record("gen_ai.response.model", model);
+                // Provider completion finalizes steps even without step.stop.
+                let open: Vec<usize> = self.steps.keys().copied().collect();
+                for index in open {
+                    self.stop(index, &mut out)?;
                 }
-                // Provider completion finalizes calls even without step.stop.
-                for index in out.pending_calls() {
-                    tracing::debug!(
-                        index,
-                        "closing a function-call step left open at interaction.completed"
-                    );
-                    out.close_pending(index, IfMalformed::Fail)?;
-                }
-                out.close_open_text(&mut self.text);
-                self.thoughts.close(&mut out, None);
-
                 // Lifecycle status supplies the finish reason; absent status stays unknown.
                 let model_version = interaction.model.clone();
                 let native = StreamingCompletionResponse {
@@ -332,77 +494,5 @@ impl<'id> Decoder<'id, Completion> for InteractionsDecoder<'id> {
     }
 }
 
-/// The content item a `step.delta` restates: a text or whole-call delta is
-/// the item itself, so it takes the one content → block mapping. Every
-/// other delta kind carries nothing the stream vocabulary models.
-fn delta_content(delta: ContentDelta) -> Option<Content> {
-    match delta {
-        ContentDelta::Text(TextDelta { text, annotations }) => {
-            text.map(|text| Content::Text(TextContent { text, annotations }))
-        }
-        ContentDelta::FunctionCall(call) => Some(Content::FunctionCall(call)),
-        _ => None,
-    }
-}
-
-#[cfg(any())]
-fn step_start_chunks(step: Step) -> Vec<Chunk> {
-    match step {
-        // Model output can interleave multiple text and function-call items.
-        Step::ModelOutput { content } => content.into_iter().filter_map(content_chunk).collect(),
-        Step::FunctionCall(call) => content_chunk(Content::FunctionCall(call))
-            .into_iter()
-            .collect(),
-        _ => Vec::new(),
-    }
-}
-
-/// A supported output content item as the chunk it writes; other content is
-/// skipped.
-#[cfg(any())]
-fn content_chunk(content: Content) -> Option<Chunk> {
-    match content {
-        Content::Text(text) if !text.text.is_empty() => Some(Chunk::Text(text.text)),
-        Content::FunctionCall(FunctionCallContent {
-            name,
-            arguments,
-            id,
-        }) => Some(Chunk::Call {
-            name: name?,
-            arguments,
-            id,
-        }),
-        // A thought the reply states whole: the summary's text is the
-        // part's content and the signature closes it, the same pair the
-        // streamed `thought_summary`/`thought_signature` deltas deliver
-        // piecewise.
-        Content::Thought(ThoughtContent {
-            summary, signature, ..
-        }) => {
-            let text: String = summary
-                .unwrap_or_default()
-                .into_iter()
-                .filter_map(|content| match content {
-                    ThoughtSummaryContent::Text(text) => Some(text.text),
-                    _ => None,
-                })
-                .collect();
-            if text.is_empty() && signature.is_none() {
-                return None;
-            }
-            Some(Chunk::Thought { text, signature })
-        }
-        // Images ride on a text part's metadata: the choice has no part for
-        // them.
-        image @ Content::Image(_) => crate::message::AdditionalParams::from_entries([(
-            crate::providers::gemini::GEMINI_RAW_CONTENT_KEY,
-            serde_json::json!(image),
-        )])
-        .map(Chunk::Raw),
-        _ => None,
-    }
-}
-
 #[cfg(test)]
-#[cfg(any())]
 mod tests;

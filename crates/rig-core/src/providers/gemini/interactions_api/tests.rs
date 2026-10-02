@@ -30,18 +30,10 @@ fn test_create_request_body_simple() {
         Some(ToolChoice::Type(ToolChoiceType::Any))
     ));
 
-    let InteractionInput::Steps(steps) = result.input else {
-        panic!("expected steps input");
-    };
-    assert_eq!(steps.len(), 1);
-    let Step::UserInput { content: contents } = &steps[0] else {
-        panic!("expected user input step");
-    };
-    assert_eq!(contents.len(), 1);
-    match &contents[0] {
-        Content::Text(TextContent { text, .. }) => assert_eq!(text, "Hello"),
-        other => panic!("unexpected content: {other:?}"),
-    }
+    assert_eq!(
+        result.input,
+        [json!({"type": "user_input", "content": [{"type": "text", "text": "Hello"}]})]
+    );
 }
 
 /// `functionResponse.name` is the executed function's name: read from
@@ -50,49 +42,35 @@ fn test_create_request_body_simple() {
 fn tool_result_serializes_the_executed_name_not_an_identifier() {
     use message::{AssistantContent, ToolCall, ToolFunction, ToolResultContent};
 
-    let call = |item_id: Option<&str>, call_id: &str, name: &str| {
+    let call = |call_id: &str, name: &str| {
         let function = ToolFunction {
             name: crate::message::ToolName::new(name.to_owned()).expect("tool name"),
             arguments: json!({}),
         };
-        let tool_call = match item_id {
-            Some(item_id) => ToolCall::from_dual_wire(item_id, call_id, function),
-            None => ToolCall::from_wire(call_id, function),
-        };
-        Message::Assistant {
-            id: None,
-            content: vec![AssistantContent::ToolCall(tool_call)],
-        }
+        Message::Assistant(message::AssistantMessage::new(vec![
+            AssistantContent::ToolCall(ToolCall::from_wire(call_id, function)),
+        ]))
     };
-    let result = |item_id: Option<&str>, call_id: &str, name: &str| Message::User {
-        content: vec![match item_id {
-            Some(item_id) => message::UserContent::tool_result(
-                crate::message::CallId::from_dual_wire(item_id, call_id),
-                crate::message::ToolName::new(name).expect("tool name"),
-                vec![ToolResultContent::text("out")],
-            ),
-            None => message::UserContent::tool_result(
-                crate::message::CallId::from_wire(call_id),
-                crate::message::ToolName::new(name).expect("tool name"),
-                vec![ToolResultContent::text("out")],
-            ),
-        }],
+    let result = |call_id: &str, name: &str| Message::User {
+        content: vec![message::UserContent::tool_result(
+            crate::message::CallId::from_wire(call_id),
+            crate::message::ToolName::new(name).expect("tool name"),
+            vec![ToolResultContent::text("out")],
+        )],
     };
 
     let request = CompletionRequest::from(vec![
         // A driver-built result carries the executed name (a repair
         // hook renamed the call: `sum` ran, not `add`).
-        call(None, "call_1", "sum"),
-        result(None, "call_1", "sum"), // An OpenAI-shaped correlator travels as the call id while
-        // the required `name` field carries the executed name —
-        // `call_abc` must never reach the wire as a name.
-        call(None, "call_abc", "get_weather"),
-        result(None, "call_abc", "get_weather"), // A dual-identifier result (OpenAI Responses: item id `fc_…`
-        // + `call_id` `call_…`) keeps the correlator on the wire and
-        // the executed name in `name` — `fc_1` must never reach the
-        // wire as a name.
-        call(Some("fc_1"), "call_9", "get_time"),
-        result(Some("fc_1"), "call_9", "get_time"),
+        call("call_1", "sum"),
+        result("call_1", "sum"),
+        // An OpenAI-shaped correlator travels as the call id while the
+        // required `name` field carries the executed name: `call_abc` must
+        // never reach the wire as a name.
+        call("call_abc", "get_weather"),
+        result("call_abc", "get_weather"),
+        call("call_9", "get_time"),
+        result("call_9", "get_time"),
     ]);
 
     let body = create_request_body("gemini-2.5-flash".to_string(), request, None)
@@ -292,7 +270,7 @@ fn test_tool_result_images_and_text_serialize_as_ordered_tagged_content() {
                 ),
                 media_type: Some(message::ImageMediaType::JPEG),
                 detail: None,
-                additional_params: None,
+                native: None,
             }),
         ],
     });
@@ -357,15 +335,8 @@ async fn test_response_function_call_mapping() {
         Some(completion::AssistantContent::ToolCall(tool_call)) => {
             assert_eq!(tool_call.function.name, "get_weather");
             assert_eq!(
-                tool_call
-                    .id
-                    .provider()
-                    .map(|provider| provider.call_id.as_str()),
+                tool_call.id.provider().map(|provider| provider.as_str()),
                 Some("call-123")
-            );
-            assert_eq!(
-                tool_call.id.provider().expect("wire id").call_id,
-                "call-123"
             );
         }
         other => panic!("unexpected content: {other:?}"),
@@ -877,10 +848,9 @@ async fn test_completion_response_carries_normalized_metadata() {
 
     let response = fold_resource(&interaction).await;
 
-    assert_eq!(response.provider, PROVIDER_NAME);
-    assert_eq!(response.model.as_deref(), Some("gemini-2.5-pro"));
-    assert_eq!(response.response_id.as_deref(), Some("interaction-meta"));
-    assert_eq!(response.message_id, None);
+    assert_eq!(response.provider(), PROVIDER_NAME);
+    assert_eq!(response.model(), Some("gemini-2.5-pro"));
+    assert_eq!(response.response_id(), Some("interaction-meta"));
     assert_eq!(
         response.finish_reason(),
         Some(crate::completion::FinishReason::Length)
@@ -908,7 +878,7 @@ async fn test_completion_response_upgrades_completed_to_tool_calls() {
         response.finish_reason(),
         Some(crate::completion::FinishReason::ToolCalls)
     );
-    assert_eq!(response.model, None);
+    assert_eq!(response.model(), None);
 }
 
 #[test]
@@ -995,46 +965,178 @@ fn test_inline_citations_from_annotations() {
     );
 }
 
-/// A thought sent back to the wire carries its summary items tagged by
-/// `type`, as every content item on this wire is; untagged items are
-/// refused by the API on the round trip of a model's own reasoning.
+/// A canonical reasoning block, with no provider step to send, is rebuilt
+/// as a thought whose summary items carry their `type`, as every content
+/// item on this wire does.
 #[test]
-fn a_thought_summary_round_trips_with_its_type() {
-    let reasoning = message::AssistantContent::Reasoning(
-        message::Reasoning::new_with_signature("add them", Some("sig".to_owned()))
-            .sealed("gcp.gemini"),
-    );
-    let content = Content::try_from(reasoning).expect("reasoning converts");
-    let wire = serde_json::to_value(&content).expect("serializes");
+fn a_rebuilt_thought_tags_its_summary() {
+    let step = assistant_step(&message::AssistantContent::reasoning("add them"))
+        .expect("reasoning converts");
     assert_eq!(
-        wire,
+        step,
         json!({
             "type": "thought",
-            "signature": "sig",
             "summary": [{ "type": "text", "text": "add them" }]
         })
     );
-    let back: Content = serde_json::from_value(wire).expect("decodes");
-    assert!(matches!(back, Content::Thought(_)));
 }
 
-/// A signature-only thought — the wire's `thought_signature` with no
-/// summary text, which is what a streamed function-call turn carries —
-/// goes back as signature-only; an empty summary item is refused by the
-/// API ("Request contains an invalid argument").
-#[test]
-fn a_signature_only_thought_round_trips_without_a_summary() {
-    let reasoning = message::AssistantContent::Reasoning(
-        message::Reasoning::new_with_signature("", Some("sig".to_owned())).sealed("gcp.gemini"),
+/// A turn decoded from this model, as the recorded tool turn of
+/// `gemini/interactions_api/tool_result_roundtrip.yaml` has it: a
+/// signature-only thought, then a call.
+fn decoded_tool_turn() -> Message {
+    let thought = json!({"signature": "c2ln", "type": "thought"});
+    let call = json!({"arguments": {"x": 7, "y": 11}, "id": "call_217140", "name": "add", "type": "function_call"});
+    let tool_call = message::ToolCall::from_wire(
+        "call_217140",
+        message::ToolFunction::new(
+            crate::message::ToolName::new("add").expect("tool name"),
+            json!({"x": 7, "y": 11}),
+        ),
     );
-    let content = Content::try_from(reasoning).expect("reasoning converts");
-    let wire = serde_json::to_value(&content).expect("serializes");
-    assert_eq!(wire, json!({ "type": "thought", "signature": "sig" }));
+    let mut turn = message::AssistantMessage::new(vec![
+        message::AssistantContent::Reasoning(message::Reasoning::new("")).with_native(thought),
+        message::AssistantContent::ToolCall(tool_call).with_native(call),
+    ]);
+    turn.origin = Some(crate::message::Origin::new(
+        API,
+        PROVIDER_NAME,
+        "gemini-3-flash-preview",
+    ));
+    turn.stop = Some(crate::message::StopReason::ToolUse);
+    Message::Assistant(turn)
 }
 
-/// A tool round trip in client-managed history: the thought, the call and
-/// the result are steps of their own, in the message's order, as the API
-/// emits them and as it accepts them back; text stays in a grouped step.
+fn tool_result() -> Message {
+    Message::from(message::UserContent::tool_result(
+        crate::message::CallId::from_wire("call_217140"),
+        crate::message::ToolName::new("add").expect("tool name"),
+        vec![message::ToolResultContent::json(json!({"sum": 18}))],
+    ))
+}
+
+/// The steps `history` encodes to for `wire`, adapted at the request
+/// boundary as the driver adapts it.
+fn encoded_steps(wire: &Interactions, history: Vec<Message>) -> Vec<serde_json::Value> {
+    let request = <crate::operation::Completion as crate::wire::Operation>::prepare(
+        CompletionRequest::from(history),
+        &wire.describe(),
+    )
+    .expect("the request is valid");
+    create_request_body(wire.model.clone(), request, None)
+        .expect("the request builds")
+        .input
+}
+
+/// The same model gets its own steps back verbatim, in order, each a top
+/// level step, and the result is a step of its own.
+#[test]
+fn the_same_model_gets_its_steps_back_verbatim() {
+    let steps = encoded_steps(
+        &interactions_wire(),
+        vec![
+            Message::user("Add 7 and 11."),
+            decoded_tool_turn(),
+            tool_result(),
+        ],
+    );
+    assert_eq!(
+        steps,
+        [
+            json!({"type": "user_input", "content": [{"type": "text", "text": "Add 7 and 11."}]}),
+            json!({"signature": "c2ln", "type": "thought"}),
+            json!({"arguments": {"x": 7, "y": 11}, "id": "call_217140", "name": "add", "type": "function_call"}),
+            json!({"type": "function_result", "name": "add", "result": {"sum": 18}, "call_id": "call_217140"}),
+        ]
+    );
+}
+
+/// Another model gets no thought: the signature-only reasoning is dropped
+/// and the call is rebuilt from its canonical fields.
+#[test]
+fn another_model_gets_the_canonical_turn() {
+    let wire = crate::providers::gemini::GeminiConfig::new("test-key")
+        .interactions("gemini-3-pro-preview");
+    let steps = encoded_steps(
+        &wire,
+        vec![
+            Message::user("Add 7 and 11."),
+            decoded_tool_turn(),
+            tool_result(),
+        ],
+    );
+    assert_eq!(
+        steps.get(1),
+        Some(
+            &json!({"type": "function_call", "name": "add", "arguments": {"x": 7, "y": 11}, "id": "call_217140"})
+        )
+    );
+    assert_eq!(steps.len(), 3);
+}
+
+/// An edited block's step is stale: the encoder rebuilds it.
+#[test]
+fn an_edited_block_is_rebuilt() {
+    let Message::Assistant(mut turn) = decoded_tool_turn() else {
+        panic!("an assistant turn");
+    };
+    if let Some(message::AssistantContent::ToolCall(call)) = turn.content.get_mut(1) {
+        call.function.arguments = json!({"x": 8, "y": 11});
+    }
+    let steps = encoded_steps(
+        &interactions_wire(),
+        vec![
+            Message::user("Add."),
+            Message::Assistant(turn),
+            tool_result(),
+        ],
+    );
+    assert_eq!(
+        steps.get(2),
+        Some(
+            &json!({"type": "function_call", "name": "add", "arguments": {"x": 8, "y": 11}, "id": "call_217140"})
+        )
+    );
+}
+
+/// A foreign call id is sanitized to `[a-zA-Z0-9_-]` and cut to 64
+/// characters, and its result follows it.
+#[test]
+fn a_foreign_call_id_is_normalized_with_its_result() {
+    use crate::completion::ReplayTarget;
+    let wire = interactions_wire();
+    let long = format!("call|{}", "x".repeat(80));
+    let normalized = wire.normalize_tool_call_id(&long, None);
+    assert_eq!(normalized.len(), 64);
+    assert!(normalized.starts_with("call_xxx"));
+
+    let call = message::ToolCall::from_wire(
+        "call|fc.1",
+        message::ToolFunction::new(
+            crate::message::ToolName::new("add").expect("tool name"),
+            json!({}),
+        ),
+    );
+    let steps = encoded_steps(
+        &wire,
+        vec![
+            Message::user("Add."),
+            Message::Assistant(message::AssistantMessage::new(vec![
+                message::AssistantContent::ToolCall(call.clone()),
+            ])),
+            Message::from(message::UserContent::tool_result(
+                call.id.clone(),
+                call.function.name.clone(),
+                vec![message::ToolResultContent::text("0")],
+            )),
+        ],
+    );
+    assert_eq!(steps[1]["id"], "call_fc_1");
+    assert_eq!(steps[2]["call_id"], "call_fc_1");
+}
+
+/// A tool round trip in hand-built history: each block and the result are
+/// steps of their own, in the message's order.
 #[test]
 fn a_tool_round_trip_is_top_level_steps() {
     let call = message::ToolCall::from_wire(
@@ -1044,75 +1146,33 @@ fn a_tool_round_trip_is_top_level_steps() {
             json!({"x": 17, "y": 25}),
         ),
     );
-    let assistant = Message::Assistant {
-        id: None,
-        content: vec![
-            message::AssistantContent::Reasoning(
-                message::Reasoning::new_with_signature("", Some("sig".to_owned()))
-                    .sealed("gcp.gemini"),
-            ),
-            message::AssistantContent::text("Adding."),
-            message::AssistantContent::ToolCall(call.clone()),
-        ],
-    };
+    let assistant = Message::Assistant(message::AssistantMessage::new(vec![
+        message::AssistantContent::text("Adding."),
+        message::AssistantContent::ToolCall(call.clone()),
+    ]));
     let result = Message::from(message::UserContent::tool_result(
         call.id.clone(),
         crate::message::ToolName::new("add").expect("tool name"),
         vec![message::ToolResultContent::json(json!({"sum": 42}))],
     ));
-    let body = create_request_body(
-        "gemini-2.5-flash".to_owned(),
-        CompletionRequest::from(vec![Message::user("Add 17 and 25."), assistant, result]),
-        None,
-    )
-    .expect("the request builds");
-    let InteractionInput::Steps(steps) = body.input else {
-        panic!("steps");
-    };
+    let steps = encoded_steps(
+        &interactions_wire(),
+        vec![Message::user("Add 17 and 25."), assistant, result],
+    );
     let kinds: Vec<&str> = steps
         .iter()
-        .map(|step| match step {
-            Step::UserInput { .. } => "user_input",
-            Step::ModelOutput { .. } => "model_output",
-            Step::Thought(_) => "thought",
-            Step::FunctionCall(_) => "function_call",
-            Step::FunctionResult(_) => "function_result",
-            Step::CodeExecutionCall(_)
-            | Step::CodeExecutionResult(_)
-            | Step::UrlContextCall(_)
-            | Step::UrlContextResult(_)
-            | Step::GoogleSearchCall(_)
-            | Step::GoogleSearchResult(_)
-            | Step::McpServerToolCall(_)
-            | Step::McpServerToolResult(_)
-            | Step::FileSearchResult(_) => "other",
-        })
+        .filter_map(|step| step["type"].as_str())
         .collect();
     assert_eq!(
         kinds,
         [
             "user_input",
-            "thought",
             "model_output",
             "function_call",
             "function_result"
         ]
     );
 }
-
-/// Synthetic transcript tests required-ID request correlation without a paid call.
-#[test]
-fn full_request_preserves_typed_tool_pairs_across_turns() {
-    use crate::providers::internal::wire_ids::tests::{adapter_requests, assert_adapter_pairs};
-    for request in adapter_requests() {
-        for stream in [false, true] {
-            let wire =
-                create_request_body("test".to_owned(), request.clone(), Some(stream)).unwrap();
-            assert_adapter_pairs(serde_json::to_value(wire).unwrap());
-        }
-    }
-}
-
 // ── the Interactions wire ───────────────────────────────────────────────
 //
 // Bodies pasted verbatim from committed cassettes, named at each constant.
@@ -1176,15 +1236,15 @@ fn shape(response: &crate::completion::CompletionResponse) -> (Vec<&'static str>
             message::AssistantContent::Reasoning(_) => "reasoning",
             message::AssistantContent::ToolCall(_) => "tool_call",
             message::AssistantContent::Image(_) => "image",
+            message::AssistantContent::Opaque(_) => "opaque",
         })
         .collect();
     let signature = response.choice.iter().find_map(|item| match item {
-        message::AssistantContent::Reasoning(reasoning) => {
-            match reasoning.value().content.first() {
-                Some(message::ReasoningContent::Text { signature, .. }) => signature.clone(),
-                _ => None,
-            }
-        }
+        message::AssistantContent::Reasoning(reasoning) => reasoning
+            .native
+            .as_ref()
+            .and_then(|native| native.item["signature"].as_str())
+            .map(str::to_owned),
         _ => None,
     });
     (kinds, signature)
@@ -1225,15 +1285,18 @@ async fn the_unary_resource_and_a_streamed_turn_fold_to_the_same_shape() {
         )
     );
     // The turn's own facts, from the resource the reply carried.
-    assert_eq!(buffered.response_id.as_deref(), Some("v1_REDACTED_1"));
-    assert_eq!(buffered.model.as_deref(), Some("gemini-3-flash-preview"));
+    assert_eq!(buffered.response_id(), Some("v1_REDACTED_1"));
+    assert_eq!(buffered.model(), Some("gemini-3-flash-preview"));
     // Output counts the thoughts the API reports beside it.
     assert_eq!(buffered.usage.output_tokens, Some(34 + 222));
     assert_eq!(streamed.usage.output_tokens, Some(32 + 806));
     assert_eq!(buffered.finish_reason(), streamed.finish_reason());
     assert_eq!(
-        buffered.choice.last(),
-        Some(&message::AssistantContent::text(
+        buffered
+            .choice
+            .last()
+            .map(message::AssistantContent::canonical),
+        Some(message::AssistantContent::text(
             "1. Hummingbirds are the only birds capable of flying **backwards**.\n2. Their hearts can beat up to **1,260 times per minute**."
         ))
     );
@@ -1382,7 +1445,7 @@ async fn a_polled_interaction_folds_its_steps_and_keeps_the_document() {
             Some("signature_REDACTED_1".to_owned())
         )
     );
-    assert_eq!(response.response_id.as_deref(), Some("v1_REDACTED_1"));
+    assert_eq!(response.response_id(), Some("v1_REDACTED_1"));
     let interaction: Interaction =
         serde_json::from_value(response.raw.clone()).expect("`raw` is the interaction document");
     assert_eq!(interaction.id, "v1_REDACTED_1");
