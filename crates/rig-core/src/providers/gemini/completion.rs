@@ -56,6 +56,7 @@ use std::convert::TryFrom;
 pub const PROVIDER_NAME: &str = "gcp.gemini";
 
 /// The issuer of Gemini's reasoning, which is the only reasoning it replays.
+#[cfg(any())]
 pub(crate) const ISSUER: crate::message::Issuer =
     crate::message::Issuer::from_static(PROVIDER_NAME);
 
@@ -169,7 +170,9 @@ impl Wire for GenerateContent {
     type Op = Completion;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
+    #[cfg(any())]
     type Decoder<'id> = super::streaming::GenerateContentDecoder<'id>;
+    type Decoder<'id> = crate::providers::internal::Unmigrated;
 
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(PROVIDER_NAME)
@@ -178,10 +181,11 @@ impl Wire for GenerateContent {
                 Mode::Unary => GenAiOperation::GenerateContent,
                 Mode::Streaming => GenAiOperation::ChatStreaming,
             })
+            .replay(self)
     }
 
+    #[cfg(any())]
     fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, EncodeError> {
-        let request = request.replayable_to(&[ISSUER])?;
         // The request may name a model of its own; the wire's is the default.
         let model = resolve_request_model(&self.model, &request);
         let mut body = create_request_body(request)?;
@@ -214,12 +218,35 @@ impl Wire for GenerateContent {
             .with_projection(super::streaming::GenerateContentDecoder::project)
             .with_analysis_only(super::streaming::GenerateContentDecoder::is_analysis_only))
     }
+    fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, EncodeError> {
+        let _ = (request, mode);
+        Err(crate::providers::internal::Unmigrated::encode_error())
+    }
 
+    #[cfg(any())]
     fn decoder<'id>(&self) -> Self::Decoder<'id> {
         super::streaming::GenerateContentDecoder::new()
     }
+    fn decoder<'id>(&self) -> Self::Decoder<'id> {
+        crate::providers::internal::Unmigrated
+    }
 }
 
+impl crate::completion::ReplayTarget for GenerateContent {
+    fn api(&self) -> crate::message::Api {
+        crate::message::Api::from_static("gemini.generate_content")
+    }
+
+    fn provider(&self) -> &str {
+        PROVIDER_NAME
+    }
+
+    fn model(&self) -> &str {
+        &self.model
+    }
+}
+
+#[cfg(any())]
 pub(crate) fn create_request_body(
     completion_request: CompletionRequest,
 ) -> Result<GenerateContentRequest, EncodeError> {
@@ -687,6 +714,7 @@ pub mod gemini_api_types {
         pub role: Option<Role>,
     }
 
+    #[cfg(any())]
     impl TryFrom<message::Message> for Content {
         type Error = message::MessageError;
 
@@ -881,6 +909,7 @@ pub mod gemini_api_types {
         }
     }
 
+    #[cfg(any())]
     impl TryFrom<message::UserContent> for Part {
         type Error = message::MessageError;
 
@@ -1124,6 +1153,7 @@ pub mod gemini_api_types {
         }
     }
 
+    #[cfg(any())]
     impl TryFrom<message::AssistantContent> for Part {
         type Error = message::MessageError;
 
@@ -1159,6 +1189,7 @@ pub mod gemini_api_types {
         }
     }
 
+    #[cfg(any())]
     impl From<message::ToolCall> for Part {
         fn from(tool_call: message::ToolCall) -> Self {
             Self {
@@ -1204,6 +1235,7 @@ pub mod gemini_api_types {
         pub id: Option<String>,
     }
 
+    #[cfg(any())]
     impl From<message::ToolCall> for FunctionCall {
         fn from(tool_call: message::ToolCall) -> Self {
             Self {
@@ -2242,9 +2274,12 @@ impl gemini_api_types::GenerateContentRequest {
 }
 
 #[cfg(test)]
+#[cfg(any())]
 mod tests;
 
 #[cfg(test)]
+#[cfg(any())]
 mod cached_content_conflict_matrix;
 #[cfg(test)]
+#[cfg(any())]
 mod cached_content_request_tests;

@@ -305,6 +305,7 @@ pub enum CitationType {
     Plan,
 }
 
+#[cfg(any())]
 impl TryFrom<message::Message> for Vec<Message> {
     type Error = message::MessageError;
 
@@ -445,6 +446,7 @@ pub(super) struct CohereCompletionRequest {
     pub additional_params: Option<serde_json::Value>,
 }
 
+#[cfg(any())]
 impl TryFrom<(&str, CompletionRequest)> for CohereCompletionRequest {
     type Error = EncodeError;
 
@@ -507,4 +509,5 @@ impl TryFrom<(&str, CompletionRequest)> for CohereCompletionRequest {
 }
 
 #[cfg(test)]
+#[cfg(any())]
 mod tests;

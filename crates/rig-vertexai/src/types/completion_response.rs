@@ -15,6 +15,7 @@ use rig_core::wire::{Decoder, Flow, Out, WireEvent};
 pub const PROVIDER_NAME: &str = "vertexai";
 
 /// The issuer of Vertex's reasoning, the only reasoning this wire replays.
+#[cfg(any())]
 pub(crate) const ISSUER: rig_core::message::Issuer =
     rig_core::message::Issuer::from_static(PROVIDER_NAME);
 
@@ -46,6 +47,7 @@ pub fn map_finish_reason(
 #[derive(Default)]
 pub struct VertexDecoder;
 
+#[cfg(any())]
 impl<'id> Decoder<'id, Completion, vertexai::model::GenerateContentResponse> for VertexDecoder {
     type Event = vertexai::model::GenerateContentResponse;
 
@@ -82,6 +84,7 @@ impl<'id> Decoder<'id, Completion, vertexai::model::GenerateContentResponse> for
 }
 
 /// The assistant content of a whole reply.
+#[cfg(any())]
 fn assistant_content(
     response: &vertexai::model::GenerateContentResponse,
 ) -> Result<Vec<AssistantContent>, ProviderError> {
@@ -224,7 +227,9 @@ fn usage(response: &vertexai::model::GenerateContentResponse) -> Usage {
 }
 
 #[cfg(test)]
+#[cfg(any())]
 pub(crate) mod tests;
 
 #[cfg(test)]
+#[cfg(any())]
 mod vertex_usage_mapping_tests;

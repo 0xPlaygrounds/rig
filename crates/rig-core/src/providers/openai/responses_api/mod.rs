@@ -382,6 +382,7 @@ fn responses_tool_result_output(
 /// The issuer-free conversion: no reasoning opens, so none is replayed. A
 /// request's own conversion ([`ResponsesRequestParams`]) replays the
 /// reasoning its issuers open.
+#[cfg(any())]
 impl TryFrom<crate::completion::Message> for Vec<InputItem> {
     type Error = EncodeError;
 
@@ -391,6 +392,7 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
 }
 
 /// `value` as input items, replaying the reasoning `issuers` open.
+#[cfg(any())]
 fn input_items(
     value: crate::completion::Message,
     issuers: &[crate::message::Issuer],
@@ -616,6 +618,7 @@ fn input_items(
 /// Empty encrypted content contributes no block. A signature signs the
 /// reasoning text, so it rides on the last text block, or on an empty one
 /// when the item carried no text.
+#[cfg(any())]
 pub(crate) fn reasoning_content_blocks(
     summary: Vec<ReasoningSummary>,
     content: Vec<String>,
@@ -657,6 +660,7 @@ pub(crate) fn reasoning_content_blocks(
     blocks
 }
 
+#[cfg(any())]
 fn openai_reasoning_from_core(reasoning: &crate::message::Reasoning) -> Option<OpenAIReasoning> {
     // Reasoning without a provider item ID cannot be replayed.
     let id = reasoning.id.clone()?;
@@ -1189,6 +1193,7 @@ pub enum SystemInstructionsPlacement {
 }
 
 /// Converts a Rig request using the default system-instruction placement.
+#[cfg(any())]
 impl TryFrom<(String, crate::completion::CompletionRequest)> for CompletionRequest {
     type Error = EncodeError;
     fn try_from(
@@ -1205,6 +1210,7 @@ impl TryFrom<(String, crate::completion::CompletionRequest)> for CompletionReque
 
 /// Parameters for converting a [`crate::completion::CompletionRequest`] into a
 /// Responses API [`CompletionRequest`] with a non-default configuration.
+#[cfg(any())]
 pub struct ResponsesRequestParams {
     pub model: String,
     pub request: crate::completion::CompletionRequest,
@@ -1213,6 +1219,7 @@ pub struct ResponsesRequestParams {
     pub issuers: Vec<crate::message::Issuer>,
 }
 
+#[cfg(any())]
 impl TryFrom<ResponsesRequestParams> for CompletionRequest {
     type Error = EncodeError;
 
@@ -2215,6 +2222,7 @@ impl OutputText {
     /// extras this wire recognizes as its own: the sibling keys captured off
     /// an `output_text` block at ingest (see
     /// [`From<AssistantContent> for completion::AssistantContent`]).
+    #[cfg(any())]
     fn from_message_text(
         text: impl Into<String>,
         additional_params: Option<crate::message::AdditionalParams>,
@@ -2252,6 +2260,7 @@ impl OutputText {
 /// Empty text is skipped unless the item has an id and owned extras. Without
 /// an id the text replays id-less: `phase` rides it, content-part extras do
 /// not. Malformed or dropped extras warn.
+#[cfg(any())]
 fn assistant_text_replay_message(
     id: Option<&str>,
     text: String,
@@ -2346,6 +2355,7 @@ pub(crate) const OPENAI_RESPONSES_MESSAGE_ID_KEY: &str = "message_id";
 
 /// Converts output text or a refusal to a Rig text block, retaining nonempty
 /// output-text extras under the Responses key.
+#[cfg(any())]
 pub(crate) fn text_block(value: AssistantContent) -> Text {
     match value {
         AssistantContent::Refusal { refusal } => Text::new(refusal),
@@ -2372,6 +2382,7 @@ pub(crate) fn text_block(value: AssistantContent) -> Text {
     }
 }
 
+#[cfg(any())]
 impl From<AssistantContent> for completion::AssistantContent {
     fn from(value: AssistantContent) -> Self {
         completion::AssistantContent::Text(text_block(value))
@@ -2446,6 +2457,8 @@ impl FromStr for UserContent {
 }
 
 #[cfg(test)]
+#[cfg(any())]
 mod stateless_replay_tests;
 #[cfg(test)]
+#[cfg(any())]
 mod tests;

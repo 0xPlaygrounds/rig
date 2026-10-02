@@ -26,9 +26,7 @@ use crate::wire::{
     Framing, Mode, ObservationSink, Out, Wire, WireEvent, WireFrame,
 };
 
-use super::dto::{
-    ChatChoice, ChatFrame, ChatUsage, StreamingCompletionResponse, StreamingDelta, delta_text,
-};
+use super::dto::{ChatUsage, StreamingDelta, delta_text};
 use super::{BodyRewrite, OpenAIConfig, OutputCap};
 
 /// The chat-completions wire: a provider configuration, a model, and the
@@ -51,6 +49,7 @@ pub struct Chat {
 }
 
 impl Chat {
+    #[cfg(any())]
     pub(crate) fn encode_with_headers(
         &self,
         request: CompletionRequest,
@@ -808,7 +807,9 @@ impl Wire for Chat {
     type Op = crate::operation::Completion;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
+    #[cfg(any())]
     type Decoder<'id> = ChatDecoder<'id>;
+    type Decoder<'id> = crate::providers::internal::Unmigrated;
 
     /// Format deferral permits tool composition; dialects without schema
     /// support require the agent's tool-mode enforcement instead.
@@ -820,18 +821,43 @@ impl Wire for Chat {
                     self.provider.dialect.quirks.supports_response_format,
                 ),
             ))
+            .replay(self)
     }
 
+    #[cfg(any())]
     fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, EncodeError> {
         self.encode_with_headers(request, mode, OpenAIConfig::completion_headers)
     }
+    fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, EncodeError> {
+        let _ = (request, mode);
+        Err(crate::providers::internal::Unmigrated::encode_error())
+    }
 
+    #[cfg(any())]
     fn decoder<'id>(&self) -> ChatDecoder<'id> {
         ChatDecoder::new(self.provider.dialect.name, self.provider.dialect.quirks)
+    }
+    fn decoder<'id>(&self) -> Self::Decoder<'id> {
+        crate::providers::internal::Unmigrated
+    }
+}
+
+impl crate::completion::ReplayTarget for Chat {
+    fn api(&self) -> crate::message::Api {
+        crate::message::Api::from_static("openai.chat")
+    }
+
+    fn provider(&self) -> &str {
+        self.provider.dialect.name
+    }
+
+    fn model(&self) -> &str {
+        &self.model
     }
 }
 
 /// Classified Chat Completions frame, including whole replies and terminal signals.
+#[cfg(any())]
 pub enum ChatEvent {
     /// A `chat.completion.chunk`: one step of a streamed turn.
     Chunk(ChatFrame),
@@ -848,6 +874,7 @@ pub enum ChatEvent {
 
 /// The chat-completions decoder: one state machine for a whole reply and a
 /// stream of chunks.
+#[cfg(any())]
 pub struct ChatDecoder<'id> {
     /// Descriptor name the reply is attributed to.
     provider: &'static str,
@@ -874,6 +901,7 @@ pub struct ChatDecoder<'id> {
     saw_any_valid_frame: bool,
 }
 
+#[cfg(any())]
 impl<'id> ChatDecoder<'id> {
     fn new(provider: &'static str, quirks: super::Quirks) -> Self {
         Self {
@@ -919,6 +947,7 @@ impl<'id> ChatDecoder<'id> {
     }
 
     /// Absorb the metadata every frame carries, whichever shape it is.
+    #[cfg(any())]
     fn absorb_metadata(&mut self, frame: &mut ChatFrame) {
         if let Some(id) = frame.id.take() {
             self.response_id = Some(id);
@@ -941,6 +970,7 @@ impl<'id> ChatDecoder<'id> {
 
     /// One chunk's parts, in the order the wire implies: reasoning, its
     /// signature or the boundary that stops it, text, then tool calls.
+    #[cfg(any())]
     fn emit_parts(
         &mut self,
         out: &mut Out<'id, Completion>,
@@ -967,6 +997,7 @@ impl<'id> ChatDecoder<'id> {
     }
 
     /// One `chat.completion.chunk`.
+    #[cfg(any())]
     fn interpret_chunk(
         &mut self,
         mut frame: ChatFrame,
@@ -1123,6 +1154,7 @@ impl<'id> ChatDecoder<'id> {
 
     /// The `chat.completion` body: the parts a stream of the same turn
     /// would have written, then the end.
+    #[cfg(any())]
     fn interpret_whole(
         &mut self,
         mut frame: ChatFrame,
@@ -1252,6 +1284,7 @@ impl<'id> ChatDecoder<'id> {
     /// Write the provider's end of the reply. A stream's `raw` is the
     /// native terminal record the chunks built; a whole body's is the body
     /// itself, which the transport keeps.
+    #[cfg(any())]
     fn end(
         &mut self,
         mut out: Out<'id, Completion>,
@@ -1288,6 +1321,7 @@ impl<'id> ChatDecoder<'id> {
     /// The stream ended: flush the calls the provider delivered, then end
     /// the reply. Tool calls the provider fully delivered are content, so
     /// a length cut still flushes them.
+    #[cfg(any())]
     fn finish(&mut self, mut out: Out<'id, Completion>) -> Result<Flow, ProviderError> {
         let output_length_truncation = matches!(
             self.final_finish_reason.as_ref(),
@@ -1317,10 +1351,10 @@ impl<'id> ChatDecoder<'id> {
     }
 }
 
-use crate::operation::{CallFragment, Completion, IfMalformed, TextPart};
-use crate::providers::internal::thoughts::Thoughts;
+use crate::operation::{CallFragment, Completion, IfMalformed};
 use crate::wire::Flow;
 
+#[cfg(any())]
 impl<'id> Decoder<'id, Completion> for ChatDecoder<'id> {
     type Event = ChatEvent;
 
@@ -1405,6 +1439,7 @@ impl<'id> Decoder<'id, Completion> for ChatDecoder<'id> {
     }
 }
 
+#[cfg(any())]
 impl ChatDecoder<'_> {
     /// Verdict, model, response id, usage and error envelope, read off a raw
     /// payload before normalization discards them. The driver calls it for
@@ -1498,6 +1533,7 @@ struct ObservedChoice {
 /// `rs_*` id of its own, which never matches a `call_*` tool-call id, and it
 /// arrives before any tool call opens. Writing it as a reasoning part is
 /// what lets the blob reach the aggregated choice and be replayed next turn.
+#[cfg(any())]
 fn detail_reasoning(detail: &unary::ReasoningDetails) -> Option<crate::message::Reasoning> {
     let unary::ReasoningDetails::Encrypted { id, data, .. } = detail else {
         return None;
@@ -1510,6 +1546,7 @@ fn detail_reasoning(detail: &unary::ReasoningDetails) -> Option<crate::message::
 
 /// A nonempty unary reasoning detail as one replayable part. Empty and
 /// signature-only entries return `None`.
+#[cfg(any())]
 fn whole_detail_reasoning(detail: &unary::ReasoningDetails) -> Option<crate::message::Reasoning> {
     let (id, content) = match detail {
         unary::ReasoningDetails::Summary { id, summary, .. } if !summary.is_empty() => (
@@ -1559,7 +1596,9 @@ fn typed_detail(detail: &serde_json::Value) -> Option<unary::ReasoningDetails> {
 }
 
 #[cfg(test)]
+#[cfg(any())]
 mod tests;
 
 #[cfg(test)]
+#[cfg(any())]
 mod hard_case_tests;

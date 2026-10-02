@@ -13,8 +13,7 @@ use crate::error::{EncodeError, ProviderError};
 use crate::http_client::{self, NoBody};
 use crate::operation::{Completion, Turn};
 use crate::providers::openai::responses_api::streaming::{
-    ItemChunk, ResponseChunk, ResponseChunkKind, ResponsesDecoder, StreamingCompletionChunk,
-    classify_responses_frame,
+    ItemChunk, ResponseChunk, ResponseChunkKind, StreamingCompletionChunk, classify_responses_frame,
 };
 use crate::providers::openai::responses_api::wire::Responses;
 use crate::streaming::Item;
@@ -340,6 +339,7 @@ impl ResponsesWebSocketSession {
     }
 
     /// Sends a `response.create` event for a Rig completion request.
+    #[cfg(any())]
     pub async fn send(
         &mut self,
         completion_request: crate::completion::CompletionRequest,
@@ -352,6 +352,7 @@ impl ResponsesWebSocketSession {
     }
 
     /// Sends a `response.create` event with explicit websocket-mode options.
+    #[cfg(any())]
     pub async fn send_with_options(
         &mut self,
         completion_request: crate::completion::CompletionRequest,
@@ -442,6 +443,7 @@ impl ResponsesWebSocketSession {
     }
 
     /// Sends a warmup turn (`generate: false`) and returns the resulting response ID.
+    #[cfg(any())]
     pub async fn warmup(
         &mut self,
         completion_request: crate::completion::CompletionRequest,
@@ -457,6 +459,7 @@ impl ResponsesWebSocketSession {
 
     /// Sends a completion turn and collects the final OpenAI response,
     /// normalized; its `raw` is the provider's own terminal response object.
+    #[cfg(any())]
     pub async fn completion(
         &mut self,
         completion_request: crate::completion::CompletionRequest,
@@ -492,6 +495,7 @@ impl ResponsesWebSocketSession {
         result
     }
 
+    #[cfg(any())]
     fn prepare_request(
         &self,
         completion_request: crate::completion::CompletionRequest,
@@ -522,6 +526,7 @@ impl ResponsesWebSocketSession {
         Ok(request)
     }
 
+    #[cfg(any())]
     async fn wait_for_completed_response(&mut self) -> Result<CompletionResponse, ProviderError> {
         Ok(self.wait_for_terminal_response().await?.0)
     }
@@ -530,6 +535,7 @@ impl ResponsesWebSocketSession {
     /// completed or incomplete response with the reply they fold into.
     /// Transport, protocol, and decoder failures return an error. A terminal
     /// event without a response body is an error.
+    #[cfg(any())]
     async fn wait_for_terminal_response(
         &mut self,
     ) -> Result<(CompletionResponse, completion::CompletionResponse), ProviderError> {
@@ -537,7 +543,7 @@ impl ResponsesWebSocketSession {
         let wire = self.wire.clone();
         // The reply's state and its decoder live for this turn only; the
         // decoder's handles are branded with the borrow of that state.
-        let reply = std::sync::Mutex::new(Shared::new(Turn::new(provider.clone())));
+        let reply = std::sync::Mutex::new(Shared::new(Turn::relayed(provider.clone())));
         let mut decoder = wire.decoder();
         loop {
             let (event, payload) = self.next_event_with_payload().await?;
@@ -709,6 +715,7 @@ impl Drop for ResponsesWebSocketSession {
 
 /// Feed one message to the turn's decoder. Returns whether it ended the
 /// turn.
+#[cfg(any())]
 fn feed<'id>(
     decoder: &mut ResponsesDecoder<'id>,
     reply: &'id std::sync::Mutex<Shared<Completion>>,

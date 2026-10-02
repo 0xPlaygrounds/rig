@@ -2,7 +2,7 @@ use aws_sdk_bedrockruntime::types as aws_bedrock;
 use base64::{Engine, prelude::BASE64_STANDARD};
 
 use rig_core::error::ProviderError;
-use rig_core::message::{AssistantContent, Issuer, Text, ToolName};
+use rig_core::message::{AssistantContent, Text, ToolName};
 
 use super::{
     converse_output::{ContentBlock, ReasoningContentBlock, StopReason, TokenUsage},
@@ -60,6 +60,7 @@ pub fn map_stop_reason(stop_reason: &StopReason) -> completion::FinishReason {
 }
 
 /// The Rig content for one block of a Converse reply.
+#[cfg(any())]
 pub fn from_converse(block: ContentBlock) -> Result<AssistantContent, ProviderError> {
     match block {
         ContentBlock::Text(text) => Ok(AssistantContent::Text(Text::new(text))),
@@ -101,6 +102,7 @@ pub fn from_converse(block: ContentBlock) -> Result<AssistantContent, ProviderEr
 /// `issuer` issued.
 /// Returns `Ok(None)` after dropping unsupported ciphertext or invalid base64
 /// with a warning. Rejects images and unrepresentable signed reasoning.
+#[cfg(any())]
 pub(crate) fn to_aws(
     content: AssistantContent,
     issuer: &Issuer,
@@ -262,4 +264,5 @@ pub(crate) fn to_aws(
 }
 
 #[cfg(test)]
+#[cfg(any())]
 pub(crate) mod tests;

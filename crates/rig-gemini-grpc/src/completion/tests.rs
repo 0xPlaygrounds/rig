@@ -602,7 +602,7 @@ fn generate_content_response_round_trips_through_serde_json_value() {
     let restored = complete(back).expect("restored converts");
     assert_eq!(restored.identity(), original.identity());
     assert_eq!(restored.finish_reason(), original.finish_reason());
-    assert_eq!(restored.model, original.model);
+    assert_eq!(restored.model(), original.model());
     assert_eq!(restored.usage, original.usage);
     assert_eq!(restored.choice, original.choice);
     assert_eq!(

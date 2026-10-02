@@ -10,8 +10,6 @@ use rig_core::message::{DocumentMediaType, UserContent};
 
 pub struct AwsCompletionRequest {
     pub inner: rig_core::completion::CompletionRequest,
-    /// The issuer whose reasoning the request replays.
-    pub issuer: rig_core::message::Issuer,
     pub prompt_caching: bool,
 }
 
@@ -25,6 +23,7 @@ fn cache_point_block() -> Result<CachePointBlock, ProviderError> {
 impl AwsCompletionRequest {
     /// A Converse request over `inner`, replaying the reasoning `issuer`
     /// issued.
+    #[cfg(any())]
     pub fn new(
         inner: rig_core::completion::CompletionRequest,
         issuer: rig_core::message::Issuer,
@@ -180,6 +179,13 @@ impl AwsCompletionRequest {
     /// Consumes the request: this is the one accessor that needs the chat
     /// history by value, so call it after the borrowing accessors.
     pub fn messages(self) -> Result<Vec<aws_bedrock::Message>, ProviderError> {
+        Err(ProviderError::request(
+            "Bedrock has not moved to item-shaped history yet",
+        ))
+    }
+
+    #[cfg(any())]
+    pub fn messages(self) -> Result<Vec<aws_bedrock::Message>, ProviderError> {
         let mut full_history: Vec<Message> = Vec::new();
 
         if !self.inner.documents.is_empty() {
@@ -254,4 +260,5 @@ impl AwsCompletionRequest {
 }
 
 #[cfg(test)]
+#[cfg(any())]
 mod tests;

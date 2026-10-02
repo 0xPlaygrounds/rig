@@ -6,9 +6,7 @@
 //! ```
 
 use crate::error::ProviderError;
-use crate::operation::{
-    CallFragment, Completion, Finish, IfMalformed, ReasoningPart, Seal, TextPart,
-};
+use crate::operation::{CallFragment, Completion, Finish, IfMalformed};
 use crate::providers::internal::wire;
 use crate::providers::openai::responses_api::{
     IncompleteDetailsReason, ReasoningSummary, ResponseStatus, ResponsesUsage,
@@ -88,6 +86,7 @@ impl StreamingCompletionResponse {
 /// baked-in `"openai"` would mislabel them. The finish reason is left exactly
 /// as the provider reported it; the fold reconciles it with the tool calls
 /// the reply carried.
+#[cfg(any())]
 fn finish_of(
     provider: &str,
     upstream_reasoning_issuer: bool,
@@ -114,6 +113,7 @@ fn finish_of(
 /// Combine summaries, content, and encrypted data into one reasoning restatement.
 /// Preserve `provider_id` and wire field order. Return `None` for empty content;
 /// the caller must close the existing block with the returned restatement.
+#[cfg(any())]
 pub(crate) fn reasoning_from_done_item(
     provider_id: Option<&str>,
     summary: Vec<ReasoningSummary>,
@@ -279,6 +279,7 @@ struct ErrorEnvelope {
 
 /// The OpenAI Responses wire's decoder: one state machine for the SSE
 /// stream, the unary body and the websocket session.
+#[cfg(any())]
 pub struct ResponsesDecoder<'id> {
     /// Stable descriptor name the reply is attributed to: ChatGPT and
     /// Copilot stream this exact wire shape, so it is an input rather than
@@ -351,6 +352,7 @@ enum Statement {
     Terminal,
 }
 
+#[cfg(any())]
 impl<'id> ResponsesDecoder<'id> {
     /// A decoder for one reply of `provider`'s Responses endpoint.
     pub fn new(provider: &str) -> Self {
@@ -428,6 +430,7 @@ impl<'id> ResponsesDecoder<'id> {
 
     /// The text part a fragment of the message item `item_id` at
     /// `output_index` extends.
+    #[cfg(any())]
     fn text_part(
         &mut self,
         output_index: u64,
@@ -508,6 +511,7 @@ impl<'id> ResponsesDecoder<'id> {
     /// a message's deltas with ids its item events do not use. When the
     /// reply carries several message items, each part also records its
     /// item's id, so replay can send each item back as itself.
+    #[cfg(any())]
     fn attach_message_items(&mut self, out: &mut Out<'id, Completion>) {
         let item_of = |key: Option<&str>, slot: Option<u64>| {
             key.and_then(|key| {
@@ -593,6 +597,7 @@ impl<'id> ResponsesDecoder<'id> {
     /// Publish one message item's visible text as the fragments that built
     /// it, recording what it delivered so a terminal restating the same
     /// item merges nothing.
+    #[cfg(any())]
     fn publish_message_text(
         &mut self,
         output_index: u64,
@@ -627,6 +632,7 @@ impl<'id> ResponsesDecoder<'id> {
     /// Nothing attaches when a snapshot already did or no delta built a part
     /// for the item: text stated only by a snapshot publishes its extras
     /// with it.
+    #[cfg(any())]
     fn attach_message_extras(
         &mut self,
         output_index: u64,
@@ -657,6 +663,7 @@ impl<'id> ResponsesDecoder<'id> {
     /// Publish nonempty terminal message content when no delta delivered it,
     /// and otherwise only the extras no `output_item.done` attached.
     /// Match by output position, item ID, or the unattributed-delta safeguard.
+    #[cfg(any())]
     fn merge_terminal_body_text(
         &mut self,
         response: &CompletionResponse,
@@ -683,6 +690,7 @@ impl<'id> ResponsesDecoder<'id> {
     }
 
     /// Write one output-item event into the reply.
+    #[cfg(any())]
     fn decode_item_chunk(
         &mut self,
         chunk: ItemChunk,
@@ -759,6 +767,7 @@ impl<'id> ResponsesDecoder<'id> {
         Ok(())
     }
 
+    #[cfg(any())]
     fn push_output_item_done(
         &mut self,
         item: Output,
@@ -868,6 +877,7 @@ impl<'id> ResponsesDecoder<'id> {
     /// extras no item snapshot attached, how the turn ended, which model
     /// answered, and which assistant message (`msg_...`, not the response's
     /// `resp_...`) carried the output.
+    #[cfg(any())]
     fn record_terminal(&mut self, response: CompletionResponse, out: &mut Out<'id, Completion>) {
         self.document = serde_json::to_value(&response).ok();
         // The terminal restates the whole turn, so the message text no delta
@@ -901,6 +911,7 @@ impl<'id> ResponsesDecoder<'id> {
 
     /// The provider ended the turn: close the calls whose done event never
     /// came (their incomplete arguments drop), then end the reply.
+    #[cfg(any())]
     fn end(&mut self, mut out: Out<'id, Completion>) -> Result<Flow, ProviderError> {
         for index in out.pending_calls() {
             out.close_pending(index, IfMalformed::Drop)?;
@@ -921,6 +932,7 @@ impl<'id> ResponsesDecoder<'id> {
     /// Replay a whole body as the items the stream sends, then end with the
     /// terminal the body itself is. Structured reasoning suppresses the
     /// top-level reasoning display string.
+    #[cfg(any())]
     fn replay_whole_response(
         &mut self,
         response: CompletionResponse,
@@ -956,6 +968,7 @@ impl<'id> ResponsesDecoder<'id> {
     }
 }
 
+#[cfg(any())]
 impl<'id> Decoder<'id, Completion> for ResponsesDecoder<'id> {
     type Event = ResponsesEvent;
 
@@ -1224,4 +1237,5 @@ pub enum SummaryPartChunkPart {
 }
 
 #[cfg(test)]
+#[cfg(any())]
 mod tests;

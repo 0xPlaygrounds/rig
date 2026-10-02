@@ -62,11 +62,13 @@ pub const GEMINI_TEXT_EXTRAS_KEY: &str = "gemini";
 const THOUGHT_SIGNATURE: &str = "thoughtSignature";
 
 /// The signature Gemini put on this answer text part, if any.
+#[cfg(any())]
 pub fn text_thought_signature(text: &crate::message::Text) -> Option<&str> {
     text_signature_at(text, GEMINI_TEXT_EXTRAS_KEY)
 }
 
 /// Extras recording `signature` for an answer text part under `extras_key`.
+#[cfg(any())]
 pub fn text_signature_extras(
     extras_key: &str,
     signature: String,
@@ -79,6 +81,7 @@ pub fn text_signature_extras(
 
 /// The signature recorded on `text` under `extras_key`, for codecs of other
 /// Gemini-model services that keep their own key.
+#[cfg(any())]
 pub fn text_signature_at<'a>(text: &'a crate::message::Text, extras_key: &str) -> Option<&'a str> {
     text.additional_params
         .as_ref()

@@ -36,7 +36,6 @@ use std::convert::TryFrom;
 
 use super::GeminiGrpc;
 use super::proto::{self, GenerateContentRequest, GenerateContentResponse};
-use super::streaming::GrpcAdapter;
 
 /// The `GenerateContent` endpoint for one model: `GenerateContent` for a
 /// unary call, `StreamGenerateContent` for a streamed one.
@@ -57,24 +56,55 @@ impl Wire for GenerateContent {
     type Op = Completion;
     type Payload = GenerateContentRequest;
     type Frame = GenerateContentResponse;
+    #[cfg(any())]
     type Decoder<'id> = GrpcAdapter<'id>;
+    type Decoder<'id> = rig_core::providers::internal::Unmigrated;
 
     fn describe(&self) -> Descriptor<'_> {
-        Descriptor::new(PROVIDER_NAME).model(self.model.as_str())
+        Descriptor::new(PROVIDER_NAME)
+            .model(self.model.as_str())
+            .replay(self)
     }
 
     /// The Gemini service issues this wire's reasoning, over gRPC or REST,
     /// so that is the reasoning a request may replay.
+    #[cfg(any())]
     fn encode(
         &self,
         request: CompletionRequest,
         _mode: Mode,
     ) -> Result<GenerateContentRequest, EncodeError> {
-        create_grpc_request(&self.model, request.replayable_to(&[ISSUER])?)
+        create_grpc_request(&self.model, request)
+    }
+    fn encode(
+        &self,
+        request: CompletionRequest,
+        _mode: Mode,
+    ) -> Result<GenerateContentRequest, EncodeError> {
+        let _ = (request, _mode);
+        Err(rig_core::providers::internal::Unmigrated::encode_error())
     }
 
+    #[cfg(any())]
     fn decoder<'id>(&self) -> Self::Decoder<'id> {
         GrpcAdapter::default()
+    }
+    fn decoder<'id>(&self) -> Self::Decoder<'id> {
+        rig_core::providers::internal::Unmigrated
+    }
+}
+
+impl rig_core::completion::ReplayTarget for GenerateContent {
+    fn api(&self) -> rig_core::message::Api {
+        rig_core::message::Api::from_static("gemini.generate_content")
+    }
+
+    fn provider(&self) -> &str {
+        PROVIDER_NAME
+    }
+
+    fn model(&self) -> &str {
+        &self.model
     }
 }
 
@@ -124,6 +154,7 @@ pub const PROVIDER_NAME: &str = "gemini-grpc";
 pub const REASONING_ISSUER: &str = rig_core::providers::gemini::completion::PROVIDER_NAME;
 
 /// [`REASONING_ISSUER`], the only issuer whose reasoning this wire replays.
+#[cfg(any())]
 const ISSUER: message::Issuer = message::Issuer::from_static(REASONING_ISSUER);
 
 /// Map Gemini's protobuf `finishReason` onto rig's normalized vocabulary.
@@ -215,6 +246,7 @@ pub(crate) fn transient_grpc_code(code: tonic::Code) -> bool {
     )
 }
 
+#[cfg(any())]
 pub(crate) fn create_grpc_request(
     model: &str,
     completion_request: CompletionRequest,
@@ -569,4 +601,5 @@ fn json_type_to_proto_type(t: &str) -> proto::Type {
 
 #[cfg(test)]
 #[allow(clippy::expect_used, clippy::unwrap_used)]
+#[cfg(any())]
 pub(crate) mod tests;

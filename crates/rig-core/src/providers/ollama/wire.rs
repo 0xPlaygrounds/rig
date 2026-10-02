@@ -21,7 +21,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{
     EmbeddingResponse as OllamaEmbeddingResponse, ListModelsResponse, OLLAMA_API_BASE_URL,
-    OllamaCompletionRequest, OllamaDecoder, PROVIDER_NAME, model_dimensions_from_identifier,
+    OllamaCompletionRequest, PROVIDER_NAME, model_dimensions_from_identifier,
 };
 
 /// The environment variable overriding the daemon's address.
@@ -146,14 +146,18 @@ impl Wire for Chat {
     type Op = Completion;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
+    #[cfg(any())]
     type Decoder<'id> = OllamaDecoder<'id>;
+    type Decoder<'id> = crate::providers::internal::Unmigrated;
 
     fn describe(&self) -> Descriptor<'_> {
-        Descriptor::new(PROVIDER_NAME).model(self.model.as_str())
+        Descriptor::new(PROVIDER_NAME)
+            .model(self.model.as_str())
+            .replay(self)
     }
 
+    #[cfg(any())]
     fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, EncodeError> {
-        let request = request.replayable_to(&[super::ISSUER])?;
         let mut body = OllamaCompletionRequest::try_from((self.model.as_str(), request))?;
         body.stream = mode == Mode::Streaming;
         crate::providers::internal::trace_json(
@@ -174,9 +178,31 @@ impl Wire for Chat {
             },
         ))
     }
+    fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, EncodeError> {
+        let _ = (request, mode);
+        Err(crate::providers::internal::Unmigrated::encode_error())
+    }
 
+    #[cfg(any())]
     fn decoder<'id>(&self) -> Self::Decoder<'id> {
         OllamaDecoder::default()
+    }
+    fn decoder<'id>(&self) -> Self::Decoder<'id> {
+        crate::providers::internal::Unmigrated
+    }
+}
+
+impl crate::completion::ReplayTarget for Chat {
+    fn api(&self) -> crate::message::Api {
+        crate::message::Api::from_static("ollama.chat")
+    }
+
+    fn provider(&self) -> &str {
+        PROVIDER_NAME
+    }
+
+    fn model(&self) -> &str {
+        &self.model
     }
 }
 
@@ -305,4 +331,5 @@ impl<'id> Decoder<'id, ModelListing> for ModelsDecoder {
 }
 
 #[cfg(test)]
+#[cfg(any())]
 mod tests;

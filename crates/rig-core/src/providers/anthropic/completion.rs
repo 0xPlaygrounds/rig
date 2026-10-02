@@ -536,6 +536,7 @@ where
 ///
 /// Return absent fields when parameters are missing. Ignore non-string title
 /// and context values; reject a present, invalid [`CitationsConfig`].
+#[cfg(any())]
 fn extract_anthropic_doc_params(
     additional_params: Option<message::AdditionalParams>,
 ) -> Result<(Option<String>, Option<String>, Option<CitationsConfig>), MessageError> {
@@ -588,6 +589,7 @@ fn extract_anthropic_doc_params(
 /// }
 /// # let _ = message::Text::new("");
 /// ```
+#[cfg(any())]
 pub fn anthropic_citations(text: &message::Text) -> Result<Vec<Citation>, serde_json::Error> {
     match text
         .additional_params
@@ -599,6 +601,7 @@ pub fn anthropic_citations(text: &message::Text) -> Result<Vec<Citation>, serde_
     }
 }
 
+#[cfg(any())]
 fn extract_anthropic_text_citations(text: &message::Text) -> Result<Vec<Citation>, MessageError> {
     anthropic_citations(text).map_err(|err| {
         MessageError::ConversionError(format!(
@@ -607,6 +610,7 @@ fn extract_anthropic_text_citations(text: &message::Text) -> Result<Vec<Citation
     })
 }
 
+#[cfg(any())]
 fn anthropic_text_content_from_message_text(text: message::Text) -> Result<Content, MessageError> {
     if let Some(raw_content) = extract_anthropic_raw_content(&text)? {
         if !text.text.is_empty() {
@@ -626,6 +630,7 @@ fn anthropic_text_content_from_message_text(text: message::Text) -> Result<Conte
     })
 }
 
+#[cfg(any())]
 fn extract_anthropic_raw_content(text: &message::Text) -> Result<Option<Content>, MessageError> {
     let Some(raw_content) = text
         .additional_params
@@ -795,6 +800,7 @@ fn coerce_tool_input(input: serde_json::Value) -> serde_json::Value {
     }
 }
 
+#[cfg(any())]
 fn anthropic_content_from_assistant_content(
     content: message::AssistantContent,
     issuers: &[message::Issuer],
@@ -859,6 +865,7 @@ fn anthropic_content_from_assistant_content(
 /// The issuer-free conversion: no reasoning opens, so none is replayed. A
 /// request's own conversion ([`AnthropicRequestParams`]) replays the
 /// reasoning its issuers open.
+#[cfg(any())]
 impl TryFrom<message::Message> for Message {
     type Error = MessageError;
 
@@ -869,6 +876,7 @@ impl TryFrom<message::Message> for Message {
 
 impl Message {
     /// `message` on the wire, replaying the reasoning `issuers` open.
+    #[cfg(any())]
     fn from_message(
         message: message::Message,
         issuers: &[message::Issuer],
@@ -2001,6 +2009,7 @@ pub(super) fn resolve_top_level_cache_control(
 /// the prompt prefix, which misses the cache from the first token and, on
 /// models that bind thinking blocks to their conversation, turns every earlier
 /// thinking block into a 400. It is hoisted only when no such slot exists.
+#[cfg(any())]
 pub(super) fn split_system_messages_from_history(
     history: &[message::Message],
     preserve_mid_conversation_system_messages: bool,
@@ -2058,6 +2067,7 @@ fn is_system_message_slot(history: &[message::Message], index: usize) -> bool {
             .is_none_or(|message| matches!(message, message::Message::Assistant { .. }))
 }
 
+#[cfg(any())]
 fn is_valid_mid_conversation_system_message(history: &[message::Message], index: usize) -> bool {
     let follows_valid_turn = index > 0
         && history.get(index - 1).is_some_and(|message| {
@@ -2071,6 +2081,7 @@ fn is_valid_mid_conversation_system_message(history: &[message::Message], index:
     follows_valid_turn && is_last_or_precedes_assistant
 }
 
+#[cfg(any())]
 fn assistant_ends_in_server_tool_block(message: &message::Message) -> bool {
     let message::Message::Assistant { content, .. } = message else {
         return false;
@@ -2097,6 +2108,7 @@ fn assistant_ends_in_server_tool_block(message: &message::Message) -> bool {
 }
 
 /// Parameters for building an AnthropicCompletionRequest
+#[cfg(any())]
 pub struct AnthropicRequestParams<'a> {
     pub model: &'a str,
     pub request: CompletionRequest,
@@ -2114,6 +2126,7 @@ pub struct AnthropicRequestParams<'a> {
 impl AnthropicCompletionRequest {
     /// Build the typed request, optionally transforming generated tools with `strict`.
     /// Reject missing token limits, invalid message conversions, and cache conflicts.
+    #[cfg(any())]
     pub(super) fn try_from_params(
         params: AnthropicRequestParams<'_>,
         strict: Option<fn(&mut ToolDefinition)>,
@@ -2224,6 +2237,7 @@ impl AnthropicCompletionRequest {
     }
 }
 
+#[cfg(any())]
 impl TryFrom<AnthropicRequestParams<'_>> for AnthropicCompletionRequest {
     type Error = EncodeError;
 
@@ -2280,4 +2294,5 @@ pub(super) fn build_tool_definitions(
 }
 
 #[cfg(test)]
+#[cfg(any())]
 mod tests;

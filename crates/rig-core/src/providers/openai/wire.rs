@@ -16,7 +16,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::client::env::{self, EnvError};
 use crate::error::EncodeError;
-use crate::message::Issuer;
 use crate::wire::Secret;
 
 use super::responses_api::SystemInstructionsPlacement;
@@ -29,15 +28,15 @@ pub(crate) mod dto;
 mod modality;
 mod route;
 
-pub use chat::{Chat, ChatDecoder, ChatEvent};
+pub use chat::Chat;
 pub use dialects::*;
-pub use dto::{ChatChoice, ChatFrame, ChatUsage, FinishReason, StreamingCompletionResponse};
+pub use dto::{ChatUsage, FinishReason};
 pub use modality::{
     Embeddings, EmbeddingsDecoder, ModelEntry, Models, ModelsDecoder, ModelsReply, Rerank,
     RerankDecoder, RerankReply, RerankResultEntry, RerankUsage, Transcriptions,
     TranscriptionsDecoder, Verify, VerifyDecoder,
 };
-pub use route::{OpenAiDecoder, OpenAiEvent, OpenAiWire, Route};
+pub use route::{OpenAiWire, Route};
 
 #[cfg(feature = "image")]
 pub use modality::{ImageDatum, Images, ImagesDecoder, ImagesEvent, ImagesReply};
@@ -1248,6 +1247,7 @@ fn model_vendor(model: &str) -> &str {
 /// ([`CompletionRequest::replayable_to`](crate::completion::CompletionRequest::replayable_to)).
 /// The request's model override, when it names one, is the model replayed
 /// for; `model` otherwise.
+#[cfg(any())]
 pub(crate) fn scope_reasoning(
     dialect: &Dialect,
     model: &str,

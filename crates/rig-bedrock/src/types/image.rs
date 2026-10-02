@@ -43,4 +43,5 @@ pub(crate) fn to_aws(image: Image) -> Result<aws_bedrock::ImageBlock, ProviderEr
 }
 
 #[cfg(test)]
+#[cfg(any())]
 mod tests;

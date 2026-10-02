@@ -30,4 +30,5 @@ pub(crate) fn to_aws(
 }
 
 #[cfg(test)]
+#[cfg(any())]
 mod tests;

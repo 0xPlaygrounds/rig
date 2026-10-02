@@ -21,9 +21,8 @@ use crate::error::ProviderError;
 use crate::message::DocumentSourceKind;
 use crate::message::{CallId, ToolName};
 use crate::model::ModelInfo;
-use crate::operation::{Completion, Finish, TextPart};
+use crate::operation::{Completion, Finish};
 use crate::providers::internal;
-use crate::providers::internal::thoughts::Thoughts;
 use crate::wire::{Flow, Out};
 use crate::{
     completion::{self, CompletionRequest},
@@ -45,6 +44,7 @@ const OLLAMA_API_BASE_URL: &str = "http://localhost:11434";
 const PROVIDER_NAME: &str = "ollama";
 
 /// The issuer of Ollama's reasoning, which is the only reasoning it replays.
+#[cfg(any())]
 const ISSUER: crate::message::Issuer = crate::message::Issuer::from_static(PROVIDER_NAME);
 
 /// The `all-minilm` embedding model.
@@ -209,6 +209,7 @@ pub(super) struct OllamaCompletionRequest {
     options: serde_json::Value,
 }
 
+#[cfg(any())]
 impl TryFrom<(&str, CompletionRequest)> for OllamaCompletionRequest {
     type Error = EncodeError;
 
@@ -350,6 +351,7 @@ fn finish_of(response: StreamingCompletionResponse) -> Finish {
 
 /// Decode `/api/chat` records, one whole reply or a stream of lines. Only a
 /// `done: true` record ends the reply; EOF alone does not.
+#[cfg(any())]
 #[derive(Default)]
 pub struct OllamaDecoder<'id> {
     /// Reasoning closes when content of another kind interleaves.
@@ -357,9 +359,11 @@ pub struct OllamaDecoder<'id> {
     text: Option<TextPart<'id>>,
 }
 
+#[cfg(any())]
 impl<'id> OllamaDecoder<'id> {
     /// Write a record's content and calls, and end the reply when it is
     /// `done`.
+    #[cfg(any())]
     fn interpret_record(
         &mut self,
         response: CompletionResponse,
@@ -447,6 +451,7 @@ impl<'id> OllamaDecoder<'id> {
 }
 
 /// EOF without a `done: true` record is truncation.
+#[cfg(any())]
 impl<'id> crate::wire::Decoder<'id, Completion> for OllamaDecoder<'id> {
     type Event = CompletionResponse;
 
@@ -637,6 +642,7 @@ fn user_message_from_content(
 
 /// Convert system, user, and assistant messages. User tool results become
 /// separate name-keyed messages; unsupported media returns a conversion error.
+#[cfg(any())]
 impl TryFrom<crate::message::Message> for Vec<Message> {
     type Error = crate::message::MessageError;
     fn try_from(internal_msg: crate::message::Message) -> Result<Self, Self::Error> {
@@ -753,6 +759,7 @@ impl Message {
     }
 }
 
+#[cfg(any())]
 impl From<crate::message::ToolCall> for ToolCall {
     fn from(tool_call: crate::message::ToolCall) -> Self {
         Self {
@@ -770,4 +777,5 @@ impl From<crate::message::ToolCall> for ToolCall {
 }
 
 #[cfg(test)]
+#[cfg(any())]
 mod tests;

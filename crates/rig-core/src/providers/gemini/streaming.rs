@@ -7,8 +7,7 @@ use super::completion::gemini_api_types::{
 use super::completion::{blocked_prompt_error, function_call_finish_reason_error, part_kind_name};
 use crate::error::ProviderError;
 use crate::observe::ObservedError;
-use crate::operation::{Completion, Finish, TextPart};
-use crate::providers::internal::thoughts::Thoughts;
+use crate::operation::{Completion, Finish};
 use crate::providers::internal::wire;
 use crate::wire::{
     AdapterEvent, AdapterUsage, AdapterVerdict, Decoder, Flow, ObservationSink, Out, WireEvent,
@@ -29,6 +28,7 @@ pub(crate) mod shared_parts {
     /// Write a whole function call. An id-less call gets an id rig issues,
     /// never a fabricated provider id, even when it shares a tool name; a
     /// nameless one is dropped.
+    #[cfg(any())]
     pub(crate) fn function_call(
         out: &mut Out<'_, Completion>,
         name: String,
@@ -94,6 +94,7 @@ const RECOGNIZABLE_CHUNK_KEYS: &[&str] =
 /// The provider's end is held until EOF because hosted-tool rounds can
 /// report intermediate finish reasons. A reply without assistant content
 /// fails unless a truncating finish reason permits empty output.
+#[cfg(any())]
 pub struct GenerateContentDecoder<'id> {
     /// Thought boundaries inferred from content transitions and signatures.
     thoughts: Thoughts<'id>,
@@ -110,8 +111,10 @@ pub struct GenerateContentDecoder<'id> {
     delivered: bool,
 }
 
+#[cfg(any())]
 impl GenerateContentDecoder<'_> {
     /// A decoder for one reply.
+    #[cfg(any())]
     pub(super) fn new() -> Self {
         Self {
             thoughts: Thoughts::new(),
@@ -127,6 +130,7 @@ impl GenerateContentDecoder<'_> {
     }
 }
 
+#[cfg(any())]
 impl<'id> Decoder<'id, Completion> for GenerateContentDecoder<'id> {
     type Event = GenerateContentResponse;
 
@@ -269,6 +273,7 @@ impl<'id> Decoder<'id, Completion> for GenerateContentDecoder<'id> {
     }
 }
 
+#[cfg(any())]
 impl GenerateContentDecoder<'_> {
     pub(crate) fn is_analysis_only(frame: &WireFrame) -> bool {
         #[derive(Deserialize)]
@@ -378,7 +383,9 @@ struct ObservedFeedback {
     block_reason: Option<String>,
 }
 
+#[cfg(any())]
 impl<'id> GenerateContentDecoder<'id> {
+    #[cfg(any())]
     fn interpret_part(
         &mut self,
         part: Part,
@@ -494,4 +501,5 @@ impl<'id> GenerateContentDecoder<'id> {
 }
 
 #[cfg(test)]
+#[cfg(any())]
 mod tests;

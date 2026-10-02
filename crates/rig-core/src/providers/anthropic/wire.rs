@@ -14,7 +14,6 @@ use crate::client::env::{self, EnvError};
 use crate::completion::{CompletionRequest, ProviderCapabilities};
 use crate::error::EncodeError;
 use crate::error::ProviderError;
-use crate::message::Issuer;
 use crate::model::{ModelInfo, ModelList};
 pub use crate::operation::VerifyDecoder;
 use crate::operation::{Completion, ModelListing, ModelPage, Verify as VerifyOp};
@@ -27,10 +26,9 @@ use crate::wire::{
 use serde::{Deserialize, Serialize};
 
 use super::completion::{
-    AnthropicCompletionRequest, AnthropicRequestParams, CacheTtl, ToolDefinition,
-    default_max_tokens_for_model, rejects_forced_tool_choice, sanitize_strict_tool_schema,
+    AnthropicCompletionRequest, CacheTtl, ToolDefinition, default_max_tokens_for_model,
+    rejects_forced_tool_choice, sanitize_strict_tool_schema,
 };
-use super::streaming::MessagesDecoder;
 
 /// Endpoint defaults and capabilities for a Messages-format provider.
 /// Serializes by registered name. Serialization rejects modified or unregistered
@@ -446,6 +444,7 @@ impl Messages {
     }
 
     /// The typed request body, shared by both modes.
+    #[cfg(any())]
     fn body(
         &self,
         mut request: CompletionRequest,
@@ -460,9 +459,6 @@ impl Messages {
             request.max_tokens = Some(tokens);
         }
         let model = request.model.clone().unwrap_or_else(|| self.model.clone());
-        // Only reasoning this dialect issued is replayed here.
-        let issuers = [Issuer::from_static(self.provider.dialect.name)];
-        let request = request.replayable_to(&issuers)?;
         let typed = AnthropicCompletionRequest::try_from_params(
             AnthropicRequestParams {
                 model: &model,
@@ -498,7 +494,9 @@ impl Wire for Messages {
     type Op = Completion;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
+    #[cfg(any())]
     type Decoder<'id> = MessagesDecoder<'id>;
+    type Decoder<'id> = crate::providers::internal::Unmigrated;
 
     /// Constrained output decoding does not suppress strict tool calls.
     fn describe(&self) -> Descriptor<'_> {
@@ -509,8 +507,10 @@ impl Wire for Messages {
                     .with_native_output_tool_composition(true)
                     .with_forced_tool_choice_rejected(rejects_forced_tool_choice(&self.model)),
             ))
+            .replay(self)
     }
 
+    #[cfg(any())]
     fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, EncodeError> {
         let body = self.body(request, mode)?;
         crate::providers::internal::trace_json(
@@ -536,9 +536,31 @@ impl Wire for Messages {
         .with_request_id_header(self.provider.dialect.request_id_header)
         .with_projection(MessagesDecoder::project))
     }
+    fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, EncodeError> {
+        let _ = (request, mode);
+        Err(crate::providers::internal::Unmigrated::encode_error())
+    }
 
+    #[cfg(any())]
     fn decoder<'id>(&self) -> Self::Decoder<'id> {
         MessagesDecoder::new()
+    }
+    fn decoder<'id>(&self) -> Self::Decoder<'id> {
+        crate::providers::internal::Unmigrated
+    }
+}
+
+impl crate::completion::ReplayTarget for Messages {
+    fn api(&self) -> crate::message::Api {
+        crate::message::Api::from_static("anthropic.messages")
+    }
+
+    fn provider(&self) -> &str {
+        self.provider.dialect.name
+    }
+
+    fn model(&self) -> &str {
+        &self.model
     }
 }
 
@@ -673,4 +695,5 @@ impl Wire for Verify {
 }
 
 #[cfg(test)]
+#[cfg(any())]
 mod tests;

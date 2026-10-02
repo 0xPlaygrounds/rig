@@ -11,7 +11,6 @@
 
 use crate::{
     client::BedrockRuntime,
-    streaming::StreamState,
     types::{
         assistant_content::{PROVIDER_NAME, reasoning_issuer},
         completion_request::AwsCompletionRequest,
@@ -205,15 +204,20 @@ impl Wire for Converse {
     type Op = Completion;
     type Payload = ConverseRequest;
     type Frame = ConverseFrame;
+    #[cfg(any())]
     type Decoder<'id> = StreamState<'id>;
+    type Decoder<'id> = rig_core::providers::internal::Unmigrated;
 
     fn describe(&self) -> Descriptor<'_> {
-        Descriptor::new(PROVIDER_NAME).model(self.model.as_str())
+        Descriptor::new(PROVIDER_NAME)
+            .model(self.model.as_str())
+            .replay(self)
     }
 
     /// Claude reasoning on Bedrock is Anthropic's; other models' is
     /// Bedrock's, so a request replays only the reasoning its model's issuer
     /// signed.
+    #[cfg(any())]
     fn encode(
         &self,
         request: CompletionRequest,
@@ -221,16 +225,41 @@ impl Wire for Converse {
     ) -> Result<ConverseRequest, EncodeError> {
         let model = self.request_model(request.model.as_deref()).to_owned();
         let issuer = rig_core::message::Issuer::from(reasoning_issuer(&model));
-        let request = request.replayable_to(std::slice::from_ref(&issuer))?;
         Ok(ConverseRequest {
             request: AwsCompletionRequest::new(request, issuer, self.prompt_caching),
             model,
             guardrail: self.guardrail.clone(),
         })
     }
+    fn encode(
+        &self,
+        request: CompletionRequest,
+        _mode: Mode,
+    ) -> Result<ConverseRequest, EncodeError> {
+        let _ = (request, _mode);
+        Err(rig_core::providers::internal::Unmigrated::encode_error())
+    }
 
+    #[cfg(any())]
     fn decoder<'id>(&self) -> Self::Decoder<'id> {
         StreamState::default()
+    }
+    fn decoder<'id>(&self) -> Self::Decoder<'id> {
+        rig_core::providers::internal::Unmigrated
+    }
+}
+
+impl rig_core::completion::ReplayTarget for Converse {
+    fn api(&self) -> rig_core::message::Api {
+        rig_core::message::Api::from_static("bedrock.converse")
+    }
+
+    fn provider(&self) -> &str {
+        PROVIDER_NAME
+    }
+
+    fn model(&self) -> &str {
+        &self.model
     }
 }
 

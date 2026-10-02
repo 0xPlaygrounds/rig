@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use crate::completion::CompletionRequest;
 use crate::error::{EncodeError, ProviderError};
 use crate::operation::Completion;
-use crate::providers::openai::responses_api::streaming::{ResponsesDecoder, ResponsesEvent};
+use crate::providers::openai::responses_api::streaming::ResponsesEvent;
 use crate::providers::openai::responses_api::wire::Responses;
 use crate::providers::openai::responses_api::{
     ResponsesToolDefinition, SystemInstructionsPlacement,
@@ -20,7 +20,7 @@ use crate::providers::openai::responses_api::{
 use crate::wire::{Decoder, Descriptor, Encoded, Flow, Mode, Out, Wire, WireEvent, WireFrame};
 
 use super::OpenAIConfig;
-use super::chat::{Chat, ChatDecoder, ChatEvent};
+use super::chat::Chat;
 
 /// Dispatch a shared expression to the selected route.
 macro_rules! on_route {
@@ -72,6 +72,7 @@ impl OpenAiWire {
 
     /// A wrapper owning the envelope replaces the dialect's envelope here,
     /// before either encoder consumes the completion request.
+    #[cfg(any())]
     pub(crate) fn encode_with_headers(
         &self,
         request: CompletionRequest,
@@ -175,25 +176,37 @@ impl Wire for OpenAiWire {
     type Op = Completion;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
+    #[cfg(any())]
     type Decoder<'id> = OpenAiDecoder<'id>;
+    type Decoder<'id> = crate::providers::internal::Unmigrated;
 
     fn describe(&self) -> Descriptor<'_> {
         on_route!(self, wire => wire.describe())
     }
 
+    #[cfg(any())]
     fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, EncodeError> {
         on_route!(self, wire => wire.encode(request, mode))
     }
+    fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, EncodeError> {
+        let _ = (request, mode);
+        Err(crate::providers::internal::Unmigrated::encode_error())
+    }
 
+    #[cfg(any())]
     fn decoder<'id>(&self) -> OpenAiDecoder<'id> {
         match self {
             Self::Chat(wire) => OpenAiDecoder::Chat(wire.decoder()),
             Self::Responses(wire) => OpenAiDecoder::Responses(wire.decoder()),
         }
     }
+    fn decoder<'id>(&self) -> Self::Decoder<'id> {
+        crate::providers::internal::Unmigrated
+    }
 }
 
 /// One classified frame of whichever route is answering.
+#[cfg(any())]
 pub enum OpenAiEvent {
     /// A chat-completions frame.
     Chat(ChatEvent),
@@ -202,6 +215,7 @@ pub enum OpenAiEvent {
 }
 
 /// The chosen route's decoder.
+#[cfg(any())]
 pub enum OpenAiDecoder<'id> {
     /// The chat-completions state machine.
     Chat(ChatDecoder<'id>),
@@ -209,6 +223,7 @@ pub enum OpenAiDecoder<'id> {
     Responses(ResponsesDecoder<'id>),
 }
 
+#[cfg(any())]
 impl<'id> Decoder<'id, Completion> for OpenAiDecoder<'id> {
     type Event = OpenAiEvent;
 
@@ -240,4 +255,5 @@ impl<'id> Decoder<'id, Completion> for OpenAiDecoder<'id> {
 }
 
 #[cfg(test)]
+#[cfg(any())]
 mod tests;

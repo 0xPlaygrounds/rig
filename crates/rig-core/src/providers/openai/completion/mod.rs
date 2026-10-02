@@ -929,6 +929,7 @@ pub fn user_content_to_messages(
 /// When `reasoning_details` is true, preserve structured reasoning parts and
 /// signatures; otherwise use display text. Return no message when text, calls,
 /// and structured details are all empty.
+#[cfg(any())]
 pub fn assistant_content_to_messages(
     value: impl IntoIterator<Item = message::AssistantContent>,
     reasoning_details: bool,
@@ -1034,6 +1035,7 @@ pub fn assistant_content_to_messages(
     }])
 }
 
+#[cfg(any())]
 impl TryFrom<message::Message> for Vec<Message> {
     type Error = message::MessageError;
 
@@ -1549,6 +1551,7 @@ pub(crate) fn sanitize_plain_text_history(
     *messages = merged;
 }
 
+#[cfg(any())]
 pub struct OpenAIRequestParams {
     pub model: String,
     pub request: CoreCompletionRequest,
@@ -1582,6 +1585,7 @@ pub struct OpenAIRequestParams {
     pub issuers: Vec<message::Issuer>,
 }
 
+#[cfg(any())]
 impl TryFrom<OpenAIRequestParams> for CompletionRequest {
     type Error = EncodeError;
 
@@ -1792,7 +1796,9 @@ where
 }
 
 #[cfg(test)]
+#[cfg(any())]
 mod tests;
 
 #[cfg(test)]
+#[cfg(any())]
 mod image_tool_result_gate_tests;

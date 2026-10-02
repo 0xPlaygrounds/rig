@@ -64,18 +64,22 @@ impl Wire for GenerateContent {
     type Op = Completion;
     type Payload = VertexRequest;
     type Frame = vertexai::model::GenerateContentResponse;
+    #[cfg(any())]
     type Decoder<'id> = VertexDecoder;
+    type Decoder<'id> = rig_core::providers::internal::Unmigrated;
 
     fn describe(&self) -> Descriptor<'_> {
-        Descriptor::new(PROVIDER_NAME).model(self.model.as_str())
+        Descriptor::new(PROVIDER_NAME)
+            .model(self.model.as_str())
+            .replay(self)
     }
 
+    #[cfg(any())]
     fn encode(
         &self,
         request: CompletionRequest,
         _mode: Mode,
     ) -> Result<VertexRequest, EncodeError> {
-        let request = request.replayable_to(&[crate::types::completion_response::ISSUER])?;
         tracing::debug!(
             target: "rig_core::vertexai",
             "Vertex AI completion request: {request:?}"
@@ -85,9 +89,35 @@ impl Wire for GenerateContent {
             request: VertexCompletionRequest(request),
         })
     }
+    fn encode(
+        &self,
+        request: CompletionRequest,
+        _mode: Mode,
+    ) -> Result<VertexRequest, EncodeError> {
+        let _ = (request, _mode);
+        Err(rig_core::providers::internal::Unmigrated::encode_error())
+    }
 
+    #[cfg(any())]
     fn decoder<'id>(&self) -> Self::Decoder<'id> {
         VertexDecoder
+    }
+    fn decoder<'id>(&self) -> Self::Decoder<'id> {
+        rig_core::providers::internal::Unmigrated
+    }
+}
+
+impl rig_core::completion::ReplayTarget for GenerateContent {
+    fn api(&self) -> rig_core::message::Api {
+        rig_core::message::Api::from_static("vertexai.generate_content")
+    }
+
+    fn provider(&self) -> &str {
+        PROVIDER_NAME
+    }
+
+    fn model(&self) -> &str {
+        &self.model
     }
 }
 

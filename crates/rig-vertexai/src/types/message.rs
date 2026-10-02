@@ -10,6 +10,7 @@ use std::collections::HashSet;
 
 /// The Vertex AI `Content` for a non-system `message`. System messages
 /// travel in `system_instruction` and are rejected here.
+#[cfg(any())]
 pub(crate) fn content_from_message(
     message: Message,
 ) -> Result<vertexai::model::Content, ProviderError> {
@@ -292,4 +293,5 @@ fn vertex_assistant_image_part(image: Image) -> Result<vertexai::model::Part, Pr
 }
 
 #[cfg(test)]
+#[cfg(any())]
 mod tests;

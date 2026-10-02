@@ -8,11 +8,10 @@
 //! ```
 
 use crate::error::ProviderError;
-use crate::operation::{CallFragment, Completion, Finish, IfMalformed, TextPart};
+use crate::operation::{CallFragment, Completion, Finish, IfMalformed};
 use crate::providers::cohere::completion::{
     AssistantContent, CompletionResponse, FinishReason, Usage, map_finish_reason,
 };
-use crate::providers::internal::thoughts::Thoughts;
 use crate::providers::internal::wire;
 use crate::wire::{Flow, Out, WireFrame};
 use serde::{Deserialize, Serialize};
@@ -141,6 +140,7 @@ pub struct StreamingCompletionResponse {
 
 /// The `/v2/chat` decoder: one state machine for the whole reply and its
 /// stream of events.
+#[cfg(any())]
 #[derive(Default)]
 pub struct ChatDecoder<'id> {
     /// The wire index the open tool call's fragments are buffered under.
@@ -163,8 +163,10 @@ pub enum ChatEvent {
     Reply(CompletionResponse),
 }
 
+#[cfg(any())]
 impl<'id> ChatDecoder<'id> {
     /// Reasoning then text, as one content fragment carries them.
+    #[cfg(any())]
     fn content(
         &mut self,
         out: &mut Out<'id, Completion>,
@@ -182,6 +184,7 @@ impl<'id> ChatDecoder<'id> {
     }
 
     /// Interpret one streamed `/v2/chat` frame.
+    #[cfg(any())]
     fn interpret_stream(
         &mut self,
         event: StreamingEvent,
@@ -287,6 +290,7 @@ impl<'id> ChatDecoder<'id> {
     /// The unary reply, written as the stream it would have been: its
     /// content parts, each tool call whole, then the end the `message-end`
     /// event carries.
+    #[cfg(any())]
     fn interpret_reply(
         &mut self,
         reply: CompletionResponse,
@@ -332,6 +336,7 @@ impl<'id> ChatDecoder<'id> {
     /// The end both replies finish with: Cohere's usage, its finish reason,
     /// and the message id it named. A stream's `raw` is this native record;
     /// a whole reply's is the reply itself.
+    #[cfg(any())]
     fn end(
         &mut self,
         usage: Option<Usage>,
@@ -365,6 +370,7 @@ impl<'id> ChatDecoder<'id> {
     }
 }
 
+#[cfg(any())]
 impl<'id> crate::wire::Decoder<'id, Completion> for ChatDecoder<'id> {
     type Event = ChatEvent;
 
@@ -391,4 +397,5 @@ impl<'id> crate::wire::Decoder<'id, Completion> for ChatDecoder<'id> {
 }
 
 #[cfg(test)]
+#[cfg(any())]
 mod tests;

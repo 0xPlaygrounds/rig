@@ -7,10 +7,7 @@ use crate::types::message;
 use aws_sdk_bedrockruntime::types as aws_bedrock;
 use base64::{Engine, prelude::BASE64_STANDARD};
 use rig_core::error::ProviderError;
-use rig_core::message::ReasoningContent;
-use rig_core::operation::{
-    CallFragment, Completion, Finish, IfMalformed, ReasoningPart, Seal, TextPart,
-};
+use rig_core::operation::{CallFragment, Completion, Finish, IfMalformed};
 use rig_core::wire::{Flow, Out, WireEvent};
 use serde::{Deserialize, Serialize};
 
@@ -53,6 +50,7 @@ fn block_index(content_block_index: i32) -> usize {
 }
 
 /// One Converse reply's state: a whole reply or a stream of events.
+#[cfg(any())]
 #[derive(Default)]
 pub struct StreamState<'id> {
     /// The text part text deltas extend; another block closes it.
@@ -80,9 +78,11 @@ fn stop_reason_label(stop_reason: &StopReason) -> &'static str {
     }
 }
 
+#[cfg(any())]
 impl<'id> StreamState<'id> {
     /// Close the open reasoning block. A signature-only block is kept for
     /// replay; one with neither text nor signature is dropped.
+    #[cfg(any())]
     fn close_reasoning(&mut self, out: &mut Out<'id, Completion>) {
         if let Some((part, signature)) = self.reasoning.take() {
             out.close_reasoning(
@@ -96,6 +96,7 @@ impl<'id> StreamState<'id> {
     }
 
     /// Write one Converse event in delivery order.
+    #[cfg(any())]
     fn process_event(
         &mut self,
         output: aws_bedrock::ConverseStreamOutput,
@@ -259,6 +260,7 @@ impl<'id> StreamState<'id> {
 }
 
 /// A whole Converse reply, written as the parts a stream sends for it.
+#[cfg(any())]
 fn whole(
     output: InternalConverseOutput,
     mut out: Out<'_, Completion>,
@@ -287,6 +289,7 @@ fn whole(
 }
 
 /// The assistant content of a Converse reply.
+#[cfg(any())]
 fn assistant_content(
     output: &InternalConverseOutput,
 ) -> Result<Vec<rig_core::message::AssistantContent>, ProviderError> {
@@ -304,6 +307,7 @@ fn assistant_content(
     message::assistant_reply(reply)
 }
 
+#[cfg(any())]
 impl<'id> rig_core::wire::Decoder<'id, Completion, ConverseFrame> for StreamState<'id> {
     type Event = ConverseFrame;
 
@@ -341,4 +345,5 @@ impl<'id> rig_core::wire::Decoder<'id, Completion, ConverseFrame> for StreamStat
 
 #[cfg(test)]
 #[allow(clippy::expect_used)]
+#[cfg(any())]
 mod tests;

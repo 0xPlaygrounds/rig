@@ -215,6 +215,7 @@ impl From<ChatUsage> for crate::completion::Usage {
 }
 
 /// One choice of a chat-completions frame, in either reply's shape.
+#[cfg(any())]
 #[derive(Deserialize, Debug)]
 pub struct ChatChoice {
     /// The streamed shape's fragment. Defaulted because a choice on the wire
@@ -248,6 +249,7 @@ pub struct ChatChoice {
 }
 
 /// One frame of the chat-completions wire.
+#[cfg(any())]
 #[derive(Deserialize, Debug)]
 pub struct ChatFrame {
     pub(crate) id: Option<String>,
@@ -263,6 +265,7 @@ pub struct ChatFrame {
     pub(crate) additional_params: serde_json::Map<String, serde_json::Value>,
 }
 
+#[cfg(any())]
 impl ChatFrame {
     /// Whether this frame is the unary `chat.completion` body.
     ///
@@ -294,6 +297,7 @@ impl ChatFrame {
     /// concatenate every candidate into one garbled answer, while the unary
     /// reply is normalized from candidate 0 alone; selecting by index keeps
     /// the two agreeing.
+    #[cfg(any())]
     pub(crate) fn primary(&self) -> Option<&ChatChoice> {
         self.choices
             .iter()
@@ -301,6 +305,7 @@ impl ChatFrame {
     }
 
     /// The primary candidate, taken out of the frame.
+    #[cfg(any())]
     pub(crate) fn into_primary(self) -> Option<ChatChoice> {
         self.choices
             .into_iter()
@@ -313,6 +318,7 @@ impl ChatFrame {
 /// `U` is the accounting: [`ChatUsage`] on the wire path. This is what the
 /// decoder serializes onto the response's `raw`, so a caller reaches every
 /// provider field rig does not normalize.
+#[cfg(any())]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct StreamingCompletionResponse<U = Usage> {
     /// Usage reported on the reply's terminal event; `None` when the reply
@@ -353,6 +359,7 @@ pub struct StreamingCompletionResponse<U = Usage> {
     pub additional_params: Option<crate::message::AdditionalParams>,
 }
 
+#[cfg(any())]
 impl<U> StreamingCompletionResponse<U> {
     /// Create a terminal record carrying `usage`; the optional metadata
     /// starts unset.
@@ -368,6 +375,7 @@ impl<U> StreamingCompletionResponse<U> {
     }
 }
 
+#[cfg(any())]
 impl<U> StreamingCompletionResponse<U>
 where
     U: Into<crate::completion::Usage>,

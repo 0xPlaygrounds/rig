@@ -442,13 +442,13 @@ async fn terminal_raw_round_trips_into_the_terminal_type() {
     let renormalized = normalized_terminal(vec![typed]).await;
     assert_eq!(terminal.identity(), renormalized.identity());
     assert_eq!(terminal.finish_reason(), renormalized.finish_reason());
-    assert_eq!(terminal.model, renormalized.model);
+    assert_eq!(terminal.model(), renormalized.model());
     assert_eq!(terminal.usage, renormalized.usage);
     assert_eq!(
         terminal.finish_reason(),
         Some(rig_core::completion::FinishReason::Stop)
     );
-    assert_eq!(terminal.model.as_deref(), Some("gemini-2.5-flash"));
+    assert_eq!(terminal.model().as_deref(), Some("gemini-2.5-flash"));
     assert_eq!(
         terminal.identity().response_id.as_deref(),
         Some("resp-grpc-stream")
@@ -463,7 +463,7 @@ async fn the_stream_names_the_gemini_service_as_reasoning_issuer() {
         terminal_frame(),
     ])
     .await;
-    assert_eq!(terminal.provider, super::super::completion::PROVIDER_NAME);
+    assert_eq!(terminal.provider(), super::super::completion::PROVIDER_NAME);
     let Some(AssistantContent::Reasoning(reasoning)) = terminal.choice.first() else {
         panic!("reasoning first: {:?}", terminal.choice);
     };

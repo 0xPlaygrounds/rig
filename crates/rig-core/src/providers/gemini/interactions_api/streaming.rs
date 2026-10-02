@@ -6,9 +6,8 @@ use super::interactions_api_types::{
     ThoughtSummaryDelta, map_interaction_status,
 };
 use crate::error::ProviderError;
-use crate::operation::{CallFragment, Completion, Finish, IfMalformed, TextPart};
+use crate::operation::{CallFragment, Completion, Finish, IfMalformed};
 use crate::providers::gemini::streaming::shared_parts;
-use crate::providers::internal::thoughts::Thoughts;
 use crate::providers::internal::wire;
 use crate::wire::{Decoder, Flow, Out, WireEvent, WireFrame};
 use serde_json::{Map, Value};
@@ -90,6 +89,7 @@ impl From<StreamingCompletionResponse> for crate::completion::Usage {
 
 /// The Gemini Interactions wire's decoder: one state machine for the whole
 /// interaction and its stream of steps.
+#[cfg(any())]
 #[derive(Default)]
 pub struct InteractionsDecoder<'id> {
     /// Thought boundaries inferred from content transitions and signatures.
@@ -99,6 +99,7 @@ pub struct InteractionsDecoder<'id> {
 }
 
 /// One content item as the decoder writes it.
+#[cfg(any())]
 enum Chunk {
     Thought {
         text: String,
@@ -115,9 +116,11 @@ enum Chunk {
     Raw(crate::message::AdditionalParams),
 }
 
+#[cfg(any())]
 impl<'id> InteractionsDecoder<'id> {
     /// Write one content item: thoughts, the boundary text or a call
     /// makes, text, then the call.
+    #[cfg(any())]
     fn write(&mut self, chunk: Chunk, out: &mut Out<'id, Completion>) -> Result<(), ProviderError> {
         match chunk {
             Chunk::Thought { text, signature } => {
@@ -165,6 +168,7 @@ impl<'id> InteractionsDecoder<'id> {
 
 /// EOF without `interaction.completed` is truncation, not successful
 /// completion, so the decoder has nothing to add at the end of the reply.
+#[cfg(any())]
 impl<'id> Decoder<'id, Completion> for InteractionsDecoder<'id> {
     type Event = InteractionsEvent;
 
@@ -341,6 +345,7 @@ fn delta_content(delta: ContentDelta) -> Option<Content> {
     }
 }
 
+#[cfg(any())]
 fn step_start_chunks(step: Step) -> Vec<Chunk> {
     match step {
         // Model output can interleave multiple text and function-call items.
@@ -354,6 +359,7 @@ fn step_start_chunks(step: Step) -> Vec<Chunk> {
 
 /// A supported output content item as the chunk it writes; other content is
 /// skipped.
+#[cfg(any())]
 fn content_chunk(content: Content) -> Option<Chunk> {
     match content {
         Content::Text(text) if !text.text.is_empty() => Some(Chunk::Text(text.text)),
@@ -398,4 +404,5 @@ fn content_chunk(content: Content) -> Option<Chunk> {
 }
 
 #[cfg(test)]
+#[cfg(any())]
 mod tests;

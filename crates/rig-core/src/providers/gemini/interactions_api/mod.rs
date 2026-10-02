@@ -27,6 +27,7 @@ pub(crate) const PROVIDER_NAME: &str = "gcp.gemini";
 
 /// The issuer of Gemini's reasoning, which is the only reasoning this wire
 /// replays.
+#[cfg(any())]
 pub(crate) const ISSUER: crate::message::Issuer =
     crate::message::Issuer::from_static(PROVIDER_NAME);
 
@@ -54,7 +55,9 @@ impl crate::wire::Wire for Interactions {
     type Op = crate::operation::Completion;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
+    #[cfg(any())]
     type Decoder<'id> = streaming::InteractionsDecoder<'id>;
+    type Decoder<'id> = crate::providers::internal::Unmigrated;
 
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(PROVIDER_NAME)
@@ -63,14 +66,15 @@ impl crate::wire::Wire for Interactions {
                 Mode::Unary => GenAiOperation::Interactions,
                 Mode::Streaming => GenAiOperation::InteractionsStreaming,
             })
+            .replay(self)
     }
 
+    #[cfg(any())]
     fn encode(
         &self,
         request: CompletionRequest,
         mode: crate::wire::Mode,
     ) -> Result<crate::wire::Encoded, EncodeError> {
-        let request = request.replayable_to(&[ISSUER])?;
         // `stream` is part of the request body on this wire, so the mode is
         // in the bytes as well as in the path.
         let streaming = matches!(mode, crate::wire::Mode::Streaming);
@@ -105,9 +109,35 @@ impl crate::wire::Wire for Interactions {
         // Gemini supplies no transport request-id response header.
         Ok(crate::wire::Encoded::new(request, framing))
     }
+    fn encode(
+        &self,
+        request: CompletionRequest,
+        mode: crate::wire::Mode,
+    ) -> Result<crate::wire::Encoded, EncodeError> {
+        let _ = (request, mode);
+        Err(crate::providers::internal::Unmigrated::encode_error())
+    }
 
+    #[cfg(any())]
     fn decoder<'id>(&self) -> Self::Decoder<'id> {
         streaming::InteractionsDecoder::default()
+    }
+    fn decoder<'id>(&self) -> Self::Decoder<'id> {
+        crate::providers::internal::Unmigrated
+    }
+}
+
+impl crate::completion::ReplayTarget for Interactions {
+    fn api(&self) -> crate::message::Api {
+        crate::message::Api::from_static("gemini.interactions")
+    }
+
+    fn provider(&self) -> &str {
+        PROVIDER_NAME
+    }
+
+    fn model(&self) -> &str {
+        &self.model
     }
 }
 
@@ -149,19 +179,24 @@ impl crate::wire::Wire for InteractionResume {
     type Op = crate::operation::Completion;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
+    #[cfg(any())]
     type Decoder<'id> = streaming::InteractionsDecoder<'id>;
+    type Decoder<'id> = crate::providers::internal::Unmigrated;
 
     /// The interaction names its own model; this wire addresses no model id.
     fn describe(&self) -> Descriptor<'_> {
-        Descriptor::new(PROVIDER_NAME).telemetry(|mode| match mode {
-            Mode::Unary => GenAiOperation::Interactions,
-            Mode::Streaming => GenAiOperation::InteractionsStreaming,
-        })
+        Descriptor::new(PROVIDER_NAME)
+            .telemetry(|mode| match mode {
+                Mode::Unary => GenAiOperation::Interactions,
+                Mode::Streaming => GenAiOperation::InteractionsStreaming,
+            })
+            .replay(self)
     }
 
     /// Reads an existing interaction, so the request carries no body and the
     /// [`CompletionRequest`] contributes nothing: what to read is the wire's
     /// own data.
+    #[cfg(any())]
     fn encode(
         &self,
         _request: CompletionRequest,
@@ -191,12 +226,39 @@ impl crate::wire::Wire for InteractionResume {
             .body(crate::wire::Body::empty())?;
         Ok(crate::wire::Encoded::new(request, framing))
     }
+    fn encode(
+        &self,
+        _request: CompletionRequest,
+        mode: crate::wire::Mode,
+    ) -> Result<crate::wire::Encoded, EncodeError> {
+        let _ = (_request, mode);
+        Err(crate::providers::internal::Unmigrated::encode_error())
+    }
 
+    #[cfg(any())]
     fn decoder<'id>(&self) -> Self::Decoder<'id> {
         streaming::InteractionsDecoder::default()
     }
+    fn decoder<'id>(&self) -> Self::Decoder<'id> {
+        crate::providers::internal::Unmigrated
+    }
 }
 
+impl crate::completion::ReplayTarget for InteractionResume {
+    fn api(&self) -> crate::message::Api {
+        crate::message::Api::from_static("gemini.interactions")
+    }
+
+    fn provider(&self) -> &str {
+        PROVIDER_NAME
+    }
+
+    fn model(&self) -> &str {
+        ""
+    }
+}
+
+#[cfg(any())]
 pub(crate) fn create_request_body(
     model: String,
     completion_request: CompletionRequest,
@@ -983,6 +1045,7 @@ pub mod interactions_api_types {
         /// Convert a history message into ordered interaction steps.
         /// Calls, results, and thoughts become separate steps; adjacent text and
         /// media remain grouped. Return conversion errors for unsupported content.
+        #[cfg(any())]
         pub(crate) fn from_message(
             message: crate::completion::Message,
         ) -> Result<Vec<Self>, message::MessageError> {
@@ -1631,6 +1694,7 @@ pub mod interactions_api_types {
         }
     }
 
+    #[cfg(any())]
     impl TryFrom<message::AssistantContent> for Content {
         type Error = message::MessageError;
 
@@ -2047,6 +2111,7 @@ pub mod interactions_api_types {
 }
 
 #[cfg(test)]
+#[cfg(any())]
 mod tests;
 
 #[cfg(test)]

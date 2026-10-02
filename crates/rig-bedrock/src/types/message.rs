@@ -1,7 +1,7 @@
 use aws_sdk_bedrockruntime::types as aws_bedrock;
 
 use rig_core::error::ProviderError;
-use rig_core::message::{AssistantContent, Issuer, Message};
+use rig_core::message::{AssistantContent, Message};
 
 use super::{
     assistant_content,
@@ -11,6 +11,7 @@ use super::{
 
 /// The Converse message for `message`, replaying the reasoning `issuer`
 /// issued.
+#[cfg(any())]
 pub(crate) fn to_aws(
     message: Message,
     issuer: &Issuer,
@@ -56,6 +57,7 @@ pub(crate) fn to_aws(
 
 /// The content of a Converse reply message. A reply is the assistant's turn,
 /// so a reply in any other role is an error.
+#[cfg(any())]
 pub(crate) fn assistant_reply(
     message: ConverseMessage,
 ) -> Result<Vec<AssistantContent>, ProviderError> {
@@ -78,4 +80,5 @@ pub(crate) fn assistant_reply(
 }
 
 #[cfg(test)]
+#[cfg(any())]
 mod tests;

@@ -14,8 +14,7 @@ use serde_json::{Map, Value};
 use rig_core::driver::warn_unmodeled;
 use rig_core::error::ProviderError;
 use rig_core::message::{self, CallId, MimeType, ToolCall, ToolFunction, ToolName};
-use rig_core::operation::{Completion, Finish, TextPart};
-use rig_core::providers::internal::thoughts::Thoughts;
+use rig_core::operation::{Completion, Finish};
 use rig_core::wire::{Flow, Out, WireEvent};
 
 use super::completion::{encode_optional_base64 as encode_signature, prost_struct_to_json};
@@ -25,6 +24,7 @@ use super::proto;
 /// reply is one of them, a stream sends several. Like the REST wire, the
 /// reply ends at EOF once a finish reason arrived, since a hosted-tool round
 /// can report one before more content.
+#[cfg(any())]
 pub struct GrpcAdapter<'id> {
     /// Thought boundaries inferred from content transitions and signatures.
     thoughts: Thoughts<'id>,
@@ -37,6 +37,7 @@ pub struct GrpcAdapter<'id> {
     delivered: bool,
 }
 
+#[cfg(any())]
 impl Default for GrpcAdapter<'_> {
     fn default() -> Self {
         Self {
@@ -48,6 +49,7 @@ impl Default for GrpcAdapter<'_> {
     }
 }
 
+#[cfg(any())]
 impl<'id> rig_core::wire::Decoder<'id, Completion, proto::GenerateContentResponse>
     for GrpcAdapter<'id>
 {
@@ -59,6 +61,7 @@ impl<'id> rig_core::wire::Decoder<'id, Completion, proto::GenerateContentRespons
         WireEvent::Known(frame)
     }
 
+    #[cfg(any())]
     fn decode(
         &mut self,
         resp: proto::GenerateContentResponse,
@@ -97,6 +100,7 @@ impl<'id> rig_core::wire::Decoder<'id, Completion, proto::GenerateContentRespons
 
     /// Without a provider finish reason the reply did not end; an empty
     /// reply needs a truncating finish reason to explain it.
+    #[cfg(any())]
     fn eof(&mut self, mut out: Out<'id, Completion>) -> Result<Flow, ProviderError> {
         let Some(last) = self.last.take() else {
             return Err(ProviderError::Truncated);
@@ -126,8 +130,10 @@ impl<'id> rig_core::wire::Decoder<'id, Completion, proto::GenerateContentRespons
     }
 }
 
+#[cfg(any())]
 impl<'id> GrpcAdapter<'id> {
     /// Write one protobuf part.
+    #[cfg(any())]
     fn interpret_part(
         &mut self,
         part: &proto::Part,
@@ -221,4 +227,5 @@ impl<'id> GrpcAdapter<'id> {
 
 #[cfg(test)]
 #[allow(clippy::expect_used, clippy::panic)]
+#[cfg(any())]
 mod tests;

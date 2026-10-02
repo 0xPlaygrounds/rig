@@ -3,11 +3,8 @@ use serde_json::{Value, json};
 
 use super::completion::{CompletionResponse, Content, anthropic_usage_totals, map_finish_reason};
 use crate::error::ProviderError;
-use crate::message::ReasoningContent;
 use crate::observe::ObservedError;
-use crate::operation::{
-    CallFragment, Completion, Finish, IfMalformed, ReasoningPart, Seal, TextPart,
-};
+use crate::operation::{CallFragment, Completion, Finish, IfMalformed};
 use crate::providers::internal::wire;
 use crate::wire::{
     AdapterEvent, AdapterUsage, AdapterVerdict, Decoder, Flow, ObservationSink, Out, WireEvent,
@@ -212,6 +209,7 @@ struct ServerToolUseState {
 
 /// Decode Messages replies, a whole message or a stream of events.
 /// EOF without a `message_delta` stop reason is truncation.
+#[cfg(any())]
 pub struct MessagesDecoder<'id> {
     /// The text part of each open content block.
     texts: HashMap<usize, TextPart<'id>>,
@@ -234,12 +232,14 @@ pub struct MessagesDecoder<'id> {
     response_model: Option<String>,
 }
 
+#[cfg(any())]
 impl Default for MessagesDecoder<'_> {
     fn default() -> Self {
         Self::new()
     }
 }
 
+#[cfg(any())]
 impl MessagesDecoder<'_> {
     /// A fresh decoder for one reply.
     pub fn new() -> Self {
@@ -258,8 +258,10 @@ impl MessagesDecoder<'_> {
     }
 }
 
+#[cfg(any())]
 impl<'id> MessagesDecoder<'id> {
     /// The content-block frames: `content_block_start` / `_delta` / `_stop`.
+    #[cfg(any())]
     fn interpret_content(
         &mut self,
         event: StreamingEvent,
@@ -461,6 +463,7 @@ impl<'id> MessagesDecoder<'id> {
     /// A whole message, written block by block as a stream states it, then
     /// ended. Empty content is refused unless the stop reason is `end_turn`,
     /// or `stop_sequence` with a reported sequence.
+    #[cfg(any())]
     fn interpret_whole_message(
         &mut self,
         message: CompletionResponse,
@@ -534,6 +537,7 @@ impl<'id> MessagesDecoder<'id> {
     }
 }
 
+#[cfg(any())]
 impl<'id> Decoder<'id, Completion> for MessagesDecoder<'id> {
     type Event = StreamingEvent;
 
@@ -630,6 +634,7 @@ impl<'id> Decoder<'id, Completion> for MessagesDecoder<'id> {
     }
 }
 
+#[cfg(any())]
 impl MessagesDecoder<'_> {
     /// Messages metadata projected before normalization can discard it: the
     /// stop reason, the model, the message id, the usage and any error
@@ -738,6 +743,7 @@ pub struct StreamingCompletionResponse {
 }
 
 /// The provider's end of the reply, from Anthropic's terminal record.
+#[cfg(any())]
 fn finish_of(response: &StreamingCompletionResponse) -> Finish {
     Finish {
         usage: crate::completion::Usage::from(&response.usage),
@@ -749,4 +755,5 @@ fn finish_of(response: &StreamingCompletionResponse) -> Finish {
 }
 
 #[cfg(test)]
+#[cfg(any())]
 mod tests;

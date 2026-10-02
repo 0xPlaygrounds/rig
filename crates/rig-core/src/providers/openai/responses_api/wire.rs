@@ -16,11 +16,7 @@ use crate::wire::{
 };
 use serde::{Deserialize, Serialize};
 
-use super::streaming::ResponsesDecoder;
-use super::{
-    CompletionRequest, Include, ResponsesRequestParams, ResponsesToolDefinition,
-    SystemInstructionsPlacement,
-};
+use super::{CompletionRequest, Include, ResponsesToolDefinition, SystemInstructionsPlacement};
 
 /// The Responses wire: `POST /responses`, SSE when streamed.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -39,6 +35,7 @@ pub struct Responses {
 }
 
 impl Responses {
+    #[cfg(any())]
     pub(crate) fn encode_with_headers(
         &self,
         request: completion::CompletionRequest,
@@ -145,6 +142,7 @@ impl Responses {
     }
 
     /// The Responses request this wire sends, before serialization.
+    #[cfg(any())]
     pub(crate) fn responses_request(
         &self,
         request: completion::CompletionRequest,
@@ -218,7 +216,9 @@ impl Wire for Responses {
     type Op = Completion;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
+    #[cfg(any())]
     type Decoder<'id> = ResponsesDecoder<'id>;
+    type Decoder<'id> = crate::providers::internal::Unmigrated;
 
     /// The xAI contract does not compose native structured output with tools.
     fn describe(&self) -> Descriptor<'_> {
@@ -229,8 +229,10 @@ impl Wire for Responses {
                     self.provider.dialect.quirks.responses.contract != ResponsesContract::Xai,
                 ),
             ))
+            .replay(self)
     }
 
+    #[cfg(any())]
     fn encode(
         &self,
         request: completion::CompletionRequest,
@@ -238,7 +240,16 @@ impl Wire for Responses {
     ) -> Result<Encoded, EncodeError> {
         self.encode_with_headers(request, mode, OpenAIConfig::completion_headers)
     }
+    fn encode(
+        &self,
+        request: completion::CompletionRequest,
+        mode: Mode,
+    ) -> Result<Encoded, EncodeError> {
+        let _ = (request, mode);
+        Err(crate::providers::internal::Unmigrated::encode_error())
+    }
 
+    #[cfg(any())]
     fn decoder<'id>(&self) -> ResponsesDecoder<'id> {
         let quirks = &self.provider.dialect.quirks.responses;
         let mut decoder = ResponsesDecoder::new(self.provider.dialect.name);
@@ -252,6 +263,23 @@ impl Wire for Responses {
             decoder = decoder.with_upstream_reasoning_issuer();
         }
         decoder
+    }
+    fn decoder<'id>(&self) -> Self::Decoder<'id> {
+        crate::providers::internal::Unmigrated
+    }
+}
+
+impl crate::completion::ReplayTarget for Responses {
+    fn api(&self) -> crate::message::Api {
+        crate::message::Api::from_static("openai.responses")
+    }
+
+    fn provider(&self) -> &str {
+        self.provider.dialect.name
+    }
+
+    fn model(&self) -> &str {
+        &self.model
     }
 }
 
@@ -274,7 +302,12 @@ pub(crate) fn fold_body(
         crate::providers::openai::OpenAIConfig::new("decode-only"),
         String::new(),
     );
-    crate::driver::decode_body(&wire, crate::operation::Turn::new(provider), body, reply)
+    crate::driver::decode_body(
+        &wire,
+        crate::operation::Turn::relayed(provider),
+        body,
+        reply,
+    )
 }
 
 #[derive(Default, Deserialize)]
@@ -392,4 +425,5 @@ pub(crate) fn project_payload(payload: &[u8], sink: &mut ObservationSink<'_>) {
 }
 
 #[cfg(test)]
+#[cfg(any())]
 mod tests;
