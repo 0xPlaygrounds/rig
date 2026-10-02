@@ -29,10 +29,7 @@ async fn nonstreaming_response_carries_identity() {
                 .expect("completion should succeed");
 
             assert!(
-                response
-                    .response_id()
-                    .as_deref()
-                    .is_some_and(|id| !id.is_empty()),
+                response.response_id().is_some_and(|id| !id.is_empty()),
                 "xAI reports a response id, got {:?}",
                 response.response_id()
             );
@@ -127,7 +124,7 @@ async fn raw_and_normalized_views_agree_on_identity() {
                 .expect("`raw` is the serialized Responses CompletionResponse");
             assert_eq!(
                 Some(raw_view.id.as_str()),
-                response.response_id().as_deref(),
+                response.response_id(),
                 "raw and normalized views describe the same interaction"
             );
             assert!(

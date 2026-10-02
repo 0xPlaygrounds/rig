@@ -707,9 +707,9 @@ impl Drop for ResponsesWebSocketSession {
 
 /// Feed one message to the turn's decoder. Returns whether it ended the
 /// turn.
-fn feed<'id>(
+fn feed(
     decoder: &mut ResponsesDecoder,
-    reply: &'id std::sync::Mutex<Shared<Completion>>,
+    reply: &std::sync::Mutex<Shared<Completion>>,
     payload: String,
 ) -> Result<bool, ProviderError> {
     crate::driver::step(decoder, reply, WireFrame::Text(payload), None)

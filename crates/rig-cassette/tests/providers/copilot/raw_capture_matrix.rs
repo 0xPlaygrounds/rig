@@ -255,7 +255,7 @@ async fn chat_normalized_fields_equal_raw_renormalized() {
     // compares exactly in either cassette mode — stricter than the token
     // comparator the fixture-side check has to use.
     assert_eq!(
-        response.response_id().as_deref(),
+        response.response_id(),
         Some(reply.id.as_str()),
         "response id"
     );
@@ -376,7 +376,7 @@ async fn responses_normalized_fields_equal_raw_renormalized() {
     // As on the chat route: both ids come from the same live reply here, so
     // the comparison is exact rather than mode-aware.
     assert_eq!(
-        response.response_id().as_deref(),
+        response.response_id(),
         Some(reply.id.as_str()),
         "response id"
     );

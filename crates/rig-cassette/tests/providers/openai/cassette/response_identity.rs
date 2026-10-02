@@ -30,7 +30,6 @@ async fn responses_nonstreaming_carries_identity() {
             assert!(
                 response
                     .response_id()
-                    .as_deref()
                     .is_some_and(|id| id.starts_with("resp")),
                 "Responses API reports resp_ ids, got {:?}",
                 response.response_id()
@@ -86,7 +85,6 @@ async fn chat_completions_nonstreaming_carries_identity() {
             assert!(
                 response
                     .response_id()
-                    .as_deref()
                     .is_some_and(|id| id.starts_with("chatcmpl")),
                 "Chat Completions reports chatcmpl- ids, got {:?}",
                 response.response_id()

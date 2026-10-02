@@ -342,11 +342,12 @@ async fn five_turn_streaming_reasoning_metadata_roundtrip() {
                 let mut text = String::new();
 
                 while let Some(item) = stream.next().await {
-                    match item.unwrap_or_else(|error| {
-                        panic!("turn {} stream should succeed: {error}", turn_index + 1)
-                    }) {
-                        Item::Event(StreamEvent::Text { text: delta, .. }) => text.push_str(&delta),
-                        _ => {}
+                    if let Item::Event(StreamEvent::Text { text: delta, .. }) =
+                        item.unwrap_or_else(|error| {
+                            panic!("turn {} stream should succeed: {error}", turn_index + 1)
+                        })
+                    {
+                        text.push_str(&delta)
                     }
                 }
                 let final_record = stream.finish().await.unwrap_or_else(|error| {

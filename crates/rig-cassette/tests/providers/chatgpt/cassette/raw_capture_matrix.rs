@@ -139,7 +139,7 @@ async fn raw_round_trips_provider_type() {
 
     // The typed view agrees with the normalized one on what the model
     // said, so raw is a superset, not a divergent copy.
-    assert_eq!(Some(typed.model.as_str()), response.model().as_deref());
+    assert_eq!(Some(typed.model.as_str()), response.model());
     assert_eq!(response.provider(), CHATGPT_PROVIDER);
     assert!(!response.choice.is_empty());
 
@@ -226,10 +226,7 @@ async fn normalized_fields_equal_raw_renormalized() {
     // Both views here come from the *same* reply, so their ids agree
     // verbatim: the shared contract's token comparison exists for a live
     // value against a scrubbed fixture, and that relaxation does not apply.
-    assert_eq!(
-        response.response_id().as_deref(),
-        Some(from_raw.id.as_str())
-    );
+    assert_eq!(response.response_id(), Some(from_raw.id.as_str()));
     assert_eq!(
         responses::message_item_id(&response),
         from_raw.output.iter().find_map(|item| match item {

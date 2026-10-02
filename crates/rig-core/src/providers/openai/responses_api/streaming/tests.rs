@@ -2029,7 +2029,7 @@ fn a_refusal_is_the_message_text_and_its_item_keeps_the_part() {
         decode(Mode::Unary, whole(std::slice::from_ref(&refusal))),
     ] {
         assert_eq!(response.text(), "I can't help with that.");
-        assert_eq!(natives(&response), [refusal.clone()]);
+        assert_eq!(natives(&response), std::slice::from_ref(&refusal));
         assert_eq!(response.stop(), crate::message::StopReason::Stop);
     }
 }
@@ -2073,7 +2073,7 @@ fn reasoning_takes_the_ciphertext_the_terminal_states() {
         }
     }
     let response = decode(Mode::Streaming, frames(&events));
-    assert_eq!(natives(&response), [item.clone()]);
+    assert_eq!(natives(&response), std::slice::from_ref(&item));
     assert_eq!(
         response.message(),
         decode(Mode::Unary, whole(&[item])).message(),

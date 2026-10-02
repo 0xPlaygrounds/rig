@@ -88,15 +88,11 @@ fn assert_terminal_reproduces_event(
 ) {
     assert_eq!(terminal.provider(), PROVIDER, "provider");
     assert_matches_recorded_token(
-        terminal.response_id().as_deref(),
+        terminal.response_id(),
         response["id"].as_str(),
         "response id",
     );
-    assert_eq!(
-        terminal.model().as_deref(),
-        response["model"].as_str(),
-        "model"
-    );
+    assert_eq!(terminal.model(), response["model"].as_str(), "model");
     assert_eq!(
         response["status"],
         json!("completed"),

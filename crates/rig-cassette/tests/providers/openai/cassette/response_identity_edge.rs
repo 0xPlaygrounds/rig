@@ -59,7 +59,6 @@ async fn previous_response_id_chain_keeps_axes_distinct() {
                 .expect("first chained call should succeed");
             let first_response_id = first
                 .response_id()
-                .clone()
                 .expect("Responses API reports a response id");
             assert_transport_request_id(first.provider_request_id.as_deref(), "chain call 1");
 
@@ -196,7 +195,7 @@ async fn raw_and_normalized_views_agree_on_identity() {
                 .expect("`raw` is the serialized responses_api::CompletionResponse");
             assert_eq!(
                 Some(reply.id.as_str()),
-                response.response_id().as_deref(),
+                response.response_id(),
                 "raw and normalized views describe the same interaction"
             );
             assert!(

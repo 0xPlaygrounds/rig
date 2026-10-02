@@ -420,7 +420,6 @@ fn assert_response_metadata(response: &rig::completion::CompletionResponse) {
     assert_nonempty_response(
         response
             .model()
-            .as_deref()
             .expect("normalized xAI response should report the provider model"),
     );
     assert_eq!(

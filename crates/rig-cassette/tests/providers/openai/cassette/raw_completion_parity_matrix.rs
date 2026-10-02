@@ -169,23 +169,18 @@ fn assert_side_matches_fixture(
         REQUEST_ID_HEADER,
     );
     assert_matches_recorded_token(
-        response.response_id().as_deref(),
+        response.response_id(),
         body["id"].as_str(),
         &format!("{context}: response_id vs the fixture body id"),
     );
     assert!(
         response
             .response_id()
-            .as_deref()
             .is_some_and(|id| id.starts_with(id_prefix)),
         "{context}: response_id should be a {id_prefix} id, got {:?}",
         response.response_id()
     );
-    assert_eq!(
-        response.model().as_deref(),
-        body["model"].as_str(),
-        "{context}: model"
-    );
+    assert_eq!(response.model(), body["model"].as_str(), "{context}: model");
     assert_eq!(
         response.usage.input_tokens,
         body["usage"][usage_input_key].as_u64(),
@@ -258,12 +253,12 @@ fn assert_chat_views_agree(
     response: &CompletionResponse,
 ) {
     assert_eq!(
-        response.response_id().as_deref(),
+        response.response_id(),
         Some(reply.id.as_str()),
         "{scenario}: the response id is the provider's `id`"
     );
     assert_eq!(
-        response.model().as_deref(),
+        response.model(),
         Some(reply.model.as_str()),
         "{scenario}: model"
     );
@@ -422,11 +417,11 @@ async fn chat_plain_raw_completion_lacks_request_id() {
     let bodies = crate::cassettes::recorded_interaction_bodies(PROVIDER, SCENARIO);
     let first: Value = serde_json::from_str(&bodies[0].1).expect("recorded body should be JSON");
     assert_matches_recorded_token(
-        plain.response_id().as_deref(),
+        plain.response_id(),
         first["id"].as_str(),
         &format!("{SCENARIO}: plain route response_id"),
     );
-    assert_eq!(plain.model().as_deref(), first["model"].as_str());
+    assert_eq!(plain.model(), first["model"].as_str());
     assert_eq!(
         plain.usage.input_tokens,
         first["usage"]["prompt_tokens"].as_u64()
@@ -449,12 +444,12 @@ fn assert_responses_views_agree(
     response: &CompletionResponse,
 ) {
     assert_eq!(
-        response.response_id().as_deref(),
+        response.response_id(),
         Some(reply.id.as_str()),
         "{scenario}: the response id is the provider's `id`"
     );
     assert_eq!(
-        response.model().as_deref(),
+        response.model(),
         Some(reply.model.as_str()),
         "{scenario}: model"
     );
