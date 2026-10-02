@@ -1290,7 +1290,13 @@ impl ChatDecoder {
             .get(REASONING_DETAILS)
             .and_then(serde_json::Value::as_array)
             .is_some_and(|details| !details.is_empty());
-        if delta_text(&message).is_none() && !has_calls && !has_reasoning && !cut_short {
+        let has_audio = message.get("audio").is_some_and(|audio| !audio.is_null());
+        if delta_text(&message).is_none()
+            && !has_calls
+            && !has_reasoning
+            && !has_audio
+            && !cut_short
+        {
             return Err(ProviderError::Response(
                 crate::message::EMPTY_RESPONSE_ERROR.to_owned(),
             ));
@@ -1315,6 +1321,14 @@ impl ChatDecoder {
     /// built; a whole body's is the body itself, which the transport keeps.
     fn end(&mut self, mut out: Out<'_, Completion>, streamed: bool) -> Result<Flow, ProviderError> {
         let mut message = std::mem::take(&mut self.message);
+        // A reply that is only audio keeps it in a block of its own, so the
+        // turn has content to replay.
+        let silent = self.reasoning.is_none() && self.text.is_none() && self.calls.is_empty();
+        if silent && let Some(audio) = message.get("audio").filter(|audio| !audio.is_null()) {
+            let index = out.fresh_index();
+            let item = serde_json::json!({ "audio": audio });
+            out.whole(index, Block::Opaque { replay: true }, item, "")?;
+        }
         for (index, reasoning) in [(self.reasoning.take(), true), (self.text.take(), false)] {
             let Some(index) = index else {
                 continue;

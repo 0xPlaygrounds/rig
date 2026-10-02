@@ -1498,3 +1498,37 @@ fn malformed_and_unknown_calls_are_never_dropped_silently() {
     )];
     assert!(crate::test_utils::history::decode(&wire, Mode::Streaming, numeric).is_err());
 }
+
+/// A streamed reply that is only audio keeps the audio in a block of its
+/// own, so the turn reaches history and replays it.
+#[test]
+fn an_audio_only_reply_keeps_its_audio() {
+    use crate::wire::Mode;
+
+    let frames = vec![
+        delta_chunk(
+            serde_json::json!({"role": "assistant",
+                "audio": {"id": "audio_1", "data": "AAA", "transcript": "hi"}}),
+            None,
+        ),
+        delta_chunk(serde_json::json!({}), Some("stop")),
+    ];
+    let whole = vec![crate::wire::WireFrame::Text(
+        serde_json::json!({"id": "chatcmpl-items", "model": "gpt-4.1-nano",
+            "object": "chat.completion",
+            "choices": [{"index": 0, "finish_reason": "stop", "message": {"role": "assistant",
+                "content": null,
+                "audio": {"id": "audio_1", "data": "AAA", "transcript": "hi"}}}]})
+        .to_string(),
+    )];
+    for (mode, frames) in [(Mode::Streaming, frames), (Mode::Unary, whole)] {
+        let response = crate::test_utils::history::decode(&wire(), mode, frames)
+            .expect("an audio reply decodes");
+        assert!(
+            matches!(response.choice.as_slice(), [AssistantContent::Opaque(opaque)]
+                if opaque.replay && opaque.item["audio"]["id"] == "audio_1"),
+            "{mode:?}: {:?}",
+            response.choice
+        );
+    }
+}
