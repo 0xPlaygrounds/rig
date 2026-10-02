@@ -246,7 +246,7 @@ async fn hand_interpreter(case: &Case) -> (String, Trace) {
                     .expect("never hangs")
                     .expect("the model");
                 run.model_response(ModelTurn::new(
-                    rig_core::message::AssistantMessage::default(),
+                    response.head(),
                     response.choice,
                     response.usage,
                     executable,
