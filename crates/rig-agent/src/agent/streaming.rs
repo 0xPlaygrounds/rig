@@ -62,7 +62,8 @@ pub enum MultiTurnStreamItem {
     /// Confirmation that Rig **executed and committed** a tool call. This is not
     /// a real-time start notification: it is surfaced together with its
     /// `ToolResult` only after the whole batch settles successfully. Use tool
-    /// hooks for live host-side start/result observation.
+    /// hooks for live host-side start observation and
+    /// [`ToolResultItem`](Self::ToolResultItem) for live output items.
     ///
     /// This item is emitted only for a tool whose body actually ran (it passed
     /// its `ToolCall` hook checks), never for a call dropped by a sibling's
@@ -75,6 +76,23 @@ pub enum MultiTurnStreamItem {
         /// model's *original* call is reported via
         /// [`StreamAssistantItem`](Self::StreamAssistantItem).
         tool_call: rig_core::message::ToolCall,
+    },
+    /// One output item from a settled tool call, emitted before batch commit.
+    ///
+    /// A single JSON array output emits each element in array order. Other
+    /// outputs, including multimodal content, emit once with all their blocks.
+    /// An empty array emits no items. Text is never reparsed as JSON.
+    /// Items use the result accepted by outcome hooks and arrive in tool
+    /// completion order. Recovery results already surfaced during the model
+    /// turn are excluded. A later batch failure can leave these items without
+    /// a committed [`ToolResult`](Self::ToolResult).
+    ToolResultItem {
+        /// One item, correlated with its model call by `tool_result.call`.
+        tool_result: rig_core::message::ToolResult,
+        /// Zero-based position within this tool's output collection.
+        index: usize,
+        /// Number of items in this tool's output; one for a single result.
+        count: usize,
     },
     /// The **result** of an executed (or hook-skipped) tool call. The tool
     /// batch commits and surfaces atomically at every `tool_concurrency`
@@ -120,6 +138,42 @@ pub enum MultiTurnStreamItem {
     /// termination surfaces as the stream's `Err` item instead, which is
     /// equally terminal.
     FinalResponse(PromptResponse),
+}
+
+/// Stream a settled output without changing its aggregate model result.
+pub(crate) fn tool_result_items(
+    result: &rig_core::message::ToolResult,
+) -> impl Iterator<Item = MultiTurnStreamItem> + '_ {
+    use rig_core::message::{ToolResult, ToolResultContent};
+    let values = match result.content.as_slice() {
+        [
+            ToolResultContent::Json {
+                value: serde_json::Value::Array(values),
+            },
+        ] => Some(values),
+        _ => None,
+    };
+    let count = values.map_or(1, Vec::len);
+    let array_items = values.into_iter().flatten().map(Some);
+    let single_item = std::iter::once(None).take(usize::from(values.is_none()));
+    array_items
+        .chain(single_item)
+        .enumerate()
+        .map(move |(index, value)| {
+            let content = match value {
+                Some(value) => vec![ToolResultContent::json(value.clone())],
+                None => result.content.clone(),
+            };
+            MultiTurnStreamItem::ToolResultItem {
+                tool_result: ToolResult {
+                    call: result.call.clone(),
+                    name: result.name.clone(),
+                    content,
+                },
+                index,
+                count,
+            }
+        })
 }
 
 /// Build the unified [`PromptResponse`] for the streaming surface from the

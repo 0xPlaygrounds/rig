@@ -63,6 +63,7 @@ More information about this crate can be found in the [official](https://rig.rs/
 
 ## Features
 - Agentic workflows that can handle multi-turn streaming and prompting
+- Live tool-result items: collections emit each item and single outputs emit once
 - A classic agent runtime enabled by default
 - Full [GenAI Semantic Convention](https://opentelemetry.io/docs/specs/semconv/gen-ai/) compatibility
 - 20+ model providers, all under one singular unified interface
