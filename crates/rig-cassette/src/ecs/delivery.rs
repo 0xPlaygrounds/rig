@@ -519,7 +519,7 @@ pub fn collect_replayed(world: &mut World) {
                     // Batches count items and errors, never the response.
                     let buffered = items
                         .iter()
-                        .filter(|item| !matches!(item, Ok(Relayed::Done(_))))
+                        .filter(|item| !matches!(item, Ok(Relayed::Done(_) | Relayed::Origin(_))))
                         .count();
                     if buffered < *total {
                         if *closed {
@@ -569,7 +569,7 @@ pub fn collect_replayed(world: &mut World) {
                         Some(Buffered::Stream { items, .. }) if replay.folded.contains(&step.id) => {
                             items
                                 .iter()
-                                .filter(|item| !matches!(item, Ok(Relayed::Done(_))))
+                                .filter(|item| !matches!(item, Ok(Relayed::Done(_) | Relayed::Origin(_))))
                                 .count()
                         }
                         _ => 0,
@@ -695,7 +695,7 @@ fn deliver_stream(
         let end = items
             .iter()
             .position(|item| {
-                if !matches!(item, Ok(Relayed::Done(_))) {
+                if !matches!(item, Ok(Relayed::Done(_) | Relayed::Origin(_))) {
                     taken += 1;
                 }
                 taken > count
@@ -703,6 +703,7 @@ fn deliver_stream(
             .unwrap_or(items.len());
         for item in items.drain(..end) {
             match &item {
+                Ok(Relayed::Origin(origin)) => streamed.origin = Some(origin.clone()),
                 Ok(Relayed::Item(event)) => delivered.push(Ok(event.clone())),
                 Ok(Relayed::Done(_)) => {}
                 Err(error) => {
@@ -715,6 +716,7 @@ fn deliver_stream(
                 && recording.keep_events()
             {
                 match &item {
+                    Ok(Relayed::Origin(origin)) => recording.origin(id, origin),
                     Ok(Relayed::Item(item)) => recording.event(id, item),
                     Ok(Relayed::Done(_)) => {}
                     Err(error) => recording.stream_error(id, error),

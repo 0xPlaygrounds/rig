@@ -95,6 +95,91 @@ async fn partial_keeps_the_parts_that_ended_before_an_error() {
     assert_eq!(partial.text(), "answer");
 }
 
+/// A reply the provider did not end is a failed turn by construction: its
+/// message is never replayed, whatever it holds.
+#[tokio::test]
+async fn a_partial_turn_after_an_error_is_marked_failed() {
+    use crate::message::{Message, StopReason};
+    let mut stream = stream_of(vec![
+        MockStreamEvent::text("answer"),
+        MockStreamEvent::tool_call("call_1", "lookup", serde_json::json!({"q": 1})),
+        MockStreamEvent::error("mid-stream failure"),
+    ]);
+    let _ = items_of(&mut stream).await;
+    let Some(Message::Assistant(turn)) = stream.partial().message() else {
+        panic!("the partial turn has content");
+    };
+    assert!(
+        matches!(&turn.stop, Some(StopReason::Error(error)) if error.contains("mid-stream failure")),
+        "{:?}",
+        turn.stop
+    );
+}
+
+#[tokio::test]
+async fn a_partial_turn_the_caller_stopped_reading_is_aborted() {
+    use crate::message::{Message, StopReason};
+    let mut stream = stream_of(vec![
+        MockStreamEvent::text("answer"),
+        MockStreamEvent::tool_call("call_1", "lookup", serde_json::json!({"q": 1})),
+        MockStreamEvent::final_response(usage(3)),
+    ]);
+    // The caller takes the first part and stops.
+    let _ = stream.next().await;
+    let _ = stream.next().await;
+    let _ = stream.next().await;
+    let Some(Message::Assistant(turn)) = stream.partial().message() else {
+        panic!("the partial turn has content");
+    };
+    assert!(
+        matches!(turn.stop, Some(StopReason::Aborted(_))),
+        "{:?}",
+        turn.stop
+    );
+}
+
+/// Only a natural stop, the token limit and a stop to call tools succeed:
+/// any other finish reason fails the turn.
+#[test]
+fn an_unknown_finish_reason_fails_the_turn() {
+    use crate::completion::CompletionResponse;
+    use crate::message::{Origin, StopReason};
+    let response = |reason: FinishReason| {
+        CompletionResponse::new(
+            vec![AssistantContent::text("hi")],
+            Usage::default(),
+            Origin::new("test.api", "test", "model"),
+            serde_json::Value::Null,
+        )
+        .with_finish_reason(reason)
+        .stop()
+    };
+    assert_eq!(response(FinishReason::Stop), StopReason::Stop);
+    assert_eq!(response(FinishReason::Length), StopReason::Length);
+    assert_eq!(response(FinishReason::ToolCalls), StopReason::ToolUse);
+    for reason in [
+        FinishReason::ContentFilter,
+        FinishReason::Other("recitation".to_owned()),
+        FinishReason::Other("error".to_owned()),
+    ] {
+        assert!(response(reason.clone()).is_failure(), "{reason:?}");
+    }
+}
+
+/// A relayed stream knows its origin before its first item, so a relay cut
+/// short still names the model that produced it.
+#[tokio::test]
+async fn a_relay_names_its_origin_before_its_first_item() {
+    let origin = stream_of(vec![MockStreamEvent::text("cut")]);
+    let expected = origin.partial().origin;
+    let events = origin
+        .into_relay()
+        .filter(|item| futures::future::ready(!matches!(item, Ok(Relayed::Done(_)))));
+    let mut relayed = Streamed::relay("mock", Box::pin(events));
+    let _ = items_of(&mut relayed).await;
+    assert_eq!(relayed.partial().origin, expected);
+}
+
 #[tokio::test]
 async fn usage_the_provider_did_not_report_stays_unreported() {
     let mut stream = stream_of(vec![

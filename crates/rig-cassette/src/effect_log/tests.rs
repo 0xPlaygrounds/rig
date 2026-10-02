@@ -278,6 +278,7 @@ fn stream_error_metadata_is_validated_and_released_with_its_records() {
 fn effect_record_and_log_round_trip() {
     let log: EffectLog = EffectLog::from_records(vec![
         EffectRecord {
+            stream_origin: None,
             tool_output: None,
             parent: None,
             scope: None,
@@ -296,6 +297,7 @@ fn effect_record_and_log_round_trip() {
             events: None,
         },
         EffectRecord {
+            stream_origin: None,
             tool_output: None,
             parent: None,
             scope: None,
@@ -439,6 +441,7 @@ fn custom_kind() -> EffectKind {
 fn two_records() -> EffectLog {
     EffectLog::from_records(vec![
         EffectRecord {
+            stream_origin: None,
             tool_output: None,
             parent: None,
             scope: None,
@@ -451,6 +454,7 @@ fn two_records() -> EffectLog {
             events: None,
         },
         EffectRecord {
+            stream_origin: None,
             tool_output: None,
             parent: None,
             scope: None,

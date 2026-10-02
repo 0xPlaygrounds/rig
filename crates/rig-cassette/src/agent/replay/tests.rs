@@ -819,7 +819,7 @@ async fn a_stream_recorded_verbatim_replays_its_own_events() {
             .into_iter()
             .filter_map(|relayed| match relayed {
                 Relayed::Item(item) => Some(item),
-                Relayed::Done(_) => None,
+                Relayed::Origin(_) | Relayed::Done(_) => None,
             })
             .collect()
     };
@@ -948,6 +948,7 @@ async fn a_tool_call_under_a_different_context_is_the_same_record() {
     let log: EffectLog = EffectLog {
         header: LogHeader::default(),
         records: vec![EffectRecord {
+            stream_origin: None,
             tool_output: None,
             parent: None,
             scope: None,

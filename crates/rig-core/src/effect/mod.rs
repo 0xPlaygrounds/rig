@@ -971,6 +971,11 @@ pub struct EffectRecord {
     /// boundaries. They read back through [`Transcript::parse_prefix`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub events: Option<Transcript>,
+    /// Who a streamed dispatch's reply was from, as its relay stated it
+    /// before the first item, when the items are kept. A replayer sends it
+    /// first, so a replayed stream cut short knows its origin.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stream_origin: Option<crate::message::Origin>,
     /// Parent dispatch for a nested handler call, or `None` for a root dispatch.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub parent: Option<EffectId>,

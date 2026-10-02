@@ -57,6 +57,11 @@ pub struct StreamedInvalidToolCall {
 /// exactly what the model has produced so far.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PartialStreamedTurn {
+    /// The turn the reply began, with no content: its origin, so a rolled
+    /// back turn replays to the same model with the provider items of the
+    /// blocks that closed.
+    #[serde(default)]
+    pub head: AssistantMessage,
     /// The parts that arrived so far, in the order they started, text still
     /// streaming included.
     pub content: Vec<AssistantContent>,
@@ -92,9 +97,10 @@ impl PartialStreamedTurn {
         if content.is_empty() {
             return None;
         }
-        // The stream was cut short: the turn replays from its canonical
-        // fields, as a hand-built one does.
-        Some(Message::Assistant(AssistantMessage::new(content)))
+        Some(Message::Assistant(AssistantMessage {
+            content,
+            ..self.head.clone()
+        }))
     }
 
     /// Rollback messages for a retried or skipped streamed turn: the partial
@@ -395,6 +401,7 @@ impl StreamedTurnAssembler {
         partial: &rig_core::completion::CompletionResponse,
     ) -> PartialStreamedTurn {
         PartialStreamedTurn {
+            head: partial.continued(Vec::new()),
             content: partial.choice.clone(),
             pending_tool_calls: self.pending_tool_calls.clone(),
         }

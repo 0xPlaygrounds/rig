@@ -328,10 +328,16 @@ impl Turn {
     }
 
     /// The fold of a stream relayed from another fold, which built its
-    /// events: it only collects them.
-    pub(crate) fn relayed(provider: impl Into<String>) -> Self {
-        let provider = provider.into();
-        Self::new(Origin::new(provider.clone(), provider, ""))
+    /// events: it only collects them, and takes its origin from the relay
+    /// ([`Self::set_origin`]). Until then it names the relay `label`.
+    pub(crate) fn relayed(label: impl Into<String>) -> Self {
+        let label = label.into();
+        Self::new(Origin::new(label.clone(), label.clone(), label))
+    }
+
+    /// Who the reply is from, as the relay or the writer's owner states it.
+    pub(crate) fn set_origin(&mut self, origin: Origin) {
+        self.origin = origin;
     }
 
     /// The next position in the choice.
@@ -707,9 +713,28 @@ impl Turn {
 
     /// What arrived so far as a response: every part that ended, the text
     /// the consumer already took of a text part still open, and the
-    /// provider's end when it arrived.
-    pub(crate) fn partial(&self, end: Option<&Finish>, reply: &Reply) -> CompletionResponse {
+    /// provider's end when it arrived. A reply the provider did not end is a
+    /// failed turn: `failure` is the error that ended it, and without one the
+    /// caller stopped reading.
+    pub(crate) fn partial(
+        &self,
+        end: Option<&Finish>,
+        reply: &Reply,
+        failure: Option<&ProviderError>,
+    ) -> CompletionResponse {
         let mut response = self.response(end.cloned().unwrap_or_default(), reply.clone());
+        if end.is_none() {
+            match failure {
+                Some(error) => {
+                    response.error.get_or_insert_with(|| error.to_string());
+                }
+                None => {
+                    response.aborted = Some(
+                        "the caller stopped reading before the provider ended the reply".to_owned(),
+                    );
+                }
+            }
+        }
         response.choice = self
             .choice
             .iter()
@@ -735,8 +760,14 @@ impl Turn {
         } = end;
         use crate::provider_response::reported;
         let mut origin = self.origin.clone();
-        origin.provider = reply.provider;
         origin.response_model = reported(model);
+        // A request that named no model is from the model the provider
+        // reports.
+        if origin.model.is_empty()
+            && let Some(model) = &origin.response_model
+        {
+            origin.model.clone_from(model);
+        }
         origin.response_id = reported(response_id);
         let choice = self.snapshot();
         let native = self.native.clone().and_then(|item| {

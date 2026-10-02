@@ -2047,9 +2047,18 @@ fn fail_unknown_call(
     call: InvalidCall,
 ) -> Result<(), ContentError> {
     commands.entity(turn).insert(Materialised);
-    // A streamed turn cut short replays from its canonical fields, as the
-    // agent loop replays it.
-    if let Ok(assistant) = MessageParts::assistant(AssistantMessage::new(call.prefix.clone())) {
+    // The run fails on the call: the delivered prefix is history, a turn
+    // that never ended and is never replayed.
+    let prefix = AssistantMessage {
+        content: call.prefix.clone(),
+        origin: call.origin.clone(),
+        stop: Some(rig_core::message::StopReason::Aborted(format!(
+            "the run failed on the unknown tool call `{}`",
+            call.name
+        ))),
+        native: None,
+    };
+    if let Ok(assistant) = MessageParts::assistant(prefix) {
         spawn_deferred(commands, assets, run, assistant)?;
     }
     commands
@@ -2082,10 +2091,17 @@ fn abandon_turn(
         call.prefix.clone()
     };
     let diagnostic_id = &call.id;
+    // A streamed prefix keeps the stream's origin and the provider items of
+    // its closed blocks; the run answers its calls, so it stops to use tools.
     let message = if call.prefix.is_empty() {
         outs.head.message(content.clone())
     } else {
-        AssistantMessage::new(content.clone())
+        AssistantMessage {
+            content: content.clone(),
+            origin: call.origin.clone(),
+            stop: Some(rig_core::message::StopReason::ToolUse),
+            native: None,
+        }
     };
     let assistant = MessageParts::assistant(message)?;
     spawn_deferred(commands, assets, run, assistant)?;
@@ -2346,6 +2362,7 @@ pub fn read_turn(
                         arguments: call.function.arguments_value(),
                         prefix: Vec::new(),
                         stream_offset: None,
+                        origin: None,
                     },
                     ChildOf(turn),
                 ));

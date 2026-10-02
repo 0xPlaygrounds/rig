@@ -192,6 +192,7 @@ impl WorldObserver {
             && recording.keep_events()
         {
             match item {
+                Ok(Relayed::Origin(origin)) => recording.origin(self.id, origin),
                 Ok(Relayed::Item(item)) => recording.event(self.id, item),
                 Ok(Relayed::Done(_)) => {}
                 Err(error) => recording.stream_error(self.id, error),

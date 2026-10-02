@@ -916,11 +916,12 @@ fn a_partial_turn_keeps_the_parts_in_the_order_they_arrived() {
         AssistantContent::text("first"),
         AssistantContent::Reasoning(Reasoning::new("because")),
     ];
-    let partial = asm.partial_turn(&response(content.clone()));
+    let folded = response(content.clone());
+    let partial = asm.partial_turn(&folded);
     assert_eq!(partial.content, content);
     assert_eq!(
         partial.assistant_message(None),
-        Some(Message::Assistant(AssistantMessage::new(content)))
+        Some(Message::Assistant(folded.continued(content)))
     );
 }
 
@@ -928,6 +929,7 @@ fn a_partial_turn_keeps_the_parts_in_the_order_they_arrived() {
 #[test]
 fn an_empty_partial_turn_is_no_assistant_message() {
     let turn = PartialStreamedTurn {
+        head: Default::default(),
         content: vec![AssistantContent::text("")],
         pending_tool_calls: Vec::new(),
     };

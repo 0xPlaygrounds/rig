@@ -5814,10 +5814,11 @@ async fn a_blocking_run_started_outside_a_span_stays_a_root_when_polled_inside_o
     );
 }
 
-/// A turn abandoned mid-stream, before its terminal record, replays from
-/// its canonical fields on the retry: its reasoning comes back as text.
+/// A turn abandoned mid-stream, before its terminal record, keeps its
+/// origin on the retry: the same model gets its reasoning back as
+/// reasoning, with the provider items of the blocks that closed.
 #[tokio::test]
-async fn an_abandoned_streamed_turn_replays_its_reasoning_as_text() {
+async fn an_abandoned_streamed_turn_replays_as_the_same_model() {
     let model = MockCompletionModel::from_stream_turns([
         vec![
             MockStreamEvent::reasoning("delta reason").with_reasoning_id("rs_1"),
@@ -5848,9 +5849,20 @@ async fn an_abandoned_streamed_turn_replays_its_reasoning_as_text() {
     }
 
     let requests = recorded.requests();
+    let rolled_back = requests[1]
+        .chat_history
+        .iter()
+        .find_map(|message| match message {
+            Message::Assistant(turn) => Some(turn),
+            Message::System { .. } | Message::User { .. } => None,
+        })
+        .expect("the retry carries the abandoned turn");
+    assert!(rolled_back.origin.is_some(), "{rolled_back:?}");
     assert!(
-        history_contains_text(&requests[1].chat_history, "delta reason"),
-        "the retry carries the abandoned turn's reasoning as text: {:?}",
-        requests[1].chat_history
+        rolled_back.content.iter().any(|block| matches!(
+            block,
+            AssistantContent::Reasoning(reasoning) if reasoning.text == "delta reason"
+        )),
+        "the same model reads its reasoning as reasoning: {rolled_back:?}"
     );
 }

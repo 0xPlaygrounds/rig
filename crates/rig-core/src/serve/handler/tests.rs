@@ -98,10 +98,10 @@ fn resolved_stream_preserves_original_response_for_outcome_only_replay() {
             delivered,
             "outcome-only replay must reconstruct the same image-bearing stream"
         );
-        // Every delivered item but the response is an event.
+        // Every delivered item but the origin and the response is an event.
         assert_eq!(
             seen.events,
-            if keep_events { delivered.len() - 1 } else { 0 }
+            if keep_events { delivered.len() - 2 } else { 0 }
         );
     }
 }

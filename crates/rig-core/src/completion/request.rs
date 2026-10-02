@@ -196,6 +196,11 @@ pub struct CompletionResponse {
     /// and is never replayed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+    /// Why the reply stopped before the provider ended it, when the caller
+    /// stopped reading: the turn's message then ends in
+    /// [`StopReason::Aborted`] and is never replayed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub aborted: Option<String>,
     /// Request identifier from HTTP headers or SDK metadata, not the body's
     /// response ID. `None` when the provider reports none.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -238,6 +243,7 @@ impl CompletionResponse {
             origin,
             native: None,
             error: None,
+            aborted: None,
             provider_request_id: None,
             finish_reason: None,
             raw,
@@ -264,11 +270,17 @@ impl CompletionResponse {
         self.finish_reason.clone()
     }
 
-    /// How the turn ended, for history: a reported failure is
-    /// [`StopReason::Error`], and so is filtered content.
+    /// How the turn ended, for history. It fails closed: only a natural
+    /// stop, the token limit and a stop to call tools are successes. A
+    /// reported failure, filtered content and any finish reason outside
+    /// that set are [`StopReason::Error`]; a reply the caller stopped
+    /// reading is [`StopReason::Aborted`].
     pub fn stop(&self) -> StopReason {
         if let Some(error) = &self.error {
             return StopReason::Error(error.clone());
+        }
+        if let Some(reason) = &self.aborted {
+            return StopReason::Aborted(reason.clone());
         }
         match &self.finish_reason {
             Some(FinishReason::Length) => StopReason::Length,
@@ -276,9 +288,13 @@ impl CompletionResponse {
             Some(FinishReason::ContentFilter) => {
                 StopReason::Error("Provider finish_reason: content_filter".to_owned())
             }
-            Some(FinishReason::Stop | FinishReason::Other(_)) => StopReason::Stop,
-            None if self.tool_calls().next().is_some() => StopReason::ToolUse,
-            None => StopReason::Stop,
+            Some(FinishReason::Other(reason)) => {
+                StopReason::Error(format!("Provider finish_reason: {reason}"))
+            }
+            Some(FinishReason::Stop) | None if self.tool_calls().next().is_some() => {
+                StopReason::ToolUse
+            }
+            Some(FinishReason::Stop) | None => StopReason::Stop,
         }
     }
 
@@ -332,6 +348,20 @@ impl CompletionResponse {
         }))
     }
 
+    /// The turn this response began, holding `content`, for a runtime that
+    /// cut the reply short and answers its calls itself (an agent rolling a
+    /// turn back over an invalid call). It keeps the origin, and the provider
+    /// items of the blocks in `content`, which only closed blocks hold; it
+    /// stops to call tools, since the runtime answers them.
+    pub fn continued(&self, content: Vec<AssistantContent>) -> AssistantMessage {
+        AssistantMessage {
+            content,
+            origin: Some(self.origin.clone()),
+            stop: Some(StopReason::ToolUse),
+            native: None,
+        }
+    }
+
     /// The turn's origin, stop and provider message with no content, for a
     /// runtime that carries the content separately.
     pub fn head(&self) -> AssistantMessage {
@@ -375,6 +405,8 @@ struct CompletionResponseRepr {
     #[serde(default)]
     error: Option<String>,
     #[serde(default)]
+    aborted: Option<String>,
+    #[serde(default)]
     provider_request_id: Option<String>,
     #[serde(default)]
     finish_reason: Option<FinishReason>,
@@ -389,6 +421,7 @@ impl From<CompletionResponseRepr> for CompletionResponse {
             mut origin,
             native,
             error,
+            aborted,
             provider_request_id,
             finish_reason,
             raw,
@@ -400,6 +433,7 @@ impl From<CompletionResponseRepr> for CompletionResponse {
             Self::new(choice, usage, origin, raw).with_optional_finish_reason(finish_reason);
         response.native = native;
         response.error = error;
+        response.aborted = aborted;
         response.provider_request_id = reported(provider_request_id);
         response
     }

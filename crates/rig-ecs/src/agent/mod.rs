@@ -935,6 +935,12 @@ pub struct InvalidCall {
     /// This distinguishes reused block identifiers within one stream.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub stream_offset: Option<usize>,
+    /// Who the stream the prefix came from is from, so the rolled-back turn
+    /// replays to the same model with its provider items. `None` for calls
+    /// discovered from an already completed turn.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[reflect(remote = crate::agent::content::reflect::OriginReflect)]
+    pub origin: Option<rig_core::message::Origin>,
 }
 
 /// What to do with an invalid call. Written by a user system before

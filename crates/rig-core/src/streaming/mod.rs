@@ -65,10 +65,14 @@ impl From<serde_json::Value> for UnknownPayload {
 #[cfg(test)]
 mod unknown_payload_tests;
 
-/// One item of a completion stream relayed over the bus: an item of the
-/// reply, or the response the origin folded when the provider ended it.
+/// One item of a completion stream relayed over the bus: who the reply is
+/// from, an item of the reply, or the response the origin folded when the
+/// provider ended it.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Relayed {
+    /// The wire, provider and model the reply is from, sent before its
+    /// first item, so a reply cut short still knows its origin.
+    Origin(crate::message::Origin),
     /// An event, or a payload the origin's decoder did not model.
     Item(Item<StreamEvent>),
     /// The provider ended the reply; the origin's response.
@@ -198,6 +202,10 @@ impl Streamed<Completion> {
                 let ended = {
                     let mut shared = lock(&writer);
                     match item {
+                        Ok(Relayed::Origin(origin)) => {
+                            Turn::set_origin(&mut shared.fold, origin);
+                            false
+                        }
                         Ok(Relayed::Item(item)) => {
                             shared.items.push_back(Ok(item));
                             false
@@ -228,7 +236,9 @@ impl Streamed<Completion> {
     /// folds into, or the error that ended it. A reply cut short closes the
     /// relay without a response, as its transport closed.
     pub fn into_relay(mut self) -> StreamEvents {
+        let origin = lock(&self.shared).fold.origin().clone();
         Box::pin(async_stream::stream! {
+            yield Ok(Relayed::Origin(origin));
             while let Some(item) = self.next().await {
                 match item {
                     Ok(item) => yield Ok(Relayed::Item(item)),
@@ -255,9 +265,11 @@ impl Streamed<Completion> {
         if let Some(response) = &shared.response {
             return response.clone();
         }
-        shared
-            .fold
-            .partial(shared.end.as_ref(), &shared.reply(&self.provider))
+        shared.fold.partial(
+            shared.end.as_ref(),
+            &shared.reply(&self.provider),
+            self.failed.as_ref(),
+        )
     }
 }
 

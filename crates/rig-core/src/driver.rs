@@ -593,13 +593,18 @@ where
             provider_request_id: None,
         },
     );
-    let relayed: Vec<Result<Relayed, ErrorReport>> = decoded
-        .items
+    let origin = decoded
+        .outcome
+        .as_ref()
+        .map(|response| response.origin.clone())
+        .ok();
+    let relayed: Vec<Result<Relayed, ErrorReport>> = origin
+        .map(|origin| Ok(Relayed::Origin(origin)))
         .into_iter()
-        .map(|item| match item {
+        .chain(decoded.items.into_iter().map(|item| match item {
             Ok(item) => Ok(Relayed::Item(item)),
             Err(error) => Err(ErrorReport::from(&error)),
-        })
+        }))
         // An error that ended the reply is already its last item.
         .chain(
             decoded

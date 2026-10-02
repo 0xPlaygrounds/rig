@@ -106,6 +106,7 @@ fn populated() -> bevy_app::App {
         },
         Reprompt(Message::user("again")),
         InvalidCall {
+            origin: None,
             id: CallId::from_wire("i"),
             name: rig_core::message::ToolName::new("nope")
                 .expect("tool name")
@@ -164,6 +165,7 @@ fn populated() -> bevy_app::App {
             Utterance,
             rig_ecs::agent::Role::User,
             Streamed {
+                origin: None,
                 errors: vec![(0, ErrorReport::new(ErrorKind::Cancelled, "stopped"))],
                 events: Default::default(),
                 text: "so far".to_owned(),

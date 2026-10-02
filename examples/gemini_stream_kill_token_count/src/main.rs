@@ -233,6 +233,7 @@ where
                 reason = Some(format!("stream error: {err}"));
                 break;
             }
+            Ok(Some(Ok(Relayed::Origin(_)))) => {}
             Ok(Some(Ok(Relayed::Item(Item::Event(item))))) => match item {
                 StreamEvent::Text { text, .. } => output.push_str(&text),
                 StreamEvent::Reasoning { text, .. } => {

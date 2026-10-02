@@ -1732,8 +1732,9 @@ async fn a_stream_written_through_the_writer_is_well_formed() {
         serde_json::to_value(
             items
                 .into_iter()
-                .map(|item| match item {
-                    Relayed::Item(item) => item,
+                .filter_map(|item| match item {
+                    Relayed::Item(item) => Some(item),
+                    Relayed::Origin(_) => None,
                     Relayed::Done(_) => panic!("one response, last"),
                 })
                 .collect::<Vec<_>>(),

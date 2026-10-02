@@ -14,7 +14,7 @@ use futures::{SinkExt, StreamExt, channel::mpsc};
 
 use crate::{
     error::{ErrorReport, ProviderError},
-    message::{AssistantContent, CallId, LocalCallId, ToolCall, ToolFunction, ToolName},
+    message::{AssistantContent, CallId, LocalCallId, Origin, ToolCall, ToolFunction, ToolName},
     operation::{Block, Finish, Turn},
     streaming::{Item, Relayed, StreamEvent},
     wire::{Fold, Reply as WireReply},
@@ -144,8 +144,14 @@ impl StreamWriter {
     ) -> Result<(), SinkClosed> {
         self.turn.close_open(&mut self.items);
         self.flush().await?;
+        let provider = provider.into();
+        // A written reply is from no wire: it names its provider as its API
+        // and, when the end names none, as its model.
+        let model = finish.model.clone().unwrap_or_else(|| provider.clone());
+        self.turn
+            .set_origin(Origin::new(provider.clone(), provider.clone(), model));
         let reply = WireReply {
-            provider: provider.into(),
+            provider,
             raw: std::mem::take(&mut self.raw),
             provider_request_id: self.request_id.take(),
         };

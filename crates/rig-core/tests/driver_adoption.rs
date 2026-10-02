@@ -1359,3 +1359,36 @@ fn last() { let _ = triage_frame(); }
     let brace_less = "#[cfg(test)]\nuse std::fmt;\nfn after() { let _ = WireEvent::Unknown; }\n";
     assert!(shipped_portion(brace_less).contains("WireEvent::Unknown"));
 }
+
+/// Runtimes never build an assistant turn by hand: a turn that enters
+/// history comes from a fold (`CompletionResponse::message`, `head`,
+/// `continued`), so it keeps its origin and provider items. A hand-built
+/// turn has no origin and would replay a same-model turn as another model's.
+#[test]
+fn runtime_turns_come_from_folds() {
+    let mut walked = Vec::new();
+    let mut offenders = Vec::new();
+    for_each_shipped_source(|path, shipped| {
+        let normalized = path.to_string_lossy().replace('\\', "/");
+        walked.push(normalized.clone());
+        let runtime = ["/rig-agent/src/", "/rig-ecs/src/"]
+            .iter()
+            .any(|root| normalized.contains(root));
+        if runtime && mask_literals_and_comments(shipped).contains("AssistantMessage::new(") {
+            offenders.push(normalized);
+        }
+    });
+    assert!(
+        walked
+            .iter()
+            .any(|path| path.ends_with("rig-agent/src/run/streamed.rs"))
+            && walked
+                .iter()
+                .any(|path| path.ends_with("rig-ecs/src/systems/mod.rs")),
+        "the walk covers the runtimes"
+    );
+    assert!(
+        offenders.is_empty(),
+        "runtime code builds assistant turns by hand: {offenders:?}"
+    );
+}
