@@ -813,7 +813,7 @@ async fn typed_tool_namespaces_survive_log_roundtrip_and_replay() {
                     .is_some_and(serde_json::Value::is_string)
                     || object
                         .get("provider")
-                        .is_some_and(|provider| provider.get("call_id").is_some()))
+                        .is_some_and(serde_json::Value::is_string))
         });
         if is_call_id {
             *value = serde_json::json!("tool-0");

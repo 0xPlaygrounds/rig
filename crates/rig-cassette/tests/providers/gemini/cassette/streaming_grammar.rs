@@ -129,9 +129,13 @@ fn aggregated_reasoning_text(choice: &[AssistantContent]) -> String {
         .collect()
 }
 
-/// The `thoughtSignature` a block's provider item carries, if any.
+/// The signature a block's provider item carries, if any: `thoughtSignature`
+/// on GenerateContent parts, `signature` on Interactions steps.
 fn signature(content: &AssistantContent) -> Option<&str> {
-    content.native_item()?.get("thoughtSignature")?.as_str()
+    let item = content.native_item()?;
+    item.get("thoughtSignature")
+        .or_else(|| item.get("signature"))?
+        .as_str()
 }
 
 /// `MAX_TOKENS` truncation via a small `maxOutputTokens` budget: terminal
