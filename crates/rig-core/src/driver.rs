@@ -285,8 +285,8 @@ where
         mode: Mode,
         observation: Option<AdapterContext>,
     ) -> Result<Streamed<W::Op>, ProviderError> {
-        <W::Op as Operation>::validate(&request)?;
         let describe = self.wire.describe();
+        let request = <W::Op as Operation>::prepare(request, &describe)?;
         let provider = describe.name.to_owned();
         let mut call = Call::new(&describe, mode);
         let fold = <W::Op as Operation>::fold(&request, &mut call);
@@ -608,7 +608,9 @@ where
     use crate::streaming::Relayed;
 
     let provider = wire.describe().name.to_owned();
-    let shared = Mutex::new(Shared::new(crate::operation::Turn::new(provider.clone())));
+    let shared = Mutex::new(Shared::new(crate::operation::Turn::relayed(
+        provider.clone(),
+    )));
     let fed = feed(&mut wire.decoder(), &shared, frames);
     let decoded = settle(
         shared,
@@ -668,7 +670,7 @@ impl Decoded<crate::operation::Completion> {
 macro_rules! decode_events {
     ($decoder:expr, $provider:expr, $events:expr) => {
         $crate::driver::decode_with(
-            $crate::operation::Turn::new($provider),
+            $crate::operation::Turn::relayed($provider),
             $provider,
             |reply| {
                 let mut decoder = $decoder;
@@ -697,7 +699,7 @@ pub(crate) use decode_events;
 macro_rules! feed_frames {
     ($decoder:expr, $provider:expr, $frames:expr) => {
         $crate::driver::decode_with(
-            $crate::operation::Turn::new($provider),
+            $crate::operation::Turn::relayed($provider),
             $provider,
             |reply| {
                 let mut decoder = $decoder;
